@@ -291,7 +291,22 @@
       "drawErase": "Eraser — swipe to erase elements. Press Esc to exit.",
       "editText": "Edit Text — click on any word to overlay and edit it. Press Esc to exit.",
       "fillBucket": "Fill bucket — click a shape or stroke to fill it with color. Press Esc to exit."
-    }
+    },
+    "copied": "Copied",
+    "pastedUndo": "Pasted — Ctrl+Z to undo",
+    "elementRenderFailed": "{{count}} element(s) could not be rendered",
+    "pdfDownloaded": "PDF downloaded!",
+    "pdfExportFailed": "PDF export failed",
+    "pageDownloaded": "Page {{page}} downloaded!",
+    "pageExportFailed": "Page export failed",
+    "exportSourceNotFound": "Export failed — source PDF not found",
+    "canvasUnavailable": "Canvas unavailable — cannot export image",
+    "imageExportFailed": "Image export failed",
+    "imageExported": "Page {{page}} exported as PNG!",
+    "blankPageInsertFailed": "Failed to insert blank page",
+    "appUpdateAvailable": "Update available — reload the page to apply",
+    "passwordRequired": "User password is required",
+    "eyedropperUnsupported": "Color picker not supported in this browser"
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",
@@ -331,5 +346,15 @@
     "privacyBadge": "100% local — your files never leave your browser",
     "privacyChipTitle": "All processing happens locally in your browser — no files are ever uploaded to any server",
     "legalAriaLabel": "Legal"
+  },
+  "progress": {
+    "loadingDocument": "Loading document…",
+    "generatingPdf": "Generating PDF…",
+    "exportingPage": "Exporting page…",
+    "exportingImage": "Rendering page image…",
+    "generatingDocx": "Generating Word document…",
+    "generatingMarkdown": "Generating Markdown…",
+    "restoringSession": "Restoring session…",
+    "convertingImages": "Converting images…"
   }
 }

@@ -269,7 +269,7 @@ export class TextEditHandler {
 
       const newBytes = await opts.libDoc.save();
       await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);
-      app.showToast(t(isDelete ? 'toast.trueTextDeleted' : 'toast.trueTextEdited'));
+      app.reportError.info(isDelete ? 'toast.trueTextDeleted' : 'toast.trueTextEdited');
     };
 
     input.addEventListener('keydown', ev => {

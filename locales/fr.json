@@ -291,7 +291,22 @@
       "editText": "Éditer texte — cliquez sur un mot pour le superposer et l'éditer. Appuyez sur Échap pour quitter.",
       "addCode": "Outil code — faites glisser pour définir la taille et placer. Appuyez sur Échap pour annuler.",
       "fillBucket": "Seau de remplissage — cliquez sur une forme ou un trait pour le remplir. Appuyez sur Échap pour quitter."
-    }
+    },
+    "copied": "Copié",
+    "pastedUndo": "Collé — Ctrl+Z pour annuler",
+    "elementRenderFailed": "{{count}} élément(s) n'ont pas pu être rendus",
+    "pdfDownloaded": "PDF téléchargé !",
+    "pdfExportFailed": "Échec de l'export PDF",
+    "pageDownloaded": "Page {{page}} téléchargée !",
+    "pageExportFailed": "Échec de l'export de page",
+    "exportSourceNotFound": "Export échoué — PDF source introuvable",
+    "canvasUnavailable": "Canvas non disponible — export image impossible",
+    "imageExportFailed": "Échec de l'export d'image",
+    "imageExported": "Page {{page}} exportée en PNG !",
+    "blankPageInsertFailed": "Impossible d'insérer une page vierge",
+    "appUpdateAvailable": "Mise à jour disponible — rechargez la page",
+    "passwordRequired": "Le mot de passe utilisateur est requis",
+    "eyedropperUnsupported": "Pipette non supportée dans ce navigateur"
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",
@@ -331,5 +346,15 @@
     "privacyBadge": "100% local — vos fichiers ne quittent jamais votre navigateur",
     "privacyChipTitle": "Tout le traitement se fait localement dans votre navigateur — aucun fichier n'est jamais téléchargé vers un serveur",
     "legalAriaLabel": "Mentions légales"
+  },
+  "progress": {
+    "loadingDocument": "Chargement du document…",
+    "generatingPdf": "Génération du PDF…",
+    "exportingPage": "Exportation de la page…",
+    "exportingImage": "Rendu de l'image…",
+    "generatingDocx": "Génération du document Word…",
+    "generatingMarkdown": "Génération du Markdown…",
+    "restoringSession": "Restauration de la session…",
+    "convertingImages": "Conversion des images…"
   }
 }

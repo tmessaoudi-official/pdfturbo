@@ -14,6 +14,8 @@ import type { PDFRenderer } from '../infra/pdfRenderer';
 import type { SourcePdf } from './documentModel';
 import type { AppDOMRefs } from '../ui/uiController';
 import type { ToolMode } from './pdfEditorApp';
+import type { IErrorReporter } from './errorReporter';
+import type { IProgressManager } from '../ui/progressManager';
 
 export interface IAppContext {
   /** Current page elements across all pages. */
@@ -36,6 +38,11 @@ export interface IAppContext {
   selectedElement: PDFElement | null;
   /** Effective fill color from the toolbar (undefined = no fill). */
   effectiveFillColor: string | undefined;
+
+  /** Structured error reporter — use instead of showToast() for new code. */
+  reportError: IErrorReporter;
+  /** Progress overlay — use for any operation that blocks the UI. */
+  progress: IProgressManager;
 
   // ── Methods ──────────────────────────────────────────────────────
   showToast(msg: string, duration?: number): void;

@@ -3,7 +3,7 @@ import { TextElement } from '../elements/textElement';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd } from '../core/historyManager';
-import { t } from '../utils/i18n';
+
 
 /** Wire all DOM events to app methods. Called once from the PDFEditorApp constructor. */
 export function bindEvents(app: PDFEditorApp): void {
@@ -401,19 +401,19 @@ export function bindEvents(app: PDFEditorApp): void {
     });
     document.getElementById('lockPdfApplyBtn')?.addEventListener('click', () => {
       const user = (document.getElementById('lockUserPassword') as HTMLInputElement).value.trim();
-      if (!user) { app.showToast('User password is required'); return; }
+      if (!user) { app.reportError.warn('toast.passwordRequired'); return; }
       const owner = (document.getElementById('lockOwnerPassword') as HTMLInputElement).value.trim() || user;
       app._exportPassword = { user, owner };
       const status = document.getElementById('lockPdfStatus') as HTMLElement;
       status.style.display = 'block';
       lockModal.style.display = 'none';
-      app.showToast(t('toast.pdfWillBeLocked'));
+      app.reportError.info('toast.pdfWillBeLocked');
     });
     document.getElementById('lockPdfRemoveBtn')?.addEventListener('click', () => {
       app._exportPassword = null;
       (document.getElementById('lockPdfStatus') as HTMLElement).style.display = 'none';
       lockModal.style.display = 'none';
-      app.showToast(t('toast.pdfLockRemoved'));
+      app.reportError.info('toast.pdfLockRemoved');
     });
     document.getElementById('lockPdfCancelBtn')?.addEventListener('click', () => { lockModal.style.display = 'none'; });
     lockModal?.addEventListener('click', (e) => { if (e.target === lockModal) lockModal.style.display = 'none'; });
@@ -538,7 +538,7 @@ export function bindEvents(app: PDFEditorApp): void {
       }
     });
     document.getElementById('redactEyedropperBtn')?.addEventListener('click', async () => {
-      if (!('EyeDropper' in window)) { app.showToast('Eyedropper not supported in this browser'); return; }
+      if (!('EyeDropper' in window)) { app.reportError.warn('toast.eyedropperUnsupported'); return; }
       try {
         const dropper = new (window as { EyeDropper: new() => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper();
         const result = await dropper.open();
@@ -547,7 +547,7 @@ export function bindEvents(app: PDFEditorApp): void {
       } catch { /* user cancelled */ }
     });
     app.ui.colorEyedropperBtn.addEventListener('click', async () => {
-      if (!('EyeDropper' in window)) { app.showToast('Eyedropper not supported in this browser'); return; }
+      if (!('EyeDropper' in window)) { app.reportError.warn('toast.eyedropperUnsupported'); return; }
       try {
         const dropper = new (window as { EyeDropper: new() => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper();
         const result = await dropper.open();

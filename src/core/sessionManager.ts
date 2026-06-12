@@ -1,15 +1,15 @@
 import { saveState } from '../infra/storage';
-import { t } from '../utils/i18n';
 import type { DocumentModel } from './documentModel';
 import type { PDFElement } from '../elements/annotationElement';
 import type { InkLayer } from '../infra/inkLayer';
+import type { IErrorReporter } from './errorReporter';
 
 export interface SessionSnapshot {
   documentModel: DocumentModel;
   elements: PDFElement[];
   inkLayer: InkLayer;
   formValues: Record<string, Record<string, string>>;
-  onError: (msg: string) => void;
+  errors: IErrorReporter;
 }
 
 /** Debounced autosave — schedules a save 800ms after the last call. */
@@ -38,9 +38,9 @@ export class SessionManager {
       });
     } catch (err) {
       if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-        snap.onError(t('toast.storageFull'));
+        snap.errors.error('toast.storageFull', err);
       } else {
-        console.warn('[SessionManager] autosave error:', err);
+        snap.errors.silent(err, 'SessionManager autosave');
       }
     }
   }

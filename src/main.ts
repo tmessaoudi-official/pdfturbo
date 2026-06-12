@@ -2,6 +2,21 @@
 import './utils/polyfills';
 import { PDFEditorApp } from './core/pdfEditorApp';
 import { initI18n, changeLanguage, onLanguageChanged } from './utils/i18n';
+import { registerSW } from 'virtual:pwa-register';
+
+registerSW({
+  onNeedRefresh() {
+    // App is fully initialized by the time SW fires; grab the reporter from window.app if available.
+    // In production window.app is not set, so we fall back to a direct toast via the DOM.
+    const appInstance = (window as { app?: PDFEditorApp }).app;
+    if (appInstance) {
+      appInstance.reportError.info('toast.appUpdateAvailable');
+    } else {
+      const toast = document.getElementById('toast');
+      if (toast) { toast.textContent = 'Update available — reload to apply'; toast.className = 'show'; }
+    }
+  },
+});
 
 declare global {
   interface Window { app?: PDFEditorApp; }

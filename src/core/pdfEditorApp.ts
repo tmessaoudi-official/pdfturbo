@@ -41,6 +41,11 @@ import { bindEvents } from '../ui/eventBinder';
 import { renderElementToPdfLib, type PdfRenderCtx } from '../export/pdfElementRenderer';
 import { SearchManager } from './searchManager';
 import { SessionManager } from './sessionManager';
+import { ToastQueue } from '../ui/toastQueue';
+import { ErrorReporter } from './errorReporter';
+import type { IErrorReporter } from './errorReporter';
+import { ProgressManager } from '../ui/progressManager';
+import type { IProgressManager } from '../ui/progressManager';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
@@ -98,8 +103,14 @@ export class PDFEditorApp {
   _pendingModeAfterBlankPage: string | null = null;
   private _textEditHandler = new TextEditHandler();
   private _placementGhost: HTMLDivElement | null = null;
+  private _toastQueue!: ToastQueue;
+  private _errorReporter!: IErrorReporter;
+  private _progressManager!: IProgressManager;
 
   get ui(): AppDOMRefs { return this.uiController.refs; }
+
+  get reportError(): IErrorReporter { return this._errorReporter; }
+  get progress(): IProgressManager { return this._progressManager; }
 
   constructor() {
     this.documentModel = new DocumentModel();
@@ -107,6 +118,12 @@ export class PDFEditorApp {
     this.renderer.setModel(this.documentModel);
     this.elements = [];
     this.uiController = new UIController();
+    this._toastQueue = new ToastQueue(document.getElementById('toast') as HTMLElement);
+    this._errorReporter = new ErrorReporter(this._toastQueue);
+    this._progressManager = new ProgressManager(
+      document.getElementById('progress-overlay') as HTMLElement,
+      document.getElementById('progress-label') as HTMLElement,
+    );
     this.interactionHandler = new InteractionHandler(this);
     this.drawingHandler = new DrawingHandler(this);
     this.eraserHandler = new EraserHandler(this);
@@ -152,7 +169,7 @@ export class PDFEditorApp {
     const KEY = 'pdfturbo_privacy_toast_shown';
     if (sessionStorage.getItem(KEY)) return;
     sessionStorage.setItem(KEY, '1');
-    this.showToast(t('toast.privacyBadge'), 4000);
+    this._errorReporter.info('toast.privacyBadge');
   }
 
   setupEventListeners() {
@@ -249,8 +266,7 @@ export class PDFEditorApp {
     this._closeWatermarkModal();
     this._syncWatermarkBtn();
     this._autosave();
-    const status = this.documentModel.watermark.enabled ? t('toast.watermarkEnabled') : t('toast.watermarkDisabled');
-    this.showToast(status);
+    this._errorReporter.info(this.documentModel.watermark.enabled ? 'toast.watermarkEnabled' : 'toast.watermarkDisabled');
     if (this._exportPreviewOpen) this._showExportPreview();
   }
 
@@ -311,7 +327,7 @@ export class PDFEditorApp {
     this._autosave();
     this.rebuildElementLayer();
     this._showSearchMatches(); // re-render match overlays after rebuildElementLayer clears elements
-    this.showToast(t('toast.highlightAdded'));
+    this._errorReporter.info('toast.highlightAdded');
   }
 
   private _showSearchMatches(): void {
@@ -355,7 +371,7 @@ export class PDFEditorApp {
     (e.target as HTMLInputElement).value = '';
     if (!file || !this.documentModel.currentPage) return;
     if (!file.type.startsWith('image/')) {
-      this.showToast(t('toast.selectImageFile'));
+      this._errorReporter.warn('toast.selectImageFile');
       return;
     }
     const reader = new FileReader();
@@ -502,40 +518,47 @@ export class PDFEditorApp {
     this._textSearch.clearCache();
     if (!files.length) return;
 
+    const addProg = this._progressManager.begin('progress.loadingDocument');
     let addedCount = 0;
-    for (const file of files) {
-      const isPdf   = file.type === 'application/pdf';
-      const isImage = file.type.startsWith('image/');
-      if (!isPdf && !isImage) continue;
-      try {
-        let typedBytes: Uint8Array;
-        let fileName: string;
-        if (isImage) {
-          const { bytes, name } = await this._imagesToPdf([file]);
-          typedBytes = bytes;
-          fileName = name;
-        } else {
-          typedBytes = new Uint8Array(await file.arrayBuffer());
-          fileName = file.name;
+    try {
+      for (const file of files) {
+        const isPdf   = file.type === 'application/pdf';
+        const isImage = file.type.startsWith('image/');
+        if (!isPdf && !isImage) continue;
+        try {
+          let typedBytes: Uint8Array;
+          let fileName: string;
+          if (isImage) {
+            const { bytes, name } = await this._imagesToPdf([file]);
+            typedBytes = bytes;
+            fileName = name;
+          } else {
+            typedBytes = new Uint8Array(await file.arrayBuffer());
+            fileName = file.name;
+          }
+          const bytesToStore = typedBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
+          const doc = await pdfjsLib.getDocument({ data: typedBytes }).promise;
+          const src = this.documentModel.addSourcePdf(doc, bytesToStore, fileName);
+          const cmd = new AddPagesCmd(this.documentModel, src.id, undefined, () => this._onPageStructureChange());
+          this.historyManager.execute(cmd);
+          addedCount++;
+        } catch (err) {
+          this._errorReporter.error('toast.fileLoadFailed', err, { name: file.name });
         }
-        const bytesToStore = typedBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
-        const doc = await pdfjsLib.getDocument({ data: typedBytes }).promise;
-        const src = this.documentModel.addSourcePdf(doc, bytesToStore, fileName);
-        const cmd = new AddPagesCmd(this.documentModel, src.id, undefined, () => this._onPageStructureChange());
-        this.historyManager.execute(cmd);
-        addedCount++;
-      } catch {
-        this.showToast(t('toast.fileLoadFailed', { name: file.name }), 4000);
       }
-    }
-    if (addedCount > 0) {
-      this.showToast(t('toast.filesAdded', { count: addedCount }));
+      if (addedCount > 0) {
+        this._errorReporter.info('toast.filesAdded', { count: addedCount });
+      }
+      addProg.done();
+    } catch (err) {
+      addProg.failed();
+      this._errorReporter.error('toast.pdfLoadFailed', err);
     }
   }
 
   _deletePage(pageId: string): void {
     if (this.documentModel.pageCount <= 1) {
-      this.showToast(t('toast.cannotDeleteOnlyPage'));
+      this._errorReporter.warn('toast.cannotDeleteOnlyPage');
       return;
     }
     const src = this.documentModel.sourcePdfs.get(
@@ -626,7 +649,7 @@ export class PDFEditorApp {
     cmds.push(rotateCmd);
 
     this.historyManager.execute(cmds.length === 1 ? cmds[0] : new MacroCmd(cmds));
-    this.showToast(t('toast.annotationsAdjusted'));
+    this._errorReporter.info('toast.annotationsAdjusted');
   }
 
   /** Compute the post-rotation ElementTransformSnapshot for a single element. */
@@ -704,8 +727,7 @@ export class PDFEditorApp {
         this._thumbnailPanel?.updateActive();
         this.updatePageInfo();
       }).catch((err: unknown) => {
-        console.error('[undo render]', err);
-        this.showToast(t('toast.renderFailedUndo'), 4000);
+        this._errorReporter.error('toast.renderFailedUndo', err);
       });
       this._updateFormattingToolbar();
       this._autosave();
@@ -721,8 +743,7 @@ export class PDFEditorApp {
         this._thumbnailPanel?.updateActive();
         this.updatePageInfo();
       }).catch((err: unknown) => {
-        console.error('[redo render]', err);
-        this.showToast(t('toast.renderFailedRedo'), 4000);
+        this._errorReporter.error('toast.renderFailedRedo', err);
       });
       this._updateFormattingToolbar();
       this._autosave();
@@ -755,7 +776,7 @@ export class PDFEditorApp {
       elements: this.elements,
       inkLayer: this.inkLayer,
       formValues: this._formValues,
-      onError: (msg) => this.showToast(msg, 8000),
+      errors: this._errorReporter,
     }));
   }
 
@@ -783,6 +804,7 @@ export class PDFEditorApp {
     const shouldRestore = await this._askRestoreSession();
     if (!shouldRestore) { await clearState(); return; }
     this._isLoading = true;
+    const restoreProg = this._progressManager.begin('progress.restoringSession');
     try {
       for (const sp of state.sourcePdfs) {
         const spBytes = sp.bytes instanceof Uint8Array ? sp.bytes : new Uint8Array(sp.bytes);
@@ -831,21 +853,23 @@ export class PDFEditorApp {
       await this._renderCurrentPage();
       this.enableUI();
       this._enableFileMenuDocItems();
-       
+
       (document.getElementById('emptyState') as HTMLElement).style.display = 'none';
       this.ui.pageThumbnailContainer.style.display = '';
       await this._thumbnailPanel?.render();
       this.updatePageInfo();
       this.rebuildElementLayer();
-      this.showToast(t('toast.sessionRestored'));
+      this._errorReporter.info('toast.sessionRestored');
+      restoreProg.done();
     } catch (err) {
+      restoreProg.failed();
       // BUG-19: reset to clean state on partial restore failure
-      console.warn('[_restoreSession] failed, resetting to clean state', err);
+      this._errorReporter.silent(err, '_restoreSession');
       this.documentModel = new DocumentModel();
       this.renderer.setModel(this.documentModel);
       this.elements = [];
       this._thumbnailPanel = null;
-      this.showToast(t('toast.sessionRestoreFailed'));
+      this._errorReporter.error('toast.sessionRestoreFailed', err);
     } finally {
       this._isLoading = false;
     }
@@ -853,7 +877,7 @@ export class PDFEditorApp {
 
   _clearSave() {
     this._closeDocument();
-    this.showToast(t('toast.sessionCleared'));
+    this._errorReporter.info('toast.sessionCleared');
   }
 
   private _applyExportPassword(pdfDoc: { encrypt(opts: { userPassword: string; ownerPassword: string }): void }): void {
@@ -914,37 +938,41 @@ export class PDFEditorApp {
     if (wasEmpty) {
       // First page ever — run the full first-document initialization
       void (async () => {
-        (document.getElementById('emptyState') as HTMLElement).style.display = 'none';
-        this._isFitMode = true;
-        const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
-        const isMobile = window.innerWidth <= 640;
-        await this.applyZoom(isMobile ? Math.max(fitScale, 0.65) : fitScale);
-        this.enableUI();
-        this._enableFileMenuDocItems();
-        this.ui.pageThumbnailContainer.style.display = '';
-        if (!this._thumbnailPanel) {
-          this.ui.pageThumbnailContainer.innerHTML = '';
-          this._thumbnailPanel = new PageThumbnailPanel({
-            container: this.ui.pageThumbnailContainer,
-            renderer: this.renderer,
-            model: this.documentModel,
-            onNavigate: (index) => this._goToPageIndex(index),
-            onDelete: (pageId) => this._deletePage(pageId),
-            onReorder: (newOrder) => this._reorderPages(newOrder),
-            onRotate: (pageId, delta) => this._rotatePage(pageId, delta),
-            onAddPdf: () => this.ui.addPdfInput.click(),
-            onDownload: (index) => this.downloadPage(index),
-            onDownloadImage: (index) => this.downloadPageAsImage(index),
-          });
+        try {
+          (document.getElementById('emptyState') as HTMLElement).style.display = 'none';
+          this._isFitMode = true;
+          const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
+          const isMobile = window.innerWidth <= 640;
+          await this.applyZoom(isMobile ? Math.max(fitScale, 0.65) : fitScale);
+          this.enableUI();
+          this._enableFileMenuDocItems();
+          this.ui.pageThumbnailContainer.style.display = '';
+          if (!this._thumbnailPanel) {
+            this.ui.pageThumbnailContainer.innerHTML = '';
+            this._thumbnailPanel = new PageThumbnailPanel({
+              container: this.ui.pageThumbnailContainer,
+              renderer: this.renderer,
+              model: this.documentModel,
+              onNavigate: (index) => this._goToPageIndex(index),
+              onDelete: (pageId) => this._deletePage(pageId),
+              onReorder: (newOrder) => this._reorderPages(newOrder),
+              onRotate: (pageId, delta) => this._rotatePage(pageId, delta),
+              onAddPdf: () => this.ui.addPdfInput.click(),
+              onDownload: (index) => this.downloadPage(index),
+              onDownloadImage: (index) => this.downloadPageAsImage(index),
+            });
+          }
+          await this._thumbnailPanel.render();
+          this.updatePageInfo();
+          this.rebuildElementLayer();
+          this._autosave();
+          this._errorReporter.info('toast.blankPageInserted');
+          const pendingMode = this._pendingModeAfterBlankPage;
+          this._pendingModeAfterBlankPage = null;
+          if (pendingMode) this.setMode(pendingMode as ToolMode);
+        } catch (err) {
+          this._errorReporter.error('toast.blankPageInsertFailed', err);
         }
-        await this._thumbnailPanel.render();
-        this.updatePageInfo();
-        this.rebuildElementLayer();
-        this._autosave();
-        this.showToast(t('toast.blankPageInserted'));
-        const pendingMode = this._pendingModeAfterBlankPage;
-        this._pendingModeAfterBlankPage = null;
-        if (pendingMode) this.setMode(pendingMode as ToolMode);
       })();
     } else {
       this._autosave();
@@ -952,14 +980,14 @@ export class PDFEditorApp {
       this._thumbnailPanel?.updateActive();
       this.updatePageInfo();
       void this._renderCurrentPage().then(() => this.rebuildElementLayer());
-      this.showToast(t('toast.blankPageInserted'));
+      this._errorReporter.info('toast.blankPageInserted');
     }
   }
 
   clearAll() {
     const hasVector = this.elements.length > 0;
     const hasInk    = this.inkLayer.hasAnyContent();
-    if (!hasVector && !hasInk) { this.showToast(t('toast.noAnnotationsToClear')); return; }
+    if (!hasVector && !hasInk) { this._errorReporter.warn('toast.noAnnotationsToClear'); return; }
     const cmds = [];
     if (hasVector) cmds.push(new ClearAllCmd(this.elements));
     if (hasInk)    cmds.push(new ClearInkCmd(this.inkLayer, () => this.renderInkLayer()));
@@ -968,7 +996,7 @@ export class PDFEditorApp {
     this._updateFormattingToolbar();
     this._autosave();
     this.rebuildElementLayer();
-    this.showToast(t('toast.annotationsCleared'));
+    this._errorReporter.info('toast.annotationsCleared');
   }
 
   _toggleHelp(show?: boolean) {
@@ -1028,7 +1056,7 @@ export class PDFEditorApp {
     (document.getElementById('emptyState') as HTMLElement).style.display = 'flex';
     this._disableFileMenuDocItems();
     this.rebuildElementLayer(); // clear annotation DOM nodes after model is reset
-    this.showToast(t('toast.documentClosed'));
+    this._errorReporter.info('toast.documentClosed');
   }
 
   // ── File upload ───────────────────────────────────────────────
@@ -1084,23 +1112,26 @@ export class PDFEditorApp {
     let file: File;
 
     if (imageFiles.length > 0 && pdfFiles.length === 0) {
-      this.showToast(t('toast.convertingImages', { count: imageFiles.length }), 10000);
+      const convProg = this._progressManager.begin('progress.convertingImages');
       try {
         const { bytes, name } = await this._imagesToPdf(imageFiles);
         file = new File([bytes.buffer as ArrayBuffer], name, { type: 'application/pdf' });
+        convProg.done();
       } catch (err) {
-        this.showToast(t('toast.imageConversionFailed', { error: err instanceof Error ? err.message.slice(0, 60) : String(err) }));
+        convProg.failed();
+        this._errorReporter.error('toast.imageConversionFailed', err);
         this._isLoading = false;
         return;
       }
     } else if (pdfFiles.length === 1 && imageFiles.length === 0) {
       file = pdfFiles[0];
     } else {
-      this.showToast(t('toast.imageMixedError'));
+      this._errorReporter.warn('toast.imageMixedError');
       this._isLoading = false;
       return;
     }
 
+    const loadProg = this._progressManager.begin('progress.loadingDocument');
     try {
       const rawBytes = new Uint8Array(await file.arrayBuffer());
       const bytesToStore = rawBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
@@ -1123,7 +1154,7 @@ export class PDFEditorApp {
           );
           if (!isPasswordError) throw err;
           const pw = await this._promptPassword(isRetry);
-          if (!pw) { this._isLoading = false; return; } // user cancelled
+          if (!pw) { loadProg.failed(); this._isLoading = false; return; } // user cancelled
           openPassword = pw;
           isRetry = true;
         }
@@ -1161,7 +1192,6 @@ export class PDFEditorApp {
       this.documentModel.addPagesFrom(src.id);
       this.renderer.pdfDoc = doc;
 
-       
       (document.getElementById('emptyState') as HTMLElement).style.display = 'none';
       this._isFitMode = true;
       const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
@@ -1174,9 +1204,10 @@ export class PDFEditorApp {
       this.updatePageInfo();
       this.rebuildElementLayer();
       this._autosave();
+      loadProg.done();
     } catch (err) {
-      this.showToast(t('toast.pdfLoadFailed', { error: err instanceof Error ? err.message.slice(0, 80) : 'unknown error' }));
-      console.error('[_loadDocument]', err);
+      loadProg.failed();
+      this._errorReporter.error('toast.pdfLoadFailed', err);
     } finally {
       this._isLoading = false;
     }
@@ -1236,7 +1267,7 @@ export class PDFEditorApp {
 
     const hintKey = modeHintKeys[mode];
     if (hintKey) {
-      this.uiController.showToast(t(hintKey), 1500);
+      this._errorReporter.info(hintKey);
     } else {
       this.uiController.clearToast();
     }
@@ -1267,7 +1298,7 @@ export class PDFEditorApp {
 
   saveSignature() {
     if (this.signaturePad.isEmpty()) {
-      this.showToast(t('toast.drawSignatureFirst'));
+      this._errorReporter.warn('toast.drawSignatureFirst');
       return;
     }
     this.currentSignature = this.signaturePad.getDataURL();
@@ -1752,7 +1783,7 @@ export class PDFEditorApp {
 
     if (unsupportedCount > 0 && !this._warnedUnsupportedFields) {
       this._warnedUnsupportedFields = true;
-      this.showToast(t('toast.unsupportedFields', { count: unsupportedCount }), 5000);
+      this._errorReporter.warn('toast.unsupportedFields', { count: unsupportedCount });
     }
     this._formFieldOverlay.setPointerEvents(this.mode === 'select');
   }
@@ -1898,7 +1929,7 @@ export class PDFEditorApp {
     if (!this.selectedElement) return;
     this._clipboard = this.selectedElement.toJSON() as ElementJSON;
     this._updateCopyPasteBtns();
-    this.showToast('Copied');
+    this._errorReporter.info('toast.copied');
   }
 
   _pasteElement(): void {
@@ -1912,7 +1943,7 @@ export class PDFEditorApp {
     this.historyManager.execute(new AddElementCmd(this.elements, clone));
     this.selectElement(clone);
     this._autosave();
-    this.showToast('Pasted — Ctrl+Z to undo');
+    this._errorReporter.info('toast.pastedUndo');
   }
 
   _updateCopyPasteBtns(): void {
@@ -1963,7 +1994,8 @@ export class PDFEditorApp {
       }
     }
     if (rasterErrors.length > 0) {
-      this.showToast(`⚠ ${rasterErrors.length} element(s) skipped in redacted page: ${rasterErrors.join(', ')}`, 6000);
+      this._errorReporter.warn('toast.elementRenderFailed', { count: rasterErrors.length });
+      this._errorReporter.silent(undefined, `Redaction skipped: ${rasterErrors.join(', ')}`);
     }
 
     if (this.documentModel.watermark.enabled) {
@@ -2051,7 +2083,8 @@ export class PDFEditorApp {
       }
     }
     if (exportErrors.length > 0) {
-      this.showToast(`⚠ ${exportErrors.length} element(s) failed to render: ${exportErrors.join(', ')}`, 6000);
+      this._errorReporter.warn('toast.elementRenderFailed', { count: exportErrors.length });
+      this._errorReporter.silent(undefined, `Export render failed: ${exportErrors.join(', ')}`);
     }
 
     if (this.documentModel.watermark.enabled) {
@@ -2070,9 +2103,8 @@ export class PDFEditorApp {
   async downloadPDF() {
     if (!this.documentModel.pageCount) return;
     this._cleanEmptyTextElements();
-    this.showToast('Generating PDF…', 60000);
+    const _prog = this._progressManager.begin('progress.generatingPdf');
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
-    this.ui.container.style.opacity = '0.4';
     try {
       const pdfDoc = await PDFDocument.create();
 
@@ -2124,7 +2156,10 @@ export class PDFEditorApp {
               exportErrors.push(`${element.type} (id ${element.id})`);
             }
           }
-          if (exportErrors.length > 0) this.showToast(`⚠ ${exportErrors.length} element(s) failed: ${exportErrors.join(', ')}`, 6000);
+          if (exportErrors.length > 0) {
+            this._errorReporter.warn('toast.elementRenderFailed', { count: exportErrors.length });
+            this._errorReporter.silent(undefined, `Blank-page export failed: ${exportErrors.join(', ')}`);
+          }
           const inkDataUrl = this._renderInkForExport(docPage.id, W_orig, H_orig, 0);
           if (inkDataUrl) {
             const inkImg = await pdfDoc.embedPng(dataUrlToUint8Array(inkDataUrl));
@@ -2160,13 +2195,13 @@ export class PDFEditorApp {
       const baseName = (this.currentFilename || 'document').replace(/\.pdf$/i, '');
       link.download = baseName + '-edited.pdf';
       link.click();
-      this.showToast('PDF downloaded!');
+      this._errorReporter.info('toast.pdfDownloaded');
       URL.revokeObjectURL(url);
+      _prog.done();
     } catch (err) {
-      this.showToast('PDF export failed — ' + (err instanceof Error ? err.message.slice(0, 80) : String(err)));
-      console.error('[downloadPDF]', err);
+      this._errorReporter.error('toast.pdfExportFailed', err);
+      _prog.failed();
     } finally {
-      this.ui.container.style.opacity = '1';
       await this._renderCurrentPage();
       this.rebuildElementLayer();
     }
@@ -2176,12 +2211,11 @@ export class PDFEditorApp {
   async downloadPage(pageIdx: number): Promise<void> {
     const docPage = this.documentModel.pages[pageIdx];
     if (!docPage) return;
-    this.showToast('Generating page PDF…', 30000);
+    const _prog = this._progressManager.begin('progress.exportingPage');
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
-    this.ui.container.style.opacity = '0.4';
     try {
       const srcEntry = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
-      if (!srcEntry) return;
+      if (!srcEntry) { _prog.failed(); return; }
       const srcDocLib = await PDFDocument.load(srcEntry.bytes);
       const pdfDoc    = await PDFDocument.create();
       const pageElements = this.elements.filter(el => el.pageId === docPage.id);
@@ -2207,13 +2241,12 @@ export class PDFEditorApp {
       const base = (this.currentFilename || 'document').replace(/\.pdf$/i, '');
       link.download = `${base}-page${pageIdx + 1}.pdf`;
       link.click();
-      this.showToast(`Page ${pageIdx + 1} downloaded!`);
+      this._errorReporter.info('toast.pageDownloaded', { page: pageIdx + 1 });
       URL.revokeObjectURL(url);
+      _prog.done();
     } catch (err) {
-      this.showToast('Page export failed — ' + (err instanceof Error ? err.message.slice(0, 80) : String(err)));
-      console.error('[downloadPage]', err);
-    } finally {
-      this.ui.container.style.opacity = '1';
+      this._errorReporter.error('toast.pageExportFailed', err);
+      _prog.failed();
     }
   }
 
@@ -2222,14 +2255,13 @@ export class PDFEditorApp {
     const idx = pageIdx ?? this.documentModel.currentPageIndex;
     const docPage = this.documentModel.pages[idx];
     if (!docPage) return;
-    this.showToast('Rendering page image…', 30000);
-    this.ui.container.style.opacity = '0.4';
+    const _prog = this._progressManager.begin('progress.exportingImage');
     try {
       const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
       const srcEntry = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
       if (!srcEntry) {
-        this.showToast('Export failed — source PDF not found');
-        this.ui.container.style.opacity = '1';
+        this._errorReporter.error('toast.exportSourceNotFound');
+        _prog.failed();
         return;
       }
       const srcDoc = await PDFDocument.load(srcEntry.bytes);
@@ -2252,25 +2284,24 @@ export class PDFEditorApp {
       offscreen.width  = Math.round(vp.width);
       offscreen.height = Math.round(vp.height);
       const ctx = offscreen.getContext('2d');
-      if (!ctx) { this.showToast('Canvas unavailable — cannot export image'); return; }
+      if (!ctx) { this._errorReporter.error('toast.canvasUnavailable'); _prog.failed(); return; }
       await renderPage.render({ canvas: offscreen, viewport: vp }).promise;
 
       offscreen.toBlob((blob) => {
-        if (!blob) { this.showToast('Image export failed'); return; }
+        if (!blob) { this._errorReporter.error('toast.imageExportFailed'); _prog.failed(); return; }
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
         const base = (this.currentFilename || 'document').replace(/\.pdf$/i, '');
         link.download = `${base}-page${idx + 1}.png`;
         link.click();
-        this.showToast(`Page ${idx + 1} exported as PNG!`);
+        this._errorReporter.info('toast.imageExported', { page: idx + 1 });
         URL.revokeObjectURL(url);
+        _prog.done();
       }, 'image/png');
     } catch (err) {
-      this.showToast('Image export failed — ' + (err instanceof Error ? err.message.slice(0, 80) : String(err)));
-      console.error('[downloadPageAsImage]', err);
-    } finally {
-      this.ui.container.style.opacity = '1';
+      this._errorReporter.error('toast.imageExportFailed', err);
+      _prog.failed();
     }
   }
 
@@ -2378,34 +2409,40 @@ export class PDFEditorApp {
   }
 
   async exportAsDocx(): Promise<void> {
+    const _prog = this._progressManager.begin('progress.generatingDocx');
     try {
       const flowDoc = await this._extractFlowDoc();
       if (!flowDoc.pages.some(p => p.paragraphs.length > 0)) {
-        this.showToast(t('toast.exportNoText'));
+        this._errorReporter.warn('toast.exportNoText');
+        _prog.done();
         return;
       }
       const blob = await flowDocToDocxBlob(flowDoc);
       this._downloadBlob(blob, this._exportBaseName() + '.docx');
-      this.showToast(t('toast.docxExported'));
+      this._errorReporter.info('toast.docxExported');
+      _prog.done();
     } catch (err) {
-      this.showToast(t('toast.exportFailed') + ' — ' + (err instanceof Error ? err.message.slice(0, 80) : String(err)));
-      console.error('[exportAsDocx]', err);
+      this._errorReporter.error('toast.exportFailed', err);
+      _prog.failed();
     }
   }
 
   async exportAsMarkdown(): Promise<void> {
+    const _prog = this._progressManager.begin('progress.generatingMarkdown');
     try {
       const flowDoc = await this._extractFlowDoc();
       const md = flowDocToMarkdown(flowDoc);
       if (!md.trim()) {
-        this.showToast(t('toast.exportNoText'));
+        this._errorReporter.warn('toast.exportNoText');
+        _prog.done();
         return;
       }
       this._downloadBlob(new Blob([md], { type: 'text/markdown' }), this._exportBaseName() + '.md');
-      this.showToast(t('toast.mdExported'));
+      this._errorReporter.info('toast.mdExported');
+      _prog.done();
     } catch (err) {
-      this.showToast(t('toast.exportFailed') + ' — ' + (err instanceof Error ? err.message.slice(0, 80) : String(err)));
-      console.error('[exportAsMarkdown]', err);
+      this._errorReporter.error('toast.exportFailed', err);
+      _prog.failed();
     }
   }
 

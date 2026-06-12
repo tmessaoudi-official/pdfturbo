@@ -13,24 +13,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-
-// ── Inline the private helper under test ──────────────────────────────────────
-// _transformPoint mirrors the implementation in pdfEditorApp.ts exactly.
-// Any change to the production function must be reflected here.
-function _transformPoint(
-  px: number, py: number, W: number, H: number, totalRot: number
-): { x: number; y: number } {
-  switch (((totalRot % 360) + 360) % 360) {
-    case 90:  return { x: py,     y: px     };
-    case 180: return { x: W - px, y: py     };
-    case 270: return { x: W - py, y: H - px };
-    default:  return { x: px,     y: H - py };
-  }
-}
+import { transformPoint } from '../../src/utils/geometry';
 
 // tp() with crop offset — mirrors the fixed production code inside _renderElementToPdfLib
 function tp(px: number, py: number, W: number, H: number, rot: number, cropX: number, cropY: number) {
-  const r = _transformPoint(px, py, W, H, rot);
+  const r = transformPoint(px, py, W, H, rot);
   return { x: r.x + cropX, y: r.y + cropY };
 }
 
@@ -44,52 +31,52 @@ describe('_transformPoint coordinate transform', () => {
   const W = 646.307, H = 893.307;
 
   it('rotation=0: flips y (PDF y-up from bottom)', () => {
-    const r = _transformPoint(100, 200, W, H, 0);
+    const r = transformPoint(100, 200, W, H, 0);
     expect(r.x).toBeCloseTo(100);
     expect(r.y).toBeCloseTo(H - 200);   // 693.307
   });
 
   it('rotation=180: mirrors both axes', () => {
-    const r = _transformPoint(100, 200, W, H, 180);
+    const r = transformPoint(100, 200, W, H, 180);
     expect(r.x).toBeCloseTo(W - 100);   // 546.307
     expect(r.y).toBeCloseTo(200);
   });
 
   it('rotation=90: transposes x/y', () => {
-    const r = _transformPoint(100, 200, W, H, 90);
+    const r = transformPoint(100, 200, W, H, 90);
     expect(r.x).toBeCloseTo(200);
     expect(r.y).toBeCloseTo(100);
   });
 
   it('rotation=270: W - py, H - px', () => {
-    const r = _transformPoint(100, 200, W, H, 270);
+    const r = transformPoint(100, 200, W, H, 270);
     // case 270: { x: W - py, y: H - px }
     expect(r.x).toBeCloseTo(W - 200);   // 446.307
     expect(r.y).toBeCloseTo(H - 100);   // 793.307
   });
 
   it('rotation=360 normalises to 0', () => {
-    const r0   = _transformPoint(50, 80, W, H, 0);
-    const r360 = _transformPoint(50, 80, W, H, 360);
+    const r0   = transformPoint(50, 80, W, H, 0);
+    const r360 = transformPoint(50, 80, W, H, 360);
     expect(r360.x).toBeCloseTo(r0.x);
     expect(r360.y).toBeCloseTo(r0.y);
   });
 
   it('negative rotation normalises correctly (-90 → 270)', () => {
-    const r270 = _transformPoint(100, 200, W, H, 270);
-    const rNeg = _transformPoint(100, 200, W, H, -90);
+    const r270 = transformPoint(100, 200, W, H, 270);
+    const rNeg = transformPoint(100, 200, W, H, -90);
     expect(rNeg.x).toBeCloseTo(r270.x);
     expect(rNeg.y).toBeCloseTo(r270.y);
   });
 
   it('origin (0,0) top-left maps to (0, H) bottom-left in PDF space', () => {
-    const r = _transformPoint(0, 0, W, H, 0);
+    const r = transformPoint(0, 0, W, H, 0);
     expect(r.x).toBeCloseTo(0);
     expect(r.y).toBeCloseTo(H);
   });
 
   it('bottom-right corner (W, H) maps to (W, 0) in PDF space', () => {
-    const r = _transformPoint(W, H, W, H, 0);
+    const r = transformPoint(W, H, W, H, 0);
     expect(r.x).toBeCloseTo(W);
     expect(r.y).toBeCloseTo(0);
   });
@@ -141,14 +128,14 @@ describe('tp() CropBox offset (the CropBox export fix)', () => {
 
   it('rotation=90 with CropBox offset', () => {
     const r = tp(100, 200, cropW, cropH, 90, cropX, cropY);
-    // _transformPoint(100, 200, cropW, cropH, 90) = { x: 200, y: 100 }
+    // transformPoint(100, 200, cropW, cropH, 90) = { x: 200, y: 100 }
     expect(r.x).toBeCloseTo(200 + cropX);
     expect(r.y).toBeCloseTo(100 + cropY);
   });
 
   it('rotation=180 with CropBox offset', () => {
     const r = tp(100, 200, cropW, cropH, 180, cropX, cropY);
-    // _transformPoint(100, 200, cropW, cropH, 180) = { x: W-100, y: 200 }
+    // transformPoint(100, 200, cropW, cropH, 180) = { x: W-100, y: 200 }
     expect(r.x).toBeCloseTo((cropW - 100) + cropX);
     expect(r.y).toBeCloseTo(200 + cropY);
   });
@@ -374,7 +361,7 @@ describe('CropBox fix regression: before vs after', () => {
 
   // Simulate the BUGGY behaviour (using MediaBox dims, no crop offset)
   const buggy_tp = (px: number, py: number) =>
-    _transformPoint(px, py, mediaW, mediaH, 0);
+    transformPoint(px, py, mediaW, mediaH, 0);
 
   // Simulate the FIXED behaviour
   const fixed_tp = (px: number, py: number) =>
@@ -414,8 +401,8 @@ describe('_transformPoint properties', () => {
 
   it('double-applying rotation=180 is identity', () => {
     const x = 150, y = 300;
-    const once  = _transformPoint(x, y, W, H, 180);
-    const twice = _transformPoint(once.x, once.y, W, H, 180);
+    const once  = transformPoint(x, y, W, H, 180);
+    const twice = transformPoint(once.x, once.y, W, H, 180);
     // After 180+180=360 = identity: x unchanged, y unchanged
     expect(twice.x).toBeCloseTo(x);
     expect(twice.y).toBeCloseTo(y);
@@ -425,7 +412,7 @@ describe('_transformPoint properties', () => {
     let { x, y } = { x: 150, y: 300 };
     // Note: after 90° the dims swap — alternate between (W,H) and (H,W)
     for (let i = 0; i < 4; i++) {
-      const r = _transformPoint(x, y, i % 2 === 0 ? W : H, i % 2 === 0 ? H : W, 90);
+      const r = transformPoint(x, y, i % 2 === 0 ? W : H, i % 2 === 0 ? H : W, 90);
       x = r.x; y = r.y;
     }
     expect(x).toBeCloseTo(150);

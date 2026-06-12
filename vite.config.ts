@@ -9,7 +9,7 @@ export default defineConfig({
   },
   plugins: [
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       manifestFilename: 'manifest.json',
       workbox: {
         globPatterns: ['**/*.{js,mjs,css,html,svg}'],

@@ -291,7 +291,22 @@
       "editText": "تحرير النص — انقر على أي كلمة لتراكبها وتعديلها. اضغط Esc للخروج.",
       "addCode": "أداة الرمز — اسحب لتحديد الحجم والوضع. اضغط Esc للإلغاء.",
       "fillBucket": "دلو التعبئة — انقر على شكل أو خط لتعبئته باللون. اضغط Esc للخروج."
-    }
+    },
+    "copied": "تم النسخ",
+    "pastedUndo": "تم اللصق — Ctrl+Z للتراجع",
+    "elementRenderFailed": "تعذّر عرض {{count}} عنصر(عناصر)",
+    "pdfDownloaded": "تم تنزيل ملف PDF!",
+    "pdfExportFailed": "فشل تصدير PDF",
+    "pageDownloaded": "تم تنزيل الصفحة {{page}}!",
+    "pageExportFailed": "فشل تصدير الصفحة",
+    "exportSourceNotFound": "فشل التصدير — ملف PDF المصدر غير موجود",
+    "canvasUnavailable": "اللوحة غير متاحة — تعذّر تصدير الصورة",
+    "imageExportFailed": "فشل تصدير الصورة",
+    "imageExported": "تم تصدير الصفحة {{page}} بصيغة PNG!",
+    "blankPageInsertFailed": "تعذّر إدراج صفحة فارغة",
+    "appUpdateAvailable": "يتوفر تحديث — أعد تحميل الصفحة",
+    "passwordRequired": "كلمة مرور المستخدم مطلوبة",
+    "eyedropperUnsupported": "أداة انتقاء اللون غير مدعومة في هذا المتصفح"
   },
   "thumbnail": {
     "pageAlt": "صفحة {{page}}",
@@ -331,5 +346,15 @@
     "privacyBadge": "100% محلي — ملفاتك لا تغادر متصفحك أبدًا",
     "privacyChipTitle": "جميع المعالجة تتم محلياً في متصفحك — لا يتم رفع أي ملفات إلى أي خادم",
     "legalAriaLabel": "الإشعار القانوني"
+  },
+  "progress": {
+    "loadingDocument": "جارٍ تحميل المستند…",
+    "generatingPdf": "جارٍ إنشاء PDF…",
+    "exportingPage": "جارٍ تصدير الصفحة…",
+    "exportingImage": "جارٍ تصيير الصورة…",
+    "generatingDocx": "جارٍ إنشاء مستند Word…",
+    "generatingMarkdown": "جارٍ إنشاء Markdown…",
+    "restoringSession": "جارٍ استعادة الجلسة…",
+    "convertingImages": "جارٍ تحويل الصور…"
   }
 }
