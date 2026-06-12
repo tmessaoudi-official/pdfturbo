@@ -3,7 +3,7 @@ import { TextElement } from '../elements/textElement';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd } from '../core/historyManager';
-
+import { FlyoutManager } from './flyoutManager';
 
 /** Wire all DOM events to app methods. Called once from the PDFEditorApp constructor. */
 export function bindEvents(app: PDFEditorApp): void {
@@ -221,56 +221,34 @@ export function bindEvents(app: PDFEditorApp): void {
         drop.style.left = rect.left + 'px';
       }
     });
-    // Draw flyout — same position:fixed pattern; satellite controls keep flyout open
-    app.ui.drawBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = app.ui.drawFlyoutWrap.classList.toggle('open');
-      app.ui.drawBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = app.ui.drawBtn.getBoundingClientRect();
-        const flyout = document.getElementById('drawFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
+    // Flyout menus — FlyoutManager handles toggle, positioning, and outside-click close
+    const flyoutManager = new FlyoutManager();
+    flyoutManager.register({
+      wrap: app.ui.drawFlyoutWrap,
+      trigger: app.ui.drawBtn,
+      flyout: document.getElementById('drawFlyout') as HTMLElement,
+      closeWhen: 'aria-pressed',
     });
-    // Close flyout when a tool button (aria-pressed) is picked; satellite controls don't close it
-    document.getElementById('drawFlyout')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).hasAttribute('aria-pressed')) {
-        app.ui.drawFlyoutWrap.classList.remove('open');
-        app.ui.drawBtn.setAttribute('aria-expanded', 'false');
-      }
+    flyoutManager.register({
+      wrap: app.ui.annotateFlyoutWrap,
+      trigger: app.ui.annotateBtn,
+      flyout: document.getElementById('annotateFlyout') as HTMLElement,
+      closeWhen: 'aria-pressed',
     });
-    // Annotate flyout — same position:fixed pattern; no satellite controls
-    app.ui.annotateBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = app.ui.annotateFlyoutWrap.classList.toggle('open');
-      app.ui.annotateBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = app.ui.annotateBtn.getBoundingClientRect();
-        const flyout = document.getElementById('annotateFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
+    flyoutManager.register({
+      wrap: app.ui.textSplitWrap,
+      trigger: app.ui.textChevronBtn,
+      flyout: document.getElementById('textFlyout') as HTMLElement,
+      closeWhen: 'closest-aria-pressed',
     });
-    document.getElementById('annotateFlyout')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).hasAttribute('aria-pressed')) {
-        app.ui.annotateFlyoutWrap.classList.remove('open');
-        app.ui.annotateBtn.setAttribute('aria-expanded', 'false');
-      }
+    flyoutManager.register({
+      wrap: app.ui.exportSplitWrap,
+      trigger: app.ui.exportChevronBtn,
+      flyout: document.getElementById('exportFlyout') as HTMLElement,
+      closeWhen: 'any-click',
     });
-    // Text split-button — chevron opens chooser flyout
-    app.ui.textChevronBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = app.ui.textSplitWrap.classList.toggle('open');
-      app.ui.textChevronBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = app.ui.textChevronBtn.getBoundingClientRect();
-        const flyout = document.getElementById('textFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
-    });
-    // Left part activates last-used text mode; also closes flyout if open
+    flyoutManager.wireGlobalClose();
+    // Left part activates last-used text mode; also closes text flyout if open
     app.ui.textModeBtn.addEventListener('click', () => {
       app.ui.textSplitWrap.classList.remove('open');
       app.ui.textChevronBtn.setAttribute('aria-expanded', 'false');
@@ -278,45 +256,9 @@ export function bindEvents(app: PDFEditorApp): void {
       const m = (app.ui.textModeBtn.dataset['mode'] ?? 'addText') as ToolMode;
       app.setMode(app.mode === m ? 'select' : m);
     });
-    document.getElementById('textFlyout')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('[aria-pressed]')) {
-        app.ui.textSplitWrap.classList.remove('open');
-        app.ui.textChevronBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
-    // Export ▾ split-button — chevron opens Preview + Watermark flyout
-    app.ui.exportChevronBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = app.ui.exportSplitWrap.classList.toggle('open');
-      app.ui.exportChevronBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = app.ui.exportChevronBtn.getBoundingClientRect();
-        const flyout = document.getElementById('exportFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
-    });
-    document.getElementById('exportFlyout')?.addEventListener('click', () => {
-      app.ui.exportSplitWrap.classList.remove('open');
-      app.ui.exportChevronBtn.setAttribute('aria-expanded', 'false');
-    });
     document.addEventListener('click', (e) => {
-      app.ui.fileMenuWrap.classList.remove('open');
-      if (!app.ui.drawFlyoutWrap.contains(e.target as Node)) {
-        app.ui.drawFlyoutWrap.classList.remove('open');
-        app.ui.drawBtn.setAttribute('aria-expanded', 'false');
-      }
-      if (!app.ui.annotateFlyoutWrap.contains(e.target as Node)) {
-        app.ui.annotateFlyoutWrap.classList.remove('open');
-        app.ui.annotateBtn.setAttribute('aria-expanded', 'false');
-      }
-      if (!app.ui.textSplitWrap.contains(e.target as Node)) {
-        app.ui.textSplitWrap.classList.remove('open');
-        app.ui.textChevronBtn.setAttribute('aria-expanded', 'false');
-      }
-      if (!app.ui.exportSplitWrap.contains(e.target as Node)) {
-        app.ui.exportSplitWrap.classList.remove('open');
-        app.ui.exportChevronBtn.setAttribute('aria-expanded', 'false');
+      if (!app.ui.fileMenuWrap.contains(e.target as Node)) {
+        app.ui.fileMenuWrap.classList.remove('open');
       }
     });
     document.addEventListener('selectionchange', () => app._updateCopyPasteBtns());
