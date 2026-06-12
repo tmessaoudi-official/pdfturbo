@@ -9,7 +9,6 @@ import { SignaturePad } from '../utils/signaturePad';
 import { InteractionHandler } from '../handlers/interactionHandler';
 import { ShapeElement } from '../elements/shapeElement';
 import { PDFElement, type ElementJSON } from '../elements/annotationElement';
-import { ElementFactory } from '../utils/elementFactory';
 import { UIController, type AppDOMRefs } from '../ui/uiController';
 import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
@@ -22,7 +21,6 @@ import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
 import { DocumentModel, type SourcePdf } from './documentModel';
 import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
-import { loadState, clearState } from '../infra/storage';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
 import { CommentElement } from '../elements/commentElement';
@@ -49,10 +47,11 @@ import { LocalLayoutStorage } from '../ui/layoutStorage';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
+import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
-export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext, ICodeModalContext, IWatermarkContext, IFindBarContext {
+export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext, ICodeModalContext, IWatermarkContext, IFindBarContext, IDocumentLoaderContext {
   renderer: PDFRenderer;
   documentModel: DocumentModel;
   elements: PDFElement[] = [];
@@ -113,6 +112,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _codeModalManager!: CodeModalManager;
   private _watermarkPanel!: WatermarkPanel;
   private _findBarController!: FindBarController;
+  private _documentLoader!: DocumentLoader;
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -132,7 +132,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   get containerWidth(): number { return this.ui.container.clientWidth; }
   setZoomDisplay(text: string): void { this.ui.zoomDisplay.textContent = text; }
   clearTextSearchCache(): void { this._textSearch.clearCache(); }
-  imagesToPdf(files: File[]): Promise<{ bytes: Uint8Array; name: string }> { return this._imagesToPdf(files); }
+  imagesToPdf(files: File[]): Promise<{ bytes: Uint8Array; name: string }> { return this._documentLoader.imagesToPdf(files); }
   clearSearchMatches(): void { this._findBarController.clearMatches(); }
   clearSearchManagerState(): void { this._searchManager.clear(); }
   hasFindBarOpen(): boolean { return this.ui.findBar.style.display !== 'none'; }
@@ -191,6 +191,41 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   }
   _setQrLogoDataUrl(val: string | null): void { this._codeModalManager.setQrLogoDataUrl(val); }
 
+  // ── IDocumentLoaderContext accessors ──────────────────────────────────────
+  get isLoading(): boolean { return this._isLoading; }
+  setIsLoading(v: boolean): void { this._isLoading = v; }
+  resetDocumentModel(): void { this.documentModel = new DocumentModel(); this.renderer.setModel(this.documentModel); }
+  setFormValues(v: Record<string, Record<string, string>>): void { this._formValues = v; }
+  setWarnedUnsupportedFields(v: boolean): void { this._warnedUnsupportedFields = v; }
+  setSelectedElement(el: PDFElement | null): void { this.selectedElement = el; }
+  setCurrentFilename(name: string | null): void { this.currentFilename = name; }
+  setClipboard(val: null): void { this._clipboard = val; }
+  setPendingPasswordResolve(fn: ((pw: string | null) => void) | null): void { this._pendingPasswordResolve = fn; }
+  get formFieldOverlay(): FormFieldOverlay { return this._formFieldOverlay; }
+  get textLayerManager(): TextLayerManager { return this._textLayerManager; }
+  reinitThumbnailPanel(): void { this._initThumbnailPanel(); }
+  clearThumbnailPanel(): void { this._thumbnailPanel = null; }
+  setZoom(scale: number): void {
+    this.zoomScale = scale;
+    this.renderer.setScale(scale);
+    this.ui.zoomDisplay.textContent = Math.round(scale * 100) + '%';
+  }
+  syncWatermarkBtn(): void { this._syncWatermarkBtn(); }
+  disableFileMenuDocItems(): void { this._disableFileMenuDocItems(); }
+  closeFindBar(): void { this._findBarController.close(); }
+  clearCanvases(): void {
+    const ctx = this.renderer.canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, this.renderer.canvas.width, this.renderer.canvas.height);
+    const ictx = this._inkCanvas.getContext('2d');
+    if (ictx) ictx.clearRect(0, 0, this._inkCanvas.width, this._inkCanvas.height);
+  }
+  resetSearchOptions(): void {
+    this._searchManager.caseSensitive = false;
+    this._searchManager.regex = false;
+    this.ui.findCaseSensitive.classList.remove('active');
+    this.ui.findRegex.classList.remove('active');
+  }
+
   constructor() {
     this.documentModel = new DocumentModel();
     this.renderer = new PDFRenderer(document.getElementById('pdfCanvas') as HTMLCanvasElement);
@@ -230,6 +265,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._codeModalManager = new CodeModalManager(this);
     this._watermarkPanel = new WatermarkPanel(this);
     this._findBarController = new FindBarController(this);
+    this._documentLoader = new DocumentLoader(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -238,7 +274,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._toolbarCustomizer.enableDragDrop();
     this.setupEventListeners();
     this._initThumbnailPanel();
-    this._restoreSession();
+    void this._documentLoader.restoreSession();
     this._showPrivacyToastOnce();
   }
 
@@ -277,7 +313,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
 
   // ── Find bar (delegated to FindBarController) ───────────────────────────
   _openFindBar(): void { this._findBarController.open(); }
-  _closeFindBar(): void { this._findBarController.close(); }
+  _closeFindBar(): void { this.closeFindBar(); }
   async _search(): Promise<void> { return this._findBarController.search(); }
   _nextMatch(): void { this._findBarController.nextMatch(); }
   _prevMatch(): void { this._findBarController.prevMatch(); }
@@ -524,124 +560,9 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     }));
   }
 
-  private _askRestoreSession(): Promise<boolean> {
-    return new Promise(resolve => {
-      const dialog = this.ui.restoreDialog;
-      dialog.style.display = '';
-      const onYes = () => { cleanup(); resolve(true); };
-      const onNo  = () => { cleanup(); resolve(false); };
-      const cleanup = () => {
-        dialog.style.display = 'none';
-        this.ui.restoreYesBtn.removeEventListener('click', onYes);
-        this.ui.restoreNoBtn.removeEventListener('click', onNo);
-      };
-      this.ui.restoreYesBtn.addEventListener('click', onYes);
-      this.ui.restoreNoBtn.addEventListener('click', onNo);
-      this.ui.restoreYesBtn.focus();
-    });
-  }
+  _clearSave(): void { this._documentLoader.clearSave(); }
 
-  private async _restoreSession(): Promise<void> {
-    const state = await loadState();
-    if (!state?.pages?.length) return;
-    if (this._isLoading) return;
-    const shouldRestore = await this._askRestoreSession();
-    if (!shouldRestore) { await clearState(); return; }
-    this._isLoading = true;
-    const restoreProg = this._progressManager.begin('progress.restoringSession');
-    try {
-      for (const sp of state.sourcePdfs) {
-        const spBytes = sp.bytes instanceof Uint8Array ? sp.bytes : new Uint8Array(sp.bytes);
-        const bytesToStore = spBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
-        const doc = await pdfjsLib.getDocument({ data: spBytes }).promise;
-        const src = this.documentModel.addSourcePdf(doc, bytesToStore, sp.name);
-        // Override auto-generated id with the saved one
-        this.documentModel.sourcePdfs.delete(src.id);
-        src.id = sp.id;
-        this.documentModel.sourcePdfs.set(sp.id, src);
-      }
-      this.documentModel.pages = state.pages ?? [];
-      this.documentModel.watermark = state.watermark ?? this.documentModel.watermark;
-      this._syncWatermarkBtn();
-      this.documentModel.currentPageIndex = Math.max(0, Math.min(
-        state.currentPageIndex ?? 0, this.documentModel.pages.length - 1
-      ));
-      // Set renderer.pdfDoc to the current page's source (not necessarily the first source)
-      const currentSrc = this.documentModel.sourcePdfs.get(
-        this.documentModel.currentPage?.sourcePdfId ?? ''
-      );
-      if (currentSrc) this.renderer.pdfDoc = currentSrc.doc;
-
-      const restored = (state.elements ?? [])
-        .map(d => ElementFactory.fromJSON(d as Parameters<typeof ElementFactory.fromJSON>[0]))
-        .filter(Boolean) as PDFElement[];
-      this.elements.push(...restored);
-      ElementFactory.syncIdCounter(this.elements);
-      this._formValues = state.formValues ?? {};
-      if (state.inkData) this.inkLayer.fromJSON(state.inkData);
-      this.currentFilename = state.sourcePdfs[0]?.name ?? this.currentFilename;
-
-      // Compute initial scale
-      this._isFitMode = true;
-      const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
-      const isMobile = window.innerWidth <= 640;
-      this.zoomScale = isMobile ? Math.max(fitScale, 0.65) : fitScale;
-      this.renderer.setScale(this.zoomScale);
-      this.ui.zoomDisplay.textContent = Math.round(this.zoomScale * 100) + '%';
-
-      // BUG-38: guard against empty pages after restore
-      if (!this.documentModel.pages.length || !this.documentModel.currentPage) {
-        throw new Error('No valid pages in saved session');
-      }
-
-      await this._renderCurrentPage();
-      this.enableUI();
-      this._enableFileMenuDocItems();
-
-      (document.getElementById('emptyState') as HTMLElement).style.display = 'none';
-      this.ui.pageThumbnailContainer.style.display = '';
-      await this._thumbnailPanel?.render();
-      this.updatePageInfo();
-      this.rebuildElementLayer();
-      this._errorReporter.info('toast.sessionRestored');
-      restoreProg.done();
-    } catch (err) {
-      restoreProg.failed();
-      // BUG-19: reset to clean state on partial restore failure
-      this._errorReporter.silent(err, '_restoreSession');
-      this.documentModel = new DocumentModel();
-      this.renderer.setModel(this.documentModel);
-      this.elements = [];
-      this._thumbnailPanel = null;
-      this._errorReporter.error('toast.sessionRestoreFailed', err);
-    } finally {
-      this._isLoading = false;
-    }
-  }
-
-  _clearSave() {
-    this._closeDocument();
-    this._errorReporter.info('toast.sessionCleared');
-  }
-
-  private _promptPassword(isRetry = false): Promise<string | null> {
-    return new Promise<string | null>((resolve) => {
-      const modal = document.getElementById('pdfPasswordModal') as HTMLElement;
-      const input = document.getElementById('pdfPasswordInput') as HTMLInputElement;
-      const error = document.getElementById('pdfPasswordError') as HTMLElement;
-      input.value = '';
-      error.style.display = isRetry ? 'block' : 'none';
-      modal.style.display = 'flex';
-      input.focus();
-      this._pendingPasswordResolve = resolve;
-    });
-  }
-
-  _openBlankPageModal(): void {
-    const modal = document.getElementById('blankPageModal') as HTMLElement;
-    if (!modal) return;
-    modal.style.display = 'flex';
-  }
+  _openBlankPageModal(): void { this._documentLoader.openBlankPageModal(); }
 
     _insertBlankPage(): void { this._pageService.insertBlankPage(); }
 
@@ -692,192 +613,9 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this.ui.fileMenuResetSession.disabled = true;
   }
 
-  _closeDocument(): void {
-    clearState().catch(() => {});
-    this.documentModel = new DocumentModel();
-    this.renderer.setModel(this.documentModel);
-    this.elements = [];
-    this.selectedElement = null;
-    this._clipboard = null;
-    this._updateCopyPasteBtns();
-    this.historyManager.clear();
-    this._textSearch.clearCache();
-    this._thumbnailPanel = null;
-    this._closeFindBar();
-    this._searchManager.caseSensitive = false;
-    this._searchManager.regex = false;
-    this.ui.findCaseSensitive.classList.remove('active');
-    this.ui.findRegex.classList.remove('active');
-    this.currentFilename = null;
+  _closeDocument(): void { this._documentLoader.closeDocument(); }
 
-    this.inkLayer.clearAll();
-    const ctx = this.renderer.canvas.getContext('2d');
-    if (ctx) ctx.clearRect(0, 0, this.renderer.canvas.width, this.renderer.canvas.height);
-    const ictx = this._inkCanvas.getContext('2d');
-    if (ictx) ictx.clearRect(0, 0, this._inkCanvas.width, this._inkCanvas.height);
-
-    this.ui.pageThumbnailContainer.style.display = 'none';
-    this.ui.pageThumbnailContainer.innerHTML = '';
-     
-    (document.getElementById('emptyState') as HTMLElement).style.display = 'flex';
-    this._disableFileMenuDocItems();
-    this.rebuildElementLayer(); // clear annotation DOM nodes after model is reset
-    this._errorReporter.info('toast.documentClosed');
-  }
-
-  // ── File upload ───────────────────────────────────────────────
-  private async _imagesToPdf(imageFiles: File[]): Promise<{ bytes: Uint8Array; name: string }> {
-    const { PDFDocument } = await import('@cantoo/pdf-lib');
-    const pdfDoc = await PDFDocument.create();
-    for (const file of imageFiles) {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const isJpeg = file.type === 'image/jpeg' || file.type === 'image/jpg';
-      const img = isJpeg ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(
-        await (async () => {
-          // convert non-PNG/JPEG to PNG via canvas
-          if (file.type === 'image/png') return bytes;
-          return new Promise<Uint8Array>((resolve, reject) => {
-            const blob = URL.createObjectURL(file);
-            const imgEl = new Image();
-            imgEl.onerror = () => { URL.revokeObjectURL(blob); reject(new Error(`Failed to decode image: ${file.name}`)); };
-            imgEl.onload = () => {
-              const canvas = document.createElement('canvas');
-              canvas.width = imgEl.naturalWidth;
-              canvas.height = imgEl.naturalHeight;
-              canvas.getContext('2d')?.drawImage(imgEl, 0, 0);
-              canvas.toBlob((b) => {
-                if (!b) { reject(new Error('canvas.toBlob returned null')); return; }
-                b.arrayBuffer().then(ab => resolve(new Uint8Array(ab)), reject);
-              }, 'image/png');
-              URL.revokeObjectURL(blob);
-            };
-            imgEl.src = blob;
-          });
-        })()
-      );
-      const page = pdfDoc.addPage([img.width, img.height]);
-      page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-    }
-    const bytes = await pdfDoc.save();
-    const baseName = imageFiles.length === 1
-      ? imageFiles[0].name.replace(/\.[^.]+$/, '')
-      : 'images';
-    return { bytes, name: `${baseName}.pdf` };
-  }
-
-  async _loadDocument(e: Event) {
-    if (this._isLoading) return;
-    this._isLoading = true;
-    const inputEl = e.target as HTMLInputElement;
-    const files = Array.from(inputEl.files ?? []);
-    inputEl.value = '';
-
-    // Route image files through image→PDF conversion
-    const imageFiles = files.filter(f => f.type.startsWith('image/'));
-    const pdfFiles  = files.filter(f => f.type === 'application/pdf');
-    let file: File;
-
-    if (imageFiles.length > 0 && pdfFiles.length === 0) {
-      const convProg = this._progressManager.begin('progress.convertingImages');
-      try {
-        const { bytes, name } = await this._imagesToPdf(imageFiles);
-        file = new File([bytes.buffer as ArrayBuffer], name, { type: 'application/pdf' });
-        convProg.done();
-      } catch (err) {
-        convProg.failed();
-        this._errorReporter.error('toast.imageConversionFailed', err);
-        this._isLoading = false;
-        return;
-      }
-    } else if (pdfFiles.length === 1 && imageFiles.length === 0) {
-      file = pdfFiles[0];
-    } else {
-      this._errorReporter.warn('toast.imageMixedError');
-      this._isLoading = false;
-      return;
-    }
-
-    const loadProg = this._progressManager.begin('progress.loadingDocument');
-    try {
-      const rawBytes = new Uint8Array(await file.arrayBuffer());
-      const bytesToStore = rawBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
-
-      // Handle password-protected PDFs with retry loop
-      let doc;
-      let openPassword: string | undefined;
-      let isRetry = false;
-      for (;;) {
-        try {
-          const loadOpts: Record<string, unknown> = { data: rawBytes.slice(0) };
-          if (openPassword) loadOpts['password'] = openPassword;
-          doc = await pdfjsLib.getDocument(loadOpts).promise;
-          break;
-        } catch (err) {
-          // pdfjs throws PasswordException (name: 'PasswordException') for encrypted PDFs
-          const isPasswordError = err instanceof Error && (
-            err.name === 'PasswordException' ||
-            err.message.toLowerCase().includes('password')
-          );
-          if (!isPasswordError) throw err;
-          const pw = await this._promptPassword(isRetry);
-          if (!pw) { loadProg.failed(); this._isLoading = false; return; } // user cancelled
-          openPassword = pw;
-          isRetry = true;
-        }
-      }
-
-      // Reset state for new document
-      this.documentModel = new DocumentModel();
-      this.renderer.setModel(this.documentModel);
-      this.elements = [];
-      this._formValues = {};
-      this._warnedUnsupportedFields = false;
-      this._formFieldOverlay.clear();
-      this._textLayerManager.clear();
-      this._textSearch.clearCache();
-      this.historyManager.clear();
-      this.selectedElement = null;
-      this.currentFilename = file.name;
-
-      // Re-init thumbnail panel with new model
-      this.ui.pageThumbnailContainer.innerHTML = '';
-      this._thumbnailPanel = new PageThumbnailPanel({
-        container: this.ui.pageThumbnailContainer,
-        renderer: this.renderer,
-        model: this.documentModel,
-        onNavigate: (index) => this._goToPageIndex(index),
-        onDelete: (pageId) => this._deletePage(pageId),
-        onReorder: (newOrder) => this._reorderPages(newOrder),
-        onRotate: (pageId, delta) => this._rotatePage(pageId, delta),
-        onAddPdf: () => this.ui.addPdfInput.click(),
-        onDownload: (index) => this.downloadPage(index),
-        onDownloadImage: (index) => this.downloadPageAsImage(index),
-      });
-
-      const src = this.documentModel.addSourcePdf(doc, bytesToStore, file.name);
-      this.documentModel.addPagesFrom(src.id);
-      this.renderer.pdfDoc = doc;
-
-      (document.getElementById('emptyState') as HTMLElement).style.display = 'none';
-      this._isFitMode = true;
-      const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
-      const isMobile = window.innerWidth <= 640;
-      await this.applyZoom(isMobile ? Math.max(fitScale, 0.65) : fitScale);
-      this.enableUI();
-      this._enableFileMenuDocItems();
-      this.ui.pageThumbnailContainer.style.display = '';
-      await this._thumbnailPanel.render();
-      this.updatePageInfo();
-      this.rebuildElementLayer();
-      this._autosave();
-      loadProg.done();
-    } catch (err) {
-      loadProg.failed();
-      this._errorReporter.error('toast.pdfLoadFailed', err);
-    } finally {
-      this._isLoading = false;
-    }
-  }
+  async _loadDocument(e: Event): Promise<void> { return this._documentLoader.load(e); }
 
   enableUI() { this.uiController.enableUI(); }
 
