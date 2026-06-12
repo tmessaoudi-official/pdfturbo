@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PDFElement } from '../../src/elements/pdfElement';
+import { PDFElement } from '../../src/elements/annotationElement';
 import { TextElement } from '../../src/elements/textElement';
 import { SignatureElement } from '../../src/elements/signatureElement';
 import { ImageElement } from '../../src/elements/imageElement';
@@ -279,8 +279,7 @@ describe('delete button fires element:delete event', () => {
       detail = (e as CustomEvent<{ id: number }>).detail;
     });
     btn.click();
-    expect(detail).not.toBeNull();
-    expect(detail!.id).toBe(el.id);
+    expect(detail).toMatchObject({ id: el.id });
   });
 });
 

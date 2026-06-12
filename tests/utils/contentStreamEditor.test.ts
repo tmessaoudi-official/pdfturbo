@@ -3,11 +3,15 @@ import { PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream } from '@c
 import {
   tokenizeContentStream,
   serializeTokens,
+  serializeOps,
   groupOps,
   locateTextOps,
   findTextOpAt,
   deleteTextAt,
   replaceTextAt,
+  extractPsName,
+  replaceShowOpInPlace,
+  fillColorToHex,
 } from '../../src/utils/contentStreamEditor';
 
 /** Build a real 3-string PDF entirely in memory — no fixtures. */
@@ -18,6 +22,17 @@ async function makeThreeStringPdf(): Promise<Uint8Array> {
   page.drawText('Hello', { x: 50, y: 300, size: 12, font });
   page.drawText('World', { x: 50, y: 250, size: 12, font });
   page.drawText('KeepMe', { x: 50, y: 200, size: 12, font });
+  return doc.save();
+}
+
+/** Build a 3-text PDF with two overlapping ops (within 4pt) and one separate. */
+async function makeOverlappingTextPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('Shadow1', { x: 50, y: 300, size: 12, font }); // primary
+  page.drawText('Shadow2', { x: 52, y: 298, size: 12, font }); // within 4pt of Shadow1
+  page.drawText('Separate', { x: 50, y: 200, size: 12, font }); // 100pt away
   return doc.save();
 }
 
@@ -166,6 +181,16 @@ describe('deleteTextAt', () => {
     const reloaded = await PDFDocument.load(saved);
     expect(reloaded.getPageCount()).toBe(1);
   });
+
+  it('also blanks shadow ops within 4pt of the primary origin', async () => {
+    const doc = await PDFDocument.load(await makeOverlappingTextPdf());
+    await deleteTextAt(doc, 0, { x: 50, y: 300 });
+    const saved = await doc.save();
+    const strings = showStrings(await pageContentText(saved));
+    expect(strings).not.toContain('Shadow1'); // primary — blanked
+    expect(strings).not.toContain('Shadow2'); // shadow within 4pt — also blanked
+    expect(strings).toContain('Separate');   // 100pt away — untouched
+  });
 });
 
 describe('replaceTextAt', () => {
@@ -191,5 +216,132 @@ describe('replaceTextAt', () => {
     const content = await pageContentText(saved);
     expect(showStrings(content)).toContain('Changed');
     expect(content).toMatch(/\/\S+\s+12\s+Tf/);
+  });
+});
+
+// ── New: extractPsName ────────────────────────────────────────────────────────
+
+describe('extractPsName', () => {
+  it('strips the ABCDEF+ subset prefix from internal font ids', () => {
+    expect(extractPsName('g_d0_ABCDEF+Arial-BoldMT')).toBe('Arial-BoldMT');
+  });
+
+  it('returns the id unchanged when no + is present', () => {
+    expect(extractPsName('g_d0_f1')).toBe('g_d0_f1');
+  });
+
+  it('handles bare PostScript names without any prefix', () => {
+    expect(extractPsName('Helvetica')).toBe('Helvetica');
+  });
+});
+
+// ── New: fill color tracking ──────────────────────────────────────────────────
+
+describe('locateTextOps — fill color tracking', () => {
+  it('captures rg (RGB) fill color on the following show op', () => {
+    const src = 'BT /F1 12 Tf 1 0 0 rg 50 300 Td (Red) Tj ET';
+    const textOps = locateTextOps(groupOps(tokenizeContentStream(src)));
+    expect(textOps).toHaveLength(1);
+    expect(textOps[0].fillColor).toBe('1 0 0 rg');
+  });
+
+  it('captures g (gray) fill color', () => {
+    const src = 'BT /F1 12 Tf 0.5 g 50 300 Td (Gray) Tj ET';
+    const textOps = locateTextOps(groupOps(tokenizeContentStream(src)));
+    expect(textOps[0].fillColor).toBe('0.5 g');
+  });
+
+  it('captures k (CMYK) fill color', () => {
+    const src = 'BT /F1 12 Tf 0 0 1 0 k 50 300 Td (Blue) Tj ET';
+    const textOps = locateTextOps(groupOps(tokenizeContentStream(src)));
+    expect(textOps[0].fillColor).toBe('0 0 1 0 k');
+  });
+
+  it('leaves fillColor undefined when no color op precedes the show', () => {
+    const src = 'BT /F1 12 Tf 50 300 Td (Black) Tj ET';
+    const textOps = locateTextOps(groupOps(tokenizeContentStream(src)));
+    expect(textOps[0].fillColor).toBeUndefined();
+  });
+
+  it('updates fillColor when a new color op appears between two show ops', () => {
+    const src = 'BT /F1 12 Tf 1 0 0 rg 10 20 Td (Red) Tj 0 1 0 rg 0 -15 Td (Green) Tj ET';
+    const textOps = locateTextOps(groupOps(tokenizeContentStream(src)));
+    expect(textOps).toHaveLength(2);
+    expect(textOps[0].fillColor).toBe('1 0 0 rg');
+    expect(textOps[1].fillColor).toBe('0 1 0 rg');
+  });
+});
+
+// ── New: fillColorToHex ───────────────────────────────────────────────────────
+
+describe('fillColorToHex', () => {
+  it('converts rg RGB operands to 6-char uppercase hex', () => {
+    expect(fillColorToHex('1 0 0 rg')).toBe('FF0000');
+    expect(fillColorToHex('0 0 1 rg')).toBe('0000FF');
+    expect(fillColorToHex('0 0 0 rg')).toBe('000000');
+    expect(fillColorToHex('1 1 1 rg')).toBe('FFFFFF');
+  });
+
+  it('converts g (gray) operands to hex', () => {
+    expect(fillColorToHex('1 g')).toBe('FFFFFF');
+    expect(fillColorToHex('0 g')).toBe('000000');
+    expect(fillColorToHex('0.5 g')).toMatch(/^[0-9A-F]{6}$/);
+  });
+
+  it('converts k (CMYK) operands to hex', () => {
+    // 0 0 0 0 k → white
+    expect(fillColorToHex('0 0 0 0 k')).toBe('FFFFFF');
+    // 0 0 0 1 k → black
+    expect(fillColorToHex('0 0 0 1 k')).toBe('000000');
+  });
+
+  it('returns undefined for unrecognised formats', () => {
+    expect(fillColorToHex('scn')).toBeUndefined();
+    expect(fillColorToHex('')).toBeUndefined();
+  });
+});
+
+// ── New: replaceShowOpInPlace ─────────────────────────────────────────────────
+
+describe('replaceShowOpInPlace', () => {
+  it('replaces an ASCII literal Tj string in-place, preserving font context ops', () => {
+    const src = 'BT /F1 12 Tf 50 300 Td (OrigText) Tj ET';
+    const ops = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(ops);
+    expect(textOps).toHaveLength(1);
+
+    const ok = replaceShowOpInPlace(ops[textOps[0].opIndex], 'NewText');
+    expect(ok).toBe(true);
+
+    const serialized = serializeOps(ops);
+    expect(serialized).toContain('(NewText)');
+    expect(serialized).not.toContain('(OrigText)');
+    expect(serialized).toContain('/F1');
+    expect(serialized).toContain('12 Tf');
+  });
+
+  it('replaces the first string element of a TJ array in-place', () => {
+    const src = 'BT /F1 12 Tf [(Hello) -120 (World)] TJ ET';
+    const ops = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(ops);
+    const ok = replaceShowOpInPlace(ops[textOps[0].opIndex], 'Hi');
+    expect(ok).toBe(true);
+    const serialized = serializeOps(ops);
+    expect(serialized).toContain('(Hi)');
+    expect(serialized).not.toContain('(Hello)');
+  });
+
+  it('returns false for a hex-encoded string operand (Tj)', () => {
+    const src = 'BT <48656C6C6F> Tj ET';
+    const ops = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(ops);
+    expect(replaceShowOpInPlace(ops[textOps[0].opIndex], 'NewText')).toBe(false);
+  });
+
+  it('returns false when newText contains non-ASCII characters', () => {
+    const src = 'BT (Hello) Tj ET';
+    const ops = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(ops);
+    expect(replaceShowOpInPlace(ops[textOps[0].opIndex], 'Héllo')).toBe(false);
   });
 });

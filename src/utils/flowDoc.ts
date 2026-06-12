@@ -39,6 +39,10 @@ export interface FlowRun {
   fontSize: number;
   fontFamily: 'serif' | 'sans-serif' | 'monospace';
   rtl: boolean;
+  /** PostScript font name extracted from the pdf.js internal id (used in merge key). */
+  psName?: string;
+  /** Hex fill color without '#' (e.g. 'FF0000' for red). Undefined = default/black. */
+  color?: string;
 }
 
 export interface FlowParagraph {
@@ -69,6 +73,7 @@ interface Word {
   size: number;
   fontName: string;
   rtl: boolean;
+  color?: string;
 }
 
 interface Line {
@@ -103,27 +108,45 @@ function familyOf(info: FontInfo | undefined): FlowRun['fontFamily'] {
 }
 
 /**
+ * Extract the PostScript name from a pdf.js internal font id.
+ * Ids like 'g_d0_ABCDEF+Arial-BoldMT' become 'Arial-BoldMT'.
+ * Ids without a '+' prefix are returned as-is.
+ */
+export function extractPsName(internalId: string): string {
+  const m = internalId.match(/\+(.+)$/);
+  return m ? m[1] : internalId;
+}
+
+/**
  * Reconstruct the flow structure of one page from its positioned text items.
  * Pure function — fully unit-testable without pdf.js.
+ *
+ * @param colorMap  Optional map from `"${Math.round(x)},${Math.round(y)}"` → hex color
+ *                  (6 uppercase chars, no '#'). Built from getOperatorList() in the caller.
  */
 export function reconstructPage(
   items: RawTextItem[],
   fonts: FontInfoMap,
   pageWidth: number,
-  pageHeight: number
+  pageHeight: number,
+  colorMap?: Map<string, string>
 ): FlowPage {
   const words: Word[] = [];
   for (const it of items) {
     if (!it.str || !it.str.trim()) continue;
     const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
+    const x = it.transform[4];
+    const y = it.transform[5];
+    const color = colorMap?.get(`${Math.round(x)},${Math.round(y)}`);
     words.push({
       text: it.str,
-      x: it.transform[4],
-      y: it.transform[5],
+      x,
+      y,
       width: Math.abs(it.width),
       size,
       fontName: it.fontName,
       rtl: it.dir === 'rtl',
+      color,
     });
   }
 
@@ -168,12 +191,15 @@ export function reconstructPage(
       let prevWord: Word | null = null;
       for (const w of line.words) {
         const info = fonts[w.fontName];
+        const psName = extractPsName(info?.name ?? w.fontName);
         const style: Omit<FlowRun, 'text'> = {
-          bold: isBoldName(info?.name ?? w.fontName),
-          italic: isItalicName(info?.name ?? w.fontName),
+          bold: isBoldName(psName),
+          italic: isItalicName(psName),
           fontSize: Math.round(w.size * 2) / 2,
           fontFamily: familyOf(info),
           rtl: w.rtl,
+          psName,
+          color: w.color,
         };
         let text = w.text;
         if (prevWord) {
@@ -191,6 +217,8 @@ export function reconstructPage(
           last.italic === style.italic &&
           last.fontFamily === style.fontFamily &&
           last.rtl === style.rtl &&
+          last.psName === style.psName &&
+          last.color === style.color &&
           Math.abs(last.fontSize - style.fontSize) < 0.6
         ) {
           last.text += text;

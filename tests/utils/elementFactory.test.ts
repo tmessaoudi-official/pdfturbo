@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ElementFactory } from '../../src/utils/elementFactory';
-import { PDFElement } from '../../src/elements/pdfElement';
+import { PDFElement } from '../../src/elements/annotationElement';
 import { TextElement } from '../../src/elements/textElement';
 import { SignatureElement } from '../../src/elements/signatureElement';
 import { ShapeElement } from '../../src/elements/shapeElement';

@@ -4,17 +4,18 @@ import { PDFEditorApp } from './core/pdfEditorApp';
 import { initI18n, changeLanguage, onLanguageChanged } from './utils/i18n';
 
 declare global {
-  interface Window { app: PDFEditorApp; }
+  interface Window { app?: PDFEditorApp; }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initI18n();
 
-  window.app = new PDFEditorApp();
+  const app = new PDFEditorApp();
+  if (import.meta.env.DEV) window.app = app;
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {
-    window.app.onLanguageChanged();
+    app.onLanguageChanged();
   });
 
   document.querySelectorAll<HTMLElement>('.lang-btn').forEach(btn => {

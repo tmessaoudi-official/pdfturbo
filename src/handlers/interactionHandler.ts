@@ -1,5 +1,5 @@
-import type { PDFEditorApp } from '../core/pdfEditorApp';
-import type { PDFElement } from '../elements/pdfElement';
+import type { IAppContext } from '../core/appContext';
+import type { PDFElement } from '../elements/annotationElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import { MoveResizeCmd, RotateElementCmd } from '../core/historyManager';
 
@@ -14,7 +14,7 @@ interface PendingTouchDrag {
 }
 
 export class InteractionHandler {
-  private app: PDFEditorApp;
+  private app: IAppContext;
   isDragging = false;
   isResizing = false;
   isRotating = false;
@@ -34,7 +34,7 @@ export class InteractionHandler {
   private _rotStartAngle = 0;
   private _rotStartRotation = 0;
 
-  constructor(app: PDFEditorApp) {
+  constructor(app: IAppContext) {
     this.app = app;
   }
 
@@ -163,7 +163,7 @@ export class InteractionHandler {
         shape.points = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
       }
     }
-    this.app.renderElements();
+    this.app.rebuildElementLayer();
   }
 
   private resize(e: PointerEvent): void {
@@ -186,7 +186,7 @@ export class InteractionHandler {
       el.width  = Math.min(Math.max(minW, this.startWidth  + deltaX), maxW);
       el.height = Math.min(Math.max(minH, this.startHeight + deltaY), maxH);
     }
-    this.app.renderElements();
+    this.app.rebuildElementLayer();
   }
 
   handlePointerUp(e: PointerEvent): void {
@@ -216,7 +216,7 @@ export class InteractionHandler {
     if (e.shiftKey)     rot = Math.round(rot / 45) * 45 % 360;
     else if (e.ctrlKey) rot = Math.round(rot / 5)  * 5  % 360;
     el.rotation = rot;
-    this.app.renderElements();
+    this.app.rebuildElementLayer();
   }
 
   private _finish(): void {

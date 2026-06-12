@@ -17,8 +17,8 @@ Captured 2026-06-04. Ideas that surfaced during development — not yet planned 
 
 ## Enhancements to Existing Features
 
-### Watermark — Tiled / Repeated Pattern
-Currently watermark renders as a single centred overlay. Desired: tile it across the full page (e.g. diagonal repeating grid, configurable opacity and spacing).
+### ~~Watermark — Tiled / Repeated Pattern~~ **Done**
+~~Currently watermark renders as a single centred overlay. Desired: tile it across the full page (e.g. diagonal repeating grid, configurable opacity and spacing).~~ Fixed — density-based tiling with configurable angle and spacing (commit fb87e8b).
 
 ### Form Field Detection — Expand Widget Types
 Currently detects text input fields. Missing:
@@ -28,8 +28,8 @@ Currently detects text input fields. Missing:
 - **List boxes** — multi-select
 - **Push buttons** — trigger actions
 
-### Comment / Sticky Note — Per-Note Delete
-Currently unclear if individual comment removal is possible. Add a × delete control on each comment note (same as other annotation types).
+### ~~Comment / Sticky Note — Per-Note Delete~~ **Done**
+~~Currently unclear if individual comment removal is possible. Add a × delete control on each comment note (same as other annotation types).~~ Fixed — `createControls()` in base `PDFElement` provides a delete button on all element types including comments.
 
 ### Page Export UX
 Export single page as PDF is available via the 📄 toolbar button (exports current page) and the ⬇ button on each thumbnail. Future idea: "Split all pages" batch action to download a ZIP of per-page PDFs.
@@ -46,7 +46,7 @@ Export single page as PDF is available via the 📄 toolbar button (exports curr
 | **Header / Footer** | Repeating text or image banner on all pages |
 | **Hyperlink annotation** | Attach URL to a region; clickable in exported PDF |
 | **OCR text layer** | For scanned PDFs — extract selectable text via Tesseract.js |
-| **QR code insertion** | Generate + embed a QR code for a URL |
+| ~~**QR code insertion**~~ **Done** | ~~Generate + embed a QR code for a URL~~ — ships as Barcode/QR tool (bwip-js + qr-code-styling; supports 1D/2D formats, error-correction, styles) |
 | **Batch export** | Export all pages as separate PDFs or a ZIP of PNGs |
 | **PDF compression** | Re-compress output PDF to reduce file size |
 | **Page background** | Set a solid colour background (useful for blank PDFs) |
@@ -76,3 +76,4 @@ Other annotation types beyond AcroForm widgets: links, free text, stamps, file a
 ## Parked
 
 - ~~**Dependency upgrades** (TypeScript 5→6, Vite 5→8, pdfjs-dist 3→6, ESLint 9→10)~~ **Done** — all three upgrades are complete (package.json: `typescript ^6.0.0`, `vite ^8.0.0`, `pdfjs-dist ^6.0.0`).
+- **`noUncheckedIndexedAccess`** — enabling this tsconfig flag would catch a class of index-out-of-bounds bugs at compile time, but currently produces ~339 errors across the codebase. Worth fixing incrementally; requires adding `?? undefined` guards or narrowing at every array/object access site.

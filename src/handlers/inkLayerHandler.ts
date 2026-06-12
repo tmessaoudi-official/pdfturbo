@@ -1,5 +1,5 @@
-import type { PDFEditorApp } from '../core/pdfEditorApp';
-import type { InkStroke } from '../core/inkLayer';
+import type { IAppContext } from '../core/appContext';
+import type { InkStroke } from '../infra/inkLayer';
 import { InkStrokeCmd } from '../core/historyManager';
 
 export class InkLayerHandler {
@@ -8,7 +8,7 @@ export class InkLayerHandler {
   private _activePointerId: number | null = null;
   private _strokeType: 'ink' | 'erase' = 'ink';
 
-  constructor(private app: PDFEditorApp) {}
+  constructor(private app: IAppContext) {}
 
   cancel(): void {
     this._drawing = false;

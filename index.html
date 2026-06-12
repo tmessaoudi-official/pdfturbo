@@ -993,7 +993,7 @@
       <div class="toolbar-sep" style="height:18px"></div>
       <div class="draw-flyout-wrap" id="textSplitWrap">
         <div class="text-split-btn">
-          <button id="textModeBtn" class="btn btn-secondary" disabled aria-pressed="false" data-mode="addText" data-i18n-title="toolbar.addTextTitle" title="Add Text (T)">T Text</button><button id="textChevronBtn" class="btn btn-secondary text-chevron" disabled aria-haspopup="true" aria-expanded="false" data-i18n-title="toolbar.textChevronTitle" title="Text tools">▾</button>
+          <button id="textModeBtn" class="btn btn-secondary" disabled aria-pressed="false" data-mode="addText" data-i18n="toolbar.addText" data-i18n-title="toolbar.addTextTitle" title="Add Text (T)">T Text</button><button id="textChevronBtn" class="btn btn-secondary text-chevron" disabled aria-haspopup="true" aria-expanded="false" data-i18n-title="toolbar.textChevronTitle" title="Text tools">▾</button>
         </div>
         <div class="draw-flyout" id="textFlyout">
           <button id="addTextBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n="toolbar.addText" data-i18n-title="toolbar.addTextTitle" title="Add Text (T)">T Text</button>
@@ -1258,9 +1258,9 @@
       <div class="qr-style-row">
         <label><span data-i18n="modal.code.errorCorrection">Error correction</span>
           <select id="qrEclevelSelect">
-            <option value="L">L – 7%</option>
-            <option value="M" selected>M – 15%</option>
-            <option value="Q">Q – 25%</option>
+            <option value="L" data-i18n="modal.code.ecL">L – 7%</option>
+            <option value="M" selected data-i18n="modal.code.ecM">M – 15%</option>
+            <option value="Q" data-i18n="modal.code.ecQ">Q – 25%</option>
             <option value="H" data-i18n="modal.code.ecH">H – 30% (best with logo)</option>
           </select>
         </label>
@@ -1336,10 +1336,10 @@
     <div style="margin-bottom:14px;">
       <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;" data-i18n="modal.blankPage.sizeLabel">Page Size</label>
       <select id="blankPageSize" style="width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
-        <option value="a4">A4 (210 × 297 mm)</option>
-        <option value="letter">Letter (8.5 × 11 in)</option>
-        <option value="a3">A3 (297 × 420 mm)</option>
-        <option value="a5">A5 (148 × 210 mm)</option>
+        <option value="a4" data-i18n="modal.blankPage.sizeA4">A4 (210 × 297 mm)</option>
+        <option value="letter" data-i18n="modal.blankPage.sizeLetter">Letter (8.5 × 11 in)</option>
+        <option value="a3" data-i18n="modal.blankPage.sizeA3">A3 (297 × 420 mm)</option>
+        <option value="a5" data-i18n="modal.blankPage.sizeA5">A5 (148 × 210 mm)</option>
         <option value="custom" data-i18n="modal.blankPage.customOption">Custom…</option>
         <option value="match" data-i18n="modal.blankPage.matchOption">Match current page</option>
       </select>

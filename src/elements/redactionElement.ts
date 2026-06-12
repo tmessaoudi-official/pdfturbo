@@ -1,6 +1,5 @@
 import { t } from '../utils/i18n';
-import { PDFElement } from './pdfElement';
-import type { ElementJSON } from './pdfElement';
+import { PDFElement, type ElementJSON } from './annotationElement';
 
 export class RedactionElement extends PDFElement {
   color: string;

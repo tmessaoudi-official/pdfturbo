@@ -1,5 +1,5 @@
-import type { PDFRenderer } from './pdfRenderer';
-import type { DocumentModel } from './documentModel';
+import type { PDFRenderer } from '../infra/pdfRenderer';
+import type { DocumentModel } from '../core/documentModel';
 import { t } from '../utils/i18n';
 
 export class PageThumbnailPanel {
@@ -163,7 +163,12 @@ export class PageThumbnailPanel {
     const addBtn = document.createElement('button');
     addBtn.className = 'thumb-add-btn';
     addBtn.title = t('thumbnail.addPagesTitle');
-    addBtn.innerHTML = `<span>+</span><span class="thumb-add-label">${t('thumbnail.addPages')}</span>`;
+    const plusSpan = document.createElement('span');
+    plusSpan.textContent = '+';
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'thumb-add-label';
+    labelSpan.textContent = t('thumbnail.addPages');
+    addBtn.append(plusSpan, labelSpan);
     addBtn.addEventListener('click', this.onAddPdf);
     this.strip.appendChild(addBtn);
   }

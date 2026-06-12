@@ -1,5 +1,4 @@
-import { PDFElement } from './pdfElement';
-import type { ElementJSON } from './pdfElement';
+import { PDFElement, type ElementJSON } from './annotationElement';
 import { t } from '../utils/i18n';
 
 export interface CommentOptions {
@@ -69,7 +68,7 @@ export class CommentElement extends PDFElement {
     return wrapper;
   }
 
-  toJSON(): ElementJSON {
+  override toJSON(): ElementJSON {
     return { ...super.toJSON(), color: this.color, text: this.text };
   }
 }

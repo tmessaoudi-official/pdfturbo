@@ -37,12 +37,14 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Edit PDF text** — click any word in the PDF to overlay and edit it in place
 - **Shapes** — arrow, rectangle, ellipse, freehand draw
 - **Highlight** — semi-transparent highlight over existing text
-- **Eraser** — erase freehand strokes or delete any element by brushing over it
+- **Eraser** — erase freehand ink strokes (does not affect annotation elements)
+- **Fill bucket** — flood-fill enclosed regions of freehand ink drawings with a chosen colour
 - **Signature pad** — draw a signature on a canvas, then place it anywhere
 - **Image overlay** — insert PNG/JPEG/WebP images
 - **Comment / sticky note** — place resizable sticky notes
 - **Redaction** — permanent black-box redaction via full page rasterization (text unextractable)
 - **Watermark** — tiled repeating watermark on export with configurable text, opacity, angle, density
+- **Barcode / QR code** — generate and place 1D/2D barcodes or QR codes with custom content, format, and error-correction level
 - **Text search** — find text in the PDF with highlighted matches and Add Highlight action
 - **Form field fill** — auto-detect and fill AcroForm text fields (Tx type)
 - **Page management** — add pages from another PDF, delete, reorder, rotate pages

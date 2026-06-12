@@ -67,7 +67,7 @@ export async function initI18n(): Promise<void> {
         lookupLocalStorage: 'i18nextLng',
         caches: ['localStorage'],
       },
-      interpolation: { escapeValue: false },
+      interpolation: { escapeValue: true },
     });
 
   updateHtmlDir();

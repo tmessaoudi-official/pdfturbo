@@ -1,5 +1,4 @@
-import { PDFElement } from './pdfElement';
-import type { ElementJSON } from './pdfElement';
+import { PDFElement, type ElementJSON } from './annotationElement';
 
 export interface TextOptions {
   width?: number;

@@ -1,14 +1,13 @@
 import { TextElement } from '../elements/textElement';
 import { SignatureElement } from '../elements/signatureElement';
-import { ShapeElement } from '../elements/shapeElement';
+import { ShapeElement, type ShapeType } from '../elements/shapeElement';
 import { ImageElement } from '../elements/imageElement';
 import { HighlightElement } from '../elements/highlightElement';
 import { CommentElement } from '../elements/commentElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from './codeGenerator';
-import type { ShapeType } from '../elements/shapeElement';
-import { PDFElement } from '../elements/pdfElement';
+import { PDFElement } from '../elements/annotationElement';
 
 export class ElementFactory {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

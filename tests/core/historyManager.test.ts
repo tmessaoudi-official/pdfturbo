@@ -5,7 +5,7 @@ import {
 import type { SourcePdf } from '../../src/core/documentModel';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { TextElement } from '../../src/elements/textElement';
-import { PDFElement } from '../../src/elements/pdfElement';
+import { PDFElement } from '../../src/elements/annotationElement';
 
 function makeMgr() {
   const onChange = vi.fn();

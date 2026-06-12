@@ -28,7 +28,7 @@ function _transformPoint(
   }
 }
 
-// tp() with crop offset — mirrors the fixed production code inside _drawElementOnPage
+// tp() with crop offset — mirrors the fixed production code inside _renderElementToPdfLib
 function tp(px: number, py: number, W: number, H: number, rot: number, cropX: number, cropY: number) {
   const r = _transformPoint(px, py, W, H, rot);
   return { x: r.x + cropX, y: r.y + cropY };

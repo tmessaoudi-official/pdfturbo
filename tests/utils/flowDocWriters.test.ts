@@ -64,4 +64,30 @@ describe('flowDocToDocxBase64', () => {
     expect(b64.startsWith('UEsD')).toBe(true);
     expect(b64.length).toBeGreaterThan(1000);
   });
+
+  // ── New: FlowRun.color accepted and produces valid DOCX ──────────────────────
+
+  it('accepts FlowRun with color field and still produces a valid DOCX', async () => {
+    const colorRun: FlowRun = run('Red text', { color: 'FF0000' });
+    const noColorRun: FlowRun = run('Black text');
+    const docWithColor: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [para([colorRun, noColorRun])],
+      }],
+    };
+    const b64 = await flowDocToDocxBase64(docWithColor);
+    expect(b64.startsWith('UEsD')).toBe(true);
+    expect(b64.length).toBeGreaterThan(1000);
+  });
+
+  it('FlowRun.color is an optional field on the FlowRun type', () => {
+    // This is a compile-time check: assigning color to a FlowRun must not error.
+    const r: FlowRun = {
+      text: 'test', bold: false, italic: false,
+      fontSize: 12, fontFamily: 'sans-serif', rtl: false,
+    };
+    r.color = 'FF0000';
+    expect(r.color).toBe('FF0000');
+  });
 });

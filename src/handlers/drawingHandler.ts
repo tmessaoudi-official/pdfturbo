@@ -1,4 +1,4 @@
-import type { PDFEditorApp } from '../core/pdfEditorApp';
+import type { IAppContext } from '../core/appContext';
 import { ShapeElement } from '../elements/shapeElement';
 import { HighlightElement } from '../elements/highlightElement';
 import { RedactionElement } from '../elements/redactionElement';
@@ -17,7 +17,7 @@ export class DrawingHandler {
   private _pinchCentroidDoc: { x: number; y: number } | null = null;
   private _pinchCentroidViewport: { x: number; y: number } | null = null;
 
-  constructor(private app: PDFEditorApp) {}
+  constructor(private app: IAppContext) {}
 
   cancel(): void {
     if (this._previewSvg) { this._previewSvg.remove(); this._previewSvg = null; }
@@ -243,7 +243,7 @@ export class DrawingHandler {
       const h = Math.abs(endY - start.y);
       this._drawStart  = null;
       this._drawPoints = [];
-      this.app.onPlacementDragComplete(this.app.mode as 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x, y, w, h);
+      this.app._commitPlacement(this.app.mode as 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x, y, w, h);
       return;
     }
 
@@ -255,7 +255,7 @@ export class DrawingHandler {
       this.app._autosave();
       if (this.app.mode === 'drawFreehand') {
         this.app.selectedElement = null;
-        this.app.renderElements();
+        this.app.rebuildElementLayer();
       } else {
         this.app.setMode('select');
         this.app.selectElement(shape);

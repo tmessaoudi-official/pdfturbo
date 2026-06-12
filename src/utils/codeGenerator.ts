@@ -1,6 +1,5 @@
 import * as bwipjs from 'bwip-js/browser';
-import QRCodeStyling from 'qr-code-styling';
-import type { Options as QRStylingOptions, DotType, ErrorCorrectionLevel } from 'qr-code-styling';
+import QRCodeStyling, { type Options as QRStylingOptions, type DotType, type ErrorCorrectionLevel } from 'qr-code-styling';
 
 export interface CodeFormat {
   id: string;

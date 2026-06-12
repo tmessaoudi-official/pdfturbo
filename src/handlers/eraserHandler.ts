@@ -1,10 +1,8 @@
-import type { PDFEditorApp } from '../core/pdfEditorApp';
-import type { PDFElement } from '../elements/pdfElement';
+import type { IAppContext } from '../core/appContext';
+import type { PDFElement } from '../elements/annotationElement';
 import { ShapeElement } from '../elements/shapeElement';
-import type { Command } from '../core/historyManager';
-import { BulkDeleteCmd, SplitStrokeCmd, MacroCmd } from '../core/historyManager';
-import { bboxIntersectsPolyline, splitFreehandAtErase } from '../utils/eraserGeometry';
-import type { Point } from '../utils/eraserGeometry';
+import { BulkDeleteCmd, SplitStrokeCmd, MacroCmd, type Command } from '../core/historyManager';
+import { bboxIntersectsPolyline, splitFreehandAtErase, type Point } from '../utils/eraserGeometry';
 
 export class EraserHandler {
   private _drawing = false;
@@ -12,7 +10,7 @@ export class EraserHandler {
   private _previewSvg: SVGSVGElement | null = null;
   private _activePointerId: number | null = null;
 
-  constructor(private app: PDFEditorApp) {}
+  constructor(private app: IAppContext) {}
 
   cancel(): void {
     if (this._previewSvg) { this._previewSvg.remove(); this._previewSvg = null; }
@@ -125,7 +123,7 @@ export class EraserHandler {
     this.app.historyManager.execute(new MacroCmd(cmds));
 
     this.app._autosave();
-    this.app.renderElements();
+    this.app.rebuildElementLayer();
   }
 
   private _updatePreview(): void {

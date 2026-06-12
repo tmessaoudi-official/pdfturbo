@@ -1,11 +1,11 @@
-import type { PDFElement } from '../elements/pdfElement';
+import type { PDFElement } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import type { RedactionElement } from '../elements/redactionElement';
-import type { ToolMode } from './pdfEditorApp';
+import type { ToolMode } from '../core/pdfEditorApp';
 import { t } from '../utils/i18n';
 
-export interface UIRefs {
+export interface AppDOMRefs {
   fileInput: HTMLInputElement;
   addTextBtn: HTMLButtonElement;
   addSignatureBtn: HTMLButtonElement;
@@ -138,7 +138,7 @@ export interface UIRefs {
 }
 
 export class UIController {
-  refs: UIRefs;
+  refs: AppDOMRefs;
   private _toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {

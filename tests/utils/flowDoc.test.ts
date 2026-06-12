@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   reconstructPage,
   assignHeadings,
+  extractPsName,
   type RawTextItem,
   type FontInfoMap,
   type FlowDoc,
@@ -139,5 +140,64 @@ describe('assignHeadings — document-wide font-size clustering', () => {
     const [title, ...rest] = doc.pages[0].paragraphs;
     expect(title.heading).toBe(1);
     for (const p of rest) expect(p.heading).toBe(0);
+  });
+});
+
+// ── New: extractPsName ────────────────────────────────────────────────────────
+
+describe('extractPsName', () => {
+  it('strips the ABCDEF+ subset-tag prefix from an internal font id', () => {
+    expect(extractPsName('g_d0_ABCDEF+Arial-BoldMT')).toBe('Arial-BoldMT');
+  });
+
+  it('returns the raw id when no + prefix is present', () => {
+    expect(extractPsName('g_d0_f1')).toBe('g_d0_f1');
+  });
+
+  it('handles bare PostScript names with no prefix at all', () => {
+    expect(extractPsName('Helvetica')).toBe('Helvetica');
+  });
+});
+
+// ── New: PS-name merge key ────────────────────────────────────────────────────
+
+describe('reconstructPage — PS name in run merge key', () => {
+  it('keeps adjacent runs with different PostScript names separate', () => {
+    // f_serif1 = 'Times-Roman', f_serif2 = 'Georgia' — same CSS family, same style, different PS name
+    const fonts: FontInfoMap = {
+      f_serif1: { name: 'Times-Roman', family: 'serif' },
+      f_serif2: { name: 'Georgia', family: 'serif' },
+    };
+    const items = [
+      mkItem('First', 50, 700, { fontName: 'f_serif1' }),
+      mkItem('Second', 100, 700, { fontName: 'f_serif2' }),
+    ];
+    const page = reconstructPage(items, fonts, PAGE_W, PAGE_H);
+    // Without psName in merge key these collapse to 1 run; with it they stay as 2
+    expect(page.paragraphs[0].runs).toHaveLength(2);
+  });
+});
+
+// ── New: colorMap → FlowRun.color ─────────────────────────────────────────────
+
+describe('reconstructPage — colorMap propagation', () => {
+  it('sets FlowRun.color from the colorMap when a matching position exists', () => {
+    const colorMap = new Map([['50,700', 'FF0000']]);
+    const items = [mkItem('RedText', 50, 700)];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H, colorMap);
+    expect(page.paragraphs[0].runs[0].color).toBe('FF0000');
+  });
+
+  it('leaves FlowRun.color undefined when no matching position in colorMap', () => {
+    const colorMap = new Map([['999,999', 'FF0000']]);
+    const items = [mkItem('Black', 50, 700)];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H, colorMap);
+    expect(page.paragraphs[0].runs[0].color).toBeUndefined();
+  });
+
+  it('omits colorMap argument gracefully (undefined)', () => {
+    const items = [mkItem('Plain', 50, 700)];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    expect(page.paragraphs[0].runs[0].color).toBeUndefined();
   });
 });

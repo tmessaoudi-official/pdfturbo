@@ -9,9 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "oxlint . && eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.7.1",
@@ -28,6 +29,7 @@
     "eslint": "^10.0.0",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
+    "oxlint": "^1.69.0",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.0.0",
     "vite": "^8.0.0",

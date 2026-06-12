@@ -1,7 +1,7 @@
 import { ElementFactory } from '../utils/elementFactory';
-import type { PDFElement } from '../elements/pdfElement';
+import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel, DocumentPage, SourcePdf } from './documentModel';
-import type { InkLayer, InkStroke } from './inkLayer';
+import type { InkLayer, InkStroke } from '../infra/inkLayer';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 export interface Command {

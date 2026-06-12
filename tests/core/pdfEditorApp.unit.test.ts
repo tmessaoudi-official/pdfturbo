@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PDFElement } from '../../src/elements/pdfElement';
+import { PDFElement } from '../../src/elements/annotationElement';
 import { TextElement } from '../../src/elements/textElement';
 import { ElementFactory } from '../../src/utils/elementFactory';
 import { HistoryManager, AddElementCmd, MoveResizeCmd } from '../../src/core/historyManager';
@@ -81,7 +81,7 @@ describe('_cleanEmptyTextElements DOM guard (BUG-29)', () => {
   });
 });
 
-describe('handleFileUpload error handling (BUG-03 + BUG-09)', () => {
+describe('_loadDocument error handling (BUG-03 + BUG-09)', () => {
   it('_isLoading guard prevents re-entrant calls', () => {
     const calls: string[] = [];
     const guardFn = (isLoading: boolean) => {

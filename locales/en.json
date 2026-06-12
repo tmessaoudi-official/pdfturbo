@@ -18,9 +18,7 @@
     "signTitle": "Sign (S)",
     "addImageLabel": "Image",
     "addImageTitle": "Add Image (I)",
-    "highlightLabel": "Highlight",
     "highlightTitle": "Highlight brush (H)",
-    "commentLabel": "Comment",
     "commentTitle": "Add comment / sticky note (N)",
     "findTitle": "Find in page (Ctrl+F)",
     "arrowTitle": "Arrow (A)",
@@ -56,7 +54,6 @@
   },
   "formatting": {
     "textLabel": "Text / Shape",
-    "shapeLabel": "Shape",
     "boldTitle": "Bold",
     "italicTitle": "Italic",
     "fontSizeDownTitle": "Decrease font size (A-)",
@@ -70,18 +67,6 @@
     "nextPageTitle": "Next page (Ctrl+→)",
     "lastPageTitle": "Last page",
     "fillLabel": "Fill"
-  },
-  "colors": {
-    "black": "Black",
-    "red": "Red",
-    "blue": "Blue",
-    "green": "Green",
-    "orange": "Orange",
-    "yellow": "Yellow",
-    "purple": "Purple",
-    "teal": "Teal",
-    "gray": "Gray",
-    "white": "White"
   },
   "findbar": {
     "placeholder": "Search in page…",
@@ -211,6 +196,10 @@
       "insert": "Insert",
       "customOption": "Custom…",
       "matchOption": "Match current page",
+      "sizeA4": "A4 (210 × 297 mm)",
+      "sizeLetter": "Letter (8.5 × 11 in)",
+      "sizeA3": "A3 (297 × 420 mm)",
+      "sizeA5": "A5 (148 × 210 mm)",
       "widthPlaceholder": "Width",
       "heightPlaceholder": "Height"
     },
@@ -238,6 +227,9 @@
       "previewAlt": "Code preview",
       "group2D": "2D Codes",
       "group1D": "1D Barcodes",
+      "ecL": "L – 7%",
+      "ecM": "M – 15%",
+      "ecQ": "Q – 25%",
       "ecH": "H – 30% (best with logo)",
       "dotStyleSquare": "Square",
       "dotStyleDots": "Dots",

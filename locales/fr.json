@@ -18,9 +18,7 @@
     "signTitle": "Signer (S)",
     "addImageLabel": "Image",
     "addImageTitle": "Ajouter une image (I)",
-    "highlightLabel": "Surligneur",
     "highlightTitle": "Pinceau de surligneur (H)",
-    "commentLabel": "Commentaire",
     "commentTitle": "Ajouter un commentaire / note (N)",
     "findTitle": "Rechercher dans la page (Ctrl+F)",
     "arrowTitle": "Flèche (A)",
@@ -56,7 +54,6 @@
   },
   "formatting": {
     "textLabel": "Texte / Forme",
-    "shapeLabel": "Forme",
     "boldTitle": "Gras",
     "italicTitle": "Italique",
     "fontSizeDownTitle": "Diminuer la taille (A-)",
@@ -70,18 +67,6 @@
     "nextPageTitle": "Page suivante (Ctrl+→)",
     "lastPageTitle": "Dernière page",
     "fillLabel": "Remplissage"
-  },
-  "colors": {
-    "black": "Noir",
-    "red": "Rouge",
-    "blue": "Bleu",
-    "green": "Vert",
-    "orange": "Orange",
-    "yellow": "Jaune",
-    "purple": "Violet",
-    "teal": "Bleu-vert",
-    "gray": "Gris",
-    "white": "Blanc"
   },
   "findbar": {
     "placeholder": "Rechercher dans la page…",
@@ -211,6 +196,10 @@
       "insert": "Insérer",
       "customOption": "Personnalisé…",
       "matchOption": "Correspondre à la page actuelle",
+      "sizeA4": "A4 (210 × 297 mm)",
+      "sizeLetter": "Letter (21,6 × 27,9 cm)",
+      "sizeA3": "A3 (297 × 420 mm)",
+      "sizeA5": "A5 (148 × 210 mm)",
       "widthPlaceholder": "Largeur",
       "heightPlaceholder": "Hauteur"
     },
@@ -238,6 +227,9 @@
       "previewAlt": "Aperçu du code",
       "group2D": "Codes 2D",
       "group1D": "Codes-barres 1D",
+      "ecL": "L – 7 %",
+      "ecM": "M – 15 %",
+      "ecQ": "Q – 25 %",
       "ecH": "H – 30% (optimal avec logo)",
       "dotStyleSquare": "Carré",
       "dotStyleDots": "Points",

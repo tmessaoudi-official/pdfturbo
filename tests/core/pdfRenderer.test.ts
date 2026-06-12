@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { PDFRenderer } from '../../src/core/pdfRenderer';
+import { PDFRenderer } from '../../src/infra/pdfRenderer';
 import { DocumentModel } from '../../src/core/documentModel';
 
 type RendererTestable = {

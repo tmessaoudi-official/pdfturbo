@@ -40,10 +40,10 @@ These run automatically in CI (GitHub Actions) on every push to `master`.
 
 ## Tech Stack
 
-- **TypeScript 6** — all source in `js/`
+- **TypeScript 6** — all source in `src/`
 - **Vite 8** — bundler and dev server; `vite.config.ts` controls PWA, base path, build
 - **pdfjs-dist** — PDF rendering (npm package, not CDN)
-- **pdf-lib** — PDF generation for export (dynamic import at export time)
+- **@cantoo/pdf-lib** — PDF generation for export (dynamic import at export time)
 - **Vitest** — unit tests in `tests/`
 - **VitePWA** — service worker + manifest generation
 
@@ -61,13 +61,24 @@ These run automatically in CI (GitHub Actions) on every push to `master`.
 ## Project Structure
 
 ```
-js/               TypeScript source modules (one class per file)
-tests/            Vitest tests
+src/
+├── core/         App orchestration, document model, history, search, session
+├── elements/     Annotation element types (text, shape, image, signature, …)
+├── export/       PDF export rendering helpers
+├── handlers/     Pointer/tool interaction handlers
+├── infra/        PDF rendering, ink layer, IndexedDB storage
+├── ui/           DOM controllers and event binding
+└── utils/        Pure utility functions (geometry, i18n, code generation, …)
+tests/            Vitest tests (mirrors src/ structure)
 docs/             Plans and reference docs
 index.html        Single-page application entry point
 vite.config.ts    Build config (base: '/pdfturbo/', PWA, manifest)
 .github/          CI workflow (build → test → deploy to GitHub Pages)
 ```
+
+## License and Contributions
+
+By opening a pull request, you agree that your contribution is assigned to Takieddine Messaoudi under the project's All Rights Reserved license.
 
 ## Reporting Bugs
 

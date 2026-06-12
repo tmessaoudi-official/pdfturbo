@@ -1,47 +1,46 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import { PDFRenderer } from './pdfRenderer';
+import { PDFRenderer } from '../infra/pdfRenderer';
 import { TextElement } from '../elements/textElement';
 import { SignatureElement } from '../elements/signatureElement';
 import { ImageElement } from '../elements/imageElement';
 import { HighlightElement } from '../elements/highlightElement';
 import { TextSearchHandler } from '../handlers/textSearchHandler';
-import type { MatchResult } from '../handlers/textSearchHandler';
 import { SignaturePad } from '../utils/signaturePad';
 import { InteractionHandler } from '../handlers/interactionHandler';
 import { ShapeElement } from '../elements/shapeElement';
-import { RedactionElement } from '../elements/redactionElement';
-import { PDFElement } from '../elements/pdfElement';
-import type { ElementJSON } from '../elements/pdfElement';
+import { PDFElement, type ElementJSON } from '../elements/annotationElement';
 import { ElementFactory } from '../utils/elementFactory';
-import { UIController } from './uiController';
-import type { UIRefs } from './uiController';
+import { UIController, type AppDOMRefs } from '../ui/uiController';
 import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
   HistoryManager, AddElementCmd, RemoveElementCmd, ClearAllCmd, TextEditCmd,
-  MoveResizeCmd, DeletePageCmd, ReorderPagesCmd, AddPagesCmd, RotatePageCmd,
+  DeletePageCmd, ReorderPagesCmd, AddPagesCmd, RotatePageCmd,
   MacroCmd, TransformAnnotationsCmd, ClearInkCmd, FillColorCmd, InkFillColorCmd,
   ReplaceSourcePdfBytesCmd,
+  type Command, type ElementTransformSnapshot,
 } from './historyManager';
-import type { Command, ElementTransformSnapshot } from './historyManager';
-import { InkLayer } from './inkLayer';
+import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
-import { DocumentModel, PAGE_SIZES } from './documentModel';
-import type { SourcePdf, WatermarkSettings } from './documentModel';
-import { PageThumbnailPanel } from './pageThumbnailPanel';
-import { saveState, loadState, clearState } from './storage';
+import { DocumentModel, PAGE_SIZES, type SourcePdf, type WatermarkSettings } from './documentModel';
+import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
+import { loadState, clearState } from '../infra/storage';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
 import { CommentElement } from '../elements/commentElement';
 import { t } from '../utils/i18n';
-import { reconstructPage, assignHeadings } from '../utils/flowDoc';
-import type { FlowDoc, FontInfoMap, RawTextItem } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, type FlowDoc, type FontInfoMap, type RawTextItem } from '../utils/flowDoc';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import { trapFocus } from '../utils/focusTrap';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { CodeElement } from '../elements/codeElement';
-import { generateCodeDataUrl, getCodeFormat } from '../utils/codeGenerator';
-import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
+import { generateCodeDataUrl, getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
+import { transformPoint, transformCanvasPoint, hexToRgbValues } from '../utils/geometry';
+import { dataUrlToUint8Array } from '../utils/binaryUtils';
+import { bindEvents } from '../ui/eventBinder';
+import { renderElementToPdfLib, type PdfRenderCtx } from '../export/pdfElementRenderer';
+import { SearchManager } from './searchManager';
+import { SessionManager } from './sessionManager';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
@@ -63,7 +62,7 @@ export class PDFEditorApp {
   uiController: UIController;
   drawingHandler: DrawingHandler;
   eraserHandler: EraserHandler;
-  private _thumbnailPanel: PageThumbnailPanel | null = null;
+  _thumbnailPanel: PageThumbnailPanel | null = null;
   private _pendingImageSrc: string | null = null;
   private _pendingImageNatural: { w: number; h: number } | null = null;
   private _signatureNatural: { w: number; h: number } | null = null;
@@ -73,17 +72,13 @@ export class PDFEditorApp {
   private _codeModalEditingId: number | null = null;
   private _codeModalGen = 0;
   private _codePreviewDebounce: ReturnType<typeof setTimeout> | null = null;
-  private _qrLogoDataUrl: string | null = null;
+  _qrLogoDataUrl: string | null = null;
   private _skipNextClick = false;
-  private _noFill = true;
-  private _autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+  _noFill = true;
+  private _sessionManager = new SessionManager();
   private _textSearch = new TextSearchHandler();
-  private _findMatches: MatchResult[] = [];
-  private _findMatchIndex = -1;
-  private _searchGen = 0;
-  private _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private _findCaseSensitive = false;
-  private _findRegex = false;
+  _searchManager = new SearchManager();
+  _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _formFieldOverlay: FormFieldOverlay;
   private _textLayerManager: TextLayerManager;
   private _formValues: Record<string, Record<string, string>> = {};
@@ -91,20 +86,20 @@ export class PDFEditorApp {
   private _formFieldGen = 0;
   private _isLoading = false;
   private _pageUpdatePending = false;
-  private _pendingPasswordResolve: ((password: string | null) => void) | null = null;
-  private _exportPassword: { user: string; owner: string } | null = null;
+  _pendingPasswordResolve: ((password: string | null) => void) | null = null;
+  _exportPassword: { user: string; owner: string } | null = null;
   inkLayer: InkLayer;
   inkLayerHandler: InkLayerHandler;
   private _inkCanvas: HTMLCanvasElement;
-  private _isFitMode = true;
+  _isFitMode = true;
   private _clipboard: ElementJSON | null = null;
-  private _exportPreviewOpen = false;
+  _exportPreviewOpen = false;
   private _trapCleanup: (() => void) | null = null;
-  private _pendingModeAfterBlankPage: string | null = null;
+  _pendingModeAfterBlankPage: string | null = null;
   private _textEditHandler = new TextEditHandler();
   private _placementGhost: HTMLDivElement | null = null;
 
-  get ui(): UIRefs { return this.uiController.refs; }
+  get ui(): AppDOMRefs { return this.uiController.refs; }
 
   constructor() {
     this.documentModel = new DocumentModel();
@@ -161,694 +156,11 @@ export class PDFEditorApp {
   }
 
   setupEventListeners() {
-    this.ui.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
-    this.ui.addPdfInput.addEventListener('change', (e) => this._handleAddPdfUpload(e));
-    this.ui.selectBtn.addEventListener('click', () => this.setMode('select'));
-    this.ui.addTextBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'addText' ? 'select' : 'addText');
-    });
-    this.ui.addSignatureBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'addSignature' ? 'select' : 'addSignature');
-    });
-    this.ui.addImageBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      if (this.mode === 'addImage') { this.setMode('select'); return; }
-      this.ui.addImageInput.click();
-    });
-    this.ui.addImageInput.addEventListener('change', (e) => this._handleImageFileSelect(e));
-    this.ui.addCodeBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      if (this.mode === 'addCode') { this.setMode('select'); return; }
-      this.openCodeModal();
-    });
-    this.ui.highlightBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'drawHighlight' ? 'select' : 'drawHighlight');
-    });
-    this.ui.commentBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'addComment' ? 'select' : 'addComment');
-    });
-    this.ui.redactBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'drawRedaction' ? 'select' : 'drawRedaction');
-    });
-    this.ui.previewExportBtn.addEventListener('click', () => {
-      if (this._exportPreviewOpen) this._hideExportPreview();
-      else if (this.documentModel.currentPage) this._showExportPreview();
-    });
-    this.ui.exportDocxBtn.addEventListener('click', () => void this.exportAsDocx());
-    this.ui.exportMdBtn.addEventListener('click', () => void this.exportAsMarkdown());
-    this.ui.exportPreviewClose.addEventListener('click', () => this._hideExportPreview());
-    this.ui.exportPreviewConfirm.addEventListener('click', () => {
-      this._hideExportPreview();
-      this.downloadPDF();
-    });
-    this.ui.findBtn.addEventListener('click', () => { if (this.documentModel.pageCount) this._openFindBar(); });
-    this.ui.findInput.addEventListener('input', () => {
-      clearTimeout(this._searchDebounceTimer ?? undefined);
-      this._searchDebounceTimer = setTimeout(() => this._search(), 300);
-    });
-    this.ui.findNext.addEventListener('click', () => this._nextMatch());
-    this.ui.findPrev.addEventListener('click', () => this._prevMatch());
-    this.ui.findHighlight.addEventListener('click', () => this._highlightCurrentMatch());
-    this.ui.findClose.addEventListener('click', () => this._closeFindBar());
-    this.ui.findCaseSensitive.addEventListener('click', () => {
-      this._findCaseSensitive = !this._findCaseSensitive;
-      this.ui.findCaseSensitive.classList.toggle('active', this._findCaseSensitive);
-      if (this.ui.findInput.value) this._search();
-    });
-    this.ui.findRegex.addEventListener('click', () => {
-      this._findRegex = !this._findRegex;
-      this.ui.findRegex.classList.toggle('active', this._findRegex);
-      if (this.ui.findInput.value) this._search();
-    });
-    this.ui.findInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (e.shiftKey) this._prevMatch(); else this._nextMatch();
-      }
-      if (e.key === 'Escape') { e.preventDefault(); this._closeFindBar(); }
-    });
-    this.ui.downloadBtn.addEventListener('click', () => this.downloadPDF());
-    this.ui.editTextBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'editText' ? 'select' : 'editText');
-    });
-    this.ui.prevPageBtn.addEventListener('click', () => this.prevPage());
-    this.ui.nextPageBtn.addEventListener('click', () => this.nextPage());
-    this.ui.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
-
-    // Handle element delete via bubbled CustomEvent from PDFElement.createControls()
-    this.ui.container.addEventListener('element:delete', (e: Event) => {
-      const { id } = (e as CustomEvent<{ id: number }>).detail;
-      this.removeElement(id);
-      this.selectElement(null);
-      this._updateFormattingToolbar();
-    });
-
-    // Handle autosave requests bubbled from CommentElement
-    this.ui.container.addEventListener('element:autosave', () => {
-      this._autosave();
-    });
-
-     
-    document.getElementById('clearSignature')?.addEventListener('click', () => this.signaturePad.clear());
-    document.getElementById('cancelSignature')?.addEventListener('click', () => this.closeSignatureModal());
-    document.getElementById('saveSignature')?.addEventListener('click', () => this.saveSignature());
-
-    // Code modal
-    this.ui.cancelCodeModal.addEventListener('click', () => this.closeCodeModal());
-    this.ui.saveCodeModal.addEventListener('click', () => void this.saveCodeModal());
-    this.ui.codeFormatSelect.addEventListener('change', () => { this._syncCodeOptionsVisibility(); this._triggerCodePreview(); });
-    this.ui.codeDataInput.addEventListener('input', () => this._triggerCodePreview());
-    this.ui.qrStyledChk.addEventListener('change', () => { this._syncCodeOptionsVisibility(); this._triggerCodePreview(); });
-    this.ui.qrEclevelSelect.addEventListener('change', () => this._triggerCodePreview());
-    this.ui.barcodeShowTextChk.addEventListener('change', () => this._triggerCodePreview());
-    this.ui.qrDotStyle.addEventListener('change', () => this._triggerCodePreview());
-    this.ui.qrDotColor.addEventListener('input', () => this._triggerCodePreview());
-    this.ui.qrBgColor.addEventListener('input', () => this._triggerCodePreview());
-    this.ui.qrLogoInput.addEventListener('change', (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        this._qrLogoDataUrl = (ev.target?.result as string) ?? null;
-        this.ui.qrLogoName.textContent = file.name;
-        this.ui.qrLogoClearBtn.style.display = '';
-        this._triggerCodePreview();
-      };
-      reader.readAsDataURL(file);
-    });
-    this.ui.qrLogoClearBtn.addEventListener('click', () => {
-      this._qrLogoDataUrl = null;
-      this.ui.qrLogoInput.value = '';
-      this.ui.qrLogoName.textContent = '';
-      this.ui.qrLogoClearBtn.style.display = 'none';
-      this._triggerCodePreview();
-    });
-     
-
-    this.ui.sigLineWidthInput.addEventListener('change', (e) => {
-      this.signaturePad.setLineWidth(parseInt((e.target as HTMLInputElement).value));
-    });
-    this.ui.sigColorInput.addEventListener('change', (e) => {
-      this.signaturePad.setColor((e.target as HTMLInputElement).value);
-    });
-
-    document.addEventListener('pointermove', (e) => {
-      this.interactionHandler.handlePointerMove(e);
-      this.drawingHandler.handlePointerMove(e);
-      this.eraserHandler.handlePointerMove(e);
-      this.inkLayerHandler.handlePointerMove(e);
-      this._updatePlacementGhost(e);
-    });
-    document.addEventListener('pointerup', (e) => {
-      this.interactionHandler.handlePointerUp(e);
-      this.drawingHandler.handlePointerUp(e);
-      this.eraserHandler.handlePointerUp(e);
-      this.inkLayerHandler.handlePointerUp(e);
-    });
-    document.addEventListener('pointercancel', (e) => {
-      this.interactionHandler.handlePointerCancel(e);
-      this.drawingHandler.handlePointerCancel(e);
-      this.eraserHandler.cancel();
-      this.inkLayerHandler.handlePointerCancel(e);
-    });
-
-    this.ui.zoomInBtn.addEventListener('click',  () => { this._isFitMode = false; this.applyZoom(this.zoomScale + 0.1); });
-    this.ui.zoomOutBtn.addEventListener('click', () => { this._isFitMode = false; this.applyZoom(this.zoomScale - 0.1); });
-    this.ui.fitBtn.addEventListener('click', () => this.fitToWidth());
-    this.ui.undoBtn.addEventListener('click', () => this.undo());
-    this.ui.redoBtn.addEventListener('click', () => this.redo());
-    this.ui.copyBtn.addEventListener('click', () => {
-      const sel = window.getSelection()?.toString();
-      if (sel) { navigator.clipboard.writeText(sel).catch(() => {}); return; }
-      this._copySelectedElement();
-    });
-    this.ui.pasteBtn.addEventListener('click', () => this._pasteElement());
-
-    this.ui.arrowBtn.addEventListener('click',    () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'drawArrow' ? 'select' : 'drawArrow');
-    });
-    this.ui.rectBtn.addEventListener('click',     () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'drawRect' ? 'select' : 'drawRect');
-    });
-    this.ui.circleBtn.addEventListener('click',   () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'drawEllipse' ? 'select' : 'drawEllipse');
-    });
-    this.ui.freehandBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) {
-        // Auto-create blank A4 page then activate freehand
-        this._pendingModeAfterBlankPage = 'drawFreehand';
-        this._openBlankPageModal();
-        return;
-      }
-      this.setMode(this.mode === 'drawFreehand' ? 'select' : 'drawFreehand');
-    });
-    this.ui.fillBucketBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'fillBucket' ? 'select' : 'fillBucket');
-    });
-    this.ui.donePill.addEventListener('click', () => this.setMode('select'));
-    this.ui.eraserBtn.addEventListener('click', () => {
-      if (!this.documentModel.pageCount) return;
-      this.setMode(this.mode === 'drawErase' ? 'select' : 'drawErase');
-    });
-    this.ui.canvas.addEventListener('pointerdown', (e) => this.drawingHandler.handlePointerDown(e));
-    this.ui.canvas.addEventListener('pointerdown', (e) => this.eraserHandler.handlePointerDown(e));
-    this.ui.canvas.addEventListener('pointerdown', (e) => this.inkLayerHandler.handlePointerDown(e));
-
-    // File menu — use position:fixed so the dropdown escapes toolbar overflow clipping
-    this.ui.fileMenuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = this.ui.fileMenuWrap.classList.toggle('open');
-      if (isOpen) {
-        const rect = this.ui.fileMenuBtn.getBoundingClientRect();
-        const drop = this.ui.fileMenuWrap.querySelector('.file-menu-dropdown') as HTMLElement;
-        drop.style.top  = (rect.bottom + 4) + 'px';
-        drop.style.left = rect.left + 'px';
-      }
-    });
-    // Draw flyout — same position:fixed pattern; satellite controls keep flyout open
-    this.ui.drawBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = this.ui.drawFlyoutWrap.classList.toggle('open');
-      this.ui.drawBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = this.ui.drawBtn.getBoundingClientRect();
-        const flyout = document.getElementById('drawFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
-    });
-    // Close flyout when a tool button (aria-pressed) is picked; satellite controls don't close it
-    document.getElementById('drawFlyout')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).hasAttribute('aria-pressed')) {
-        this.ui.drawFlyoutWrap.classList.remove('open');
-        this.ui.drawBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
-    // Annotate flyout — same position:fixed pattern; no satellite controls
-    this.ui.annotateBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = this.ui.annotateFlyoutWrap.classList.toggle('open');
-      this.ui.annotateBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = this.ui.annotateBtn.getBoundingClientRect();
-        const flyout = document.getElementById('annotateFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
-    });
-    document.getElementById('annotateFlyout')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).hasAttribute('aria-pressed')) {
-        this.ui.annotateFlyoutWrap.classList.remove('open');
-        this.ui.annotateBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
-    // Text split-button — chevron opens chooser flyout
-    this.ui.textChevronBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = this.ui.textSplitWrap.classList.toggle('open');
-      this.ui.textChevronBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = this.ui.textChevronBtn.getBoundingClientRect();
-        const flyout = document.getElementById('textFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
-    });
-    // Left part activates last-used text mode; also closes flyout if open
-    this.ui.textModeBtn.addEventListener('click', () => {
-      this.ui.textSplitWrap.classList.remove('open');
-      this.ui.textChevronBtn.setAttribute('aria-expanded', 'false');
-      if (!this.documentModel.pageCount) return;
-      const m = (this.ui.textModeBtn.dataset['mode'] ?? 'addText') as ToolMode;
-      this.setMode(this.mode === m ? 'select' : m);
-    });
-    document.getElementById('textFlyout')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('[aria-pressed]')) {
-        this.ui.textSplitWrap.classList.remove('open');
-        this.ui.textChevronBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
-    // Export ▾ split-button — chevron opens Preview + Watermark flyout
-    this.ui.exportChevronBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = this.ui.exportSplitWrap.classList.toggle('open');
-      this.ui.exportChevronBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) {
-        const rect = this.ui.exportChevronBtn.getBoundingClientRect();
-        const flyout = document.getElementById('exportFlyout') as HTMLElement;
-        flyout.style.top  = (rect.bottom + 4) + 'px';
-        flyout.style.left = rect.left + 'px';
-      }
-    });
-    document.getElementById('exportFlyout')?.addEventListener('click', () => {
-      this.ui.exportSplitWrap.classList.remove('open');
-      this.ui.exportChevronBtn.setAttribute('aria-expanded', 'false');
-    });
-    document.addEventListener('click', (e) => {
-      this.ui.fileMenuWrap.classList.remove('open');
-      if (!this.ui.drawFlyoutWrap.contains(e.target as Node)) {
-        this.ui.drawFlyoutWrap.classList.remove('open');
-        this.ui.drawBtn.setAttribute('aria-expanded', 'false');
-      }
-      if (!this.ui.annotateFlyoutWrap.contains(e.target as Node)) {
-        this.ui.annotateFlyoutWrap.classList.remove('open');
-        this.ui.annotateBtn.setAttribute('aria-expanded', 'false');
-      }
-      if (!this.ui.textSplitWrap.contains(e.target as Node)) {
-        this.ui.textSplitWrap.classList.remove('open');
-        this.ui.textChevronBtn.setAttribute('aria-expanded', 'false');
-      }
-      if (!this.ui.exportSplitWrap.contains(e.target as Node)) {
-        this.ui.exportSplitWrap.classList.remove('open');
-        this.ui.exportChevronBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
-    document.addEventListener('selectionchange', () => this._updateCopyPasteBtns());
-    this.ui.fileMenuOpen.addEventListener('click', () => {
-      this.ui.fileMenuWrap.classList.remove('open');
-      this.ui.fileInput.click();
-    });
-    this.ui.fileMenuClose.addEventListener('click', () => {
-      this.ui.fileMenuWrap.classList.remove('open');
-      this._closeDocument();
-    });
-    this.ui.fileMenuClearAnnotations.addEventListener('click', () => {
-      this.ui.fileMenuWrap.classList.remove('open');
-      this.clearAll();
-    });
-    this.ui.fileMenuResetSession.addEventListener('click', () => {
-      this.ui.fileMenuWrap.classList.remove('open');
-      this._clearSave();
-    });
-
-    document.getElementById('fileMenuBlankPage')?.addEventListener('click', () => {
-      this.ui.fileMenuWrap.classList.remove('open');
-      this._openBlankPageModal();
-    });
-
-    const blankModal = document.getElementById('blankPageModal') as HTMLElement;
-    const blankSizeSelect = document.getElementById('blankPageSize') as HTMLSelectElement;
-    const blankCustomDiv = document.getElementById('blankPageCustomSize') as HTMLElement;
-    blankSizeSelect?.addEventListener('change', () => {
-      blankCustomDiv.style.display = blankSizeSelect.value === 'custom' ? 'block' : 'none';
-    });
-    document.getElementById('blankPageCancelBtn')?.addEventListener('click', () => {
-      blankModal.style.display = 'none';
-    });
-    blankModal?.addEventListener('click', (e) => { if (e.target === blankModal) blankModal.style.display = 'none'; });
-    document.getElementById('blankPageInsertBtn')?.addEventListener('click', () => {
-      this._insertBlankPage();
-      blankModal.style.display = 'none';
-    });
-
-    // ── Password entry modal (decrypt on open) ──────────────────────────────
-    const pdfPwdModal = document.getElementById('pdfPasswordModal') as HTMLElement;
-    const pdfPwdInput = document.getElementById('pdfPasswordInput') as HTMLInputElement;
-    const pdfPwdError = document.getElementById('pdfPasswordError') as HTMLElement;
-    const pdfPwdToggle = document.getElementById('pdfPasswordToggle') as HTMLButtonElement;
-    pdfPwdToggle?.addEventListener('click', () => {
-      pdfPwdInput.type = pdfPwdInput.type === 'password' ? 'text' : 'password';
-    });
-    document.getElementById('pdfPasswordSubmitBtn')?.addEventListener('click', () => {
-      const pw = pdfPwdInput.value;
-      if (!pw) { pdfPwdError.style.display = 'block'; return; }
-      pdfPwdError.style.display = 'none';
-      pdfPwdModal.style.display = 'none';
-      this._pendingPasswordResolve?.(pw);
-      this._pendingPasswordResolve = null;
-    });
-    pdfPwdInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') document.getElementById('pdfPasswordSubmitBtn')?.click();
-    });
-    document.getElementById('pdfPasswordCancelBtn')?.addEventListener('click', () => {
-      pdfPwdModal.style.display = 'none';
-      this._pendingPasswordResolve?.(null);
-      this._pendingPasswordResolve = null;
-    });
-    pdfPwdModal?.addEventListener('click', (e) => {
-      if (e.target === pdfPwdModal) {
-        pdfPwdModal.style.display = 'none';
-        this._pendingPasswordResolve?.(null);
-        this._pendingPasswordResolve = null;
-      }
-    });
-
-    // ── Lock PDF modal (encrypt on export) ──────────────────────────────────
-    const lockModal = document.getElementById('lockPdfModal') as HTMLElement;
-    document.getElementById('fileMenuLockPdf')?.addEventListener('click', () => {
-      this.ui.fileMenuWrap.classList.remove('open');
-      lockModal.style.display = 'flex';
-      const status = document.getElementById('lockPdfStatus') as HTMLElement;
-      status.style.display = this._exportPassword ? 'block' : 'none';
-      (document.getElementById('lockUserPassword') as HTMLInputElement).value = this._exportPassword?.user ?? '';
-      (document.getElementById('lockOwnerPassword') as HTMLInputElement).value = this._exportPassword?.owner ?? '';
-    });
-    document.getElementById('lockPdfApplyBtn')?.addEventListener('click', () => {
-      const user = (document.getElementById('lockUserPassword') as HTMLInputElement).value.trim();
-      if (!user) { this.showToast('User password is required'); return; }
-      const owner = (document.getElementById('lockOwnerPassword') as HTMLInputElement).value.trim() || user;
-      this._exportPassword = { user, owner };
-      const status = document.getElementById('lockPdfStatus') as HTMLElement;
-      status.style.display = 'block';
-      lockModal.style.display = 'none';
-      this.showToast(t('toast.pdfWillBeLocked'));
-    });
-    document.getElementById('lockPdfRemoveBtn')?.addEventListener('click', () => {
-      this._exportPassword = null;
-      (document.getElementById('lockPdfStatus') as HTMLElement).style.display = 'none';
-      lockModal.style.display = 'none';
-      this.showToast(t('toast.pdfLockRemoved'));
-    });
-    document.getElementById('lockPdfCancelBtn')?.addEventListener('click', () => { lockModal.style.display = 'none'; });
-    lockModal?.addEventListener('click', (e) => { if (e.target === lockModal) lockModal.style.display = 'none'; });
-
-    this.ui.helpBtn.addEventListener('click', () => this._toggleHelp());
-     
-    document.getElementById('closeHelp')?.addEventListener('click', () => this._toggleHelp(false));
-    this.ui.helpModal.addEventListener('click', (e) => { if (e.target === this.ui.helpModal) this._toggleHelp(false); });
-
-
-    this.ui.firstPage.addEventListener('click', () => this._goToPage(1));
-    this.ui.lastPage.addEventListener('click',  () => this._goToPage(this.documentModel.pageCount));
-
-    this.ui.pageInput.addEventListener('change', (e) => {
-      this._goToPage(parseInt((e.target as HTMLInputElement).value) || 1);
-    });
-    this.ui.pageInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        (e.target as HTMLInputElement).blur();
-        this._goToPage(parseInt((e.target as HTMLInputElement).value) || 1);
-      }
-    });
-
-    this.ui.container.addEventListener('wheel', (e) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      this._isFitMode = false;
-      this.applyZoom(this.zoomScale + (e.deltaY < 0 ? 0.05 : -0.05));
-    }, { passive: false });
-
-    this.ui.fontFamily.addEventListener('change', (e) => {
-      if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-      const te = this.selectedElement as TextElement;
-      const before = { fontFamily: te.fontFamily };
-      te.fontFamily = (e.target as HTMLInputElement).value;
-      this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontFamily: te.fontFamily }));
-      this.renderElements(); this._autosave();
-    });
-    this.ui.boldBtn.addEventListener('click', () => {
-      if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-      const te = this.selectedElement as TextElement;
-      const before = { bold: te.bold };
-      te.bold = !te.bold;
-      this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { bold: te.bold }));
-      this.ui.boldBtn.classList.toggle('btn-active-fmt', te.bold);
-      this.renderElements(); this._autosave();
-    });
-    this.ui.italicBtn.addEventListener('click', () => {
-      if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-      const te = this.selectedElement as TextElement;
-      const before = { italic: te.italic };
-      te.italic = !te.italic;
-      this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { italic: te.italic }));
-      this.ui.italicBtn.classList.toggle('btn-active-fmt', te.italic);
-      this.renderElements(); this._autosave();
-    });
-    this.ui.fontSizeInput.addEventListener('change', (e) => {
-      const size = Math.max(8, Math.min(72, parseInt((e.target as HTMLInputElement).value) || 14));
-      if (this.selectedElement && this.selectedElement.type === 'text') {
-        const te = this.selectedElement as TextElement;
-        const before = { fontSize: te.fontSize };
-        te.fontSize = size;
-        this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontSize: size }));
-        this.renderElements(); this._autosave();
-      }
-    });
-    this.ui.colorInput.addEventListener('input', (e) => {
-      const val = (e.target as HTMLInputElement).value;
-      if (this.selectedElement?.type === 'text') {
-        const te = this.selectedElement as TextElement;
-        const before = { color: te.color };
-        te.color = val;
-        this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { color: val }));
-        this.renderElements(); this._autosave();
-      } else if (this.selectedElement?.type === 'shape') {
-        (this.selectedElement as ShapeElement).strokeColor = val;
-        this.renderElements(); this._autosave();
-      } else if (this.selectedElement?.type === 'redaction') {
-        const re = this.selectedElement as RedactionElement;
-        const before = { color: re.color };
-        re.color = val;
-        this.ui.redactColorInput.value = val;
-        this.historyManager.record(new MoveResizeCmd(this.elements, re, before, { color: val }));
-        this.renderElements(); this._autosave();
-      }
-    });
-    this.ui.fillNoneBtn.addEventListener('click', () => {
-      this._noFill = true;
-      this._syncFillToggleUI();
-      if (this.selectedElement?.type === 'shape') {
-        const she = this.selectedElement as ShapeElement;
-        const before = { fillColor: she.fillColor };
-        she.fillColor = undefined;
-        this.historyManager.record(new MoveResizeCmd(this.elements, she, before, { fillColor: undefined }));
-        this.renderElements(); this._autosave();
-      }
-    });
-    this.ui.fillColorInput.addEventListener('mousedown', () => {
-      this._noFill = false;
-      this._syncFillToggleUI();
-    });
-    this.ui.fillColorInput.addEventListener('input', (e) => {
-      const val = (e.target as HTMLInputElement).value;
-      this._noFill = false;
-      this._syncFillToggleUI();
-      if (this.selectedElement?.type === 'shape') {
-        const she = this.selectedElement as ShapeElement;
-        const before = { fillColor: she.fillColor };
-        she.fillColor = val;
-        this.historyManager.record(new MoveResizeCmd(this.elements, she, before, { fillColor: val }));
-        this.renderElements(); this._autosave();
-      }
-    });
-    this.ui.redactColorInput.addEventListener('input', (e) => {
-      const val = (e.target as HTMLInputElement).value;
-      if (this.selectedElement?.type === 'redaction') {
-        const re = this.selectedElement as RedactionElement;
-        const before = { color: re.color };
-        re.color = val;
-        this.historyManager.record(new MoveResizeCmd(this.elements, re, before, { color: val }));
-        this.renderElements(); this._autosave();
-      }
-    });
-    document.getElementById('redactEyedropperBtn')?.addEventListener('click', async () => {
-      if (!('EyeDropper' in window)) { this.showToast('Eyedropper not supported in this browser'); return; }
-      try {
-        const dropper = new (window as { EyeDropper: new() => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper();
-        const result = await dropper.open();
-        this.ui.redactColorInput.value = result.sRGBHex;
-        this.ui.redactColorInput.dispatchEvent(new Event('input', { bubbles: true }));
-      } catch { /* user cancelled */ }
-    });
-    this.ui.colorEyedropperBtn.addEventListener('click', async () => {
-      if (!('EyeDropper' in window)) { this.showToast('Eyedropper not supported in this browser'); return; }
-      try {
-        const dropper = new (window as { EyeDropper: new() => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper();
-        const result = await dropper.open();
-        this.ui.colorInput.value = result.sRGBHex;
-        this.ui.colorInput.dispatchEvent(new Event('input', { bubbles: true }));
-      } catch { /* user cancelled */ }
-    });
-    this.ui.fontSizeDownBtn.addEventListener('click', () => {
-      if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-      const te = this.selectedElement as TextElement;
-      const before = { fontSize: te.fontSize };
-      const newSize = Math.max(8, te.fontSize - 2);
-      te.fontSize = newSize;
-      this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontSize: newSize }));
-      this.ui.fontSizeInput.value = String(newSize);
-      this.renderElements(); this._autosave();
-    });
-    this.ui.fontSizeUpBtn.addEventListener('click', () => {
-      if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-      const te = this.selectedElement as TextElement;
-      const before = { fontSize: te.fontSize };
-      const newSize = Math.min(72, te.fontSize + 2);
-      te.fontSize = newSize;
-      this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontSize: newSize }));
-      this.ui.fontSizeInput.value = String(newSize);
-      this.renderElements(); this._autosave();
-    });
-    this.ui.shapeWidth.addEventListener('change', (e) => {
-      if (this.selectedElement?.type === 'shape') {
-        (this.selectedElement as ShapeElement).strokeWidth = parseInt((e.target as HTMLInputElement).value) || 2;
-        this.renderElements(); this._autosave();
-      }
-    });
-
-    // Watermark modal
-    this.ui.watermarkBtn.addEventListener('click', () => this._openWatermarkModal());
-    this.ui.wmCancel.addEventListener('click', () => this._closeWatermarkModal());
-    let _wmBackdropDown = false;
-    this.ui.watermarkModal.addEventListener('mousedown', (e) => { _wmBackdropDown = e.target === this.ui.watermarkModal; });
-    this.ui.watermarkModal.addEventListener('mouseup',   (e) => { if (_wmBackdropDown && e.target === this.ui.watermarkModal) this._closeWatermarkModal(); _wmBackdropDown = false; });
-    this.ui.wmApply.addEventListener('click', () => this._applyWatermark());
-    this._setupWatermarkPreviewListeners();
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (this.ui.helpModal.classList.contains('active')) { this._toggleHelp(false); return; }
-        if (this.ui.signatureModal.classList.contains('active')) { this.closeSignatureModal(); return; }
-        if (this.ui.watermarkModal.classList.contains('active')) { this._closeWatermarkModal(); return; }
-        if (this.ui.codeModal.classList.contains('active')) { this.closeCodeModal(); return; }
-        if (this.ui.findBar.style.display !== 'none') { this._closeFindBar(); return; }
-        this.setMode('select');
-        this.selectElement(null);
-        (document.activeElement as HTMLElement)?.blur();
-        return;
-      }
-      if (e.target instanceof Element && e.target.matches('input, textarea, select')) return;
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key.toLowerCase()) {
-          case 'z': e.preventDefault(); if (e.shiftKey) this.redo(); else this.undo(); break;
-          case 'y': e.preventDefault(); this.redo(); break;
-          case 'f': e.preventDefault(); if (this.documentModel.pageCount) this._openFindBar(); break;
-          case 'c': if (!window.getSelection()?.toString()) { e.preventDefault(); this._copySelectedElement(); } break;
-          case 'v': e.preventDefault(); this._pasteElement(); break;
-          case 'arrowright': e.preventDefault(); this.nextPage(); break;
-          case 'arrowleft':  e.preventDefault(); this.prevPage(); break;
-        }
-        return;
-      }
-      switch (e.key) {
-        case 'Delete': case 'Backspace':
-          if (this.selectedElement) {
-            e.preventDefault();
-            this.removeElement(this.selectedElement.id);
-            this.selectedElement = null;
-            this._updateFormattingToolbar();
-          }
-          break;
-        case 't': case 'T':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'addText' ? 'select' : 'addText');
-          break;
-        case 's': case 'S':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'addSignature' ? 'select' : 'addSignature');
-          break;
-        case 'i': case 'I': if (this.documentModel.pageCount) this.ui.addImageInput.click(); break;
-        case 'a': case 'A':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'drawArrow' ? 'select' : 'drawArrow');
-          break;
-        case 'r': case 'R':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'drawRect' ? 'select' : 'drawRect');
-          break;
-        case 'c': case 'C':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'drawEllipse' ? 'select' : 'drawEllipse');
-          break;
-        case 'b': case 'B':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'fillBucket' ? 'select' : 'fillBucket');
-          break;
-        case 'd': case 'D':
-        case 'f': case 'F':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'drawFreehand' ? 'select' : 'drawFreehand');
-          break;
-        case 'h': case 'H':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'drawHighlight' ? 'select' : 'drawHighlight');
-          break;
-        case 'n': case 'N':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'addComment' ? 'select' : 'addComment');
-          break;
-        case 'e': case 'E':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'drawErase' ? 'select' : 'drawErase');
-          break;
-        case 'x': case 'X':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'editText' ? 'select' : 'editText');
-          break;
-        case 'k': case 'K':
-          if (this.documentModel.pageCount) this.setMode(this.mode === 'drawRedaction' ? 'select' : 'drawRedaction');
-          break;
-        case 'q': case 'Q':
-          if (this.documentModel.pageCount) this.openCodeModal();
-          break;
-        case 'w': case 'W':
-          if (this.documentModel.pageCount) this._openWatermarkModal();
-          break;
-        case '?': this._toggleHelp(); break;
-        case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight':
-          if (this.selectedElement) {
-            e.preventDefault();
-            const step = e.shiftKey ? 10 : 1;
-            const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
-            const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0;
-            this.selectedElement.x += dx;
-            this.selectedElement.y += dy;
-            // Arrow: translate endpoint geometry
-            const el = this.selectedElement as ShapeElement;
-            if (el.x1 !== undefined) { el.x1 += dx; el.x2 += dx; el.y1 += dy; el.y2 += dy; }
-            // Freehand: translate all path points
-            if (Array.isArray(el.points) && el.points.length) {
-              el.points = el.points.map((p: {x: number, y: number}) => ({ x: p.x + dx, y: p.y + dy }));
-            }
-            this.renderElements();
-          }
-          break;
-      }
-    });
-    this.ui.canvas.style.touchAction = 'pan-x pan-y';
+    bindEvents(this);
   }
 
   // ── Watermark ────────────────────────────────────────────────
-  private _setupWatermarkPreviewListeners(): void {
+  _setupWatermarkPreviewListeners(): void {
     const update = () => this._updateWatermarkPreview();
     this.ui.wmText.addEventListener('input', update);
     this.ui.wmColor.addEventListener('input', update);
@@ -894,7 +206,7 @@ export class PDFEditorApp {
     this._drawWatermarkOnCanvas(ctx, w, h, liveWm, previewScale);
   }
 
-  private _openWatermarkModal(): void {
+  _openWatermarkModal(): void {
     const wm = this.documentModel.watermark;
     this.ui.wmEnabled.checked = wm.enabled;
     this.ui.wmText.value = wm.text;
@@ -918,13 +230,13 @@ export class PDFEditorApp {
     );
   }
 
-  private _closeWatermarkModal(): void {
+  _closeWatermarkModal(): void {
     this.ui.watermarkModal.classList.remove('active');
     this._trapCleanup?.();
     this._trapCleanup = null;
   }
 
-  private _applyWatermark(): void {
+  _applyWatermark(): void {
     this.documentModel.watermark = {
       enabled: this.ui.wmEnabled.checked,
       text: this.ui.wmText.value || 'WATERMARK',
@@ -957,85 +269,48 @@ export class PDFEditorApp {
   _closeFindBar(): void {
     this.ui.findBar.style.display = 'none';
     this._clearSearchMatches();
-    this._findMatches = [];
-    this._findMatchIndex = -1;
+    this._searchManager.clear();
     this.ui.findCount.textContent = '';
   }
 
-  private async _search(): Promise<void> {
-    const myGen = ++this._searchGen;
+  async _search(): Promise<void> {
     this._clearSearchMatches();
-    this._findMatches = [];
-    this._findMatchIndex = -1;
+    this._searchManager.clear();
     const query = this.ui.findInput.value;
-    const docPage = this.documentModel.currentPage;
-    if (!query.trim() || !docPage) { this._updateFindCount(); return; }
-
-    const src = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
-    if (!src) return;
-    const page = await src.doc.getPage(docPage.sourcePageNum);
-    await this._textSearch.buildIndex(page, docPage.id);
-
-    if (myGen !== this._searchGen) return; // stale — a newer search has started
-
-    const effectiveRotation = ((page.rotate + (docPage.rotation ?? 0)) % 360 + 360) % 360;
-    const viewport = page.getViewport({ scale: this.zoomScale, rotation: effectiveRotation });
-    this._findMatches = this._textSearch.search(query, docPage.id, viewport, this.zoomScale, { caseSensitive: this._findCaseSensitive, useRegex: this._findRegex });
-
-    if (myGen !== this._searchGen) return; // stale after search
-
-    // Also match user-added text boxes and comments on the current page
-    const _matchesQuery = (text: string): boolean => {
-      if (this._findRegex) {
-        try { return new RegExp(query, this._findCaseSensitive ? '' : 'i').test(text); } catch { return false; }
-      }
-      const haystack = this._findCaseSensitive ? text : text.toLowerCase();
-      return haystack.includes(this._findCaseSensitive ? query : query.toLowerCase());
-    };
-    for (const el of this.elements) {
-      if (el.pageId !== docPage.id) continue;
-      if (el.type === 'text') {
-        const textEl = el as TextElement;
-        if (textEl.text && _matchesQuery(textEl.text))
-          this._findMatches.push({ pageId: docPage.id, x: textEl.x, y: textEl.y, width: textEl.width, height: textEl.height });
-      } else if (el.type === 'comment') {
-        const commentEl = el as CommentElement;
-        if (commentEl.text && _matchesQuery(commentEl.text))
-          this._findMatches.push({ pageId: docPage.id, x: commentEl.x, y: commentEl.y, width: commentEl.width, height: commentEl.height });
-      }
-    }
-
-    if (this._findMatches.length > 0) {
-      this._findMatchIndex = 0;
-      this._showSearchMatches();
-    }
+    const settled = await this._searchManager.run(query, {
+      documentModel: this.documentModel,
+      elements: this.elements,
+      textSearchHandler: this._textSearch,
+      zoomScale: this.zoomScale,
+    });
+    if (!settled) return; // superseded by a newer call
+    if (this._searchManager.count > 0) this._showSearchMatches();
     this._updateFindCount();
   }
 
-  private _nextMatch(): void {
-    if (!this._findMatches.length) return;
-    this._findMatchIndex = (this._findMatchIndex + 1) % this._findMatches.length;
+  _nextMatch(): void {
+    if (!this._searchManager.count) return;
+    this._searchManager.next();
     this._showSearchMatches();
     this._updateFindCount();
   }
 
-  private _prevMatch(): void {
-    if (!this._findMatches.length) return;
-    this._findMatchIndex = (this._findMatchIndex - 1 + this._findMatches.length) % this._findMatches.length;
+  _prevMatch(): void {
+    if (!this._searchManager.count) return;
+    this._searchManager.prev();
     this._showSearchMatches();
     this._updateFindCount();
   }
 
-  private _highlightCurrentMatch(): void {
-    if (this._findMatchIndex < 0 || this._findMatchIndex >= this._findMatches.length) return;
-    const match = this._findMatches[this._findMatchIndex];
+  _highlightCurrentMatch(): void {
+    const match = this._searchManager.currentMatch;
     const pageId = this.documentModel.currentPage?.id;
-    if (!pageId) return;
+    if (!match || !pageId) return;
     const hlEl = new HighlightElement(match.x, match.y, match.width, match.height, pageId);
     this.historyManager.execute(new AddElementCmd(this.elements, hlEl));
     this._autosave();
-    this.renderElements();
-    this._showSearchMatches(); // re-render match overlays after renderElements clears elements
+    this.rebuildElementLayer();
+    this._showSearchMatches(); // re-render match overlays after rebuildElementLayer clears elements
     this.showToast(t('toast.highlightAdded'));
   }
 
@@ -1043,8 +318,8 @@ export class PDFEditorApp {
     this._clearSearchMatches();
     const offset = { left: this.ui.canvas.offsetLeft, top: this.ui.canvas.offsetTop };
     let activeDiv: Element | null = null;
-    this._findMatches.forEach((match, i) => {
-      const isActive = i === this._findMatchIndex;
+    this._searchManager.matches.forEach((match, i) => {
+      const isActive = i === this._searchManager.currentIndex;
       const div = document.createElement('div');
       div.className = 'search-match' + (isActive ? ' search-match-active' : '');
       Object.assign(div.style, {
@@ -1067,15 +342,15 @@ export class PDFEditorApp {
   }
 
   private _updateFindCount(): void {
-    if (!this._findMatches.length) {
+    if (!this._searchManager.count) {
       this.ui.findCount.textContent = this.ui.findInput.value ? '0 / 0' : '';
     } else {
-      this.ui.findCount.textContent = `${this._findMatchIndex + 1} / ${this._findMatches.length}`;
+      this.ui.findCount.textContent = `${this._searchManager.currentIndex + 1} / ${this._searchManager.count}`;
     }
   }
 
   // ── Image handling ───────────────────────────────────────────
-  private _handleImageFileSelect(e: Event): void {
+  _handleImageFileSelect(e: Event): void {
     const file = (e.target as HTMLInputElement).files?.[0];
     (e.target as HTMLInputElement).value = '';
     if (!file || !this.documentModel.currentPage) return;
@@ -1111,11 +386,11 @@ export class PDFEditorApp {
     this.historyManager.execute(new AddElementCmd(this.elements, imgEl));
     this._autosave();
     this.setMode('select');
-    this.renderElements();
+    this.rebuildElementLayer();
     this.selectElement(imgEl);
   }
 
-  onPlacementDragComplete(mode: 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x: number, y: number, w: number, h: number): void {
+  _commitPlacement(mode: 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x: number, y: number, w: number, h: number): void {
     const pageId = this.documentModel.currentPage?.id;
     if (!pageId) return;
     this._skipNextClick = true;
@@ -1132,7 +407,7 @@ export class PDFEditorApp {
       const textEl = new TextElement(x, y, pageId, options);
       this.historyManager.execute(new AddElementCmd(this.elements, textEl));
       this._autosave();
-      this.renderElements();
+      this.rebuildElementLayer();
       const inputEl = this.ui.container.querySelector(
         `[data-id='${textEl.id}'] input, [data-id='${textEl.id}'] textarea`
       ) as HTMLInputElement | null;
@@ -1163,7 +438,7 @@ export class PDFEditorApp {
       this.historyManager.execute(new AddElementCmd(this.elements, imgEl));
       this._autosave();
       this.setMode('select');
-      this.renderElements();
+      this.rebuildElementLayer();
       this.selectElement(imgEl);
 
     } else if (mode === 'addComment') {
@@ -1173,7 +448,7 @@ export class PDFEditorApp {
       this.historyManager.execute(new AddElementCmd(this.elements, commentEl));
       this._autosave();
       this.setMode('select');
-      this.renderElements();
+      this.rebuildElementLayer();
       this.selectElement(commentEl);
 
     } else if (mode === 'addCode') {
@@ -1195,7 +470,7 @@ export class PDFEditorApp {
       this.historyManager.execute(new AddElementCmd(this.elements, codeEl));
       this._autosave();
       this.setMode('select');
-      this.renderElements();
+      this.rebuildElementLayer();
       this.selectElement(codeEl);
 
     } else {
@@ -1215,13 +490,13 @@ export class PDFEditorApp {
       this.historyManager.execute(new AddElementCmd(this.elements, sigEl));
       this._autosave();
       this.setMode('select');
-      this.renderElements();
+      this.rebuildElementLayer();
       this.selectElement(sigEl);
     }
   }
 
   // ── PDF page management ───────────────────────────────────────
-  private async _handleAddPdfUpload(e: Event): Promise<void> {
+  async _handleAddPdfUpload(e: Event): Promise<void> {
     const files = Array.from((e.target as HTMLInputElement).files ?? []);
     (e.target as HTMLInputElement).value = '';
     this._textSearch.clearCache();
@@ -1258,7 +533,7 @@ export class PDFEditorApp {
     }
   }
 
-  private _deletePage(pageId: string): void {
+  _deletePage(pageId: string): void {
     if (this.documentModel.pageCount <= 1) {
       this.showToast(t('toast.cannotDeleteOnlyPage'));
       return;
@@ -1274,13 +549,13 @@ export class PDFEditorApp {
     this.historyManager.execute(cmd);
   }
 
-  private _reorderPages(newOrder: string[]): void {
+  _reorderPages(newOrder: string[]): void {
     const before = this.documentModel.pages.map(p => p.id);
     const cmd = new ReorderPagesCmd(this.documentModel, before, newOrder, () => this._onPageStructureChange());
     this.historyManager.execute(cmd);
   }
 
-  private async _rotatePage(pageId: string, delta: number): Promise<void> {
+  async _rotatePage(pageId: string, delta: number): Promise<void> {
     const docPage = this.documentModel.pages.find(p => p.id === pageId);
     if (!docPage) return;
     const src = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
@@ -1308,7 +583,7 @@ export class PDFEditorApp {
     const inkStrokes = this.inkLayer.getStrokes(pageId);
     const inkBefore  = inkStrokes.map(s => s.points.map(p => ({ ...p })));
     const inkAfter   = inkStrokes.map(s =>
-      s.points.map(p => this._transformCanvasPoint(p.x, p.y, W, H, fromRot, toRot))
+      s.points.map(p => transformCanvasPoint(p.x, p.y, W, H, fromRot, toRot))
     );
     const hasInk = inkStrokes.length > 0;
 
@@ -1354,37 +629,9 @@ export class PDFEditorApp {
     this.showToast(t('toast.annotationsAdjusted'));
   }
 
-  /** Transform canvas-space point (top-left origin, scale=1) to PDF content-space point (bottom-left origin).
-   *  W_orig / H_orig are the unrotated page content dimensions.
-   *  totalRot is the effective CCW rotation (source + user) in degrees. */
-  private _transformPoint(px: number, py: number, W: number, H: number, totalRot: number): { x: number; y: number } {
-    switch (((totalRot % 360) + 360) % 360) {
-      case 90:  return { x: py,     y: px     };
-      case 180: return { x: W - px, y: py     };
-      case 270: return { x: W - py, y: H - px };
-      default:  return { x: px,     y: H - py };
-    }
-  }
-
-  /** Inverse of _transformPoint: PDF content space → canvas space. */
-  private _inverseTransformPoint(pdfX: number, pdfY: number, W: number, H: number, totalRot: number): { x: number; y: number } {
-    switch (((totalRot % 360) + 360) % 360) {
-      case 90:  return { x: pdfY,     y: pdfX     };
-      case 180: return { x: W - pdfX, y: pdfY     };
-      case 270: return { x: H - pdfY, y: W - pdfX };
-      default:  return { x: pdfX,     y: H - pdfY };
-    }
-  }
-
-  /** Transform a canvas-space point from one page rotation to another. */
-  private _transformCanvasPoint(cx: number, cy: number, W: number, H: number, fromRot: number, toRot: number): { x: number; y: number } {
-    const pdf = this._transformPoint(cx, cy, W, H, fromRot);
-    return this._inverseTransformPoint(pdf.x, pdf.y, W, H, toRot);
-  }
-
   /** Compute the post-rotation ElementTransformSnapshot for a single element. */
   private _rotateElementSnapshot(el: PDFElement, W: number, H: number, fromRot: number, toRot: number): ElementTransformSnapshot {
-    const tp = (cx: number, cy: number) => this._transformCanvasPoint(cx, cy, W, H, fromRot, toRot);
+    const tp = (cx: number, cy: number) => transformCanvasPoint(cx, cy, W, H, fromRot, toRot);
     const shape = el as ShapeElement;
 
     if (el.type === 'shape' && shape.shapeType === 'arrow') {
@@ -1422,7 +669,7 @@ export class PDFEditorApp {
     };
   }
 
-  private async _onPageStructureChange(): Promise<void> {
+  async _onPageStructureChange(): Promise<void> {
     if (this._pageUpdatePending) return;
     this._pageUpdatePending = true;
     try {
@@ -1431,7 +678,7 @@ export class PDFEditorApp {
       this._thumbnailPanel?.updateActive();
       this.selectElement(null);
       this.updatePageInfo();
-      this.renderElements();
+      this.rebuildElementLayer();
       this._autosave();
     } finally {
       this._pageUpdatePending = false;
@@ -1453,7 +700,7 @@ export class PDFEditorApp {
     if (this.historyManager.undo()) {
       this.selectedElement = null;
       this._renderCurrentPage().then(() => {
-        this.renderElements();
+        this.rebuildElementLayer();
         this._thumbnailPanel?.updateActive();
         this.updatePageInfo();
       }).catch((err: unknown) => {
@@ -1470,7 +717,7 @@ export class PDFEditorApp {
     if (this.historyManager.redo()) {
       this.selectedElement = null;
       this._renderCurrentPage().then(() => {
-        this.renderElements();
+        this.rebuildElementLayer();
         this._thumbnailPanel?.updateActive();
         this.updatePageInfo();
       }).catch((err: unknown) => {
@@ -1498,36 +745,18 @@ export class PDFEditorApp {
     this.historyManager.execute(new ReplaceSourcePdfBytesCmd(src, before, after, onUpdate));
     // Initial render (undo/redo paths re-render the page via their own wrappers)
     await this._renderCurrentPage();
-    this.renderElements();
+    this.rebuildElementLayer();
   }
 
   // ── Autosave (IndexedDB) ──────────────────────────────────────
   _autosave() {
-    clearTimeout(this._autosaveTimer ?? undefined);
-    this._autosaveTimer = setTimeout(() => this._doAutosave(), 800);
-  }
-
-  private async _doAutosave(): Promise<void> {
-    if (!this.documentModel.pageCount) return;
-    const sourcePdfs = Array.from(this.documentModel.sourcePdfs.values()).map(s => ({
-      id: s.id, name: s.name, bytes: s.bytes,
+    this._sessionManager.schedule(() => ({
+      documentModel: this.documentModel,
+      elements: this.elements,
+      inkLayer: this.inkLayer,
+      formValues: this._formValues,
+      onError: (msg) => this.showToast(msg, 8000),
     }));
-    try {
-      await saveState({
-        elements: this.elements.map(el => el.toJSON()),
-        pages: [...this.documentModel.pages],
-        watermark: { ...this.documentModel.watermark },
-        currentPageIndex: this.documentModel.currentPageIndex,
-        sourcePdfs,
-        formValues: { ...this._formValues },
-        inkData: this.inkLayer.toJSON(),
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-        this.showToast(t('toast.storageFull'), 8000);
-      }
-      // Other errors (IDB unavailable in private browsing etc.) — silently skip
-    }
   }
 
   private _askRestoreSession(): Promise<boolean> {
@@ -1607,7 +836,7 @@ export class PDFEditorApp {
       this.ui.pageThumbnailContainer.style.display = '';
       await this._thumbnailPanel?.render();
       this.updatePageInfo();
-      this.renderElements();
+      this.rebuildElementLayer();
       this.showToast(t('toast.sessionRestored'));
     } catch (err) {
       // BUG-19: reset to clean state on partial restore failure
@@ -1710,7 +939,7 @@ export class PDFEditorApp {
         }
         await this._thumbnailPanel.render();
         this.updatePageInfo();
-        this.renderElements();
+        this.rebuildElementLayer();
         this._autosave();
         this.showToast(t('toast.blankPageInserted'));
         const pendingMode = this._pendingModeAfterBlankPage;
@@ -1722,7 +951,7 @@ export class PDFEditorApp {
       void this._thumbnailPanel?.render();
       this._thumbnailPanel?.updateActive();
       this.updatePageInfo();
-      void this._renderCurrentPage().then(() => this.renderElements());
+      void this._renderCurrentPage().then(() => this.rebuildElementLayer());
       this.showToast(t('toast.blankPageInserted'));
     }
   }
@@ -1738,7 +967,7 @@ export class PDFEditorApp {
     this.selectedElement = null;
     this._updateFormattingToolbar();
     this._autosave();
-    this.renderElements();
+    this.rebuildElementLayer();
     this.showToast(t('toast.annotationsCleared'));
   }
 
@@ -1769,7 +998,7 @@ export class PDFEditorApp {
     this.ui.fileMenuResetSession.disabled = true;
   }
 
-  private _closeDocument(): void {
+  _closeDocument(): void {
     clearState().catch(() => {});
     this.documentModel = new DocumentModel();
     this.renderer.setModel(this.documentModel);
@@ -1780,11 +1009,9 @@ export class PDFEditorApp {
     this.historyManager.clear();
     this._textSearch.clearCache();
     this._thumbnailPanel = null;
-    this._findMatches = [];
-    this._findMatchIndex = -1;
     this._closeFindBar();
-    this._findCaseSensitive = false;
-    this._findRegex = false;
+    this._searchManager.caseSensitive = false;
+    this._searchManager.regex = false;
     this.ui.findCaseSensitive.classList.remove('active');
     this.ui.findRegex.classList.remove('active');
     this.currentFilename = null;
@@ -1800,7 +1027,7 @@ export class PDFEditorApp {
      
     (document.getElementById('emptyState') as HTMLElement).style.display = 'flex';
     this._disableFileMenuDocItems();
-    this.renderElements(); // clear annotation DOM nodes after model is reset
+    this.rebuildElementLayer(); // clear annotation DOM nodes after model is reset
     this.showToast(t('toast.documentClosed'));
   }
 
@@ -1815,16 +1042,18 @@ export class PDFEditorApp {
         await (async () => {
           // convert non-PNG/JPEG to PNG via canvas
           if (file.type === 'image/png') return bytes;
-          return new Promise<Uint8Array>((resolve) => {
+          return new Promise<Uint8Array>((resolve, reject) => {
             const blob = URL.createObjectURL(file);
             const imgEl = new Image();
+            imgEl.onerror = () => { URL.revokeObjectURL(blob); reject(new Error(`Failed to decode image: ${file.name}`)); };
             imgEl.onload = () => {
               const canvas = document.createElement('canvas');
               canvas.width = imgEl.naturalWidth;
               canvas.height = imgEl.naturalHeight;
               canvas.getContext('2d')?.drawImage(imgEl, 0, 0);
               canvas.toBlob((b) => {
-                if (b) b.arrayBuffer().then(ab => resolve(new Uint8Array(ab)));
+                if (!b) { reject(new Error('canvas.toBlob returned null')); return; }
+                b.arrayBuffer().then(ab => resolve(new Uint8Array(ab)), reject);
               }, 'image/png');
               URL.revokeObjectURL(blob);
             };
@@ -1842,7 +1071,7 @@ export class PDFEditorApp {
     return { bytes, name: `${baseName}.pdf` };
   }
 
-  async handleFileUpload(e: Event) {
+  async _loadDocument(e: Event) {
     if (this._isLoading) return;
     this._isLoading = true;
     const inputEl = e.target as HTMLInputElement;
@@ -1943,11 +1172,11 @@ export class PDFEditorApp {
       this.ui.pageThumbnailContainer.style.display = '';
       await this._thumbnailPanel.render();
       this.updatePageInfo();
-      this.renderElements();
+      this.rebuildElementLayer();
       this._autosave();
     } catch (err) {
       this.showToast(t('toast.pdfLoadFailed', { error: err instanceof Error ? err.message.slice(0, 80) : 'unknown error' }));
-      console.error('[handleFileUpload]', err);
+      console.error('[_loadDocument]', err);
     } finally {
       this._isLoading = false;
     }
@@ -1973,7 +1202,7 @@ export class PDFEditorApp {
     });
     if (keep.length < before) {
       this.elements.splice(0, this.elements.length, ...keep);
-      this.renderElements();
+      this.rebuildElementLayer();
     }
   }
 
@@ -2133,7 +1362,7 @@ export class PDFEditorApp {
           el.bwipOpts = bwipOpts;
           el.cachedDataUrl = dataUrl;
           this._autosave();
-          this.renderElements();
+          this.rebuildElementLayer();
         }
       } else {
         // New placement — switch to addCode mode and wait for drag
@@ -2170,7 +1399,7 @@ export class PDFEditorApp {
     return { includetext: this.ui.barcodeShowTextChk.checked };
   }
 
-  private _syncCodeOptionsVisibility(): void {
+  _syncCodeOptionsVisibility(): void {
     const fmt = this.ui.codeFormatSelect.value;
     const isQr = fmt === 'qrcode';
     const is2D = ['qrcode', 'datamatrix', 'pdf417', 'azteccode'].includes(fmt);
@@ -2179,7 +1408,7 @@ export class PDFEditorApp {
     this.ui.barcodeShowTextRow.style.display = is2D ? 'none' : '';
   }
 
-  private _triggerCodePreview(delay = 400): void {
+  _triggerCodePreview(delay = 400): void {
     clearTimeout(this._codePreviewDebounce ?? undefined);
     this._codePreviewDebounce = setTimeout(() => void this._runCodePreview(), delay);
   }
@@ -2217,7 +1446,7 @@ export class PDFEditorApp {
     if (this.selectedElement === element) { this._updateFormattingToolbar(); return; }
     this._cleanEmptyTextElements();
     this.selectedElement = element;
-    this.renderElements();
+    this.rebuildElementLayer();
     this._updateFormattingToolbar();
     this._updateCopyPasteBtns();
   }
@@ -2226,7 +1455,7 @@ export class PDFEditorApp {
     return this._noFill ? undefined : this.ui.fillColorInput.value;
   }
 
-  private _syncFillToggleUI(): void {
+  _syncFillToggleUI(): void {
     const noFill = this._noFill;
     this.ui.fillNoneBtn.classList.toggle('active', noFill);
     this.ui.fillNoneBtn.setAttribute('aria-pressed', String(noFill));
@@ -2273,7 +1502,7 @@ export class PDFEditorApp {
     if (shapeTarget) {
       this.historyManager.execute(new FillColorCmd(this.elements, shapeTarget.id, (shapeTarget as ShapeElement).fillColor, newColor));
       this._autosave();
-      this.renderElements();
+      this.rebuildElementLayer();
       return;
     }
 
@@ -2349,7 +1578,7 @@ export class PDFEditorApp {
     textElement.y -= textElement.height / 2;
     this.historyManager.execute(new AddElementCmd(this.elements, textElement));
     this._autosave();
-    this.renderElements();
+    this.rebuildElementLayer();
     // Focus BEFORE selectElement so _cleanEmptyTextElements sees activeElement === input
     const inputEl = this.ui.container.querySelector(
       `[data-id='${textElement.id}'] input, [data-id='${textElement.id}'] textarea`
@@ -2359,7 +1588,7 @@ export class PDFEditorApp {
       inputEl.focus();
     }
     this.selectElement(textElement);
-    // selectElement calls renderElements() which recreates DOM — re-query and re-focus
+    // selectElement calls rebuildElementLayer() which recreates DOM — re-query and re-focus
     const freshInput = this.ui.container.querySelector(
       `[data-id='${textElement.id}'] input, [data-id='${textElement.id}'] textarea`
     ) as HTMLInputElement | null;
@@ -2375,11 +1604,11 @@ export class PDFEditorApp {
       this.selectedElement = null;
       this._updateFormattingToolbar();
     }
-    this.renderElements();
+    this.rebuildElementLayer();
     this._autosave();
   }
 
-  renderElements() {
+  rebuildElementLayer() {
     this.ui.container.querySelectorAll('.pdf-element').forEach(el => el.remove());
     const currentPageId = this.documentModel.currentPage?.id;
     if (!currentPageId) return;
@@ -2534,8 +1763,7 @@ export class PDFEditorApp {
     this.documentModel.currentPageIndex = index;
     this.selectElement(null);
     this._clearSearchMatches();
-    this._findMatches = [];
-    this._findMatchIndex = -1;
+    this._searchManager.clear();
     if (this.ui.findBar.style.display !== 'none') this.ui.findCount.textContent = '';
     if (this._isFitMode) {
       const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
@@ -2547,7 +1775,7 @@ export class PDFEditorApp {
     await this._renderCurrentPage();
     this._thumbnailPanel?.updateActive();
     this.updatePageInfo();
-    this.renderElements();
+    this.rebuildElementLayer();
     if (this.ui.findBar.style.display !== 'none' && this.ui.findInput.value) this._search();
     if (this._exportPreviewOpen) this._showExportPreview();
   }
@@ -2570,13 +1798,13 @@ export class PDFEditorApp {
     this.ui.zoomDisplay.textContent = Math.round(this.zoomScale * 100) + '%';
     await this._renderCurrentPage();
     this._thumbnailPanel?.invalidateAll();
-    this.renderElements();
+    this.rebuildElementLayer();
     // Re-run search at new scale so match overlays reposition correctly
     if (this.ui.findBar.style.display !== 'none' && this.ui.findInput.value) this._search();
     if (this._exportPreviewOpen) this._showExportPreview();
   }
 
-  private _showExportPreview(): void {
+  _showExportPreview(): void {
     const docPage = this.documentModel.currentPage;
     if (!docPage) return;
 
@@ -2607,7 +1835,7 @@ export class PDFEditorApp {
 
     const pageElements = this.elements.filter(el => el.pageId === docPage.id);
     for (const el of pageElements) {
-      const pdfPt = this._transformPoint(el.x, el.y, W, H, angle);
+      const pdfPt = transformPoint(el.x, el.y, W, H, angle);
       const screenX = pdfPt.x * this.zoomScale;
       const screenY = (H - pdfPt.y) * this.zoomScale;
       const div = document.createElement('div');
@@ -2637,7 +1865,7 @@ export class PDFEditorApp {
     const count = Math.max(1, Math.min(5, wm.density ?? 3));
     const stepX = Math.max(textWidth * 1.2, screenW / (count + 0.5));
     const stepY = Math.max(fontSize * 2.5, screenH / (count + 0.5));
-    const col = this.hexToRgbValues(wm.color);
+    const col = hexToRgbValues(wm.color);
     ctx.fillStyle = `rgba(${Math.round(col.r * 255)},${Math.round(col.g * 255)},${Math.round(col.b * 255)},${wm.opacity})`;
     ctx.textBaseline = 'alphabetic';
     const angleRad = wm.angle * Math.PI / 180;
@@ -2652,7 +1880,7 @@ export class PDFEditorApp {
     }
   }
 
-  private _hideExportPreview(): void {
+  _hideExportPreview(): void {
     this._exportPreviewOpen = false;
     this.ui.previewExportBtn.classList.remove('active');
     this.ui.previewExportBtn.setAttribute('aria-pressed', 'false');
@@ -2687,7 +1915,7 @@ export class PDFEditorApp {
     this.showToast('Pasted — Ctrl+Z to undo');
   }
 
-  private _updateCopyPasteBtns(): void {
+  _updateCopyPasteBtns(): void {
     const hasPdfText = !!window.getSelection()?.toString();
     this.uiController.updateCopyPasteBtns(!!this.selectedElement || hasPdfText, !!this._clipboard);
   }
@@ -2698,14 +1926,11 @@ export class PDFEditorApp {
    * removes the text layer so redacted content cannot be extracted.
    */
   private async _rasterizePageWithRedactions(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    srcDoc: any,
+    srcDoc: import('@cantoo/pdf-lib').PDFDocument,
     docPage: import('./documentModel').DocumentPage,
     elements: PDFElement[],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    pdfDoc: any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    libs: { rgb: any; StandardFonts: any; degrees: any },
+    pdfDoc: import('@cantoo/pdf-lib').PDFDocument,
+    libs: import('../utils/pdfLibTypes').PdfLibOps,
   ): Promise<void> {
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     void rgb; void StandardFonts; // used via libs param below
@@ -2732,7 +1957,7 @@ export class PDFEditorApp {
     const rasterErrors: string[] = [];
     for (const el of nonRedactions) {
       try {
-        await this._drawElementOnPage(tempDoc, tempPage, el, h_eff, w_eff, libs, W_orig, H_orig, totalRot, cropOriginX, cropOriginY);
+        await renderElementToPdfLib(el, { pdfDoc: tempDoc, page: tempPage, libs, h: h_eff, w: w_eff, W_orig, H_orig, totalRot, cropOriginX, cropOriginY } satisfies PdfRenderCtx);
       } catch {
         rasterErrors.push(`${el.type} (id ${el.id})`);
       }
@@ -2748,7 +1973,7 @@ export class PDFEditorApp {
     }
     const inkDataUrlRast = this._renderInkForExport(docPage.id, W_orig, H_orig, totalRot);
     if (inkDataUrlRast) {
-      const inkImg = await tempDoc.embedPng(this._dataUrlToUint8Array(inkDataUrlRast));
+      const inkImg = await tempDoc.embedPng(dataUrlToUint8Array(inkDataUrlRast));
       tempPage.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
     }
 
@@ -2782,13 +2007,63 @@ export class PDFEditorApp {
     const pngBytes = await new Promise<Uint8Array>((resolve, reject) => {
       offscreen.toBlob((blob) => {
         if (!blob) { reject(new Error('canvas toBlob failed')); return; }
-        blob.arrayBuffer().then(ab => resolve(new Uint8Array(ab)));
+        blob.arrayBuffer().then(ab => resolve(new Uint8Array(ab)), reject);
       }, 'image/png');
     });
 
     const pngImg  = await pdfDoc.embedPng(pngBytes);
     const newPage = pdfDoc.addPage([w_eff, h_eff]);
     newPage.drawImage(pngImg, { x: 0, y: 0, width: w_eff, height: h_eff });
+  }
+
+  // ── Shared export page pipeline ───────────────────────────────
+  /**
+   * Apply rotation, cropbox, elements, watermark, and ink to a pdf-lib page.
+   * Called by downloadPDF and downloadPage to eliminate duplicated rendering logic.
+   */
+  private async _applyPageOverlays(
+    pdfDoc: import('@cantoo/pdf-lib').PDFDocument,
+    page: import('@cantoo/pdf-lib').PDFPage,
+    docPage: import('./documentModel').DocumentPage,
+    pageElements: PDFElement[],
+    pdfLib: import('../utils/pdfLibTypes').PdfLibOps,
+    userRot: number,
+    sourceRot: number
+  ): Promise<void> {
+    const { rgb, degrees, StandardFonts } = pdfLib;
+    const totalRot = ((sourceRot + userRot) % 360 + 360) % 360;
+    if (userRot) page.setRotation(degrees(totalRot));
+
+    const cropBox = this._getPageCropBox(page);
+    const W_orig = cropBox.width;
+    const H_orig = cropBox.height;
+    const cropOriginX = cropBox.x;
+    const cropOriginY = cropBox.y;
+    const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
+    const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
+
+    const exportErrors: string[] = [];
+    for (const element of pageElements) {
+      try {
+        await renderElementToPdfLib(element, { pdfDoc, page, libs: { rgb, StandardFonts, degrees }, h: h_eff, w: w_eff, W_orig, H_orig, totalRot, cropOriginX, cropOriginY } satisfies PdfRenderCtx);
+      } catch {
+        exportErrors.push(`${element.type} (id ${element.id})`);
+      }
+    }
+    if (exportErrors.length > 0) {
+      this.showToast(`⚠ ${exportErrors.length} element(s) failed to render: ${exportErrors.join(', ')}`, 6000);
+    }
+
+    if (this.documentModel.watermark.enabled) {
+      await this._drawWatermark(page, W_orig, H_orig, cropOriginX, cropOriginY, { rgb, degrees, pdfDoc, StandardFonts });
+    }
+
+    const inkDataUrl = this._renderInkForExport(docPage.id, W_orig, H_orig, totalRot);
+    if (inkDataUrl) {
+      const inkPng = dataUrlToUint8Array(inkDataUrl);
+      const inkImg = await pdfDoc.embedPng(inkPng);
+      page.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
+    }
   }
 
   // ── Export (vector copyPages) ─────────────────────────────────
@@ -2802,8 +2077,7 @@ export class PDFEditorApp {
       const pdfDoc = await PDFDocument.create();
 
       // Load each source PDF once
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const srcDocs = new Map<string, any>();
+      const srcDocs = new Map<string, import('@cantoo/pdf-lib').PDFDocument>();
       for (const [id, src] of this.documentModel.sourcePdfs) {
         srcDocs.set(id, await PDFDocument.load(src.bytes));
       }
@@ -2822,8 +2096,7 @@ export class PDFEditorApp {
       }
 
       // Pre-copy all needed pages from each source (one copyPages call per source)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const copiedPages = new Map<string, any>();
+      const copiedPages = new Map<string, import('@cantoo/pdf-lib').PDFPage>();
       for (const [id, srcDoc] of srcDocs) {
         const indices = [...new Set(
           this.documentModel.pages.filter(p => p.sourcePdfId === id).map(p => p.sourcePageNum - 1)
@@ -2846,7 +2119,7 @@ export class PDFEditorApp {
           const exportErrors: string[] = [];
           for (const element of pageElements) {
             try {
-              await this._drawElementOnPage(pdfDoc, blankPage, element, H_orig, W_orig, { rgb, StandardFonts, degrees }, W_orig, H_orig, 0, 0, 0);
+              await renderElementToPdfLib(element, { pdfDoc, page: blankPage, libs: { rgb, StandardFonts, degrees }, h: H_orig, w: W_orig, W_orig, H_orig, totalRot: 0, cropOriginX: 0, cropOriginY: 0 } satisfies PdfRenderCtx);
             } catch {
               exportErrors.push(`${element.type} (id ${element.id})`);
             }
@@ -2854,7 +2127,7 @@ export class PDFEditorApp {
           if (exportErrors.length > 0) this.showToast(`⚠ ${exportErrors.length} element(s) failed: ${exportErrors.join(', ')}`, 6000);
           const inkDataUrl = this._renderInkForExport(docPage.id, W_orig, H_orig, 0);
           if (inkDataUrl) {
-            const inkImg = await pdfDoc.embedPng(this._dataUrlToUint8Array(inkDataUrl));
+            const inkImg = await pdfDoc.embedPng(dataUrlToUint8Array(inkDataUrl));
             blankPage.drawImage(inkImg, { x: 0, y: 0, width: W_orig, height: H_orig });
           }
           continue;
@@ -2873,44 +2146,9 @@ export class PDFEditorApp {
         if (!page) continue;
         pdfDoc.addPage(page);
 
-        // Apply user rotation on top of source rotation
         const userRot = docPage.rotation ?? 0;
         const sourceRot = page.getRotation().angle as number;
-        const totalRot = ((sourceRot + userRot) % 360 + 360) % 360;
-        if (userRot) page.setRotation(degrees(totalRot));
-
-        // CropBox dims — pdfjs renders in CropBox space; use CropBox for all element coords
-        const cropBox = this._getPageCropBox(page);
-        const W_orig = cropBox.width;
-        const H_orig = cropBox.height;
-        const cropOriginX = cropBox.x;
-        const cropOriginY = cropBox.y;
-        // Visual (effective) dims after rotation
-        const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
-        const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
-
-        const exportErrors: string[] = [];
-        for (const element of pageElements) {
-          try {
-            await this._drawElementOnPage(pdfDoc, page, element, h_eff, w_eff, { rgb, StandardFonts, degrees }, W_orig, H_orig, totalRot, cropOriginX, cropOriginY);
-          } catch {
-            exportErrors.push(`${element.type} (id ${element.id})`);
-          }
-        }
-        if (exportErrors.length > 0) {
-          this.showToast(`⚠ ${exportErrors.length} element(s) failed to render: ${exportErrors.join(', ')}`, 6000);
-        }
-
-        if (this.documentModel.watermark.enabled) {
-          await this._drawWatermark(page, W_orig, H_orig, cropOriginX, cropOriginY, { rgb, degrees, pdfDoc, StandardFonts });
-        }
-
-        const inkDataUrl = this._renderInkForExport(docPage.id, W_orig, H_orig, totalRot);
-        if (inkDataUrl) {
-          const inkPng = this._dataUrlToUint8Array(inkDataUrl);
-          const inkImg = await pdfDoc.embedPng(inkPng);
-          page.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
-        }
+        await this._applyPageOverlays(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, userRot, sourceRot);
       }
 
       this._applyExportPassword(pdfDoc);
@@ -2930,7 +2168,7 @@ export class PDFEditorApp {
     } finally {
       this.ui.container.style.opacity = '1';
       await this._renderCurrentPage();
-      this.renderElements();
+      this.rebuildElementLayer();
     }
   }
 
@@ -2955,36 +2193,9 @@ export class PDFEditorApp {
         const [page] = await pdfDoc.copyPages(srcDocLib, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
 
-        const userRot  = docPage.rotation ?? 0;
-        const srcRot   = page.getRotation().angle as number;
-        const totalRot = ((srcRot + userRot) % 360 + 360) % 360;
-        if (userRot) page.setRotation(degrees(totalRot));
-
-        const cropBoxP = this._getPageCropBox(page);
-        const W_orig = cropBoxP.width;
-        const H_orig = cropBoxP.height;
-        const cropOriginX = cropBoxP.x;
-        const cropOriginY = cropBoxP.y;
-        const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
-        const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
-        const exportErrors: string[] = [];
-        for (const element of pageElements) {
-          try { await this._drawElementOnPage(pdfDoc, page, element, h_eff, w_eff, { rgb, StandardFonts, degrees }, W_orig, H_orig, totalRot, cropOriginX, cropOriginY); }
-          catch { exportErrors.push(`${element.type} (id ${element.id})`); }
-        }
-        if (exportErrors.length > 0) {
-          this.showToast(`⚠ ${exportErrors.length} element(s) failed to render: ${exportErrors.join(', ')}`, 6000);
-        }
-        if (this.documentModel.watermark.enabled) {
-          await this._drawWatermark(page, W_orig, H_orig, cropOriginX, cropOriginY, { rgb, degrees, pdfDoc, StandardFonts });
-        }
-
-        const inkDataUrl = this._renderInkForExport(docPage.id, W_orig, H_orig, totalRot);
-        if (inkDataUrl) {
-          const inkPng = this._dataUrlToUint8Array(inkDataUrl);
-          const inkImg = await pdfDoc.embedPng(inkPng);
-          page.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
-        }
+        const userRot = docPage.rotation ?? 0;
+        const srcRot  = page.getRotation().angle as number;
+        await this._applyPageOverlays(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, userRot, srcRot);
       }
 
       this._applyExportPassword(pdfDoc);
@@ -3014,7 +2225,6 @@ export class PDFEditorApp {
     this.showToast('Rendering page image…', 30000);
     this.ui.container.style.opacity = '0.4';
     try {
-      // Build a single-page PDF with all elements drawn in
       const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
       const srcEntry = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
       if (!srcEntry) {
@@ -3029,36 +2239,12 @@ export class PDFEditorApp {
 
       const userRot  = docPage.rotation ?? 0;
       const srcRot   = page.getRotation().angle as number;
-      const totalRot = ((srcRot + userRot) % 360 + 360) % 360;
-      if (userRot) page.setRotation(degrees(totalRot));
-      const cropBoxI = this._getPageCropBox(page);
-      const W_orig = cropBoxI.width;
-      const H_orig = cropBoxI.height;
-      const cropOriginX = cropBoxI.x;
-      const cropOriginY = cropBoxI.y;
-      const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
-      const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
-
-      const imgExportErrors: string[] = [];
-      for (const element of this.elements.filter(el => el.pageId === docPage.id)) {
-        try { await this._drawElementOnPage(pdfDoc, page, element, h_eff, w_eff, { rgb, StandardFonts }, W_orig, H_orig, totalRot, cropOriginX, cropOriginY); }
-        catch { imgExportErrors.push(`${element.type} (id ${element.id})`); }
-      }
-      if (imgExportErrors.length > 0) {
-        this.showToast(`⚠ ${imgExportErrors.length} element(s) failed to render: ${imgExportErrors.join(', ')}`, 6000);
-      }
-      if (this.documentModel.watermark.enabled) {
-        await this._drawWatermark(page, W_orig, H_orig, cropOriginX, cropOriginY, { rgb, degrees, pdfDoc, StandardFonts });
-      }
-      const inkDataUrlImg = this._renderInkForExport(docPage.id, W_orig, H_orig, totalRot);
-      if (inkDataUrlImg) {
-        const inkImg = await pdfDoc.embedPng(this._dataUrlToUint8Array(inkDataUrlImg));
-        page.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
-      }
+      const pageElements = this.elements.filter(el => el.pageId === docPage.id);
+      await this._applyPageOverlays(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, userRot, srcRot);
 
       // Rasterize via pdf.js at 2× scale
-      const pdfBytes  = await pdfDoc.save({ useObjectStreams: false });
-      const renderDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+      const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
+      const renderDoc  = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
       const renderPage = await renderDoc.getPage(1);
       const SCALE = 2;
       const vp = renderPage.getViewport({ scale: SCALE });
@@ -3099,23 +2285,80 @@ export class PDFEditorApp {
       const src = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
       if (!src || !docPage.sourcePageNum) continue;
       const page = await src.doc.getPage(docPage.sourcePageNum);
-      const content = await page.getTextContent();
+
+      // Fetch text content and operator list concurrently.
+      const [content, opList] = await Promise.all([
+        page.getTextContent(),
+        page.getOperatorList().catch(() => null),
+      ]);
+
       const items = content.items as RawTextItem[];
       const styles = content.styles as Record<string, { fontFamily?: string }>;
+
+      // Build font info map, preferring the real PostScript name over the internal id.
       const fonts: FontInfoMap = {};
       for (const it of items) {
         if (fonts[it.fontName]) continue;
         let realName = it.fontName;
+        // commonObjs.get() may throw for lazy-loaded fonts — fall back gracefully.
         try {
           const f = page.commonObjs.get(it.fontName) as { name?: string } | null;
           if (f?.name) realName = f.name;
         } catch {
-          // Font object not resolved yet — fall back to the internal id.
+          // Font object unavailable — id already contains the PS name after '+'.
+          const psMatch = it.fontName.match(/\+(.+)$/);
+          realName = psMatch ? psMatch[1] : it.fontName;
         }
         fonts[it.fontName] = { name: realName, family: styles[it.fontName]?.fontFamily };
       }
+
+      // Build a position → hex color map from the operator list for DOCX color fidelity.
+      const colorMap = new Map<string, string>();
+      if (opList) {
+        try {
+          const OPS = pdfjsLib.OPS as unknown as Record<string, number>;
+          let fillR = 0, fillG = 0, fillB = 0;
+
+          // Walk the operator list tracking fill color and text matrix.
+          let textMatrix = [1, 0, 0, 1, 0, 0];
+          for (let i = 0; i < opList.fnArray.length; i++) {
+            const fn = opList.fnArray[i];
+            const args = opList.argsArray[i] as number[];
+            if (fn === OPS['setFillRGBColor']) {
+              [fillR, fillG, fillB] = args;
+            } else if (fn === OPS['setFillGray']) {
+              fillR = fillG = fillB = args[0];
+            } else if (fn === OPS['setFillCMYKColor']) {
+              const [c, m, y, k] = args;
+              fillR = (1 - c) * (1 - k);
+              fillG = (1 - m) * (1 - k);
+              fillB = (1 - y) * (1 - k);
+            } else if (fn === OPS['setTextMatrix']) {
+              textMatrix = args.slice(0, 6);
+            } else if (
+              fn === OPS['showText'] ||
+              fn === OPS['showSpacedText'] ||
+              fn === OPS['nextLineShowText'] ||
+              fn === OPS['nextLineSetSpacingShowText']
+            ) {
+              const px = Math.round(textMatrix[4]);
+              const py = Math.round(textMatrix[5]);
+              // Only store non-black colors (black is the default).
+              if (fillR !== 0 || fillG !== 0 || fillB !== 0) {
+                const toHex = (v: number) =>
+                  Math.round(Math.max(0, Math.min(255, v * 255)))
+                    .toString(16).padStart(2, '0').toUpperCase();
+                colorMap.set(`${px},${py}`, toHex(fillR) + toHex(fillG) + toHex(fillB));
+              }
+            }
+          }
+        } catch {
+          // getOperatorList unavailable (e.g. encrypted pages) — color stays empty.
+        }
+      }
+
       const vp = page.getViewport({ scale: 1 });
-      flowDoc.pages.push(reconstructPage(items, fonts, vp.width, vp.height));
+      flowDoc.pages.push(reconstructPage(items, fonts, vp.width, vp.height, colorMap));
     }
     assignHeadings(flowDoc);
     return flowDoc;
@@ -3166,13 +2409,6 @@ export class PDFEditorApp {
     }
   }
 
-  private _dataUrlToUint8Array(dataUrl: string): Uint8Array {
-    const base64 = dataUrl.split(',')[1];
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
 
   /**
    * Render ink strokes into unrotated PDF coordinate space (W_orig × H_orig) at 2× resolution.
@@ -3207,7 +2443,7 @@ export class PDFEditorApp {
       // Transform each point: canvas space (rotated view, scale=1) → PDF content space (unrotated, y-up)
       // → export canvas space (unrotated, y-down, ×SCALE)
       const pts = stroke.points.map(p => {
-        const pdf = this._transformPoint(p.x, p.y, W_orig, H_orig, totalRot);
+        const pdf = transformPoint(p.x, p.y, W_orig, H_orig, totalRot);
         return { x: pdf.x * SCALE, y: (H_orig - pdf.y) * SCALE };
       });
       ctx.moveTo(pts[0].x, pts[0].y);
@@ -3223,8 +2459,7 @@ export class PDFEditorApp {
     return null;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _getPageCropBox(page: any): { x: number; y: number; width: number; height: number } {
+  private _getPageCropBox(page: import('@cantoo/pdf-lib').PDFPage): { x: number; y: number; width: number; height: number } {
     try {
       const cb = page.getCropBox?.();
       if (cb && typeof cb.width === 'number') return { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
@@ -3233,153 +2468,11 @@ export class PDFEditorApp {
     return { x: 0, y: 0, width, height };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async _drawElementOnPage(pdfDoc: any, page: any, element: PDFElement, h: number, w: number, libs: { rgb: any; StandardFonts: any; degrees?: any }, W_orig = 0, H_orig = 0, totalRot = 0, cropOriginX = 0, cropOriginY = 0): Promise<void> {
-    const { rgb, StandardFonts } = libs;
-    // W_orig/H_orig are the unrotated content dims; fall back to effective dims when totalRot=0
-    const Wo = W_orig || w;
-    const Ho = H_orig || h;
-    const tp = (px: number, py: number) => { const r = this._transformPoint(px, py, Wo, Ho, totalRot); return { x: r.x + cropOriginX, y: r.y + cropOriginY }; };
-    const swapDims = ((totalRot % 360) + 360) % 360 === 90 || ((totalRot % 360) + 360) % 360 === 270;
-    // Element's own rotation (degrees, CW). pdf-lib uses CCW so negate.
-    const elemRot = element.rotation ?? 0;
-    const pdfRotVal = libs.degrees ? libs.degrees(-elemRot) : undefined;
-
-    // Compute anchor adjusted so rotation is around element center, not corner.
-    // pdf-lib rotates around (x, y) so we shift the anchor by the inverse rotation offset.
-    const _anchorForCenter = (cornerX: number, cornerY: number, ew: number, eh: number) => {
-      if (!elemRot || !pdfRotVal) return { x: cornerX, y: cornerY };
-      const rad = (-elemRot) * Math.PI / 180;
-      const cx = cornerX + ew / 2;
-      const cy = cornerY + eh / 2;
-      const ox = -ew / 2, oy = -eh / 2;
-      return {
-        x: cx + ox * Math.cos(rad) - oy * Math.sin(rad),
-        y: cy + ox * Math.sin(rad) + oy * Math.cos(rad),
-      };
-    };
-
-    if (element.type === 'text' && (element as TextElement).text) {
-      const te = element as TextElement;
-      const col = this.hexToRgbValues(te.color);
-      const fontName = this._getStandardFont(te.fontFamily, te.bold, te.italic);
-      const font = await pdfDoc.embedFont(StandardFonts[fontName as keyof typeof StandardFonts]);
-      // 0.9 = measured Arial fontBoundingBoxAscent/fontSize ratio (avg across 8–72px);
-      // aligns PDF baseline with the browser's CSS text baseline. Max residual error < 0.6pt.
-      const lineHeight = te.fontSize * 1.2;
-      te.text.split('\n').forEach((line, i) => {
-        if (!line) return;
-        const rawAnchor = tp(te.x, te.y + te.fontSize * 0.9 + i * lineHeight);
-        const a = elemRot ? _anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
-        page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-      });
-    } else if (element.type === 'signature') {
-      const se = element as SignatureElement;
-      const img = await pdfDoc.embedPng(this._dataUrlToBytes(se.data));
-      const ew = swapDims ? element.height : element.width;
-      const eh = swapDims ? element.width : element.height;
-      const corner = tp(element.x, element.y + element.height);
-      const a = _anchorForCenter(corner.x, corner.y, ew, eh);
-      page.drawImage(img, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-    } else if (element.type === 'image') {
-      const ie = element as ImageElement;
-      const pdfImg = await this._embedImage(pdfDoc, ie.src);
-      const ew = swapDims ? element.height : element.width;
-      const eh = swapDims ? element.width : element.height;
-      const corner = tp(element.x, element.y + element.height);
-      const a = _anchorForCenter(corner.x, corner.y, ew, eh);
-      page.drawImage(pdfImg, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-    } else if (element.type === 'code') {
-      const ce = element as CodeElement;
-      const codePdfImg = await this._embedImage(pdfDoc, ce.cachedDataUrl);
-      const ew = swapDims ? element.height : element.width;
-      const eh = swapDims ? element.width : element.height;
-      const corner = tp(element.x, element.y + element.height);
-      const a = _anchorForCenter(corner.x, corner.y, ew, eh);
-      page.drawImage(codePdfImg, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-    } else if (element.type === 'highlight') {
-      const he = element as HighlightElement;
-      const col = this.hexToRgbValues(he.color);
-      const ew = swapDims ? element.height : element.width;
-      const eh = swapDims ? element.width : element.height;
-      const corner = tp(element.x, element.y + element.height);
-      const a = _anchorForCenter(corner.x, corner.y, ew, eh);
-      page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(col.r, col.g, col.b), opacity: he.opacity, borderWidth: 0, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-    } else if (element.type === 'shape') {
-      const she = element as ShapeElement;
-      const col = this.hexToRgbValues(she.strokeColor);
-      const shapeColor = rgb(col.r, col.g, col.b);
-      const lw = she.strokeWidth;
-      switch (she.shapeType) {
-        case 'rect': {
-          const ew = swapDims ? element.height : element.width;
-          const eh = swapDims ? element.width : element.height;
-          const corner = tp(element.x, element.y + element.height);
-          const a = _anchorForCenter(corner.x, corner.y, ew, eh);
-          const fillClr = she.fillColor;
-          const fillOpts = fillClr ? { color: (() => { const fc = this.hexToRgbValues(fillClr); return rgb(fc.r, fc.g, fc.b); })() } : {};
-          page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, ...fillOpts, borderColor: shapeColor, borderWidth: lw, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-          break;
-        }
-        case 'ellipse': {
-          const center = tp(element.x + element.width / 2, element.y + element.height / 2);
-          const fillClrE = she.fillColor;
-          const fillOptsE = fillClrE ? { color: (() => { const fc = this.hexToRgbValues(fillClrE); return rgb(fc.r, fc.g, fc.b); })() } : {};
-          page.drawEllipse({ x: center.x, y: center.y, xScale: swapDims ? element.height / 2 : element.width / 2, yScale: swapDims ? element.width / 2 : element.height / 2, ...fillOptsE, borderColor: shapeColor, borderWidth: lw, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-          break;
-        }
-        case 'arrow': {
-          const pt1 = tp(she.x1, she.y1);
-          const pt2 = tp(she.x2, she.y2);
-          const pa = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x);
-          const headLen = Math.max(12, lw * 5);
-          const headThick = Math.max(1, Math.min(lw, lw * 0.4));
-          page.drawLine({ start: { x: pt1.x, y: pt1.y }, end: { x: pt2.x, y: pt2.y }, thickness: lw, color: shapeColor });
-          page.drawLine({ start: { x: pt2.x, y: pt2.y }, end: { x: pt2.x + headLen * Math.cos(pa + Math.PI * 0.75), y: pt2.y + headLen * Math.sin(pa + Math.PI * 0.75) }, thickness: headThick, color: shapeColor });
-          page.drawLine({ start: { x: pt2.x, y: pt2.y }, end: { x: pt2.x + headLen * Math.cos(pa - Math.PI * 0.75), y: pt2.y + headLen * Math.sin(pa - Math.PI * 0.75) }, thickness: headThick, color: shapeColor });
-          break;
-        }
-        case 'freehand': {
-          if (she.points.length < 2) break;
-          // Convert to SVG coords: tp() gives PDF (y-up), drawSvgPath maps SVG y-down via origin (0, Ho).
-          // SVG y = Ho - pdf_y ensures SVG (px, Ho-pdf_y) → PDF (px, pdf_y) with origin {x:0,y:Ho}.
-          const tpts = she.points.map(p => { const r = tp(p.x, p.y); return { x: r.x, y: Ho - r.y }; });
-          let d = `M ${tpts[0].x} ${tpts[0].y}`;
-          for (let i = 1; i < tpts.length; i++) d += ` L ${tpts[i].x} ${tpts[i].y}`;
-          page.drawSvgPath(d, { x: 0, y: Ho, borderColor: shapeColor, borderWidth: lw, scale: 1 });
-          break;
-        }
-      }
-    } else if (element.type === 'comment') {
-      const ce = element as CommentElement;
-      const col = this.hexToRgbValues(ce.color);
-      const ew = swapDims ? ce.height : ce.width;
-      const eh = swapDims ? ce.width : ce.height;
-      const corner = tp(ce.x, ce.y + ce.height);
-      const a = _anchorForCenter(corner.x, corner.y, ew, eh);
-      page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(col.r, col.g, col.b), opacity: 0.85, borderColor: rgb(0.5, 0.5, 0.5), borderWidth: 1, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-      if (ce.text) {
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        // Text starts at top of box with 4px padding + ~10pt ascent (matches canvas textarea layout)
-        const anchor2 = tp(ce.x + 4, ce.y + 4 + 10);
-        page.drawText(ce.text.slice(0, 200), { x: anchor2.x, y: anchor2.y, size: 10, font, color: rgb(0, 0, 0), maxWidth: swapDims ? ce.height - 8 : ce.width - 8, lineHeight: 14, opacity: 0.9, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-      }
-    } else if (element.type === 'redaction') {
-      const ew = swapDims ? element.height : element.width;
-      const eh = swapDims ? element.width : element.height;
-      const corner = tp(element.x, element.y + element.height);
-      const a = _anchorForCenter(corner.x, corner.y, ew, eh);
-      const redCol = this.hexToRgbValues((element as { color?: string }).color ?? '#000000');
-      page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(redCol.r, redCol.g, redCol.b), borderWidth: 0, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-    }
-  }
-
   // W_orig / H_orig are the CropBox dimensions; cropOriginX/Y shift tiling into MediaBox space.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async _drawWatermark(page: any, W_orig: number, H_orig: number, cropOriginX: number, cropOriginY: number, libs: { rgb: any; degrees: any; pdfDoc: any; StandardFonts: any }): Promise<void> {
+  private async _drawWatermark(page: import('@cantoo/pdf-lib').PDFPage, W_orig: number, H_orig: number, cropOriginX: number, cropOriginY: number, libs: import('../utils/pdfLibTypes').PdfLibDrawOps): Promise<void> {
     const { rgb, degrees, pdfDoc, StandardFonts } = libs;
     const wm = this.documentModel.watermark;
-    const col = this.hexToRgbValues(wm.color);
+    const col = hexToRgbValues(wm.color);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const textWidth = font.widthOfTextAtSize(wm.text, wm.fontSize);
     const densityFactors = [0, 2.0, 1.5, 1.0, 0.7, 0.5]; // index 1–5
@@ -3401,54 +2494,7 @@ export class PDFEditorApp {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async _embedImage(pdfDoc: any, src: string): Promise<any> {
-    if (src.startsWith('data:image/jpeg') || src.startsWith('data:image/jpg')) {
-      return pdfDoc.embedJpg(this._dataUrlToBytes(src));
-    }
-    // PNG or WEBP/other — canvas re-encode to PNG
-    return new Promise<unknown>((resolve, reject) => {
-      const img = new Image();
-      img.onload = async () => {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        (c.getContext('2d') as CanvasRenderingContext2D).drawImage(img, 0, 0);
-        const pngBytes = this._dataUrlToBytes(c.toDataURL('image/png'));
-        resolve(await pdfDoc.embedPng(pngBytes));
-      };
-      img.onerror = reject;
-      img.src = src;
-    });
-  }
-
-  private _dataUrlToBytes(dataUrl: string): Uint8Array {
-    const base64 = dataUrl.split(',')[1];
-    if (!base64) throw new Error('Invalid data URL: no base64 payload');
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-
-  _getStandardFont(fontFamily: string, bold: boolean, italic: boolean): string {
-    const map: Record<string, Record<string, string>> = {
-      'Arial':           { '': 'Helvetica',  'b': 'HelveticaBold', 'i': 'HelveticaOblique',  'bi': 'HelveticaBoldOblique' },
-      'Helvetica':       { '': 'Helvetica',  'b': 'HelveticaBold', 'i': 'HelveticaOblique',  'bi': 'HelveticaBoldOblique' },
-      'Times New Roman': { '': 'TimesRoman', 'b': 'TimesBold',     'i': 'TimesItalic',       'bi': 'TimesBoldItalic' },
-      'Courier New':     { '': 'Courier',    'b': 'CourierBold',   'i': 'CourierOblique',    'bi': 'CourierBoldOblique' },
-      'Courier':         { '': 'Courier',    'b': 'CourierBold',   'i': 'CourierOblique',    'bi': 'CourierBoldOblique' },
-    };
-    const variant = (bold ? 'b' : '') + (italic ? 'i' : '');
-    return (map[fontFamily]?.[variant]) || 'Helvetica';
-  }
-
-  hexToRgbValues(hex: string): { r: number; g: number; b: number } {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!result) return { r: 0, g: 0, b: 0 };
-    return { r: parseInt(result[1], 16) / 255, g: parseInt(result[2], 16) / 255, b: parseInt(result[3], 16) / 255 };
-  }
-
-  private _updatePlacementGhost(e: PointerEvent): void {
+  _updatePlacementGhost(e: PointerEvent): void {
     const placementModes: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature'];
     if (!placementModes.includes(this.mode)) {
       if (this._placementGhost) this._placementGhost.style.display = 'none';

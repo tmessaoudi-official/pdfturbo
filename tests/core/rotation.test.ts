@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { TextElement } from '../../src/elements/textElement';
 import { RotateElementCmd, TransformAnnotationsCmd, ElementTransformSnapshot } from '../../src/core/historyManager';
 import { ElementFactory } from '../../src/utils/elementFactory';
-import type { PDFElement } from '../../src/elements/pdfElement';
+import type { PDFElement } from '../../src/elements/annotationElement';
 
 function makeEl() {
   return new TextElement(10, 20, 'p1');

@@ -3,17 +3,29 @@ import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
 import { findTextOpAt, deleteTextAt, replaceTextAt } from '../utils/contentStreamEditor';
+import { extractPsName } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
-import type { PDFEditorApp } from '../core/pdfEditorApp';
+import type { IAppContext } from '../core/appContext';
 import type { SourcePdf } from '../core/documentModel';
 
 /** Max distance (PDF pts) between a pdf.js item origin and a content-stream show op. */
 const TRUE_EDIT_TOLERANCE = 3;
 
+/** Map a PostScript font name to a CSS font-family stack for the inline editor. */
+function psNameToCssFontFamily(psName: string): string {
+  if (/(times|roman|garamond|palatino)/i.test(psName) && !/sans/i.test(psName)) {
+    return '"Times New Roman", Times, serif';
+  }
+  if (/(courier|mono|typewriter)/i.test(psName)) {
+    return '"Courier New", Courier, monospace';
+  }
+  return 'Arial, Helvetica, sans-serif';
+}
+
 export class TextEditHandler {
   private _activeEditor: HTMLInputElement | null = null;
 
-  async handleCanvasClick(e: MouseEvent, app: PDFEditorApp): Promise<void> {
+  async handleCanvasClick(e: MouseEvent, app: IAppContext): Promise<void> {
     const docPage = app.documentModel.currentPage;
     if (!docPage) return;
     const src = app.documentModel.sourcePdfs.get(docPage.sourcePdfId);
@@ -59,9 +71,6 @@ export class TextEditHandler {
     if (!best) return;
 
     // ── True edit first: content-stream surgery on the source PDF ──
-    // The pdf.js item origin (transform[4,5]) is matched against the show ops
-    // located in the content stream; on a match the text is genuinely edited
-    // in the PDF. Otherwise we fall through to the overlay approach below.
     try {
       const libDoc = await PDFDocument.load(src.bytes.slice(0));
       const origin = { x: best.transform[4], y: best.transform[5] };
@@ -75,6 +84,7 @@ export class TextEditHandler {
           pageId: docPage.id,
           pageIndex: docPage.sourcePageNum - 1,
           origin,
+          fontName: best.fontName,
           originalText: best.str,
           fontSize: Math.hypot(best.transform[0], best.transform[1]) || target.fontSize || 12,
           itemHeight: Math.max(Math.abs(best.height), 10),
@@ -99,7 +109,6 @@ export class TextEditHandler {
     const pageId = docPage.id;
 
     // Sample background + foreground colors from the canvas in one pass.
-    // Background: lightest corner pixel. Foreground: darkest center pixel.
     let bgColor = '#ffffff';
     let textColor = '#000000';
     const offscreen = document.createElement('canvas');
@@ -108,7 +117,6 @@ export class TextEditHandler {
     if (offCtx) {
       const s = app.zoomScale;
       const INSET = 2;
-      // --- Background: sample 4 corners (lightest = background) ---
       const corners = [
         { x: Math.round(annX * s) + INSET,       y: Math.round(annY * s) + INSET },
         { x: Math.round((annX + w) * s) - INSET,  y: Math.round(annY * s) + INSET },
@@ -124,7 +132,6 @@ export class TextEditHandler {
         if (brightness > bgBrightness) { bgBrightness = brightness; bestRgb = { r: d[0], g: d[1], b: d[2] }; }
       }
       bgColor = `#${bestRgb.r.toString(16).padStart(2, '0')}${bestRgb.g.toString(16).padStart(2, '0')}${bestRgb.b.toString(16).padStart(2, '0')}`;
-      // --- Foreground: sample center area (darkest = ink) ---
       const cx = Math.round((annX + w / 2) * s);
       const cy = Math.round((annY + h / 2) * s);
       const SAMPLE_R = 2;
@@ -138,7 +145,6 @@ export class TextEditHandler {
           if (brightness < darkestBrightness) { darkestBrightness = brightness; darkestRgb = { r: d[0], g: d[1], b: d[2] }; }
         }
       }
-      // Only use sampled color if it differs meaningfully from the background
       if (bgBrightness - darkestBrightness > 80) {
         textColor = `#${darkestRgb.r.toString(16).padStart(2, '0')}${darkestRgb.g.toString(16).padStart(2, '0')}${darkestRgb.b.toString(16).padStart(2, '0')}`;
       }
@@ -163,20 +169,15 @@ export class TextEditHandler {
       fontFamily = 'Times New Roman';
     }
 
-    // Font size from the affine transform matrix (handles rotation); clamp to valid range
     const detectedFontSize = Math.round(Math.hypot(best.transform[0], best.transform[1]));
     const fontSize = detectedFontSize >= 6 && detectedFontSize <= 144
       ? detectedFontSize
       : Math.max(8, Math.round(h * 0.82));
 
-    // Bold / italic from fontName heuristics
     const bold   = /bold/i.test(best.fontName);
     const italic = /italic|oblique/i.test(best.fontName);
 
-    // Cover-up layer: background-color-sampled rectangle to hide original text on export
     const cover = new RedactionElement(annX - 2, annY - 2, w + 4, h + 4, pageId, bgColor);
-
-    // Editable text annotation on top, pre-filled with original text + matched font
     const textEl = new TextElement(annX, annY, pageId, {
       width: w + 4,
       height: h + 4,
@@ -196,7 +197,6 @@ export class TextEditHandler {
     app.setMode('select');
     app.selectElement(textEl);
 
-    // Focus the textarea immediately so the user can start editing
     const freshInput = app.ui.container.querySelector(
       `[data-id='${textEl.id}'] input, [data-id='${textEl.id}'] textarea`
     ) as HTMLElement | null;
@@ -209,13 +209,14 @@ export class TextEditHandler {
    */
   private _openTrueEditInput(
     e: MouseEvent,
-    app: PDFEditorApp,
+    app: IAppContext,
     opts: {
       libDoc: PDFDocument;
       src: SourcePdf;
       pageId: string;
       pageIndex: number;
       origin: { x: number; y: number };
+      fontName: string;
       originalText: string;
       fontSize: number;
       itemHeight: number;
@@ -234,10 +235,10 @@ export class TextEditHandler {
 
     const zoom = app.zoomScale;
     const fontPx = Math.max(10, Math.round(opts.fontSize * zoom));
-    input.style.font = `${fontPx}px Helvetica, Arial, sans-serif`;
+    const fontFamily = psNameToCssFontFamily(extractPsName(opts.fontName));
+    input.style.font = `${fontPx}px ${fontFamily}`;
     input.style.minWidth = `${Math.max(160, Math.round(opts.originalText.length * fontPx * 0.6))}px`;
 
-    // Position over the clicked text (unrotated pages) or at the pointer (rotated)
     const rect = app.ui.canvas.getBoundingClientRect();
     if (!opts.rotated) {
       input.style.left = `${rect.left + opts.origin.x * zoom}px`;
@@ -272,7 +273,7 @@ export class TextEditHandler {
     };
 
     input.addEventListener('keydown', ev => {
-      ev.stopPropagation(); // keep app-level shortcuts (Delete, Ctrl+Z…) out while typing
+      ev.stopPropagation();
       if (ev.key === 'Enter') {
         ev.preventDefault();
         void commit();

@@ -92,6 +92,7 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
                   // docx half-points
                   size: Math.round(r.fontSize * 2),
                   rightToLeft: r.rtl || undefined,
+                  color: r.color,
                 })
             ),
           })

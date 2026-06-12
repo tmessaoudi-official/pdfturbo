@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CodeElement } from '../../src/elements/codeElement';
 import { ElementFactory } from '../../src/utils/elementFactory';
-import { PDFElement } from '../../src/elements/pdfElement';
+import { PDFElement } from '../../src/elements/annotationElement';
 
 const FAKE_URL = 'data:image/png;base64,abc123';
 
@@ -163,8 +163,7 @@ describe('CodeElement — render()', () => {
       detail = (e as CustomEvent<{ id: number }>).detail;
     });
     div.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    expect(detail).not.toBeNull();
-    expect(detail!.id).toBe(el.id);
+    expect(detail).toMatchObject({ id: el.id });
   });
 
   it('dblclick stops propagation (does not bubble past the div)', () => {

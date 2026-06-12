@@ -6,10 +6,15 @@
  * Unlike the overlay approach, the original text is genuinely removed from
  * the document (no longer extractable, no longer under a cover rectangle).
  *
- * Prototype limitations (see docs/plans/pdf-text-editing-research.plan.md):
- * - ops wrapped in `cm` transforms are located in text space, not device space
- * - Form XObject content streams are not recursed
- * - replacements use a standard fallback font (Helvetica), not the embedded subset
+ * Strategy for replacement:
+ *   1. For ASCII literal-string Tj/TJ ops: replace the string operand in-place,
+ *      preserving the original font/size/color entirely (in-stream path).
+ *   2. For hex-encoded strings (typical TrueType/CID fonts): blank the op then
+ *      append a new drawText command using the detected color and size with a
+ *      standard fallback font (fallback path).
+ *
+ * In both cases, all show ops within SHADOW_RADIUS points of the primary target
+ * are also blanked to eliminate shadow/outline text effects.
  */
 import {
   PDFArray,
@@ -18,6 +23,7 @@ import {
   PDFRawStream,
   StandardFonts,
   decodePDFRawStream,
+  rgb,
 } from '@cantoo/pdf-lib';
 
 export interface CsToken {
@@ -52,7 +58,18 @@ export interface TextOpInfo {
   origin: { x: number; y: number };
   fontKey: string;
   fontSize: number;
+  /**
+   * Raw PDF fill color ops string captured from the content stream, e.g.:
+   *   '1 0 0 rg'  (DeviceRGB)
+   *   '0.5 g'     (DeviceGray)
+   *   '0 0 1 0 k' (DeviceCMYK)
+   * Undefined when no fill color operator appeared before this show op.
+   */
+  fillColor?: string;
 }
+
+/** Radius (PDF points) within which secondary show ops are blanked as shadows. */
+const SHADOW_RADIUS = 4;
 
 const WHITESPACE = new Set([' ', '\t', '\r', '\n', '\f', '\0']);
 const DELIMITERS = new Set(['(', ')', '<', '>', '[', ']', '{', '}', '/', '%']);
@@ -243,11 +260,21 @@ export function groupOps(tokens: CsToken[]): CsOp[] {
   return ops;
 }
 
+/** Serialize a grouped ops list back to a content stream string. */
+export function serializeOps(ops: CsOp[]): string {
+  return ops
+    .map(op =>
+      op.operator === 'INLINE_IMAGE'
+        ? op.operands[0].raw
+        : [...op.operands.map(t => t.raw), op.operator].join(' ')
+    )
+    .join('\n');
+}
+
 type Matrix = [number, number, number, number, number, number];
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
 function translateMatrix(tx: number, ty: number, m: Matrix): Matrix {
-  // [1 0 0 1 tx ty] × m
   return [
     m[0],
     m[1],
@@ -260,7 +287,7 @@ function translateMatrix(tx: number, ty: number, m: Matrix): Matrix {
 
 const SHOW_OPS = new Set(['Tj', 'TJ', "'", '"']);
 
-/** Walk ops tracking PDF text state; return every text-showing op with its origin. */
+/** Walk ops tracking PDF text state; return every text-showing op with its origin and fill color. */
 export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   const found: TextOpInfo[] = [];
   let textMatrix: Matrix = [...IDENTITY];
@@ -268,6 +295,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let fontKey = '';
   let fontSize = 0;
   let leading = 0;
+  let fillColor: string | undefined;
 
   const num = (t: CsToken | undefined): number => t?.value ?? 0;
 
@@ -303,6 +331,24 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         lineMatrix = translateMatrix(0, -leading, lineMatrix);
         textMatrix = [...lineMatrix];
         break;
+      // Fill color operators — tracked so replacement can preserve text color
+      case 'rg':
+        fillColor = op.operands.map(t => t.raw).join(' ') + ' rg';
+        break;
+      case 'g':
+        fillColor = op.operands.map(t => t.raw).join(' ') + ' g';
+        break;
+      case 'k':
+        fillColor = op.operands.map(t => t.raw).join(' ') + ' k';
+        break;
+      case 'sc':
+      case 'scn':
+        fillColor = op.operands.map(t => t.raw).join(' ') + ' ' + op.operator;
+        break;
+      case 'cs':
+        // Color space change — color value no longer reliable; reset.
+        fillColor = undefined;
+        break;
       default:
         break;
     }
@@ -312,7 +358,6 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         lineMatrix = translateMatrix(0, -leading, lineMatrix);
         textMatrix = [...lineMatrix];
       }
-      // Vertical scale of the text matrix: image of unit vector (0,1)
       const vScale = Math.hypot(textMatrix[2], textMatrix[3]) || 1;
       found.push({
         opIndex,
@@ -320,12 +365,108 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         origin: { x: textMatrix[4], y: textMatrix[5] },
         fontKey,
         fontSize: fontSize * vScale,
+        fillColor,
       });
     }
   });
 
   return found;
 }
+
+// ── Color helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Extract the PostScript name from a pdf.js internal font id.
+ * pdf.js ids look like 'g_d0_ABCDEF+Arial-BoldMT'; the part after '+' is the real name.
+ * Returns the raw id unchanged when no '+' is present.
+ */
+export function extractPsName(internalId: string): string {
+  const m = internalId.match(/\+(.+)$/);
+  return m ? m[1] : internalId;
+}
+
+interface Rgb { r: number; g: number; b: number }
+
+function parseFillColorToRgb(raw: string): Rgb | null {
+  const rgMatch = raw.match(/^([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+[rR][gG]$/);
+  if (rgMatch) {
+    return { r: parseFloat(rgMatch[1]), g: parseFloat(rgMatch[2]), b: parseFloat(rgMatch[3]) };
+  }
+  const gMatch = raw.match(/^([\d.]+)\s+g$/i);
+  if (gMatch) {
+    const v = parseFloat(gMatch[1]);
+    return { r: v, g: v, b: v };
+  }
+  const kMatch = raw.match(/^([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+[kK]$/);
+  if (kMatch) {
+    const c = parseFloat(kMatch[1]);
+    const m2 = parseFloat(kMatch[2]);
+    const y = parseFloat(kMatch[3]);
+    const k = parseFloat(kMatch[4]);
+    return { r: (1 - c) * (1 - k), g: (1 - m2) * (1 - k), b: (1 - y) * (1 - k) };
+  }
+  return null;
+}
+
+/**
+ * Convert a raw PDF fill color ops string to a 6-char uppercase hex string.
+ * Returns undefined for unsupported or unrecognised color formats.
+ */
+export function fillColorToHex(raw: string): string | undefined {
+  const c = parseFillColorToRgb(raw);
+  if (!c) return undefined;
+  const toHex = (v: number): string =>
+    Math.round(Math.max(0, Math.min(255, v * 255)))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+  return toHex(c.r) + toHex(c.g) + toHex(c.b);
+}
+
+// ── In-stream replacement helpers ─────────────────────────────────────────────
+
+function isAsciiSafe(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c < 32 || c > 126) return false;
+  }
+  return true;
+}
+
+function encodeLiteralString(text: string): string {
+  return '(' + text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)') + ')';
+}
+
+/**
+ * Try to replace the string payload of a show op in-place.
+ * Only succeeds when the operand is a literal string `(...)` and newText is
+ * pure ASCII (32–126) — hex-encoded or non-ASCII content is left unchanged.
+ * Returns true on success (stream modified); false when the fallback path is needed.
+ */
+export function replaceShowOpInPlace(op: CsOp, newText: string): boolean {
+  if (!isAsciiSafe(newText)) return false;
+
+  if (op.operator === 'TJ') {
+    const arr = op.operands[0];
+    if (!arr || arr.type !== 'array' || !arr.items) return false;
+    const firstStr = arr.items.find(t => t.type === 'string');
+    if (!firstStr) return false; // all hex → can't replace safely
+    const encoded = encodeLiteralString(newText);
+    arr.raw = `[${encoded}]`;
+    arr.items = [{ type: 'string', raw: encoded }];
+    return true;
+  }
+
+  // Tj, ', "
+  const str = op.operands[op.operands.length - 1];
+  if (!str) return false;
+  if (str.type === 'hexstring') return false;
+  if (str.type !== 'string') return false;
+  str.raw = encodeLiteralString(newText);
+  return true;
+}
+
+// ── Page content I/O ───────────────────────────────────────────────────────────
 
 /** Decode and concatenate all content streams of a page. */
 function getPageContent(doc: PDFDocument, pageIndex: number): string {
@@ -381,9 +522,29 @@ function blankShowOp(op: CsOp): void {
   }
 }
 
+/**
+ * Blank all show ops within SHADOW_RADIUS of `primaryOrigin`, skipping the op
+ * at `excludeOpIndex` (already handled separately by the caller).
+ */
+function blankAllNearby(
+  ops: CsOp[],
+  textOps: TextOpInfo[],
+  primaryOrigin: { x: number; y: number },
+  excludeOpIndex: number
+): void {
+  for (const t of textOps) {
+    if (t.opIndex === excludeOpIndex) continue;
+    const dist = Math.hypot(t.origin.x - primaryOrigin.x, t.origin.y - primaryOrigin.y);
+    if (dist <= SHADOW_RADIUS) blankShowOp(ops[t.opIndex]);
+  }
+}
+
+// ── Public edit API ────────────────────────────────────────────────────────────
+
 interface EditTarget {
   ops: CsOp[];
   target: TextOpInfo;
+  textOps: TextOpInfo[];
 }
 
 function findTarget(
@@ -406,7 +567,7 @@ function findTarget(
       best = t;
     }
   }
-  return best ? { ops, target: best } : null;
+  return best ? { ops, target: best, textOps } : null;
 }
 
 /**
@@ -422,18 +583,9 @@ export async function findTextOpAt(
   return findTarget(doc, pageIndex, point, tolerance)?.target ?? null;
 }
 
-function serializeOps(ops: CsOp[]): string {
-  return ops
-    .map(op =>
-      op.operator === 'INLINE_IMAGE'
-        ? op.operands[0].raw
-        : [...op.operands.map(t => t.raw), op.operator].join(' ')
-    )
-    .join('\n');
-}
-
 /**
  * Truly delete the text op nearest to `point` (PDF coords, baseline origin).
+ * Also blanks shadow ops within SHADOW_RADIUS of the target to remove outline effects.
  * Returns false when no show op lies within `tolerance`.
  */
 export async function deleteTextAt(
@@ -446,14 +598,18 @@ export async function deleteTextAt(
   if (!found) return false;
 
   blankShowOp(found.ops[found.target.opIndex]);
+  blankAllNearby(found.ops, found.textOps, found.target.origin, found.target.opIndex);
   setPageContent(doc, pageIndex, serializeOps(found.ops));
   return true;
 }
 
 /**
- * Truly replace the text op nearest to `point`: the original string is removed
- * from the content stream and `newText` is drawn at the same baseline origin
- * with the detected size, using a standard fallback font.
+ * Truly replace the text op nearest to `point`.
+ *
+ * Strategy:
+ *   - ASCII literal strings: replace in-place (preserves original font/size/color).
+ *   - Hex-encoded strings: blank then redraw with detected color at detected size.
+ * Shadow ops within SHADOW_RADIUS are always blanked regardless of strategy.
  */
 export async function replaceTextAt(
   doc: PDFDocument,
@@ -465,16 +621,35 @@ export async function replaceTextAt(
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
 
-  blankShowOp(found.ops[found.target.opIndex]);
-  setPageContent(doc, pageIndex, serializeOps(found.ops));
+  const { ops, target, textOps } = found;
+  const replaced = replaceShowOpInPlace(ops[target.opIndex], newText);
 
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const page = doc.getPage(pageIndex);
-  page.drawText(newText, {
-    x: found.target.origin.x,
-    y: found.target.origin.y,
-    size: found.target.fontSize || 12,
-    font,
-  });
+  if (replaced) {
+    // In-stream path: font/size/color all preserved; just blank shadows and write back.
+    blankAllNearby(ops, textOps, target.origin, target.opIndex);
+    setPageContent(doc, pageIndex, serializeOps(ops));
+  } else {
+    // Fallback path: blank everything in the target area, then append a new drawText.
+    blankShowOp(ops[target.opIndex]);
+    blankAllNearby(ops, textOps, target.origin, target.opIndex);
+    setPageContent(doc, pageIndex, serializeOps(ops));
+
+    let drawColor: ReturnType<typeof rgb> | undefined;
+    if (target.fillColor) {
+      const c = parseFillColorToRgb(target.fillColor);
+      if (c) drawColor = rgb(c.r, c.g, c.b);
+    }
+
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const page = doc.getPage(pageIndex);
+    page.drawText(newText, {
+      x: target.origin.x,
+      y: target.origin.y,
+      size: target.fontSize || 12,
+      font,
+      ...(drawColor ? { color: drawColor } : {}),
+    });
+  }
+
   return true;
 }
