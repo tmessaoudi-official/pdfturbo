@@ -15,14 +15,12 @@ import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
   HistoryManager, AddElementCmd, RemoveElementCmd, ClearAllCmd, TextEditCmd,
-  DeletePageCmd, ReorderPagesCmd, AddPagesCmd, RotatePageCmd,
-  MacroCmd, TransformAnnotationsCmd, ClearInkCmd, FillColorCmd, InkFillColorCmd,
+  MacroCmd, ClearInkCmd, FillColorCmd, InkFillColorCmd,
   ReplaceSourcePdfBytesCmd,
-  type Command, type ElementTransformSnapshot,
 } from './historyManager';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
-import { DocumentModel, PAGE_SIZES, type SourcePdf, type WatermarkSettings } from './documentModel';
+import { DocumentModel, type SourcePdf, type WatermarkSettings } from './documentModel';
 import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { loadState, clearState } from '../infra/storage';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
@@ -33,10 +31,11 @@ import { trapFocus } from '../utils/focusTrap';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { CodeElement } from '../elements/codeElement';
 import { generateCodeDataUrl, getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
-import { transformPoint, transformCanvasPoint, hexToRgbValues } from '../utils/geometry';
+import { transformPoint, hexToRgbValues } from '../utils/geometry';
 import { bindEvents } from '../ui/eventBinder';
 import { ExportService } from '../export/exportService';
 import type { IExportContext } from '../export/exportService';
+import { PageService, type IPageContext } from './pageService';
 import { SearchManager } from './searchManager';
 import { SessionManager } from './sessionManager';
 import { ToastQueue } from '../ui/toastQueue';
@@ -49,7 +48,7 @@ import { LocalLayoutStorage } from '../ui/layoutStorage';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
-export class PDFEditorApp implements IExportContext {
+export class PDFEditorApp implements IExportContext, IPageContext {
   renderer: PDFRenderer;
   documentModel: DocumentModel;
   elements: PDFElement[] = [];
@@ -108,6 +107,7 @@ export class PDFEditorApp implements IExportContext {
   private _progressManager!: IProgressManager;
   private _exportService!: ExportService;
   private _toolbarCustomizer!: ToolbarCustomizer;
+  private _pageService!: PageService;
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -118,6 +118,33 @@ export class PDFEditorApp implements IExportContext {
   get ui(): AppDOMRefs { return this.uiController.refs; }
   get reportError(): IErrorReporter { return this._errorReporter; }
   get progress(): IProgressManager { return this._progressManager; }
+
+  // ── IPageContext accessors ────────────────────────────────────────────────
+  get isFitMode(): boolean { return this._isFitMode; }
+  set isFitMode(val: boolean) { this._isFitMode = val; }
+  get pendingModeAfterBlankPage(): string | null { return this._pendingModeAfterBlankPage; }
+  set pendingModeAfterBlankPage(val: string | null) { this._pendingModeAfterBlankPage = val; }
+  get containerWidth(): number { return this.ui.container.clientWidth; }
+  setZoomDisplay(text: string): void { this.ui.zoomDisplay.textContent = text; }
+  clearTextSearchCache(): void { this._textSearch.clearCache(); }
+  imagesToPdf(files: File[]): Promise<{ bytes: Uint8Array; name: string }> { return this._imagesToPdf(files); }
+  clearSearchMatches(): void { this._clearSearchMatches(); }
+  clearSearchManagerState(): void { this._searchManager.clear(); }
+  hasFindBarOpen(): boolean { return this.ui.findBar.style.display !== 'none'; }
+  hasFindInput(): boolean { return Boolean(this.ui.findInput.value); }
+  clearFindCount(): void { this.ui.findCount.textContent = ''; }
+  searchIfActive(): void { this._search(); }
+  refreshExportPreviewIfOpen(): void { if (this._exportPreviewOpen) this._showExportPreview(); }
+  hideEmptyState(): void { (document.getElementById('emptyState') as HTMLElement).style.display = 'none'; }
+  enableFileMenuDocItems(): void { this._enableFileMenuDocItems(); }
+  autosave(): void { this._autosave(); }
+  onPageStructureChange(): Promise<void> { return this._onPageStructureChange(); }
+  invalidateThumbnail(pageId: string): void { this._thumbnailPanel?.invalidateThumb(pageId); }
+  invalidateAllThumbnails(): void { this._thumbnailPanel?.invalidateAll(); }
+  updateActiveThumbnail(): void { this._thumbnailPanel?.updateActive(); }
+  renderThumbnails(): Promise<void> { return this._thumbnailPanel?.render() ?? Promise.resolve(); }
+  showThumbnailContainer(): void { this.ui.pageThumbnailContainer.style.display = ''; }
+  ensureThumbnailPanel(): void { if (!this._thumbnailPanel) this._initThumbnailPanel(); }
 
   constructor() {
     this.documentModel = new DocumentModel();
@@ -152,6 +179,7 @@ export class PDFEditorApp implements IExportContext {
     this.currentFilename = null;
     this.currentSignature = null;
     this._exportService = new ExportService(this);
+    this._pageService = new PageService(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -169,10 +197,10 @@ export class PDFEditorApp implements IExportContext {
       container: this.ui.pageThumbnailContainer,
       renderer: this.renderer,
       model: this.documentModel,
-      onNavigate: (index) => this._goToPageIndex(index),
-      onDelete: (pageId) => this._deletePage(pageId),
-      onReorder: (newOrder) => this._reorderPages(newOrder),
-      onRotate: (pageId, delta) => this._rotatePage(pageId, delta),
+      onNavigate: (index) => void this._pageService.goToPageIndex(index),
+      onDelete: (pageId) => this._pageService.deletePage(pageId),
+      onReorder: (newOrder) => this._pageService.reorderPages(newOrder),
+      onRotate: (pageId, delta) => void this._pageService.rotatePage(pageId, delta),
       onAddPdf: () => this.ui.addPdfInput.click(),
       onDownload: (index) => this.downloadPage(index),
       onDownloadImage: (index) => this.downloadPageAsImage(index),
@@ -525,186 +553,12 @@ export class PDFEditorApp implements IExportContext {
     }
   }
 
-  // ── PDF page management ───────────────────────────────────────
-  async _handleAddPdfUpload(e: Event): Promise<void> {
-    const files = Array.from((e.target as HTMLInputElement).files ?? []);
-    (e.target as HTMLInputElement).value = '';
-    this._textSearch.clearCache();
-    if (!files.length) return;
+   // ── PDF page management — delegate to PageService ──────────────────────
+  async _handleAddPdfUpload(e: Event): Promise<void> { return this._pageService.addPages(e); }
+  _deletePage(pageId: string): void { this._pageService.deletePage(pageId); }
+  _reorderPages(newOrder: string[]): void { this._pageService.reorderPages(newOrder); }
+  async _rotatePage(pageId: string, delta: number): Promise<void> { return this._pageService.rotatePage(pageId, delta); }
 
-    const addProg = this._progressManager.begin('progress.loadingDocument');
-    let addedCount = 0;
-    try {
-      for (const file of files) {
-        const isPdf   = file.type === 'application/pdf';
-        const isImage = file.type.startsWith('image/');
-        if (!isPdf && !isImage) continue;
-        try {
-          let typedBytes: Uint8Array;
-          let fileName: string;
-          if (isImage) {
-            const { bytes, name } = await this._imagesToPdf([file]);
-            typedBytes = bytes;
-            fileName = name;
-          } else {
-            typedBytes = new Uint8Array(await file.arrayBuffer());
-            fileName = file.name;
-          }
-          const bytesToStore = typedBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
-          const doc = await pdfjsLib.getDocument({ data: typedBytes }).promise;
-          const src = this.documentModel.addSourcePdf(doc, bytesToStore, fileName);
-          const cmd = new AddPagesCmd(this.documentModel, src.id, undefined, () => this._onPageStructureChange());
-          this.historyManager.execute(cmd);
-          addedCount++;
-        } catch (err) {
-          this._errorReporter.error('toast.fileLoadFailed', err, { name: file.name });
-        }
-      }
-      if (addedCount > 0) {
-        this._errorReporter.info('toast.filesAdded', { count: addedCount });
-      }
-      addProg.done();
-    } catch (err) {
-      addProg.failed();
-      this._errorReporter.error('toast.pdfLoadFailed', err);
-    }
-  }
-
-  _deletePage(pageId: string): void {
-    if (this.documentModel.pageCount <= 1) {
-      this._errorReporter.warn('toast.cannotDeleteOnlyPage');
-      return;
-    }
-    const src = this.documentModel.sourcePdfs.get(
-      this.documentModel.pages.find(p => p.id === pageId)?.sourcePdfId ?? ''
-    );
-    const cmd = new DeletePageCmd(
-      this.documentModel, this.elements, pageId,
-      () => this._onPageStructureChange(),
-      src,
-    );
-    this.historyManager.execute(cmd);
-  }
-
-  _reorderPages(newOrder: string[]): void {
-    const before = this.documentModel.pages.map(p => p.id);
-    const cmd = new ReorderPagesCmd(this.documentModel, before, newOrder, () => this._onPageStructureChange());
-    this.historyManager.execute(cmd);
-  }
-
-  async _rotatePage(pageId: string, delta: number): Promise<void> {
-    const docPage = this.documentModel.pages.find(p => p.id === pageId);
-    if (!docPage) return;
-    const src = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
-    if (!src) return;
-
-    const pageElements = this.elements.filter(e => e.pageId === pageId);
-
-    // Fetch original page dims + source rotation for transform math
-    const pdfPage = await src.doc.getPage(docPage.sourcePageNum);
-    const srcRot = (pdfPage.rotate as number) ?? 0;
-    const vp0 = pdfPage.getViewport({ scale: 1, rotation: 0 });
-    const W = vp0.width, H = vp0.height;
-
-    const oldUserRot = docPage.rotation ?? 0;
-    const newUserRot = ((oldUserRot + delta) % 360 + 360) % 360;
-    const fromRot = ((srcRot + oldUserRot) % 360 + 360) % 360;
-    const toRot   = ((srcRot + newUserRot) % 360 + 360) % 360;
-
-    const rotateCmd = new RotatePageCmd(this.documentModel, pageId, delta, () => {
-      this._thumbnailPanel?.invalidateThumb(pageId);
-      this._onPageStructureChange();
-    });
-
-    // Capture ink stroke state before the early-return so ink-only pages also rotate.
-    const inkStrokes = this.inkLayer.getStrokes(pageId);
-    const inkBefore  = inkStrokes.map(s => s.points.map(p => ({ ...p })));
-    const inkAfter   = inkStrokes.map(s =>
-      s.points.map(p => transformCanvasPoint(p.x, p.y, W, H, fromRot, toRot))
-    );
-    const hasInk = inkStrokes.length > 0;
-
-    if (!pageElements.length && !hasInk) {
-      this.historyManager.execute(rotateCmd);
-      return;
-    }
-
-    // Build before/after snapshots for all annotations on this page
-    const before = new Map<number, ElementTransformSnapshot>();
-    const after  = new Map<number, ElementTransformSnapshot>();
-    for (const el of pageElements) {
-      before.set(el.id, { x: el.x, y: el.y, width: el.width, height: el.height,
-        rotation: el.rotation,
-        x1: (el as ShapeElement).x1, y1: (el as ShapeElement).y1,
-        x2: (el as ShapeElement).x2, y2: (el as ShapeElement).y2,
-        points: (el as ShapeElement).points?.map(p => ({ ...p })),
-      });
-      const snap = this._rotateElementSnapshot(el, W, H, fromRot, toRot);
-      // Arrows and freehand encode rotation geometrically (x1/y1/x2/y2 or points).
-      // Setting snap.rotation here would double-apply the rotation via CSS.
-      const shapType = (el as ShapeElement).shapeType;
-      const isGeometric = el.type === 'shape' && (shapType === 'arrow' || shapType === 'freehand');
-      if (!isGeometric) snap.rotation = ((el.rotation + delta) % 360 + 360) % 360;
-      after.set(el.id, snap);
-    }
-
-    // Build command list — TransformAnnotationsCmd and ink cmd run before rotateCmd so
-    // elements/strokes are in correct positions when RotatePageCmd's onUpdate re-renders.
-    const cmds: Command[] = [];
-    if (pageElements.length) {
-      cmds.push(new TransformAnnotationsCmd(this.elements, before, after));
-    }
-    if (hasInk) {
-      cmds.push({
-        execute: () => { inkStrokes.forEach((s, i) => { s.points = inkAfter[i].map(p => ({ ...p })); }); },
-        undo:    () => { inkStrokes.forEach((s, i) => { s.points = inkBefore[i].map(p => ({ ...p })); }); this.renderInkLayer(); },
-      });
-    }
-    cmds.push(rotateCmd);
-
-    this.historyManager.execute(cmds.length === 1 ? cmds[0] : new MacroCmd(cmds));
-    this._errorReporter.info('toast.annotationsAdjusted');
-  }
-
-  /** Compute the post-rotation ElementTransformSnapshot for a single element. */
-  private _rotateElementSnapshot(el: PDFElement, W: number, H: number, fromRot: number, toRot: number): ElementTransformSnapshot {
-    const tp = (cx: number, cy: number) => transformCanvasPoint(cx, cy, W, H, fromRot, toRot);
-    const shape = el as ShapeElement;
-
-    if (el.type === 'shape' && shape.shapeType === 'arrow') {
-      const p1 = tp(shape.x1, shape.y1);
-      const p2 = tp(shape.x2, shape.y2);
-      return {
-        x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
-        width:  Math.abs(p2.x - p1.x) || el.width,
-        height: Math.abs(p2.y - p1.y) || el.height,
-        x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
-      };
-    }
-
-    if (el.type === 'shape' && shape.shapeType === 'freehand') {
-      const pts = shape.points.map(p => tp(p.x, p.y));
-      const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-      return {
-        x: Math.min(...xs), y: Math.min(...ys),
-        width:  Math.max(...xs) - Math.min(...xs) || el.width,
-        height: Math.max(...ys) - Math.min(...ys) || el.height,
-        points: pts,
-      };
-    }
-
-    // Standard box elements: transform center, keep original dimensions.
-    // el.rotation is already incremented by delta (in _rotatePage line 870) so CSS
-    // transform: rotate(el.rotation deg) handles the visual reorientation — swapping
-    // width/height here would cancel the visual rotation out instead of preserving it.
-    const c = tp(el.x + el.width / 2, el.y + el.height / 2);
-    return {
-      x: c.x - el.width / 2,
-      y: c.y - el.height / 2,
-      width: el.width,
-      height: el.height,
-    };
-  }
 
   async _onPageStructureChange(): Promise<void> {
     if (this._pageUpdatePending) return;
@@ -913,85 +767,7 @@ export class PDFEditorApp implements IExportContext {
     modal.style.display = 'flex';
   }
 
-  _insertBlankPage(): void {
-    const sizeKey = (document.getElementById('blankPageSize') as HTMLSelectElement)?.value ?? 'a4';
-    const position = (document.getElementById('blankPagePosition') as HTMLSelectElement)?.value ?? 'end';
-
-    let w = 595, h = 842;
-    if (sizeKey === 'custom') {
-      const mmW = parseFloat((document.getElementById('blankPageW') as HTMLInputElement)?.value ?? '210');
-      const mmH = parseFloat((document.getElementById('blankPageH') as HTMLInputElement)?.value ?? '297');
-      w = Math.round(mmW * 2.8346); // mm → pt
-      h = Math.round(mmH * 2.8346);
-    } else if (sizeKey === 'match') {
-      const cur = this.documentModel.currentPage;
-      if (cur?.blankWidth) { w = cur.blankWidth; h = cur.blankHeight ?? 842; }
-    } else {
-      const s = PAGE_SIZES[sizeKey];
-      if (s) { w = s.width; h = s.height; }
-    }
-
-    const wasEmpty = this.documentModel.pageCount === 0;
-
-    let atIndex: number;
-    const total = this.documentModel.pageCount;
-    switch (position) {
-      case 'beginning': atIndex = 0; break;
-      case 'after':     atIndex = this.documentModel.currentPageIndex + 1; break;
-      default:          atIndex = total;
-    }
-
-    const newPage = this.documentModel.addBlankPage(w, h, atIndex);
-    this.documentModel.currentPageIndex = this.documentModel.pages.indexOf(newPage);
-
-    if (wasEmpty) {
-      // First page ever — run the full first-document initialization
-      void (async () => {
-        try {
-          (document.getElementById('emptyState') as HTMLElement).style.display = 'none';
-          this._isFitMode = true;
-          const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
-          const isMobile = window.innerWidth <= 640;
-          await this.applyZoom(isMobile ? Math.max(fitScale, 0.65) : fitScale);
-          this.enableUI();
-          this._enableFileMenuDocItems();
-          this.ui.pageThumbnailContainer.style.display = '';
-          if (!this._thumbnailPanel) {
-            this.ui.pageThumbnailContainer.innerHTML = '';
-            this._thumbnailPanel = new PageThumbnailPanel({
-              container: this.ui.pageThumbnailContainer,
-              renderer: this.renderer,
-              model: this.documentModel,
-              onNavigate: (index) => this._goToPageIndex(index),
-              onDelete: (pageId) => this._deletePage(pageId),
-              onReorder: (newOrder) => this._reorderPages(newOrder),
-              onRotate: (pageId, delta) => this._rotatePage(pageId, delta),
-              onAddPdf: () => this.ui.addPdfInput.click(),
-              onDownload: (index) => this.downloadPage(index),
-              onDownloadImage: (index) => this.downloadPageAsImage(index),
-            });
-          }
-          await this._thumbnailPanel.render();
-          this.updatePageInfo();
-          this.rebuildElementLayer();
-          this._autosave();
-          this._errorReporter.info('toast.blankPageInserted');
-          const pendingMode = this._pendingModeAfterBlankPage;
-          this._pendingModeAfterBlankPage = null;
-          if (pendingMode) this.setMode(pendingMode as ToolMode);
-        } catch (err) {
-          this._errorReporter.error('toast.blankPageInsertFailed', err);
-        }
-      })();
-    } else {
-      this._autosave();
-      void this._thumbnailPanel?.render();
-      this._thumbnailPanel?.updateActive();
-      this.updatePageInfo();
-      void this._renderCurrentPage().then(() => this.rebuildElementLayer());
-      this._errorReporter.info('toast.blankPageInserted');
-    }
-  }
+    _insertBlankPage(): void { this._pageService.insertBlankPage(); }
 
   clearAll() {
     const hasVector = this.elements.length > 0;
@@ -1815,28 +1591,7 @@ export class PDFEditorApp implements IExportContext {
     this._formFieldOverlay.setPointerEvents(this.mode === 'select');
   }
 
-  async _goToPageIndex(index: number): Promise<void> {
-    if (index < 0 || index >= this.documentModel.pageCount) return;
-    if (index === this.documentModel.currentPageIndex) return;
-    this.documentModel.currentPageIndex = index;
-    this.selectElement(null);
-    this._clearSearchMatches();
-    this._searchManager.clear();
-    if (this.ui.findBar.style.display !== 'none') this.ui.findCount.textContent = '';
-    if (this._isFitMode) {
-      const fitScale = await this.renderer.computeFitScale(this.ui.container.clientWidth);
-      const isMobile = window.innerWidth <= 640;
-      this.zoomScale = isMobile ? Math.max(fitScale, 0.65) : fitScale;
-      this.renderer.setScale(this.zoomScale);
-      this.ui.zoomDisplay.textContent = Math.round(this.zoomScale * 100) + '%';
-    }
-    await this._renderCurrentPage();
-    this._thumbnailPanel?.updateActive();
-    this.updatePageInfo();
-    this.rebuildElementLayer();
-    if (this.ui.findBar.style.display !== 'none' && this.ui.findInput.value) this._search();
-    if (this._exportPreviewOpen) this._showExportPreview();
-  }
+    async _goToPageIndex(index: number): Promise<void> { return this._pageService.goToPageIndex(index); }
 
   async _goToPage(n: number): Promise<void> {
     await this._goToPageIndex(n - 1);
@@ -1849,18 +1604,7 @@ export class PDFEditorApp implements IExportContext {
     this.uiController.updatePageInfo(this.documentModel.currentPageIndex + 1, this.documentModel.pageCount);
   }
 
-  async applyZoom(newScale: number): Promise<void> {
-    if (!Number.isFinite(newScale) || newScale <= 0) return;
-    this.zoomScale = Math.max(0.25, Math.min(3.0, newScale));
-    this.renderer.setScale(this.zoomScale);
-    this.ui.zoomDisplay.textContent = Math.round(this.zoomScale * 100) + '%';
-    await this._renderCurrentPage();
-    this._thumbnailPanel?.invalidateAll();
-    this.rebuildElementLayer();
-    // Re-run search at new scale so match overlays reposition correctly
-    if (this.ui.findBar.style.display !== 'none' && this.ui.findInput.value) this._search();
-    if (this._exportPreviewOpen) this._showExportPreview();
-  }
+    async applyZoom(newScale: number): Promise<void> { return this._pageService.applyZoom(newScale); }
 
   _showExportPreview(): void {
     const docPage = this.documentModel.currentPage;
