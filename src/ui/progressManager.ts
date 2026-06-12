@@ -1,14 +1,7 @@
 import { t } from '../utils/i18n';
+import type { ProgressHandle, IProgressManager } from '../contracts/progressManager';
 
-export interface ProgressHandle {
-  update(labelKey: string, params?: Record<string, unknown>): void;
-  done(): void;
-  failed(): void;
-}
-
-export interface IProgressManager {
-  begin(labelKey: string, params?: Record<string, unknown>): ProgressHandle;
-}
+export type { ProgressHandle, IProgressManager } from '../contracts/progressManager';
 
 export class ProgressManager implements IProgressManager {
   private _overlay: HTMLElement;

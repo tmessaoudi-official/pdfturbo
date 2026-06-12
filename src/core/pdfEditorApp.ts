@@ -48,8 +48,9 @@ import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
+import type { ToolMode } from '../types/tools';
 
-export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
+export type { ToolMode } from '../types/tools';
 
 export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext, ICodeModalContext, IWatermarkContext, IFindBarContext, IDocumentLoaderContext {
   renderer: PDFRenderer;

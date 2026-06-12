@@ -1,0 +1,16 @@
+export type ToolMode =
+  | 'select'
+  | 'addText'
+  | 'addSignature'
+  | 'addImage'
+  | 'addCode'
+  | 'drawArrow'
+  | 'drawRect'
+  | 'drawEllipse'
+  | 'drawFreehand'
+  | 'drawHighlight'
+  | 'addComment'
+  | 'drawRedaction'
+  | 'drawErase'
+  | 'editText'
+  | 'fillBucket';
