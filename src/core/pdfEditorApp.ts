@@ -49,6 +49,7 @@ import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
 import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
+import { PageRenderPipeline } from './pageRenderPipeline';
 import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
@@ -116,6 +117,17 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _findBarController!: FindBarController;
   private _documentLoader!: DocumentLoader;
   private _elementLayerRenderer!: ElementLayerRenderer;
+  private _pageRenderPipeline!: PageRenderPipeline;
+
+  // ── IPageRenderContext accessors ──────────────────────────────────────────
+  advanceFormFieldGen(): number { return ++this._formFieldGen; }
+  isCurrentFormFieldGen(gen: number): boolean { return gen === this._formFieldGen; }
+  getFormValues(sourcePdfId: string): Record<string, string> { return this._formValues[sourcePdfId] ?? {}; }
+  setFormValue(sourcePdfId: string, fieldName: string, value: string): void {
+    if (!this._formValues[sourcePdfId]) this._formValues[sourcePdfId] = {};
+    this._formValues[sourcePdfId][fieldName] = value;
+  }
+  getWarnedUnsupportedFields(): boolean { return this._warnedUnsupportedFields; }
 
   // ── IElementLayerContext accessors ────────────────────────────────────────
   get inkCanvas(): HTMLCanvasElement { return this._inkCanvas; }
@@ -297,6 +309,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._findBarController = new FindBarController(this);
     this._documentLoader = new DocumentLoader(this);
     this._elementLayerRenderer = new ElementLayerRenderer(this);
+    this._pageRenderPipeline = new PageRenderPipeline(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -882,56 +895,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   }
 
   // ── Navigation ────────────────────────────────────────────────
-  private async _renderCurrentPage(): Promise<void> {
-    await this.renderer.renderPageAtIndex(this.documentModel.currentPageIndex);
-    await this._renderFormFields();
-    await this._renderTextLayer();
-    this.renderInkLayer();
-  }
-
-  private async _renderTextLayer(): Promise<void> {
-    const docPage = this.documentModel.currentPage;
-    if (!docPage) { this._textLayerManager.clear(); return; }
-    if (docPage.sourcePdfId === 'blank') { this._textLayerManager.clear(); return; }
-    const src = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
-    if (!src) return;
-    const page = await src.doc.getPage(docPage.sourcePageNum);
-    const effectiveRotation = ((page.rotate + (docPage.rotation ?? 0)) % 360 + 360) % 360;
-    const viewport = page.getViewport({ scale: this.zoomScale, rotation: effectiveRotation });
-    const canvasOffset = { left: this.ui.canvas.offsetLeft, top: this.ui.canvas.offsetTop };
-    await this._textLayerManager.render(page, viewport, canvasOffset);
-    this._textLayerManager.setPointerEvents(this.mode === 'select');
-  }
-
-  private async _renderFormFields(): Promise<void> {
-    const myGen = ++this._formFieldGen;
-    const docPage = this.documentModel.currentPage;
-    if (!docPage) { this._formFieldOverlay.clear(); return; }
-    if (docPage.sourcePdfId === 'blank') { this._formFieldOverlay.clear(); return; }
-    const src = this.documentModel.sourcePdfs.get(docPage.sourcePdfId);
-    if (!src) return;
-    const page = await src.doc.getPage(docPage.sourcePageNum);
-    if (myGen !== this._formFieldGen) return;  // stale — newer navigation started
-    const effectiveRotation = ((page.rotate + (docPage.rotation ?? 0)) % 360 + 360) % 360;
-    const viewport = page.getViewport({ scale: this.zoomScale, rotation: effectiveRotation });
-    const canvasOffset = { left: this.ui.canvas.offsetLeft, top: this.ui.canvas.offsetTop };
-    const values = this._formValues[docPage.sourcePdfId] ?? {};
-    const { unsupportedCount } = await this._formFieldOverlay.render(
-      page, viewport, canvasOffset, values,
-      (fieldName, value) => {
-        if (!this._formValues[docPage.sourcePdfId]) this._formValues[docPage.sourcePdfId] = {};
-        this._formValues[docPage.sourcePdfId][fieldName] = value;
-        this._autosave();
-      }
-    );
-    if (myGen !== this._formFieldGen) return;  // stale after second await
-
-    if (unsupportedCount > 0 && !this._warnedUnsupportedFields) {
-      this._warnedUnsupportedFields = true;
-      this._errorReporter.warn('toast.unsupportedFields', { count: unsupportedCount });
-    }
-    this._formFieldOverlay.setPointerEvents(this.mode === 'select');
-  }
+  private _renderCurrentPage(): Promise<void> { return this._pageRenderPipeline.renderCurrentPage(); }
 
     async _goToPageIndex(index: number): Promise<void> { return this._pageService.goToPageIndex(index); }
 
