@@ -1,15 +1,35 @@
+import Sortable from 'sortablejs';
 import type { ILayoutStorage } from './layoutStorage';
 
 const STORAGE_KEY = 'pdfturbo_toolbar_order';
 
 export class ToolbarCustomizer {
   private readonly _defaultOrder: string[];
+  private _sortable: Sortable | null = null;
 
   constructor(
     private readonly _container: HTMLElement,
     private readonly _storage: ILayoutStorage,
   ) {
     this._defaultOrder = this._readOrder();
+  }
+
+  /** Enable drag-and-drop reordering via SortableJS. */
+  enableDragDrop(): void {
+    if (this._sortable) return;
+    this._sortable = new Sortable(this._container, {
+      animation: 150,
+      delay: 300,
+      delayOnTouchOnly: true,
+      filter: '.toolbar-sep,.toolbar-spacer',
+      onEnd: () => { this.save(); },
+    });
+  }
+
+  /** Disable drag-and-drop reordering. */
+  disableDragDrop(): void {
+    this._sortable?.destroy();
+    this._sortable = null;
   }
 
   /** Restore persisted group order by reordering live DOM nodes. */

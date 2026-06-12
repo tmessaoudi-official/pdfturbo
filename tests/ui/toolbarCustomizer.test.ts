@@ -1,6 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import Sortable from 'sortablejs';
 import { ToolbarCustomizer } from '../../src/ui/toolbarCustomizer';
 import type { ILayoutStorage } from '../../src/ui/layoutStorage';
+
+vi.mock('sortablejs', () => ({
+  default: vi.fn().mockImplementation(function SortableMock() {
+    return { destroy: vi.fn() };
+  }),
+}));
 
 class FakeStorage implements ILayoutStorage {
   private _store: Record<string, string> = {};
@@ -26,6 +33,7 @@ describe('ToolbarCustomizer', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
     storage = new FakeStorage();
+    vi.mocked(Sortable).mockClear();
   });
 
   it('restore() is a no-op when storage is empty', () => {
@@ -103,5 +111,39 @@ describe('ToolbarCustomizer', () => {
     tc.restore();
     // Same object reference — not recreated
     expect(document.getElementById('a')).toBe(nodeA);
+  });
+
+  it('enableDragDrop() creates a Sortable instance with mobile delay options', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.enableDragDrop();
+    const MockS = vi.mocked(Sortable);
+    expect(MockS).toHaveBeenCalledOnce();
+    const opts = MockS.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(opts['delay']).toBe(300);
+    expect(opts['delayOnTouchOnly']).toBe(true);
+  });
+
+  it('enableDragDrop() is idempotent — does not create a second Sortable', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.enableDragDrop();
+    tc.enableDragDrop();
+    expect(vi.mocked(Sortable)).toHaveBeenCalledOnce();
+  });
+
+  it('disableDragDrop() destroys the Sortable instance', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.enableDragDrop();
+    const instance = vi.mocked(Sortable).mock.results[0]?.value as { destroy: ReturnType<typeof vi.fn> };
+    tc.disableDragDrop();
+    expect(instance.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('disableDragDrop() is safe when DnD was never enabled', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    expect(() => tc.disableDragDrop()).not.toThrow();
   });
 });

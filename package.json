@@ -21,9 +21,11 @@
     "i18next": "^26.3.1",
     "i18next-browser-languagedetector": "^8.2.1",
     "pdfjs-dist": "^6.0.0",
-    "qr-code-styling": "^1.9.2"
+    "qr-code-styling": "^1.9.2",
+    "sortablejs": "^1.15.7"
   },
   "devDependencies": {
+    "@types/sortablejs": "^1.15.9",
     "@vitest/coverage-v8": "^4.1.8",
     "@vitest/ui": "^4.1.8",
     "eslint": "^10.0.0",
