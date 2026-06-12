@@ -48,6 +48,7 @@ import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
+import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
 import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
@@ -114,6 +115,34 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _watermarkPanel!: WatermarkPanel;
   private _findBarController!: FindBarController;
   private _documentLoader!: DocumentLoader;
+  private _elementLayerRenderer!: ElementLayerRenderer;
+
+  // ── IElementLayerContext accessors ────────────────────────────────────────
+  get inkCanvas(): HTMLCanvasElement { return this._inkCanvas; }
+  handleElementPointerDown(e: PointerEvent, el: PDFElement, div: HTMLDivElement): void {
+    this.interactionHandler.handlePointerDown(e, el, div);
+  }
+  handleElementClick(el: PDFElement): void { this.selectElement(el); }
+  handleCodeElementEdit(el: CodeElement): void { this.openCodeModal(el); }
+  handleTextInput(element: TextElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+    if (this._pendingTextElementId !== element.id) {
+      this._pendingTextBefore = element.text;
+      this._pendingTextElementId = element.id;
+    }
+    element.text = input.value;
+    clearTimeout(this._textChangeTimer ?? undefined);
+    this._textChangeTimer = setTimeout(() => {
+      const before = this._pendingTextBefore;
+      const id = this._pendingTextElementId;
+      this._pendingTextBefore = null;
+      this._pendingTextElementId = null;
+      this._textChangeTimer = null;
+      if (id !== null && before !== null && before !== element.text) {
+        this.historyManager.record(new TextEditCmd(this.elements, id, before, element.text));
+      }
+      this._autosave();
+    }, 500);
+  }
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -267,6 +296,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._watermarkPanel = new WatermarkPanel(this);
     this._findBarController = new FindBarController(this);
     this._documentLoader = new DocumentLoader(this);
+    this._elementLayerRenderer = new ElementLayerRenderer(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -843,101 +873,12 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
 
   removeElement(id: number): void { this._annotationService.removeElement(id); }
 
-  rebuildElementLayer() {
-    this.ui.container.querySelectorAll('.pdf-element').forEach(el => el.remove());
-    const currentPageId = this.documentModel.currentPage?.id;
-    if (!currentPageId) return;
-    const canvasOffset = { left: this.ui.canvas.offsetLeft, top: this.ui.canvas.offsetTop };
-    const currentPageElements = this.elements.filter(el => el.pageId === currentPageId);
-    const interactable = this.mode === 'select';
-    currentPageElements.forEach(element => {
-      const div = element.render(this.ui.container, canvasOffset, this.zoomScale);
-      div.style.pointerEvents = interactable ? 'auto' : 'none';
-      if (element.rotation) {
-        div.style.transform = `rotate(${element.rotation}deg)`;
-        div.style.transformOrigin = 'center center';
-      }
-      if (this.selectedElement && this.selectedElement.id === element.id) div.classList.add('selected');
-      div.addEventListener('click', (e) => { e.stopPropagation(); this.selectElement(element); });
-      div.addEventListener('pointerdown', (e) => { this.interactionHandler.handlePointerDown(e, element, div); });
-      if (element.type === 'code') {
-        div.addEventListener('code-element-edit', (e) => {
-          const id = (e as CustomEvent<{ id: number }>).detail.id;
-          const el = this.elements.find(x => x.id === id) as CodeElement | undefined;
-          if (el) this.openCodeModal(el);
-        });
-      }
-      if (element.type === 'text') {
-        const input = div.querySelector('input, textarea');
-        if (input) {
-          const isSelected = this.selectedElement && this.selectedElement.id === element.id;
-          if (!isSelected) (input as HTMLElement).style.pointerEvents = 'none';
-          input.addEventListener('input', () => {
-            const textEl = element as TextElement;
-            if (this._pendingTextElementId !== element.id) {
-              this._pendingTextBefore = textEl.text;
-              this._pendingTextElementId = element.id;
-            }
-            textEl.text = (input as HTMLInputElement | HTMLTextAreaElement).value;
-            clearTimeout(this._textChangeTimer ?? undefined);
-            this._textChangeTimer = setTimeout(() => {
-              const before = this._pendingTextBefore;
-              const id = this._pendingTextElementId;
-              this._pendingTextBefore = null;
-              this._pendingTextElementId = null;
-              this._textChangeTimer = null;
-              if (id !== null && before !== null && before !== textEl.text) {
-                this.historyManager.record(new TextEditCmd(this.elements, id, before, textEl.text));
-              }
-              this._autosave();
-            }, 500);
-          });
-        }
-      }
-      this.ui.container.appendChild(div);
-    });
-  }
+  rebuildElementLayer(): void { this._elementLayerRenderer.rebuildElementLayer(); }
 
   // ── Ink layer ─────────────────────────────────────────────────
-  renderInkLayer(): void {
-    const canvas = this.ui.canvas;
-    const ic = this._inkCanvas;
-    ic.style.left   = canvas.offsetLeft + 'px';
-    ic.style.top    = canvas.offsetTop  + 'px';
-    ic.style.width  = canvas.offsetWidth  + 'px';
-    ic.style.height = canvas.offsetHeight + 'px';
-    if (ic.width !== canvas.width || ic.height !== canvas.height) {
-      ic.width  = canvas.width;
-      ic.height = canvas.height;
-    }
-    const pageId = this.documentModel.currentPage?.id ?? '';
-    this.inkLayer.renderToCanvas(pageId, ic, this.zoomScale);
-  }
-
+  renderInkLayer(): void { this._elementLayerRenderer.renderInkLayer(); }
   renderInkLayerWithLive(points: Array<{ x: number; y: number }>, type: 'ink' | 'erase'): void {
-    this.renderInkLayer(); // composite committed strokes first
-    if (points.length < 2) return;
-    const ctx = this._inkCanvas.getContext('2d');
-    if (!ctx) return;
-    const sw = parseInt(this.ui.shapeWidth.value) || 3;
-    ctx.save();
-    ctx.beginPath();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = (type === 'erase' ? Math.max(12, sw * 4) : sw) * this.zoomScale;
-    if (type === 'erase') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.strokeStyle = 'rgba(0,0,0,1)';
-    } else {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = this.ui.colorInput.value;
-    }
-    ctx.moveTo(points[0].x * this.zoomScale, points[0].y * this.zoomScale);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x * this.zoomScale, points[i].y * this.zoomScale);
-    }
-    ctx.stroke();
-    ctx.restore();
+    this._elementLayerRenderer.renderInkLayerWithLive(points, type);
   }
 
   // ── Navigation ────────────────────────────────────────────────
