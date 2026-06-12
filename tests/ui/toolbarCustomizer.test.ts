@@ -146,4 +146,78 @@ describe('ToolbarCustomizer', () => {
     const tc = new ToolbarCustomizer(toolbar, storage);
     expect(() => tc.disableDragDrop()).not.toThrow();
   });
+
+  // ── mergeGroups ────────────────────────────────────────────────────────────
+
+  it('mergeGroups() inserts a submenu wrapper where target was', () => {
+    const toolbar = makeToolbar(['a', 'b', 'c']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.mergeGroups('a', 'c');
+    const children = Array.from(toolbar.children);
+    expect(children[0]?.classList.contains('toolbar-submenu')).toBe(true);
+    expect(children[1]?.id).toBe('b');
+  });
+
+  it('mergeGroups() places both groups inside the submenu flyout', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    const submenuId = tc.mergeGroups('a', 'b') as string;
+    const wrap = document.getElementById(submenuId);
+    const flyout = wrap?.querySelector('.toolbar-submenu-flyout');
+    expect(flyout?.children[0]?.id).toBe('a');
+    expect(flyout?.children[1]?.id).toBe('b');
+  });
+
+  it('mergeGroups() preserves live node references', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const nodeA = document.getElementById('a');
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.mergeGroups('a', 'b');
+    expect(document.getElementById('a')).toBe(nodeA);
+  });
+
+  it('mergeGroups() saves the submenu structure to storage', () => {
+    const toolbar = makeToolbar(['a', 'b', 'c']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    const submenuId = tc.mergeGroups('a', 'b') as string;
+    const saved = JSON.parse(storage.load('pdfturbo_toolbar_order') ?? '[]') as unknown[];
+    const sub = saved.find(e => typeof e === 'object' && (e as { id: string }).id === submenuId);
+    expect(sub).toMatchObject({ type: 'submenu', children: ['a', 'b'] });
+  });
+
+  it('mergeGroups() returns null when target is not in container', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    expect(tc.mergeGroups('GHOST', 'b')).toBeNull();
+  });
+
+  it('mergeGroups() returns null when source equals target', () => {
+    const toolbar = makeToolbar(['a', 'b']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    expect(tc.mergeGroups('a', 'a')).toBeNull();
+  });
+
+  it('restore() recreates submenu wrapper and moves children inside', () => {
+    const toolbar = makeToolbar(['a', 'b', 'c']);
+    storage.save('pdfturbo_toolbar_order', JSON.stringify([
+      { type: 'submenu', id: 'tbg-sub-99', children: ['a', 'b'] },
+      'c',
+    ]));
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.restore();
+    const wrap = document.getElementById('tbg-sub-99');
+    expect(wrap).not.toBeNull();
+    const flyout = wrap?.querySelector('.toolbar-submenu-flyout');
+    expect(flyout?.children[0]?.id).toBe('a');
+    expect(flyout?.children[1]?.id).toBe('b');
+  });
+
+  it('reset() unwraps submenus and restores original order', () => {
+    const toolbar = makeToolbar(['a', 'b', 'c']);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.mergeGroups('a', 'b');
+    tc.reset();
+    const ids = Array.from(toolbar.children).map(el => el.id);
+    expect(ids).toEqual(['a', 'b', 'c']);
+  });
 });
