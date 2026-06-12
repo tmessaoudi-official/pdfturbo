@@ -37,6 +37,7 @@ import { ExportService } from '../export/exportService';
 import type { IExportContext } from '../export/exportService';
 import { PageService, type IPageContext } from './pageService';
 import { AnnotationService, type IAnnotationContext } from './annotationService';
+import { ToolModeManager, type IToolModeContext } from './toolModeManager';
 import { SearchManager } from './searchManager';
 import { SessionManager } from './sessionManager';
 import { ToastQueue } from '../ui/toastQueue';
@@ -49,7 +50,7 @@ import { LocalLayoutStorage } from '../ui/layoutStorage';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
-export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext {
+export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext {
   renderer: PDFRenderer;
   documentModel: DocumentModel;
   elements: PDFElement[] = [];
@@ -110,6 +111,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _toolbarCustomizer!: ToolbarCustomizer;
   private _pageService!: PageService;
   private _annotationService!: AnnotationService;
+  private _toolModeManager!: ToolModeManager;
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -154,6 +156,14 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   updateFormattingToolbar(): void { this._updateFormattingToolbar(); }
   updateCopyPasteBtns(): void { this._updateCopyPasteBtns(); }
 
+  // ── IToolModeContext accessors ────────────────────────────────────────────
+  cancelHandlers(): void { this.drawingHandler.cancel(); this.eraserHandler.cancel(); this.inkLayerHandler.cancel(); }
+  setElementPointerEvents(pe: 'auto' | 'none'): void { this.ui.container.querySelectorAll<HTMLElement>('.pdf-element').forEach(el => { el.style.pointerEvents = pe; }); }
+  updateModeButtons(mode: ToolMode): void { this.uiController.updateModeButtons(mode); }
+  setOverlayPointerEvents(isSelect: boolean): void { this._formFieldOverlay.setPointerEvents(isSelect); this._textLayerManager.setPointerEvents(isSelect); }
+  hidePlacementGhost(): void { if (this._placementGhost) this._placementGhost.style.display = 'none'; }
+  clearToast(): void { this.uiController.clearToast(); }
+
   constructor() {
     this.documentModel = new DocumentModel();
     this.renderer = new PDFRenderer(document.getElementById('pdfCanvas') as HTMLCanvasElement);
@@ -189,6 +199,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._exportService = new ExportService(this);
     this._pageService = new PageService(this);
     this._annotationService = new AnnotationService(this);
+    this._toolModeManager = new ToolModeManager(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -1036,43 +1047,8 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     }
   }
 
-  setMode(mode: ToolMode) {
-    this.drawingHandler.cancel();
-    this.eraserHandler.cancel();
-    this.inkLayerHandler.cancel();
-    this.mode = mode;
-    const pe = mode === 'select' ? 'auto' : 'none';
-    this.ui.container.querySelectorAll<HTMLElement>('.pdf-element').forEach(el => { el.style.pointerEvents = pe; });
-    this.uiController.updateModeButtons(mode);
-    this._updateFormattingToolbar();
-    this._formFieldOverlay.setPointerEvents(mode === 'select');
-    this._textLayerManager.setPointerEvents(mode === 'select');
-    if (mode === 'addSignature') this.openSignatureModal();
-
-    const modeHintKeys: Partial<Record<ToolMode, string>> = {
-      addText: 'toast.modeHint.addText', addSignature: 'toast.modeHint.addSignature',
-      addImage: 'toast.modeHint.addImage', drawArrow: 'toast.modeHint.drawArrow',
-      drawRect: 'toast.modeHint.drawRect', drawEllipse: 'toast.modeHint.drawEllipse',
-      drawFreehand: 'toast.modeHint.drawFreehand', drawHighlight: 'toast.modeHint.drawHighlight',
-      addComment: 'toast.modeHint.addComment', addCode: 'toast.modeHint.addCode',
-      drawRedaction: 'toast.modeHint.drawRedaction',
-      drawErase: 'toast.modeHint.drawErase', editText: 'toast.modeHint.editText',
-      fillBucket: 'toast.modeHint.fillBucket',
-    };
-    const placementModes: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature', 'addCode'];
-    if (!placementModes.includes(mode) && this._placementGhost) {
-      this._placementGhost.style.display = 'none';
-    }
-
-    const hintKey = modeHintKeys[mode];
-    if (hintKey) {
-      this._errorReporter.info(hintKey);
-    } else {
-      this.uiController.clearToast();
-    }
-  }
-
-  _isShapeMode() { return this.mode.startsWith('draw'); }
+  setMode(mode: ToolMode): void { this._toolModeManager.setMode(mode); }
+  _isShapeMode(): boolean { return this._toolModeManager.isShapeMode(); }
 
   openSignatureModal() {
     this.ui.signatureModal.classList.add('active');
