@@ -45,6 +45,7 @@ function seedDOM(): void {
     'qrBgColor', 'qrLogoInput', 'qrLogoName', 'qrLogoClearBtn',
     'barcodeShowTextRow', 'barcodeShowTextChk', 'codePreviewImg', 'codePreviewStatus',
     'cancelCodeModal', 'saveCodeModal', 'fillColor', 'fillColorLabel', 'fillNoneBtn',
+    'settingsBtn', 'settingsPanel', 'resetToolbarBtn', 'closeSettingsBtn',
   ];
   ids.forEach(id => el('div', id));
 }
@@ -70,6 +71,26 @@ describe('UIController', () => {
     ctrl.clearToast();
     expect(toast.textContent).toBe('');
     expect(toast.classList.contains('show')).toBe(false);
+  });
+
+  it('toggleSettings() adds .active to settingsPanel and sets aria-expanded on settingsBtn', () => {
+    ctrl.toggleSettings(true);
+    expect(document.getElementById('settingsPanel')?.classList.contains('active')).toBe(true);
+    expect(document.getElementById('settingsBtn')?.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('toggleSettings() removes .active when called with false', () => {
+    ctrl.toggleSettings(true);
+    ctrl.toggleSettings(false);
+    expect(document.getElementById('settingsPanel')?.classList.contains('active')).toBe(false);
+    expect(document.getElementById('settingsBtn')?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('toggleSettings() with no args toggles the current state', () => {
+    ctrl.toggleSettings();
+    expect(document.getElementById('settingsPanel')?.classList.contains('active')).toBe(true);
+    ctrl.toggleSettings();
+    expect(document.getElementById('settingsPanel')?.classList.contains('active')).toBe(false);
   });
 
   it('updateModeButtons() sets aria-pressed=true only on the matching button', () => {

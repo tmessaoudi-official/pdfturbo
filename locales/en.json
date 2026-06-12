@@ -36,6 +36,7 @@
     "exportDocxTitle": "Export as Word document (beta)",
     "exportMdTitle": "Export as Markdown (beta)",
     "helpTitle": "Keyboard shortcuts (?)",
+    "settingsTitle": "Settings (⚙)",
     "editTextLabel": "Edit Text",
     "editTextTitle": "Edit PDF text — click a word to overlay and edit it",
     "addCodeLabel": "Code",
@@ -153,6 +154,12 @@
       },
       "closeTitle": "Close",
       "ctrlCNote": "* Ctrl+C copies the selected annotation element. If PDF text is selected, the browser's native copy takes precedence instead."
+    },
+    "settings": {
+      "title": "Settings",
+      "toolbarSection": "Toolbar",
+      "resetToolbar": "↺ Reset toolbar to default",
+      "closeTitle": "Close settings"
     },
     "exportPreview": {
       "banner": "This is where your annotations will appear in the exported PDF.",

@@ -361,9 +361,17 @@ export function bindEvents(app: PDFEditorApp): void {
     lockModal?.addEventListener('click', (e) => { if (e.target === lockModal) lockModal.style.display = 'none'; });
 
     app.ui.helpBtn.addEventListener('click', () => app._toggleHelp());
-     
+
     document.getElementById('closeHelp')?.addEventListener('click', () => app._toggleHelp(false));
     app.ui.helpModal.addEventListener('click', (e) => { if (e.target === app.ui.helpModal) app._toggleHelp(false); });
+
+    app.ui.settingsBtn.addEventListener('click', () => app._toggleSettings());
+    app.ui.closeSettingsBtn.addEventListener('click', () => app._toggleSettings(false));
+    app.ui.settingsPanel.addEventListener('click', (e) => { if (e.target === app.ui.settingsPanel) app._toggleSettings(false); });
+    app.ui.resetToolbarBtn.addEventListener('click', () => {
+      app._resetToolbarLayout();
+      app._toggleSettings(false);
+    });
 
 
     app.ui.firstPage.addEventListener('click', () => app._goToPage(1));
@@ -535,6 +543,7 @@ export function bindEvents(app: PDFEditorApp): void {
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        if (app.ui.settingsPanel.classList.contains('active')) { app._toggleSettings(false); return; }
         if (app.ui.helpModal.classList.contains('active')) { app._toggleHelp(false); return; }
         if (app.ui.signatureModal.classList.contains('active')) { app.closeSignatureModal(); return; }
         if (app.ui.watermarkModal.classList.contains('active')) { app._closeWatermarkModal(); return; }

@@ -44,6 +44,8 @@ import { ErrorReporter } from './errorReporter';
 import type { IErrorReporter } from './errorReporter';
 import { ProgressManager } from '../ui/progressManager';
 import type { IProgressManager } from '../ui/progressManager';
+import { ToolbarCustomizer } from '../ui/toolbarCustomizer';
+import { LocalLayoutStorage } from '../ui/layoutStorage';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
@@ -105,6 +107,7 @@ export class PDFEditorApp implements IExportContext {
   private _errorReporter!: IErrorReporter;
   private _progressManager!: IProgressManager;
   private _exportService!: ExportService;
+  private _toolbarCustomizer!: ToolbarCustomizer;
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -149,6 +152,12 @@ export class PDFEditorApp implements IExportContext {
     this.currentFilename = null;
     this.currentSignature = null;
     this._exportService = new ExportService(this);
+    this._toolbarCustomizer = new ToolbarCustomizer(
+      document.querySelector('.toolbar-row1') as HTMLElement,
+      new LocalLayoutStorage(),
+    );
+    this._toolbarCustomizer.restore();
+    this._toolbarCustomizer.enableDragDrop();
     this.setupEventListeners();
     this._initThumbnailPanel();
     this._restoreSession();
@@ -997,6 +1006,24 @@ export class PDFEditorApp implements IExportContext {
     this._autosave();
     this.rebuildElementLayer();
     this._errorReporter.info('toast.annotationsCleared');
+  }
+
+  _toggleSettings(show?: boolean): void {
+    this.uiController.toggleSettings(show);
+    if (this.ui.settingsPanel.classList.contains('active')) {
+      this._trapCleanup?.();
+      this._trapCleanup = trapFocus(
+        this.ui.settingsPanel.querySelector('.help-content') as HTMLElement,
+        this.ui.settingsBtn,
+      );
+    } else {
+      this._trapCleanup?.();
+      this._trapCleanup = null;
+    }
+  }
+
+  _resetToolbarLayout(): void {
+    this._toolbarCustomizer.reset();
   }
 
   _toggleHelp(show?: boolean) {

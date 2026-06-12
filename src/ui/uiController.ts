@@ -135,6 +135,10 @@ export interface AppDOMRefs {
   fillColorInput:   HTMLInputElement;
   fillColorLabel:   HTMLElement;
   fillNoneBtn:      HTMLButtonElement;
+  settingsBtn:      HTMLButtonElement;
+  settingsPanel:    HTMLElement;
+  resetToolbarBtn:  HTMLButtonElement;
+  closeSettingsBtn: HTMLButtonElement;
 }
 
 export class UIController {
@@ -272,6 +276,10 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       fillColorInput:   document.getElementById('fillColor')        as HTMLInputElement,
       fillColorLabel:   document.getElementById('fillColorLabel')   as HTMLElement,
       fillNoneBtn:      document.getElementById('fillNoneBtn')      as HTMLButtonElement,
+      settingsBtn:      document.getElementById('settingsBtn')      as HTMLButtonElement,
+      settingsPanel:    document.getElementById('settingsPanel')    as HTMLElement,
+      resetToolbarBtn:  document.getElementById('resetToolbarBtn')  as HTMLButtonElement,
+      closeSettingsBtn: document.getElementById('closeSettingsBtn') as HTMLButtonElement,
     };
   }
 
@@ -479,5 +487,13 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     const next = show !== undefined ? show : !active;
     this.refs.helpModal.classList.toggle('active', next);
     this.refs.helpBtn.classList.toggle('active', next);
+  }
+
+  toggleSettings(show?: boolean): void {
+    const active = this.refs.settingsPanel.classList.contains('active');
+    const next = show !== undefined ? show : !active;
+    this.refs.settingsPanel.classList.toggle('active', next);
+    this.refs.settingsBtn.setAttribute('aria-expanded', String(next));
+    this.refs.settingsBtn.classList.toggle('active', next);
   }
 }

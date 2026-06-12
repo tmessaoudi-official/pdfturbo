@@ -42,6 +42,7 @@
     "exportDocxTitle": "تصدير كمستند Word (تجريبي)",
     "exportMdTitle": "تصدير كـ Markdown (تجريبي)",
     "helpTitle": "اختصارات لوحة المفاتيح (?)",
+    "settingsTitle": "الإعدادات (⚙)",
     "langTitle": "تغيير اللغة",
     "textChevronTitle": "أدوات النص",
     "drawBtnTitle": "الأشكال (A/R/C)",
@@ -153,6 +154,12 @@
       },
       "closeTitle": "إغلاق",
       "ctrlCNote": "* Ctrl+C ينسخ عنصر التعليق التوضيحي المحدد. إذا كان نص PDF محدداً، تأخذ النسخ الأصلية للمتصفح الأولوية بدلاً من ذلك."
+    },
+    "settings": {
+      "title": "الإعدادات",
+      "toolbarSection": "شريط الأدوات",
+      "resetToolbar": "↺ إعادة تعيين شريط الأدوات",
+      "closeTitle": "إغلاق الإعدادات"
     },
     "exportPreview": {
       "banner": "هكذا ستظهر تعليقاتك في ملف PDF المُصدَّر.",

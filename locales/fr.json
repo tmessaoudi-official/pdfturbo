@@ -36,6 +36,7 @@
     "exportDocxTitle": "Exporter en document Word (bêta)",
     "exportMdTitle": "Exporter en Markdown (bêta)",
     "helpTitle": "Raccourcis clavier (?)",
+    "settingsTitle": "Paramètres (⚙)",
     "editTextLabel": "Éditer texte",
     "editTextTitle": "Éditer le texte PDF — cliquez sur un mot pour le superposer et l'éditer",
     "addCodeLabel": "Code",
@@ -153,6 +154,12 @@
       },
       "closeTitle": "Fermer",
       "ctrlCNote": "* Ctrl+C copie l'élément d'annotation sélectionné. Si du texte PDF est sélectionné, la copie native du navigateur prend la priorité."
+    },
+    "settings": {
+      "title": "Paramètres",
+      "toolbarSection": "Barre d'outils",
+      "resetToolbar": "↺ Réinitialiser la barre d'outils",
+      "closeTitle": "Fermer les paramètres"
     },
     "exportPreview": {
       "banner": "C'est ici que vos annotations apparaîtront dans le PDF exporté.",

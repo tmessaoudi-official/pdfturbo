@@ -147,6 +147,9 @@
     .help-table th { text-align: start; padding: 6px 10px; background: #f1f5f9; border-bottom: 2px solid #e2e8f0; }
     .help-table td { padding: 5px 10px; border-bottom: 1px solid #f1f5f9; }
     .help-table tr:last-child td { border-bottom: none; }
+    .settings-section { margin-bottom: 16px; }
+    .settings-section h3 { margin: 0 0 10px; font-size: 14px; color: #475569; text-transform: uppercase; letter-spacing: .05em; }
+    .settings-section .btn { width: 100%; text-align: start; justify-content: flex-start; }
     .help-table td:first-child { font-family: monospace; font-weight: 700; color: #1e293b; white-space: nowrap; }
     .btn-icon {
       padding: 4px 8px;
@@ -1078,6 +1081,7 @@
         </div>
       </div>
       <button id="helpBtn" class="btn btn-icon" data-i18n-title="toolbar.helpTitle" title="Keyboard shortcuts (?)">?</button>
+      <button id="settingsBtn" class="btn btn-icon" aria-haspopup="dialog" aria-expanded="false" data-i18n-title="toolbar.settingsTitle" title="Settings">⚙</button>
       <input type="file" id="addPdfInput" accept="application/pdf,image/*" multiple>
     </div>
     <div id="modeBadge" class="mode-badge">SELECT</div>
@@ -1215,6 +1219,18 @@
       <tr><td>?</td><td data-i18n="modal.help.actions.Question">Show this panel</td></tr>
     </table>
     <p style="margin-top:10px;font-size:11px;color:#64748b;line-height:1.5" data-i18n="modal.help.ctrlCNote">* Ctrl+C copies the selected annotation element. If PDF text is selected, the browser's native copy takes precedence instead.</p>
+  </div>
+</div>
+<div class="help-modal" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsPanelTitle">
+  <div class="help-content">
+    <div class="help-header">
+      <h2 id="settingsPanelTitle" data-i18n="modal.settings.title">Settings</h2>
+      <button id="closeSettingsBtn" class="btn btn-icon" data-i18n-aria="modal.settings.closeTitle" aria-label="Close">×</button>
+    </div>
+    <div class="settings-section">
+      <h3 data-i18n="modal.settings.toolbarSection">Toolbar</h3>
+      <button id="resetToolbarBtn" class="btn btn-secondary" data-i18n="modal.settings.resetToolbar">↺ Reset toolbar to default</button>
+    </div>
   </div>
 </div>
 
