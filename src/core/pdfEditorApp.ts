@@ -14,8 +14,8 @@ import { UIController, type AppDOMRefs } from '../ui/uiController';
 import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
-  HistoryManager, AddElementCmd, RemoveElementCmd, ClearAllCmd, TextEditCmd,
-  MacroCmd, ClearInkCmd, FillColorCmd, InkFillColorCmd,
+  HistoryManager, AddElementCmd, TextEditCmd,
+  FillColorCmd, InkFillColorCmd,
   ReplaceSourcePdfBytesCmd,
 } from './historyManager';
 import { InkLayer } from '../infra/inkLayer';
@@ -36,6 +36,7 @@ import { bindEvents } from '../ui/eventBinder';
 import { ExportService } from '../export/exportService';
 import type { IExportContext } from '../export/exportService';
 import { PageService, type IPageContext } from './pageService';
+import { AnnotationService, type IAnnotationContext } from './annotationService';
 import { SearchManager } from './searchManager';
 import { SessionManager } from './sessionManager';
 import { ToastQueue } from '../ui/toastQueue';
@@ -48,7 +49,7 @@ import { LocalLayoutStorage } from '../ui/layoutStorage';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
-export class PDFEditorApp implements IExportContext, IPageContext {
+export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext {
   renderer: PDFRenderer;
   documentModel: DocumentModel;
   elements: PDFElement[] = [];
@@ -108,6 +109,7 @@ export class PDFEditorApp implements IExportContext, IPageContext {
   private _exportService!: ExportService;
   private _toolbarCustomizer!: ToolbarCustomizer;
   private _pageService!: PageService;
+  private _annotationService!: AnnotationService;
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -146,6 +148,12 @@ export class PDFEditorApp implements IExportContext, IPageContext {
   showThumbnailContainer(): void { this.ui.pageThumbnailContainer.style.display = ''; }
   ensureThumbnailPanel(): void { if (!this._thumbnailPanel) this._initThumbnailPanel(); }
 
+  // ── IAnnotationContext accessors ──────────────────────────────────────────
+  get clipboard(): ElementJSON | null { return this._clipboard; }
+  set clipboard(val: ElementJSON | null) { this._clipboard = val; }
+  updateFormattingToolbar(): void { this._updateFormattingToolbar(); }
+  updateCopyPasteBtns(): void { this._updateCopyPasteBtns(); }
+
   constructor() {
     this.documentModel = new DocumentModel();
     this.renderer = new PDFRenderer(document.getElementById('pdfCanvas') as HTMLCanvasElement);
@@ -180,6 +188,7 @@ export class PDFEditorApp implements IExportContext, IPageContext {
     this.currentSignature = null;
     this._exportService = new ExportService(this);
     this._pageService = new PageService(this);
+    this._annotationService = new AnnotationService(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -769,20 +778,7 @@ export class PDFEditorApp implements IExportContext, IPageContext {
 
     _insertBlankPage(): void { this._pageService.insertBlankPage(); }
 
-  clearAll() {
-    const hasVector = this.elements.length > 0;
-    const hasInk    = this.inkLayer.hasAnyContent();
-    if (!hasVector && !hasInk) { this._errorReporter.warn('toast.noAnnotationsToClear'); return; }
-    const cmds = [];
-    if (hasVector) cmds.push(new ClearAllCmd(this.elements));
-    if (hasInk)    cmds.push(new ClearInkCmd(this.inkLayer, () => this.renderInkLayer()));
-    this.historyManager.execute(cmds.length === 1 ? cmds[0] : new MacroCmd(cmds));
-    this.selectedElement = null;
-    this._updateFormattingToolbar();
-    this._autosave();
-    this.rebuildElementLayer();
-    this._errorReporter.info('toast.annotationsCleared');
-  }
+  clearAll(): void { this._annotationService.clearAll(); }
 
   _toggleSettings(show?: boolean): void {
     this.uiController.toggleSettings(show);
@@ -1430,17 +1426,7 @@ export class PDFEditorApp implements IExportContext, IPageContext {
   }
 
 
-  removeElement(id: number) {
-    const el = this.elements.find(e => e.id === id);
-    if (!el) return;
-    this.historyManager.execute(new RemoveElementCmd(this.elements, el));
-    if (this.selectedElement && this.selectedElement.id === id) {
-      this.selectedElement = null;
-      this._updateFormattingToolbar();
-    }
-    this.rebuildElementLayer();
-    this._autosave();
-  }
+  removeElement(id: number): void { this._annotationService.removeElement(id); }
 
   rebuildElementLayer() {
     this.ui.container.querySelectorAll('.pdf-element').forEach(el => el.remove());
@@ -1696,26 +1682,8 @@ export class PDFEditorApp implements IExportContext, IPageContext {
     await this.applyZoom(scale);
   }
 
-  _copySelectedElement(): void {
-    if (!this.selectedElement) return;
-    this._clipboard = this.selectedElement.toJSON() as ElementJSON;
-    this._updateCopyPasteBtns();
-    this._errorReporter.info('toast.copied');
-  }
-
-  _pasteElement(): void {
-    if (!this._clipboard || !this.documentModel.currentPage) return;
-    const clone = ElementFactory.fromJSON({ ...this._clipboard } as Record<string, unknown>);
-    if (!clone) return;
-    clone.id = PDFElement._nextId++;
-    clone.x += 10;
-    clone.y += 10;
-    clone.pageId = this.documentModel.currentPage.id;
-    this.historyManager.execute(new AddElementCmd(this.elements, clone));
-    this.selectElement(clone);
-    this._autosave();
-    this._errorReporter.info('toast.pastedUndo');
-  }
+  _copySelectedElement(): void { this._annotationService.copySelectedElement(); }
+  _pasteElement(): void { this._annotationService.pasteElement(); }
 
   _updateCopyPasteBtns(): void {
     const hasPdfText = !!window.getSelection()?.toString();

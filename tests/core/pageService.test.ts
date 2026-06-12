@@ -167,7 +167,7 @@ describe('PageService.goToPageIndex', () => {
     const svc = new PageService(ctx);
     await svc.goToPageIndex(1);
     expect(ctx.renderer.computeFitScale).toHaveBeenCalled();
-    expect((ctx.renderer as ReturnType<typeof makeRenderer>).setScale).toHaveBeenCalled();
+    expect((ctx.renderer as unknown as ReturnType<typeof makeRenderer>).setScale).toHaveBeenCalled();
   });
 });
 
@@ -195,7 +195,7 @@ describe('PageService.applyZoom', () => {
     const ctx = makeCtx();
     const svc = new PageService(ctx);
     await svc.applyZoom(1.5);
-    expect((ctx.renderer as ReturnType<typeof makeRenderer>).setScale).toHaveBeenCalledWith(1.5);
+    expect((ctx.renderer as unknown as ReturnType<typeof makeRenderer>).setScale).toHaveBeenCalledWith(1.5);
     expect(ctx.renderCurrentPage).toHaveBeenCalled();
   });
 
