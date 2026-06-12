@@ -20,18 +20,17 @@ import {
 } from './historyManager';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
-import { DocumentModel, type SourcePdf, type WatermarkSettings } from './documentModel';
+import { DocumentModel, type SourcePdf } from './documentModel';
 import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { loadState, clearState } from '../infra/storage';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
 import { CommentElement } from '../elements/commentElement';
-import { t } from '../utils/i18n';
 import { trapFocus } from '../utils/focusTrap';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { CodeElement } from '../elements/codeElement';
-import { generateCodeDataUrl, getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
-import { transformPoint, hexToRgbValues } from '../utils/geometry';
+import { getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
+import { transformPoint } from '../utils/geometry';
 import { bindEvents } from '../ui/eventBinder';
 import { ExportService } from '../export/exportService';
 import type { IExportContext } from '../export/exportService';
@@ -47,10 +46,13 @@ import { ProgressManager } from '../ui/progressManager';
 import type { IProgressManager } from '../ui/progressManager';
 import { ToolbarCustomizer } from '../ui/toolbarCustomizer';
 import { LocalLayoutStorage } from '../ui/layoutStorage';
+import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
+import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
+import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 
 export type ToolMode = 'select' | 'addText' | 'addSignature' | 'addImage' | 'addCode' | 'drawArrow' | 'drawRect' | 'drawEllipse' | 'drawFreehand' | 'drawHighlight' | 'addComment' | 'drawRedaction' | 'drawErase' | 'editText' | 'fillBucket';
 
-export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext {
+export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext, ICodeModalContext, IWatermarkContext, IFindBarContext {
   renderer: PDFRenderer;
   documentModel: DocumentModel;
   elements: PDFElement[] = [];
@@ -75,10 +77,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _pendingCodeDataUrl: string | null = null;
   private _pendingCodeOptions: { codeType: string; data: string; qrStyle: QRStyleOptions | null; bwipOpts: BwipOptions | null } | null = null;
   private _pendingCodeNatural: { w: number; h: number } | null = null;
-  private _codeModalEditingId: number | null = null;
-  private _codeModalGen = 0;
-  private _codePreviewDebounce: ReturnType<typeof setTimeout> | null = null;
-  _qrLogoDataUrl: string | null = null;
   private _skipNextClick = false;
   _noFill = true;
   private _sessionManager = new SessionManager();
@@ -112,6 +110,9 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _pageService!: PageService;
   private _annotationService!: AnnotationService;
   private _toolModeManager!: ToolModeManager;
+  private _codeModalManager!: CodeModalManager;
+  private _watermarkPanel!: WatermarkPanel;
+  private _findBarController!: FindBarController;
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -132,12 +133,12 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   setZoomDisplay(text: string): void { this.ui.zoomDisplay.textContent = text; }
   clearTextSearchCache(): void { this._textSearch.clearCache(); }
   imagesToPdf(files: File[]): Promise<{ bytes: Uint8Array; name: string }> { return this._imagesToPdf(files); }
-  clearSearchMatches(): void { this._clearSearchMatches(); }
+  clearSearchMatches(): void { this._findBarController.clearMatches(); }
   clearSearchManagerState(): void { this._searchManager.clear(); }
   hasFindBarOpen(): boolean { return this.ui.findBar.style.display !== 'none'; }
   hasFindInput(): boolean { return Boolean(this.ui.findInput.value); }
   clearFindCount(): void { this.ui.findCount.textContent = ''; }
-  searchIfActive(): void { this._search(); }
+  searchIfActive(): void { void this._findBarController.search(); }
   refreshExportPreviewIfOpen(): void { if (this._exportPreviewOpen) this._showExportPreview(); }
   hideEmptyState(): void { (document.getElementById('emptyState') as HTMLElement).style.display = 'none'; }
   enableFileMenuDocItems(): void { this._enableFileMenuDocItems(); }
@@ -163,6 +164,32 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   setOverlayPointerEvents(isSelect: boolean): void { this._formFieldOverlay.setPointerEvents(isSelect); this._textLayerManager.setPointerEvents(isSelect); }
   hidePlacementGhost(): void { if (this._placementGhost) this._placementGhost.style.display = 'none'; }
   clearToast(): void { this.uiController.clearToast(); }
+
+  // ── IFindBarContext accessors ─────────────────────────────────────────────
+  get searchManager() { return this._searchManager; }
+  get textSearch() { return this._textSearch; }
+  addHighlightForMatch(match: { x: number; y: number; width: number; height: number }, pageId: string): void {
+    const hlEl = new HighlightElement(match.x, match.y, match.width, match.height, pageId);
+    this.historyManager.execute(new AddElementCmd(this.elements, hlEl));
+  }
+
+  // ── IWatermarkContext accessors ──────────────────────────────────────────
+  get watermark() { return this.documentModel.watermark; }
+  setWatermark(wm: import('./documentModel').WatermarkSettings): void { this.documentModel.watermark = wm; }
+  get exportPreviewOpen(): boolean { return this._exportPreviewOpen; }
+  showExportPreview(): void { this._showExportPreview(); }
+
+  // ── ICodeModalContext accessors ──────────────────────────────────────────
+  setPendingCode(
+    dataUrl: string,
+    options: { codeType: string; data: string; qrStyle: QRStyleOptions | null; bwipOpts: BwipOptions | null },
+    natural: { w: number; h: number },
+  ): void {
+    this._pendingCodeDataUrl = dataUrl;
+    this._pendingCodeOptions = options;
+    this._pendingCodeNatural = natural;
+  }
+  _setQrLogoDataUrl(val: string | null): void { this._codeModalManager.setQrLogoDataUrl(val); }
 
   constructor() {
     this.documentModel = new DocumentModel();
@@ -200,6 +227,9 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._pageService = new PageService(this);
     this._annotationService = new AnnotationService(this);
     this._toolModeManager = new ToolModeManager(this);
+    this._codeModalManager = new CodeModalManager(this);
+    this._watermarkPanel = new WatermarkPanel(this);
+    this._findBarController = new FindBarController(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -238,194 +268,20 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     bindEvents(this);
   }
 
-  // ── Watermark ────────────────────────────────────────────────
-  _setupWatermarkPreviewListeners(): void {
-    const update = () => this._updateWatermarkPreview();
-    this.ui.wmText.addEventListener('input', update);
-    this.ui.wmColor.addEventListener('input', update);
-    this.ui.wmFontSize.addEventListener('input', () => {
-      this.ui.wmFontSizeDisplay.textContent = this.ui.wmFontSize.value;
-      update();
-    });
-    this.ui.wmOpacity.addEventListener('input', () => {
-      this.ui.wmOpacityDisplay.textContent = this.ui.wmOpacity.value;
-      update();
-    });
-    this.ui.wmAngle.addEventListener('input', () => {
-      this.ui.wmAngleDisplay.textContent = this.ui.wmAngle.value;
-      update();
-    });
-    this.ui.wmDensity.addEventListener('input', () => {
-      this.ui.wmDensityDisplay.textContent = this.ui.wmDensity.value;
-      update();
-    });
-  }
+  // ── Watermark (delegated to WatermarkPanel) ──────────────────────────────
+  _setupWatermarkPreviewListeners(): void { this._watermarkPanel.setupListeners(); }
+  _openWatermarkModal(): void { this._watermarkPanel.open(); }
+  _closeWatermarkModal(): void { this._watermarkPanel.close(); }
+  _applyWatermark(): void { this._watermarkPanel.apply(); }
+  private _syncWatermarkBtn(): void { this._watermarkPanel.syncBtn(); }
 
-  private _updateWatermarkPreview(): void {
-    const canvas = this.ui.wmPreviewCanvas;
-    const w = canvas.offsetWidth || 300;
-    const h = canvas.offsetHeight || 80;
-    if (canvas.width !== w) canvas.width = w;
-    if (canvas.height !== h) canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, w, h);
-    const realFontSize = parseInt(this.ui.wmFontSize.value) || 60;
-    // Scale as if the canvas represents an A4 page (842pt tall) for WYSIWYG density.
-    const previewScale = h / 842;
-    const liveWm: WatermarkSettings = {
-      enabled: true,
-      text: this.ui.wmText.value || 'WATERMARK',
-      color: this.ui.wmColor.value,
-      fontSize: realFontSize,
-      opacity: parseInt(this.ui.wmOpacity.value) / 100,
-      angle: parseInt(this.ui.wmAngle.value),
-      density: parseInt(this.ui.wmDensity.value) || 3,
-    };
-    this._drawWatermarkOnCanvas(ctx, w, h, liveWm, previewScale);
-  }
-
-  _openWatermarkModal(): void {
-    const wm = this.documentModel.watermark;
-    this.ui.wmEnabled.checked = wm.enabled;
-    this.ui.wmText.value = wm.text;
-    this.ui.wmColor.value = wm.color;
-    this.ui.wmFontSize.value = String(wm.fontSize);
-    this.ui.wmFontSizeDisplay.textContent = String(wm.fontSize);
-    const opPct = Math.round(wm.opacity * 100);
-    this.ui.wmOpacity.value = String(opPct);
-    this.ui.wmOpacityDisplay.textContent = String(opPct);
-    this.ui.wmAngle.value = String(wm.angle);
-    this.ui.wmAngleDisplay.textContent = String(wm.angle);
-    const density = wm.density ?? 3;
-    this.ui.wmDensity.value = String(density);
-    this.ui.wmDensityDisplay.textContent = String(density);
-    this.ui.watermarkModal.classList.add('active');
-    this._updateWatermarkPreview();
-    this._trapCleanup?.();
-    this._trapCleanup = trapFocus(
-      this.ui.watermarkModal.querySelector('.watermark-content') as HTMLElement,
-      this.ui.watermarkBtn,
-    );
-  }
-
-  _closeWatermarkModal(): void {
-    this.ui.watermarkModal.classList.remove('active');
-    this._trapCleanup?.();
-    this._trapCleanup = null;
-  }
-
-  _applyWatermark(): void {
-    this.documentModel.watermark = {
-      enabled: this.ui.wmEnabled.checked,
-      text: this.ui.wmText.value || 'WATERMARK',
-      color: this.ui.wmColor.value,
-      fontSize: parseInt(this.ui.wmFontSize.value) || 60,
-      opacity: parseInt(this.ui.wmOpacity.value) / 100,
-      angle: parseInt(this.ui.wmAngle.value),
-      density: parseInt(this.ui.wmDensity.value) || 3,
-    };
-    this._closeWatermarkModal();
-    this._syncWatermarkBtn();
-    this._autosave();
-    this._errorReporter.info(this.documentModel.watermark.enabled ? 'toast.watermarkEnabled' : 'toast.watermarkDisabled');
-    if (this._exportPreviewOpen) this._showExportPreview();
-  }
-
-  private _syncWatermarkBtn(): void {
-    this.ui.watermarkBtn.classList.toggle('active', this.documentModel.watermark.enabled);
-  }
-
-  // ── Find bar ─────────────────────────────────────────────────
-  _openFindBar(): void {
-    this.ui.findBar.style.display = '';
-    this.ui.findInput.focus();
-    this.ui.findInput.select();
-    if (this.ui.findInput.value) this._search();
-  }
-
-  _closeFindBar(): void {
-    this.ui.findBar.style.display = 'none';
-    this._clearSearchMatches();
-    this._searchManager.clear();
-    this.ui.findCount.textContent = '';
-  }
-
-  async _search(): Promise<void> {
-    this._clearSearchMatches();
-    this._searchManager.clear();
-    const query = this.ui.findInput.value;
-    const settled = await this._searchManager.run(query, {
-      documentModel: this.documentModel,
-      elements: this.elements,
-      textSearchHandler: this._textSearch,
-      zoomScale: this.zoomScale,
-    });
-    if (!settled) return; // superseded by a newer call
-    if (this._searchManager.count > 0) this._showSearchMatches();
-    this._updateFindCount();
-  }
-
-  _nextMatch(): void {
-    if (!this._searchManager.count) return;
-    this._searchManager.next();
-    this._showSearchMatches();
-    this._updateFindCount();
-  }
-
-  _prevMatch(): void {
-    if (!this._searchManager.count) return;
-    this._searchManager.prev();
-    this._showSearchMatches();
-    this._updateFindCount();
-  }
-
-  _highlightCurrentMatch(): void {
-    const match = this._searchManager.currentMatch;
-    const pageId = this.documentModel.currentPage?.id;
-    if (!match || !pageId) return;
-    const hlEl = new HighlightElement(match.x, match.y, match.width, match.height, pageId);
-    this.historyManager.execute(new AddElementCmd(this.elements, hlEl));
-    this._autosave();
-    this.rebuildElementLayer();
-    this._showSearchMatches(); // re-render match overlays after rebuildElementLayer clears elements
-    this._errorReporter.info('toast.highlightAdded');
-  }
-
-  private _showSearchMatches(): void {
-    this._clearSearchMatches();
-    const offset = { left: this.ui.canvas.offsetLeft, top: this.ui.canvas.offsetTop };
-    let activeDiv: Element | null = null;
-    this._searchManager.matches.forEach((match, i) => {
-      const isActive = i === this._searchManager.currentIndex;
-      const div = document.createElement('div');
-      div.className = 'search-match' + (isActive ? ' search-match-active' : '');
-      Object.assign(div.style, {
-        position: 'absolute',
-        left: `${offset.left + match.x * this.zoomScale}px`,
-        top: `${offset.top + match.y * this.zoomScale}px`,
-        width: `${match.width * this.zoomScale}px`,
-        height: `${match.height * this.zoomScale}px`,
-        pointerEvents: 'none',
-        zIndex: '25',
-      });
-      this.ui.container.appendChild(div);
-      if (isActive) activeDiv = div;
-    });
-    if (activeDiv) (activeDiv as Element).scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }
-
-  private _clearSearchMatches(): void {
-    this.ui.container.querySelectorAll('.search-match').forEach(el => el.remove());
-  }
-
-  private _updateFindCount(): void {
-    if (!this._searchManager.count) {
-      this.ui.findCount.textContent = this.ui.findInput.value ? '0 / 0' : '';
-    } else {
-      this.ui.findCount.textContent = `${this._searchManager.currentIndex + 1} / ${this._searchManager.count}`;
-    }
-  }
+  // ── Find bar (delegated to FindBarController) ───────────────────────────
+  _openFindBar(): void { this._findBarController.open(); }
+  _closeFindBar(): void { this._findBarController.close(); }
+  async _search(): Promise<void> { return this._findBarController.search(); }
+  _nextMatch(): void { this._findBarController.nextMatch(); }
+  _prevMatch(): void { this._findBarController.prevMatch(); }
+  _highlightCurrentMatch(): void { this._findBarController.highlightCurrentMatch(); }
 
   // ── Image handling ───────────────────────────────────────────
   _handleImageFileSelect(e: Event): void {
@@ -1085,168 +941,12 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this.ui.addSignatureBtn.classList.add('active');
   }
 
-  // ── Code modal ────────────────────────────────────────────────
-
-  openCodeModal(el?: CodeElement): void {
-    this._codeModalEditingId = el?.id ?? null;
-    this._qrLogoDataUrl = null;
-    // Pre-fill or reset form
-    this.ui.codeFormatSelect.value = el?.codeType ?? 'qrcode';
-    this.ui.codeDataInput.value = el?.data ?? '';
-    const qs = el?.qrStyle;
-    this.ui.qrStyledChk.checked = qs?.styled ?? false;
-    this.ui.qrEclevelSelect.value = qs?.eclevel ?? 'M';
-    this.ui.qrDotStyle.value = qs?.dotType ?? 'square';
-    this.ui.qrDotColor.value = qs?.dotColor ?? '#000000';
-    this.ui.qrBgColor.value = qs?.bgColor ?? '#ffffff';
-    this.ui.qrLogoInput.value = '';
-    this._qrLogoDataUrl = qs?.logoSrc ?? null;
-    this.ui.qrLogoName.textContent = qs?.logoSrc ? t('modal.code.logoExisting') : '';
-    this.ui.qrLogoClearBtn.style.display = qs?.logoSrc ? '' : 'none';
-    const bo = (el as CodeElement | undefined)?.bwipOpts;
-    this.ui.barcodeShowTextChk.checked = bo?.includetext ?? true;
-    this._syncCodeOptionsVisibility();
-    // Reset preview
-    this.ui.codePreviewImg.style.display = 'none';
-    this.ui.codePreviewImg.src = '';
-    this.ui.codePreviewStatus.textContent = '';
-    this.ui.saveCodeModal.disabled = true;
-    const title = el ? t('modal.code.titleEdit') : t('modal.code.title');
-    const titleEl = this.ui.codeModal.querySelector('h2');
-    if (titleEl) titleEl.textContent = title;
-    const saveLabel = el ? t('modal.code.update') : t('modal.code.place');
-    this.ui.saveCodeModal.textContent = saveLabel;
-    this.ui.codeModal.classList.add('active');
-    this._trapCleanup?.();
-    this._trapCleanup = trapFocus(
-      this.ui.codeModal.querySelector('.code-modal-content') as HTMLElement,
-      this.ui.addCodeBtn,
-    );
-    // Trigger preview if data is pre-filled
-    if (this.ui.codeDataInput.value.trim()) this._triggerCodePreview(0);
-  }
-
-  closeCodeModal(): void {
-    this.ui.codeModal.classList.remove('active');
-    this._trapCleanup?.();
-    this._trapCleanup = null;
-    // Only switch to select if we were not editing an existing element
-    if (this._codeModalEditingId === null && this.mode !== 'addCode') {
-      this.setMode('select');
-    }
-    this._codeModalEditingId = null;
-  }
-
-  async saveCodeModal(): Promise<void> {
-    const fmt = this.ui.codeFormatSelect.value;
-    const data = this.ui.codeDataInput.value.trim();
-    if (!data) return;
-    const qrStyle = this._getQrStyleOptions();
-    const bwipOpts = this._getCodeBwipOpts();
-    this.ui.saveCodeModal.disabled = true;
-    this.ui.codePreviewStatus.textContent = t('modal.code.generating');
-    try {
-      const dataUrl = await generateCodeDataUrl(fmt, data, qrStyle, bwipOpts);
-      const nat = await new Promise<{ w: number; h: number }>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-        img.src = dataUrl;
-      });
-      const editingId = this._codeModalEditingId;
-      this.ui.codeModal.classList.remove('active');
-      this._trapCleanup?.();
-      this._trapCleanup = null;
-      this._codeModalEditingId = null;
-
-      if (editingId !== null) {
-        // Edit existing element in-place
-        const el = this.elements.find(x => x.id === editingId) as CodeElement | undefined;
-        if (el) {
-          el.codeType = fmt;
-          el.data = data;
-          el.qrStyle = qrStyle ?? null;
-          el.bwipOpts = bwipOpts;
-          el.cachedDataUrl = dataUrl;
-          this._autosave();
-          this.rebuildElementLayer();
-        }
-      } else {
-        // New placement — switch to addCode mode and wait for drag
-        this._pendingCodeDataUrl = dataUrl;
-        this._pendingCodeOptions = { codeType: fmt, data, qrStyle: qrStyle ?? null, bwipOpts };
-        this._pendingCodeNatural = nat;
-        this.setMode('addCode');
-      }
-    } catch (e) {
-      this.ui.codePreviewStatus.textContent = String(e).replace(/^Error:\s*/, '');
-      this.ui.saveCodeModal.disabled = false;
-    }
-  }
-
-  private _getQrStyleOptions(): QRStyleOptions | null {
-    if (this.ui.codeFormatSelect.value !== 'qrcode') return null;
-    const eclevel = this.ui.qrEclevelSelect.value;
-    if (!this.ui.qrStyledChk.checked) {
-      return { styled: false, eclevel };
-    }
-    return {
-      styled: true,
-      eclevel,
-      dotType: this.ui.qrDotStyle.value,
-      dotColor: this.ui.qrDotColor.value,
-      bgColor: this.ui.qrBgColor.value,
-      ...(this._qrLogoDataUrl ? { logoSrc: this._qrLogoDataUrl } : {}),
-    };
-  }
-
-  private _getCodeBwipOpts(): BwipOptions | null {
-    const is2D = ['qrcode', 'datamatrix', 'pdf417', 'azteccode'].includes(this.ui.codeFormatSelect.value);
-    if (is2D) return null;
-    return { includetext: this.ui.barcodeShowTextChk.checked };
-  }
-
-  _syncCodeOptionsVisibility(): void {
-    const fmt = this.ui.codeFormatSelect.value;
-    const isQr = fmt === 'qrcode';
-    const is2D = ['qrcode', 'datamatrix', 'pdf417', 'azteccode'].includes(fmt);
-    this.ui.qrStyleSection.style.display = isQr ? '' : 'none';
-    this.ui.qrStyleControls.style.display = (isQr && this.ui.qrStyledChk.checked) ? '' : 'none';
-    this.ui.barcodeShowTextRow.style.display = is2D ? 'none' : '';
-  }
-
-  _triggerCodePreview(delay = 400): void {
-    clearTimeout(this._codePreviewDebounce ?? undefined);
-    this._codePreviewDebounce = setTimeout(() => void this._runCodePreview(), delay);
-  }
-
-  private async _runCodePreview(): Promise<void> {
-    const gen = ++this._codeModalGen;
-    const fmt = this.ui.codeFormatSelect.value;
-    const data = this.ui.codeDataInput.value.trim();
-    if (!data) {
-      this.ui.codePreviewImg.style.display = 'none';
-      this.ui.codePreviewStatus.textContent = '';
-      this.ui.saveCodeModal.disabled = true;
-      return;
-    }
-    this.ui.saveCodeModal.disabled = true;
-    this.ui.codePreviewStatus.textContent = t('modal.code.generating');
-    try {
-      const qrStyle = this._getQrStyleOptions();
-      const bwipOpts = this._getCodeBwipOpts();
-      const dataUrl = await generateCodeDataUrl(fmt, data, qrStyle, bwipOpts);
-      if (gen !== this._codeModalGen) return; // stale generation
-      this.ui.codePreviewImg.src = dataUrl;
-      this.ui.codePreviewImg.style.display = 'block';
-      this.ui.codePreviewStatus.textContent = '';
-      this.ui.saveCodeModal.disabled = false;
-    } catch (e) {
-      if (gen !== this._codeModalGen) return;
-      this.ui.codePreviewImg.style.display = 'none';
-      this.ui.codePreviewStatus.textContent = String(e).replace(/^Error:\s*/, '');
-      this.ui.saveCodeModal.disabled = true;
-    }
-  }
+  // ── Code modal (delegated to CodeModalManager) ──────────────────────────
+  openCodeModal(el?: CodeElement): void { this._codeModalManager.open(el); }
+  closeCodeModal(): void { this._codeModalManager.close(); }
+  async saveCodeModal(): Promise<void> { return this._codeModalManager.save(); }
+  _syncCodeOptionsVisibility(): void { this._codeModalManager.syncVisibility(); }
+  _triggerCodePreview(delay?: number): void { this._codeModalManager.triggerPreview(delay); }
 
   selectElement(element: PDFElement | null) {
     if (this.selectedElement === element) { this._updateFormattingToolbar(); return; }
@@ -1589,7 +1289,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
       wmCanvas.style.top           = '0';
       wmCanvas.style.pointerEvents = 'none';
       const ctx = wmCanvas.getContext('2d');
-      if (ctx) this._drawWatermarkOnCanvas(ctx, canvas.width, canvas.height, this.documentModel.watermark);
+      if (ctx) this._watermarkPanel.drawOnCanvas(ctx, canvas.width, canvas.height, this.documentModel.watermark);
       ghost.appendChild(wmCanvas);
     }
 
@@ -1618,30 +1318,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this.ui.previewExportBtn.classList.add('active');
     this.ui.previewExportBtn.setAttribute('aria-pressed', 'true');
     this.ui.exportPreviewOverlay.style.display = '';
-  }
-
-  private _drawWatermarkOnCanvas(ctx: CanvasRenderingContext2D, screenW: number, screenH: number, wm: WatermarkSettings, scale?: number): void {
-    if (!wm.enabled || !wm.text) return;
-    const effectiveScale = scale ?? this.zoomScale;
-    const fontSize = wm.fontSize * effectiveScale;
-    ctx.font = `${fontSize}px Helvetica, Arial, sans-serif`;
-    const textWidth = ctx.measureText(wm.text).width;
-    const count = Math.max(1, Math.min(5, wm.density ?? 3));
-    const stepX = Math.max(textWidth * 1.2, screenW / (count + 0.5));
-    const stepY = Math.max(fontSize * 2.5, screenH / (count + 0.5));
-    const col = hexToRgbValues(wm.color);
-    ctx.fillStyle = `rgba(${Math.round(col.r * 255)},${Math.round(col.g * 255)},${Math.round(col.b * 255)},${wm.opacity})`;
-    ctx.textBaseline = 'alphabetic';
-    const angleRad = wm.angle * Math.PI / 180;
-    for (let y = -(stepY / 2); y < screenH + stepY; y += stepY) {
-      for (let x = -(stepX / 2); x < screenW + stepX; x += stepX) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(angleRad);
-        ctx.fillText(wm.text, -textWidth / 2, 0);
-        ctx.restore();
-      }
-    }
   }
 
   _hideExportPreview(): void {

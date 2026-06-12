@@ -121,7 +121,7 @@ export function bindEvents(app: PDFEditorApp): void {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        app._qrLogoDataUrl = (ev.target?.result as string) ?? null;
+        app._setQrLogoDataUrl((ev.target?.result as string) ?? null);
         app.ui.qrLogoName.textContent = file.name;
         app.ui.qrLogoClearBtn.style.display = '';
         app._triggerCodePreview();
@@ -129,7 +129,7 @@ export function bindEvents(app: PDFEditorApp): void {
       reader.readAsDataURL(file);
     });
     app.ui.qrLogoClearBtn.addEventListener('click', () => {
-      app._qrLogoDataUrl = null;
+      app._setQrLogoDataUrl(null);
       app.ui.qrLogoInput.value = '';
       app.ui.qrLogoName.textContent = '';
       app.ui.qrLogoClearBtn.style.display = 'none';
