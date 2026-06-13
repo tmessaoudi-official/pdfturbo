@@ -19,7 +19,6 @@ import { DocumentModel, type SourcePdf } from './documentModel';
 import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
-import { trapFocus } from '../utils/focusTrap';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
@@ -43,6 +42,7 @@ import { FormattingService } from './formattingService';
 import { UndoRedoController } from './undoRedoController';
 import { PageNavigationController } from './pageNavigationController';
 import { CleanupService } from './cleanupService';
+import { PanelFocusTrapService } from './panelFocusTrapService';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
@@ -90,7 +90,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   _isFitMode = true;
   private _clipboard: ElementJSON | null = null;
   get _exportPreviewOpen(): boolean { return this._exportPreviewPanel.isOpen; }
-  private _trapCleanup: (() => void) | null = null;
   _pendingModeAfterBlankPage: string | null = null;
   private _textEditHandler = new TextEditHandler();
   private _toastQueue!: ToastQueue;
@@ -115,6 +114,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _undoRedoController!: UndoRedoController;
   private _pageNavController!: PageNavigationController;
   private _cleanupService!: CleanupService;
+  private _focusTrapService!: PanelFocusTrapService;
 
   // ── Signature accessors (IPlacementContext) ───────────────────────────────
   get currentSignature(): string | null { return this._signatureManager.currentSignature; }
@@ -122,8 +122,8 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   get signatureNatural(): { w: number; h: number } | null { return this._signatureManager.signatureNatural; }
   set signatureNatural(v: { w: number; h: number } | null) { this._signatureManager.signatureNatural = v; }
   // ── ISignatureContext callbacks ────────────────────────────────────────────
-  getTrapCleanup(): (() => void) | null { return this._trapCleanup; }
-  setTrapCleanup(fn: (() => void) | null): void { this._trapCleanup = fn; }
+  getTrapCleanup(): (() => void) | null { return this._focusTrapService.getCleanup(); }
+  setTrapCleanup(fn: (() => void) | null): void { this._focusTrapService.setCleanup(fn); }
 
   // ── IPageRenderContext accessors ──────────────────────────────────────────
   advanceFormFieldGen(): number { return ++this._formFieldGen; }
@@ -311,6 +311,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._undoRedoController = new UndoRedoController(this);
     this._pageNavController = new PageNavigationController(this);
     this._cleanupService = new CleanupService(this);
+    this._focusTrapService = new PanelFocusTrapService();
     this.setupEventListeners();
     this._initThumbnailPanel();
     void this._documentLoader.restoreSession();
@@ -421,35 +422,25 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   clearAll(): void { this._annotationService.clearAll(); }
 
   _toggleSettings(show?: boolean): void {
-    this.uiController.toggleSettings(show);
-    if (this.ui.settingsPanel.classList.contains('active')) {
-      this._trapCleanup?.();
-      this._trapCleanup = trapFocus(
-        this.ui.settingsPanel.querySelector('.help-content') as HTMLElement,
-        this.ui.settingsBtn,
-      );
-    } else {
-      this._trapCleanup?.();
-      this._trapCleanup = null;
-    }
+    this._focusTrapService.togglePanel(
+      () => this.uiController.toggleSettings(show),
+      this.ui.settingsPanel,
+      '.help-content',
+      this.ui.settingsBtn,
+    );
   }
 
   _resetToolbarLayout(): void {
     this._toolbarCustomizer.reset();
   }
 
-  _toggleHelp(show?: boolean) {
-    this.uiController.toggleHelp(show);
-    if (this.ui.helpModal.classList.contains('active')) {
-      this._trapCleanup?.();
-      this._trapCleanup = trapFocus(
-        this.ui.helpModal.querySelector('.help-content') as HTMLElement,
-        this.ui.helpBtn,
-      );
-    } else {
-      this._trapCleanup?.();
-      this._trapCleanup = null;
-    }
+  _toggleHelp(show?: boolean): void {
+    this._focusTrapService.togglePanel(
+      () => this.uiController.toggleHelp(show),
+      this.ui.helpModal,
+      '.help-content',
+      this.ui.helpBtn,
+    );
   }
   showToast(msg: string, duration = 3000) { this.uiController.showToast(msg, duration); }
 
