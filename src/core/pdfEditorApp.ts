@@ -12,7 +12,6 @@ import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
   HistoryManager, AddElementCmd, TextEditCmd,
-  FillColorCmd, InkFillColorCmd,
   ReplaceSourcePdfBytesCmd,
 } from './historyManager';
 import { InkLayer } from '../infra/inkLayer';
@@ -50,6 +49,7 @@ import { PageRenderPipeline } from './pageRenderPipeline';
 import { PlacementManager } from '../ui/placementManager';
 import { SignatureManager } from './signatureManager';
 import { ExportPreviewPanel } from '../ui/exportPreviewPanel';
+import { CanvasClickRouter } from './canvasClickRouter';
 import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
@@ -112,6 +112,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _placementManager!: PlacementManager;
   private _signatureManager!: SignatureManager;
   private _exportPreviewPanel!: ExportPreviewPanel;
+  private _canvasClickRouter!: CanvasClickRouter;
 
   // ── Signature accessors (IPlacementContext) ───────────────────────────────
   get currentSignature(): string | null { return this._signatureManager.currentSignature; }
@@ -310,6 +311,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._elementLayerRenderer = new ElementLayerRenderer(this);
     this._pageRenderPipeline = new PageRenderPipeline(this);
     this._placementManager = new PlacementManager(this);
+    this._canvasClickRouter = new CanvasClickRouter(this);
     this._exportPreviewPanel = new ExportPreviewPanel(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
@@ -553,6 +555,10 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
 
   setMode(mode: ToolMode): void { this._toolModeManager.setMode(mode); }
   _isShapeMode(): boolean { return this._toolModeManager.isShapeMode(); }
+  isShapeMode(): boolean { return this._toolModeManager.isShapeMode(); }
+  handleTextEditClick(e: MouseEvent): void { void this._textEditHandler.handleCanvasClick(e, this); }
+  consumeSkipNextClick(): boolean { return this._placementManager.consumeSkipNextClick(); }
+  hasPendingImageSrc(): boolean { return this._placementManager.hasPendingImageSrc(); }
 
   openSignatureModal() { this._signatureManager.openModal(); }
   closeSignatureModal() { this._signatureManager.closeModal(); }
@@ -596,97 +602,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._syncFillToggleUI();
   }
 
-  handleCanvasClick(e: MouseEvent) {
-    if (this._placementManager.consumeSkipNextClick()) return;
-    if (this._isShapeMode()) return;
-    if (this.mode === 'addText' || (this.mode === 'addImage' && this._placementManager.hasPendingImageSrc()) || this.mode === 'addComment' || (this.mode === 'addSignature' && this.currentSignature) || this.mode === 'addCode') return;
-    if (this.mode === 'fillBucket') {
-      this._handleFillBucketClick(e);
-    } else if (this.mode === 'editText') {
-      void this._textEditHandler.handleCanvasClick(e, this);
-    } else {
-      this.selectElement(null);
-    }
-  }
-
-  private _handleFillBucketClick(e: MouseEvent): void {
-    const pageId = this.documentModel.currentPage?.id;
-    if (!pageId) return;
-    const rect = this.ui.canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / this.zoomScale;
-    const y = (e.clientY - rect.top) / this.zoomScale;
-    const newColor = this.effectiveFillColor;
-
-    // Check SVG shape elements first (rect/ellipse/arrow)
-    const shapeTarget = [...this.elements]
-      .reverse()
-      .find(el => el.pageId === pageId && el.type === 'shape' &&
-        this._hitTestShape(el as ShapeElement, x, y));
-    if (shapeTarget) {
-      this.historyManager.execute(new FillColorCmd(this.elements, shapeTarget.id, (shapeTarget as ShapeElement).fillColor, newColor));
-      this._autosave();
-      this.rebuildElementLayer();
-      return;
-    }
-
-    // Check ink strokes (freehand pen) — fill inner area (fillColor), not stroke line (color)
-    if (newColor === undefined) return;
-    const strokes = this.inkLayer.getStrokes(pageId);
-    for (let i = strokes.length - 1; i >= 0; i--) {
-      const s = strokes[i];
-      if (s.type !== 'ink') continue;
-      // Match: click inside the enclosed polygon OR near the stroke line
-      const insidePoly = this._ptInPolygon(x, y, s.points);
-      let nearStroke = false;
-      if (!insidePoly) {
-        const threshold = s.width / 2 + 4;
-        for (let j = 0; j < s.points.length - 1; j++) {
-          if (this._ptSegDist(x, y, s.points[j].x, s.points[j].y, s.points[j + 1].x, s.points[j + 1].y) <= threshold) {
-            nearStroke = true; break;
-          }
-        }
-      }
-      if (insidePoly || nearStroke) {
-        this.historyManager.execute(new InkFillColorCmd(this.inkLayer, pageId, i, s.fillColor, newColor, () => this.renderInkLayer()));
-        this._autosave();
-        return;
-      }
-    }
-  }
-
-  private _hitTestShape(shape: ShapeElement, x: number, y: number): boolean {
-    if (shape.shapeType === 'freehand') {
-      const threshold = shape.strokeWidth / 2 + 4;
-      const pts = shape.points;
-      for (let i = 0; i < pts.length - 1; i++) {
-        if (this._ptSegDist(x, y, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y) <= threshold)
-          return true;
-      }
-      return false;
-    }
-    return x >= shape.x && x <= shape.x + shape.width &&
-           y >= shape.y && y <= shape.y + shape.height;
-  }
-
-  private _ptSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-    const dx = bx - ax, dy = by - ay;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq === 0) return Math.hypot(px - ax, py - ay);
-    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-  }
-
-  private _ptInPolygon(px: number, py: number, points: Array<{ x: number; y: number }>): boolean {
-    let inside = false;
-    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-      const xi = points[i].x, yi = points[i].y;
-      const xj = points[j].x, yj = points[j].y;
-      if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
-        inside = !inside;
-      }
-    }
-    return inside;
-  }
+  handleCanvasClick(e: MouseEvent) { this._canvasClickRouter.handleCanvasClick(e); }
 
 
   addTextAtPosition(e: MouseEvent) { this._placementManager.addTextAtPosition(e); }
