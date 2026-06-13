@@ -1,0 +1,41 @@
+export interface CsToken {
+  type:
+    | 'number'
+    | 'string'
+    | 'hexstring'
+    | 'name'
+    | 'array'
+    | 'dict'
+    | 'comment'
+    | 'inline-image'
+    | 'operator';
+  /** Exact serializable source text of the token. */
+  raw: string;
+  /** Numeric value (number tokens only). */
+  value?: number;
+  /** Parsed children (array tokens only). */
+  items?: CsToken[];
+}
+
+export interface CsOp {
+  operator: string;
+  operands: CsToken[];
+}
+
+export interface TextOpInfo {
+  /** Index into the ops array returned by groupOps. */
+  opIndex: number;
+  operator: string;
+  /** Text-space origin (PDF coords, baseline) at the moment the op executes. */
+  origin: { x: number; y: number };
+  fontKey: string;
+  fontSize: number;
+  /**
+   * Raw PDF fill color ops string captured from the content stream, e.g.:
+   *   '1 0 0 rg'  (DeviceRGB)
+   *   '0.5 g'     (DeviceGray)
+   *   '0 0 1 0 k' (DeviceCMYK)
+   * Undefined when no fill color operator appeared before this show op.
+   */
+  fillColor?: string;
+}
