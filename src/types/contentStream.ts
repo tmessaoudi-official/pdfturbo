@@ -26,7 +26,7 @@ export interface TextOpInfo {
   /** Index into the ops array returned by groupOps. */
   opIndex: number;
   operator: string;
-  /** Text-space origin (PDF coords, baseline) at the moment the op executes. */
+  /** Text origin in page user space (PDF coords, baseline), CTM-transformed. */
   origin: { x: number; y: number };
   fontKey: string;
   fontSize: number;
@@ -38,4 +38,6 @@ export interface TextOpInfo {
    * Undefined when no fill color operator appeared before this show op.
    */
   fillColor?: string;
+  /** Set when this op was found inside a Form XObject (not directly editable). */
+  inXObject?: true;
 }

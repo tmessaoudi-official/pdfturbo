@@ -232,7 +232,7 @@ export function serializeOps(ops: CsOp[]): string {
     .join('\n');
 }
 
-type Matrix = [number, number, number, number, number, number];
+export type Matrix = [number, number, number, number, number, number];
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
 function translateMatrix(tx: number, ty: number, m: Matrix): Matrix {
@@ -246,9 +246,36 @@ function translateMatrix(tx: number, ty: number, m: Matrix): Matrix {
   ];
 }
 
+/**
+ * Concatenate two affine matrices (PDF convention: A × B).
+ * PDF `cm` concatenates as CTM_new = CTM_old × M_cm, so pass (CTM_old, M_cm).
+ */
+export function multiplyMatrix(A: Matrix, B: Matrix): Matrix {
+  return [
+    A[0] * B[0] + A[1] * B[2],
+    A[0] * B[1] + A[1] * B[3],
+    A[2] * B[0] + A[3] * B[2],
+    A[2] * B[1] + A[3] * B[3],
+    A[4] * B[0] + A[5] * B[2] + B[4],
+    A[4] * B[1] + A[5] * B[3] + B[5],
+  ];
+}
+
+/** Apply an affine matrix to a 2D point; returns the transformed point. */
+export function applyMatrixToPoint(M: Matrix, x: number, y: number): { x: number; y: number } {
+  return {
+    x: x * M[0] + y * M[2] + M[4],
+    y: x * M[1] + y * M[3] + M[5],
+  };
+}
+
 const SHOW_OPS = new Set(['Tj', 'TJ', "'", '"']);
 
-/** Walk ops tracking PDF text state; return every text-showing op with its origin and fill color. */
+/**
+ * Walk ops tracking PDF text state (including CTM via q/Q/cm).
+ * Returns every text-showing op with its origin and fill color.
+ * Origin is reported in page user space (CTM-transformed).
+ */
 export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   const found: TextOpInfo[] = [];
   let textMatrix: Matrix = [...IDENTITY];
@@ -257,11 +284,31 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let fontSize = 0;
   let leading = 0;
   let fillColor: string | undefined;
+  // CTM stack — tracks q/Q nesting and cm transforms
+  let ctm: Matrix = [...IDENTITY];
+  const ctmStack: Matrix[] = [];
 
   const num = (t: CsToken | undefined): number => t?.value ?? 0;
 
   ops.forEach((op, opIndex) => {
     switch (op.operator) {
+      case 'q':
+        ctmStack.push([...ctm]);
+        break;
+      case 'Q': {
+        const saved = ctmStack.pop();
+        if (saved) ctm = saved;
+        break;
+      }
+      case 'cm': {
+        const m_cm: Matrix = [
+          num(op.operands[0]), num(op.operands[1]),
+          num(op.operands[2]), num(op.operands[3]),
+          num(op.operands[4]), num(op.operands[5]),
+        ];
+        ctm = multiplyMatrix(ctm, m_cm);
+        break;
+      }
       case 'BT':
         textMatrix = [...IDENTITY];
         lineMatrix = [...IDENTITY];
@@ -323,7 +370,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
       found.push({
         opIndex,
         operator: op.operator,
-        origin: { x: textMatrix[4], y: textMatrix[5] },
+        origin: applyMatrixToPoint(ctm, textMatrix[4], textMatrix[5]),
         fontKey,
         fontSize: fontSize * vScale,
         fillColor,
@@ -886,4 +933,137 @@ export function getPageFontBaseName(doc: PDFDocument, pageIndex: number, fontKey
   } catch {
     return '';
   }
+}
+
+// ── Phase C: page rotation + XObject-aware location ───────────────────────────
+
+/**
+ * Return the page rotation in degrees (0 / 90 / 180 / 270).
+ * Returns 0 on any error or for pages without an explicit /Rotate entry.
+ */
+export function getPageRotation(doc: PDFDocument, pageIndex: number): 0 | 90 | 180 | 270 {
+  try {
+    const page = doc.getPage(pageIndex);
+    const angle = ((page.getRotation().angle % 360) + 360) % 360;
+    if (angle === 90 || angle === 180 || angle === 270) return angle;
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Decode a Form XObject's content stream.
+ * Returns null when the name doesn't resolve to a Form XObject on the page.
+ */
+function getFormXObjectContent(
+  doc: PDFDocument,
+  pageIndex: number,
+  xobjName: string
+): string | null {
+  try {
+    const page = doc.getPage(pageIndex);
+    const name = xobjName.replace(/^\//, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (!resources?.get) return null;
+    const xobjDictRaw = resources.get(PDFName.of('XObject'));
+    if (!xobjDictRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const xobjDict = doc.context.lookup(xobjDictRaw) as any;
+    if (!xobjDict?.get) return null;
+    const streamRef = xobjDict.get(PDFName.of(name));
+    if (!streamRef) return null;
+    const stream = doc.context.lookup(streamRef);
+    if (!(stream instanceof PDFRawStream)) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const subtype = (stream.dict as any).get(PDFName.of('Subtype'));
+    if (subtype?.toString() !== '/Form') return null;
+    const bytes = decodePDFRawStream(stream).decode();
+    let out = '';
+    for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the /Matrix entry of a Form XObject (the 6-element transform array).
+ * Returns the identity matrix when no /Matrix entry is present.
+ */
+function getFormXObjectMatrix(
+  doc: PDFDocument,
+  pageIndex: number,
+  xobjName: string
+): Matrix {
+  try {
+    const page = doc.getPage(pageIndex);
+    const name = xobjName.replace(/^\//, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (!resources?.get) return [...IDENTITY];
+    const xobjDictRaw = resources.get(PDFName.of('XObject'));
+    if (!xobjDictRaw) return [...IDENTITY];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const xobjDict = doc.context.lookup(xobjDictRaw) as any;
+    if (!xobjDict?.get) return [...IDENTITY];
+    const streamRef = xobjDict.get(PDFName.of(name));
+    if (!streamRef) return [...IDENTITY];
+    const stream = doc.context.lookup(streamRef);
+    if (!(stream instanceof PDFRawStream)) return [...IDENTITY];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const matrixVal = (stream.dict as any).get(PDFName.of('Matrix'));
+    if (!matrixVal) return [...IDENTITY];
+    const arr = doc.context.lookup(matrixVal);
+    if (!(arr instanceof PDFArray)) return [...IDENTITY];
+    const vals = [0,1,2,3,4,5].map(i => {
+      const item = arr.get(i);
+      return (item as { value?: () => number }).value?.() ?? (i === 0 || i === 3 ? 1 : 0);
+    });
+    return vals as Matrix;
+  } catch {
+    return [...IDENTITY];
+  }
+}
+
+/**
+ * Locate all text ops in a page including those inside Form XObjects.
+ * XObject-sourced ops are flagged with `inXObject: true`.
+ * XObject ops have opIndex = -1 (they cannot be directly edited via the page stream).
+ */
+export async function locatePageTextOps(
+  doc: PDFDocument,
+  pageIndex: number
+): Promise<TextOpInfo[]> {
+  const content = getPageContent(doc, pageIndex);
+  if (!content) return [];
+
+  const directOps = groupOps(tokenizeContentStream(content));
+  const result: TextOpInfo[] = locateTextOps(directOps);
+
+  // Recurse into Form XObjects (depth-limited to 5)
+  function recurse(xOps: ReturnType<typeof groupOps>, depth: number): TextOpInfo[] {
+    if (depth >= 5) return [];
+    const xResults: TextOpInfo[] = [];
+    for (const op of xOps) {
+      if (op.operator !== 'Do') continue;
+      const xobjName = op.operands[0]?.raw ?? '';
+      if (!xobjName) continue;
+      const xContent = getFormXObjectContent(doc, pageIndex, xobjName);
+      if (!xContent) continue;
+      const xMatrix = getFormXObjectMatrix(doc, pageIndex, xobjName);
+      const innerOps = groupOps(tokenizeContentStream(xContent));
+      const innerInfos = locateTextOps(innerOps);
+      for (const info of innerInfos) {
+        const transformed = applyMatrixToPoint(xMatrix, info.origin.x, info.origin.y);
+        xResults.push({ ...info, origin: transformed, opIndex: -1, inXObject: true });
+      }
+      xResults.push(...recurse(innerOps, depth + 1));
+    }
+    return xResults;
+  }
+
+  result.push(...recurse(directOps, 0));
+  return result;
 }

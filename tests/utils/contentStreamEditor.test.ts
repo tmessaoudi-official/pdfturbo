@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream } from '@cantoo/pdf-lib';
+import { PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream, degrees } from '@cantoo/pdf-lib';
 import {
   tokenizeContentStream,
   serializeTokens,
@@ -18,7 +18,152 @@ import {
   replaceShowOpHex,
   matchStandardFont,
   getPageFontDescriptor,
+  multiplyMatrix,
+  applyMatrixToPoint,
+  getPageRotation,
+  locatePageTextOps,
 } from '../../src/utils/contentStreamEditor';
+
+// ── Phase C helpers ─────────────────────────────────────────────────────────────
+
+function ops(stream: string) {
+  return groupOps(tokenizeContentStream(stream));
+}
+
+// ── Phase C: multiplyMatrix ────────────────────────────────────────────────────
+
+describe('multiplyMatrix', () => {
+  it('identity × identity = identity', () => {
+    expect(multiplyMatrix([1,0,0,1,0,0], [1,0,0,1,0,0])).toEqual([1,0,0,1,0,0]);
+  });
+  it('translate × identity = translate', () => {
+    expect(multiplyMatrix([1,0,0,1,100,200], [1,0,0,1,0,0])).toEqual([1,0,0,1,100,200]);
+  });
+  it('composes two translations', () => {
+    expect(multiplyMatrix([1,0,0,1,10,20], [1,0,0,1,30,40])).toEqual([1,0,0,1,40,60]);
+  });
+  it('scale × identity = scale', () => {
+    expect(multiplyMatrix([2,0,0,3,0,0], [1,0,0,1,0,0])).toEqual([2,0,0,3,0,0]);
+  });
+  it('scale composed with translation', () => {
+    // [2 0 0 3 0 0] × [1 0 0 1 5 7] = [2 0 0 3 5 7]
+    expect(multiplyMatrix([2,0,0,3,0,0], [1,0,0,1,5,7])).toEqual([2,0,0,3,5,7]);
+  });
+});
+
+// ── Phase C: applyMatrixToPoint ────────────────────────────────────────────────
+
+describe('applyMatrixToPoint', () => {
+  it('identity leaves point unchanged', () => {
+    expect(applyMatrixToPoint([1,0,0,1,0,0], 10, 20)).toEqual({ x: 10, y: 20 });
+  });
+  it('translation shifts point', () => {
+    expect(applyMatrixToPoint([1,0,0,1,100,200], 10, 20)).toEqual({ x: 110, y: 220 });
+  });
+  it('scale scales point', () => {
+    expect(applyMatrixToPoint([2,0,0,3,0,0], 5, 7)).toEqual({ x: 10, y: 21 });
+  });
+  it('translation from origin', () => {
+    expect(applyMatrixToPoint([1,0,0,1,50,80], 0, 0)).toEqual({ x: 50, y: 80 });
+  });
+});
+
+// ── Phase C: locateTextOps CTM tracking ───────────────────────────────────────
+
+describe('locateTextOps CTM tracking', () => {
+  it('regression: no cm operator leaves positions unchanged', () => {
+    const [info] = locateTextOps(ops('BT /F1 12 Tf 100 200 Td (Hello) Tj ET'));
+    expect(info.origin).toMatchObject({ x: 100, y: 200 });
+  });
+
+  it('cm translation shifts reported text origin', () => {
+    // cm [1 0 0 1 50 80] then text at Tm (10, 20) → origin (60, 100)
+    const [info] = locateTextOps(ops('1 0 0 1 50 80 cm BT /F1 12 Tf 0 0 Td 10 20 Td (Hi) Tj ET'));
+    expect(info.origin.x).toBeCloseTo(60);
+    expect(info.origin.y).toBeCloseTo(100);
+  });
+
+  it('q/Q restores CTM after save/restore', () => {
+    // cm outside q/Q, inner cm inside q/Q — text is after Q so only outer cm applies
+    const stream = '1 0 0 1 50 80 cm q 1 0 0 1 200 300 cm Q BT /F1 12 Tf 0 0 Td (x) Tj ET';
+    const [info] = locateTextOps(ops(stream));
+    expect(info.origin.x).toBeCloseTo(50);
+    expect(info.origin.y).toBeCloseTo(80);
+  });
+
+  it('CTM inside q/Q block is active for text within that block', () => {
+    const stream = 'q 1 0 0 1 30 40 cm BT /F1 12 Tf 5 5 Td (x) Tj ET Q';
+    const [info] = locateTextOps(ops(stream));
+    expect(info.origin.x).toBeCloseTo(35);
+    expect(info.origin.y).toBeCloseTo(45);
+  });
+
+  it('nested q/Q correctly restores outer CTM', () => {
+    const stream = 'q 1 0 0 1 10 10 cm q 1 0 0 1 5 5 cm Q Q BT /F1 12 Tf 0 0 Td (x) Tj ET';
+    const [info] = locateTextOps(ops(stream));
+    // Both q/Q blocks restored → identity CTM → origin (0, 0)
+    expect(info.origin.x).toBeCloseTo(0);
+    expect(info.origin.y).toBeCloseTo(0);
+  });
+
+  it('identity cm does not change positions', () => {
+    const stream = '1 0 0 1 0 0 cm BT /F1 12 Tf 100 200 Td (x) Tj ET';
+    const [info] = locateTextOps(ops(stream));
+    expect(info.origin.x).toBeCloseTo(100);
+    expect(info.origin.y).toBeCloseTo(200);
+  });
+});
+
+// ── Phase C: getPageRotation ───────────────────────────────────────────────────
+
+describe('getPageRotation', () => {
+  it('returns 0 for a page without explicit Rotate entry', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([595, 842]);
+    expect(getPageRotation(doc, 0)).toBe(0);
+  });
+
+  it('returns 90 when page rotation is 90 degrees', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([595, 842]);
+    page.setRotation(degrees(90));
+    expect(getPageRotation(doc, 0)).toBe(90);
+  });
+
+  it('returns 180 when page rotation is 180 degrees', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([595, 842]);
+    page.setRotation(degrees(180));
+    expect(getPageRotation(doc, 0)).toBe(180);
+  });
+
+  it('returns 270 when page rotation is 270 degrees', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([595, 842]);
+    page.setRotation(degrees(270));
+    expect(getPageRotation(doc, 0)).toBe(270);
+  });
+});
+
+// ── Phase C: locatePageTextOps (XObject recursion) ────────────────────────────
+
+describe('locatePageTextOps', () => {
+  it('finds text in the page direct content stream (same result as locateTextOps)', async () => {
+    const bytes = await makeThreeStringPdf();
+    const doc = await PDFDocument.load(bytes);
+    const results = await locatePageTextOps(doc, 0);
+    expect(results.length).toBeGreaterThan(0);
+    // None should be flagged as inXObject since makeThreeStringPdf has no XObjects
+    expect(results.every(r => !r.inXObject)).toBe(true);
+  });
+
+  it('returns empty array for a page with no content', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([400, 400]);
+    const results = await locatePageTextOps(doc, 0);
+    expect(results).toEqual([]);
+  });
+});
 
 /** Build a real 3-string PDF entirely in memory — no fixtures. */
 async function makeThreeStringPdf(): Promise<Uint8Array> {
