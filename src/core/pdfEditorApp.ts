@@ -41,6 +41,8 @@ import { ToolbarCustomizer } from '../ui/toolbarCustomizer';
 import { LocalLayoutStorage } from '../ui/layoutStorage';
 import { FormattingService } from './formattingService';
 import { UndoRedoController } from './undoRedoController';
+import { PageNavigationController } from './pageNavigationController';
+import { CleanupService } from './cleanupService';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
@@ -80,7 +82,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _warnedUnsupportedFields = false;
   private _formFieldGen = 0;
   private _isLoading = false;
-  private _pageUpdatePending = false;
   _pendingPasswordResolve: ((password: string | null) => void) | null = null;
   _exportPassword: { user: string; owner: string } | null = null;
   inkLayer: InkLayer;
@@ -112,6 +113,8 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _canvasClickRouter!: CanvasClickRouter;
   private _formattingService!: FormattingService;
   private _undoRedoController!: UndoRedoController;
+  private _pageNavController!: PageNavigationController;
+  private _cleanupService!: CleanupService;
 
   // ── Signature accessors (IPlacementContext) ───────────────────────────────
   get currentSignature(): string | null { return this._signatureManager.currentSignature; }
@@ -306,6 +309,8 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._toolbarCustomizer.enableDragDrop();
     this._formattingService = new FormattingService(this);
     this._undoRedoController = new UndoRedoController(this);
+    this._pageNavController = new PageNavigationController(this);
+    this._cleanupService = new CleanupService(this);
     this.setupEventListeners();
     this._initThumbnailPanel();
     void this._documentLoader.restoreSession();
@@ -371,21 +376,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   async _rotatePage(pageId: string, delta: number): Promise<void> { return this._pageService.rotatePage(pageId, delta); }
 
 
-  async _onPageStructureChange(): Promise<void> {
-    if (this._pageUpdatePending) return;
-    this._pageUpdatePending = true;
-    try {
-      await this._renderCurrentPage();
-      await this._thumbnailPanel?.render();
-      this._thumbnailPanel?.updateActive();
-      this.selectElement(null);
-      this.updatePageInfo();
-      this.rebuildElementLayer();
-      this._autosave();
-    } finally {
-      this._pageUpdatePending = false;
-    }
-  }
+  async _onPageStructureChange(): Promise<void> { return this._pageNavController.onPageStructureChange(); }
 
   // ── Undo / Redo ───────────────────────────────────────────────
   undo(): void { this._undoRedoController.undo(); }
@@ -488,19 +479,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     }
   }
 
-  _cleanEmptyTextElements() {
-    const focused = document.activeElement;
-    const before = this.elements.length;
-    const keep = this.elements.filter(e => {
-      if (!(e.type === 'text' && !(e as TextElement).text)) return true;
-      const input = document.querySelector(`[data-id="${e.id}"] input, [data-id="${e.id}"] textarea`);
-      return input ? input === focused : true;
-    });
-    if (keep.length < before) {
-      this.elements.splice(0, this.elements.length, ...keep);
-      this.rebuildElementLayer();
-    }
-  }
+  _cleanEmptyTextElements(): void { this._cleanupService.cleanEmptyTextElements(); }
 
   setMode(mode: ToolMode): void { this._toolModeManager.setMode(mode); }
   _isShapeMode(): boolean { return this._toolModeManager.isShapeMode(); }
