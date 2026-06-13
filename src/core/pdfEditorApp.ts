@@ -25,7 +25,7 @@ import { trapFocus } from '../utils/focusTrap';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
-import { transformPoint } from '../utils/geometry';
+
 import { bindEvents } from '../ui/eventBinder';
 import { ExportService } from '../export/exportService';
 import type { IExportContext } from '../export/exportService';
@@ -49,6 +49,7 @@ import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
 import { PageRenderPipeline } from './pageRenderPipeline';
 import { PlacementManager } from '../ui/placementManager';
 import { SignatureManager } from './signatureManager';
+import { ExportPreviewPanel } from '../ui/exportPreviewPanel';
 import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
@@ -90,7 +91,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _inkCanvas: HTMLCanvasElement;
   _isFitMode = true;
   private _clipboard: ElementJSON | null = null;
-  _exportPreviewOpen = false;
+  get _exportPreviewOpen(): boolean { return this._exportPreviewPanel.isOpen; }
   private _trapCleanup: (() => void) | null = null;
   _pendingModeAfterBlankPage: string | null = null;
   private _textEditHandler = new TextEditHandler();
@@ -110,6 +111,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _pageRenderPipeline!: PageRenderPipeline;
   private _placementManager!: PlacementManager;
   private _signatureManager!: SignatureManager;
+  private _exportPreviewPanel!: ExportPreviewPanel;
 
   // ── Signature accessors (IPlacementContext) ───────────────────────────────
   get currentSignature(): string | null { return this._signatureManager.currentSignature; }
@@ -182,7 +184,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   hasFindInput(): boolean { return Boolean(this.ui.findInput.value); }
   clearFindCount(): void { this.ui.findCount.textContent = ''; }
   searchIfActive(): void { void this._findBarController.search(); }
-  refreshExportPreviewIfOpen(): void { if (this._exportPreviewOpen) this._showExportPreview(); }
+  refreshExportPreviewIfOpen(): void { if (this._exportPreviewPanel.isOpen) this._exportPreviewPanel.show(); }
   hideEmptyState(): void { (document.getElementById('emptyState') as HTMLElement).style.display = 'none'; }
   enableFileMenuDocItems(): void { this._enableFileMenuDocItems(); }
   autosave(): void { this._autosave(); }
@@ -219,8 +221,8 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   // ── IWatermarkContext accessors ──────────────────────────────────────────
   get watermark() { return this.documentModel.watermark; }
   setWatermark(wm: import('./documentModel').WatermarkSettings): void { this.documentModel.watermark = wm; }
-  get exportPreviewOpen(): boolean { return this._exportPreviewOpen; }
-  showExportPreview(): void { this._showExportPreview(); }
+  get exportPreviewOpen(): boolean { return this._exportPreviewPanel.isOpen; }
+  showExportPreview(): void { this._exportPreviewPanel.show(); }
 
   // ── ICodeModalContext accessors ──────────────────────────────────────────
   setPendingCode(
@@ -308,6 +310,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._elementLayerRenderer = new ElementLayerRenderer(this);
     this._pageRenderPipeline = new PageRenderPipeline(this);
     this._placementManager = new PlacementManager(this);
+    this._exportPreviewPanel = new ExportPreviewPanel(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -348,6 +351,9 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
 
   // ── Watermark (delegated to WatermarkPanel) ──────────────────────────────
   _setupWatermarkPreviewListeners(): void { this._watermarkPanel.setupListeners(); }
+  drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    this._watermarkPanel.drawOnCanvas(ctx, w, h, this.documentModel.watermark);
+  }
   _openWatermarkModal(): void { this._watermarkPanel.open(); }
   _closeWatermarkModal(): void { this._watermarkPanel.close(); }
   _applyWatermark(): void { this._watermarkPanel.apply(); }
@@ -714,65 +720,8 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
 
     async applyZoom(newScale: number): Promise<void> { return this._pageService.applyZoom(newScale); }
 
-  _showExportPreview(): void {
-    const docPage = this.documentModel.currentPage;
-    if (!docPage) return;
-
-    const canvas = this.renderer.canvas;
-    const ghost = this.ui.exportPreviewGhost;
-    ghost.innerHTML = '';
-    ghost.style.width  = canvas.width  + 'px';
-    ghost.style.height = canvas.height + 'px';
-    ghost.style.left   = canvas.offsetLeft + 'px';
-    ghost.style.top    = canvas.offsetTop  + 'px';
-
-    if (this.documentModel.watermark.enabled) {
-      const wmCanvas = document.createElement('canvas');
-      wmCanvas.width  = canvas.width;
-      wmCanvas.height = canvas.height;
-      wmCanvas.style.position      = 'absolute';
-      wmCanvas.style.left          = '0';
-      wmCanvas.style.top           = '0';
-      wmCanvas.style.pointerEvents = 'none';
-      const ctx = wmCanvas.getContext('2d');
-      if (ctx) this._watermarkPanel.drawOnCanvas(ctx, canvas.width, canvas.height, this.documentModel.watermark);
-      ghost.appendChild(wmCanvas);
-    }
-
-    const W = canvas.width / this.zoomScale;
-    const H = canvas.height / this.zoomScale;
-    const angle = docPage.rotation ?? 0;
-
-    const pageElements = this.elements.filter(el => el.pageId === docPage.id);
-    for (const el of pageElements) {
-      const pdfPt = transformPoint(el.x, el.y, W, H, angle);
-      const screenX = pdfPt.x * this.zoomScale;
-      const screenY = (H - pdfPt.y) * this.zoomScale;
-      const div = document.createElement('div');
-      div.style.position = 'absolute';
-      div.style.left   = screenX + 'px';
-      div.style.top    = screenY + 'px';
-      div.style.width  = el.width  * this.zoomScale + 'px';
-      div.style.height = el.height * this.zoomScale + 'px';
-      div.style.border = '3px dashed #e63946';
-      div.style.background = 'rgba(230,57,70,0.15)';
-      div.style.boxSizing = 'border-box';
-      ghost.appendChild(div);
-    }
-
-    this._exportPreviewOpen = true;
-    this.ui.previewExportBtn.classList.add('active');
-    this.ui.previewExportBtn.setAttribute('aria-pressed', 'true');
-    this.ui.exportPreviewOverlay.style.display = '';
-  }
-
-  _hideExportPreview(): void {
-    this._exportPreviewOpen = false;
-    this.ui.previewExportBtn.classList.remove('active');
-    this.ui.previewExportBtn.setAttribute('aria-pressed', 'false');
-    this.ui.exportPreviewOverlay.style.display = 'none';
-    this.ui.exportPreviewGhost.innerHTML = '';
-  }
+  _showExportPreview(): void { this._exportPreviewPanel.show(); }
+  _hideExportPreview(): void { this._exportPreviewPanel.hide(); }
 
   async fitToWidth() {
     this._isFitMode = true;
