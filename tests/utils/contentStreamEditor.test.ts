@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream, degrees } from '@cantoo/pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream, StandardFonts, decodePDFRawStream, degrees, rgb } from '@cantoo/pdf-lib';
 import {
   tokenizeContentStream,
   serializeTokens,
@@ -8,6 +8,8 @@ import {
   locateTextOps,
   findTextOpAt,
   deleteTextAt,
+  changeSizeAt,
+  changeColorAt,
   replaceTextAt,
   extractPsName,
   replaceShowOpInPlace,
@@ -711,5 +713,125 @@ describe('getPageFontDescriptor', () => {
       expect(typeof result.flags).toBe('number');
       expect(typeof result.name).toBe('string');
     }
+  });
+});
+
+// ── New: tfOpIndex + colorOpIndex tracking ─────────────────────────────────────
+
+describe('locateTextOps — tfOpIndex and colorOpIndex', () => {
+  it('captures tfOpIndex pointing to the Tf op index in the ops array', () => {
+    // Indices: 0=BT, 1=Tf, 2=Td, 3=Tj, 4=ET
+    const opList = ops('BT /F1 12 Tf 100 200 Td (Hello) Tj ET');
+    const [info] = locateTextOps(opList);
+    expect(info.tfOpIndex).toBe(1);
+  });
+
+  it('colorOpIndex is undefined when no color op precedes the show op', () => {
+    const [info] = locateTextOps(ops('BT /F1 12 Tf 0 0 Td (Hello) Tj ET'));
+    expect(info.colorOpIndex).toBeUndefined();
+  });
+
+  it('captures colorOpIndex pointing to the rg op', () => {
+    // Indices: 0=BT, 1=Tf, 2=rg, 3=Td, 4=Tj, 5=ET
+    const opList = ops('BT /F1 12 Tf 1 0 0 rg 100 200 Td (Hello) Tj ET');
+    const [info] = locateTextOps(opList);
+    expect(info.colorOpIndex).toBe(2);
+  });
+
+  it('tfOpIndex updates when Tf changes before a second show op', () => {
+    // Indices: 0=BT, 1=Tf(/F1), 2=Tj, 3=Tf(/F2), 4=Tj, 5=ET
+    const opList = ops('BT /F1 12 Tf (First) Tj /F2 10 Tf (Second) Tj ET');
+    const [first, second] = locateTextOps(opList);
+    expect(first.tfOpIndex).toBe(1);
+    expect(second.tfOpIndex).toBe(3);
+  });
+
+  it('colorOpIndex tracks the last color op before each individual show op', () => {
+    // Indices: 0=BT, 1=Tf, 2=rg(red), 3=Tj, 4=rg(blue), 5=Tj, 6=ET
+    const opList = ops('BT /F1 12 Tf 1 0 0 rg (Red) Tj 0 0 1 rg (Blue) Tj ET');
+    const [red, blue] = locateTextOps(opList);
+    expect(red.colorOpIndex).toBe(2);
+    expect(blue.colorOpIndex).toBe(4);
+  });
+});
+
+// ── New: changeSizeAt ──────────────────────────────────────────────────────────
+
+describe('changeSizeAt', () => {
+  it('modifies the Tf op fontSize in-place for text near the point', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const ok = await changeSizeAt(doc, 0, { x: 50, y: 300 }, 24, 5);
+    expect(ok).toBe(true);
+    const saved = await doc.save();
+    const content = await pageContentText(saved);
+    expect(content).toMatch(/\S+\s+24\s+Tf/);
+  });
+
+  it('returns false when no text op is within tolerance', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const ok = await changeSizeAt(doc, 0, { x: 350, y: 30 }, 24, 5);
+    expect(ok).toBe(false);
+  });
+
+  it('does not alter Tf ops for other text items', async () => {
+    // makeThreeStringPdf has 3 texts at y=300, 250, 200 all size 12
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    await changeSizeAt(doc, 0, { x: 50, y: 300 }, 24, 5);
+    const saved = await doc.save();
+    const content = await pageContentText(saved);
+    const count24 = (content.match(/\S+\s+24\s+Tf/g) ?? []).length;
+    const count12 = (content.match(/\S+\s+12\s+Tf/g) ?? []).length;
+    expect(count24).toBe(1);
+    expect(count12).toBeGreaterThan(0);
+  });
+});
+
+// ── New: changeColorAt ─────────────────────────────────────────────────────────
+
+describe('changeColorAt', () => {
+  it('changes the rg fill color op to the new color', async () => {
+    // pdf-lib buffers content until save() — must save+reload before reading content stream
+    let doc = await PDFDocument.create();
+    const page = doc.addPage([400, 400]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText('Red', { x: 50, y: 300, size: 12, font, color: rgb(1, 0, 0) });
+    doc = await PDFDocument.load(await doc.save());
+
+    const ok = await changeColorAt(doc, 0, { x: 50, y: 300 }, { r: 0, g: 0, b: 1 }, 5);
+    expect(ok).toBe(true);
+    const saved = await doc.save();
+    const content = await pageContentText(saved);
+    expect(content).toMatch(/0\s+0\s+1\s+rg/);
+    expect(content).not.toMatch(/1\s+0\s+0\s+rg/);
+  });
+
+  it('returns false when no text op is within tolerance', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const ok = await changeColorAt(doc, 0, { x: 350, y: 30 }, { r: 0, g: 0, b: 1 }, 5);
+    expect(ok).toBe(false);
+  });
+
+  it('returns false for a stream with no fill color op before the show op', async () => {
+    // Manually craft a content stream that has text but no color op
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 400]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+
+    // Find the font key pdf-lib assigned (need it for content stream)
+    page.drawText('Bare', { x: 50, y: 300, size: 12, font });
+    const saved = await doc.save();
+    let content = await pageContentText(saved);
+    // Strip all color ops (rg/g/k) from the content stream, then reload
+    content = content.replace(/[\d.\s]+rg\s*/g, '').replace(/[\d.]+\s+g\s*/g, '');
+    const doc2 = await PDFDocument.load(saved);
+    const p2 = doc2.getPage(0);
+    const bytes2 = new Uint8Array(content.length);
+    for (let i = 0; i < content.length; i++) bytes2[i] = content.charCodeAt(i) & 0xff;
+    const stream2 = doc2.context.stream(bytes2);
+    const ref2 = doc2.context.register(stream2);
+    p2.node.set(PDFName.of('Contents'), ref2);
+
+    const ok = await changeColorAt(doc2, 0, { x: 50, y: 300 }, { r: 1, g: 0, b: 0 }, 5);
+    expect(ok).toBe(false);
   });
 });

@@ -38,6 +38,10 @@ export interface TextOpInfo {
    * Undefined when no fill color operator appeared before this show op.
    */
   fillColor?: string;
+  /** Index of the Tf op (in the ops array) that set the current font+size. */
+  tfOpIndex?: number;
+  /** Index of the last fill-color op (rg/g/k/sc/scn) before this show op. */
+  colorOpIndex?: number;
   /** Set when this op was found inside a Form XObject (not directly editable). */
   inXObject?: true;
 }

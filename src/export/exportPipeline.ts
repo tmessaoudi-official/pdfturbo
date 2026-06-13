@@ -188,12 +188,14 @@ export async function rasterizePageWithRedactions(
   const userRot  = docPage.rotation ?? 0;
   const srcRot   = tempPage.getRotation().angle as number;
 
-  const nonRedactions = elements.filter(e => e.type !== 'redaction');
+  // Exclude TextElement overlays from the pdf-lib pass — they are drawn on canvas AFTER
+  // redaction fillRects so they appear on top of redactions in the final raster image.
+  const nonRedactionNonText = elements.filter(e => e.type !== 'redaction' && e.type !== 'text');
   await buildPageOverlays({
     pdfDoc: tempDoc,
     page: tempPage,
     docPage,
-    elements: nonRedactions,
+    elements: nonRedactionNonText,
     pdfLib: libs,
     userRot,
     sourceRot: srcRot,
@@ -228,6 +230,22 @@ export async function rasterizePageWithRedactions(
       Math.round(el.width  * SCALE),
       Math.round(el.height * SCALE),
     );
+  }
+
+  // Draw overlay TextElements on top of redactions using canvas 2D API.
+  for (const el of elements.filter(e => e.type === 'text')) {
+    const te = el as import('../elements/textElement').TextElement;
+    if (!te.text) continue;
+    ctx.save();
+    const fontPx = Math.round(te.fontSize * SCALE);
+    ctx.font = `${te.italic ? 'italic ' : ''}${te.bold ? 'bold ' : ''}${fontPx}px ${te.fontFamily || 'Arial'}, sans-serif`;
+    ctx.fillStyle = te.color || '#000000';
+    const lineHeight = te.fontSize * 1.2 * SCALE;
+    te.text.split('\n').forEach((line, i) => {
+      if (!line) return;
+      ctx.fillText(line, Math.round(te.x * SCALE), Math.round((te.y + te.fontSize * 0.9) * SCALE + i * lineHeight));
+    });
+    ctx.restore();
   }
 
   const pngBytes = await new Promise<Uint8Array>((resolve, reject) => {

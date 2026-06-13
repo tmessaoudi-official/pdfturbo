@@ -284,6 +284,8 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let fontSize = 0;
   let leading = 0;
   let fillColor: string | undefined;
+  let tfOpIndex: number | undefined;
+  let colorOpIndex: number | undefined;
   // CTM stack — tracks q/Q nesting and cm transforms
   let ctm: Matrix = [...IDENTITY];
   const ctmStack: Matrix[] = [];
@@ -316,6 +318,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
       case 'Tf':
         fontKey = op.operands[0]?.raw ?? '';
         fontSize = num(op.operands[1]);
+        tfOpIndex = opIndex;
         break;
       case 'TL':
         leading = num(op.operands[0]);
@@ -342,20 +345,25 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
       // Fill color operators — tracked so replacement can preserve text color
       case 'rg':
         fillColor = op.operands.map(t => t.raw).join(' ') + ' rg';
+        colorOpIndex = opIndex;
         break;
       case 'g':
         fillColor = op.operands.map(t => t.raw).join(' ') + ' g';
+        colorOpIndex = opIndex;
         break;
       case 'k':
         fillColor = op.operands.map(t => t.raw).join(' ') + ' k';
+        colorOpIndex = opIndex;
         break;
       case 'sc':
       case 'scn':
         fillColor = op.operands.map(t => t.raw).join(' ') + ' ' + op.operator;
+        colorOpIndex = opIndex;
         break;
       case 'cs':
         // Color space change — color value no longer reliable; reset.
         fillColor = undefined;
+        colorOpIndex = undefined;
         break;
       default:
         break;
@@ -374,6 +382,8 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         fontKey,
         fontSize: fontSize * vScale,
         fillColor,
+        tfOpIndex,
+        colorOpIndex,
       });
     }
   });
@@ -846,12 +856,101 @@ export function getPageFontToUnicode(
  *      + bold/italic detected from FontDescriptor flags and BaseFont name).
  * Shadow ops within SHADOW_RADIUS are always blanked regardless of path.
  */
+export interface TextStyle {
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  fontFamily?: string;
+  color?: { r: number; g: number; b: number };
+}
+
+function buildEffectiveFontName(baseName: string, style: TextStyle): string {
+  const family = style.fontFamily ?? '';
+  const b = style.bold ?? /bold|black|heavy|semibold|demibold/i.test(baseName);
+  const i = style.italic ?? /italic|oblique/i.test(baseName);
+  const suffix = b && i ? '-BoldItalic' : b ? '-Bold' : i ? '-Italic' : '';
+  if (family) return family + suffix;
+  return baseName + suffix;
+}
+
+function buildEffectiveFlags(baseFlags: number, style: TextStyle): number {
+  let f = baseFlags;
+  if (style.bold !== undefined) {
+    if (style.bold) f |= 0x40000; else f &= ~0x40000;
+  }
+  if (style.italic !== undefined) {
+    if (style.italic) f |= 0x40; else f &= ~0x40;
+  }
+  return f;
+}
+
+/**
+ * Change only the font size for the text op nearest `point` (in-stream Tf mutation).
+ * Returns false when no op is found, or when the op has no tracked tfOpIndex.
+ */
+export async function changeSizeAt(
+  doc: PDFDocument,
+  pageIndex: number,
+  point: { x: number; y: number },
+  newSize: number,
+  tolerance = 5
+): Promise<boolean> {
+  const found = findTarget(doc, pageIndex, point, tolerance);
+  if (!found) return false;
+  const { ops, target } = found;
+  if (target.tfOpIndex === undefined) return false;
+  const tfOp = ops[target.tfOpIndex];
+  if (!tfOp || tfOp.operator !== 'Tf') return false;
+  const sizeToken = tfOp.operands[1];
+  if (!sizeToken) return false;
+  sizeToken.raw = String(newSize);
+  sizeToken.value = newSize;
+  setPageContent(doc, pageIndex, serializeOps(ops));
+  return true;
+}
+
+function fmtColorComponent(v: number): string {
+  const clamped = Math.max(0, Math.min(1, v));
+  return clamped.toFixed(4).replace(/\.?0+$/, '') || '0';
+}
+
+/**
+ * Change only the fill color for the text op nearest `point` (in-stream rg mutation).
+ * Returns false when no op is found, or when the op has no tracked colorOpIndex.
+ */
+export async function changeColorAt(
+  doc: PDFDocument,
+  pageIndex: number,
+  point: { x: number; y: number },
+  color: { r: number; g: number; b: number },
+  tolerance = 5
+): Promise<boolean> {
+  const found = findTarget(doc, pageIndex, point, tolerance);
+  if (!found) return false;
+  const { ops, target } = found;
+  if (target.colorOpIndex === undefined) return false;
+  const colorOp = ops[target.colorOpIndex];
+  if (!colorOp) return false;
+  const r = fmtColorComponent(color.r);
+  const g = fmtColorComponent(color.g);
+  const b = fmtColorComponent(color.b);
+  colorOp.operator = 'rg';
+  colorOp.operands = [
+    { type: 'number', raw: r, value: color.r },
+    { type: 'number', raw: g, value: color.g },
+    { type: 'number', raw: b, value: color.b },
+  ];
+  setPageContent(doc, pageIndex, serializeOps(ops));
+  return true;
+}
+
 export async function replaceTextAt(
   doc: PDFDocument,
   pageIndex: number,
   point: { x: number; y: number },
   newText: string,
-  tolerance = 5
+  tolerance = 5,
+  style?: TextStyle
 ): Promise<boolean> {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
@@ -885,21 +984,28 @@ export async function replaceTextAt(
   blankAllNearby(ops, textOps, target.origin, target.opIndex);
   setPageContent(doc, pageIndex, serializeOps(ops));
 
+  // Color: explicit style overrides detected fill color
   let drawColor: ReturnType<typeof rgb> | undefined;
-  if (target.fillColor) {
+  if (style?.color) {
+    drawColor = rgb(style.color.r, style.color.g, style.color.b);
+  } else if (target.fillColor) {
     const c = parseFillColorToRgb(target.fillColor);
     if (c) drawColor = rgb(c.r, c.g, c.b);
   }
 
+  // Font: style bold/italic/fontFamily override font detection from PDF
   const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
   const descriptor = getPageFontDescriptor(doc, pageIndex, target.fontKey);
-  const stdFont = matchStandardFont(baseName, descriptor?.flags ?? 0);
+  const baseFlags = descriptor?.flags ?? 0;
+  const effectiveName = style ? buildEffectiveFontName(baseName, style) : baseName;
+  const effectiveFlags = style ? buildEffectiveFlags(baseFlags, style) : baseFlags;
+  const stdFont = matchStandardFont(effectiveName, effectiveFlags);
   const font = await doc.embedFont(stdFont);
   const page = doc.getPage(pageIndex);
   page.drawText(newText, {
     x: target.origin.x,
     y: target.origin.y,
-    size: target.fontSize || 12,
+    size: style?.fontSize ?? target.fontSize ?? 12,
     font,
     ...(drawColor ? { color: drawColor } : {}),
   });

@@ -2,7 +2,8 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
-import { findTextOpAt, deleteTextAt, replaceTextAt, getPageFontBaseName } from '../utils/contentStreamEditor';
+import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName } from '../utils/contentStreamEditor';
+import type { TextStyle } from '../utils/contentStreamEditor';
 import { extractPsName } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import type { IAppContext } from '../core/appContext';
@@ -10,6 +11,13 @@ import type { SourcePdf } from '../core/documentModel';
 
 /** Max distance (PDF pts) between a pdf.js item origin and a content-stream show op. */
 const TRUE_EDIT_TOLERANCE = 3;
+
+/** Convert a #RRGGBB hex string to a [0,1]-range RGB object, or null on failure. */
+function hexToRgb01(hex: string): { r: number; g: number; b: number } | null {
+  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return null;
+  return { r: parseInt(m[1], 16) / 255, g: parseInt(m[2], 16) / 255, b: parseInt(m[3], 16) / 255 };
+}
 
 /** Map a PostScript font name to a CSS font-family stack for the inline editor. */
 function psNameToCssFontFamily(psName: string): string {
@@ -92,6 +100,7 @@ export class TextEditHandler {
           itemHeight: Math.max(Math.abs(best.height), 10),
           pageH,
           rotated: (page.rotate + userRot) % 360 !== 0,
+          fillColor: target.fillColor,
         });
         return;
       }
@@ -213,6 +222,9 @@ export class TextEditHandler {
   /**
    * Floating inline editor for a true content-stream edit.
    * Enter / blur applies; emptying the text deletes it; Escape cancels.
+   * Style changes (size, bold, italic, font family, color) are committed via
+   * in-stream ops (changeSizeAt / changeColorAt) when possible, falling back
+   * to a full text replacement with the new style.
    */
   private _openTrueEditInput(
     e: MouseEvent,
@@ -231,6 +243,7 @@ export class TextEditHandler {
       itemHeight: number;
       pageH: number;
       rotated: boolean;
+      fillColor?: string;
     }
   ): void {
     this._activeEditor?.remove();
@@ -245,16 +258,11 @@ export class TextEditHandler {
     const zoom = app.zoomScale;
     const fontPx = Math.max(10, Math.round(opts.fontSize * zoom));
     const psName     = extractPsName(opts.fontName);
-    // Use three sources for bold/italic detection — whichever carries the real font name:
-    //   1. psName: extracted from the pdfjs internal id (works when id contains "+FontName")
-    //   2. pdfjsFontFamily: CSS family string from pdfjs styles (may just be "sans-serif")
-    //   3. baseFontName: /BaseFont from the PDF's Resources/Font dict (most reliable)
     const baseFontName = getPageFontBaseName(opts.libDoc, opts.pageIndex, opts.fontKey);
     const combined = `${psName} ${opts.pdfjsFontFamily} ${baseFontName}`;
     const bold   = /bold|black|heavy|semibold|demibold/i.test(combined);
     const italic = /italic|oblique/i.test(combined);
     const fontFamily = psNameToCssFontFamily(combined);
-    // Build the full CSS font shorthand with weight + style
     input.style.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${fontPx}px ${fontFamily}`;
     input.style.minWidth = `${Math.max(160, Math.round(opts.originalText.length * fontPx * 0.6))}px`;
 
@@ -275,6 +283,15 @@ export class TextEditHandler {
     ui.fontSizeInput.disabled = false;
     ui.fontFamily.value = familyToSelect[fontFamily] ?? 'Arial';
     ui.fontFamily.disabled = false;
+
+    // Snapshot originals for change-detection in commit().
+    const originalBold       = bold;
+    const originalItalic     = italic;
+    const originalFontFamily = familyToSelect[fontFamily] ?? 'Arial';
+    const originalFontSize   = Math.round(opts.fontSize);
+    const detectedColorHex   = opts.fillColor ? (fillColorToHex(opts.fillColor) ?? '') : '';
+    const originalColorHex   = detectedColorHex ? `#${detectedColorHex.toLowerCase()}` : '';
+    if (originalColorHex) ui.colorInput.value = originalColorHex;
 
     const rect = app.ui.canvas.getBoundingClientRect();
     if (!opts.rotated) {
@@ -307,18 +324,74 @@ export class TextEditHandler {
     const commit = async () => {
       if (done) return;
       const newText = input.value;
-      close();
-      if (newText === opts.originalText) return;
 
-      const isDelete = newText.trim() === '';
-      const ok = isDelete
-        ? await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE)
-        : await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE);
+      // Snapshot toolbar state before close() resets the controls.
+      const newBold       = ui.boldBtn.classList.contains('btn-active-fmt');
+      const newItalic     = ui.italicBtn.classList.contains('btn-active-fmt');
+      const newFontSize   = Math.round(parseFloat(ui.fontSizeInput.value) || opts.fontSize);
+      const newFontFamily = ui.fontFamily.value || originalFontFamily;
+      const newColorHex   = ui.colorInput.value;
+
+      close();
+
+      const textChanged    = newText !== opts.originalText;
+      const sizeChanged    = newFontSize !== originalFontSize;
+      const boldChanged    = newBold !== originalBold;
+      const italicChanged  = newItalic !== originalItalic;
+      const familyChanged  = newFontFamily !== originalFontFamily;
+      const colorChanged   = originalColorHex !== '' && newColorHex !== originalColorHex;
+      const styleChanged   = sizeChanged || boldChanged || italicChanged || familyChanged || colorChanged;
+
+      if (!textChanged && !styleChanged) return;
+
+      // Delete: user cleared the text field.
+      if (newText.trim() === '' && textChanged) {
+        const ok = await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE);
+        if (!ok) return;
+        const newBytes = await opts.libDoc.save();
+        await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);
+        app.reportError.info('toast.trueTextDeleted');
+        return;
+      }
+
+      // Style-only, no text change, no bold/italic/family change → try in-stream ops.
+      if (!textChanged && !boldChanged && !italicChanged && !familyChanged) {
+        let allHandled = true;
+        if (sizeChanged) {
+          if (!await changeSizeAt(opts.libDoc, opts.pageIndex, opts.origin, newFontSize, TRUE_EDIT_TOLERANCE)) {
+            allHandled = false;
+          }
+        }
+        if (colorChanged && allHandled) {
+          const rgb = hexToRgb01(newColorHex);
+          if (!rgb || !await changeColorAt(opts.libDoc, opts.pageIndex, opts.origin, rgb, TRUE_EDIT_TOLERANCE)) {
+            allHandled = false;
+          }
+        }
+        if (allHandled) {
+          const newBytes = await opts.libDoc.save();
+          await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);
+          app.reportError.info('toast.trueTextEdited');
+          return;
+        }
+        // Fall through: at least one in-stream op failed; use full replacement.
+      }
+
+      // Full replacement — build style when anything changed.
+      const style: TextStyle | undefined = styleChanged ? {
+        ...(sizeChanged   ? { fontSize:   newFontSize }   : {}),
+        ...(boldChanged   ? { bold:        newBold }       : {}),
+        ...(italicChanged ? { italic:      newItalic }     : {}),
+        ...(familyChanged ? { fontFamily:  newFontFamily } : {}),
+        ...(colorChanged  ? { color: hexToRgb01(newColorHex) ?? undefined } : {}),
+      } : undefined;
+
+      const ok = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style);
       if (!ok) return;
 
       const newBytes = await opts.libDoc.save();
       await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);
-      app.reportError.info(isDelete ? 'toast.trueTextDeleted' : 'toast.trueTextEdited');
+      app.reportError.info('toast.trueTextEdited');
     };
 
     input.addEventListener('keydown', ev => {
