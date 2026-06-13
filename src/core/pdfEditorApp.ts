@@ -12,8 +12,9 @@ import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
   HistoryManager, AddElementCmd, TextEditCmd,
-  ReplaceSourcePdfBytesCmd,
+  MoveResizeCmd, ReplaceSourcePdfBytesCmd,
 } from './historyManager';
+import { RedactionElement } from '../elements/redactionElement';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
 import { DocumentModel, type SourcePdf } from './documentModel';
@@ -603,6 +604,109 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   }
 
   handleCanvasClick(e: MouseEvent) { this._canvasClickRouter.handleCanvasClick(e); }
+
+  // ── Formatting actions (layering fix — called by formattingBinder) ─────────
+  setFontFamily(value: string): void {
+    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
+    const te = this.selectedElement as TextElement;
+    const before = { fontFamily: te.fontFamily };
+    te.fontFamily = value;
+    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontFamily: value }));
+    this.rebuildElementLayer(); this._autosave();
+  }
+  toggleBold(): void {
+    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
+    const te = this.selectedElement as TextElement;
+    const before = { bold: te.bold };
+    te.bold = !te.bold;
+    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { bold: te.bold }));
+    this.ui.boldBtn.classList.toggle('btn-active-fmt', te.bold);
+    this.rebuildElementLayer(); this._autosave();
+  }
+  toggleItalic(): void {
+    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
+    const te = this.selectedElement as TextElement;
+    const before = { italic: te.italic };
+    te.italic = !te.italic;
+    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { italic: te.italic }));
+    this.ui.italicBtn.classList.toggle('btn-active-fmt', te.italic);
+    this.rebuildElementLayer(); this._autosave();
+  }
+  setFontSize(size: number): void {
+    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
+    const te = this.selectedElement as TextElement;
+    const before = { fontSize: te.fontSize };
+    te.fontSize = size;
+    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontSize: size }));
+    this.rebuildElementLayer(); this._autosave();
+  }
+  adjustFontSize(delta: number): void {
+    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
+    const te = this.selectedElement as TextElement;
+    const before = { fontSize: te.fontSize };
+    const newSize = Math.max(8, Math.min(72, te.fontSize + delta));
+    te.fontSize = newSize;
+    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontSize: newSize }));
+    this.ui.fontSizeInput.value = String(newSize);
+    this.rebuildElementLayer(); this._autosave();
+  }
+  setElementColor(value: string): void {
+    if (this.selectedElement?.type === 'text') {
+      const te = this.selectedElement as TextElement;
+      const before = { color: te.color };
+      te.color = value;
+      this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { color: value }));
+      this.rebuildElementLayer(); this._autosave();
+    } else if (this.selectedElement?.type === 'shape') {
+      (this.selectedElement as ShapeElement).strokeColor = value;
+      this.rebuildElementLayer(); this._autosave();
+    } else if (this.selectedElement?.type === 'redaction') {
+      const re = this.selectedElement as RedactionElement;
+      const before = { color: re.color };
+      re.color = value;
+      this.ui.redactColorInput.value = value;
+      this.historyManager.record(new MoveResizeCmd(this.elements, re, before, { color: value }));
+      this.rebuildElementLayer(); this._autosave();
+    }
+  }
+  setFillNone(): void {
+    this._noFill = true;
+    this._syncFillToggleUI();
+    if (this.selectedElement?.type === 'shape') {
+      const she = this.selectedElement as ShapeElement;
+      const before = { fillColor: she.fillColor };
+      she.fillColor = undefined;
+      this.historyManager.record(new MoveResizeCmd(this.elements, she, before, { fillColor: undefined }));
+      this.rebuildElementLayer(); this._autosave();
+    }
+  }
+  startFillColor(): void { this._noFill = false; this._syncFillToggleUI(); }
+  setFillColor(value: string): void {
+    this._noFill = false;
+    this._syncFillToggleUI();
+    if (this.selectedElement?.type === 'shape') {
+      const she = this.selectedElement as ShapeElement;
+      const before = { fillColor: she.fillColor };
+      she.fillColor = value;
+      this.historyManager.record(new MoveResizeCmd(this.elements, she, before, { fillColor: value }));
+      this.rebuildElementLayer(); this._autosave();
+    }
+  }
+  setRedactColor(value: string): void {
+    if (this.selectedElement?.type === 'redaction') {
+      const re = this.selectedElement as RedactionElement;
+      const before = { color: re.color };
+      re.color = value;
+      this.historyManager.record(new MoveResizeCmd(this.elements, re, before, { color: value }));
+      this.rebuildElementLayer(); this._autosave();
+    }
+  }
+  setShapeStrokeWidth(value: number): void {
+    if (this.selectedElement?.type === 'shape') {
+      (this.selectedElement as ShapeElement).strokeWidth = value;
+      this.rebuildElementLayer(); this._autosave();
+    }
+  }
 
 
   addTextAtPosition(e: MouseEvent) { this._placementManager.addTextAtPosition(e); }
