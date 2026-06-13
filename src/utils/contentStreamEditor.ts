@@ -614,3 +614,31 @@ export async function replaceTextAt(
 
   return true;
 }
+
+/**
+ * Look up the /BaseFont name for a font resource in a page's /Resources/Font dict.
+ * The BaseFont name (e.g. "/ABCDEF+MyriadPro-Bold") often contains the real font name
+ * even when pdfjs assigns an opaque internal id. Returns empty string on any failure.
+ */
+export function getPageFontBaseName(doc: PDFDocument, pageIndex: number, fontKey: string): string {
+  try {
+    const page = doc.getPage(pageIndex);
+    const name = fontKey.replace(/^\//, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (!resources?.get) return '';
+    const fontDictRaw = resources.get(PDFName.of('Font'));
+    if (!fontDictRaw) return '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    if (!fontDict?.get) return '';
+    const fontEntryRaw = fontDict.get(PDFName.of(name));
+    if (!fontEntryRaw) return '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontEntry = doc.context.lookup(fontEntryRaw) as any;
+    if (!fontEntry?.get) return '';
+    return fontEntry.get(PDFName.of('BaseFont'))?.toString() ?? '';
+  } catch {
+    return '';
+  }
+}

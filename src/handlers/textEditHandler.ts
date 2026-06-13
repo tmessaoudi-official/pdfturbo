@@ -2,7 +2,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
-import { findTextOpAt, deleteTextAt, replaceTextAt } from '../utils/contentStreamEditor';
+import { findTextOpAt, deleteTextAt, replaceTextAt, getPageFontBaseName } from '../utils/contentStreamEditor';
 import { extractPsName } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import type { IAppContext } from '../core/appContext';
@@ -85,6 +85,8 @@ export class TextEditHandler {
           pageIndex: docPage.sourcePageNum - 1,
           origin,
           fontName: best.fontName,
+          fontKey: target.fontKey,
+          pdfjsFontFamily: styles[best.fontName]?.fontFamily ?? '',
           originalText: best.str,
           fontSize: Math.hypot(best.transform[0], best.transform[1]) || target.fontSize || 12,
           itemHeight: Math.max(Math.abs(best.height), 10),
@@ -175,10 +177,12 @@ export class TextEditHandler {
       ? detectedFontSize
       : Math.max(8, Math.round(h * 0.82));
 
-    // Detect bold/italic from the PostScript name, not the raw internal pdfjs id
+    // Detect bold/italic: check both PS name and pdfjs CSS fontFamily string.
+    // For PDFs with opaque font ids (e.g. "g_d0_f2"), the CSS fontFamily is the reliable source.
     const psNameOverlayFull = extractPsName(best.fontName);
-    const bold   = /bold|black|heavy|semibold|demibold/i.test(psNameOverlayFull);
-    const italic = /italic|oblique/i.test(psNameOverlayFull);
+    const overlayCheck = `${psNameOverlayFull} ${pdfjsFontFamily}`;
+    const bold   = /bold|black|heavy|semibold|demibold/i.test(overlayCheck);
+    const italic = /italic|oblique/i.test(overlayCheck);
 
     const cover = new RedactionElement(annX - 2, annY - 2, w + 4, h + 4, pageId, bgColor);
     const textEl = new TextElement(annX, annY, pageId, {
@@ -220,6 +224,8 @@ export class TextEditHandler {
       pageIndex: number;
       origin: { x: number; y: number };
       fontName: string;
+      fontKey: string;
+      pdfjsFontFamily: string;
       originalText: string;
       fontSize: number;
       itemHeight: number;
@@ -239,9 +245,15 @@ export class TextEditHandler {
     const zoom = app.zoomScale;
     const fontPx = Math.max(10, Math.round(opts.fontSize * zoom));
     const psName     = extractPsName(opts.fontName);
-    const fontFamily = psNameToCssFontFamily(psName);
-    const bold   = /bold|black|heavy|semibold|demibold/i.test(psName);
-    const italic = /italic|oblique/i.test(psName);
+    // Use three sources for bold/italic detection — whichever carries the real font name:
+    //   1. psName: extracted from the pdfjs internal id (works when id contains "+FontName")
+    //   2. pdfjsFontFamily: CSS family string from pdfjs styles (may just be "sans-serif")
+    //   3. baseFontName: /BaseFont from the PDF's Resources/Font dict (most reliable)
+    const baseFontName = getPageFontBaseName(opts.libDoc, opts.pageIndex, opts.fontKey);
+    const combined = `${psName} ${opts.pdfjsFontFamily} ${baseFontName}`;
+    const bold   = /bold|black|heavy|semibold|demibold/i.test(combined);
+    const italic = /italic|oblique/i.test(combined);
+    const fontFamily = psNameToCssFontFamily(combined);
     // Build the full CSS font shorthand with weight + style
     input.style.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${fontPx}px ${fontFamily}`;
     input.style.minWidth = `${Math.max(160, Math.round(opts.originalText.length * fontPx * 0.6))}px`;
