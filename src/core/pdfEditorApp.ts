@@ -1,8 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFRenderer } from '../infra/pdfRenderer';
 import { TextElement } from '../elements/textElement';
-import { SignatureElement } from '../elements/signatureElement';
-import { ImageElement } from '../elements/imageElement';
 import { HighlightElement } from '../elements/highlightElement';
 import { TextSearchHandler } from '../handlers/textSearchHandler';
 import { SignaturePad } from '../utils/signaturePad';
@@ -23,11 +21,10 @@ import { DocumentModel, type SourcePdf } from './documentModel';
 import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
-import { CommentElement } from '../elements/commentElement';
 import { trapFocus } from '../utils/focusTrap';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { CodeElement } from '../elements/codeElement';
-import { getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
+import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
 import { transformPoint } from '../utils/geometry';
 import { bindEvents } from '../ui/eventBinder';
 import { ExportService } from '../export/exportService';
@@ -50,6 +47,7 @@ import { FindBarController, type IFindBarContext } from '../ui/findBarController
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
 import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
 import { PageRenderPipeline } from './pageRenderPipeline';
+import { PlacementManager } from '../ui/placementManager';
 import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
@@ -73,13 +71,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   drawingHandler: DrawingHandler;
   eraserHandler: EraserHandler;
   _thumbnailPanel: PageThumbnailPanel | null = null;
-  private _pendingImageSrc: string | null = null;
-  private _pendingImageNatural: { w: number; h: number } | null = null;
   private _signatureNatural: { w: number; h: number } | null = null;
-  private _pendingCodeDataUrl: string | null = null;
-  private _pendingCodeOptions: { codeType: string; data: string; qrStyle: QRStyleOptions | null; bwipOpts: BwipOptions | null } | null = null;
-  private _pendingCodeNatural: { w: number; h: number } | null = null;
-  private _skipNextClick = false;
   _noFill = true;
   private _sessionManager = new SessionManager();
   private _textSearch = new TextSearchHandler();
@@ -103,7 +95,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _trapCleanup: (() => void) | null = null;
   _pendingModeAfterBlankPage: string | null = null;
   private _textEditHandler = new TextEditHandler();
-  private _placementGhost: HTMLDivElement | null = null;
   private _toastQueue!: ToastQueue;
   private _errorReporter!: IErrorReporter;
   private _progressManager!: IProgressManager;
@@ -118,6 +109,11 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _documentLoader!: DocumentLoader;
   private _elementLayerRenderer!: ElementLayerRenderer;
   private _pageRenderPipeline!: PageRenderPipeline;
+  private _placementManager!: PlacementManager;
+
+  // ── IPlacementContext accessors ───────────────────────────────────────────
+  get signatureNatural(): { w: number; h: number } | null { return this._signatureNatural; }
+  set signatureNatural(v: { w: number; h: number } | null) { this._signatureNatural = v; }
 
   // ── IPageRenderContext accessors ──────────────────────────────────────────
   advanceFormFieldGen(): number { return ++this._formFieldGen; }
@@ -204,7 +200,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   setElementPointerEvents(pe: 'auto' | 'none'): void { this.ui.container.querySelectorAll<HTMLElement>('.pdf-element').forEach(el => { el.style.pointerEvents = pe; }); }
   updateModeButtons(mode: ToolMode): void { this.uiController.updateModeButtons(mode); }
   setOverlayPointerEvents(isSelect: boolean): void { this._formFieldOverlay.setPointerEvents(isSelect); this._textLayerManager.setPointerEvents(isSelect); }
-  hidePlacementGhost(): void { if (this._placementGhost) this._placementGhost.style.display = 'none'; }
+  hidePlacementGhost(): void { this._placementManager.hidePlacementGhost(); }
   clearToast(): void { this.uiController.clearToast(); }
 
   // ── IFindBarContext accessors ─────────────────────────────────────────────
@@ -226,11 +222,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     dataUrl: string,
     options: { codeType: string; data: string; qrStyle: QRStyleOptions | null; bwipOpts: BwipOptions | null },
     natural: { w: number; h: number },
-  ): void {
-    this._pendingCodeDataUrl = dataUrl;
-    this._pendingCodeOptions = options;
-    this._pendingCodeNatural = natural;
-  }
+  ): void { this._placementManager.setPendingCode(dataUrl, options, natural); }
   _setQrLogoDataUrl(val: string | null): void { this._codeModalManager.setQrLogoDataUrl(val); }
 
   // ── IDocumentLoaderContext accessors ──────────────────────────────────────
@@ -310,6 +302,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._documentLoader = new DocumentLoader(this);
     this._elementLayerRenderer = new ElementLayerRenderer(this);
     this._pageRenderPipeline = new PageRenderPipeline(this);
+    this._placementManager = new PlacementManager(this);
     this._toolbarCustomizer = new ToolbarCustomizer(
       document.querySelector('.toolbar-row1') as HTMLElement,
       new LocalLayoutStorage(),
@@ -364,149 +357,11 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   _highlightCurrentMatch(): void { this._findBarController.highlightCurrentMatch(); }
 
   // ── Image handling ───────────────────────────────────────────
-  _handleImageFileSelect(e: Event): void {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    (e.target as HTMLInputElement).value = '';
-    if (!file || !this.documentModel.currentPage) return;
-    if (!file.type.startsWith('image/')) {
-      this._errorReporter.warn('toast.selectImageFile');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const src = ev.target?.result as string;
-      if (!src) return;
-      const img = new Image();
-      img.onload = () => {
-        this._pendingImageNatural = { w: img.naturalWidth, h: img.naturalHeight };
-        this._pendingImageSrc = src;
-        this.setMode('addImage');
-      };
-      img.src = src;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  addImageAtPosition(e: MouseEvent): void {
-    const src = this._pendingImageSrc;
-    const pageId = this.documentModel.currentPage?.id;
-    if (!src || !pageId) return;
-    this._pendingImageSrc = null;
-
-    const rect = this.ui.canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / this.zoomScale;
-    const y = (e.clientY - rect.top) / this.zoomScale;
-    const imgEl = new ImageElement(x - 100, y - 75, 200, 150, pageId, src);
-    this.historyManager.execute(new AddElementCmd(this.elements, imgEl));
-    this._autosave();
-    this.setMode('select');
-    this.rebuildElementLayer();
-    this.selectElement(imgEl);
-  }
+  _handleImageFileSelect(e: Event): void { this._placementManager.handleImageFileSelect(e); }
+  addImageAtPosition(e: MouseEvent): void { this._placementManager.addImageAtPosition(e); }
 
   _commitPlacement(mode: 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x: number, y: number, w: number, h: number): void {
-    const pageId = this.documentModel.currentPage?.id;
-    if (!pageId) return;
-    this._skipNextClick = true;
-
-    if (mode === 'addText') {
-      const fw = w < 10 ? 200 : w;
-      const fh = h < 10 ? 40 : h;
-      const options = {
-        fontSize: parseInt(this.ui.fontSizeInput.value),
-        color: this.ui.colorInput.value,
-        width: fw,
-        height: fh,
-      };
-      const textEl = new TextElement(x, y, pageId, options);
-      this.historyManager.execute(new AddElementCmd(this.elements, textEl));
-      this._autosave();
-      this.rebuildElementLayer();
-      const inputEl = this.ui.container.querySelector(
-        `[data-id='${textEl.id}'] input, [data-id='${textEl.id}'] textarea`
-      ) as HTMLInputElement | null;
-      if (inputEl) {
-        (inputEl as HTMLElement).style.pointerEvents = 'auto';
-        inputEl.focus();
-      }
-      this.setMode('select');
-      this.selectElement(textEl);
-      const freshInput = this.ui.container.querySelector(
-        `[data-id='${textEl.id}'] input, [data-id='${textEl.id}'] textarea`
-      ) as HTMLInputElement | null;
-      freshInput?.focus();
-
-    } else if (mode === 'addImage') {
-      const src = this._pendingImageSrc;
-      if (!src) return;
-      this._pendingImageSrc = null;
-      const nat = this._pendingImageNatural;
-      this._pendingImageNatural = null;
-
-      const fw = w < 10 ? 200 : w;
-      const fh = w < 10
-        ? (nat ? Math.round(200 * nat.h / nat.w) : 150)
-        : (nat ? Math.round(fw * nat.h / nat.w) : h);
-
-      const imgEl = new ImageElement(x, y, fw, fh, pageId, src);
-      this.historyManager.execute(new AddElementCmd(this.elements, imgEl));
-      this._autosave();
-      this.setMode('select');
-      this.rebuildElementLayer();
-      this.selectElement(imgEl);
-
-    } else if (mode === 'addComment') {
-      const fw = w < 10 ? 200 : w;
-      const fh = h < 10 ? 120 : h;
-      const commentEl = new CommentElement(x, y, pageId, { width: fw, height: fh });
-      this.historyManager.execute(new AddElementCmd(this.elements, commentEl));
-      this._autosave();
-      this.setMode('select');
-      this.rebuildElementLayer();
-      this.selectElement(commentEl);
-
-    } else if (mode === 'addCode') {
-      const dataUrl = this._pendingCodeDataUrl;
-      const opts = this._pendingCodeOptions;
-      if (!dataUrl || !opts) return;
-      this._pendingCodeDataUrl = null;
-      this._pendingCodeOptions = null;
-      const nat = this._pendingCodeNatural;
-      this._pendingCodeNatural = null;
-
-      const fw = w < 10 ? 200 : w;
-      const fmt = getCodeFormat(opts.codeType);
-      const fh = fmt?.squareOutput
-        ? fw
-        : nat ? Math.round(fw * nat.h / nat.w) : (h < 10 ? 80 : h);
-
-      const codeEl = new CodeElement(x, y, pageId, { ...opts, bwipOpts: opts.bwipOpts ?? null }, dataUrl, { w: fw, h: fh });
-      this.historyManager.execute(new AddElementCmd(this.elements, codeEl));
-      this._autosave();
-      this.setMode('select');
-      this.rebuildElementLayer();
-      this.selectElement(codeEl);
-
-    } else {
-      const sig = this.currentSignature;
-      if (!sig) return;
-      this.currentSignature = null;
-      this.ui.addSignatureBtn.classList.remove('active');
-      const nat = this._signatureNatural;
-      this._signatureNatural = null;
-
-      const fw = w < 10 ? 200 : w;
-      const fh = w < 10
-        ? (nat ? Math.round(200 * nat.h / nat.w) : 80)
-        : (nat ? Math.round(fw * nat.h / nat.w) : h);
-
-      const sigEl = new SignatureElement(x, y, pageId, sig, { width: fw, height: fh });
-      this.historyManager.execute(new AddElementCmd(this.elements, sigEl));
-      this._autosave();
-      this.setMode('select');
-      this.rebuildElementLayer();
-      this.selectElement(sigEl);
-    }
+    this._placementManager.commitPlacement(mode, x, y, w, h);
   }
 
    // ── PDF page management — delegate to PageService ──────────────────────
@@ -762,9 +617,9 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   }
 
   handleCanvasClick(e: MouseEvent) {
-    if (this._skipNextClick) { this._skipNextClick = false; return; }
+    if (this._placementManager.consumeSkipNextClick()) return;
     if (this._isShapeMode()) return;
-    if (this.mode === 'addText' || (this.mode === 'addImage' && this._pendingImageSrc) || this.mode === 'addComment' || (this.mode === 'addSignature' && this.currentSignature) || this.mode === 'addCode') return;
+    if (this.mode === 'addText' || (this.mode === 'addImage' && this._placementManager.hasPendingImageSrc()) || this.mode === 'addComment' || (this.mode === 'addSignature' && this.currentSignature) || this.mode === 'addCode') return;
     if (this.mode === 'fillBucket') {
       this._handleFillBucketClick(e);
     } else if (this.mode === 'editText') {
@@ -854,34 +709,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   }
 
 
-  addTextAtPosition(e: MouseEvent) {
-    const pageId = this.documentModel.currentPage?.id;
-    if (!pageId) return;
-    const rect = this.ui.canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / this.zoomScale;
-    const y = (e.clientY - rect.top) / this.zoomScale;
-    const options = { fontSize: parseInt(this.ui.fontSizeInput.value), color: this.ui.colorInput.value };
-    const textElement = new TextElement(x, y, pageId, options);
-    textElement.x -= textElement.width / 2;
-    textElement.y -= textElement.height / 2;
-    this.historyManager.execute(new AddElementCmd(this.elements, textElement));
-    this._autosave();
-    this.rebuildElementLayer();
-    // Focus BEFORE selectElement so _cleanEmptyTextElements sees activeElement === input
-    const inputEl = this.ui.container.querySelector(
-      `[data-id='${textElement.id}'] input, [data-id='${textElement.id}'] textarea`
-    ) as HTMLInputElement | null;
-    if (inputEl) {
-      (inputEl as HTMLElement).style.pointerEvents = 'auto';
-      inputEl.focus();
-    }
-    this.selectElement(textElement);
-    // selectElement calls rebuildElementLayer() which recreates DOM — re-query and re-focus
-    const freshInput = this.ui.container.querySelector(
-      `[data-id='${textElement.id}'] input, [data-id='${textElement.id}'] textarea`
-    ) as HTMLInputElement | null;
-    freshInput?.focus();
-  }
+  addTextAtPosition(e: MouseEvent) { this._placementManager.addTextAtPosition(e); }
 
 
   removeElement(id: number): void { this._annotationService.removeElement(id); }
@@ -993,31 +821,5 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   async exportAsDocx(): Promise<void> { return this._exportService.exportAsDocx(); }
   async exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }
 
-  _updatePlacementGhost(e: PointerEvent): void {
-    const placementModes: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature'];
-    if (!placementModes.includes(this.mode)) {
-      if (this._placementGhost) this._placementGhost.style.display = 'none';
-      return;
-    }
-    if (!this._placementGhost) {
-      const ghost = document.createElement('div');
-      ghost.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;border:2px dashed rgba(0,100,255,0.7);background:rgba(0,100,255,0.07);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:16px;color:rgba(0,100,255,0.8);box-sizing:border-box;';
-      document.body.appendChild(ghost);
-      this._placementGhost = ghost;
-    }
-    const ghost = this._placementGhost;
-    const cfg: Record<string, { icon: string; w: number; h: number }> = {
-      addText:    { icon: 'T', w: 80, h: 28 },
-      addComment: { icon: '🗒', w: 80, h: 60 },
-      addImage:   { icon: '🖼', w: 60, h: 60 },
-      addSignature: { icon: '✍', w: 80, h: 40 },
-    };
-    const c = cfg[this.mode] ?? { icon: '+', w: 40, h: 40 };
-    ghost.textContent = c.icon;
-    ghost.style.width  = c.w + 'px';
-    ghost.style.height = c.h + 'px';
-    ghost.style.left   = (e.clientX + 12) + 'px';
-    ghost.style.top    = (e.clientY + 12) + 'px';
-    ghost.style.display = 'flex';
-  }
+  _updatePlacementGhost(e: PointerEvent): void { this._placementManager.updatePlacementGhost(e); }
 }
