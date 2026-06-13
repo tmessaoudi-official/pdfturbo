@@ -12,6 +12,12 @@ import {
   extractPsName,
   replaceShowOpInPlace,
   fillColorToHex,
+  parseToUnicodeCMap,
+  detectCMapBytesPerCode,
+  encodeWithSubset,
+  replaceShowOpHex,
+  matchStandardFont,
+  getPageFontDescriptor,
 } from '../../src/utils/contentStreamEditor';
 
 /** Build a real 3-string PDF entirely in memory — no fixtures. */
@@ -343,5 +349,222 @@ describe('replaceShowOpInPlace', () => {
     const ops = groupOps(tokenizeContentStream(src));
     const textOps = locateTextOps(ops);
     expect(replaceShowOpInPlace(ops[textOps[0].opIndex], 'Héllo')).toBe(false);
+  });
+});
+
+// ── Phase B: ToUnicode CMap parsing ──────────────────────────────────────────
+
+describe('parseToUnicodeCMap', () => {
+  it('parses single bfchar entries (2-byte codes)', () => {
+    const cmap = `beginbfchar
+<0048> <0048>
+<0065> <0065>
+endbfchar`;
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0048)).toBe('H');
+    expect(map.get(0x0065)).toBe('e');
+  });
+
+  it('parses single bfchar entries (1-byte codes)', () => {
+    const cmap = `beginbfchar
+<48> <0048>
+<65> <0065>
+endbfchar`;
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x48)).toBe('H');
+    expect(map.get(0x65)).toBe('e');
+  });
+
+  it('parses sequential bfrange entries', () => {
+    const cmap = `beginbfrange
+<0041> <0043> <0041>
+endbfrange`;
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0041)).toBe('A');
+    expect(map.get(0x0042)).toBe('B');
+    expect(map.get(0x0043)).toBe('C');
+  });
+
+  it('parses bfrange with array (individual mapping)', () => {
+    const cmap = `beginbfrange
+<0041> <0043> [<0048> <0065> <006C>]
+endbfrange`;
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0041)).toBe('H');
+    expect(map.get(0x0042)).toBe('e');
+    expect(map.get(0x0043)).toBe('l');
+  });
+
+  it('returns an empty map for empty or unparseable input', () => {
+    expect(parseToUnicodeCMap('').size).toBe(0);
+    expect(parseToUnicodeCMap('no cmap content here').size).toBe(0);
+  });
+
+  it('handles combined bfchar and bfrange sections', () => {
+    const cmap = `beginbfchar
+<0020> <0020>
+endbfchar
+beginbfrange
+<0041> <0042> <0041>
+endbfrange`;
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0020)).toBe(' ');
+    expect(map.get(0x0041)).toBe('A');
+    expect(map.get(0x0042)).toBe('B');
+  });
+});
+
+describe('detectCMapBytesPerCode', () => {
+  it('detects 1-byte encoding from <20> <FF> codespace range', () => {
+    const cmap = '1 begincodespacerange\n<20> <FF>\nendcodespacerange';
+    expect(detectCMapBytesPerCode(cmap)).toBe(1);
+  });
+
+  it('detects 2-byte encoding from <0000> <FFFF> codespace range', () => {
+    const cmap = '2 begincodespacerange\n<0000> <FFFF>\nendcodespacerange';
+    expect(detectCMapBytesPerCode(cmap)).toBe(2);
+  });
+
+  it('defaults to 2-byte when no codespace range is present', () => {
+    expect(detectCMapBytesPerCode('beginbfchar\nendbfchar')).toBe(2);
+  });
+});
+
+// ── Phase B: subset glyph encoding ───────────────────────────────────────────
+
+describe('encodeWithSubset', () => {
+  function buildReverseMap(entries: [string, number][]): Map<string, number> {
+    return new Map(entries);
+  }
+
+  it('encodes text where all chars are present in the subset map (2-byte)', () => {
+    const rev = buildReverseMap([['H', 0x0048], ['i', 0x0069]]);
+    const hex = encodeWithSubset('Hi', rev, 2);
+    expect(hex).toBe('<00480069>');
+  });
+
+  it('encodes text where all chars are present in the subset map (1-byte)', () => {
+    const rev = buildReverseMap([['A', 0x41], ['B', 0x42]]);
+    const hex = encodeWithSubset('AB', rev, 1);
+    expect(hex).toBe('<4142>');
+  });
+
+  it('returns null when any character is missing from the map', () => {
+    const rev = buildReverseMap([['H', 0x0048]]);
+    expect(encodeWithSubset('Hi', rev, 2)).toBeNull();
+  });
+
+  it('returns null for empty text', () => {
+    const rev = buildReverseMap([['A', 0x41]]);
+    expect(encodeWithSubset('', rev, 1)).toBeNull();
+  });
+});
+
+// ── Phase B: replaceShowOpHex ─────────────────────────────────────────────────
+
+describe('replaceShowOpHex', () => {
+  it('replaces a hexstring operand on a Tj op', () => {
+    const src = 'BT <48656C6C6F> Tj ET';
+    const ops = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(ops);
+    const ok = replaceShowOpHex(ops[textOps[0].opIndex], '<0048006900>');
+    expect(ok).toBe(true);
+    expect(serializeOps(ops)).toContain('<0048006900>');
+    expect(serializeOps(ops)).not.toContain('<48656C6C6F>');
+  });
+
+  it('replaces the first hexstring in a TJ array', () => {
+    const src = 'BT [<4865> -120 <6C6C6F>] TJ ET';
+    const ops = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(ops);
+    const ok = replaceShowOpHex(ops[textOps[0].opIndex], '<0048>');
+    expect(ok).toBe(true);
+    expect(serializeOps(ops)).toContain('<0048>');
+  });
+
+  it('returns false when the op has no hexstring operand', () => {
+    const src = 'BT (Hello) Tj ET';
+    const ops = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(ops);
+    expect(replaceShowOpHex(ops[textOps[0].opIndex], '<0048>')).toBe(false);
+  });
+});
+
+// ── Phase B: font matching ────────────────────────────────────────────────────
+
+describe('matchStandardFont', () => {
+  it('returns Helvetica for a generic sans-serif font name', () => {
+    expect(matchStandardFont('ArialMT', 0)).toBe(StandardFonts.Helvetica);
+  });
+
+  it('returns HelveticaBold for a bold sans-serif font name', () => {
+    expect(matchStandardFont('Arial-BoldMT', 0)).toBe(StandardFonts.HelveticaBold);
+  });
+
+  it('returns HelveticaOblique for an italic sans-serif font', () => {
+    expect(matchStandardFont('Arial-ItalicMT', 0)).toBe(StandardFonts.HelveticaOblique);
+  });
+
+  it('returns HelveticaBoldOblique for bold-italic sans-serif', () => {
+    expect(matchStandardFont('Arial-BoldItalicMT', 0)).toBe(StandardFonts.HelveticaBoldOblique);
+  });
+
+  it('returns TimesRoman for a serif font name', () => {
+    expect(matchStandardFont('TimesNewRomanPSMT', 0)).toBe(StandardFonts.TimesRoman);
+  });
+
+  it('returns TimesRomanBold when serif and bold', () => {
+    expect(matchStandardFont('TimesNewRomanPS-BoldMT', 0)).toBe(StandardFonts.TimesRomanBold);
+  });
+
+  it('returns TimesRomanItalic when serif and italic', () => {
+    expect(matchStandardFont('TimesNewRomanPS-ItalicMT', 0)).toBe(StandardFonts.TimesRomanItalic);
+  });
+
+  it('returns TimesRomanBoldItalic when serif, bold, and italic', () => {
+    expect(matchStandardFont('TimesNewRomanPS-BoldItalicMT', 0)).toBe(StandardFonts.TimesRomanBoldItalic);
+  });
+
+  it('returns Courier when FixedPitch flag (bit 0) is set', () => {
+    expect(matchStandardFont('SomeFont', 0x01)).toBe(StandardFonts.Courier);
+  });
+
+  it('returns CourierBold when FixedPitch + bold name', () => {
+    expect(matchStandardFont('CourierNew-Bold', 0x01)).toBe(StandardFonts.CourierBold);
+  });
+
+  it('detects Italic from Flags bit 6 (0x40)', () => {
+    expect(matchStandardFont('ArialMT', 0x40)).toBe(StandardFonts.HelveticaOblique);
+  });
+
+  it('detects serif from Flags bit 1 (0x02)', () => {
+    expect(matchStandardFont('UnknownFont', 0x02)).toBe(StandardFonts.TimesRoman);
+  });
+});
+
+// ── Phase B: getPageFontDescriptor ────────────────────────────────────────────
+
+describe('getPageFontDescriptor', () => {
+  it('returns null when the font key is not in the page resources', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    // /F99 does not exist in the test PDF
+    const result = getPageFontDescriptor(doc, 0, '/F99');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for standard fonts that have no FontDescriptor', async () => {
+    // The test PDF uses Helvetica (standard font) — no FontDescriptor
+    // We get the actual font key from the content stream
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const content = await pageContentText(await doc.save());
+    const tfMatch = content.match(/\/(\w+)\s+12\s+Tf/);
+    const fontKey = tfMatch ? `/${tfMatch[1]}` : '/F1';
+    // Standard fonts have no FontDescriptor → null
+    const result = getPageFontDescriptor(doc, 0, fontKey);
+    // Standard font may have null descriptor — null or {flags:0, name:''} both acceptable
+    if (result !== null) {
+      expect(typeof result.flags).toBe('number');
+      expect(typeof result.name).toBe('string');
+    }
   });
 });

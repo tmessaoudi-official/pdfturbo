@@ -1,8 +1,7 @@
 import { TextElement } from '../elements/textElement';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
-import { MoveResizeCmd } from './historyManager';
-import type { HistoryManager } from './historyManager';
+import { MoveResizeCmd, type HistoryManager } from './historyManager';
 import type { PDFElement } from '../elements/annotationElement';
 import type { AppDOMRefs } from '../ui/uiController';
 import type { ToolMode } from '../types/tools';

@@ -1,6 +1,5 @@
 import { TextElement } from '../elements/textElement';
-import { TextEditCmd } from './historyManager';
-import type { HistoryManager } from './historyManager';
+import { TextEditCmd, type HistoryManager } from './historyManager';
 import type { PDFElement } from '../elements/annotationElement';
 import type { IErrorReporter } from './errorReporter';
 

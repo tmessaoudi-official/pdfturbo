@@ -7,11 +7,10 @@
  */
 
 import type { PDFElement } from '../elements/annotationElement';
-import type { DocumentModel } from './documentModel';
+import type { DocumentModel, SourcePdf } from './documentModel';
 import type { HistoryManager } from './historyManager';
 import type { InkLayer } from '../infra/inkLayer';
 import type { PDFRenderer } from '../infra/pdfRenderer';
-import type { SourcePdf } from './documentModel';
 import type { AppDOMRefs } from '../ui/uiController';
 import type { ToolMode } from './pdfTurboApp';
 import type { IErrorReporter } from './errorReporter';

@@ -3,9 +3,8 @@ import type { DocumentModel } from './documentModel';
 import type { AppDOMRefs } from '../ui/uiController';
 import type { ToolMode } from '../types/tools';
 import type { InkLayer } from '../infra/inkLayer';
-import type { HistoryManager } from './historyManager';
+import { FillColorCmd, InkFillColorCmd, type HistoryManager } from './historyManager';
 import type { ShapeElement } from '../elements/shapeElement';
-import { FillColorCmd, InkFillColorCmd } from './historyManager';
 import { hitTestShape, ptSegDist, ptInPolygon } from '../utils/hitTest';
 
 export interface ICanvasClickRouterContext {

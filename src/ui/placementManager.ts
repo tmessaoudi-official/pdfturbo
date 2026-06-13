@@ -1,17 +1,15 @@
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
-import type { HistoryManager } from '../core/historyManager';
+import { AddElementCmd, type HistoryManager } from '../core/historyManager';
 import type { AppDOMRefs } from './uiController';
 import type { ToolMode } from '../types/tools';
 import type { IErrorReporter } from '../contracts/errorReporter';
-import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
+import { getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
 import { TextElement } from '../elements/textElement';
 import { ImageElement } from '../elements/imageElement';
 import { CommentElement } from '../elements/commentElement';
 import { SignatureElement } from '../elements/signatureElement';
 import { CodeElement } from '../elements/codeElement';
-import { AddElementCmd } from '../core/historyManager';
-import { getCodeFormat } from '../utils/codeGenerator';
 
 export interface IPlacementContext {
   readonly documentModel: DocumentModel;

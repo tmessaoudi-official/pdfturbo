@@ -564,13 +564,240 @@ export async function deleteTextAt(
   return true;
 }
 
+// ── Phase B: ToUnicode CMap parsing ───────────────────────────────────────────
+
+/** Convert a hex string (without angle brackets) to its integer value. */
+function hexToInt(hex: string): number {
+  return parseInt(hex, 16);
+}
+
+/**
+ * Decode a destination hex code from a CMap into a Unicode string.
+ * Handles both 1-byte (<XX>) and 2-byte (<XXXX>) codes.
+ * Groups hex chars into code points: 4 chars = 1 BMP code point.
+ */
+function cmapHexToUnicodeStr(hex: string): string {
+  const clean = hex.replace(/\s+/g, '').toUpperCase();
+  const chunkSize = clean.length % 4 === 0 && clean.length >= 4 ? 4 : 2;
+  let out = '';
+  for (let i = 0; i < clean.length; i += chunkSize) {
+    out += String.fromCodePoint(parseInt(clean.slice(i, i + chunkSize) || '0', 16));
+  }
+  return out;
+}
+
+/**
+ * Parse a ToUnicode CMap text into a Map of charCode → Unicode string.
+ * Handles beginbfchar/endbfchar and beginbfrange/endbfrange sections.
+ */
+export function parseToUnicodeCMap(cmap: string): Map<number, string> {
+  const result = new Map<number, string>();
+
+  for (const section of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
+    for (const m of section[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
+      result.set(hexToInt(m[1]), cmapHexToUnicodeStr(m[2]));
+    }
+  }
+
+  for (const section of cmap.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
+    const body = section[1];
+    // Array ranges: <from> <to> [<d1> <d2> ...]
+    const processed = body.replace(
+      /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[([^\]]*)\]/g,
+      (_, from, to, dsts) => {
+        const f = hexToInt(from), t = hexToInt(to);
+        const items = [...dsts.matchAll(/<([0-9A-Fa-f]+)>/g)];
+        for (let i = 0; i <= t - f && i < items.length; i++) {
+          result.set(f + i, cmapHexToUnicodeStr(items[i][1]));
+        }
+        return '';
+      }
+    );
+    // Sequential ranges: <from> <to> <startDst>
+    for (const m of processed.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
+      const from = hexToInt(m[1]), to = hexToInt(m[2]), start = hexToInt(m[3]);
+      for (let i = 0; i <= to - from; i++) {
+        if (!result.has(from + i)) {
+          result.set(from + i, String.fromCodePoint(start + i));
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Detect whether a ToUnicode CMap uses 1-byte or 2-byte char codes.
+ * Returns 1 when the codespace range uses single-byte codes (e.g. <20> <FF>),
+ * 2 otherwise (the common case for CID/TrueType fonts).
+ */
+export function detectCMapBytesPerCode(cmap: string): 1 | 2 {
+  const m = cmap.match(/begincodespacerange\s*<([0-9A-Fa-f]+)>/);
+  return m && m[1].length <= 2 ? 1 : 2;
+}
+
+/**
+ * Encode `text` as a PDF hex string using the reverse unicode→charCode map.
+ * Returns null if any character is missing from the map or text is empty.
+ */
+export function encodeWithSubset(
+  text: string,
+  reverseMap: Map<string, number>,
+  bytesPerCode: 1 | 2
+): string | null {
+  if (!text) return null;
+  let hex = '<';
+  for (const ch of text) {
+    const code = reverseMap.get(ch);
+    if (code === undefined) return null;
+    hex += code.toString(16).padStart(bytesPerCode * 2, '0').toUpperCase();
+  }
+  return hex + '>';
+}
+
+/**
+ * Replace the hexstring operand of a show op with a new hex payload.
+ * Returns true on success; false when no hexstring operand is found.
+ */
+export function replaceShowOpHex(op: CsOp, newHex: string): boolean {
+  if (op.operator === 'TJ') {
+    const arr = op.operands[0];
+    if (!arr || arr.type !== 'array' || !arr.items) return false;
+    const first = arr.items.find(t => t.type === 'hexstring');
+    if (!first) return false;
+    first.raw = newHex;
+    arr.raw = `[${arr.items.map(t => t.raw).join(' ')}]`;
+    return true;
+  }
+  const str = op.operands[op.operands.length - 1];
+  if (!str || str.type !== 'hexstring') return false;
+  str.raw = newHex;
+  return true;
+}
+
+// ── Phase B: font matching ─────────────────────────────────────────────────────
+
+/**
+ * Select the closest PDF standard font to `baseFontName`/`flags`.
+ * Uses PostScript font name substrings and PDF FontDescriptor Flags bits:
+ *   bit 0 (0x01) = FixedPitch (monospace)
+ *   bit 1 (0x02) = Serif
+ *   bit 6 (0x40) = Italic/Oblique
+ *   bit 18 (0x40000) = ForceBold
+ */
+export function matchStandardFont(baseFontName: string, flags: number): StandardFonts {
+  const n = baseFontName.toLowerCase();
+  const isBold = n.includes('bold') || (flags & 0x40000) !== 0;
+  const isItalic = n.includes('italic') || n.includes('oblique') || (flags & 0x40) !== 0;
+  const isMono = (flags & 0x01) !== 0 || n.includes('mono') || n.includes('courier') || n.includes('typewriter');
+  const isSerif = (flags & 0x02) !== 0 || n.includes('times') || n.includes('georgia') ||
+    n.includes('garamond') || n.includes('palatino') || n.includes('serif');
+
+  if (isMono) {
+    if (isBold && isItalic) return StandardFonts.CourierBoldOblique;
+    if (isBold) return StandardFonts.CourierBold;
+    if (isItalic) return StandardFonts.CourierOblique;
+    return StandardFonts.Courier;
+  }
+  if (isSerif) {
+    if (isBold && isItalic) return StandardFonts.TimesRomanBoldItalic;
+    if (isBold) return StandardFonts.TimesRomanBold;
+    if (isItalic) return StandardFonts.TimesRomanItalic;
+    return StandardFonts.TimesRoman;
+  }
+  if (isBold && isItalic) return StandardFonts.HelveticaBoldOblique;
+  if (isBold) return StandardFonts.HelveticaBold;
+  if (isItalic) return StandardFonts.HelveticaOblique;
+  return StandardFonts.Helvetica;
+}
+
+/**
+ * Read the FontDescriptor for a font in a page's resource dict.
+ * Returns { flags, name } or null when no descriptor is present.
+ */
+export function getPageFontDescriptor(
+  doc: PDFDocument,
+  pageIndex: number,
+  fontKey: string
+): { flags: number; name: string } | null {
+  try {
+    const page = doc.getPage(pageIndex);
+    const name = fontKey.replace(/^\//, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (!resources?.get) return null;
+    const fontDictRaw = resources.get(PDFName.of('Font'));
+    if (!fontDictRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    if (!fontDict?.get) return null;
+    const fontEntryRaw = fontDict.get(PDFName.of(name));
+    if (!fontEntryRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontEntry = doc.context.lookup(fontEntryRaw) as any;
+    if (!fontEntry?.get) return null;
+    const descRaw = fontEntry.get(PDFName.of('FontDescriptor'));
+    if (!descRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const desc = doc.context.lookup(descRaw) as any;
+    if (!desc?.get) return null;
+    const flags = desc.get(PDFName.of('Flags'))?.value() ?? 0;
+    const rawName = desc.get(PDFName.of('FontName'))?.toString() ?? '';
+    return { flags, name: rawName.replace(/^\//, '') };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the raw ToUnicode CMap text for a font in a page's resource dict.
+ * Returns null when no ToUnicode stream is present.
+ */
+export function getPageFontToUnicode(
+  doc: PDFDocument,
+  pageIndex: number,
+  fontKey: string
+): string | null {
+  try {
+    const page = doc.getPage(pageIndex);
+    const name = fontKey.replace(/^\//, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (!resources?.get) return null;
+    const fontDictRaw = resources.get(PDFName.of('Font'));
+    if (!fontDictRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    if (!fontDict?.get) return null;
+    const fontEntryRaw = fontDict.get(PDFName.of(name));
+    if (!fontEntryRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontEntry = doc.context.lookup(fontEntryRaw) as any;
+    if (!fontEntry?.get) return null;
+    const tuRaw = fontEntry.get(PDFName.of('ToUnicode'));
+    if (!tuRaw) return null;
+    const tuStream = doc.context.lookup(tuRaw);
+    if (!(tuStream instanceof PDFRawStream)) return null;
+    const bytes = decodePDFRawStream(tuStream).decode();
+    let out = '';
+    for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Truly replace the text op nearest to `point`.
  *
- * Strategy:
- *   - ASCII literal strings: replace in-place (preserves original font/size/color).
- *   - Hex-encoded strings: blank then redraw with detected color at detected size.
- * Shadow ops within SHADOW_RADIUS are always blanked regardless of strategy.
+ * Three-path strategy (Phase B):
+ *   1. ASCII literal strings → replace in-place (font/size/color preserved).
+ *   2. Hex-encoded strings + ToUnicode CMap → encode with subset, replace in-place
+ *      (font/size/color preserved; only works when all glyphs exist in the subset).
+ *   3. Fallback → blank + redraw using font-matched standard font (serif/sans/mono
+ *      + bold/italic detected from FontDescriptor flags and BaseFont name).
+ * Shadow ops within SHADOW_RADIUS are always blanked regardless of path.
  */
 export async function replaceTextAt(
   doc: PDFDocument,
@@ -583,34 +810,52 @@ export async function replaceTextAt(
   if (!found) return false;
 
   const { ops, target, textOps } = found;
-  const replaced = replaceShowOpInPlace(ops[target.opIndex], newText);
 
-  if (replaced) {
-    // In-stream path: font/size/color all preserved; just blank shadows and write back.
+  // Path 1: ASCII literal in-stream replacement.
+  if (replaceShowOpInPlace(ops[target.opIndex], newText)) {
     blankAllNearby(ops, textOps, target.origin, target.opIndex);
     setPageContent(doc, pageIndex, serializeOps(ops));
-  } else {
-    // Fallback path: blank everything in the target area, then append a new drawText.
-    blankShowOp(ops[target.opIndex]);
-    blankAllNearby(ops, textOps, target.origin, target.opIndex);
-    setPageContent(doc, pageIndex, serializeOps(ops));
-
-    let drawColor: ReturnType<typeof rgb> | undefined;
-    if (target.fillColor) {
-      const c = parseFillColorToRgb(target.fillColor);
-      if (c) drawColor = rgb(c.r, c.g, c.b);
-    }
-
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const page = doc.getPage(pageIndex);
-    page.drawText(newText, {
-      x: target.origin.x,
-      y: target.origin.y,
-      size: target.fontSize || 12,
-      font,
-      ...(drawColor ? { color: drawColor } : {}),
-    });
+    return true;
   }
+
+  // Path 2: Subset glyph reuse via ToUnicode CMap.
+  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
+  if (cmapText) {
+    const forward = parseToUnicodeCMap(cmapText);
+    const bytesPerCode = detectCMapBytesPerCode(cmapText);
+    const reverseMap = new Map<string, number>();
+    for (const [code, uni] of forward) reverseMap.set(uni, code);
+    const hexEncoded = encodeWithSubset(newText, reverseMap, bytesPerCode);
+    if (hexEncoded !== null && replaceShowOpHex(ops[target.opIndex], hexEncoded)) {
+      blankAllNearby(ops, textOps, target.origin, target.opIndex);
+      setPageContent(doc, pageIndex, serializeOps(ops));
+      return true;
+    }
+  }
+
+  // Path 3: Font-matched fallback — blank then redraw with best standard font.
+  blankShowOp(ops[target.opIndex]);
+  blankAllNearby(ops, textOps, target.origin, target.opIndex);
+  setPageContent(doc, pageIndex, serializeOps(ops));
+
+  let drawColor: ReturnType<typeof rgb> | undefined;
+  if (target.fillColor) {
+    const c = parseFillColorToRgb(target.fillColor);
+    if (c) drawColor = rgb(c.r, c.g, c.b);
+  }
+
+  const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
+  const descriptor = getPageFontDescriptor(doc, pageIndex, target.fontKey);
+  const stdFont = matchStandardFont(baseName, descriptor?.flags ?? 0);
+  const font = await doc.embedFont(stdFont);
+  const page = doc.getPage(pageIndex);
+  page.drawText(newText, {
+    x: target.origin.x,
+    y: target.origin.y,
+    size: target.fontSize || 12,
+    font,
+    ...(drawColor ? { color: drawColor } : {}),
+  });
 
   return true;
 }
