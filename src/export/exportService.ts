@@ -6,17 +6,14 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
-import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
+import { buildPageOverlays, rasterizePageWithRedactions } from './exportPipeline';
 import { reconstructPage, assignHeadings, type FlowDoc, type FontInfoMap, type RawTextItem } from '../utils/flowDoc';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
-import { transformPoint, hexToRgbValues } from '../utils/geometry';
-import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import type { PDFElement } from '../elements/annotationElement';
-import type { DocumentModel, DocumentPage } from '../core/documentModel';
+import type { DocumentModel } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
-import type { PdfLibOps, PdfLibDrawOps } from '../utils/pdfLibTypes';
 
 // ── Context interface ────────────────────────────────────────────────────────
 
@@ -90,30 +87,22 @@ export class ExportService {
           const H_orig = docPage.blankHeight ?? 842;
           const blankPage = pdfDoc.addPage([W_orig, H_orig]);
           blankPage.drawRectangle({ x: 0, y: 0, width: W_orig, height: H_orig, color: rgb(1, 1, 1), borderWidth: 0 });
-          const exportErrors: string[] = [];
-          for (const element of pageElements) {
-            try {
-              await renderElementToPdfLib(element, { pdfDoc, page: blankPage, libs: { rgb, StandardFonts, degrees }, h: H_orig, w: W_orig, W_orig, H_orig, totalRot: 0, cropOriginX: 0, cropOriginY: 0 } satisfies PdfRenderCtx);
-            } catch {
-              exportErrors.push(`${element.type} (id ${element.id})`);
-            }
-          }
-          if (exportErrors.length > 0) {
-            reportError.warn('toast.elementRenderFailed', { count: exportErrors.length });
-            reportError.silent(undefined, `Blank-page export failed: ${exportErrors.join(', ')}`);
-          }
-          const inkDataUrl = this._renderInkForExport(docPage.id, W_orig, H_orig, 0);
-          if (inkDataUrl) {
-            const inkImg = await pdfDoc.embedPng(dataUrlToUint8Array(inkDataUrl));
-            blankPage.drawImage(inkImg, { x: 0, y: 0, width: W_orig, height: H_orig });
-          }
+          await buildPageOverlays({
+            pdfDoc, page: blankPage, docPage,
+            elements: pageElements,
+            pdfLib: { rgb, degrees, StandardFonts },
+            userRot: 0, sourceRot: 0,
+            watermark: documentModel.watermark,
+            inkLayer: this._ctx.inkLayer,
+            reportError,
+          });
           continue;
         }
 
         if (hasRedaction) {
           const srcDoc = srcDocs.get(docPage.sourcePdfId);
           if (srcDoc) {
-            await this._rasterizePageWithRedactions(srcDoc, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees });
+            await rasterizePageWithRedactions(srcDoc, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError);
           }
           continue;
         }
@@ -123,9 +112,16 @@ export class ExportService {
         if (!page) continue;
         pdfDoc.addPage(page);
 
-        const userRot = docPage.rotation ?? 0;
-        const sourceRot = page.getRotation().angle as number;
-        await this._applyPageOverlays(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, userRot, sourceRot);
+        await buildPageOverlays({
+          pdfDoc, page, docPage,
+          elements: pageElements,
+          pdfLib: { rgb, degrees, StandardFonts },
+          userRot: docPage.rotation ?? 0,
+          sourceRot: page.getRotation().angle as number,
+          watermark: documentModel.watermark,
+          inkLayer: this._ctx.inkLayer,
+          reportError,
+        });
       }
 
       this._applyExportPassword(pdfDoc);
@@ -163,13 +159,20 @@ export class ExportService {
       const hasRedaction = pageElements.some(el => el.type === 'redaction');
 
       if (hasRedaction) {
-        await this._rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees });
+        await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError);
       } else {
         const [page] = await pdfDoc.copyPages(srcDocLib, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
-        const userRot = docPage.rotation ?? 0;
-        const srcRot  = page.getRotation().angle as number;
-        await this._applyPageOverlays(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, userRot, srcRot);
+        await buildPageOverlays({
+          pdfDoc, page, docPage,
+          elements: pageElements,
+          pdfLib: { rgb, degrees, StandardFonts },
+          userRot: docPage.rotation ?? 0,
+          sourceRot: page.getRotation().angle as number,
+          watermark: documentModel.watermark,
+          inkLayer: this._ctx.inkLayer,
+          reportError,
+        });
       }
 
       this._applyExportPassword(pdfDoc);
@@ -208,10 +211,17 @@ export class ExportService {
       const [page] = await pdfDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
       pdfDoc.addPage(page);
 
-      const userRot  = docPage.rotation ?? 0;
-      const srcRot   = page.getRotation().angle as number;
       const pageElements = elements.filter(el => el.pageId === docPage.id);
-      await this._applyPageOverlays(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, userRot, srcRot);
+      await buildPageOverlays({
+        pdfDoc, page, docPage,
+        elements: pageElements,
+        pdfLib: { rgb, degrees, StandardFonts },
+        userRot: docPage.rotation ?? 0,
+        sourceRot: page.getRotation().angle as number,
+        watermark: documentModel.watermark,
+        inkLayer: this._ctx.inkLayer,
+        reportError,
+      });
 
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
       const renderDoc  = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
@@ -301,223 +311,6 @@ export class ExportService {
     const pw = this._ctx.exportPassword;
     if (!pw) return;
     pdfDoc.encrypt({ userPassword: pw.user, ownerPassword: pw.owner });
-  }
-
-  private async _applyPageOverlays(
-    pdfDoc: import('@cantoo/pdf-lib').PDFDocument,
-    page: import('@cantoo/pdf-lib').PDFPage,
-    docPage: DocumentPage,
-    pageElements: PDFElement[],
-    pdfLib: PdfLibOps,
-    userRot: number,
-    sourceRot: number
-  ): Promise<void> {
-    const { documentModel, reportError } = this._ctx;
-    const { rgb, degrees, StandardFonts } = pdfLib;
-    const totalRot = ((sourceRot + userRot) % 360 + 360) % 360;
-    if (userRot) page.setRotation(degrees(totalRot));
-
-    const cropBox = this._getPageCropBox(page);
-    const W_orig = cropBox.width;
-    const H_orig = cropBox.height;
-    const cropOriginX = cropBox.x;
-    const cropOriginY = cropBox.y;
-    const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
-    const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
-
-    const exportErrors: string[] = [];
-    for (const element of pageElements) {
-      try {
-        await renderElementToPdfLib(element, { pdfDoc, page, libs: { rgb, StandardFonts, degrees }, h: h_eff, w: w_eff, W_orig, H_orig, totalRot, cropOriginX, cropOriginY } satisfies PdfRenderCtx);
-      } catch {
-        exportErrors.push(`${element.type} (id ${element.id})`);
-      }
-    }
-    if (exportErrors.length > 0) {
-      reportError.warn('toast.elementRenderFailed', { count: exportErrors.length });
-      reportError.silent(undefined, `Export render failed: ${exportErrors.join(', ')}`);
-    }
-
-    if (documentModel.watermark.enabled) {
-      await this._drawWatermark(page, W_orig, H_orig, cropOriginX, cropOriginY, { rgb, degrees, pdfDoc, StandardFonts });
-    }
-
-    const inkDataUrl = this._renderInkForExport(docPage.id, W_orig, H_orig, totalRot);
-    if (inkDataUrl) {
-      const inkPng = dataUrlToUint8Array(inkDataUrl);
-      const inkImg = await pdfDoc.embedPng(inkPng);
-      page.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
-    }
-  }
-
-  private async _rasterizePageWithRedactions(
-    srcDoc: import('@cantoo/pdf-lib').PDFDocument,
-    docPage: DocumentPage,
-    elements: PDFElement[],
-    pdfDoc: import('@cantoo/pdf-lib').PDFDocument,
-    libs: PdfLibOps,
-  ): Promise<void> {
-    const { documentModel, reportError } = this._ctx;
-    const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
-    void rgb; void StandardFonts;
-
-    const tempDoc = await PDFDocument.create();
-    const [tempPage] = await tempDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
-    tempDoc.addPage(tempPage);
-
-    const userRot  = docPage.rotation ?? 0;
-    const srcRot   = tempPage.getRotation().angle as number;
-    const totalRot = ((srcRot + userRot) % 360 + 360) % 360;
-    if (userRot) tempPage.setRotation(degrees(totalRot));
-
-    const cropBoxR = this._getPageCropBox(tempPage);
-    const W_orig = cropBoxR.width;
-    const H_orig = cropBoxR.height;
-    const cropOriginX = cropBoxR.x;
-    const cropOriginY = cropBoxR.y;
-    const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
-    const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
-
-    const nonRedactions = elements.filter(e => e.type !== 'redaction');
-    const rasterErrors: string[] = [];
-    for (const el of nonRedactions) {
-      try {
-        await renderElementToPdfLib(el, { pdfDoc: tempDoc, page: tempPage, libs, h: h_eff, w: w_eff, W_orig, H_orig, totalRot, cropOriginX, cropOriginY } satisfies PdfRenderCtx);
-      } catch {
-        rasterErrors.push(`${el.type} (id ${el.id})`);
-      }
-    }
-    if (rasterErrors.length > 0) {
-      reportError.warn('toast.elementRenderFailed', { count: rasterErrors.length });
-      reportError.silent(undefined, `Redaction skipped: ${rasterErrors.join(', ')}`);
-    }
-
-    if (documentModel.watermark.enabled) {
-      await this._drawWatermark(tempPage, W_orig, H_orig, cropOriginX, cropOriginY, {
-        rgb: libs.rgb, degrees, pdfDoc: tempDoc, StandardFonts: libs.StandardFonts,
-      });
-    }
-    const inkDataUrlRast = this._renderInkForExport(docPage.id, W_orig, H_orig, totalRot);
-    if (inkDataUrlRast) {
-      const inkImg = await tempDoc.embedPng(dataUrlToUint8Array(inkDataUrlRast));
-      tempPage.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
-    }
-
-    const tempBytes  = await tempDoc.save({ useObjectStreams: false });
-    const renderDoc  = await pdfjsLib.getDocument({ data: tempBytes }).promise;
-    const renderPage = await renderDoc.getPage(1);
-    const SCALE = 2;
-    const vp = renderPage.getViewport({ scale: SCALE });
-
-    const offscreen = document.createElement('canvas');
-    offscreen.width    = Math.round(vp.width);
-    offscreen.height   = Math.round(vp.height);
-    const ctx = offscreen.getContext('2d') as CanvasRenderingContext2D;
-    await renderPage.render({ canvas: offscreen, viewport: vp }).promise;
-
-    for (const el of elements.filter(e => e.type === 'redaction')) {
-      ctx.fillStyle = (el as { color?: string }).color ?? '#000000';
-      ctx.fillRect(
-        Math.round(el.x * SCALE),
-        Math.round(el.y * SCALE),
-        Math.round(el.width  * SCALE),
-        Math.round(el.height * SCALE),
-      );
-    }
-
-    const pngBytes = await new Promise<Uint8Array>((resolve, reject) => {
-      offscreen.toBlob((blob) => {
-        if (!blob) { reject(new Error('canvas toBlob failed')); return; }
-        blob.arrayBuffer().then(ab => resolve(new Uint8Array(ab)), reject);
-      }, 'image/png');
-    });
-
-    const pngImg  = await pdfDoc.embedPng(pngBytes);
-    const newPage = pdfDoc.addPage([w_eff, h_eff]);
-    newPage.drawImage(pngImg, { x: 0, y: 0, width: w_eff, height: h_eff });
-  }
-
-  private _renderInkForExport(pageId: string, W_orig: number, H_orig: number, totalRot: number): string | null {
-    const strokes = this._ctx.inkLayer.getStrokes(pageId);
-    if (!strokes.length) return null;
-
-    const SCALE = 2;
-    const c = document.createElement('canvas');
-    c.width  = Math.round(W_orig * SCALE);
-    c.height = Math.round(H_orig * SCALE);
-    const ctx = c.getContext('2d');
-    if (!ctx) return null;
-
-    for (const stroke of strokes) {
-      if (stroke.points.length < 2) continue;
-      ctx.save();
-      ctx.beginPath();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = stroke.width * SCALE;
-      if (stroke.type === 'erase') {
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.strokeStyle = 'rgba(0,0,0,1)';
-      } else {
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = stroke.color;
-      }
-      const pts = stroke.points.map(p => {
-        const pdf = transformPoint(p.x, p.y, W_orig, H_orig, totalRot);
-        return { x: pdf.x * SCALE, y: (H_orig - pdf.y) * SCALE };
-      });
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    const data = ctx.getImageData(0, 0, c.width, c.height).data;
-    for (let i = 3; i < data.length; i += 4) {
-      if (data[i] > 0) return c.toDataURL('image/png');
-    }
-    return null;
-  }
-
-  private _getPageCropBox(page: import('@cantoo/pdf-lib').PDFPage): { x: number; y: number; width: number; height: number } {
-    try {
-      const cb = page.getCropBox?.();
-      if (cb && typeof cb.width === 'number') return { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
-    } catch { /* no CropBox */ }
-    const { width, height } = page.getSize();
-    return { x: 0, y: 0, width, height };
-  }
-
-  private async _drawWatermark(
-    page: import('@cantoo/pdf-lib').PDFPage,
-    W_orig: number,
-    H_orig: number,
-    cropOriginX: number,
-    cropOriginY: number,
-    libs: PdfLibDrawOps
-  ): Promise<void> {
-    const { rgb, degrees, pdfDoc, StandardFonts } = libs;
-    const wm = this._ctx.documentModel.watermark;
-    const col = hexToRgbValues(wm.color);
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const textWidth = font.widthOfTextAtSize(wm.text, wm.fontSize);
-    const densityFactors = [0, 2.0, 1.5, 1.0, 0.7, 0.5];
-    const spacingFactor = densityFactors[Math.max(1, Math.min(5, wm.density ?? 3))];
-    const stepX = Math.max(textWidth + wm.fontSize * 0.8, W_orig / 5) * spacingFactor;
-    const stepY = Math.max(wm.fontSize * 2, H_orig / 4) * spacingFactor;
-    for (let y = cropOriginY - (stepY / 2); y < cropOriginY + H_orig + stepY; y += stepY) {
-      for (let x = cropOriginX - (stepX / 2); x < cropOriginX + W_orig + stepX; x += stepX) {
-        page.drawText(wm.text, {
-          x: x - textWidth / 2,
-          y,
-          size: wm.fontSize,
-          font,
-          color: rgb(col.r, col.g, col.b),
-          opacity: wm.opacity,
-          rotate: degrees(wm.angle),
-        });
-      }
-    }
   }
 
   /**
