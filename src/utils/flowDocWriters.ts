@@ -65,7 +65,7 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
 /** Build the DOCX and return it as a base64 string (jsdom-testable core). */
 export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
   const docx = await import('docx');
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = docx;
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat } = docx;
 
   const HEADINGS = [undefined, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3] as const;
   const ALIGN = {
@@ -73,6 +73,23 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     center: AlignmentType.CENTER,
     right: AlignmentType.RIGHT,
   } as const;
+
+  // Assign ordered-list instance numbers: consecutive ordered paragraphs share
+  // one instance; a non-ordered paragraph between them starts a new instance.
+  // A different instance value causes Word to restart numbering from 1.
+  const orderedInstances = new Map<FlowParagraph, number>();
+  let instanceCounter = 0;
+  let inOrderedRun = false;
+  for (const page of doc.pages) {
+    for (const p of page.paragraphs) {
+      if (p.listType === 'ordered') {
+        if (!inOrderedRun) { instanceCounter++; inOrderedRun = true; }
+        orderedInstances.set(p, instanceCounter);
+      } else {
+        inOrderedRun = false;
+      }
+    }
+  }
 
   const sections = doc.pages.map(page => ({
     properties: {
@@ -96,22 +113,34 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
               color: r.color,
             })
         );
-        // Ordered lists: prepend a plain "1. " run (native DOCX numbering deferred to Phase 3).
-        const children =
-          p.listType === 'ordered'
-            ? [new TextRun({ text: '1. ' }), ...textRuns]
-            : textRuns;
         return new Paragraph({
           heading: p.listType ? undefined : HEADINGS[p.heading],
           alignment: ALIGN[p.alignment],
           bidirectional: p.rtl || undefined,
           bullet: p.listType === 'bullet' ? { level: p.listDepth ?? 0 } : undefined,
-          children,
+          numbering: p.listType === 'ordered'
+            ? { reference: 'ordered-list', level: p.listDepth ?? 0, instance: orderedInstances.get(p) }
+            : undefined,
+          children: textRuns,
         });
       }),
   }));
 
-  const document = new Document({ sections });
+  const numberingConfig = instanceCounter > 0
+    ? {
+        config: [{
+          reference: 'ordered-list',
+          levels: [{
+            level: 0,
+            format: LevelFormat.DECIMAL,
+            text: '%1.',
+            alignment: AlignmentType.START,
+          }],
+        }],
+      }
+    : undefined;
+
+  const document = new Document({ sections, numbering: numberingConfig });
   return Packer.toBase64String(document);
 }
 

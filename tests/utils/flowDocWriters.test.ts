@@ -139,3 +139,58 @@ describe('flowDocToDocxBase64 — lists', () => {
     expect(b64.length).toBeGreaterThan(1000);
   });
 });
+
+// ── Native DOCX ordered-list numbering (Phase 3) ──────────────────────────────
+
+async function unpackDocx(b64: string): Promise<Record<string, string>> {
+  const { unzipSync, strFromU8 } = await import('fflate');
+  const bytes = new Uint8Array(Buffer.from(b64, 'base64'));
+  const files = unzipSync(bytes);
+  const result: Record<string, string> = {};
+  for (const [path, data] of Object.entries(files)) {
+    result[path] = strFromU8(data as Uint8Array);
+  }
+  return result;
+}
+
+describe('flowDocToDocxBase64 — native ordered-list numbering', () => {
+  it('word/numbering.xml exists and contains an abstractNum definition', async () => {
+    const doc: FlowDoc = {
+      pages: [{ width: 612, height: 792, paragraphs: [para([run('First')], { listType: 'ordered', listDepth: 0 })] }],
+    };
+    const b64 = await flowDocToDocxBase64(doc);
+    const files = await unpackDocx(b64);
+    expect(files['word/numbering.xml']).toBeDefined();
+    expect(files['word/numbering.xml']).toContain('w:abstractNum');
+  });
+
+  it('ordered paragraph uses native w:numPr instead of "1. " text prefix', async () => {
+    const doc: FlowDoc = {
+      pages: [{ width: 612, height: 792, paragraphs: [para([run('Item text')], { listType: 'ordered', listDepth: 0 })] }],
+    };
+    const b64 = await flowDocToDocxBase64(doc);
+    const files = await unpackDocx(b64);
+    const docXml = files['word/document.xml'];
+    expect(docXml).toContain('w:numPr');
+    expect(docXml).not.toContain('>1. <');
+  });
+
+  it('two ordered lists separated by plain text get distinct numId values (restart)', async () => {
+    const doc: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [
+          para([run('Alpha')], { listType: 'ordered', listDepth: 0 }),
+          para([run('Beta')], { listType: 'ordered', listDepth: 0 }),
+          para([run('Separator')]),
+          para([run('Gamma')], { listType: 'ordered', listDepth: 0 }),
+        ],
+      }],
+    };
+    const b64 = await flowDocToDocxBase64(doc);
+    const files = await unpackDocx(b64);
+    const docXml = files['word/document.xml'];
+    const numIds = [...docXml.matchAll(/w:numId w:val="(\d+)"/g)].map(m => m[1]);
+    expect(new Set(numIds).size).toBeGreaterThanOrEqual(2);
+  });
+});
