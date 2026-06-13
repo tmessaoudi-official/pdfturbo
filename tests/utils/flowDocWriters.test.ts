@@ -153,6 +153,43 @@ async function unpackDocx(b64: string): Promise<Record<string, string>> {
   return result;
 }
 
+// ── Phase 4: image embedding ──────────────────────────────────────────────────
+
+const TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+describe('flowDocToDocxBase64 — image embedding', () => {
+  it('page with FlowImage produces a w:drawing element in document.xml', async () => {
+    const docWithImage: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [para([run('Before image')])],
+        images: [{ x: 100, y: 400, width: 200, height: 150, base64: TINY_PNG_B64, mimeType: 'image/png' }],
+      }],
+    };
+    const b64 = await flowDocToDocxBase64(docWithImage);
+    const files = await unpackDocx(b64);
+    expect(files['word/document.xml']).toContain('w:drawing');
+  });
+
+  it('page without images does not produce a w:drawing element', async () => {
+    const b64 = await flowDocToDocxBase64(DOC);
+    const files = await unpackDocx(b64);
+    expect(files['word/document.xml']).not.toContain('w:drawing');
+  });
+
+  it('DOCX with image still produces a valid ZIP container', async () => {
+    const docWithImage: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [],
+        images: [{ x: 0, y: 0, width: 100, height: 100, base64: TINY_PNG_B64, mimeType: 'image/jpeg' }],
+      }],
+    };
+    const b64 = await flowDocToDocxBase64(docWithImage);
+    expect(b64.startsWith('UEsD')).toBe(true);
+  });
+});
+
 describe('flowDocToDocxBase64 — native ordered-list numbering', () => {
   it('word/numbering.xml exists and contains an abstractNum definition', async () => {
     const doc: FlowDoc = {

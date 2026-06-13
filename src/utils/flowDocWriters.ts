@@ -4,7 +4,7 @@
  * dynamic import so the writer chunk never bloats the initial bundle.
  */
 
-import type { FlowDoc, FlowParagraph, FlowRun } from './flowDoc';
+import type { FlowDoc, FlowParagraph, FlowRun, FlowImage } from './flowDoc';
 
 // Word-safe font mapping — PDF subset fonts can't be carried over directly,
 // so each run maps to the closest universally-available family.
@@ -65,7 +65,7 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
 /** Build the DOCX and return it as a base64 string (jsdom-testable core). */
 export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
   const docx = await import('docx');
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat } = docx;
+  const { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, LevelFormat } = docx;
 
   const HEADINGS = [undefined, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3] as const;
   const ALIGN = {
@@ -91,14 +91,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     }
   }
 
-  const sections = doc.pages.map(page => ({
-    properties: {
-      page: {
-        // PDF points → DOCX twips (1pt = 20 twips)
-        size: { width: Math.round(page.width * 20), height: Math.round(page.height * 20) },
-      },
-    },
-    children: page.paragraphs
+  const sections = doc.pages.map(page => {
+    const textChildren = page.paragraphs
       .filter(p => paragraphText(p).trim().length > 0)
       .map(p => {
         const textRuns = p.runs.map(
@@ -123,8 +117,36 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
             : undefined,
           children: textRuns,
         });
-      }),
-  }));
+      });
+
+    const imageChildren = (page.images ?? []).map((img: FlowImage) => {
+      const bin = atob(img.base64);
+      const data = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+      return new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new ImageRun({
+          data,
+          transformation: {
+            // PDF points → pixels at 96 DPI (1pt = 96/72 px)
+            width: Math.round(img.width * 96 / 72),
+            height: Math.round(img.height * 96 / 72),
+          },
+          type: img.mimeType === 'image/jpeg' ? 'jpg' : 'png',
+        })],
+      });
+    });
+
+    return {
+      properties: {
+        page: {
+          // PDF points → DOCX twips (1pt = 20 twips)
+          size: { width: Math.round(page.width * 20), height: Math.round(page.height * 20) },
+        },
+      },
+      children: [...textChildren, ...imageChildren],
+    };
+  });
 
   const numberingConfig = instanceCounter > 0
     ? {

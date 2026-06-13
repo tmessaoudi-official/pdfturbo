@@ -57,10 +57,22 @@ export interface FlowParagraph {
   listDepth?: number;
 }
 
+export interface FlowImage {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Raw image data as base64 (no data-URL prefix). */
+  base64: string;
+  mimeType: 'image/png' | 'image/jpeg';
+}
+
 export interface FlowPage {
   width: number;
   height: number;
   paragraphs: FlowParagraph[];
+  /** Embedded raster images extracted from the PDF page (populated by exportService). */
+  images?: FlowImage[];
 }
 
 export interface FlowDoc {

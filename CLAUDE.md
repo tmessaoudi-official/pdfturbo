@@ -89,10 +89,13 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   Phase 3 (2026-06-13): native DOCX ordered-list numbering via `w:numPr` + instance-based
   restart (separate lists separated by body text restart at 1). Tests now unpack the DOCX
   ZIP with `fflate` and assert `w:numPr` presence and multi-instance `numId` divergence.
-  **Phase 4 roadmap** (still pending): images (`getOperatorList` OPS.paintImageXObject →
-  canvas bitmap → `ImageRun` in DOCX; requires `FlowImage` node in FlowDoc model; canvas
-  unavailable in jsdom — browser-QA only), lattice tables (vector path grid detection —
-  complex, low priority).
+  **Phase 4 (2026-06-13)**: images — `getOperatorList` OPS.paintImageXObject + CTM tracking
+  in `_extractFlowDoc` → `FlowImage` (x/y/w/h/base64/mimeType) on `FlowPage.images?` →
+  `ImageRun` in DOCX (appended after text per page; pt→px at 96 DPI). Canvas extraction
+  requires a real browser (`page.objs.get` may need a render pass — browser QA only). Also:
+  **export-path dedup** — extracted `_applyOverlaysToPage` + `_savePdfDocAndDownload` helpers
+  in `exportService.ts`, eliminating the triplicated 10-param `buildPageOverlays` block.
+  **Remaining**: lattice tables (vector path grid detection — complex, low priority).
 
 ## Git & CI
 

@@ -6,8 +6,8 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
-import { buildPageOverlays, rasterizePageWithRedactions } from './exportPipeline';
-import { reconstructPage, assignHeadings, type FlowDoc, type FontInfoMap, type RawTextItem } from '../utils/flowDoc';
+import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
+import { reconstructPage, assignHeadings, type FlowDoc, type FlowImage, type FontInfoMap, type RawTextItem } from '../utils/flowDoc';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -112,28 +112,11 @@ export class ExportService {
         if (!page) continue;
         pdfDoc.addPage(page);
 
-        await buildPageOverlays({
-          pdfDoc, page, docPage,
-          elements: pageElements,
-          pdfLib: { rgb, degrees, StandardFonts },
-          userRot: docPage.rotation ?? 0,
-          sourceRot: page.getRotation().angle as number,
-          watermark: documentModel.watermark,
-          inkLayer: this._ctx.inkLayer,
-          reportError,
-        });
+        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
       }
 
-      this._applyExportPassword(pdfDoc);
-      const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = this._exportBaseName() + '-edited.pdf';
-      link.click();
+      await this._savePdfDocAndDownload(pdfDoc, this._exportBaseName() + '-edited.pdf');
       reportError.info('toast.pdfDownloaded');
-      URL.revokeObjectURL(url);
       _prog.done();
     } catch (err) {
       reportError.error('toast.pdfExportFailed', err);
@@ -163,28 +146,11 @@ export class ExportService {
       } else {
         const [page] = await pdfDoc.copyPages(srcDocLib, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
-        await buildPageOverlays({
-          pdfDoc, page, docPage,
-          elements: pageElements,
-          pdfLib: { rgb, degrees, StandardFonts },
-          userRot: docPage.rotation ?? 0,
-          sourceRot: page.getRotation().angle as number,
-          watermark: documentModel.watermark,
-          inkLayer: this._ctx.inkLayer,
-          reportError,
-        });
+        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
       }
 
-      this._applyExportPassword(pdfDoc);
-      const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${this._exportBaseName()}-page${pageIdx + 1}.pdf`;
-      link.click();
+      await this._savePdfDocAndDownload(pdfDoc, `${this._exportBaseName()}-page${pageIdx + 1}.pdf`);
       reportError.info('toast.pageDownloaded', { page: pageIdx + 1 });
-      URL.revokeObjectURL(url);
       _prog.done();
     } catch (err) {
       reportError.error('toast.pageExportFailed', err);
@@ -212,16 +178,7 @@ export class ExportService {
       pdfDoc.addPage(page);
 
       const pageElements = elements.filter(el => el.pageId === docPage.id);
-      await buildPageOverlays({
-        pdfDoc, page, docPage,
-        elements: pageElements,
-        pdfLib: { rgb, degrees, StandardFonts },
-        userRot: docPage.rotation ?? 0,
-        sourceRot: page.getRotation().angle as number,
-        watermark: documentModel.watermark,
-        inkLayer: this._ctx.inkLayer,
-        reportError,
-      });
+      await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
 
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
       const renderDoc  = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
@@ -237,13 +194,8 @@ export class ExportService {
 
       offscreen.toBlob((blob) => {
         if (!blob) { reportError.error('toast.imageExportFailed'); _prog.failed(); return; }
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${this._exportBaseName()}-page${idx + 1}.png`;
-        link.click();
+        this._downloadBlob(blob, `${this._exportBaseName()}-page${idx + 1}.png`);
         reportError.info('toast.imageExported', { page: idx + 1 });
-        URL.revokeObjectURL(url);
         _prog.done();
       }, 'image/png');
     } catch (err) {
@@ -313,6 +265,31 @@ export class ExportService {
     pdfDoc.encrypt({ userPassword: pw.user, ownerPassword: pw.owner });
   }
 
+  private async _applyOverlaysToPage(
+    pdfDoc: BuildPageCtx['pdfDoc'],
+    page: BuildPageCtx['page'],
+    docPage: BuildPageCtx['docPage'],
+    pageElements: BuildPageCtx['elements'],
+    pdfLib: BuildPageCtx['pdfLib'],
+  ): Promise<void> {
+    await buildPageOverlays({
+      pdfDoc, page, docPage,
+      elements: pageElements,
+      pdfLib,
+      userRot: docPage.rotation ?? 0,
+      sourceRot: page.getRotation().angle as number,
+      watermark: this._ctx.documentModel.watermark,
+      inkLayer: this._ctx.inkLayer,
+      reportError: this._ctx.reportError,
+    });
+  }
+
+  private async _savePdfDocAndDownload(pdfDoc: BuildPageCtx['pdfDoc'], filename: string): Promise<void> {
+    this._applyExportPassword(pdfDoc);
+    const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
+    this._downloadBlob(new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' }), filename);
+  }
+
   /**
    * Reconstruct a flow-document model from source PDF text layers for DOCX/MD export.
    * Blank pages and pages without a source are skipped.
@@ -347,16 +324,56 @@ export class ExportService {
         fonts[it.fontName] = { name: realName, family: styles[it.fontName]?.fontFamily };
       }
 
+      const vp = page.getViewport({ scale: 1 });
       const colorMap = new Map<string, string>();
+      const pageImages: FlowImage[] = [];
+
       if (opList) {
         try {
           const OPS = pdfjsLib.OPS as unknown as Record<string, number>;
           let fillR = 0, fillG = 0, fillB = 0;
           let textMatrix = [1, 0, 0, 1, 0, 0];
+          // CTM stack for image position/size extraction (q/Q/cm operators)
+          type Ctm = [number, number, number, number, number, number];
+          const ctmStack: Ctm[] = [];
+          let ctm: Ctm = [1, 0, 0, 1, 0, 0];
           for (let i = 0; i < opList.fnArray.length; i++) {
             const fn = opList.fnArray[i];
             const args = opList.argsArray[i] as number[];
-            if (fn === OPS['setFillRGBColor']) {
+            if (fn === OPS['save']) {
+              ctmStack.push([...ctm] as Ctm);
+            } else if (fn === OPS['restore']) {
+              const prev = ctmStack.pop();
+              if (prev) ctm = prev;
+            } else if (fn === OPS['transform']) {
+              const [a, b, c, d, e, f] = args;
+              ctm = [
+                ctm[0]*a + ctm[2]*b, ctm[1]*a + ctm[3]*b,
+                ctm[0]*c + ctm[2]*d, ctm[1]*c + ctm[3]*d,
+                ctm[0]*e + ctm[2]*f + ctm[4], ctm[1]*e + ctm[3]*f + ctm[5],
+              ];
+            } else if (fn === OPS['paintImageXObject']) {
+              const imageName = args[0] as unknown as string;
+              try {
+                const imgObj = page.objs.get(imageName) as HTMLCanvasElement | null;
+                if (imgObj?.toDataURL) {
+                  const dataUrl = imgObj.toDataURL('image/png');
+                  const base64 = dataUrl.split(',')[1];
+                  if (base64) {
+                    // Axis-aligned: width=|a|, height=|d|; PDF y-up → DOCX y-down
+                    const w = Math.abs(ctm[0]) || Math.abs(ctm[2]);
+                    const h = Math.abs(ctm[3]) || Math.abs(ctm[1]);
+                    if (w > 10 && h > 10) {
+                      pageImages.push({
+                        x: ctm[4], y: vp.height - ctm[5] - h,
+                        width: w, height: h,
+                        base64, mimeType: 'image/png',
+                      });
+                    }
+                  }
+                }
+              } catch { /* image object not resolved without a render pass */ }
+            } else if (fn === OPS['setFillRGBColor']) {
               [fillR, fillG, fillB] = args;
             } else if (fn === OPS['setFillGray']) {
               fillR = fillG = fillB = args[0];
@@ -386,8 +403,9 @@ export class ExportService {
         } catch { /* operator list unavailable */ }
       }
 
-      const vp = page.getViewport({ scale: 1 });
-      flowDoc.pages.push(reconstructPage(items, fonts, vp.width, vp.height, colorMap));
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap);
+      if (pageImages.length > 0) flowPage.images = pageImages;
+      flowDoc.pages.push(flowPage);
     }
     assignHeadings(flowDoc);
     return flowDoc;
