@@ -48,6 +48,7 @@ import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoade
 import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
 import { PageRenderPipeline } from './pageRenderPipeline';
 import { PlacementManager } from '../ui/placementManager';
+import { SignatureManager } from './signatureManager';
 import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
@@ -66,12 +67,10 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _pendingTextBefore: string | null = null;
   private _pendingTextElementId: number | null = null;
   currentFilename: string | null = null;
-  currentSignature: string | null = null;
   uiController: UIController;
   drawingHandler: DrawingHandler;
   eraserHandler: EraserHandler;
   _thumbnailPanel: PageThumbnailPanel | null = null;
-  private _signatureNatural: { w: number; h: number } | null = null;
   _noFill = true;
   private _sessionManager = new SessionManager();
   private _textSearch = new TextSearchHandler();
@@ -110,10 +109,16 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _elementLayerRenderer!: ElementLayerRenderer;
   private _pageRenderPipeline!: PageRenderPipeline;
   private _placementManager!: PlacementManager;
+  private _signatureManager!: SignatureManager;
 
-  // ── IPlacementContext accessors ───────────────────────────────────────────
-  get signatureNatural(): { w: number; h: number } | null { return this._signatureNatural; }
-  set signatureNatural(v: { w: number; h: number } | null) { this._signatureNatural = v; }
+  // ── Signature accessors (IPlacementContext) ───────────────────────────────
+  get currentSignature(): string | null { return this._signatureManager.currentSignature; }
+  set currentSignature(v: string | null) { this._signatureManager.currentSignature = v; }
+  get signatureNatural(): { w: number; h: number } | null { return this._signatureManager.signatureNatural; }
+  set signatureNatural(v: { w: number; h: number } | null) { this._signatureManager.signatureNatural = v; }
+  // ── ISignatureContext callbacks ────────────────────────────────────────────
+  getTrapCleanup(): (() => void) | null { return this._trapCleanup; }
+  setTrapCleanup(fn: (() => void) | null): void { this._trapCleanup = fn; }
 
   // ── IPageRenderContext accessors ──────────────────────────────────────────
   advanceFormFieldGen(): number { return ++this._formFieldGen; }
@@ -291,7 +296,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     });
     this._textChangeTimer = null;
     this.currentFilename = null;
-    this.currentSignature = null;
+    this._signatureManager = new SignatureManager(this);
     this._exportService = new ExportService(this);
     this._pageService = new PageService(this);
     this._annotationService = new AnnotationService(this);
@@ -543,40 +548,9 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   setMode(mode: ToolMode): void { this._toolModeManager.setMode(mode); }
   _isShapeMode(): boolean { return this._toolModeManager.isShapeMode(); }
 
-  openSignatureModal() {
-    this.ui.signatureModal.classList.add('active');
-    const w = this.ui.signatureCanvas.offsetWidth || 500;
-    this.ui.signatureCanvas.width = w;
-    this.ui.signatureCanvas.height = Math.round(w * 0.4);
-    this.signaturePad.clear();
-    this._trapCleanup?.();
-    this._trapCleanup = trapFocus(
-      this.ui.signatureModal.querySelector('.signature-content') as HTMLElement,
-      this.ui.addSignatureBtn,
-    );
-  }
-
-  closeSignatureModal() {
-    this.ui.signatureModal.classList.remove('active');
-    this._trapCleanup?.();
-    this._trapCleanup = null;
-    this.setMode('select');
-    this.ui.addSignatureBtn.classList.remove('active');
-  }
-
-  saveSignature() {
-    if (this.signaturePad.isEmpty()) {
-      this._errorReporter.warn('toast.drawSignatureFirst');
-      return;
-    }
-    this.currentSignature = this.signaturePad.getDataURL();
-    this._signatureNatural = { w: this.ui.signatureCanvas.width, h: this.ui.signatureCanvas.height };
-    this.ui.signatureModal.classList.remove('active');
-    this._trapCleanup?.();
-    this._trapCleanup = null;
-    this.mode = 'addSignature';
-    this.ui.addSignatureBtn.classList.add('active');
-  }
+  openSignatureModal() { this._signatureManager.openModal(); }
+  closeSignatureModal() { this._signatureManager.closeModal(); }
+  saveSignature() { this._signatureManager.save(); }
 
   // ── Code modal (delegated to CodeModalManager) ──────────────────────────
   openCodeModal(el?: CodeElement): void { this._codeModalManager.open(el); }
