@@ -12,7 +12,7 @@ import { DocumentModel, PAGE_SIZES } from './documentModel';
 import type { IErrorReporter } from './errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
 import { transformCanvasPoint } from '../utils/geometry';
-import type { ToolMode } from './pdfEditorApp';
+import type { ToolMode } from './pdfTurboApp';
 
 export interface IPageContext {
   readonly documentModel: DocumentModel;

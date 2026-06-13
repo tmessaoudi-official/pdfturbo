@@ -1,8 +1,8 @@
 /**
- * ExportService — all PDF/image/docx/markdown export operations extracted from PDFEditorApp.
+ * ExportService — all PDF/image/docx/markdown export operations extracted from PDFTurboApp.
  *
  * Depends only on IExportContext (the narrow slice of app state it needs), not on the
- * concrete PDFEditorApp class, so it can be tested and evolved independently.
+ * concrete PDFTurboApp class, so it can be tested and evolved independently.
  */
 
 import * as pdfjsLib from 'pdfjs-dist';

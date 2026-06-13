@@ -1,6 +1,6 @@
-import type { PDFEditorApp } from '../../core/pdfEditorApp';
+import type { PDFTurboApp } from '../../core/pdfTurboApp';
 
-export function bindFormattingEvents(app: PDFEditorApp): void {
+export function bindFormattingEvents(app: PDFTurboApp): void {
   app.ui.fontFamily.addEventListener('change', (e) => {
     app.setFontFamily((e.target as HTMLInputElement).value);
   });

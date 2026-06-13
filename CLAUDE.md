@@ -24,9 +24,9 @@ exactly what CI runs; a failure pushed to `master` blocks the deploy.
 
 ```
 src/
-├── main.ts                 # entry point — instantiates PDFEditorApp
+├── main.ts                 # entry point — instantiates PDFTurboApp
 ├── core/                   # app orchestration + domain
-│   ├── pdfEditorApp.ts     # ⚠ 3,300+ line god class — see Gotchas before touching
+│   ├── pdfTurboApp.ts      # app orchestration hub (~580 lines after Wave 0–10 refactor)
 │   ├── documentModel.ts    # page/element data model
 │   ├── historyManager.ts   # command-pattern undo/redo (50-command stack)
 │   ├── pdfRenderer.ts      # pdfjs page rendering
@@ -45,14 +45,14 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 
 - Undo/redo: every mutation goes through a Command object pushed to `historyManager` —
   never mutate `documentModel` directly from a handler without a command, or undo breaks.
-- Handlers receive the concrete `PDFEditorApp`; its public surface is effectively the
+- Handlers receive the concrete `PDFTurboApp`; its public surface is effectively the
   app-wide API. Adding handler↔app interactions widens this coupling — prefer extending
   an existing seam.
 
 ## Gotchas (verified by the 2026-06-11 craftsmanship review — docs/reviews/)
 
 - **Three duplicated export paths**: `downloadPDF`, `downloadPage`, `downloadPageAsImage`
-  in `pdfEditorApp.ts` triplicate rotation/cropbox/watermark/ink logic. Any export fix
+  in `pdfTurboApp.ts` triplicate rotation/cropbox/watermark/ink logic. Any export fix
   must be applied to ALL THREE (or the long-term fix: extract the shared pipeline).
 - **`renderElements()` destroys and recreates every element DOM node** on each call.
   Focus-restoration hacks depend on this; keyed identity is NOT preserved.
@@ -64,7 +64,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 - **PWA is `registerType: 'autoUpdate'`** — every push to `master` deploys AND silently
   updates open client sessions. Treat pushes to master as production releases.
 - **Tests run in jsdom**: canvas rendering, real PDF rasterization, and pointer gestures
-  are not exercised. `pdfEditorApp.ts` has near-zero unit coverage — editor-level changes
+  are not exercised. `pdfTurboApp.ts` has near-zero unit coverage — editor-level changes
   need manual browser verification (`npm run dev`) in addition to the test suite.
 - **Only `@cantoo/pdf-lib` is the PDF write library** (the dead `pdf-lib` and `qpdf-wasm`
   deps were removed 2026-06-11). Never add the bare `pdf-lib` back — it has been abandoned

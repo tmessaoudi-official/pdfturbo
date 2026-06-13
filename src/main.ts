@@ -1,6 +1,6 @@
 // Main entry point
 import './utils/polyfills';
-import { PDFEditorApp } from './core/pdfEditorApp';
+import { PDFTurboApp } from './core/pdfTurboApp';
 import { initI18n, changeLanguage, onLanguageChanged } from './utils/i18n';
 import { registerSW } from 'virtual:pwa-register';
 
@@ -8,7 +8,7 @@ registerSW({
   onNeedRefresh() {
     // App is fully initialized by the time SW fires; grab the reporter from window.app if available.
     // In production window.app is not set, so we fall back to a direct toast via the DOM.
-    const appInstance = (window as { app?: PDFEditorApp }).app;
+    const appInstance = (window as { app?: PDFTurboApp }).app;
     if (appInstance) {
       appInstance.reportError.info('toast.appUpdateAvailable');
     } else {
@@ -19,13 +19,13 @@ registerSW({
 });
 
 declare global {
-  interface Window { app?: PDFEditorApp; }
+  interface Window { app?: PDFTurboApp; }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initI18n();
 
-  const app = new PDFEditorApp();
+  const app = new PDFTurboApp();
   if (import.meta.env.DEV) window.app = app;
 
   // Language switcher — re-render dynamic DOM on change

@@ -1,4 +1,4 @@
-import type { ToolMode } from './pdfEditorApp';
+import type { ToolMode } from './pdfTurboApp';
 import type { IErrorReporter } from './errorReporter';
 
 export interface IToolModeContext {

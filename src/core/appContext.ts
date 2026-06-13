@@ -1,7 +1,7 @@
 /**
- * IAppContext — the narrow interface that handlers require from PDFEditorApp.
+ * IAppContext — the narrow interface that handlers require from PDFTurboApp.
  *
- * Handlers should accept IAppContext instead of the concrete PDFEditorApp class
+ * Handlers should accept IAppContext instead of the concrete PDFTurboApp class
  * so that they remain decoupled from the full god-class implementation.
  * Phase 5 of the craftsmanship refactor.
  */
@@ -13,7 +13,7 @@ import type { InkLayer } from '../infra/inkLayer';
 import type { PDFRenderer } from '../infra/pdfRenderer';
 import type { SourcePdf } from './documentModel';
 import type { AppDOMRefs } from '../ui/uiController';
-import type { ToolMode } from './pdfEditorApp';
+import type { ToolMode } from './pdfTurboApp';
 import type { IErrorReporter } from './errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
 

@@ -1,7 +1,7 @@
-import type { PDFEditorApp, ToolMode } from '../../core/pdfEditorApp';
+import type { PDFTurboApp, ToolMode } from '../../core/pdfTurboApp';
 import { FlyoutManager } from '../flyoutManager';
 
-export function bindModalEvents(app: PDFEditorApp): void {
+export function bindModalEvents(app: PDFTurboApp): void {
   // ── Signature modal ────────────────────────────────────────────
   document.getElementById('clearSignature')?.addEventListener('click', () => app.signaturePad.clear());
   document.getElementById('cancelSignature')?.addEventListener('click', () => app.closeSignatureModal());

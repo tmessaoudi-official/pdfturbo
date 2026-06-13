@@ -8,10 +8,10 @@ Captured 2026-06-04. Ideas that surfaced during development — not yet planned 
 
 | # | Report | Status |
 |---|--------|--------|
-| B1 | Add PDF — file chooser opens but PDF not appended to document | Works — `_handleAddPdfUpload` implemented in pdfEditorApp.ts |
+| B1 | Add PDF — file chooser opens but PDF not appended to document | Works — `_handleAddPdfUpload` implemented in pdfTurboApp.ts |
 | B2 | Watermark appears only in centre of page, not tiled/repeated | Fixed — density-based tiling added (commit fb87e8b) |
 | B3 | Can delete a highlight but not a single comment | Fixed — `createControls()` in base PDFElement provides delete button on all element types |
-| B4 | Delete Page button in toolbar does not work | Works — `_deletePage(pageId)` implemented in pdfEditorApp.ts |
+| B4 | Delete Page button in toolbar does not work | Works — `_deletePage(pageId)` implemented in pdfTurboApp.ts |
 
 ---
 

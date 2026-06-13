@@ -57,7 +57,7 @@ import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
 
-export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext, ICodeModalContext, IWatermarkContext, IFindBarContext, IDocumentLoaderContext {
+export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext, ICodeModalContext, IWatermarkContext, IFindBarContext, IDocumentLoaderContext {
   renderer: PDFRenderer;
   documentModel: DocumentModel;
   elements: PDFElement[] = [];

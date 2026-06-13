@@ -1,7 +1,7 @@
-import type { PDFEditorApp } from '../../core/pdfEditorApp';
+import type { PDFTurboApp } from '../../core/pdfTurboApp';
 import { ShapeElement } from '../../elements/shapeElement';
 
-export function bindKeyboardEvents(app: PDFEditorApp): void {
+export function bindKeyboardEvents(app: PDFTurboApp): void {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (app.ui.settingsPanel.classList.contains('active')) { app._toggleSettings(false); return; }

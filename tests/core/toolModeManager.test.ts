@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ToolModeManager, type IToolModeContext } from '../../src/core/toolModeManager';
-import type { ToolMode } from '../../src/core/pdfEditorApp';
+import type { ToolMode } from '../../src/core/pdfTurboApp';
 
 vi.mock('../../src/utils/i18n', () => ({ t: (key: string) => key }));
 

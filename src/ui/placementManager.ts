@@ -21,7 +21,7 @@ export interface IPlacementContext {
   readonly zoomScale: number;
   readonly mode: ToolMode;
   readonly reportError: IErrorReporter;
-  // Signature state — owned by pdfEditorApp until Wave 3D
+  // Signature state — owned by pdfTurboApp until Wave 3D
   currentSignature: string | null;
   signatureNatural: { w: number; h: number } | null;
   // Side effects

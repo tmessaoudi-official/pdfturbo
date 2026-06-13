@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CodeModalManager, type ICodeModalContext } from '../../src/ui/codeModalManager';
 import type { AppDOMRefs } from '../../src/ui/uiController';
-import type { ToolMode } from '../../src/core/pdfEditorApp';
+import type { ToolMode } from '../../src/core/pdfTurboApp';
 
 vi.mock('../../src/utils/i18n', () => ({ t: (key: string) => key }));
 vi.mock('../../src/utils/focusTrap', () => ({ trapFocus: vi.fn().mockReturnValue(vi.fn()) }));

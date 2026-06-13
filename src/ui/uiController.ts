@@ -2,7 +2,7 @@ import type { PDFElement } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import type { RedactionElement } from '../elements/redactionElement';
-import type { ToolMode } from '../core/pdfEditorApp';
+import type { ToolMode } from '../core/pdfTurboApp';
 import { t } from '../utils/i18n';
 
 export interface AppDOMRefs {
@@ -439,7 +439,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
         if (shapeFill !== undefined) {
           r.fillColorInput.value = shapeFill;
         }
-        // _noFill sync is handled in pdfEditorApp._updateFormattingToolbar after this call
+        // _noFill sync is handled in pdfTurboApp._updateFormattingToolbar after this call
       }
     }
 

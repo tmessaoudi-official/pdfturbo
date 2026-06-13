@@ -1,6 +1,6 @@
-import type { PDFEditorApp } from '../../core/pdfEditorApp';
+import type { PDFTurboApp } from '../../core/pdfTurboApp';
 
-export function bindToolEvents(app: PDFEditorApp): void {
+export function bindToolEvents(app: PDFTurboApp): void {
   app.ui.selectBtn.addEventListener('click', () => app.setMode('select'));
   app.ui.addTextBtn.addEventListener('click', () => {
     if (!app.documentModel.pageCount) return;

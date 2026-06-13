@@ -31,7 +31,7 @@ Full browser audit completed (CDP automation against built app). All tools exerc
 |---|---|---|
 | `aria-label` stuck in previous language after language switch | `src/utils/i18n.ts` | `applyTranslations()` was skipping aria-label update if attribute already existed; now always syncs on language change |
 | Fill bucket mode badge key missing | `src/core/uiController.ts` | `badgeKeys` mapping lacked `fillBucket` entry — badge showed nothing in fill bucket mode |
-| Fill bucket mode hint missing | `src/core/pdfEditorApp.ts` | `modeHintKeys` lacked `fillBucket` entry — no guidance toast shown when entering fill bucket mode |
+| Fill bucket mode hint missing | `src/core/pdfTurboApp.ts` | `modeHintKeys` lacked `fillBucket` entry — no guidance toast shown when entering fill bucket mode |
 | Fill bucket i18n keys missing from all locales | `locales/en.json`, `locales/fr.json`, `locales/ar.json` | Added `toolbar.fillBucketTitle`, `badge.fillBucket`, `toast.modeHint.fillBucket`, `modal.help.actions.B` to all three locale files |
 | `B` shortcut row missing from help modal table | `index.html` | Added `<tr><td>B</td><td data-i18n="modal.help.actions.B">Fill bucket</td></tr>` |
 | `fillBucketTitle` tooltip missing from toolbar button | `index.html` | Added `data-i18n-title="toolbar.fillBucketTitle"` to the fill bucket toolbar button |

@@ -1,4 +1,4 @@
-import type { ToolMode } from '../core/pdfEditorApp';
+import type { ToolMode } from '../core/pdfTurboApp';
 import type { CodeElement } from '../elements/codeElement';
 import type { PDFElement } from '../elements/annotationElement';
 import { generateCodeDataUrl, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';

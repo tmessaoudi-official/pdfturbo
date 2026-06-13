@@ -1,6 +1,6 @@
-import type { PDFEditorApp } from '../../core/pdfEditorApp';
+import type { PDFTurboApp } from '../../core/pdfTurboApp';
 
-export function bindNavigationEvents(app: PDFEditorApp): void {
+export function bindNavigationEvents(app: PDFTurboApp): void {
   // ── File loading ───────────────────────────────────────────────
   app.ui.fileInput.addEventListener('change', (e) => app._loadDocument(e));
   app.ui.addPdfInput.addEventListener('change', (e) => app._handleAddPdfUpload(e));

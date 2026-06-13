@@ -59,7 +59,7 @@ export class CodeElement extends PDFElement {
     div.appendChild(this.createControls());
     div.appendChild(this.createResizeHandle());
 
-    // Double-click bubbles up to the canvas container; pdfEditorApp listens for this event.
+    // Double-click bubbles up to the canvas container; pdfTurboApp listens for this event.
     div.addEventListener('dblclick', (e) => {
       e.stopPropagation();
       div.dispatchEvent(new CustomEvent('code-element-edit', { bubbles: true, detail: { id: this.id } }));

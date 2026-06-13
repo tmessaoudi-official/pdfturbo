@@ -304,7 +304,7 @@ describe('image MIME validation (BUG-43)', () => {
 
 // ─── coordinate transform math ───────────────────────────────────────────────
 
-// Extracted from pdfEditorApp.ts _transformPoint / _inverseTransformPoint.
+// Extracted from pdfTurboApp.ts _transformPoint / _inverseTransformPoint.
 // Two variants: BUGGY (current code — swapped 90/270, wrong 180 y) and
 // CORRECT (fixed — derived from pdfjs rotation matrices in pdf.mjs:818-844).
 const buggyTransformPoint = (px: number, py: number, W: number, H: number, rot: number) => {
