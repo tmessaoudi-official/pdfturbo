@@ -337,6 +337,19 @@ export class ExportService {
           type Ctm = [number, number, number, number, number, number];
           const ctmStack: Ctm[] = [];
           let ctm: Ctm = [1, 0, 0, 1, 0, 0];
+          // Render off-screen so pdfjs-dist v6 commits all image XObjects to
+          // page.objs before we iterate. Without this, page.objs is empty on
+          // pages that have never been displayed (bitmap data arrives via async
+          // worker messages only while an intent state is active).
+          if (opList.fnArray.includes(OPS['paintImageXObject'])) {
+            const renderCanvas = document.createElement('canvas');
+            renderCanvas.width = Math.ceil(vp.width);
+            renderCanvas.height = Math.ceil(vp.height);
+            const renderCtx = renderCanvas.getContext('2d');
+            if (renderCtx) {
+              await page.render({ canvas: renderCanvas, canvasContext: renderCtx, viewport: vp }).promise;
+            }
+          }
           for (let i = 0; i < opList.fnArray.length; i++) {
             const fn = opList.fnArray[i];
             const args = opList.argsArray[i] as number[];
@@ -355,24 +368,30 @@ export class ExportService {
             } else if (fn === OPS['paintImageXObject']) {
               const imageName = args[0] as unknown as string;
               try {
-                const imgObj = page.objs.get(imageName) as HTMLCanvasElement | null;
-                if (imgObj?.toDataURL) {
-                  const dataUrl = imgObj.toDataURL('image/png');
-                  const base64 = dataUrl.split(',')[1];
-                  if (base64) {
-                    // Axis-aligned: width=|a|, height=|d|; PDF y-up → DOCX y-down
-                    const w = Math.abs(ctm[0]) || Math.abs(ctm[2]);
-                    const h = Math.abs(ctm[3]) || Math.abs(ctm[1]);
-                    if (w > 10 && h > 10) {
-                      pageImages.push({
-                        x: ctm[4], y: vp.height - ctm[5] - h,
-                        width: w, height: h,
-                        base64, mimeType: 'image/png',
-                      });
-                    }
+                if (!(page.objs as { has(id: string): boolean }).has(imageName)) continue;
+                const imgData = page.objs.get(imageName) as { width: number; height: number; bitmap?: ImageBitmap } | null;
+                if (!imgData?.bitmap) continue;
+                const imgCanvas = document.createElement('canvas');
+                imgCanvas.width = imgData.width;
+                imgCanvas.height = imgData.height;
+                const imgCtx = imgCanvas.getContext('2d');
+                if (!imgCtx) continue;
+                imgCtx.drawImage(imgData.bitmap, 0, 0);
+                const dataUrl = imgCanvas.toDataURL('image/png');
+                const base64 = dataUrl.split(',')[1];
+                if (base64) {
+                  // Axis-aligned: width=|a|, height=|d|; PDF y-up → DOCX y-down
+                  const w = Math.abs(ctm[0]) || Math.abs(ctm[2]);
+                  const h = Math.abs(ctm[3]) || Math.abs(ctm[1]);
+                  if (w > 10 && h > 10) {
+                    pageImages.push({
+                      x: ctm[4], y: vp.height - ctm[5] - h,
+                      width: w, height: h,
+                      base64, mimeType: 'image/png',
+                    });
                   }
                 }
-              } catch { /* image object not resolved without a render pass */ }
+              } catch { /* graceful skip if bitmap unavailable */ }
             } else if (fn === OPS['setFillRGBColor']) {
               [fillR, fillG, fillB] = args;
             } else if (fn === OPS['setFillGray']) {

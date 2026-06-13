@@ -92,7 +92,10 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   **Phase 4 (2026-06-13)**: images — `getOperatorList` OPS.paintImageXObject + CTM tracking
   in `_extractFlowDoc` → `FlowImage` (x/y/w/h/base64/mimeType) on `FlowPage.images?` →
   `ImageRun` in DOCX (appended after text per page; pt→px at 96 DPI). Canvas extraction
-  requires a real browser (`page.objs.get` may need a render pass — browser QA only). Also:
+  requires a real browser (`_extractFlowDoc` renders each image-bearing page off-screen first
+  to populate `page.objs` before iterating; pdfjs-dist v6 stores images as `{ width, height,
+  bitmap?: ImageBitmap }`, not HTMLCanvasElement — bitmap is drawn onto a temp canvas for
+  base64. Browser QA required to verify on unviewed/un-scrolled pages). Also:
   **export-path dedup** — extracted `_applyOverlaysToPage` + `_savePdfDocAndDownload` helpers
   in `exportService.ts`, eliminating the triplicated 10-param `buildPageOverlays` block.
   **Remaining**: lattice tables (vector path grid detection — complex, low priority).
