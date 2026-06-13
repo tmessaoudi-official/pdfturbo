@@ -10,7 +10,7 @@ import { UIController, type AppDOMRefs } from '../ui/uiController';
 import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
-  HistoryManager, AddElementCmd, TextEditCmd,
+  HistoryManager, AddElementCmd,
   ReplaceSourcePdfBytesCmd,
 } from './historyManager';
 import { InkLayer } from '../infra/inkLayer';
@@ -40,6 +40,7 @@ import type { IProgressManager } from '../ui/progressManager';
 import { ToolbarCustomizer } from '../ui/toolbarCustomizer';
 import { LocalLayoutStorage } from '../ui/layoutStorage';
 import { FormattingService } from './formattingService';
+import { UndoRedoController } from './undoRedoController';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
@@ -64,9 +65,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   zoomScale = 1.0;
   selectedElement: PDFElement | null = null;
   historyManager: HistoryManager;
-  _textChangeTimer: ReturnType<typeof setTimeout> | null = null;
-  private _pendingTextBefore: string | null = null;
-  private _pendingTextElementId: number | null = null;
   currentFilename: string | null = null;
   uiController: UIController;
   drawingHandler: DrawingHandler;
@@ -113,6 +111,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _exportPreviewPanel!: ExportPreviewPanel;
   private _canvasClickRouter!: CanvasClickRouter;
   private _formattingService!: FormattingService;
+  private _undoRedoController!: UndoRedoController;
 
   // ── Signature accessors (IPlacementContext) ───────────────────────────────
   get currentSignature(): string | null { return this._signatureManager.currentSignature; }
@@ -140,25 +139,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   }
   handleElementClick(el: PDFElement): void { this.selectElement(el); }
   handleCodeElementEdit(el: CodeElement): void { this.openCodeModal(el); }
-  handleTextInput(element: TextElement, input: HTMLInputElement | HTMLTextAreaElement): void {
-    if (this._pendingTextElementId !== element.id) {
-      this._pendingTextBefore = element.text;
-      this._pendingTextElementId = element.id;
-    }
-    element.text = input.value;
-    clearTimeout(this._textChangeTimer ?? undefined);
-    this._textChangeTimer = setTimeout(() => {
-      const before = this._pendingTextBefore;
-      const id = this._pendingTextElementId;
-      this._pendingTextBefore = null;
-      this._pendingTextElementId = null;
-      this._textChangeTimer = null;
-      if (id !== null && before !== null && before !== element.text) {
-        this.historyManager.record(new TextEditCmd(this.elements, id, before, element.text));
-      }
-      this._autosave();
-    }, 500);
-  }
+  handleTextInput(element: TextElement, input: HTMLInputElement | HTMLTextAreaElement): void { this._undoRedoController.handleTextInput(element, input); }
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }
@@ -302,7 +283,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this.historyManager = new HistoryManager(50, (canUndo, canRedo) => {
       this.uiController.updateUndoRedoBtns(canUndo, canRedo);
     });
-    this._textChangeTimer = null;
     this.currentFilename = null;
     this._signatureManager = new SignatureManager(this);
     this._exportService = new ExportService(this);
@@ -325,6 +305,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._toolbarCustomizer.restore();
     this._toolbarCustomizer.enableDragDrop();
     this._formattingService = new FormattingService(this);
+    this._undoRedoController = new UndoRedoController(this);
     this.setupEventListeners();
     this._initThumbnailPanel();
     void this._documentLoader.restoreSession();
@@ -407,46 +388,8 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   }
 
   // ── Undo / Redo ───────────────────────────────────────────────
-  private _cancelPendingTextEdit(): void {
-    if (this._textChangeTimer !== null) {
-      clearTimeout(this._textChangeTimer);
-      this._textChangeTimer = null;
-      this._pendingTextBefore = null;
-      this._pendingTextElementId = null;
-    }
-  }
-
-  undo() {
-    this._cancelPendingTextEdit();
-    if (this.historyManager.undo()) {
-      this.selectedElement = null;
-      this._renderCurrentPage().then(() => {
-        this.rebuildElementLayer();
-        this._thumbnailPanel?.updateActive();
-        this.updatePageInfo();
-      }).catch((err: unknown) => {
-        this._errorReporter.error('toast.renderFailedUndo', err);
-      });
-      this._updateFormattingToolbar();
-      this._autosave();
-    }
-  }
-
-  redo() {
-    this._cancelPendingTextEdit();
-    if (this.historyManager.redo()) {
-      this.selectedElement = null;
-      this._renderCurrentPage().then(() => {
-        this.rebuildElementLayer();
-        this._thumbnailPanel?.updateActive();
-        this.updatePageInfo();
-      }).catch((err: unknown) => {
-        this._errorReporter.error('toast.renderFailedRedo', err);
-      });
-      this._updateFormattingToolbar();
-      this._autosave();
-    }
-  }
+  undo(): void { this._undoRedoController.undo(); }
+  redo(): void { this._undoRedoController.redo(); }
 
   // ── True text edit: swap a source PDF's bytes after content-stream surgery ──
   // Called by TextEditHandler. Loads the edited bytes into a fresh pdfjs doc,
