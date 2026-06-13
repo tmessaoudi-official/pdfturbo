@@ -86,9 +86,13 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   annotations are NOT exported. Heuristic thresholds are font-size-relative.
   Phase 2 (2026-06-13): added 2-column XY-cut (`detectColumnSplit`) and list detection
   (`detectListPrefix`) — see `docs/reviews/2026-06-11-pdf-to-docx-verdict.md`.
-  **Phase 3 roadmap** (still pending): images (`getOperatorList` OPS.paintImageXObject →
-  inline DOCX images), lattice tables (vector rulings → cell grid), native DOCX ordered-list
-  numbering (currently "1. " text prefix).
+  Phase 3 (2026-06-13): native DOCX ordered-list numbering via `w:numPr` + instance-based
+  restart (separate lists separated by body text restart at 1). Tests now unpack the DOCX
+  ZIP with `fflate` and assert `w:numPr` presence and multi-instance `numId` divergence.
+  **Phase 4 roadmap** (still pending): images (`getOperatorList` OPS.paintImageXObject →
+  canvas bitmap → `ImageRun` in DOCX; requires `FlowImage` node in FlowDoc model; canvas
+  unavailable in jsdom — browser-QA only), lattice tables (vector path grid detection —
+  complex, low priority).
 
 ## Git & CI
 
