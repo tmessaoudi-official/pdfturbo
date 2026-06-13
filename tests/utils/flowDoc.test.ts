@@ -3,6 +3,8 @@ import {
   reconstructPage,
   assignHeadings,
   extractPsName,
+  detectColumnSplit,
+  detectListPrefix,
   type RawTextItem,
   type FontInfoMap,
   type FlowDoc,
@@ -199,5 +201,137 @@ describe('reconstructPage — colorMap propagation', () => {
     const items = [mkItem('Plain', 50, 700)];
     const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
     expect(page.paragraphs[0].runs[0].color).toBeUndefined();
+  });
+});
+
+// ── New: detectColumnSplit ────────────────────────────────────────────────────
+
+describe('detectColumnSplit', () => {
+  it('returns null when all words are on the same side with no middle gap', () => {
+    const words = [
+      { x: 50, width: 100 },
+      { x: 50, width: 120 },
+      { x: 50, width: 90 },
+      { x: 50, width: 80 },
+    ];
+    expect(detectColumnSplit(words, PAGE_W)).toBeNull();
+  });
+
+  it('returns a midpoint inside the gap for a classic 2-column layout', () => {
+    // Left column ends ~230pt, right column starts ~350pt → 120pt gap (>5% of 612).
+    // y values span two baselines so the multi-baseline guard passes.
+    const words = [
+      { x: 50, width: 180, y: 700 },
+      { x: 50, width: 160, y: 680 },
+      { x: 350, width: 180, y: 700 },
+      { x: 350, width: 160, y: 680 },
+    ];
+    const split = detectColumnSplit(words, PAGE_W);
+    expect(split).not.toBeNull();
+    expect(split).toBeGreaterThan(230);
+    expect(split).toBeLessThan(350);
+  });
+
+  it('returns null when the gap is narrower than 5% of page width (~30pt)', () => {
+    // Left ends at 250, right starts at 255 → 5pt gap < 30.6pt threshold
+    const words = [
+      { x: 50, width: 200 },
+      { x: 50, width: 200 },
+      { x: 255, width: 200 },
+      { x: 255, width: 200 },
+    ];
+    expect(detectColumnSplit(words, PAGE_W)).toBeNull();
+  });
+
+  it('returns null for fewer than 4 words', () => {
+    const words = [{ x: 50, width: 180 }, { x: 400, width: 180 }];
+    expect(detectColumnSplit(words, PAGE_W)).toBeNull();
+  });
+});
+
+// ── New: detectListPrefix ─────────────────────────────────────────────────────
+
+describe('detectListPrefix', () => {
+  it('detects a unicode bullet and strips it', () => {
+    const r = detectListPrefix('• Apple pie');
+    expect(r).not.toBeNull();
+    expect(r?.type).toBe('bullet');
+    expect(r?.stripped).toBe('Apple pie');
+  });
+
+  it('detects a dash bullet and strips it', () => {
+    const r = detectListPrefix('- Item text');
+    expect(r).not.toBeNull();
+    expect(r?.type).toBe('bullet');
+    expect(r?.stripped).toBe('Item text');
+  });
+
+  it('detects a numeric ordered marker and strips it', () => {
+    const r = detectListPrefix('3. Third item');
+    expect(r).not.toBeNull();
+    expect(r?.type).toBe('ordered');
+    expect(r?.stripped).toBe('Third item');
+  });
+
+  it('returns null for plain body text', () => {
+    expect(detectListPrefix('This is regular paragraph text.')).toBeNull();
+  });
+});
+
+// ── New: reconstructPage — 2-column XY-cut ───────────────────────────────────
+
+describe('reconstructPage — 2-column XY-cut', () => {
+  it('reads left column paragraphs before right column paragraphs', () => {
+    // Left col: x≈50, ends at 210; right col: x≈350; gap 210-350 ≈ 140pt > 5% of 612
+    const items = [
+      mkItem('RightTop', 350, 700, { width: 160 }),
+      mkItem('LeftTop', 50, 700, { width: 160 }),
+      mkItem('RightBot', 350, 660, { width: 160 }),
+      mkItem('LeftBot', 50, 660, { width: 160 }),
+    ];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    const texts = page.paragraphs.map(p => p.runs.map(r => r.text).join('').trim());
+    const leftIdx = texts.findIndex(t => t.includes('LeftTop'));
+    const rightIdx = texts.findIndex(t => t.includes('RightTop'));
+    expect(leftIdx).toBeLessThan(rightIdx);
+  });
+
+  it('preserves single-column behaviour when words span the full width', () => {
+    // Words spread evenly — no horizontal gap in the middle zone
+    const items = [
+      mkItem('Alpha', 50, 700, { width: 100 }),
+      mkItem('Beta', 200, 700, { width: 100 }),
+      mkItem('Gamma', 350, 700, { width: 100 }),
+      mkItem('Delta', 500, 700, { width: 80 }),
+    ];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    // All on same baseline → 1 paragraph with all text
+    expect(page.paragraphs).toHaveLength(1);
+  });
+});
+
+// ── New: reconstructPage — list detection ────────────────────────────────────
+
+describe('reconstructPage — list detection', () => {
+  it('marks a bullet paragraph and strips the marker from the first run', () => {
+    const items = [mkItem('• First item text', 50, 700, { width: 120 })];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    const p = page.paragraphs[0];
+    expect(p.listType).toBe('bullet');
+    expect(p.runs.map(r => r.text).join('')).not.toMatch(/^[•]/);
+  });
+
+  it('marks a numeric ordered paragraph and strips the marker', () => {
+    const items = [mkItem('1. Numbered item', 50, 700, { width: 120 })];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    const p = page.paragraphs[0];
+    expect(p.listType).toBe('ordered');
+    expect(p.runs.map(r => r.text).join('')).not.toMatch(/^\d+\./);
+  });
+
+  it('leaves listType undefined for regular paragraphs', () => {
+    const items = [mkItem('Regular paragraph text here.', 50, 700)];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    expect(page.paragraphs[0].listType).toBeUndefined();
   });
 });

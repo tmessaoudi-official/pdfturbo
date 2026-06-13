@@ -20,7 +20,12 @@ function paragraphText(p: FlowParagraph): string {
 
 export function flowDocToText(doc: FlowDoc): string {
   return doc.pages
-    .flatMap(page => page.paragraphs.map(paragraphText))
+    .flatMap(page => page.paragraphs.map(p => {
+      const text = paragraphText(p);
+      if (p.listType === 'bullet') return `• ${text}`;
+      if (p.listType === 'ordered') return `1. ${text}`;
+      return text;
+    }))
     .filter(t => t.trim().length > 0)
     .join('\n\n');
 }
@@ -49,6 +54,8 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
           return lead + styled + trail;
         })
         .join('');
+      if (p.listType === 'bullet') { blocks.push(`- ${body.trim()}`); continue; }
+      if (p.listType === 'ordered') { blocks.push(`1. ${body.trim()}`); continue; }
       blocks.push(p.heading > 0 ? `${'#'.repeat(p.heading)} ${body.trim()}` : body);
     }
   }
@@ -76,27 +83,32 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     },
     children: page.paragraphs
       .filter(p => paragraphText(p).trim().length > 0)
-      .map(
-        p =>
-          new Paragraph({
-            heading: HEADINGS[p.heading],
-            alignment: ALIGN[p.alignment],
-            bidirectional: p.rtl || undefined,
-            children: p.runs.map(
-              r =>
-                new TextRun({
-                  text: r.text,
-                  bold: r.bold || undefined,
-                  italics: r.italic || undefined,
-                  font: FAMILY_TO_WORD[r.fontFamily],
-                  // docx half-points
-                  size: Math.round(r.fontSize * 2),
-                  rightToLeft: r.rtl || undefined,
-                  color: r.color,
-                })
-            ),
-          })
-      ),
+      .map(p => {
+        const textRuns = p.runs.map(
+          r =>
+            new TextRun({
+              text: r.text,
+              bold: r.bold || undefined,
+              italics: r.italic || undefined,
+              font: FAMILY_TO_WORD[r.fontFamily],
+              size: Math.round(r.fontSize * 2), // docx half-points
+              rightToLeft: r.rtl || undefined,
+              color: r.color,
+            })
+        );
+        // Ordered lists: prepend a plain "1. " run (native DOCX numbering deferred to Phase 3).
+        const children =
+          p.listType === 'ordered'
+            ? [new TextRun({ text: '1. ' }), ...textRuns]
+            : textRuns;
+        return new Paragraph({
+          heading: p.listType ? undefined : HEADINGS[p.heading],
+          alignment: ALIGN[p.alignment],
+          bidirectional: p.rtl || undefined,
+          bullet: p.listType === 'bullet' ? { level: p.listDepth ?? 0 } : undefined,
+          children,
+        });
+      }),
   }));
 
   const document = new Document({ sections });

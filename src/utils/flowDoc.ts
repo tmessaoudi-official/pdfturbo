@@ -51,6 +51,10 @@ export interface FlowParagraph {
   heading: 0 | 1 | 2 | 3;
   alignment: 'left' | 'center' | 'right';
   rtl: boolean;
+  /** Set when the paragraph opens a list item; prefix marker stripped from first run. */
+  listType?: 'bullet' | 'ordered';
+  /** Nesting depth of the list item (0 = top-level). */
+  listDepth?: number;
 }
 
 export interface FlowPage {
@@ -118,38 +122,83 @@ export function extractPsName(internalId: string): string {
 }
 
 /**
- * Reconstruct the flow structure of one page from its positioned text items.
- * Pure function — fully unit-testable without pdf.js.
+ * Detect a vertical whitespace gap that divides words into two side-by-side columns.
+ * Returns the x-midpoint of the best gap found, or null if no column split is detected.
  *
- * @param colorMap  Optional map from `"${Math.round(x)},${Math.round(y)}"` → hex color
- *                  (6 uppercase chars, no '#'). Built from getOperatorList() in the caller.
+ * Words are expressed as `{ x, width, y? }` so the function is pure and testable.
+ * Three conditions must all hold:
+ *   1. At least 4 words in the input.
+ *   2. At least 2 distinct baselines — gaps between words on a single line are NOT column gaps.
+ *   3. The best gap lies in the inner 20–80% zone, is ≥ 5% of page width, and has words on both sides.
  */
-export function reconstructPage(
-  items: RawTextItem[],
+export function detectColumnSplit(
+  words: ReadonlyArray<{ x: number; width: number; y?: number }>,
+  pageWidth: number,
+): number | null {
+  if (words.length < 4) return null;
+
+  // Require ≥ 2 distinct y-baselines: inter-word gaps on a single line are not column separators.
+  const ySet = new Set(words.map(w => Math.round(w.y ?? 0)));
+  if (ySet.size < 2) return null;
+
+  const BIN = 2; // 2pt bins — fine enough for column detection
+  const bins = Math.ceil(pageWidth / BIN);
+  const covered = new Uint8Array(bins);
+  for (const w of words) {
+    const s = Math.max(0, Math.floor(w.x / BIN));
+    const e = Math.min(bins - 1, Math.ceil((w.x + w.width) / BIN));
+    for (let i = s; i <= e; i++) covered[i] = 1;
+  }
+  // Search only in the inner 20–80% zone to avoid false positives at page margins.
+  const left = Math.floor(pageWidth * 0.2 / BIN);
+  const right = Math.ceil(pageWidth * 0.8 / BIN);
+  let bestLen = 0, bestMid = -1, gapStart = -1;
+  for (let i = left; i <= right; i++) {
+    if (covered[i] === 0) {
+      if (gapStart === -1) gapStart = i;
+    } else if (gapStart !== -1) {
+      const len = i - gapStart;
+      if (len > bestLen) { bestLen = len; bestMid = Math.round((gapStart + i - 1) / 2) * BIN; }
+      gapStart = -1;
+    }
+  }
+  if (gapStart !== -1) {
+    const len = right - gapStart + 1;
+    if (len > bestLen) { bestLen = len; bestMid = Math.round((gapStart + right) / 2) * BIN; }
+  }
+  if (bestLen * BIN < pageWidth * 0.05) return null;
+
+  // Require words on both sides of the split — a gap with nothing on one side is a margin, not a column.
+  const leftCount = words.filter(w => w.x + w.width / 2 < bestMid).length;
+  const rightCount = words.filter(w => w.x + w.width / 2 >= bestMid).length;
+  return leftCount > 0 && rightCount > 0 ? bestMid : null;
+}
+
+// Matches leading list markers: unambiguous unicode bullets or dash/asterisk, then whitespace.
+const _BULLET_RE = /^[•◦▪●○→►▸-]\s+/;
+// Numeric ordered markers only — avoids false positives on "A. Firstname" author names.
+const _ORDERED_RE = /^\d+[.)]\s+/;
+
+/**
+ * Detect and strip a list prefix from the start of a paragraph's text.
+ * Returns `{ type, stripped }` when a prefix is found, or null otherwise.
+ */
+export function detectListPrefix(
+  text: string,
+): { type: 'bullet' | 'ordered'; stripped: string } | null {
+  const bm = _BULLET_RE.exec(text);
+  if (bm) return { type: 'bullet', stripped: text.slice(bm[0].length) };
+  const om = _ORDERED_RE.exec(text);
+  if (om) return { type: 'ordered', stripped: text.slice(om[0].length) };
+  return null;
+}
+
+/** Build FlowParagraph[] from a pre-sorted, pre-filtered array of words. */
+function reconstructColumn(
+  words: Word[],
   fonts: FontInfoMap,
   pageWidth: number,
-  pageHeight: number,
-  colorMap?: Map<string, string>
-): FlowPage {
-  const words: Word[] = [];
-  for (const it of items) {
-    if (!it.str || !it.str.trim()) continue;
-    const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
-    const x = it.transform[4];
-    const y = it.transform[5];
-    const color = colorMap?.get(`${Math.round(x)},${Math.round(y)}`);
-    words.push({
-      text: it.str,
-      x,
-      y,
-      width: Math.abs(it.width),
-      size,
-      fontName: it.fontName,
-      rtl: it.dir === 'rtl',
-      color,
-    });
-  }
-
+): FlowParagraph[] {
   // 1. Group words into lines by baseline clustering (top of page first: y descending).
   words.sort((a, b) => b.y - a.y || a.x - b.x);
   const lines: Line[] = [];
@@ -165,7 +214,6 @@ export function reconstructPage(
     line.words.sort((a, b) => a.x - b.x);
     line.x0 = Math.min(...line.words.map(w => w.x));
     line.x1 = Math.max(...line.words.map(w => w.x + w.width));
-    // Dominant size = size of the longest word run on the line.
     line.size = line.words.reduce((m, w) => (w.text.length > m.text.length ? w : m), line.words[0]).size;
   }
 
@@ -183,8 +231,8 @@ export function reconstructPage(
     }
   }
 
-  // 3. Build paragraphs: merge same-style words into runs, infer alignment and bidi.
-  const paragraphs: FlowParagraph[] = paraLines.map(group => {
+  // 3. Build paragraphs: merge same-style words into runs, infer alignment, bidi, and list type.
+  return paraLines.map(group => {
     const runs: FlowRun[] = [];
     for (let li = 0; li < group.length; li++) {
       const line = group[li];
@@ -227,15 +275,12 @@ export function reconstructPage(
         }
         prevWord = w;
       }
-      // Soft line break inside a paragraph → single space in flow output.
       if (li < group.length - 1) {
         const last = runs[runs.length - 1];
         if (last && !/\s$/.test(last.text)) last.text += ' ';
       }
     }
 
-    // Alignment: centered when every line's center sits on the page center
-    // and the paragraph doesn't start at the left margin.
     const pageCenter = pageWidth / 2;
     const centerTol = pageWidth * 0.05;
     const isCentered =
@@ -249,13 +294,69 @@ export function reconstructPage(
     const rtlChars = runs.reduce((n, r) => n + (r.rtl ? r.text.length : 0), 0);
     const totalChars = runs.reduce((n, r) => n + r.text.length, 0);
 
-    return {
+    const para: FlowParagraph = {
       runs,
       heading: 0 as const,
       alignment: isCentered ? ('center' as const) : isRight ? ('right' as const) : ('left' as const),
       rtl: totalChars > 0 && rtlChars / totalChars > 0.5,
     };
+
+    // List detection: check first run for a leading bullet or ordered marker.
+    if (runs.length > 0) {
+      const firstText = runs[0].text;
+      const trimmed = firstText.trimStart();
+      const match = detectListPrefix(trimmed);
+      if (match) {
+        const leading = firstText.length - trimmed.length;
+        runs[0].text = firstText.slice(0, leading) + match.stripped;
+        para.listType = match.type;
+        para.listDepth = 0;
+      }
+    }
+
+    return para;
   });
+}
+
+/**
+ * Reconstruct the flow structure of one page from its positioned text items.
+ * Pure function — fully unit-testable without pdf.js.
+ *
+ * Automatically detects two-column layouts via XY-cut and annotates list items.
+ *
+ * @param colorMap  Optional map from `"${Math.round(x)},${Math.round(y)}"` → hex color
+ *                  (6 uppercase chars, no '#'). Built from getOperatorList() in the caller.
+ */
+export function reconstructPage(
+  items: RawTextItem[],
+  fonts: FontInfoMap,
+  pageWidth: number,
+  pageHeight: number,
+  colorMap?: Map<string, string>
+): FlowPage {
+  const words: Word[] = [];
+  for (const it of items) {
+    if (!it.str || !it.str.trim()) continue;
+    const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
+    const x = it.transform[4];
+    const y = it.transform[5];
+    const color = colorMap?.get(`${Math.round(x)},${Math.round(y)}`);
+    words.push({ text: it.str, x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color });
+  }
+
+  const split = detectColumnSplit(words, pageWidth);
+  let paragraphs: FlowParagraph[];
+  if (split !== null) {
+    const mid = split;
+    const leftWords  = words.filter(w => w.x + w.width / 2 < mid);
+    const rightWords = words.filter(w => w.x + w.width / 2 >= mid);
+    paragraphs = [
+      ...reconstructColumn(leftWords, fonts, pageWidth),
+      ...reconstructColumn(rightWords, fonts, pageWidth),
+    ];
+  } else {
+    paragraphs = reconstructColumn(words, fonts, pageWidth);
+  }
 
   return { width: pageWidth, height: pageHeight, paragraphs };
 }

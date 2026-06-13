@@ -79,13 +79,16 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   remaining limitations (cm transforms, XObjects, Helvetica fallback font — Phase B/C).
 - **Private-method convention**: `_underscore` prefix throughout; eslint allows unused
   args only when `_`-prefixed.
-- **PDF→DOCX/MD export (beta, 2026-06-11)**: `src/utils/flowDoc.ts` reconstructs a flow
-  model (lines→paragraphs→headings/styles/RTL) from pdf.js text items; `flowDocWriters.ts`
-  emits DOCX (via `docx` npm, **dynamically imported** — keep it that way, it's a ~395 KB
-  lazy chunk) + Markdown + TXT. Source-PDF text only — overlay annotations are NOT
-  exported. Heuristic thresholds are font-size-relative (pdfminer.six recipes) — see
-  `docs/reviews/2026-06-11-pdf-to-docx-verdict.md` for the fidelity ceiling and roadmap
-  (tables/images/columns = Phase 2).
+- **PDF→DOCX/MD export (beta)**: `src/utils/flowDoc.ts` reconstructs a flow model
+  (lines→paragraphs→headings/styles/RTL/lists/2-column) from pdf.js text items;
+  `flowDocWriters.ts` emits DOCX (via `docx` npm, **dynamically imported** — keep it that
+  way, it's a ~395 KB lazy chunk) + Markdown + TXT. Source-PDF text only — overlay
+  annotations are NOT exported. Heuristic thresholds are font-size-relative.
+  Phase 2 (2026-06-13): added 2-column XY-cut (`detectColumnSplit`) and list detection
+  (`detectListPrefix`) — see `docs/reviews/2026-06-11-pdf-to-docx-verdict.md`.
+  **Phase 3 roadmap** (still pending): images (`getOperatorList` OPS.paintImageXObject →
+  inline DOCX images), lattice tables (vector rulings → cell grid), native DOCX ordered-list
+  numbering (currently "1. " text prefix).
 
 ## Git & CI
 

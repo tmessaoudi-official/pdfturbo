@@ -91,3 +91,51 @@ describe('flowDocToDocxBase64', () => {
     expect(r.color).toBe('FF0000');
   });
 });
+
+// ── New: list output ──────────────────────────────────────────────────────────
+
+const BULLET_PARA: FlowParagraph = para([run('Apple pie')], { listType: 'bullet', listDepth: 0 });
+const ORDERED_PARA: FlowParagraph = para([run('First step')], { listType: 'ordered', listDepth: 0 });
+const LIST_DOC: FlowDoc = {
+  pages: [{
+    width: 612, height: 792,
+    paragraphs: [BULLET_PARA, ORDERED_PARA, para([run('Plain paragraph.')])],
+  }],
+};
+
+describe('flowDocToMarkdown — lists', () => {
+  it('renders bullet list items with - prefix', () => {
+    const md = flowDocToMarkdown(LIST_DOC);
+    expect(md).toContain('- Apple pie');
+  });
+
+  it('renders ordered list items with 1. prefix', () => {
+    const md = flowDocToMarkdown(LIST_DOC);
+    expect(md).toContain('1. First step');
+  });
+
+  it('does not apply heading markup to list items', () => {
+    const md = flowDocToMarkdown(LIST_DOC);
+    expect(md).not.toMatch(/^#/m);
+  });
+});
+
+describe('flowDocToText — lists', () => {
+  it('renders bullet list items with • prefix', () => {
+    const txt = flowDocToText(LIST_DOC);
+    expect(txt).toContain('• Apple pie');
+  });
+
+  it('renders ordered list items with 1. prefix', () => {
+    const txt = flowDocToText(LIST_DOC);
+    expect(txt).toContain('1. First step');
+  });
+});
+
+describe('flowDocToDocxBase64 — lists', () => {
+  it('produces a valid DOCX for a document with bullet and ordered paragraphs', async () => {
+    const b64 = await flowDocToDocxBase64(LIST_DOC);
+    expect(b64.startsWith('UEsD')).toBe(true);
+    expect(b64.length).toBeGreaterThan(1000);
+  });
+});
