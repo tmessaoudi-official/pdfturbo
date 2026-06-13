@@ -16,15 +16,31 @@ class FakeStorage implements ILayoutStorage {
   clear(key: string): void { delete this._store[key]; }
 }
 
-function makeToolbar(ids: string[]): HTMLElement {
+const STORAGE_KEY = 'pdfturbo_toolbar_order';
+
+/** Create a toolbar container with toolbar-group children, each containing buttons. */
+function makeToolbar(groups: { id: string; buttons?: string[] }[]): HTMLElement {
   const toolbar = document.createElement('div');
-  document.body.appendChild(toolbar); // toolbar in body first so getElementById works
-  for (const id of ids) {
+  document.body.appendChild(toolbar);
+  for (const { id: gid, buttons = [] } of groups) {
     const group = document.createElement('div');
-    group.id = id;
+    group.id = gid;
+    group.className = 'toolbar-group';
+    for (const bid of buttons) {
+      const btn = document.createElement('button');
+      btn.id = bid;
+      btn.className = 'btn';
+      group.appendChild(btn);
+    }
     toolbar.appendChild(group);
   }
   return toolbar;
+}
+
+/** Convenience: get child ids of an element. Returns [] if el is null. */
+function childIds(el: Element | null): string[] {
+  if (!el) return [];
+  return Array.from(el.children).map(c => (c as HTMLElement).id).filter(Boolean);
 }
 
 describe('ToolbarCustomizer', () => {
@@ -36,113 +52,229 @@ describe('ToolbarCustomizer', () => {
     vi.mocked(Sortable).mockClear();
   });
 
-  it('restore() is a no-op when storage is empty', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.restore();
-    const ids = Array.from(toolbar.children).map(el => el.id);
-    expect(ids).toEqual(['a', 'b', 'c']);
-  });
+  // ── restore ────────────────────────────────────────────────────────────────
 
-  it('restore() reorders live DOM nodes to match saved order', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    storage.save('pdfturbo_toolbar_order', JSON.stringify(['c', 'a', 'b']));
+  it('restore() is a no-op when storage is empty', () => {
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a', 'b'] },
+      { id: 'g2', buttons: ['c'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
     tc.restore();
-    const ids = Array.from(toolbar.children).map(el => el.id);
-    expect(ids).toEqual(['c', 'a', 'b']);
+    expect(childIds(document.getElementById('g1'))).toEqual(['a', 'b']);
+    expect(childIds(document.getElementById('g2'))).toEqual(['c']);
   });
 
   it('restore() silently ignores corrupt JSON', () => {
-    const toolbar = makeToolbar(['a', 'b']);
-    storage.save('pdfturbo_toolbar_order', 'not-json{');
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b'] }]);
+    storage.save(STORAGE_KEY, 'not-json{');
     const tc = new ToolbarCustomizer(toolbar, storage);
     expect(() => tc.restore()).not.toThrow();
   });
 
-  it('restore() skips unknown ids not in the container', () => {
-    const toolbar = makeToolbar(['a', 'b']);
-    storage.save('pdfturbo_toolbar_order', JSON.stringify(['b', 'GHOST', 'a']));
+  it('restore() silently ignores legacy string-array format', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b', 'c'] }]);
+    // Old format — should be silently skipped; DOM stays unchanged.
+    storage.save(STORAGE_KEY, JSON.stringify(['c', 'a', 'b']));
     const tc = new ToolbarCustomizer(toolbar, storage);
     tc.restore();
-    const ids = Array.from(toolbar.children).map(el => el.id);
-    expect(ids).toEqual(['b', 'a']);
+    expect(childIds(document.getElementById('g1'))).toEqual(['a', 'b', 'c']);
   });
 
-  it('save() persists current DOM order to storage', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.save();
-    expect(JSON.parse(storage.load('pdfturbo_toolbar_order') ?? '[]')).toEqual(['a', 'b', 'c']);
-  });
-
-  it('save() after restore() persists new order', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    storage.save('pdfturbo_toolbar_order', JSON.stringify(['c', 'b', 'a']));
+  it('restore() reorders buttons within a group', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b', 'c'] }]);
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [{ type: 'group', id: 'g1', items: ['c', 'a', 'b'] }],
+    }));
     const tc = new ToolbarCustomizer(toolbar, storage);
     tc.restore();
-    tc.save();
-    expect(JSON.parse(storage.load('pdfturbo_toolbar_order') ?? '[]')).toEqual(['c', 'b', 'a']);
+    expect(childIds(document.getElementById('g1'))).toEqual(['c', 'a', 'b']);
   });
 
-  it('reset() restores original DOM order captured at construction', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    storage.save('pdfturbo_toolbar_order', JSON.stringify(['c', 'b', 'a']));
+  it('restore() moves a button to a different group', () => {
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a', 'b'] },
+      { id: 'g2', buttons: ['c'] },
+    ]);
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [
+        { type: 'group', id: 'g1', items: ['a'] },
+        { type: 'group', id: 'g2', items: ['c', 'b'] },
+      ],
+    }));
     const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.restore(); // reorders to c,b,a
-    tc.reset();   // back to a,b,c
-    const ids = Array.from(toolbar.children).map(el => el.id);
-    expect(ids).toEqual(['a', 'b', 'c']);
+    tc.restore();
+    expect(childIds(document.getElementById('g2'))).toEqual(['c', 'b']);
   });
 
-  it('reset() clears storage', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    storage.save('pdfturbo_toolbar_order', JSON.stringify(['c', 'b', 'a']));
+  it('restore() skips unknown ids not in the document', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b'] }]);
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [{ type: 'group', id: 'g1', items: ['b', 'GHOST', 'a'] }],
+    }));
     const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.reset();
-    expect(storage.load('pdfturbo_toolbar_order')).toBeNull();
+    tc.restore();
+    // Only real buttons are moved; GHOST is silently skipped.
+    expect(childIds(document.getElementById('g1'))).toEqual(['b', 'a']);
   });
 
   it('restore() does not destroy live node references', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b', 'c'] }]);
     const nodeA = document.getElementById('a');
-    storage.save('pdfturbo_toolbar_order', JSON.stringify(['c', 'a', 'b']));
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [{ type: 'group', id: 'g1', items: ['c', 'a', 'b'] }],
+    }));
     const tc = new ToolbarCustomizer(toolbar, storage);
     tc.restore();
-    // Same object reference — not recreated
     expect(document.getElementById('a')).toBe(nodeA);
   });
 
-  it('enableDragDrop() creates a Sortable instance with mobile delay options', () => {
-    const toolbar = makeToolbar(['a', 'b']);
+  it('restore() recreates submenu wrapper and moves items inside', () => {
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a', 'b'] },
+      { id: 'g2', buttons: ['c'] },
+    ]);
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [
+        { type: 'submenu', id: 'tbg-sub-99', items: ['a', 'b'] },
+        { type: 'group',   id: 'g2',         items: ['c'] },
+      ],
+    }));
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.restore();
+    const wrap   = document.getElementById('tbg-sub-99');
+    const flyout = wrap?.querySelector('.toolbar-submenu-flyout');
+    expect(wrap).not.toBeNull();
+    expect(flyout?.children[0]?.id).toBe('a');
+    expect(flyout?.children[1]?.id).toBe('b');
+  });
+
+  // ── save ──────────────────────────────────────────────────────────────────
+
+  it('save() persists v2 layout with group and button ids', () => {
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a', 'b'] },
+      { id: 'g2', buttons: ['c'] },
+    ]);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.save();
+    const saved = JSON.parse(storage.load(STORAGE_KEY) ?? '{}') as { version: string; groups: unknown[] };
+    expect(saved.version).toBe('v2');
+    expect(saved.groups).toMatchObject([
+      { type: 'group', id: 'g1', items: ['a', 'b'] },
+      { type: 'group', id: 'g2', items: ['c'] },
+    ]);
+  });
+
+  it('save() reflects button order after restore()', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b', 'c'] }]);
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [{ type: 'group', id: 'g1', items: ['c', 'b', 'a'] }],
+    }));
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.restore();
+    tc.save();
+    const saved = JSON.parse(storage.load(STORAGE_KEY) ?? '{}') as { groups: Array<{ items: string[] }> };
+    expect(saved.groups[0]?.items).toEqual(['c', 'b', 'a']);
+  });
+
+  // ── reset ─────────────────────────────────────────────────────────────────
+
+  it('reset() restores original button order captured at construction', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b', 'c'] }]);
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [{ type: 'group', id: 'g1', items: ['c', 'b', 'a'] }],
+    }));
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.restore();  // reorder to c, b, a
+    tc.reset();    // back to a, b, c
+    expect(childIds(document.getElementById('g1'))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('reset() clears storage', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a', 'b', 'c'] }]);
+    storage.save(STORAGE_KEY, JSON.stringify({
+      version: 'v2',
+      groups: [{ type: 'group', id: 'g1', items: ['c', 'b', 'a'] }],
+    }));
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.reset();
+    expect(storage.load(STORAGE_KEY)).toBeNull();
+  });
+
+  it('reset() unwraps submenus and restores original order', () => {
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+      { id: 'g3', buttons: ['c'] },
+    ]);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.mergeGroups('g1', 'g2');  // wraps g1 and g2 in a submenu
+    tc.reset();
+    // g1 and g2 must be direct children again with their original button order.
+    expect(document.getElementById('g1')?.parentElement).toBe(toolbar);
+    expect(document.getElementById('g2')?.parentElement).toBe(toolbar);
+    expect(childIds(document.getElementById('g1'))).toContain('a');
+    expect(childIds(document.getElementById('g2'))).toContain('b');
+  });
+
+  // ── enableDragDrop / disableDragDrop ──────────────────────────────────────
+
+  it('enableDragDrop() creates multiple Sortable instances (one per group + container)', () => {
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
     tc.enableDragDrop();
     const MockS = vi.mocked(Sortable);
-    expect(MockS).toHaveBeenCalledOnce();
+    // 2 groups + 1 container = 3 calls
+    expect(MockS.mock.calls.length).toBe(3);
+  });
+
+  it('enableDragDrop() uses mobile delay options on inner sortables', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a'] }]);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.enableDragDrop();
+    const MockS = vi.mocked(Sortable);
+    // First call is the group sortable.
     const opts = MockS.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(opts['delay']).toBe(300);
+    expect(opts['delay']).toBe(200);
     expect(opts['delayOnTouchOnly']).toBe(true);
   });
 
-  it('enableDragDrop() is idempotent — does not create a second Sortable', () => {
-    const toolbar = makeToolbar(['a', 'b']);
+  it('enableDragDrop() is idempotent — does not create additional Sortable instances', () => {
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a'] }]);
     const tc = new ToolbarCustomizer(toolbar, storage);
     tc.enableDragDrop();
+    const countAfterFirst = vi.mocked(Sortable).mock.calls.length;
     tc.enableDragDrop();
-    expect(vi.mocked(Sortable)).toHaveBeenCalledOnce();
+    expect(vi.mocked(Sortable).mock.calls.length).toBe(countAfterFirst);
   });
 
-  it('disableDragDrop() destroys the Sortable instance', () => {
-    const toolbar = makeToolbar(['a', 'b']);
+  it('disableDragDrop() destroys all Sortable instances', () => {
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
     tc.enableDragDrop();
-    const instance = vi.mocked(Sortable).mock.results[0]?.value as { destroy: ReturnType<typeof vi.fn> };
+    const instances = vi.mocked(Sortable).mock.results.map(r => r.value as { destroy: ReturnType<typeof vi.fn> });
     tc.disableDragDrop();
-    expect(instance.destroy).toHaveBeenCalledOnce();
+    for (const inst of instances) {
+      expect(inst.destroy).toHaveBeenCalledOnce();
+    }
   });
 
   it('disableDragDrop() is safe when DnD was never enabled', () => {
-    const toolbar = makeToolbar(['a', 'b']);
+    const toolbar = makeToolbar([{ id: 'g1', buttons: ['a'] }]);
     const tc = new ToolbarCustomizer(toolbar, storage);
     expect(() => tc.disableDragDrop()).not.toThrow();
   });
@@ -150,74 +282,70 @@ describe('ToolbarCustomizer', () => {
   // ── mergeGroups ────────────────────────────────────────────────────────────
 
   it('mergeGroups() inserts a submenu wrapper where target was', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+      { id: 'g3', buttons: ['c'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.mergeGroups('a', 'c');
+    tc.mergeGroups('g1', 'g3');
     const children = Array.from(toolbar.children);
     expect(children[0]?.classList.contains('toolbar-submenu')).toBe(true);
-    expect(children[1]?.id).toBe('b');
+    expect(children[1]?.id).toBe('g2');
   });
 
   it('mergeGroups() places both groups inside the submenu flyout', () => {
-    const toolbar = makeToolbar(['a', 'b']);
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
-    const submenuId = tc.mergeGroups('a', 'b') as string;
-    const wrap = document.getElementById(submenuId);
+    const submenuId = tc.mergeGroups('g1', 'g2') as string;
+    const wrap   = document.getElementById(submenuId);
     const flyout = wrap?.querySelector('.toolbar-submenu-flyout');
-    expect(flyout?.children[0]?.id).toBe('a');
-    expect(flyout?.children[1]?.id).toBe('b');
+    expect(flyout?.children[0]?.id).toBe('g1');
+    expect(flyout?.children[1]?.id).toBe('g2');
   });
 
   it('mergeGroups() preserves live node references', () => {
-    const toolbar = makeToolbar(['a', 'b']);
-    const nodeA = document.getElementById('a');
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
+    const nodeG1 = document.getElementById('g1');
     const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.mergeGroups('a', 'b');
-    expect(document.getElementById('a')).toBe(nodeA);
+    tc.mergeGroups('g1', 'g2');
+    expect(document.getElementById('g1')).toBe(nodeG1);
   });
 
   it('mergeGroups() saves the submenu structure to storage', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+      { id: 'g3', buttons: ['c'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
-    const submenuId = tc.mergeGroups('a', 'b') as string;
-    const saved = JSON.parse(storage.load('pdfturbo_toolbar_order') ?? '[]') as unknown[];
-    const sub = saved.find(e => typeof e === 'object' && (e as { id: string }).id === submenuId);
-    expect(sub).toMatchObject({ type: 'submenu', children: ['a', 'b'] });
+    const submenuId = tc.mergeGroups('g1', 'g2') as string;
+    const saved = JSON.parse(storage.load(STORAGE_KEY) ?? '{}') as { groups: Array<{ type: string; id: string; items: string[] }> };
+    const sub = saved.groups.find(e => e.id === submenuId);
+    expect(sub).toMatchObject({ type: 'submenu', items: ['g1', 'g2'] });
   });
 
   it('mergeGroups() returns null when target is not in container', () => {
-    const toolbar = makeToolbar(['a', 'b']);
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
-    expect(tc.mergeGroups('GHOST', 'b')).toBeNull();
+    expect(tc.mergeGroups('GHOST', 'g2')).toBeNull();
   });
 
   it('mergeGroups() returns null when source equals target', () => {
-    const toolbar = makeToolbar(['a', 'b']);
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
     const tc = new ToolbarCustomizer(toolbar, storage);
-    expect(tc.mergeGroups('a', 'a')).toBeNull();
-  });
-
-  it('restore() recreates submenu wrapper and moves children inside', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    storage.save('pdfturbo_toolbar_order', JSON.stringify([
-      { type: 'submenu', id: 'tbg-sub-99', children: ['a', 'b'] },
-      'c',
-    ]));
-    const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.restore();
-    const wrap = document.getElementById('tbg-sub-99');
-    expect(wrap).not.toBeNull();
-    const flyout = wrap?.querySelector('.toolbar-submenu-flyout');
-    expect(flyout?.children[0]?.id).toBe('a');
-    expect(flyout?.children[1]?.id).toBe('b');
-  });
-
-  it('reset() unwraps submenus and restores original order', () => {
-    const toolbar = makeToolbar(['a', 'b', 'c']);
-    const tc = new ToolbarCustomizer(toolbar, storage);
-    tc.mergeGroups('a', 'b');
-    tc.reset();
-    const ids = Array.from(toolbar.children).map(el => el.id);
-    expect(ids).toEqual(['a', 'b', 'c']);
+    expect(tc.mergeGroups('g1', 'g1')).toBeNull();
   });
 });

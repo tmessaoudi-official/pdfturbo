@@ -464,6 +464,10 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     this.refs.pageInput.value = String(current);
     this.refs.pageInput.max   = String(total);
     this.refs.pageTotal.textContent = `/ ${total}`;
+    this.refs.firstPage.disabled   = current <= 1;
+    this.refs.prevPageBtn.disabled = current <= 1;
+    this.refs.nextPageBtn.disabled = current >= total;
+    this.refs.lastPage.disabled    = current >= total;
   }
 
   showToast(msg: string, duration = 3000): void {

@@ -150,18 +150,19 @@ export class TextEditHandler {
       }
     }
 
-    // Detect font family from pdfjs styles and embedded font name heuristics
+    // Detect font family from pdfjs styles and PS font name
     const pdfjsFontFamily = styles[best.fontName]?.fontFamily ?? '';
     const ff = pdfjsFontFamily.toLowerCase();
-    const fn = best.fontName.toLowerCase();
+    // Use the extracted PS name for more reliable family/weight detection
+    const psNameOverlay = extractPsName(best.fontName).toLowerCase();
     let fontFamily = 'Arial';
-    if (/times|roman/i.test(ff) || /times|roman/i.test(fn)) {
+    if (/times|roman/i.test(ff) || /times|roman/i.test(psNameOverlay)) {
       fontFamily = 'Times New Roman';
-    } else if (/courier|typewriter/i.test(ff) || /cour/i.test(fn)) {
+    } else if (/courier|typewriter/i.test(ff) || /cour|mono/i.test(psNameOverlay)) {
       fontFamily = 'Courier New';
-    } else if (/helvetica/i.test(ff) || /helv/i.test(fn)) {
+    } else if (/helvetica/i.test(ff) || /helv/i.test(psNameOverlay)) {
       fontFamily = 'Helvetica';
-    } else if (/georgia/i.test(ff) || /georgia/i.test(fn)) {
+    } else if (/georgia/i.test(ff) || /georgia/i.test(psNameOverlay)) {
       fontFamily = 'Georgia';
     } else if (/\bmono\b/i.test(ff)) {
       fontFamily = 'Courier New';
@@ -174,8 +175,10 @@ export class TextEditHandler {
       ? detectedFontSize
       : Math.max(8, Math.round(h * 0.82));
 
-    const bold   = /bold/i.test(best.fontName);
-    const italic = /italic|oblique/i.test(best.fontName);
+    // Detect bold/italic from the PostScript name, not the raw internal pdfjs id
+    const psNameOverlayFull = extractPsName(best.fontName);
+    const bold   = /bold|black|heavy|semibold|demibold/i.test(psNameOverlayFull);
+    const italic = /italic|oblique/i.test(psNameOverlayFull);
 
     const cover = new RedactionElement(annX - 2, annY - 2, w + 4, h + 4, pageId, bgColor);
     const textEl = new TextElement(annX, annY, pageId, {
@@ -235,9 +238,31 @@ export class TextEditHandler {
 
     const zoom = app.zoomScale;
     const fontPx = Math.max(10, Math.round(opts.fontSize * zoom));
-    const fontFamily = psNameToCssFontFamily(extractPsName(opts.fontName));
-    input.style.font = `${fontPx}px ${fontFamily}`;
+    const psName     = extractPsName(opts.fontName);
+    const fontFamily = psNameToCssFontFamily(psName);
+    const bold   = /bold|black|heavy|semibold|demibold/i.test(psName);
+    const italic = /italic|oblique/i.test(psName);
+    // Build the full CSS font shorthand with weight + style
+    input.style.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${fontPx}px ${fontFamily}`;
     input.style.minWidth = `${Math.max(160, Math.round(opts.originalText.length * fontPx * 0.6))}px`;
+
+    // Reflect detected font properties in the formatting toolbar while editing.
+    const { ui } = app;
+    const familyToSelect: Record<string, string> = {
+      '"Times New Roman", Times, serif': 'Times New Roman',
+      '"Courier New", Courier, monospace': 'Courier New',
+      'Arial, Helvetica, sans-serif': 'Arial',
+    };
+    ui.boldBtn.classList.toggle('btn-active-fmt', bold);
+    ui.boldBtn.setAttribute('aria-pressed', String(bold));
+    ui.boldBtn.disabled = false;
+    ui.italicBtn.classList.toggle('btn-active-fmt', italic);
+    ui.italicBtn.setAttribute('aria-pressed', String(italic));
+    ui.italicBtn.disabled = false;
+    ui.fontSizeInput.value = String(Math.round(opts.fontSize));
+    ui.fontSizeInput.disabled = false;
+    ui.fontFamily.value = familyToSelect[fontFamily] ?? 'Arial';
+    ui.fontFamily.disabled = false;
 
     const rect = app.ui.canvas.getBoundingClientRect();
     if (!opts.rotated) {
@@ -248,11 +273,23 @@ export class TextEditHandler {
       input.style.top = `${e.clientY - fontPx}px`;
     }
 
+    const resetToolbar = () => {
+      ui.boldBtn.disabled = true;
+      ui.italicBtn.disabled = true;
+      ui.fontSizeInput.disabled = true;
+      ui.fontFamily.disabled = true;
+      ui.boldBtn.classList.remove('btn-active-fmt');
+      ui.italicBtn.classList.remove('btn-active-fmt');
+      ui.boldBtn.setAttribute('aria-pressed', 'false');
+      ui.italicBtn.setAttribute('aria-pressed', 'false');
+    };
+
     let done = false;
     const close = () => {
       done = true;
       input.remove();
       if (this._activeEditor === input) this._activeEditor = null;
+      resetToolbar();
     };
 
     const commit = async () => {
