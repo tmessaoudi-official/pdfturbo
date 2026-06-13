@@ -5,16 +5,14 @@ import { HighlightElement } from '../elements/highlightElement';
 import { TextSearchHandler } from '../handlers/textSearchHandler';
 import { SignaturePad } from '../utils/signaturePad';
 import { InteractionHandler } from '../handlers/interactionHandler';
-import { ShapeElement } from '../elements/shapeElement';
 import { PDFElement, type ElementJSON } from '../elements/annotationElement';
 import { UIController, type AppDOMRefs } from '../ui/uiController';
 import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
   HistoryManager, AddElementCmd, TextEditCmd,
-  MoveResizeCmd, ReplaceSourcePdfBytesCmd,
+  ReplaceSourcePdfBytesCmd,
 } from './historyManager';
-import { RedactionElement } from '../elements/redactionElement';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
 import { DocumentModel, type SourcePdf } from './documentModel';
@@ -41,6 +39,7 @@ import { ProgressManager } from '../ui/progressManager';
 import type { IProgressManager } from '../ui/progressManager';
 import { ToolbarCustomizer } from '../ui/toolbarCustomizer';
 import { LocalLayoutStorage } from '../ui/layoutStorage';
+import { FormattingService } from './formattingService';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
@@ -73,7 +72,6 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   drawingHandler: DrawingHandler;
   eraserHandler: EraserHandler;
   _thumbnailPanel: PageThumbnailPanel | null = null;
-  _noFill = true;
   private _sessionManager = new SessionManager();
   private _textSearch = new TextSearchHandler();
   _searchManager = new SearchManager();
@@ -114,6 +112,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
   private _signatureManager!: SignatureManager;
   private _exportPreviewPanel!: ExportPreviewPanel;
   private _canvasClickRouter!: CanvasClickRouter;
+  private _formattingService!: FormattingService;
 
   // ── Signature accessors (IPlacementContext) ───────────────────────────────
   get currentSignature(): string | null { return this._signatureManager.currentSignature; }
@@ -269,6 +268,11 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this.ui.findRegex.classList.remove('active');
   }
 
+  // ── IFormattingContext callback ───────────────────────────────────────────
+  syncFormattingUIDisplay(el: PDFElement | null, mode: ToolMode): void {
+    this.uiController.updateFormattingToolbar(el, mode);
+  }
+
   constructor() {
     this.documentModel = new DocumentModel();
     this.renderer = new PDFRenderer(document.getElementById('pdfCanvas') as HTMLCanvasElement);
@@ -320,6 +324,7 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     );
     this._toolbarCustomizer.restore();
     this._toolbarCustomizer.enableDragDrop();
+    this._formattingService = new FormattingService(this);
     this.setupEventListeners();
     this._initThumbnailPanel();
     void this._documentLoader.restoreSession();
@@ -581,132 +586,26 @@ export class PDFEditorApp implements IExportContext, IPageContext, IAnnotationCo
     this._updateCopyPasteBtns();
   }
 
-  get effectiveFillColor(): string | undefined {
-    return this._noFill ? undefined : this.ui.fillColorInput.value;
-  }
+  get effectiveFillColor(): string | undefined { return this._formattingService.effectiveFillColor; }
 
-  _syncFillToggleUI(): void {
-    const noFill = this._noFill;
-    this.ui.fillNoneBtn.classList.toggle('active', noFill);
-    this.ui.fillNoneBtn.setAttribute('aria-pressed', String(noFill));
-    this.ui.fillColorInput.style.opacity = noFill ? '0.35' : '1';
-  }
+  _syncFillToggleUI(): void { this._formattingService._syncFillToggleUI(); }
 
-  _updateFormattingToolbar() {
-    this.uiController.updateFormattingToolbar(this.selectedElement, this.mode);
-    // Sync _noFill with selected shape's fill state
-    if (this.selectedElement?.type === 'shape') {
-      const she = this.selectedElement as ShapeElement;
-      const isFillable = she.shapeType === 'rect' || she.shapeType === 'ellipse' || she.shapeType === 'freehand';
-      if (isFillable) this._noFill = she.fillColor === undefined;
-    }
-    this._syncFillToggleUI();
-  }
+  _updateFormattingToolbar(): void { this._formattingService.updateFormattingToolbar(); }
 
   handleCanvasClick(e: MouseEvent) { this._canvasClickRouter.handleCanvasClick(e); }
 
   // ── Formatting actions (layering fix — called by formattingBinder) ─────────
-  setFontFamily(value: string): void {
-    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-    const te = this.selectedElement as TextElement;
-    const before = { fontFamily: te.fontFamily };
-    te.fontFamily = value;
-    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontFamily: value }));
-    this.rebuildElementLayer(); this._autosave();
-  }
-  toggleBold(): void {
-    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-    const te = this.selectedElement as TextElement;
-    const before = { bold: te.bold };
-    te.bold = !te.bold;
-    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { bold: te.bold }));
-    this.ui.boldBtn.classList.toggle('btn-active-fmt', te.bold);
-    this.rebuildElementLayer(); this._autosave();
-  }
-  toggleItalic(): void {
-    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-    const te = this.selectedElement as TextElement;
-    const before = { italic: te.italic };
-    te.italic = !te.italic;
-    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { italic: te.italic }));
-    this.ui.italicBtn.classList.toggle('btn-active-fmt', te.italic);
-    this.rebuildElementLayer(); this._autosave();
-  }
-  setFontSize(size: number): void {
-    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-    const te = this.selectedElement as TextElement;
-    const before = { fontSize: te.fontSize };
-    te.fontSize = size;
-    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontSize: size }));
-    this.rebuildElementLayer(); this._autosave();
-  }
-  adjustFontSize(delta: number): void {
-    if (!this.selectedElement || this.selectedElement.type !== 'text') return;
-    const te = this.selectedElement as TextElement;
-    const before = { fontSize: te.fontSize };
-    const newSize = Math.max(8, Math.min(72, te.fontSize + delta));
-    te.fontSize = newSize;
-    this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { fontSize: newSize }));
-    this.ui.fontSizeInput.value = String(newSize);
-    this.rebuildElementLayer(); this._autosave();
-  }
-  setElementColor(value: string): void {
-    if (this.selectedElement?.type === 'text') {
-      const te = this.selectedElement as TextElement;
-      const before = { color: te.color };
-      te.color = value;
-      this.historyManager.record(new MoveResizeCmd(this.elements, te, before, { color: value }));
-      this.rebuildElementLayer(); this._autosave();
-    } else if (this.selectedElement?.type === 'shape') {
-      (this.selectedElement as ShapeElement).strokeColor = value;
-      this.rebuildElementLayer(); this._autosave();
-    } else if (this.selectedElement?.type === 'redaction') {
-      const re = this.selectedElement as RedactionElement;
-      const before = { color: re.color };
-      re.color = value;
-      this.ui.redactColorInput.value = value;
-      this.historyManager.record(new MoveResizeCmd(this.elements, re, before, { color: value }));
-      this.rebuildElementLayer(); this._autosave();
-    }
-  }
-  setFillNone(): void {
-    this._noFill = true;
-    this._syncFillToggleUI();
-    if (this.selectedElement?.type === 'shape') {
-      const she = this.selectedElement as ShapeElement;
-      const before = { fillColor: she.fillColor };
-      she.fillColor = undefined;
-      this.historyManager.record(new MoveResizeCmd(this.elements, she, before, { fillColor: undefined }));
-      this.rebuildElementLayer(); this._autosave();
-    }
-  }
-  startFillColor(): void { this._noFill = false; this._syncFillToggleUI(); }
-  setFillColor(value: string): void {
-    this._noFill = false;
-    this._syncFillToggleUI();
-    if (this.selectedElement?.type === 'shape') {
-      const she = this.selectedElement as ShapeElement;
-      const before = { fillColor: she.fillColor };
-      she.fillColor = value;
-      this.historyManager.record(new MoveResizeCmd(this.elements, she, before, { fillColor: value }));
-      this.rebuildElementLayer(); this._autosave();
-    }
-  }
-  setRedactColor(value: string): void {
-    if (this.selectedElement?.type === 'redaction') {
-      const re = this.selectedElement as RedactionElement;
-      const before = { color: re.color };
-      re.color = value;
-      this.historyManager.record(new MoveResizeCmd(this.elements, re, before, { color: value }));
-      this.rebuildElementLayer(); this._autosave();
-    }
-  }
-  setShapeStrokeWidth(value: number): void {
-    if (this.selectedElement?.type === 'shape') {
-      (this.selectedElement as ShapeElement).strokeWidth = value;
-      this.rebuildElementLayer(); this._autosave();
-    }
-  }
+  setFontFamily(value: string): void { this._formattingService.setFontFamily(value); }
+  toggleBold(): void { this._formattingService.toggleBold(); }
+  toggleItalic(): void { this._formattingService.toggleItalic(); }
+  setFontSize(size: number): void { this._formattingService.setFontSize(size); }
+  adjustFontSize(delta: number): void { this._formattingService.adjustFontSize(delta); }
+  setElementColor(value: string): void { this._formattingService.setElementColor(value); }
+  setFillNone(): void { this._formattingService.setFillNone(); }
+  startFillColor(): void { this._formattingService.startFillColor(); }
+  setFillColor(value: string): void { this._formattingService.setFillColor(value); }
+  setRedactColor(value: string): void { this._formattingService.setRedactColor(value); }
+  setShapeStrokeWidth(value: number): void { this._formattingService.setShapeStrokeWidth(value); }
 
 
   addTextAtPosition(e: MouseEvent) { this._placementManager.addTextAtPosition(e); }
