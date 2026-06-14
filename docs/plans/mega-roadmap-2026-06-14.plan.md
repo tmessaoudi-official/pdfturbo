@@ -20,11 +20,70 @@ refresh. Evidence-graded. Raw research: `docs/reviews/research-2026-06-14/01..05
 - [2026-06-14] DONE (Sprint 3, batch 2): all four landed TDD. (1) DOCX hyperlinks — `getAnnotations` Link+url → `FlowLinkRect` → bbox-tag `FlowRun.linkUrl` (merge key) → `ExternalHyperlink` (blue+underline) + MD `[text](url)`. (2) DOCX JPEG re-encode — `pickImageMime` (alpha→PNG, large opaque→JPEG q0.85) + canvas alpha sampling. (3) List nesting — `listDepth` from x0 vs colLeft. (4) Headings H4–H6 — type `0..6`, `slice(0,6)`, writer HEADINGS extended. (5) True-edit TJ kerning — `replaceShowOpInPlace`/`replaceShowOpHex` distribute text across TJ segments preserving kerning numbers; new `decodeLiteralString`; A2 no-stale-glyph guarantee held. Gate: type-check clean, oxlint 0/0, jsdom **858**, browser **12/12**. Scorecards/CLAUDE.md/KNOWN_ISSUES.md refreshed. NOT pushed (manual).
 - [2026-06-15] DONE (Sprint 3, batch 1): Research fan-out (3 agents → `docs/reviews/research-2026-06-15/01-docx-gaps.md`, `02-trueedit-matrix.md`, `03-ux-a11y.md`) + 2 fidelity scorecards (`scorecard-docx.md`, `scorecard-trueedit.md`). Fixes: **UX text-tool trap** (editText edits existing text only; blank click no longer drops a box → reverts ISSUE-5; commit 873dd37) + **DOCX lettered/parenthesized ordered-list markers** (decimal `(1)`/`1)`, lower/upper-alpha paren forms → docx LevelFormat + per-format numbering refs; commit 5a95192) + ISSUE-5 browser guard updated (7730110). Gate: type-check clean, oxlint 0/0, jsdom **842**, browser **11/11**. Docs refreshed (CLAUDE.md, KNOWN_ISSUES.md, FEATURES.md). NOT pushed (manual).
 - [2026-06-15] AGREED (Sprint 4 — integration UX decisions): (S) **E-signing output = download-only** ('<name>-signed.pdf'); NO auto-resign toggle — challenged & rejected as a security/trust anti-pattern (would retain .p12+passphrase in memory; auto-stamp destroys non-repudiation; v1 signer is full-resave not PAdES). Instead: detect an already-signed PDF on edit and WARN that edits invalidate the signature; re-signing stays a deliberate act. (O) **OCR output = undoable text elements** (elementFactory + historyManager Command → searchable/selectable/exportable). (P) **Page-ops backend = existing PageService** — feature ALREADY shipped (PageService + thumbnail panel drag-reorder/delete/rotate, annotation-aware); Agent P's PageOpsService facade was REDUNDANT+inferior → deleted (commit 813cd6c). Pace = all 3 wired now, autonomous, commit-per-feature + gate, then push checkpoint. (user: "Option 1 + resign toggle? challenge me", "Undoable text elements", "do we not have those? challenge me", "All 3 now autonomous")
+- [2026-06-15] AGREED (Sprint 4 — signing scope + next): (1) **Signing must cover EDITS** — refactor `exportService` to expose assembled PDF bytes (annotations/edits baked in via the existing downloadPDF pipeline), then sign+download those bytes (NOT the raw source). (2) Next = signing wiring (Option 2) + fidelity pass on the 3 real docs (Option 3), then a FULL live QA + qa-sweep. CHALLENGE (recorded): true parallel code-edit is NOT clean — signing's exportService bytes-refactor and fidelity (b underline/strike, d rotated-image) BOTH touch `exportService` op-walk → conflict. So: PARENT does signing wiring incl. the exportService refactor SERIALLY; a READ-ONLY background agent does deep gap analysis + fix-design (file:line) for underline/strike + rotated-image in parallel (no code edits → no collision); parent applies those fixes AFTER signing; empirical real-doc fidelity measurement is parent-only (headless agents can't drive Chrome). (user: "Sign WITH edits", "Option 2 & 3 in parallel then full live QA + qa-sweep, challenge me", "compact then continue without loss")
 - [2026-06-15] DONE (Sprint 4): Batch 3a color fidelity (d7879fb — pdf.js v6 hex-string color args + Tm/Td/T* text-matrix tracking; fixes silent black-collapse that was never actually working end-to-end in v6), Batch 3 c+e (50ac4d5 — roman lists + super/subscript), feature cores integrated (7483397 — signing/ocr + deps node-forge/tesseract.js, 0 vulns), page-ops facade removed (813cd6c). zgapdfsigner REJECTED (transitive forbidden bare pdf-lib@1.17.1) → node-forge@1.3.1 chosen. Remaining: wire OCR + signing UI; Batch 3 (b) underline/strike + (d) rotated-image deferred to final fidelity pass.
 
 ## Formal Plan
 
-### ▶ RESUME HERE (2026-06-15) — SPRINT 4: PARALLEL fidelity + 3 features
+### ▶▶ RESUME HERE (2026-06-15, post-compact #2) — SIGNING WIRING + FIDELITY PASS
+
+**Run mode = autonomous** (3C 30/8 already approved this program — do NOT re-ask). Pause only for
+risky/destructive actions or a new dep failing security/deprecation. NO Co-Authored-By. git push is
+MANUAL. Local binaries only: `./node_modules/.bin/vitest` / `./node_modules/.bin/oxlint .` (PATH ones are
+rtk-proxied → bogus). Browser suite: `./node_modules/.bin/vitest run --config vitest.browser.config.ts`.
+NEVER commit/print the private PDFs in `tests/fixtures/private/` (C1/C2 but confidential; gitignored).
+
+**STATE (all committed, NOT pushed):** 6 session commits — `d7879fb` color fidelity (v6 hex-string color
+args + Tm/Td/T* tracking; the "color works" claim was FALSE in v6, now fixed), `50ac4d5` roman+super/sub,
+`7483397` feature cores+deps (node-forge, tesseract.js; 0 vulns), `813cd6c` page-ops facade removed
+(feature ALREADY ships via PageService+thumbnail panel), `133251e` gitignore private fixtures, `185ec08`
+OCR fully wired. Gate green: type-check ✓, oxlint 0/0, jsdom **947**, browser **14/14**. Tree clean.
+node-forge@1.3.1 + tesseract.js@7 installed.
+
+**FIRST ACTIONS on resume (in order):**
+1. `npm run dev` (restart, :5173).
+2. **Spawn ONE read-only background agent** (`Explore` or general-purpose, `run_in_background:true`, NO
+   worktree needed since read-only): deep gap analysis + fix-DESIGN (file:line + approach, NO code edits)
+   for fidelity **(b) underline/strike** (geometric: detect thin filled rects / line segments near text
+   baselines via the getOperatorList path-op stream in `exportService` op-walk → FlowRun underline/strike
+   flags → docx) and **(d) rotated-image sizing** (decompose image CTM `[a,b,c,d]` → scaleX/scaleY/rotation
+   → `FlowImage.rotation` → docx `wp:anchor` rot). It must return a spec ONLY (parent applies, to avoid
+   colliding with the signing exportService refactor). Tell it: 100% client-side, pdfjs-dist v6 op-list
+   quirks (colors are pre-resolved hex strings; matrices are packed Float32Array args — see d7879fb).
+3. **Parent: SIGNING WIRING (serial, owns exportService):**
+   a. Refactor `exportService` to expose assembled PDF bytes — extract the `downloadPDF` assembly into a
+      reusable `async assemblePdfBytes(): Promise<Uint8Array>` (edits/annotations baked in), and make
+      `downloadPDF` call it. Sign THOSE bytes (decision: "sign WITH edits", NOT raw source).
+   b. New `src/handlers/signingHandler.ts`: read form (.p12 File→Uint8Array, passphrase, page, rect
+      x/y/w/h, reason/location/name), `new PdfSigner().sign(assembledBytes, opts)`, download
+      `<base>-signed.pdf`, SCRUB passphrase in finally. Output = download-only (NO auto-resign — rejected
+      as security/trust anti-pattern). Optional follow-up: detect already-signed PDF → warn edits
+      invalidate sig (NOT required for v1).
+   c. UI: `signBtn` toolbar button + `signModal` (file input .p12/.pfx, password, page#, x/y/w/h numeric
+      fields w/ sensible defaults e.g. bottom-right of page 1, reason/location/name, privacy note
+      "certificate never leaves your browser", error <p>). Register in `uiController` (mirror the OCR
+      modal pattern just added: ui fields + getElementById init + enable in the load block), bind in
+      `toolBinder` (open) + `modalBinder` (confirm/cancel). App methods `openSignModal/closeSignModal/
+      signPdf` on `pdfTurboApp` (mirror `openOcrModal/runOcr`). reportError toasts.
+   d. i18n: `toolbar.sign*`, `modal.sign.*`, `toast.sign*` + `sign.error.<CODE>` in en/fr/ar
+      (key-identical — locale-sync hook enforces; edit all 3, Arabic best-effort). Agent S's report has
+      a full key table.
+   e. Tests: jsdom unit (pure form→SignOptions mapping / rect defaults), real-Chrome browser test
+      (generate a p12 via forge as in `tests/signing/pdfSigner.integration.test.ts`, sign assembled bytes,
+      assert %PDF + a forge lazy-chunk). Full gate. Commit `feat: wire e-signing UI (PKCS#12, sign-with-edits)`.
+4. **Apply fidelity (b)+(d)** per the background agent's spec, TDD each, gate, commit
+   `feat: DOCX underline/strike + rotated-image fidelity`.
+5. **Empirical real-doc fidelity (parent, live browser):** run the export/true-edit pipeline on the 3
+   `tests/fixtures/private/*.pdf` (Assist_Spec_Fonctionnelle, AUDENSIEL CV, AttestationDeDroits) — STRUCTURAL
+   metrics ONLY (page count, #runs, #images, #headings, DOCX validity, element counts), NEVER print
+   contents. Identify image/layout/style gaps; fix highest-ROI with SYNTHETIC committed-test fixtures
+   (private docs drive discovery only, never committed tests). Refresh scorecards.
+6. **FULL live QA + `/qa-sweep`** on http://localhost:5173/pdfturbo/ (incl. OCR + signing flows). Then
+   checkpoint: tell user to push.
+
+---
+
+### ▶ (earlier) RESUME — SPRINT 4: PARALLEL fidelity + 3 features
 
 **Approved run mode = Option 1 (auto + integrate-as-they-land).** Execute autonomously; pause ONLY for
 risky/destructive actions or a new dependency that fails the security/deprecation check (Rule 9). 3C gate
