@@ -30,6 +30,11 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm run test
+      # Real-browser regression tests (ISSUE-1..5 guards). Uses the system Google
+      # Chrome that the ubuntu runner ships (Playwright channel: 'chrome');
+      # install-deps pulls the shared libraries Chrome needs in CI.
+      - run: npx playwright install-deps chromium
+      - run: npm run test:browser
       - run: npm run build
       - if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3
