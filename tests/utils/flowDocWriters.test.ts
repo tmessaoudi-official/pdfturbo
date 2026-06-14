@@ -190,6 +190,36 @@ describe('flowDocToDocxBase64 — image embedding', () => {
   });
 });
 
+describe('flowDocToDocxBase64 — hyperlinks (Gap 2)', () => {
+  it('wraps a linked run in a w:hyperlink with the URL in document rels', async () => {
+    const doc: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [para([run('Visit '), run('our site', { linkUrl: 'https://example.com/page' })])],
+      }],
+    };
+    const files = await unpackDocx(await flowDocToDocxBase64(doc));
+    expect(files['word/document.xml']).toContain('w:hyperlink');
+    const rels = files['word/_rels/document.xml.rels'];
+    expect(rels).toContain('https://example.com/page');
+    expect(rels).toContain('External');
+  });
+
+  it('plain runs produce no hyperlink', async () => {
+    const files = await unpackDocx(await flowDocToDocxBase64(DOC));
+    expect(files['word/document.xml']).not.toContain('w:hyperlink');
+  });
+});
+
+describe('flowDocToMarkdown — hyperlinks (Gap 2)', () => {
+  it('renders a linked run as a markdown link', () => {
+    const doc: FlowDoc = {
+      pages: [{ width: 612, height: 792, paragraphs: [para([run('see '), run('docs', { linkUrl: 'https://x.io' })])] }],
+    };
+    expect(flowDocToMarkdown(doc)).toContain('[docs](https://x.io)');
+  });
+});
+
 describe('flowDocToDocxBase64 — native ordered-list numbering', () => {
   it('word/numbering.xml exists and contains an abstractNum definition', async () => {
     const doc: FlowDoc = {

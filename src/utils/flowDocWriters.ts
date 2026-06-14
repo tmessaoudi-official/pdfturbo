@@ -140,6 +140,7 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
           if (r.bold && r.italic) styled = `***${core}***`;
           else if (r.bold) styled = `**${core}**`;
           else if (r.italic) styled = `*${core}*`;
+          if (r.linkUrl) styled = `[${styled}](${r.linkUrl})`;
           return lead + styled + trail;
         })
         .join('');
@@ -155,15 +156,20 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
 export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
   const docx = await import('docx');
   const {
-    Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, LevelFormat,
-    LineRuleType, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType,
+    Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun, HeadingLevel, AlignmentType,
+    LevelFormat, LineRuleType, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom,
+    TextWrappingType, UnderlineType,
   } = docx;
 
   // Unit conversions: 1pt = 20 twips; 1pt = 12700 EMU (914400 EMU/inch ÷ 72).
   const PT_TO_TWIP = 20;
   const PT_TO_EMU = 12700;
 
-  const HEADINGS = [undefined, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3] as const;
+  const HEADINGS = [
+    undefined,
+    HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3,
+    HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6,
+  ] as const;
   const ALIGN = {
     left: AlignmentType.LEFT,
     center: AlignmentType.CENTER,
@@ -204,19 +210,33 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     const textChildren = page.paragraphs
       .filter(p => paragraphText(p).trim().length > 0)
       .map(p => {
-        const textRuns = p.runs.map(
-          r =>
-            new TextRun({
-              text: r.text,
-              bold: r.bold || undefined,
-              italics: r.italic || undefined,
-              // B-1: preserve the real face when known; generic only as fallback.
-              font: resolveWordFont(r),
-              size: Math.round(r.fontSize * 2), // docx half-points
-              rightToLeft: r.rtl || undefined,
-              color: r.color,
-            })
-        );
+        const mkTextRun = (r: FlowRun) =>
+          new TextRun({
+            text: r.text,
+            bold: r.bold || undefined,
+            italics: r.italic || undefined,
+            // B-1: preserve the real face when known; generic only as fallback.
+            font: resolveWordFont(r),
+            size: Math.round(r.fontSize * 2), // docx half-points
+            rightToLeft: r.rtl || undefined,
+            // Linked runs get the conventional blue + underline so they read as
+            // hyperlinks; otherwise keep the run's own fill color.
+            color: r.linkUrl ? '0563C1' : r.color,
+            underline: r.linkUrl ? { type: UnderlineType.SINGLE } : undefined,
+          });
+
+        // Wrap consecutive runs sharing the same linkUrl in one ExternalHyperlink
+        // (Gap 2). Adjacent same-url runs were already prevented from merging in
+        // reconstructColumn's merge key, so grouping here re-joins them.
+        const textRuns: (ReturnType<typeof mkTextRun> | InstanceType<typeof ExternalHyperlink>)[] = [];
+        for (let ri = 0; ri < p.runs.length; ri++) {
+          const url = p.runs[ri].linkUrl;
+          if (!url) { textRuns.push(mkTextRun(p.runs[ri])); continue; }
+          const group: FlowRun[] = [];
+          while (ri < p.runs.length && p.runs[ri].linkUrl === url) { group.push(p.runs[ri]); ri++; }
+          ri--; // for-loop will re-increment
+          textRuns.push(new ExternalHyperlink({ link: url, children: group.map(mkTextRun) }));
+        }
 
         // B-3: paragraph + line spacing. before/after are in twips; line is in
         // twips with an EXACT rule (so a measured leading maps to a real height).

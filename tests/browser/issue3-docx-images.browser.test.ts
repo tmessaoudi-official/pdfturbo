@@ -60,6 +60,26 @@ function makePngBytes(): Promise<Uint8Array> {
   return Promise.resolve(Uint8Array.from(atob(c.toDataURL('image/png').split(',')[1]), (ch) => ch.charCodeAt(0)));
 }
 
+// A large (≥200×200 px) fully-opaque image → Gap 7 re-encodes it as JPEG.
+async function loadLargeOpaqueImagePdf(): Promise<pdfjsLib.PDFDocumentProxy> {
+  const { PDFDocument } = await import('@cantoo/pdf-lib');
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('no 2d context');
+  ctx.fillStyle = '#888888';
+  ctx.fillRect(0, 0, 256, 256); // fully opaque (alpha 255 everywhere)
+  ctx.fillStyle = '#333333';
+  ctx.fillRect(40, 40, 176, 176);
+  const png = Uint8Array.from(atob(c.toDataURL('image/png').split(',')[1]), (ch) => ch.charCodeAt(0));
+  const pdf = await PDFDocument.create();
+  const embedded = await pdf.embedPng(png);
+  const page = pdf.addPage([400, 400]);
+  page.drawImage(embedded, { x: 20, y: 20, width: 300, height: 300 });
+  return pdfjsLib.getDocument({ data: await pdf.save() }).promise;
+}
+
 // One embedded image drawn on 3 pages → pdf.js promotes it to commonObjs (g_).
 async function loadReusedImagePdf(): Promise<pdfjsLib.PDFDocumentProxy> {
   const { PDFDocument } = await import('@cantoo/pdf-lib');
@@ -97,5 +117,14 @@ describe('ISSUE-3 — DOCX keeps commonObjs images', () => {
     const flow = await svc._extractFlowDoc();
     const total = flow.pages.reduce((n, p) => n + (p.images?.length ?? 0), 0);
     expect(total).toBeGreaterThan(0);
+  });
+
+  it('re-encodes a large opaque image as JPEG (Gap 7 — PNG bloat)', async () => {
+    const svc = makeExtractor(await loadLargeOpaqueImagePdf());
+    const flow = await svc._extractFlowDoc();
+    const imgs = flow.pages.flatMap((p) => p.images ?? []);
+    expect(imgs.length).toBeGreaterThan(0);
+    // 256×256 opaque ≥ 200×200 threshold and no alpha → JPEG, not PNG.
+    expect(imgs.every((i) => i.mimeType === 'image/jpeg')).toBe(true);
   });
 });

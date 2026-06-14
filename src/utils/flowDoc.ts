@@ -43,12 +43,27 @@ export interface FlowRun {
   psName?: string;
   /** Hex fill color without '#' (e.g. 'FF0000' for red). Undefined = default/black. */
   color?: string;
+  /** External URL when this run sits under a Link annotation (→ DOCX/MD hyperlink). */
+  linkUrl?: string;
+}
+
+/**
+ * A Link annotation rectangle in PDF user space (y-up), used to tag words that
+ * fall under it so the export carries a real hyperlink. Built from
+ * `page.getAnnotations()` (subtype 'Link' with a `url`) in exportService.
+ */
+export interface FlowLinkRect {
+  url: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 export interface FlowParagraph {
   runs: FlowRun[];
-  /** 0 = body, 1–3 = heading level (assigned document-wide by assignHeadings). */
-  heading: 0 | 1 | 2 | 3;
+  /** 0 = body, 1–6 = heading level (assigned document-wide by assignHeadings). */
+  heading: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   alignment: 'left' | 'center' | 'right' | 'justify';
   rtl: boolean;
   /** Set when the paragraph opens a list item; prefix marker stripped from first run. */
@@ -79,6 +94,26 @@ export interface FlowImage {
   /** Raw image data as base64 (no data-URL prefix). */
   base64: string;
   mimeType: 'image/png' | 'image/jpeg';
+}
+
+/**
+ * Choose the DOCX image encoding for an extracted raster (Gap 7 — PNG bloat).
+ *
+ * Every extracted image used to be re-encoded as lossless PNG, turning a
+ * full-page scanned photo into a multi-MB entry. JPEG is far smaller for
+ * photographic content, but it cannot carry transparency — so:
+ *  - any image with an alpha channel stays PNG (a JPEG would flatten the mask);
+ *  - large opaque rasters (≥ 200×200 px, photographic scale) become JPEG;
+ *  - small / flat / line-art images stay PNG to keep crisp edges and icons sharp.
+ */
+export function pickImageMime(opts: {
+  width: number;
+  height: number;
+  hasAlpha: boolean;
+}): 'image/png' | 'image/jpeg' {
+  if (opts.hasAlpha) return 'image/png';
+  if (opts.width * opts.height >= 200 * 200) return 'image/jpeg';
+  return 'image/png';
 }
 
 /** Page margins (text-block inset from each edge), in PDF points. */
@@ -154,6 +189,7 @@ interface Word {
   fontName: string;
   rtl: boolean;
   color?: string;
+  linkUrl?: string;
 }
 
 interface Line {
@@ -356,6 +392,7 @@ function reconstructColumn(
           rtl: w.rtl,
           psName,
           color: w.color,
+          linkUrl: w.linkUrl,
         };
         let text = w.text;
         if (prevWord) {
@@ -375,6 +412,7 @@ function reconstructColumn(
           last.rtl === style.rtl &&
           last.psName === style.psName &&
           last.color === style.color &&
+          last.linkUrl === style.linkUrl &&
           Math.abs(last.fontSize - style.fontSize) < 0.6
         ) {
           last.text += text;
@@ -472,7 +510,11 @@ function reconstructColumn(
         const leading = firstText.length - trimmed.length;
         runs[0].text = firstText.slice(0, leading) + match.stripped;
         para.listType = match.type;
-        para.listDepth = 0;
+        // Nesting depth from the item's left indent relative to the column edge,
+        // in whole font-size units (Gap 4). A top-level item sits at colLeft →
+        // depth 0; each ~1 font-size of extra indent advances one level. Clamped
+        // to a sane max so a stray far-right item can't invent depth 50.
+        para.listDepth = Math.max(0, Math.min(8, Math.round((group[0].x0 - colLeft) / Math.max(domSize, 1))));
         if (match.format) {
           para.listFormat = match.format;
           para.listOrdinalText = match.ordinalText;
@@ -504,7 +546,8 @@ export function reconstructPage(
   pageWidth: number,
   pageHeight: number,
   colorMap?: Map<string, string>,
-  redactions?: RedactionRect[]
+  redactions?: RedactionRect[],
+  links?: FlowLinkRect[]
 ): FlowPage {
   const words: Word[] = [];
   for (const it of items) {
@@ -514,7 +557,18 @@ export function reconstructPage(
     const x = it.transform[4];
     const y = it.transform[5];
     const color = colorMap?.get(`${Math.round(x)},${Math.round(y)}`);
-    words.push({ text: it.str, x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color });
+    // Hyperlink tagging: a word belongs to a Link annotation when its mid-glyph
+    // centre (PDF y-up space) falls inside the link rectangle. Centre (not the
+    // baseline origin) avoids edge words at a rect boundary being missed.
+    let linkUrl: string | undefined;
+    if (links?.length) {
+      const cx = x + Math.abs(it.width) / 2;
+      const cy = y + size * 0.4;
+      for (const ln of links) {
+        if (cx >= ln.x0 && cx <= ln.x1 && cy >= ln.y0 && cy <= ln.y1) { linkUrl = ln.url; break; }
+      }
+    }
+    words.push({ text: it.str, x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl });
   }
 
   const split = detectColumnSplit(words, pageWidth);
@@ -604,14 +658,14 @@ export function assignHeadings(doc: FlowDoc): void {
   const headingSizes = [...weight.keys()]
     .filter(s => s >= bodySize * HEADING_RATIO)
     .sort((a, b) => b - a)
-    .slice(0, 3);
+    .slice(0, 6);
 
   for (const page of doc.pages) {
     for (const p of page.paragraphs) {
       const sizes = p.runs.map(r => r.fontSize);
       const domSize = sizes.length ? Math.max(...sizes) : bodySize;
       const rank = headingSizes.indexOf(domSize);
-      p.heading = rank === -1 ? 0 : ((rank + 1) as 1 | 2 | 3);
+      p.heading = rank === -1 ? 0 : ((rank + 1) as 1 | 2 | 3 | 4 | 5 | 6);
     }
   }
 }

@@ -143,6 +143,54 @@ describe('assignHeadings — document-wide font-size clustering', () => {
     expect(title.heading).toBe(1);
     for (const p of rest) expect(p.heading).toBe(0);
   });
+
+  it('assigns up to six heading levels for six distinct larger sizes (H1–H6)', () => {
+    const hsize = (s: number, str: string, y: number) =>
+      mkItem(str, 50, y, { height: s, transform: [s, 0, 0, s, 50, y] });
+    const bodyLine = (y: number) =>
+      mkItem('Body text with plenty of words to dominate the weighted size.', 50, y, {
+        height: 10, transform: [10, 0, 0, 10, 50, y],
+      });
+    const page = reconstructPage(
+      [
+        hsize(30, 'HOne', 740),
+        hsize(24, 'HTwo', 700),
+        hsize(20, 'HThree', 660),
+        hsize(17, 'HFour', 620),
+        hsize(14, 'HFive', 580),
+        hsize(12, 'HSix', 540),
+        bodyLine(500), bodyLine(470), bodyLine(440), bodyLine(410),
+      ],
+      FONTS, PAGE_W, PAGE_H
+    );
+    const doc: FlowDoc = { pages: [page] };
+    assignHeadings(doc);
+    const lvl = (t: string) =>
+      doc.pages[0].paragraphs.find(p => p.runs.some(r => r.text.includes(t)))?.heading;
+    expect(lvl('HOne')).toBe(1);
+    expect(lvl('HTwo')).toBe(2);
+    expect(lvl('HThree')).toBe(3);
+    expect(lvl('HFour')).toBe(4);
+    expect(lvl('HFive')).toBe(5);
+    expect(lvl('HSix')).toBe(6);
+  });
+});
+
+describe('reconstructPage — list nesting depth (Gap 4)', () => {
+  it('derives listDepth from the item x-indent', () => {
+    const items = [
+      mkItem('• alpha', 100, 700),
+      mkItem('• beta', 100, 670),
+      mkItem('• gamma', 100, 640),
+      mkItem('• nested', 112, 610), // one font-size (12pt) further right → depth 1
+    ];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    const lists = page.paragraphs.filter(p => p.listType === 'bullet');
+    expect(lists.length).toBe(4);
+    expect(lists.filter(p => (p.listDepth ?? 0) === 0).length).toBe(3);
+    const nested = lists.find(p => p.runs.some(r => r.text.includes('nested')));
+    expect(nested?.listDepth).toBe(1);
+  });
 });
 
 // ── New: extractPsName ────────────────────────────────────────────────────────

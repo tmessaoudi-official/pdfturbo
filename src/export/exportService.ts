@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, type FlowDoc, type FlowImage, type FontInfoMap, type RawTextItem, type RedactionRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, pickImageMime, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect } from '../utils/flowDoc';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -316,10 +316,25 @@ export class ExportService {
         .filter(el => el.pageId === docPage.id && el.type === 'redaction')
         .map(el => ({ x: el.x, y: el.y, width: el.width, height: el.height }));
 
-      const [content, opList] = await Promise.all([
+      const [content, opList, annotations] = await Promise.all([
         page.getTextContent(),
         page.getOperatorList().catch(() => null),
+        page.getAnnotations().catch(() => [] as unknown[]),
       ]);
+
+      // Gap 2: Link annotations → hyperlinks. pdf.js gives each Link a `url` and a
+      // `rect` [x0,y0,x1,y1] in PDF user space (y-up) — the same space the text
+      // item transforms live in, so reconstructPage can bbox-match words to URLs.
+      const links: FlowLinkRect[] = (annotations as Array<{ subtype?: string; url?: string; rect?: number[] }>)
+        .filter(a => a.subtype === 'Link' && typeof a.url === 'string' && !!a.url && Array.isArray(a.rect) && a.rect.length === 4)
+        .map(a => {
+          const [rx0, ry0, rx1, ry1] = a.rect as number[];
+          return {
+            url: a.url as string,
+            x0: Math.min(rx0, rx1), y0: Math.min(ry0, ry1),
+            x1: Math.max(rx0, rx1), y1: Math.max(ry0, ry1),
+          };
+        });
 
       const items = content.items as RawTextItem[];
       const styles = content.styles as Record<string, { fontFamily?: string }>;
@@ -400,7 +415,18 @@ export class ExportService {
                 const imgCtx = imgCanvas.getContext('2d');
                 if (!imgCtx) continue;
                 imgCtx.drawImage(imgData.bitmap, 0, 0);
-                const dataUrl = imgCanvas.toDataURL('image/png');
+                // Gap 7: pick PNG vs JPEG. Detect alpha (any non-opaque pixel)
+                // so transparent images stay PNG; large opaque rasters become
+                // JPEG to avoid multi-MB lossless PNG bloat for scanned photos.
+                let hasAlpha = false;
+                try {
+                  const px = imgCtx.getImageData(0, 0, imgCanvas.width, imgCanvas.height).data;
+                  for (let p = 3; p < px.length; p += 4) {
+                    if (px[p] < 255) { hasAlpha = true; break; }
+                  }
+                } catch { hasAlpha = true; /* unreadable/tainted → safe lossless PNG */ }
+                const mimeType = pickImageMime({ width: imgData.width, height: imgData.height, hasAlpha });
+                const dataUrl = imgCanvas.toDataURL(mimeType, mimeType === 'image/jpeg' ? 0.85 : undefined);
                 const base64 = dataUrl.split(',')[1];
                 if (base64) {
                   // Axis-aligned: width=|a|, height=|d|; PDF y-up → DOCX y-down
@@ -410,7 +436,7 @@ export class ExportService {
                     pageImages.push({
                       x: ctm[4], y: vp.height - ctm[5] - h,
                       width: w, height: h,
-                      base64, mimeType: 'image/png',
+                      base64, mimeType,
                     });
                   }
                 }
@@ -445,7 +471,7 @@ export class ExportService {
         } catch { /* operator list unavailable */ }
       }
 
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions);
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined);
       if (pageImages.length > 0) flowPage.images = pageImages;
       flowDoc.pages.push(flowPage);
     }
