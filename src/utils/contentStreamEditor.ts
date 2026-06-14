@@ -18,9 +18,11 @@
  */
 import {
   PDFArray,
+  PDFDict,
   PDFDocument,
   PDFName,
   PDFRawStream,
+  PDFRef,
   StandardFonts,
   decodePDFRawStream,
   rgb,
@@ -522,6 +524,52 @@ function setPageContent(doc: PDFDocument, pageIndex: number, content: string): v
   page.node.set(PDFName.of('Contents'), ref);
 }
 
+/**
+ * Replace a Form XObject's content stream with new uncompressed content.
+ * Preserves the XObject's /BBox, /Resources, /Matrix, and other metadata.
+ */
+function setFormXObjectContent(
+  doc: PDFDocument,
+  pageIndex: number,
+  xobjName: string,
+  content: string,
+): void {
+  try {
+    const page = doc.getPage(pageIndex);
+    const name = xobjName.replace(/^\//, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (!resources?.get) return;
+    const xobjDictRaw = resources.get(PDFName.of('XObject'));
+    if (!xobjDictRaw) return;
+    const xobjDict = doc.context.lookup(xobjDictRaw) as PDFDict;
+    if (!xobjDict?.get) return;
+    const streamRef = xobjDict.get(PDFName.of(name));
+    if (!streamRef) return;
+    const oldStream = doc.context.lookup(streamRef);
+    if (!(oldStream instanceof PDFRawStream)) return;
+
+    const bytes = new Uint8Array(content.length);
+    for (let i = 0; i < content.length; i++) bytes[i] = content.charCodeAt(i) & 0xff;
+
+    // Build new dict: copy all entries except /Filter, /DecodeParms (now uncompressed), update /Length
+    const newDict = PDFDict.fromMapWithContext(new Map(), doc.context);
+    for (const [k, v] of oldStream.dict.entries()) {
+      const kStr = k.toString();
+      if (kStr !== '/Filter' && kStr !== '/DecodeParms') newDict.set(k, v);
+    }
+    newDict.set(PDFName.of('Length'), doc.context.obj(bytes.length));
+
+    const newStream = PDFRawStream.of(newDict, bytes);
+    if (streamRef instanceof PDFRef) {
+      doc.context.assign(streamRef, newStream);
+    } else {
+      const newRef = doc.context.register(newStream);
+      xobjDict.set(PDFName.of(name), newRef);
+    }
+  } catch { /* silently ignore — falls through to overlay */ }
+}
+
 /** Blank the string payload of a show op in place (keeps state side-effects like T*). */
 function blankShowOp(op: CsOp): void {
   if (op.operator === 'TJ') {
@@ -563,6 +611,18 @@ interface EditTarget {
   ops: CsOp[];
   target: TextOpInfo;
   textOps: TextOpInfo[];
+  /** Set when the target lives inside a Form XObject rather than the page stream. */
+  xObjectName?: string;
+}
+
+/** Write modified ops back to either the page stream or an XObject stream. */
+function writeBack(doc: PDFDocument, pageIndex: number, found: EditTarget): void {
+  const content = serializeOps(found.ops);
+  if (found.xObjectName) {
+    setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
+  } else {
+    setPageContent(doc, pageIndex, content);
+  }
 }
 
 function findTarget(
@@ -571,21 +631,42 @@ function findTarget(
   point: { x: number; y: number },
   tolerance: number
 ): EditTarget | null {
-  const content = getPageContent(doc, pageIndex);
-  if (!content) return null;
-  const ops = groupOps(tokenizeContentStream(content));
-  const textOps = locateTextOps(ops);
+  const pageContent = getPageContent(doc, pageIndex);
+  if (!pageContent) return null;
+  const pageOps = groupOps(tokenizeContentStream(pageContent));
+  const directTextOps = locateTextOps(pageOps);
 
   let best: TextOpInfo | null = null;
   let bestDist = Infinity;
-  for (const t of textOps) {
+  for (const t of directTextOps) {
     const dist = Math.hypot(t.origin.x - point.x, t.origin.y - point.y);
-    if (dist <= tolerance && dist < bestDist) {
-      bestDist = dist;
-      best = t;
+    if (dist <= tolerance && dist < bestDist) { bestDist = dist; best = t; }
+  }
+  if (best) return { ops: pageOps, target: best, textOps: directTextOps };
+
+  // Fall back: search Form XObjects referenced by Do operators in the page stream.
+  interface XCandidate { dist: number; target: TextOpInfo; ops: CsOp[]; textOps: TextOpInfo[]; xObjectName: string }
+  let bestX: XCandidate | null = null;
+  for (const op of pageOps) {
+    if (op.operator !== 'Do') continue;
+    const raw = op.operands[0]?.raw ?? '';
+    if (!raw) continue;
+    const xContent = getFormXObjectContent(doc, pageIndex, raw);
+    if (!xContent) continue;
+    const xMatrix = getFormXObjectMatrix(doc, pageIndex, raw);
+    const xOps = groupOps(tokenizeContentStream(xContent));
+    const xTextOps = locateTextOps(xOps);
+    for (const t of xTextOps) {
+      const ps = applyMatrixToPoint(xMatrix, t.origin.x, t.origin.y);
+      const dist = Math.hypot(ps.x - point.x, ps.y - point.y);
+      if (dist <= tolerance && dist < (bestX?.dist ?? Infinity)) {
+        bestX = { dist, target: t, ops: xOps, textOps: xTextOps, xObjectName: raw.replace(/^\//, '') };
+      }
     }
   }
-  return best ? { ops, target: best, textOps } : null;
+  if (bestX) return { ops: bestX.ops, target: bestX.target, textOps: bestX.textOps, xObjectName: bestX.xObjectName };
+
+  return null;
 }
 
 /**
@@ -599,6 +680,38 @@ export async function findTextOpAt(
   tolerance = 5
 ): Promise<TextOpInfo | null> {
   return findTarget(doc, pageIndex, point, tolerance)?.target ?? null;
+}
+
+/** Diagnostic: returns content stream length, direct+xobject text ops count, and first 5 origins. */
+export function diagnosePage(doc: PDFDocument, pageIndex: number): {
+  contentLen: number; directOps: number; xObjectOps: number; first5: Array<{op: string; x: number; y: number; inXObj?: string}>;
+} {
+  const content = getPageContent(doc, pageIndex);
+  const pageOps = content ? groupOps(tokenizeContentStream(content)) : [];
+  const directTextOps = locateTextOps(pageOps);
+  let xObjectOpsCount = 0;
+  const xFirst5: Array<{op: string; x: number; y: number; inXObj: string}> = [];
+  for (const op of pageOps) {
+    if (op.operator !== 'Do') continue;
+    const raw = op.operands[0]?.raw ?? '';
+    const xContent = raw ? getFormXObjectContent(doc, pageIndex, raw) : null;
+    if (!xContent) continue;
+    const xMatrix = getFormXObjectMatrix(doc, pageIndex, raw);
+    const xOps = groupOps(tokenizeContentStream(xContent));
+    const xTextOps = locateTextOps(xOps);
+    xObjectOpsCount += xTextOps.length;
+    if (xFirst5.length < 5) {
+      for (const t of xTextOps.slice(0, 5 - xFirst5.length)) {
+        const ps = applyMatrixToPoint(xMatrix, t.origin.x, t.origin.y);
+        xFirst5.push({ op: t.operator, x: Math.round(ps.x*100)/100, y: Math.round(ps.y*100)/100, inXObj: raw });
+      }
+    }
+  }
+  const first5 = [
+    ...directTextOps.slice(0, 5).map(t => ({ op: t.operator, x: Math.round(t.origin.x*100)/100, y: Math.round(t.origin.y*100)/100 })),
+    ...xFirst5,
+  ].slice(0, 5);
+  return { contentLen: content.length, directOps: directTextOps.length, xObjectOps: xObjectOpsCount, first5 };
 }
 
 /**
@@ -617,7 +730,7 @@ export async function deleteTextAt(
 
   blankShowOp(found.ops[found.target.opIndex]);
   blankAllNearby(found.ops, found.textOps, found.target.origin, found.target.opIndex);
-  setPageContent(doc, pageIndex, serializeOps(found.ops));
+  writeBack(doc, pageIndex, found);
   return true;
 }
 
@@ -905,7 +1018,7 @@ export async function changeSizeAt(
   if (!sizeToken) return false;
   sizeToken.raw = String(newSize);
   sizeToken.value = newSize;
-  setPageContent(doc, pageIndex, serializeOps(ops));
+  writeBack(doc, pageIndex, found);
   return true;
 }
 
@@ -940,7 +1053,7 @@ export async function changeColorAt(
     { type: 'number', raw: g, value: color.g },
     { type: 'number', raw: b, value: color.b },
   ];
-  setPageContent(doc, pageIndex, serializeOps(ops));
+  writeBack(doc, pageIndex, found);
   return true;
 }
 
@@ -960,7 +1073,7 @@ export async function replaceTextAt(
   // Path 1: ASCII literal in-stream replacement.
   if (replaceShowOpInPlace(ops[target.opIndex], newText)) {
     blankAllNearby(ops, textOps, target.origin, target.opIndex);
-    setPageContent(doc, pageIndex, serializeOps(ops));
+    writeBack(doc, pageIndex, found);
     return true;
   }
 
@@ -974,7 +1087,7 @@ export async function replaceTextAt(
     const hexEncoded = encodeWithSubset(newText, reverseMap, bytesPerCode);
     if (hexEncoded !== null && replaceShowOpHex(ops[target.opIndex], hexEncoded)) {
       blankAllNearby(ops, textOps, target.origin, target.opIndex);
-      setPageContent(doc, pageIndex, serializeOps(ops));
+      writeBack(doc, pageIndex, found);
       return true;
     }
   }
@@ -982,7 +1095,7 @@ export async function replaceTextAt(
   // Path 3: Font-matched fallback — blank then redraw with best standard font.
   blankShowOp(ops[target.opIndex]);
   blankAllNearby(ops, textOps, target.origin, target.opIndex);
-  setPageContent(doc, pageIndex, serializeOps(ops));
+  writeBack(doc, pageIndex, found);
 
   // Color: explicit style overrides detected fill color
   let drawColor: ReturnType<typeof rgb> | undefined;

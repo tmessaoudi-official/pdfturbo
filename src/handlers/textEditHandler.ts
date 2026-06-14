@@ -81,17 +81,37 @@ export class TextEditHandler {
     // ── True edit first: content-stream surgery on the source PDF ──
     try {
       const libDoc = await PDFDocument.load(src.bytes.slice(0));
-      const origin = { x: best.transform[4], y: best.transform[5] };
-      const target = await findTextOpAt(
-        libDoc, docPage.sourcePageNum - 1, origin, TRUE_EDIT_TOLERANCE
+
+      // pdfjs splits a single Tj string at word boundaries, so the clicked item
+      // may be a sub-word whose transform[4,5] doesn't match the Tm origin in the
+      // content stream. Try the best (clicked) item first; if it misses, fall back
+      // to other nearby items sorted by distance — one of them will typically have
+      // a transform matching the actual Tm start position.
+      const FALLBACK_RADIUS = 50;
+      const fallbackCandidates = items.filter(it =>
+        it !== best &&
+        it.str.trim() &&
+        Math.hypot(it.transform[4] - pdfX, it.transform[5] - pdfY) < FALLBACK_RADIUS,
+      ).sort((a, b) =>
+        Math.hypot(a.transform[4] - pdfX, a.transform[5] - pdfY) -
+        Math.hypot(b.transform[4] - pdfX, b.transform[5] - pdfY),
       );
+
+      let target = null;
+      let matchedOrigin = { x: best.transform[4], y: best.transform[5] };
+      for (const candidate of [best, ...fallbackCandidates]) {
+        const o = { x: candidate.transform[4], y: candidate.transform[5] };
+        target = await findTextOpAt(libDoc, docPage.sourcePageNum - 1, o, TRUE_EDIT_TOLERANCE);
+        if (target) { matchedOrigin = o; break; }
+      }
+
       if (target) {
         this._openTrueEditInput(e, app, {
           libDoc,
           src,
           pageId: docPage.id,
           pageIndex: docPage.sourcePageNum - 1,
-          origin,
+          origin: matchedOrigin,
           fontName: best.fontName,
           fontKey: target.fontKey,
           pdfjsFontFamily: styles[best.fontName]?.fontFamily ?? '',
