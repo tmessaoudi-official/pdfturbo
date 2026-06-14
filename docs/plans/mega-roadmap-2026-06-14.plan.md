@@ -10,34 +10,98 @@ refresh. Evidence-graded. Raw research: `docs/reviews/research-2026-06-14/01..05
 - [2026-06-14] AGREED: Personal PDFs (CV, attestation) used as black-box test inputs only — never extract/print contents (personal data). `test-document.pdf` is the primary safe fixture.
 - [2026-06-14] DONE: Sprint 1 executed (4 parallel TDD agents + parent integration gate) — REDACT-DOCX leak (P0, confirmed RED then fixed in flowDoc/exportService), MEMLEAK (P1, Command.dispose + loadingTask.destroy; corrected agent's no-op doc.destroy), TRUEEDIT-XOBJECT no-op (P1→overlay fallback), TRUEEDIT-OVERBLANK (P1, shadow radius 4→0.5pt), A11Y canvas/toast + I18N update toast (P1). Caught + fixed 2 agent integration misses (no-op destroy via type-check; DOCX browser-test fixture regression). Gate: type-check clean, oxlint 0/0, jsdom 800, browser 11. KNOWN_ISSUES.md updated.
 - [2026-06-14] DONE: Sprint 0 executed — H1 (CLAUDE.md doc-truth: escapeValue/registerType/export-consolidation), C1 (oxlint 76→0 warnings), C2 (stale eslint-disable modernized in touched files), D4 (dead `diagnosePage` removed; `getFormXObjectMatrix` NOT dead — 2 live callers), F2 (IndexedDB privacy note in SECURITY.md). Gate: oxlint 0/0, type-check clean, jsdom 771, browser 11. Migration committed separately (462f53e).
+- [2026-06-15] DONE: Sprint 2 executed (2 parallel TDD agents, disjoint files, parent full gate + real-Chrome manual QA). True-edit A-1..A-5 (XObject/refused→overlay, full-TJ-hex, UTF-16BE cmap, scoped blanking, Type3/vertical/invisible refuse) + DOCX B-1..B-5 (font allow-list, margins, spacing, floating images, justify/indent). Gate: type-check clean, oxlint 0/0, jsdom 832, browser 11/11. Commits 780193d/d662f98/45a8423. CI failed on flaky `issue1-toolbar-dnd` (verified non-deterministic: 1 fail/4 pass same code) → fixed with scoped `retry:2` (7dd7fd2). CI now green. Confirmed `test:browser` IS in deploy.yml.
+- [2026-06-15] AGREED: Sprint 3 = Fidelity & UX Deep Sweep. Fidelity goal = "(1) scorecard + fix reachable + mark ceiling, THEN (2) attempt the hard ones." Method = hybrid (parallel static-research agents to disk + main-loop live browser empirical testing + TDD fixes). Persist plan → user compacts → resume. Fold the live-found text-tool UX defect into Track 3; recommended fix = separate Add Text (draw-to-place) from Edit PDF text. (user: "1 then 2", "persist plan then I compact", "challenge me")
 - [2026-06-14] AGREED: Sprint 2 = fidelity, BOTH workstreams, gate mode "Default 30/8 with stops" (user). Scope re-cut around correctness-first: Workstream A = A1 B4 XObject no-op→overlay, A2 B3 replaceShowOpHex all-TJ-segments, A3 B2 cmapHexToUnicodeStr UTF-16BE 4-hex+surrogates, A4 B5 blankAllNearby restrict-to-same-font-size, A5 defensive routing (Type3/vertical/invisible-Tr → overlay). Workstream B = B1 broaden font allow-list, B2 page margins, B3 para/line spacing, B4 image x/y positioning, B5 justify+indent. DEFERRED (research-confirmed multi-day/hard): lattice tables, vector→raster, recursive 3-col XY-cut, rotated-page true-edit, RTL logical reorder, A6 cm-rotation redraw (regression risk). Method: 2 parallel TDD agents on disjoint files + parent full gate; locale edits in parent. (user: "Approve full plan")
 
 ## Formal Plan
 
-### ▶ RESUME HERE (post-compact, 2026-06-14)
+### ▶ RESUME HERE (post-compact, 2026-06-15) — SPRINT 3 sweep
 
-**State — all committed, all green.** Commits on top of QA baseline: `462f53e` migrate-to-oxlint,
-`49c6633` Sprint 1 hazards, `ae85c45` lint-zero, `8120a11` docs. Gate last run: type-check clean,
-oxlint **0/0**, jsdom **800**, browser **11**. Dev server was `npm run dev` at :5173 (RESTART it
-post-compact). Untracked: 3 PDFs — NEVER commit the CV/attestation (personal data); use them
-black-box only; `test-document.pdf` optional. git push is manual; commits = thematic; NO Co-Authored-By.
+**State — all committed, all green, CI green.** Sprint 2 landed: commits `780193d` (true-edit A-1..A-5),
+`d662f98` (DOCX B-1..B-5), `45a8423` (docs), `7dd7fd2` (CI flake fix: retry on `issue1-toolbar-dnd`).
+Gate last run: type-check clean, oxlint **0/0**, jsdom **832**, browser **11/11**, real-Chrome manual QA
+0 errors. **CI is green** (deploy.yml runs type-check→lint→jsdom→`test:browser`→build→deploy; browser
+suite IS integrated). All pushed by user. Working tree: only the 3 untracked PDFs.
+**RESTART `npm run dev` (:5173) post-compact.** NEVER commit the CV/attestation (personal data) — use
+them BLACK-BOX only (structural metrics, never print contents); `test-document.pdf` is the safe fixture.
+git push is manual; commits = thematic; NO Co-Authored-By. Run browser tests with
+`./node_modules/.bin/vitest run --config vitest.browser.config.ts` (PATH `vitest`/`npx vitest` =
+rtk-proxied global nightly → bogus output). `gh` CLI is NOT installed; use the public GitHub API via
+`curl` for CI status (logs need a token we don't have).
 
-**NEXT = Sprint 2 — fidelity (BOTH true-edit + DOCX), user-chosen, TDD each:**
-- **True-edit (Workstream A):** A3 raise match rate (tune `TRUE_EDIT_TOLERANCE`=3pt + multi-candidate
-  scan + occurrence hint for multi-op-same-origin), A4 (`replaceShowOpHex` only does first TJ segment;
-  `cmapHexToUnicodeStr` parity heuristic wrong for ligatures/non-BMP), A5 TJ kerning preservation,
-  A6 `cm`/`Tm` scale+rotation in Path-3 redraw + rotated pages.
-- **DOCX (Workstream B):** B1 broaden font allow-list (beyond 3 generics — biggest body wrongness),
-  B2 page margins + para/line spacing, B3 robust color (replace origin-keyed lookup), B4 image x/y
-  positioning (currently centered at page end). Stretch: B6 lattice tables, B7 vector raster.
+**NEXT = Sprint 3 — Fidelity & UX Deep Sweep (user-chosen).** Goal order: **(1) scorecard + fix every
+reachable gap + honestly mark the unreachable ceiling, THEN (2) attempt the fundamentally-hard items.**
+Full detail below in "## Sprint 3 — Fidelity & UX Deep Sweep". Method = HYBRID: parallel static-research
+agents write raw findings to `docs/reviews/research-2026-06-15/` (they CANNOT drive a browser); the
+**empirical browser testing (DOCX export, true-edit clicks, UX/intuitiveness) is run live by the main
+loop** + TDD fixes + parent full gate. Known live-found UX defect to fold into Track 3:
+**text tool** — blank-add isn't draw-to-place (can't drag to size like shapes) AND an added box can't be
+deleted/resized/rotated because edit-text mode keeps intercepting → re-adds/displaces. Recommended fix:
+**separate "Add Text" (draw-to-place) from "Edit PDF text" (click existing)**, auto-switch to Select after
+placing (reverts the ISSUE-5 unification).
 
-**Method:** hybrid — parallel TDD agents on DISJOINT files (true-edit = contentStreamEditor.ts/
-textEditHandler.ts; DOCX = flowDoc.ts/flowDocWriters.ts/exportService.ts — disjoint, can parallelize),
-parent runs the FULL gate (agents skip project-wide tsc/oxlint to avoid races; parent caught 2 agent
-misses in Sprint 1 — a no-op `doc.destroy` and a browser-fixture regression — so the parent gate is
-non-negotiable). Fix at root, no bandaids. Engine file `contentStreamEditor.ts` is 1406 lines (split
-candidate, defer). Raw research already on disk: `docs/reviews/research-2026-06-14/01-true-edit.md` &
-`02-docx-fidelity.md` have the full gap lists + file:line.
+---
+
+## Sprint 3 — Fidelity & UX Deep Sweep (ACTIVE)
+
+**Goal (user-ordered):** **Phase 1** = build a per-attribute *fidelity scorecard*, fix every **reachable**
+gap, and honestly **mark the unreachable ceiling**. **Phase 2** (after Phase 1 lands) = attempt the
+**fundamentally-hard** items knowing ROI/certainty is low. Do NOT chase "100%" as a number — measure,
+fix-reachable, document-ceiling.
+
+**Method = HYBRID.** Static analysis fans out to parallel agents (write raw findings to
+`docs/reviews/research-2026-06-15/`); empirical browser work is run **live by the main loop** (agents are
+headless, cannot drive Chrome). Every fix is TDD; parent runs the full gate (type-check + oxlint 0/0 +
+`npm run test` + `./node_modules/.bin/vitest run --config vitest.browser.config.ts`) before any commit.
+Corpus: `test-document.pdf` + synthetic per-attribute fixtures in `tests/fixtures/` + (BLACK-BOX only,
+never print contents) the personal CV/attestation for structural metrics. Prior raw research to build on:
+`docs/reviews/research-2026-06-14/01-true-edit.md` + `02-docx-fidelity.md`.
+
+### Track 1 — DOCX fidelity scorecard
+Per-attribute measure → fix-reachable → mark-ceiling. Attributes & current state (post-Sprint-2):
+DONE: font family allow-list (B-1), size, bold/italic name-sniff, margins (B-2), para/line spacing (B-3),
+L/C/R + justify (B-5), indent (B-5), bullet+ordered lists (flat), headings (size cluster), images
+position/size (B-4 floating), redaction-aware extraction (Sprint 1), per-page sections, RTL flags.
+REACHABLE GAPS (Phase 1 fix): underline/strike (path-seg detect), hyperlinks (`getAnnotations`→
+`ExternalHyperlink`), super/subscript (baseline+size ratio), list nesting (x0 buckets) + wider marker
+regex (a)/i./(1)), heading bold/caps signal + H1-H6, color robustness (replace origin-keyed `colorMap`;
+handle scn/Separation→black bug B7), JPEG photo re-encode (stop PNG bloat), rotated/skewed image sizing.
+CEILING (Phase 2 / mark honest): lattice tables (vector ruling detect), borderless tables (chronic FP),
+vector→region rasterization, recursive 3-col/мixed XY-cut + tagged-PDF `getStructTree` fast path,
+headers/footers routing, RTL logical reorder + Arabic presentation-form normalization, exact subset-font
+face matching (no embedded file = impossible). Editor overlay annotations in DOCX = product decision.
+
+### Track 2 — True-edit fidelity scorecard
+Edge-case matrix already enumerated in `01-true-edit.md §3` — re-verify each post-Sprint-2 (live + browser
+tests): standard/subset/CID/Type3/embedded × ASCII/accent/€/ligature/kerned-TJ/CID-multibyte; cm-transformed;
+Form-XObject (now overlay); nested XObject; rotated page; RTL/Arabic; vertical/WMode (now refuse); invisible
+Tr (now refuse); encrypted (overlay); scanned (add-box); tagged (breaks MCID). For each: which path
+(1 literal / 2 subset-reuse / 3 redraw / overlay / refuse) and is the result visible + extractable + correct?
+REACHABLE GAPS (Phase 1): TJ kerning preservation (re-distribute vs collapse — roadmap A5, NOT yet done),
+B7/B8 fill-color scn/Separation + `Tr` color tracking, number-tokenizer hardening (B1). CEILING (Phase 2):
+cm scale/rotation in Path-3 redraw (A6), rotated-page location/placement, RTL shaped-glyph encoding +
+embedded Arabic fallback font, Type3 true-edit, PDFium-WASM moonshot.
+
+### Track 3 — UX / intuitiveness sweep (live browser; qa-sweep skill)
+Drive the real app. **Fold in the live-found text-tool defect** (blank-add not draw-to-place; added box
+can't be deleted/resized/rotated because edit-text keeps intercepting → re-add/displace). Recommended fix:
+**separate Add Text (draw-to-place, drag like shapes) from Edit PDF text (click existing)**, auto-switch to
+Select after placing/editing. Broader sweep: tool discoverability / easy-find / labels, the
+add→select→transform→delete loop for EVERY element type, keyboard + focus, mobile/touch nav (44px targets),
+a11y of the editing flow (axe-core), empty/error states, modal Esc, i18n completeness on new strings.
+Output: prioritized UX findings (SYSTEMIC vs PAGE vs MOBILE) + TDD fixes for the defects.
+
+### Execution order (resume)
+0. Restart dev server; confirm gate still green.
+1. Fan out parallel research agents (Track 1 gap-detail, Track 2 matrix re-verify, Track 3 static UX/a11y
+   read) → raw files in `docs/reviews/research-2026-06-15/`. Cap ≤5 concurrent LLM agents.
+2. Build the two scorecards (DOCX, true-edit) from a fixture corpus — main loop runs the empirical
+   browser/export measurements; write `docs/reviews/research-2026-06-15/scorecard-*.md`.
+3. Live browser UX sweep (Track 3) including the text-tool repro.
+4. PHASE 1 fixes (reachable gaps), TDD each, thematic commits, gate green, manual QA.
+5. PHASE 2 attempts (hard items), clearly labelled experimental; keep or honestly mark unreachable.
+6. Update KNOWN_ISSUES.md / CLAUDE.md / FEATURES.md as each lands.
 
 ---
 
