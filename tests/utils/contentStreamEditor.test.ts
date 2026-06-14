@@ -698,6 +698,53 @@ describe('replaceShowOpInPlace', () => {
     const textOps = locateTextOps(innerOps);
     expect(replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'Héllo')).toBe(false);
   });
+
+  // Gap 1 (biggest-ROI true-edit fix): a kerned TJ array must NOT be collapsed to
+  // a single literal — that discarded every kerning number and reflowed the line,
+  // shifting neighbour glyphs. New behaviour: distribute newText across the
+  // existing string segments by their original char counts (last segment absorbs
+  // any length delta) and leave the kerning numbers in place.
+  it('preserves kerning numbers and distributes text across TJ string segments', () => {
+    const src = 'BT /F1 12 Tf [(Hel) -50 (lo) -30 (!!)] TJ ET'; // "Hello!!" = 3/2/2
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'World??'); // 7 chars, same length
+    expect(ok).toBe(true);
+    const s = serializeOps(innerOps);
+    expect(s).toContain('-50');
+    expect(s).toContain('-30');
+    expect(s).toContain('(Wor)'); // seg0 keeps 3 chars
+    expect(s).toContain('(ld)');  // seg1 keeps 2 chars
+    expect(s).toContain('(??)');  // seg2 keeps 2 chars
+    expect(s).not.toContain('(Hel)');
+    expect(s).not.toContain('(lo)');
+  });
+
+  it('absorbs a longer edit into the last TJ segment, keeping kerning', () => {
+    const src = 'BT [(Hel) -50 (lo)] TJ ET'; // "Hello" = 3/2
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'Helloooo'); // 8 chars
+    expect(ok).toBe(true);
+    const s = serializeOps(innerOps);
+    expect(s).toContain('(Hel)');    // seg0 first 3
+    expect(s).toContain('(loooo)');  // seg1 (last) absorbs the rest ('Helloooo'.slice(3))
+    expect(s).toContain('-50');
+  });
+
+  it('blanks trailing TJ segments for a shorter edit, leaving no stale text', () => {
+    const src = 'BT [(Hel) -50 (lo) -30 (!!)] TJ ET';
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'Hi'); // 2 chars
+    expect(ok).toBe(true);
+    const s = serializeOps(innerOps);
+    expect(s).toContain('(Hi)');
+    expect(s).not.toContain('(lo)');
+    expect(s).not.toContain('(!!)');
+    expect(s).toContain('-50'); // kerning still present even with emptied segments
+    expect(s).toContain('-30');
+  });
 });
 
 // ── Phase B: ToUnicode CMap parsing ──────────────────────────────────────────
@@ -837,27 +884,29 @@ describe('replaceShowOpHex', () => {
     expect(replaceShowOpHex(innerOps[textOps[0].opIndex], '<0048>')).toBe(false);
   });
 
-  // BUG A2: replaceShowOpHex used to swap ONLY the first hexstring of a multi-
-  // segment TJ array, leaving subsequent hexstrings as STALE old glyphs — a
-  // garbled Path-2 edit. The full new text must land in the first hexstring and
-  // EVERY other hexstring item must be blanked to empty <>, so no old glyph
-  // bytes survive.
-  it('blanks every other hexstring segment in a multi-segment TJ array (A2)', () => {
-    const src = 'BT [<4865> -50 <6C6C6F> -30 <2121>] TJ ET';
+  // BUG A2 (original): replaceShowOpHex used to swap ONLY the first hexstring of a
+  // multi-segment TJ array, leaving subsequent hexstrings as STALE old glyphs.
+  // Gap 1 (kerning, Sprint 3 batch 2): the new payload is now DISTRIBUTED across
+  // the existing hex segments by their original content lengths (preserving the
+  // per-segment advance widths AND the kerning numbers), with any length delta
+  // absorbed by the last segment. The A2 guarantee still holds — no stale glyph
+  // bytes survive (every segment is rewritten; overflow segments become <>).
+  it('distributes new hex across TJ segments, keeps kerning, leaves no stale glyphs (A2)', () => {
+    const src = 'BT [<4865> -50 <6C6C6F> -30 <2121>] TJ ET'; // seg content lens 4/6/4
     const innerOps = groupOps(tokenizeContentStream(src));
     const textOps = locateTextOps(innerOps);
-    const ok = replaceShowOpHex(innerOps[textOps[0].opIndex], '<00480069>');
+    const ok = replaceShowOpHex(innerOps[textOps[0].opIndex], '<00480069>'); // 8 hex chars
     expect(ok).toBe(true);
     const serialized = serializeOps(innerOps);
-    // New text present in the first segment.
-    expect(serialized).toContain('<00480069>');
+    // Distributed: seg0 gets 4 (<0048>), seg1 gets the remaining 4 (<0069>), seg2 emptied.
+    expect(serialized).toContain('<0048>');
+    expect(serialized).toContain('<0069>');
     // No stale old glyph bytes remain anywhere in the array.
     expect(serialized).not.toContain('<6C6C6F>');
     expect(serialized).not.toContain('<2121>');
-    // Exactly one non-empty hexstring (the new one); the others are empty <>.
-    const hexes = [...serialized.matchAll(/<([0-9A-Fa-f]*)>/g)].map(m => m[1]);
-    const nonEmpty = hexes.filter(h => h.length > 0);
-    expect(nonEmpty).toEqual(['00480069']);
+    // Kerning numbers preserved.
+    expect(serialized).toContain('-50');
+    expect(serialized).toContain('-30');
   });
 
   it('leaves a single-hexstring TJ array unchanged apart from the swap (A2 regression)', () => {

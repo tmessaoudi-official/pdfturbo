@@ -469,6 +469,40 @@ function encodeLiteralString(text: string): string {
 }
 
 /**
+ * Decode a PDF literal-string raw token `(...)` into its logical characters.
+ * Handles the escapes `encodeLiteralString` emits (`\\`, `\(`, `\)`) plus the
+ * standard PDF backslash escapes (`\n \r \t \b \f`, octal `\ddd`, and a
+ * line-continuation `\` at EOL). Used only to MEASURE each TJ segment's length
+ * so a multi-segment kerned array can be split proportionally — exactness of the
+ * decoded text isn't required, only its character count.
+ */
+export function decodeLiteralString(raw: string): string {
+  let s = raw;
+  if (s.startsWith('(')) s = s.slice(1);
+  if (s.endsWith(')')) s = s.slice(0, -1);
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c !== '\\') { out += c; continue; }
+    const n = s[i + 1];
+    if (n === undefined) break;
+    if (n >= '0' && n <= '7') {
+      let oct = n;
+      i++;
+      for (let k = 0; k < 2 && s[i + 1] >= '0' && s[i + 1] <= '7'; k++) oct += s[++i];
+      out += String.fromCharCode(parseInt(oct, 8) & 0xff);
+    } else if (n === '\n' || n === '\r') {
+      i++; // line continuation: backslash-newline collapses to nothing
+    } else {
+      const map: Record<string, string> = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f' };
+      out += map[n] ?? n;
+      i++;
+    }
+  }
+  return out;
+}
+
+/**
  * Try to replace the string payload of a show op in-place.
  * Only succeeds when the operand is a literal string `(...)` and newText is
  * pure ASCII (32–126) — hex-encoded or non-ASCII content is left unchanged.
@@ -480,11 +514,25 @@ export function replaceShowOpInPlace(op: CsOp, newText: string): boolean {
   if (op.operator === 'TJ') {
     const arr = op.operands[0];
     if (!arr || arr.type !== 'array' || !arr.items) return false;
-    const firstStr = arr.items.find(t => t.type === 'string');
-    if (!firstStr) return false; // all hex → can't replace safely
-    const encoded = encodeLiteralString(newText);
-    arr.raw = `[${encoded}]`;
-    arr.items = [{ type: 'string', raw: encoded }];
+    const stringItems = arr.items.filter(t => t.type === 'string');
+    if (stringItems.length === 0) return false; // all hex → can't replace safely
+    // Gap 1 (kerning preservation): distribute newText across the EXISTING string
+    // segments by their original character counts, leaving the kerning numbers
+    // between them untouched. Equal-length edits keep each segment's char count
+    // (so kerning stays in its original visual position); a length delta is
+    // absorbed by the LAST segment (the common "fix one word" edit). This
+    // replaces the old collapse-to-one-literal behaviour that discarded all
+    // kerning and reflowed the line, shifting neighbouring glyphs.
+    const lengths = stringItems.map(it => decodeLiteralString(it.raw).length);
+    let cursor = 0;
+    for (let si = 0; si < stringItems.length; si++) {
+      const isLast = si === stringItems.length - 1;
+      const take = isLast ? newText.length - cursor : Math.min(lengths[si], newText.length - cursor);
+      const slice = take > 0 ? newText.slice(cursor, cursor + take) : '';
+      cursor += slice.length;
+      stringItems[si].raw = encodeLiteralString(slice);
+    }
+    arr.raw = `[${arr.items.map(t => t.raw).join(' ')}]`;
     return true;
   }
 
@@ -870,17 +918,26 @@ export function replaceShowOpHex(op: CsOp, newHex: string): boolean {
   if (op.operator === 'TJ') {
     const arr = op.operands[0];
     if (!arr || arr.type !== 'array' || !arr.items) return false;
-    let replaced = false;
-    for (const item of arr.items) {
-      if (item.type !== 'hexstring') continue;
-      if (!replaced) {
-        item.raw = newHex;
-        replaced = true;
-      } else {
-        item.raw = '<>'; // blank stale trailing segment
-      }
+    const hexItems = arr.items.filter(t => t.type === 'hexstring');
+    if (hexItems.length === 0) return false;
+    // Gap 1 (kerning preservation, Path-2): distribute the new hex code units
+    // across the EXISTING hex segments by their original content lengths instead
+    // of jamming the whole payload into the first segment. This keeps the
+    // per-segment advance widths (and the kerning numbers between them) aligned
+    // for equal-length edits; any length delta is absorbed by the last segment.
+    // The A2 guarantee still holds: every segment is rewritten, so no stale glyph
+    // bytes survive (overflow segments become empty <>). newHex is a multiple of
+    // bytesPerCode and so is each original segment, so the slices stay aligned.
+    const inner = newHex.replace(/^</, '').replace(/>$/, '');
+    let cursor = 0;
+    for (let hi = 0; hi < hexItems.length; hi++) {
+      const isLast = hi === hexItems.length - 1;
+      const origLen = hexItems[hi].raw.replace(/^</, '').replace(/>$/, '').length;
+      const take = isLast ? inner.length - cursor : Math.min(origLen, inner.length - cursor);
+      const slice = take > 0 ? inner.slice(cursor, cursor + take) : '';
+      cursor += slice.length;
+      hexItems[hi].raw = `<${slice}>`;
     }
-    if (!replaced) return false;
     arr.raw = `[${arr.items.map(t => t.raw).join(' ')}]`;
     return true;
   }
