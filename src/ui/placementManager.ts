@@ -109,7 +109,7 @@ export class PlacementManager {
       const fw = w < 10 ? 200 : w;
       const fh = h < 10 ? 40 : h;
       const options = {
-        fontSize: parseInt(this._ctx.ui.fontSizeInput.value),
+        fontSize: parseInt(this._ctx.ui.fontSizeInput.value, 10),
         color: this._ctx.ui.colorInput.value,
         width: fw,
         height: fh,
@@ -205,7 +205,7 @@ export class PlacementManager {
     const rect = this._ctx.ui.canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / this._ctx.zoomScale;
     const y = (e.clientY - rect.top) / this._ctx.zoomScale;
-    const options = { fontSize: parseInt(this._ctx.ui.fontSizeInput.value), color: this._ctx.ui.colorInput.value };
+    const options = { fontSize: parseInt(this._ctx.ui.fontSizeInput.value, 10), color: this._ctx.ui.colorInput.value };
     const textElement = new TextElement(x, y, pageId, options);
     textElement.x -= textElement.width / 2;
     textElement.y -= textElement.height / 2;

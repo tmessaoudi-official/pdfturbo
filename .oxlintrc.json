@@ -3,9 +3,11 @@
   "plugins": ["typescript"],
   "env": { "browser": true, "es2022": true },
   "ignorePatterns": ["dist", "node_modules", ".vite", "coverage"],
+  "categories": { "correctness": "error" },
   "rules": {
-    "@typescript-eslint/no-explicit-any": "warn",
-    "@typescript-eslint/no-non-null-assertion": "error",
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-non-null-assertion": "error",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     "no-console": "warn",
     "no-debugger": "error",
     "no-duplicate-imports": "error",
@@ -13,6 +15,24 @@
     "prefer-const": "error",
     "eqeqeq": ["error", "always"],
     "no-eval": "error",
-    "no-implied-eval": "error"
+    "no-implied-eval": "error",
+
+    "typescript/no-namespace": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-array-constructor": "error",
+
+    "radix": "error",
+    "no-promise-executor-return": "error",
+    "no-useless-constructor": "error",
+
+    "no-shadow": "warn",
+    "require-await": "warn",
+
+    "no-underscore-dangle": "off",
+    "typescript/no-extraneous-class": "off"
   }
 }

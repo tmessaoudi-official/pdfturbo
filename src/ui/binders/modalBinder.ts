@@ -7,7 +7,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
   document.getElementById('cancelSignature')?.addEventListener('click', () => app.closeSignatureModal());
   document.getElementById('saveSignature')?.addEventListener('click', () => app.saveSignature());
   app.ui.sigLineWidthInput.addEventListener('change', (e) => {
-    app.signaturePad.setLineWidth(parseInt((e.target as HTMLInputElement).value));
+    app.signaturePad.setLineWidth(parseInt((e.target as HTMLInputElement).value, 10));
   });
   app.ui.sigColorInput.addEventListener('change', (e) => {
     app.signaturePad.setColor((e.target as HTMLInputElement).value);

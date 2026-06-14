@@ -164,10 +164,10 @@ describe('_search debounce (BUG-20)', () => {
     gen++; void runSearch('he', gen);    // gen=1
     gen++; void runSearch('hello', gen); // gen=2 — this should win
 
-    return new Promise<void>(resolve => setTimeout(() => {
+    return new Promise<void>(resolve => { setTimeout(() => {
       expect(savedMatches).toEqual(['hello']); // gen=1 was discarded
       resolve();
-    }, 10));
+    }, 10); });
   });
 });
 

@@ -62,7 +62,7 @@ export class InkLayerHandler {
       return;
     }
 
-    const sw = parseInt(this.app.ui.shapeWidth.value) || 3;
+    const sw = parseInt(this.app.ui.shapeWidth.value, 10) || 3;
     const stroke: InkStroke = {
       type: this._strokeType,
       points: [...this._currentPoints],

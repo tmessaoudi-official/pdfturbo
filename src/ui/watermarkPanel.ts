@@ -80,10 +80,10 @@ export class WatermarkPanel {
       enabled: ui.wmEnabled.checked,
       text: ui.wmText.value || 'WATERMARK',
       color: ui.wmColor.value,
-      fontSize: parseInt(ui.wmFontSize.value) || 60,
-      opacity: parseInt(ui.wmOpacity.value) / 100,
-      angle: parseInt(ui.wmAngle.value),
-      density: parseInt(ui.wmDensity.value) || 3,
+      fontSize: parseInt(ui.wmFontSize.value, 10) || 60,
+      opacity: parseInt(ui.wmOpacity.value, 10) / 100,
+      angle: parseInt(ui.wmAngle.value, 10),
+      density: parseInt(ui.wmDensity.value, 10) || 3,
     };
     this._ctx.setWatermark(wm);
     this.close();
@@ -130,16 +130,16 @@ export class WatermarkPanel {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, w, h);
-    const realFontSize = parseInt(this._ctx.ui.wmFontSize.value) || 60;
+    const realFontSize = parseInt(this._ctx.ui.wmFontSize.value, 10) || 60;
     const previewScale = h / 842;
     const liveWm: WatermarkSettings = {
       enabled: true,
       text: this._ctx.ui.wmText.value || 'WATERMARK',
       color: this._ctx.ui.wmColor.value,
       fontSize: realFontSize,
-      opacity: parseInt(this._ctx.ui.wmOpacity.value) / 100,
-      angle: parseInt(this._ctx.ui.wmAngle.value),
-      density: parseInt(this._ctx.ui.wmDensity.value) || 3,
+      opacity: parseInt(this._ctx.ui.wmOpacity.value, 10) / 100,
+      angle: parseInt(this._ctx.ui.wmAngle.value, 10),
+      density: parseInt(this._ctx.ui.wmDensity.value, 10) || 3,
     };
     this.drawOnCanvas(ctx, w, h, liveWm, previewScale);
   }

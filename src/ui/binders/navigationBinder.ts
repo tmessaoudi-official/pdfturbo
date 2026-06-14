@@ -11,12 +11,12 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
   app.ui.firstPage.addEventListener('click', () => app._goToPage(1));
   app.ui.lastPage.addEventListener('click',  () => app._goToPage(app.documentModel.pageCount));
   app.ui.pageInput.addEventListener('change', (e) => {
-    app._goToPage(parseInt((e.target as HTMLInputElement).value) || 1);
+    app._goToPage(parseInt((e.target as HTMLInputElement).value, 10) || 1);
   });
   app.ui.pageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       (e.target as HTMLInputElement).blur();
-      app._goToPage(parseInt((e.target as HTMLInputElement).value) || 1);
+      app._goToPage(parseInt((e.target as HTMLInputElement).value, 10) || 1);
     }
   });
 

@@ -87,7 +87,7 @@ export class ElementLayerRenderer {
     if (points.length < 2) return;
     const ctx = this._ctx.inkCanvas.getContext('2d');
     if (!ctx) return;
-    const sw = parseInt(this._ctx.ui.shapeWidth.value) || 3;
+    const sw = parseInt(this._ctx.ui.shapeWidth.value, 10) || 3;
     ctx.save();
     ctx.beginPath();
     ctx.lineCap = 'round';

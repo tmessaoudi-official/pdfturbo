@@ -12,7 +12,7 @@ npm run dev          # dev server at http://localhost:5173/pdfturbo/
 npm run build        # production build → dist/
 npm run preview      # serve the production build locally
 npm run type-check   # tsc --noEmit
-npm run lint         # eslint .
+npm run lint         # oxlint . (sole linter — eslint removed 2026-06-14)
 npm run test         # vitest run (jsdom) — excludes tests/browser/**
 npm run test:browser # vitest run in REAL Chrome (@vitest/browser + Playwright) — tests/browser/*.browser.test.ts
 npm run test:watch   # vitest watch mode
@@ -94,8 +94,9 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   refuse before blanking (no delete-without-replacement). Guarded by
   `tests/browser/issue2-true-edit.browser.test.ts`. **Unified text mode**: `editText` now also drops a
   new editable box on a blank-canvas click (`addTextAtPosition`).
-- **Private-method convention**: `_underscore` prefix throughout; eslint allows unused
-  args only when `_`-prefixed.
+- **Private-method convention**: `_underscore` prefix throughout; oxlint's `no-unused-vars`
+  allows unused args/vars only when `_`-prefixed (`argsIgnorePattern`/`varsIgnorePattern`).
+  `no-underscore-dangle` is deliberately OFF in `.oxlintrc.json` so it doesn't fight this convention.
 - **PDF→DOCX/MD export (beta)**: `src/utils/flowDoc.ts` reconstructs a flow model
   (lines→paragraphs→headings/styles/RTL/lists/2-column) from pdf.js text items;
   `flowDocWriters.ts` emits DOCX (via `docx` npm, **dynamically imported** — keep it that
@@ -133,6 +134,6 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 ## Claude config in this repo
 
 - `.claude/settings.json` — pre-approved read-only/build commands + deny list + hooks
-- `.claude/hooks/eslint-on-write.sh` — lints any `.ts` file Claude edits, feedback on fail
+- `.claude/hooks/oxlint-on-write.sh` — lints any `.ts` file Claude edits with oxlint, feedback on fail
 - `.claude/hooks/locale-sync-check.sh` — 3-way key diff on any `locales/*.json` write
 - `.claude/settings.local.json` is gitignored — machine-local overrides go there

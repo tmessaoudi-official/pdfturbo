@@ -71,7 +71,7 @@ async function dragOnto(from: HTMLElement, to: HTMLElement): Promise<void> {
     const x = sx + ((ex - sx) * i) / steps;
     const y = sy + ((ey - sy) * i) / steps;
     pointer(document, 'pointermove', x, y);
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => { requestAnimationFrame(() => r(null)); });
   }
   pointer(document, 'pointerup', ex, ey);
 }

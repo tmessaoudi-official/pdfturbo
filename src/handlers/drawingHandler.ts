@@ -166,7 +166,7 @@ export class DrawingHandler {
     const endX = (e.clientX - rect.left) / this.app.zoomScale;
     const endY = (e.clientY - rect.top)  / this.app.zoomScale;
     const col    = this.app.ui.colorInput.value;
-    const sw     = parseInt(this.app.ui.shapeWidth.value) || 2;
+    const sw     = parseInt(this.app.ui.shapeWidth.value, 10) || 2;
     const opts   = { strokeColor: col, strokeWidth: sw };
     const start  = this._drawStart;
     const pageId = this.app.documentModel.currentPage?.id ?? '';
@@ -287,7 +287,7 @@ export class DrawingHandler {
     const ox  = this.app.ui.canvas.offsetLeft;
     const oy  = this.app.ui.canvas.offsetTop;
     const col = this.app.ui.colorInput.value;
-    const sw  = (parseInt(this.app.ui.shapeWidth.value) || 2) * s;
+    const sw  = (parseInt(this.app.ui.shapeWidth.value, 10) || 2) * s;
 
     const sx0 = this._drawStart.x * s + ox;
     const sy0 = this._drawStart.y * s + oy;

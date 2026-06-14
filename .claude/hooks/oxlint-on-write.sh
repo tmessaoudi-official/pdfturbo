@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# PostToolUse hook: lint any .ts file Claude just wrote/edited.
+# PostToolUse hook: lint any .ts file Claude just wrote/edited with oxlint.
 # Exit 2 feeds the lint output back to Claude so it fixes issues immediately.
+# (Migrated from eslint → oxlint 2026-06-14; oxlint is the sole linter.)
 set -uo pipefail
 
 input=$(cat)
@@ -12,11 +13,13 @@ file=$(jq -r '.tool_input.file_path // empty' <<<"$input")
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
 
-out=$(npx eslint --no-warn-ignored "$file" 2>&1)
+# oxlint auto-discovers .oxlintrc.json; it exits non-zero only on errors
+# (warnings do not block), matching the previous eslint behavior.
+out=$(npx oxlint "$file" 2>&1)
 status=$?
 
 if [[ $status -ne 0 ]]; then
-  echo "eslint failed for $file:" >&2
+  echo "oxlint failed for $file:" >&2
   echo "$out" >&2
   exit 2
 fi

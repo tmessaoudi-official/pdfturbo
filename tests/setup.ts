@@ -16,7 +16,6 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
     m41 = 0; m42 = 0; m43 = 0; m44 = 1;
     is2D = true;
     isIdentity = true;
-    constructor(_init?: string | number[]) {}
     invertSelf() { return this; }
     multiplySelf() { return this; }
     preMultiplySelf() { return this; }

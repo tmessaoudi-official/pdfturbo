@@ -7,7 +7,7 @@ export function bindFormattingEvents(app: PDFTurboApp): void {
   app.ui.boldBtn.addEventListener('click', () => app.toggleBold());
   app.ui.italicBtn.addEventListener('click', () => app.toggleItalic());
   app.ui.fontSizeInput.addEventListener('change', (e) => {
-    const size = Math.max(8, Math.min(72, parseInt((e.target as HTMLInputElement).value) || 14));
+    const size = Math.max(8, Math.min(72, parseInt((e.target as HTMLInputElement).value, 10) || 14));
     app.setFontSize(size);
   });
   app.ui.colorInput.addEventListener('input', (e) => {
@@ -42,6 +42,6 @@ export function bindFormattingEvents(app: PDFTurboApp): void {
   app.ui.fontSizeDownBtn.addEventListener('click', () => app.adjustFontSize(-2));
   app.ui.fontSizeUpBtn.addEventListener('click', () => app.adjustFontSize(2));
   app.ui.shapeWidth.addEventListener('change', (e) => {
-    app.setShapeStrokeWidth(parseInt((e.target as HTMLInputElement).value) || 2);
+    app.setShapeStrokeWidth(parseInt((e.target as HTMLInputElement).value, 10) || 2);
   });
 }
