@@ -53,5 +53,7 @@ export interface IAppContext {
   applyZoom(newScale: number): Promise<void>;
   _autosave(): void;
   _commitPlacement(mode: 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x: number, y: number, w: number, h: number): void;
+  /** Create a new editable text box centered at the click point (unified text mode). */
+  addTextAtPosition(e: MouseEvent): void;
   _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<void>;
 }

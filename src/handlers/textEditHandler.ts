@@ -2,8 +2,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
-import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName } from '../utils/contentStreamEditor';
-import type { TextStyle } from '../utils/contentStreamEditor';
+import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName, type TextStyle } from '../utils/contentStreamEditor';
 import { extractPsName } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import type { IAppContext } from '../core/appContext';
@@ -76,7 +75,13 @@ export class TextEditHandler {
       }
     }
 
-    if (!best) return;
+    // Unified text mode: a click that lands on existing text true-edits it
+    // (below); a click on an empty area drops a new editable text box instead of
+    // doing nothing (ISSUE-5).
+    if (!best) {
+      app.addTextAtPosition(e);
+      return;
+    }
 
     // ── True edit first: content-stream surgery on the source PDF ──
     try {
