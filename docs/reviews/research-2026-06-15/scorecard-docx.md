@@ -28,15 +28,15 @@ Pipeline: `_extractFlowDoc` → pdf.js `getTextContent`+`getOperatorList` → `r
 | 11 | Ordered lists — decimal `1.`/`1)`/`(1)` | ✅ | **Sprint 3** widened markers + per-format refs |
 | 12 | Ordered lists — lettered `a)`/`(a)`/`A)` | ✅ | **Sprint 3** `lowerLetter`/`upperLetter` LevelFormat |
 | 13 | Ordered lists — roman `(i)` | 🟡 | maps to lowerLetter today (ambiguous per-paragraph); true roman queued |
-| 14 | List nesting (multi-level `w:ilvl`) | 🟡 | writer honors `level`; `listDepth` still hardcoded 0 — bucket by x0 (Gap 4 part) |
+| 14 | List nesting (multi-level `w:ilvl`) | ✅ | `listDepth` now bucketed from item x0 vs colLeft in font-size units (Sprint 3 batch 2) |
 | 15 | Headings (size-cluster H1–H3) | ✅ | `assignHeadings` |
-| 16 | Headings H4–H6 + bold/caps signal | 🟡 | size-only, capped at 3 (Gap 5) |
+| 16 | Headings H4–H6 (size cluster) | ✅ | type widened `0..6`, `slice(0,6)`, writer `HEADINGS` extended (Sprint 3 batch 2). Bold/caps promotion still 🟡 |
 | 17 | Color RGB / Gray / CMYK | ✅ | op-walk colorMap |
 | 18 | Color spot / Separation / scn | 🟡 | `setFillColorN` unhandled → black collapse (Gap 6, B7); canvas-sample fallback queued |
 | 19 | Images embedded + positioned | ✅ | floating `wp:anchor`, page-relative EMU (B-4, ISSUE-3/4) |
-| 20 | Image JPEG re-encode (no PNG bloat) | 🟡 | extraction hardcodes `image/png`; writer already branches jpeg (Gap 7, **S effort**) |
+| 20 | Image JPEG re-encode (no PNG bloat) | ✅ | `pickImageMime`: alpha→PNG, large opaque (≥200×200)→JPEG q0.85; extraction samples canvas alpha (Sprint 3 batch 2) |
 | 21 | Rotated / skewed image sizing | 🟡 | axis-aligned only; CTM decompose queued (Gap 8) |
-| 22 | Hyperlinks | 🟡 | `getAnnotations` not wired into export; `ExternalHyperlink` ready (Gap 2, high value) |
+| 22 | Hyperlinks | ✅ | `getAnnotations` Link+url → `FlowLinkRect` → bbox-tag `FlowRun.linkUrl` → `ExternalHyperlink` + MD `[text](url)` (Sprint 3 batch 2) |
 | 23 | Underline / strikethrough | 🟡 | geometric path-seg detection (Gap 1, needs path-op infra) |
 | 24 | Super / subscript | 🟡 | baseline+size-ratio detection (Gap 3) |
 | 25 | Redaction-aware (no leak) | ✅ | items under redaction dropped pre-flow (Sprint 1 P0) |
@@ -51,8 +51,9 @@ Pipeline: `_extractFlowDoc` → pdf.js `getTextContent`+`getOperatorList` → `r
 | 34 | Exact subset-font face match | ⛔ | no recoverable family from `ABCDEF+` subset — honest ceiling |
 
 ## Tally
-- **✅ done: 16** (incl. 2 new this session: rows 11–12)
-- **🟡 reachable, queued: 11** (rows 13,14,16,18,20,21,22,23,24,26 + roman) — all have file:line + fix sketch in `01-docx-gaps.md`
+- **✅ done: 20** (incl. Sprint 3 batch 2: row 14 list nesting, 16 H4–H6, 20 JPEG, 22 hyperlinks)
+- **🟡 reachable, queued: 7** (rows 13 roman, 18 spot-color, 21 rotated-image, 23 underline/strike,
+  24 super/subscript, 26 RTL flags, + row-16 bold/caps heading promotion) — file:line + fix in `01-docx-gaps.md`
 - **⛔ ceiling: 7** (rows 28–34) — confirmed fundamentally hard; documented, not promised
 
 ## Honest fidelity statement
@@ -63,5 +64,6 @@ nesting, more heading levels) and is precisely queued. The ⛔ set (tables, vect
 multi-column, RTL reorder, exact subset faces) is the genuine ceiling of *client-side, no-backend*
 conversion — a number like "100%" is not achievable there without a server-side engine, and we say so.
 
-**Highest-ROI next (per effort):** Gap 7 JPEG (S) · Gap 2 hyperlinks (M, high value) · Gap 14 list
-nesting (M) · Gap 18 spot-color black-collapse (S–M).
+**Highest-ROI next (per effort):** Gap 18 spot-color black-collapse (S–M) · Gap 23 underline/strike
+(M, path-op infra) · Gap 24 super/subscript (S–M) · Gap 21 rotated-image sizing (S–M).
+_(Sprint 3 batch 2 landed: JPEG, hyperlinks, list nesting, H4–H6.)_

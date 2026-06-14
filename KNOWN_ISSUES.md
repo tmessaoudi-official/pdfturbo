@@ -195,8 +195,10 @@ This is the structural fix that makes ISSUE-1..5 catchable; jsdom never can.
 > Playwright-managed chromium or add `npx playwright install chromium`.
 
 ---
-_Last updated: 2026-06-15 (mega-roadmap Sprint 3: text-tool UX trap fix + DOCX lettered ordered-lists
-+ fidelity scorecards; jsdom 842 / browser 11). Evidence: `docs/reviews/research-2026-06-15/` (scorecards
+_Last updated: 2026-06-14 (mega-roadmap Sprint 3 batch 2: DOCX hyperlinks + JPEG re-encode + list nesting
++ headings H4–H6 + true-edit TJ-kerning preservation; jsdom 858 / browser 12). Prior batch 1: text-tool
+UX trap fix + DOCX lettered ordered-lists + fidelity scorecards (jsdom 842 / browser 11).
+Evidence: `docs/reviews/research-2026-06-15/` (scorecards
 + 01-docx-gaps + 02-trueedit-matrix + 03-ux-a11y). Prior: `docs/reviews/2026-06-14-qa-sweep-findings.md`,
 `docs/reviews/research-2026-06-14/01-true-edit.md` + `02-docx-fidelity.md`
 + per-fix tests (832 jsdom / 11 browser) + real-Chrome manual QA._

@@ -26,8 +26,8 @@ paint garbage. (A-1, Sprint 2, made sure that fallback is never a silent no-op.)
 | CID/Type0 in subset | 2 | ✓ | ✓ | ✓ | ✅ |
 | Standard font, accented `é` / `€` | 3 redraw | ✓ | ✓ | ~ | 🟡 glyph OK, face degraded |
 | Subset, NEW char not in subset | 3 redraw | ✓ | ✓ | ~ | 🟡 face degraded |
-| TJ kerned line, standard font | 1 (kerning lost) | ✓ | ✓ | ~ | 🟡 neighbors shift (Gap 1, biggest-ROI) |
-| TJ kerned line, subset | 2 (widths off) | ✓ | ✓ | ~ | 🟡 spacing within run off (Gap 1) |
+| TJ kerned line, standard font | 1 (segment-split) | ✓ | ✓ | ✓ | ✅ kerning preserved (Gap 1 DONE) |
+| TJ kerned line, subset | 2 (segment-split) | ✓ | ✓ | ✓ | ✅ per-segment widths kept (Gap 1 DONE) |
 | Spot/Separation-colored text, Path-3 | 3 (black) | ✓ | ✓ | ✗ | 🟡 silent black (Gap 2 / B7) |
 | Non-WinAnsi ligature `ﬁ`, std/Path-3 | 3 (drop) | ~ | ~ | ✗ | 🟡 wrong glyph, no refusal |
 | Form-XObject text | refuse→overlay | ovl | ovl | ~ | ✅ correct fallback (A-1) |
@@ -49,8 +49,13 @@ surrogates · A-4 blank only same fontKey+size+payload · A-5 Type3/vertical/inv
 (`02-trueedit-matrix.md` §"Sprint-2 fixes verified").
 
 ## Reachable gaps (queued — file:line + fix in `02-trueedit-matrix.md`)
-- 🟡 **Gap 1 — TJ kerning preservation (biggest-ROI):** segment-preserving split keeps kerning numbers,
-  fixes "fix one word in a justified line" neighbor-shift. ~1 day. Degrades a *common, fully-supported* edit.
+- ✅ **Gap 1 — TJ kerning preservation (biggest-ROI) — DONE (Sprint 3 batch 2, 2026-06-14):**
+  `replaceShowOpInPlace` (Path-1) and `replaceShowOpHex` (Path-2) now DISTRIBUTE the new text across the
+  existing TJ string/hex segments by their original char/byte counts (last segment absorbs the length
+  delta) instead of collapsing to one literal / jamming into the first hex. Kerning numbers survive in
+  place; neighbour glyphs no longer shift on a single-word edit. New `decodeLiteralString` measures
+  segment lengths. The A2 no-stale-glyph guarantee still holds (overflow segments → empty `()`/`<>`).
+  Guarded by the new `replaceShowOpInPlace`/`replaceShowOpHex` cases in `contentStreamEditor.test.ts`.
 - 🟡 **Gap 2 — Path-3 fill color:** `scn`/Separation → silent black; cheapest fix = canvas-pixel-sample
   fallback (handler already samples for overlays). S effort. Also track stroke color for `Tr 1/2`.
 - 🟡 **Gap 3 — number tokenizer exponent `1e-3`:** rare (non-conformant PDF); `.raw` round-trips so impact

@@ -156,9 +156,23 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   writer maps each distinct (format,text) to its own numbering reference — legacy decimal `%1.` keeps the
   `ordered-list` id — and restarts instances per-reference. `flowDocWriters.ts` `refKeyOf`/`usedRefs`.
   **Fidelity scorecards** (honest done/reachable/ceiling): `docs/reviews/research-2026-06-15/scorecard-*.md`.
-  **Reachable, queued** (file:line + fix in `research-2026-06-15/01-docx-gaps.md` / `02-trueedit-matrix.md`):
-  DOCX hyperlinks (getAnnotations→ExternalHyperlink), JPEG re-encode (S), list nesting, spot-color
-  black-collapse, super/subscript, underline/strike, H4-6; true-edit TJ-kerning preservation (biggest-ROI).
+  **Sprint 3 batch 2 (2026-06-14) — DONE:** (1) **DOCX hyperlinks** — `exportService` reads
+  `page.getAnnotations()` (Link+url), passes `FlowLinkRect[]` to `reconstructPage`, which bbox-tags words
+  (`FlowRun.linkUrl`, in the merge key); the writer wraps same-url runs in `ExternalHyperlink` (blue +
+  underline) and the MD writer emits `[text](url)`. (2) **DOCX JPEG re-encode** — `pickImageMime`
+  (`flowDoc.ts`): alpha→PNG, large opaque (≥200×200)→JPEG q0.85; extraction samples canvas alpha + picks
+  the mime (was hardcoded PNG → multi-MB scans). (3) **List nesting** — `para.listDepth` now derived from
+  item x0 indent vs `colLeft` in font-size units (was hardcoded 0). (4) **Headings H4–H6** — `heading`
+  type widened to `0..6`, `assignHeadings` `slice(0,6)`, writer `HEADINGS` extended. (5) **True-edit TJ
+  kerning preservation** (biggest-ROI) — `replaceShowOpInPlace`/`replaceShowOpHex` now DISTRIBUTE the new
+  text across the existing TJ string/hex segments by original char/byte counts (last segment absorbs the
+  length delta) instead of collapsing/jamming into one segment — kerning numbers survive, neighbour glyphs
+  stop shifting. New `decodeLiteralString` measures segment lengths. The A2 no-stale-glyph guarantee still
+  holds. Guards: `tests/utils/{flowDoc,flowDocWriters,flowDocHyperlinks,flowDocImageMime,contentStreamEditor}.test.ts`
+  + `tests/browser/issue3-docx-images.browser.test.ts` (Gap 7 JPEG).
+  **Reachable, still queued** (file:line + fix in `research-2026-06-15/01-docx-gaps.md` / `02-trueedit-matrix.md`):
+  underline/strike (geometric), super/subscript, spot-color/Separation black-collapse, rotated-image sizing,
+  list marker→continuation merge; true-edit Path-3 fill-color canvas-sample, number-tokenizer exponent.
   **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
   XY-cut, RTL logical reorder, exact subset-font faces; true-edit cm-rotation Path-3 redraw, Type3, Arabic.
 
