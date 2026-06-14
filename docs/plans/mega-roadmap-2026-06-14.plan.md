@@ -15,28 +15,63 @@ refresh. Evidence-graded. Raw research: `docs/reviews/research-2026-06-14/01..05
 - [2026-06-14] AGREED: Sprint 2 = fidelity, BOTH workstreams, gate mode "Default 30/8 with stops" (user). Scope re-cut around correctness-first: Workstream A = A1 B4 XObject no-op→overlay, A2 B3 replaceShowOpHex all-TJ-segments, A3 B2 cmapHexToUnicodeStr UTF-16BE 4-hex+surrogates, A4 B5 blankAllNearby restrict-to-same-font-size, A5 defensive routing (Type3/vertical/invisible-Tr → overlay). Workstream B = B1 broaden font allow-list, B2 page margins, B3 para/line spacing, B4 image x/y positioning, B5 justify+indent. DEFERRED (research-confirmed multi-day/hard): lattice tables, vector→raster, recursive 3-col XY-cut, rotated-page true-edit, RTL logical reorder, A6 cm-rotation redraw (regression risk). Method: 2 parallel TDD agents on disjoint files + parent full gate; locale edits in parent. (user: "Approve full plan")
 
 - [2026-06-14] AGREED (Sprint 3, batch 2): user selected ALL four reachable items + "deep research and tests for all": DOCX hyperlinks, DOCX JPEG re-encode, true-edit TJ-kerning, DOCX list nesting + headings H4–H6. Method = main-loop TDD (shared flowDoc files; no parallel agents). (user: AskUserQuestion multi-select + "Do deep research and tests for all items")
+- [2026-06-15] AGREED (Sprint 4 — PARALLEL program): run fidelity/bug hunt + THREE net-new features concurrently. Model = 3 background **worktree** sub-agents build feature CORES as new files only + unit tests and RETURN A WIRING SPEC (they must NOT edit shared files); parent (main loop) runs fidelity Batch 3 AND serially integrates each feature into the shared wiring files + full gate. Run mode = **auto + integrate-as-they-land** (Option 1): autonomous, pause only for risky/destructive actions or a NEW dependency failing the security/deprecation check. 3C gate 30/8. (user: "1 & 2 & 3 all with the fidelity hunt", "Option 1", "challenge me")
+- [2026-06-15] AGREED: feature scopes — (1) **E-signing** = client-side cryptographic signature via zgapdfsigner (MIT) with user-supplied .p12/PKCS#12 + visible appearance; LTV/TSA deferred. (2) **Page ops** = reorder/rotate/delete pages (thumbnail panel + history commands). (3) **OCR** = tesseract.js, DYNAMICALLY imported, lang data lazy-fetched (offline caveat). ALL heavy deps dynamic-imported; ALL 100% client-side (no upload). Each needs a real-browser test (jsdom can't cover crypto/canvas/download). "Regression hunt" = the full gate on every integration (no open regression backlog today; 858/12 green).
 - [2026-06-14] DONE (Sprint 3, batch 2): all four landed TDD. (1) DOCX hyperlinks — `getAnnotations` Link+url → `FlowLinkRect` → bbox-tag `FlowRun.linkUrl` (merge key) → `ExternalHyperlink` (blue+underline) + MD `[text](url)`. (2) DOCX JPEG re-encode — `pickImageMime` (alpha→PNG, large opaque→JPEG q0.85) + canvas alpha sampling. (3) List nesting — `listDepth` from x0 vs colLeft. (4) Headings H4–H6 — type `0..6`, `slice(0,6)`, writer HEADINGS extended. (5) True-edit TJ kerning — `replaceShowOpInPlace`/`replaceShowOpHex` distribute text across TJ segments preserving kerning numbers; new `decodeLiteralString`; A2 no-stale-glyph guarantee held. Gate: type-check clean, oxlint 0/0, jsdom **858**, browser **12/12**. Scorecards/CLAUDE.md/KNOWN_ISSUES.md refreshed. NOT pushed (manual).
 - [2026-06-15] DONE (Sprint 3, batch 1): Research fan-out (3 agents → `docs/reviews/research-2026-06-15/01-docx-gaps.md`, `02-trueedit-matrix.md`, `03-ux-a11y.md`) + 2 fidelity scorecards (`scorecard-docx.md`, `scorecard-trueedit.md`). Fixes: **UX text-tool trap** (editText edits existing text only; blank click no longer drops a box → reverts ISSUE-5; commit 873dd37) + **DOCX lettered/parenthesized ordered-list markers** (decimal `(1)`/`1)`, lower/upper-alpha paren forms → docx LevelFormat + per-format numbering refs; commit 5a95192) + ISSUE-5 browser guard updated (7730110). Gate: type-check clean, oxlint 0/0, jsdom **842**, browser **11/11**. Docs refreshed (CLAUDE.md, KNOWN_ISSUES.md, FEATURES.md). NOT pushed (manual).
 
 ## Formal Plan
 
-### ▶ RESUME HERE (2026-06-14) — SPRINT 3 sweep
+### ▶ RESUME HERE (2026-06-15) — SPRINT 4: PARALLEL fidelity + 3 features
 
-**Sprint 3 batch 2 LANDED (not pushed).** Four reachable fidelity gaps closed TDD: DOCX hyperlinks,
-DOCX JPEG re-encode, DOCX list nesting + headings H4–H6, true-edit TJ-kerning preservation. Plus a
-real-Chrome JPEG guard. Gate: type-check clean, oxlint 0/0, jsdom **858**, browser **12/12**. Scorecards
-updated (DOCX ✅ 20 / 🟡 7 / ⛔ 7; true-edit Gap 1 DONE). Batch 1 (earlier): UX text-tool trap fix
-(`873dd37`), DOCX lettered ordered-lists (`5a95192`), ISSUE-5 browser guard (`7730110`), scorecards
-(`19fe3e4`). **The true-edit routing matrix answers the user's standing question "why does it overlay
-some text" — see `scorecard-trueedit.md` top paragraph.**
+**Approved run mode = Option 1 (auto + integrate-as-they-land).** Execute autonomously; pause ONLY for
+risky/destructive actions or a new dependency that fails the security/deprecation check (Rule 9). 3C gate
+30/8 already approved for this program — do NOT re-ask the gate; just proceed.
 
-**NEXT reachable gaps (TDD, highest-ROI first), file:line in the scorecards:** DOCX — spot-color/
-Separation black-collapse (B7, scn→canvas-sample), underline/strike (geometric path-op infra),
-super/subscript (baseline+size ratio), rotated-image sizing (CTM decompose), heading bold/caps
-promotion. True-edit — Path-3 fill-color canvas-sample fallback, number-tokenizer exponent.
-**Ceiling (mark, don't chase):** tables, vector→raster, recursive 3-col, RTL reorder, exact subset faces;
-true-edit cm-rotation Path-3, Type3, Arabic. Then: Sprint 3 features (page ops, encrypt, PAdES sig, OCR),
-engine split (contentStreamEditor.ts ~1499L), a11y/SEO P2/P3, command tests.
+**FIRST ACTIONS on resume (in order):**
+1. `npm run dev` (restart, :5173) for live fidelity QA.
+2. Spawn **3 background worktree sub-agents** (Agent tool, `isolation:"worktree"`, `run_in_background:true`,
+   `subagent_type:"general-purpose"`). Each builds its feature CORE as NEW files only + a unit test, and
+   returns a WIRING SPEC. **Each agent MUST be told: do NOT edit `src/core/uiController.ts`,
+   `src/ui/binders/modalBinder.ts`, `src/core/pdfTurboApp.ts`, `locales/*.json`, toolbar files, or any
+   existing shared file — only create new files under your feature dir + `tests/`. Use dynamic import for
+   heavy deps. 100% client-side, nothing uploaded. Run `npx tsc --noEmit` on your new files. Return:
+   (a) list of new files, (b) public API, (c) exact WIRING SPEC for the parent (button id, modal markup,
+   handler hookup, i18n keys for en/fr/ar), (d) what needs a browser test.**
+   - **Agent S (e-signing):** `src/signing/*` — client-side signature via **zgapdfsigner (MIT)** with a
+     user-supplied **.p12/PKCS#12** + passphrase + visible appearance rect. Deprecation/security-check the
+     dep BEFORE adding (Rule 9). LTV/TSA out of scope v1.
+   - **Agent P (page ops):** reorder/rotate/delete pages — model + history Command classes as new files;
+     wiring spec for the thumbnail panel. Every mutation via a `historyManager` Command (undo/redo).
+   - **Agent O (OCR):** `src/ocr/*` — **tesseract.js dynamically imported**, lang data lazy-fetched
+     (offline caveat documented); produce a selectable/extractable text layer or overlay. Security-check dep.
+3. Meanwhile run **fidelity Batch 3** in the main loop, TDD, highest-ROI first:
+   **(a) spot-color/Separation black-collapse** — SHARED fix: DOCX export op-walk (`exportService.ts`
+   handles only rg/g/k → add `setFillColorN`/`scn` handling or canvas-sample) AND true-edit Path-3
+   (`contentStreamEditor.ts` `parseFillColorToRgb` → canvas-pixel-sample fallback so Separation text stops
+   redrawing black). **(b) underline/strike** (geometric path-op detection — builds path-op infra tables
+   reuse later). **(c) super/subscript** (baseline+size-ratio in `reconstructColumn`). **(d) rotated-image
+   sizing** (CTM decompose `[a,b,c,d]`→scaleX/scaleY/rotation; `FlowImage.rotation`→docx). **(e)** roman
+   list markers + number-tokenizer exponent. File:line + fix sketches in `01-docx-gaps.md` /
+   `02-trueedit-matrix.md`.
+4. **Integrate each feature as it returns:** wire into shared files (parent only), add i18n keys to all 3
+   locales (key-identical — hook checks), write/extend a real-browser test, run FULL gate
+   (`npx tsc --noEmit`, `./node_modules/.bin/oxlint .`, `npm run test`,
+   `./node_modules/.bin/vitest run --config vitest.browser.config.ts`). Commit thematically per feature.
+5. **Phase B checkpoint** after Batch 3 + integrations: tell user to push; run live `qa-sweep`.
+6. **Then Phase C: tables** (ceiling), then encrypt/decrypt (overlaps exportService — NOT parallel),
+   then hardening (engine split `contentStreamEditor.ts` ~1499L, a11y/SEO, command tests).
+
+**State:** Sprint 3 batch 2 LANDED, not pushed — commits `69a9024` (TJ kerning), `9842394` (DOCX
+hyperlinks/JPEG/nesting/H4-6), `361de7c` (docs). Plus batch 1 `873dd37`/`5a95192`/`7730110`/`19fe3e4`.
+Gate green: jsdom **858**, browser **12/12**, type-check clean, oxlint 0/0. Working tree clean except the
+3 personal PDFs.
+
+**HARD REMINDERS:** NEVER commit/stage the 3 personal PDFs (CV/attestation = personal data; black-box
+only, never print contents); `test-document.pdf` is the safe fixture. git push is MANUAL. NO
+Co-Authored-By. Run vitest/oxlint via `./node_modules/.bin/*` (PATH versions are rtk-proxied → bogus
+output). `gh` not installed (use GitHub API via curl). Run the true-edit/DOCX/feature browser tests with
+`./node_modules/.bin/vitest run --config vitest.browser.config.ts`.
 
 ---
 
