@@ -213,6 +213,28 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect((app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });
 
+  // UX (Sprint 3): editText must edit EXISTING source text ONLY. A blank-area
+  // click must NOT drop a new text box (the ISSUE-5 unification did, which trapped
+  // the user in a non-interactive mode — elements are pointer-events:none outside
+  // 'select' — so the box was unselectable and every further click spawned another
+  // box). New text is created with the dedicated draw-to-place "Add Text" tool.
+  it('does NOT create a box on a blank-area click (editText edits existing text only)', async () => {
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([])); // no text items → best stays null
+    await handler.handleCanvasClick(
+      click(300, 300),
+      app as unknown as Parameters<typeof handler.handleCanvasClick>[1],
+    );
+
+    // No blank-drop: addTextAtPosition must NOT be called and no element created.
+    expect((app.addTextAtPosition as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect(document.body.querySelector('.true-edit-input')).toBeNull();
+    // Feedback: the editText hint is (re)shown so the user knows to click a word.
+    expect((app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat())
+      .toContain('toast.modeHint.editText');
+  });
+
   // BUG A1: when the only content-stream match lives inside a Form XObject, the
   // true editor opened but replaceTextAt refused → click+type did NOTHING. The
   // handler must treat an inXObject target as a MISS and fall back to the overlay

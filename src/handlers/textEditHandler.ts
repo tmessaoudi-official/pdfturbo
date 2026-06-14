@@ -97,11 +97,14 @@ export class TextEditHandler {
       }
     }
 
-    // Unified text mode: a click that lands on existing text true-edits it
-    // (below); a click on an empty area drops a new editable text box instead of
-    // doing nothing (ISSUE-5).
+    // editText edits EXISTING source text ONLY: a click that lands on text
+    // true-edits it (below). A blank-area click does NOT create a box — that was
+    // the ISSUE-5 unification, which trapped the user in editText (elements are
+    // pointer-events:none outside 'select'), leaving the dropped box unselectable
+    // while every further click spawned another. New text is created with the
+    // dedicated draw-to-place "Add Text" tool. Re-show the hint for feedback.
     if (!best) {
-      app.addTextAtPosition(e);
+      app.reportError.info('toast.modeHint.editText');
       return;
     }
 
