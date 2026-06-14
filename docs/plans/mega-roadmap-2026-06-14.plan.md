@@ -13,6 +13,33 @@ refresh. Evidence-graded. Raw research: `docs/reviews/research-2026-06-14/01..05
 
 ## Formal Plan
 
+### ▶ RESUME HERE (post-compact, 2026-06-14)
+
+**State — all committed, all green.** Commits on top of QA baseline: `462f53e` migrate-to-oxlint,
+`49c6633` Sprint 1 hazards, `ae85c45` lint-zero, `8120a11` docs. Gate last run: type-check clean,
+oxlint **0/0**, jsdom **800**, browser **11**. Dev server was `npm run dev` at :5173 (RESTART it
+post-compact). Untracked: 3 PDFs — NEVER commit the CV/attestation (personal data); use them
+black-box only; `test-document.pdf` optional. git push is manual; commits = thematic; NO Co-Authored-By.
+
+**NEXT = Sprint 2 — fidelity (BOTH true-edit + DOCX), user-chosen, TDD each:**
+- **True-edit (Workstream A):** A3 raise match rate (tune `TRUE_EDIT_TOLERANCE`=3pt + multi-candidate
+  scan + occurrence hint for multi-op-same-origin), A4 (`replaceShowOpHex` only does first TJ segment;
+  `cmapHexToUnicodeStr` parity heuristic wrong for ligatures/non-BMP), A5 TJ kerning preservation,
+  A6 `cm`/`Tm` scale+rotation in Path-3 redraw + rotated pages.
+- **DOCX (Workstream B):** B1 broaden font allow-list (beyond 3 generics — biggest body wrongness),
+  B2 page margins + para/line spacing, B3 robust color (replace origin-keyed lookup), B4 image x/y
+  positioning (currently centered at page end). Stretch: B6 lattice tables, B7 vector raster.
+
+**Method:** hybrid — parallel TDD agents on DISJOINT files (true-edit = contentStreamEditor.ts/
+textEditHandler.ts; DOCX = flowDoc.ts/flowDocWriters.ts/exportService.ts — disjoint, can parallelize),
+parent runs the FULL gate (agents skip project-wide tsc/oxlint to avoid races; parent caught 2 agent
+misses in Sprint 1 — a no-op `doc.destroy` and a browser-fixture regression — so the parent gate is
+non-negotiable). Fix at root, no bandaids. Engine file `contentStreamEditor.ts` is 1406 lines (split
+candidate, defer). Raw research already on disk: `docs/reviews/research-2026-06-14/01-true-edit.md` &
+`02-docx-fidelity.md` have the full gap lists + file:line.
+
+---
+
 ### Headline finding: CLAUDE.md & docs are STALE (P1 correctness-of-docs)
 Two agents independently found the docs misdescribe the real config — fix before anything cites them:
 - `i18n.ts:71` is `escapeValue: true` (SAFE), not `escapeValue:false` as CLAUDE.md claims.
