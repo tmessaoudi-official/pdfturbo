@@ -21,6 +21,10 @@ export function bindToolEvents(app: PDFTurboApp): void {
     if (app.mode === 'addCode') { app.setMode('select'); return; }
     app.openCodeModal();
   });
+  app.ui.ocrBtn.addEventListener('click', () => {
+    if (!app.documentModel.pageCount) return;
+    app.openOcrModal();
+  });
   app.ui.highlightBtn.addEventListener('click', () => {
     if (!app.documentModel.pageCount) return;
     app.setMode(app.mode === 'drawHighlight' ? 'select' : 'drawHighlight');

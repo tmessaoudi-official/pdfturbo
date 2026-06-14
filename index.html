@@ -1044,6 +1044,7 @@
       <button id="addImageBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n-title="toolbar.addImageTitle" title="Add Image (I)">🖼 <span class="btn-label" data-i18n="toolbar.addImageLabel">Image</span></button>
       <input type="file" id="addImageInput" accept="image/*">
       <button id="addCodeBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n-title="toolbar.addCodeTitle" title="Add QR / Barcode (Q)">⊡ <span class="btn-label" data-i18n="toolbar.addCodeLabel">Code</span></button>
+      <button id="ocrBtn" class="btn btn-secondary" disabled data-i18n-title="toolbar.ocrTitle" title="Recognize text in a scanned page (OCR)">🔎📝 <span class="btn-label" data-i18n="toolbar.ocrLabel">OCR</span></button>
       <button id="findBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.findTitle" title="Find in page (Ctrl+F)">🔍</button>
     </div>
     <div class="toolbar-sep" id="tbsep-2"></div>
@@ -1346,6 +1347,34 @@
     <div class="code-modal-actions">
       <button id="cancelCodeModal" class="btn btn-secondary" data-i18n="modal.code.cancel">Cancel</button>
       <button id="saveCodeModal" class="btn btn-success" disabled data-i18n="modal.code.place">Place on PDF →</button>
+    </div>
+  </div>
+</div>
+
+<div class="code-modal" id="ocrModal" role="dialog" aria-modal="true" aria-labelledby="ocrModalTitle">
+  <div class="code-modal-content">
+    <h2 id="ocrModalTitle" data-i18n="modal.ocr.title">Recognize text (OCR)</h2>
+    <div class="code-field">
+      <label for="ocrLangSelect" data-i18n="modal.ocr.languageLabel">Language</label>
+      <select id="ocrLangSelect">
+        <option value="eng" data-i18n="ocrLang.eng">English</option>
+        <option value="fra" data-i18n="ocrLang.fra">French</option>
+        <option value="ara" data-i18n="ocrLang.ara">Arabic</option>
+        <option value="deu" data-i18n="ocrLang.deu">German</option>
+        <option value="spa" data-i18n="ocrLang.spa">Spanish</option>
+        <option value="ita" data-i18n="ocrLang.ita">Italian</option>
+        <option value="por" data-i18n="ocrLang.por">Portuguese</option>
+        <option value="nld" data-i18n="ocrLang.nld">Dutch</option>
+      </select>
+    </div>
+    <p class="code-preview-hint" data-i18n="modal.ocr.hint">Recognizes text on the current page and adds it as editable text. Language data is downloaded on first use.</p>
+    <div class="code-field" id="ocrProgressRow" style="display:none">
+      <progress id="ocrProgress" max="100" value="0" style="width:100%"></progress>
+      <div id="ocrProgressLabel" data-i18n="progress.ocrRecognizing">Recognizing text…</div>
+    </div>
+    <div class="code-modal-actions">
+      <button id="cancelOcrModal" class="btn btn-secondary" data-i18n="modal.ocr.cancel">Cancel</button>
+      <button id="runOcrModal" class="btn btn-success" data-i18n="modal.ocr.run">Run OCR →</button>
     </div>
   </div>
 </div>

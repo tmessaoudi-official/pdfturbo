@@ -13,6 +13,10 @@ export function bindModalEvents(app: PDFTurboApp): void {
     app.signaturePad.setColor((e.target as HTMLInputElement).value);
   });
 
+  // ── OCR modal ──────────────────────────────────────────────────
+  app.ui.cancelOcrModal.addEventListener('click', () => app.closeOcrModal());
+  app.ui.runOcrModal.addEventListener('click', () => void app.runOcr());
+
   // ── Code modal ─────────────────────────────────────────────────
   app.ui.cancelCodeModal.addEventListener('click', () => app.closeCodeModal());
   app.ui.saveCodeModal.addEventListener('click', () => void app.saveCodeModal());

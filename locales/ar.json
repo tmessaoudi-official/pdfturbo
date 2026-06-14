@@ -24,6 +24,8 @@
     "editTextTitle": "تحرير نص PDF — انقر على كلمة لتراكبها وتعديلها",
     "addCodeLabel": "رمز",
     "addCodeTitle": "إضافة رمز QR / باركود (Q)",
+    "ocrLabel": "OCR",
+    "ocrTitle": "التعرّف على النص في صفحة ممسوحة ضوئيًا (OCR)",
     "newBlankPage": "📄 صفحة فارغة جديدة…",
     "lockPdf": "🔒 قفل PDF…",
     "findTitle": "البحث في الصفحة (Ctrl+F)",
@@ -210,6 +212,13 @@
       "widthPlaceholder": "العرض",
       "heightPlaceholder": "الارتفاع"
     },
+    "ocr": {
+      "title": "التعرّف على النص (OCR)",
+      "languageLabel": "اللغة",
+      "hint": "يتعرّف على النص في الصفحة الحالية ويضيفه كنص قابل للتحرير. تُنزَّل بيانات اللغة عند أول استخدام.",
+      "run": "تشغيل OCR ←",
+      "cancel": "إلغاء"
+    },
     "code": {
       "title": "إضافة رمز QR / باركود",
       "titleEdit": "تعديل الرمز",
@@ -251,9 +260,12 @@
     "highlightAdded": "تم إضافة التظليل — Ctrl+Z للتراجع",
     "trueTextEdited": "تم تعديل النص في ملف PDF — Ctrl+Z للتراجع",
     "trueTextDeleted": "تم حذف النص من ملف PDF — Ctrl+Z للتراجع",
+    "ocrDone": "تم التعرّف على النص — أُضيفت {{count}} كلمة (Ctrl+Z للتراجع)",
+    "ocrNoText": "لم يُعثر على نص في هذه الصفحة",
+    "ocrFailed": "فشل التعرّف الضوئي — يرجى المحاولة مرة أخرى",
     "docxExported": "تم تصدير مستند Word — المحتوى النصي فقط (تجريبي)",
     "mdExported": "تم تصدير Markdown — المحتوى النصي فقط (تجريبي)",
-    "exportNoText": "لا يوجد نص قابل للاستخراج — ملفات PDF الممسوحة ضوئيًا تتطلب OCR وهو غير مدعوم بعد",
+    "exportNoText": "لا يوجد نص قابل للاستخراج — استخدم أداة OCR على الصفحات الممسوحة ضوئيًا أولًا",
     "exportFailed": "فشل التصدير",
     "selectImageFile": "يرجى اختيار ملف صورة (PNG أو JPEG أو GIF أو WebP)",
     "clickToPlaceImage": "اسحب على PDF لوضع الصورة",
@@ -368,7 +380,18 @@
     "privacyChipTitle": "جميع المعالجة تتم محلياً في متصفحك — لا يتم رفع أي ملفات إلى أي خادم",
     "legalAriaLabel": "الإشعار القانوني"
   },
+  "ocrLang": {
+    "eng": "الإنجليزية",
+    "fra": "الفرنسية",
+    "ara": "العربية",
+    "deu": "الألمانية",
+    "spa": "الإسبانية",
+    "ita": "الإيطالية",
+    "por": "البرتغالية",
+    "nld": "الهولندية"
+  },
   "progress": {
+    "ocrRecognizing": "جارٍ التعرّف على النص…",
     "loadingDocument": "جارٍ تحميل المستند…",
     "generatingPdf": "جارٍ إنشاء PDF…",
     "exportingPage": "جارٍ تصدير الصفحة…",

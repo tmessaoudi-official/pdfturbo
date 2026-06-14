@@ -41,6 +41,8 @@
     "editTextTitle": "Edit PDF text — click a word to overlay and edit it",
     "addCodeLabel": "Code",
     "addCodeTitle": "Add QR code / barcode (Q)",
+    "ocrLabel": "OCR",
+    "ocrTitle": "Recognize text in a scanned page (OCR)",
     "newBlankPage": "📄 New Blank Page…",
     "lockPdf": "🔒 Lock PDF…",
     "langTitle": "Change language",
@@ -210,6 +212,13 @@
       "widthPlaceholder": "Width",
       "heightPlaceholder": "Height"
     },
+    "ocr": {
+      "title": "Recognize text (OCR)",
+      "languageLabel": "Language",
+      "hint": "Recognizes text on the current page and adds it as editable text. Language data is downloaded on first use.",
+      "run": "Run OCR →",
+      "cancel": "Cancel"
+    },
     "code": {
       "title": "Add QR / Barcode",
       "titleEdit": "Edit Code",
@@ -251,9 +260,12 @@
     "highlightAdded": "Highlight added — Ctrl+Z to undo",
     "trueTextEdited": "Text edited in the PDF — Ctrl+Z to undo",
     "trueTextDeleted": "Text deleted from the PDF — Ctrl+Z to undo",
+    "ocrDone": "Text recognized — {{count}} words added (Ctrl+Z to undo)",
+    "ocrNoText": "No text found on this page",
+    "ocrFailed": "OCR failed — please try again",
     "docxExported": "Word document exported — text content only (beta)",
     "mdExported": "Markdown exported — text content only (beta)",
-    "exportNoText": "No extractable text found — scanned PDFs need OCR, which is not supported yet",
+    "exportNoText": "No extractable text found — try the OCR tool on scanned pages first",
     "exportFailed": "Export failed",
     "selectImageFile": "Please select an image file (PNG, JPEG, GIF, or WebP)",
     "clickToPlaceImage": "Drag on the PDF to place the image",
@@ -368,7 +380,18 @@
     "privacyChipTitle": "All processing happens locally in your browser — no files are ever uploaded to any server",
     "legalAriaLabel": "Legal"
   },
+  "ocrLang": {
+    "eng": "English",
+    "fra": "French",
+    "ara": "Arabic",
+    "deu": "German",
+    "spa": "Spanish",
+    "ita": "Italian",
+    "por": "Portuguese",
+    "nld": "Dutch"
+  },
   "progress": {
+    "ocrRecognizing": "Recognizing text…",
     "loadingDocument": "Loading document…",
     "generatingPdf": "Generating PDF…",
     "exportingPage": "Exporting page…",

@@ -41,6 +41,8 @@
     "editTextTitle": "Éditer le texte PDF — cliquez sur un mot pour le superposer et l'éditer",
     "addCodeLabel": "Code",
     "addCodeTitle": "Ajouter un QR code / code-barres (Q)",
+    "ocrLabel": "OCR",
+    "ocrTitle": "Reconnaître le texte d'une page numérisée (OCR)",
     "newBlankPage": "📄 Nouvelle page vierge…",
     "lockPdf": "🔒 Verrouiller le PDF…",
     "langTitle": "Changer de langue",
@@ -210,6 +212,13 @@
       "widthPlaceholder": "Largeur",
       "heightPlaceholder": "Hauteur"
     },
+    "ocr": {
+      "title": "Reconnaître le texte (OCR)",
+      "languageLabel": "Langue",
+      "hint": "Reconnaît le texte de la page actuelle et l'ajoute en tant que texte modifiable. Les données linguistiques sont téléchargées à la première utilisation.",
+      "run": "Lancer l'OCR →",
+      "cancel": "Annuler"
+    },
     "code": {
       "title": "Ajouter un QR / code-barres",
       "titleEdit": "Modifier le code",
@@ -251,9 +260,12 @@
     "highlightAdded": "Surlignage ajouté — Ctrl+Z pour annuler",
     "trueTextEdited": "Texte modifié dans le PDF — Ctrl+Z pour annuler",
     "trueTextDeleted": "Texte supprimé du PDF — Ctrl+Z pour annuler",
+    "ocrDone": "Texte reconnu — {{count}} mots ajoutés (Ctrl+Z pour annuler)",
+    "ocrNoText": "Aucun texte trouvé sur cette page",
+    "ocrFailed": "Échec de l'OCR — veuillez réessayer",
     "docxExported": "Document Word exporté — contenu texte uniquement (bêta)",
     "mdExported": "Markdown exporté — contenu texte uniquement (bêta)",
-    "exportNoText": "Aucun texte extractible — les PDF scannés nécessitent une OCR, non prise en charge pour l'instant",
+    "exportNoText": "Aucun texte extractible — utilisez d'abord l'outil OCR sur les pages numérisées",
     "exportFailed": "Échec de l'export",
     "selectImageFile": "Veuillez sélectionner un fichier image (PNG, JPEG, GIF ou WebP)",
     "clickToPlaceImage": "Faites glisser sur le PDF pour placer l'image",
@@ -368,7 +380,18 @@
     "privacyChipTitle": "Tout le traitement se fait localement dans votre navigateur — aucun fichier n'est jamais téléchargé vers un serveur",
     "legalAriaLabel": "Mentions légales"
   },
+  "ocrLang": {
+    "eng": "Anglais",
+    "fra": "Français",
+    "ara": "Arabe",
+    "deu": "Allemand",
+    "spa": "Espagnol",
+    "ita": "Italien",
+    "por": "Portugais",
+    "nld": "Néerlandais"
+  },
   "progress": {
+    "ocrRecognizing": "Reconnaissance du texte…",
     "loadingDocument": "Chargement du document…",
     "generatingPdf": "Génération du PDF…",
     "exportingPage": "Exportation de la page…",

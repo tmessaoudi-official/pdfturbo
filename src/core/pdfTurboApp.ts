@@ -20,6 +20,7 @@ import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
 import { TextEditHandler } from '../handlers/textEditHandler';
+import { OcrHandler } from '../handlers/ocrHandler';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
 
@@ -98,6 +99,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _annotationService!: AnnotationService;
   private _toolModeManager!: ToolModeManager;
   private _codeModalManager!: CodeModalManager;
+  private _ocrHandler!: OcrHandler;
   private _watermarkPanel!: WatermarkPanel;
   private _findBarController!: FindBarController;
   private _documentLoader!: DocumentLoader;
@@ -290,6 +292,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._annotationService = new AnnotationService(this);
     this._toolModeManager = new ToolModeManager(this);
     this._codeModalManager = new CodeModalManager(this);
+    this._ocrHandler = new OcrHandler(this);
     this._watermarkPanel = new WatermarkPanel(this);
     this._findBarController = new FindBarController(this);
     this._documentLoader = new DocumentLoader(this);
@@ -486,6 +489,34 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   saveCodeModal(): Promise<void> { return this._codeModalManager.save(); }
   _syncCodeOptionsVisibility(): void { this._codeModalManager.syncVisibility(); }
   _triggerCodePreview(delay?: number): void { this._codeModalManager.triggerPreview(delay); }
+
+  // ── OCR modal ───────────────────────────────────────────────────────────
+  openOcrModal(): void {
+    if (!this.documentModel.pageCount) return;
+    this.ui.ocrProgressRow.style.display = 'none';
+    this.ui.ocrProgress.value = 0;
+    this.ui.runOcrModal.disabled = false;
+    this.ui.ocrModal.classList.add('active');
+  }
+  closeOcrModal(): void { this.ui.ocrModal.classList.remove('active'); }
+  async runOcr(): Promise<void> {
+    const lang = this.ui.ocrLangSelect.value;
+    this.ui.ocrProgressRow.style.display = '';
+    this.ui.runOcrModal.disabled = true;
+    try {
+      const n = await this._ocrHandler.run(lang, ({ progress }) => {
+        this.ui.ocrProgress.value = Math.round(progress * 100);
+      });
+      this.closeOcrModal();
+      if (n > 0) this.reportError.info('toast.ocrDone', { count: n });
+      else this.reportError.warn('toast.ocrNoText');
+    } catch {
+      this.reportError.error('toast.ocrFailed');
+    } finally {
+      this.ui.runOcrModal.disabled = false;
+      this.ui.ocrProgressRow.style.display = 'none';
+    }
+  }
 
   selectElement(element: PDFElement | null) {
     if (this.selectedElement === element) { this._updateFormattingToolbar(); return; }

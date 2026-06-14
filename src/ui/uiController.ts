@@ -113,6 +113,14 @@ export interface AppDOMRefs {
   exportChevronBtn: HTMLButtonElement;
   exportSplitWrap:  HTMLElement;
   addCodeBtn:       HTMLButtonElement;
+  ocrBtn:           HTMLButtonElement;
+  ocrModal:         HTMLElement;
+  ocrLangSelect:    HTMLSelectElement;
+  ocrProgressRow:   HTMLElement;
+  ocrProgress:      HTMLProgressElement;
+  ocrProgressLabel: HTMLElement;
+  runOcrModal:      HTMLButtonElement;
+  cancelOcrModal:   HTMLButtonElement;
   codeModal:        HTMLElement;
   codeFormatSelect: HTMLSelectElement;
   codeDataInput:    HTMLTextAreaElement;
@@ -254,6 +262,14 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       exportChevronBtn: document.getElementById('exportChevronBtn') as HTMLButtonElement,
       exportSplitWrap:  document.getElementById('exportSplitWrap')  as HTMLElement,
       addCodeBtn:       document.getElementById('addCodeBtn')       as HTMLButtonElement,
+      ocrBtn:           document.getElementById('ocrBtn')           as HTMLButtonElement,
+      ocrModal:         document.getElementById('ocrModal')         as HTMLElement,
+      ocrLangSelect:    document.getElementById('ocrLangSelect')    as HTMLSelectElement,
+      ocrProgressRow:   document.getElementById('ocrProgressRow')   as HTMLElement,
+      ocrProgress:      document.getElementById('ocrProgress')      as HTMLProgressElement,
+      ocrProgressLabel: document.getElementById('ocrProgressLabel') as HTMLElement,
+      runOcrModal:      document.getElementById('runOcrModal')      as HTMLButtonElement,
+      cancelOcrModal:   document.getElementById('cancelOcrModal')   as HTMLButtonElement,
       codeModal:        document.getElementById('codeModal')        as HTMLElement,
       codeFormatSelect: document.getElementById('codeFormatSelect') as HTMLSelectElement,
       codeDataInput:    document.getElementById('codeDataInput')    as HTMLTextAreaElement,
@@ -318,6 +334,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.exportDocxBtn.disabled  = false;
     r.exportMdBtn.disabled    = false;
     r.editTextBtn.disabled    = false;
+    r.ocrBtn.disabled         = false;
     const eyedropper = document.getElementById('redactEyedropperBtn') as HTMLButtonElement | null;
     if (eyedropper) eyedropper.disabled = false;
     r.colorEyedropperBtn.disabled = false;
