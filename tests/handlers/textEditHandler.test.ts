@@ -3,7 +3,11 @@ import { TextEditHandler } from '../../src/handlers/textEditHandler';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
-const { mockFindTextOpAt } = vi.hoisted(() => ({ mockFindTextOpAt: vi.fn() }));
+const { mockFindTextOpAt, mockReplaceTextAt, mockDeleteTextAt } = vi.hoisted(() => ({
+  mockFindTextOpAt: vi.fn(),
+  mockReplaceTextAt: vi.fn(),
+  mockDeleteTextAt: vi.fn(),
+}));
 
 vi.mock('@cantoo/pdf-lib', () => ({
   PDFDocument: { load: vi.fn().mockResolvedValue({}) },
@@ -11,8 +15,8 @@ vi.mock('@cantoo/pdf-lib', () => ({
 
 vi.mock('../../src/utils/contentStreamEditor', () => ({
   findTextOpAt:     mockFindTextOpAt,
-  deleteTextAt:     vi.fn(),
-  replaceTextAt:    vi.fn(),
+  deleteTextAt:     mockDeleteTextAt,
+  replaceTextAt:    mockReplaceTextAt,
   changeSizeAt:     vi.fn(),
   changeColorAt:    vi.fn(),
   fillColorToHex:   vi.fn(() => null),
@@ -77,6 +81,8 @@ function makeApp(canvas: HTMLCanvasElement, fakePage: ReturnType<typeof makeFake
     _autosave: vi.fn(),
     setMode: vi.fn(),
     selectElement: vi.fn(),
+    addTextAtPosition: vi.fn(),
+    _applySourcePdfEdit: vi.fn().mockResolvedValue(undefined),
     reportError: { info: vi.fn(), warn: vi.fn(), silent: vi.fn() },
   };
 }
@@ -93,6 +99,8 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
   beforeEach(() => {
     handler = new TextEditHandler();
     mockFindTextOpAt.mockReset();
+    mockReplaceTextAt.mockReset();
+    mockDeleteTextAt.mockReset();
   });
 
   afterEach(() => {
@@ -161,6 +169,48 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     // Overlay added two elements (redaction + text) via MacroCmd
     expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
     expect(document.body.querySelector('.true-edit-input')).toBeNull();
+  });
+
+  // BUG A1 (commit-time): the editor opens for a non-XObject target, but the
+  // true edit fails at commit time (replaceTextAt returns false — e.g. a Type3 /
+  // invisible / vertical font that only A5 detects at commit). The handler used
+  // to silently `return`, discarding the user's typed change. It must instead
+  // fall back to the overlay (redaction cover + text) built from context captured
+  // when the inline editor opened — never a silent no-op.
+  it('falls back to overlay when replaceTextAt fails at commit time (A1 commit-time)', async () => {
+    const pageH = 841;
+    const item = makeItem('Heading', 100, 600);
+
+    // Click-time: target found, NOT an XObject → editor opens.
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
+      if (Math.abs(origin.x - 100) < 1 && Math.abs(origin.y - 600) < 1) {
+        return { fontKey: 'F1', fontSize: 12, fillColor: undefined };
+      }
+      return null;
+    });
+    // Commit-time: the true edit refuses.
+    mockReplaceTextAt.mockResolvedValue(false);
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], pageH));
+    await handler.handleCanvasClick(
+      click(115, 241),
+      app as unknown as Parameters<typeof handler.handleCanvasClick>[1],
+    );
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+
+    // User edits the text and commits (Enter).
+    input.value = 'Changed Heading';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    // Allow the async commit() to settle.
+    await new Promise<void>(r => { setTimeout(r, 0); });
+
+    // Overlay MacroCmd (redaction + text) must have fired — not a silent no-op.
+    expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+    // The true edit must NOT have been persisted.
+    expect((app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });
 
   // BUG A1: when the only content-stream match lives inside a Form XObject, the

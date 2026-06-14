@@ -25,6 +25,8 @@ import {
   getPageRotation,
   locatePageTextOps,
   isSubsetFontName,
+  isType3Font,
+  isVerticalWritingFont,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -183,14 +185,63 @@ async function makeThreeStringPdf(): Promise<Uint8Array> {
  * Build a PDF with a genuine same-origin drop shadow: the SAME string drawn
  * twice at the exact same baseline origin (the legitimate multi-op-same-origin
  * case the nearby-blanking is meant to clean up), plus one separate string.
+ * A real drop-shadow/outline pass repeats the IDENTICAL glyph string at the same
+ * origin, so the duplicate uses the same text/font/size (BUG A4).
  */
 async function makeOverlappingTextPdf(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([400, 400]);
+  // Embed Helvetica once and reference it by a single stable key /F1 so the
+  // shadow duplicate shares the SAME font resource (as a real drop-shadow does
+  // — pdf-lib's high-level drawText would assign each call a distinct key).
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  page.drawText('Shadow1', { x: 50, y: 300, size: 12, font }); // primary
-  page.drawText('ShadowDup', { x: 50, y: 300, size: 12, font }); // SAME origin → true shadow
-  page.drawText('Separate', { x: 50, y: 200, size: 12, font }); // 100pt away
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  // Find the key pdf-lib gave Helvetica and alias it to /F1.
+  const helvKey = [...fontDict.entries()][0][0];
+  // helvKey came straight from entries(), so the value is present; guard narrows the type.
+  const helvVal = fontDict.get(helvKey);
+  if (!helvVal) throw new Error('Helvetica font entry missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content =
+    'BT /F1 12 Tf 1 0 0 1 50 300 Tm (Shadow1) Tj ET\n' +   // primary
+    'BT /F1 12 Tf 1 0 0 1 50 300 Tm (Shadow1) Tj ET\n' +   // SAME key+text+origin → true shadow
+    'BT /F1 12 Tf 1 0 0 1 50 200 Tm (Separate) Tj ET';     // 100pt away
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+/**
+ * Build a PDF with two DISTINCT words at the SAME baseline origin (within the
+ * shadow radius) but with DIFFERENT content — the case that proximity-only
+ * blanking wrongly wipes (BUG A4). Content-aware blanking must keep the
+ * different-string neighbour even though it shares the origin.
+ */
+async function makeSameOriginDistinctPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  // Share a single font key /F1 so content payload is the ONLY differentiator —
+  // proving content-aware blanking, not an accidental font-key mismatch, is what
+  // preserves the neighbour.
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  const helvKey = [...fontDict.entries()][0][0];
+  const helvVal = fontDict.get(helvKey);
+  if (!helvVal) throw new Error('Helvetica font entry missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content =
+    'BT /F1 12 Tf 1 0 0 1 50 300 Tm (TargetWord) Tj ET\n' + // target
+    'BT /F1 12 Tf 1 0 0 1 50 300 Tm (OtherWord) Tj ET';     // SAME origin+key, DIFFERENT text
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
   return doc.save();
 }
 
@@ -452,8 +503,9 @@ describe('deleteTextAt', () => {
     await deleteTextAt(doc, 0, { x: 50, y: 300 });
     const saved = await doc.save();
     const strings = showStrings(await pageContentText(saved));
-    expect(strings).not.toContain('Shadow1');   // primary — blanked
-    expect(strings).not.toContain('ShadowDup'); // SAME origin shadow — also blanked
+    // Both the primary and its identical same-origin shadow are blanked; only
+    // ONE 'Separate' (100pt away) survives.
+    expect(strings.filter(s => s === 'Shadow1')).toHaveLength(0);
     expect(strings).toContain('Separate');      // 100pt away — untouched
   });
 
@@ -468,6 +520,30 @@ describe('deleteTextAt', () => {
     const strings = showStrings(await pageContentText(saved));
     expect(strings).not.toContain('EditMe');     // target — blanked
     expect(strings).toContain('Neighbour');      // distinct neighbour — preserved
+  });
+
+  // BUG A4: proximity alone is not enough — a DISTINCT word sharing the target's
+  // exact origin (within the shadow radius) but with different content must NOT
+  // be blanked. Only true shadow/outline duplicates (same font+size+content)
+  // are swept.
+  it('does NOT blank a distinct same-origin word with different content (A4)', async () => {
+    const doc = await PDFDocument.load(await makeSameOriginDistinctPdf());
+    const removed = await deleteTextAt(doc, 0, { x: 50, y: 300 });
+    expect(removed).toBe(true);
+    const saved = await doc.save();
+    const strings = showStrings(await pageContentText(saved));
+    expect(strings).not.toContain('TargetWord'); // target — blanked
+    expect(strings).toContain('OtherWord');      // distinct same-origin word — preserved
+  });
+
+  it('STILL blanks a true same-origin shadow (same content+font+size) (A4)', async () => {
+    const doc = await PDFDocument.load(await makeOverlappingTextPdf());
+    const removed = await deleteTextAt(doc, 0, { x: 50, y: 300 });
+    expect(removed).toBe(true);
+    const saved = await doc.save();
+    const strings = showStrings(await pageContentText(saved));
+    // Neither copy of the identical shadow survives.
+    expect(strings.filter(s => s === 'Shadow1')).toHaveLength(0);
   });
 });
 
@@ -760,6 +836,81 @@ describe('replaceShowOpHex', () => {
     const textOps = locateTextOps(innerOps);
     expect(replaceShowOpHex(innerOps[textOps[0].opIndex], '<0048>')).toBe(false);
   });
+
+  // BUG A2: replaceShowOpHex used to swap ONLY the first hexstring of a multi-
+  // segment TJ array, leaving subsequent hexstrings as STALE old glyphs — a
+  // garbled Path-2 edit. The full new text must land in the first hexstring and
+  // EVERY other hexstring item must be blanked to empty <>, so no old glyph
+  // bytes survive.
+  it('blanks every other hexstring segment in a multi-segment TJ array (A2)', () => {
+    const src = 'BT [<4865> -50 <6C6C6F> -30 <2121>] TJ ET';
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpHex(innerOps[textOps[0].opIndex], '<00480069>');
+    expect(ok).toBe(true);
+    const serialized = serializeOps(innerOps);
+    // New text present in the first segment.
+    expect(serialized).toContain('<00480069>');
+    // No stale old glyph bytes remain anywhere in the array.
+    expect(serialized).not.toContain('<6C6C6F>');
+    expect(serialized).not.toContain('<2121>');
+    // Exactly one non-empty hexstring (the new one); the others are empty <>.
+    const hexes = [...serialized.matchAll(/<([0-9A-Fa-f]*)>/g)].map(m => m[1]);
+    const nonEmpty = hexes.filter(h => h.length > 0);
+    expect(nonEmpty).toEqual(['00480069']);
+  });
+
+  it('leaves a single-hexstring TJ array unchanged apart from the swap (A2 regression)', () => {
+    const src = 'BT [<4865>] TJ ET';
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpHex(innerOps[textOps[0].opIndex], '<0048>');
+    expect(ok).toBe(true);
+    expect(serializeOps(innerOps)).toContain('<0048>');
+    expect(serializeOps(innerOps)).not.toContain('<4865>');
+  });
+});
+
+// ── A3: cmapHexToUnicodeStr UTF-16BE decoding (via parseToUnicodeCMap) ─────────
+
+describe('parseToUnicodeCMap — UTF-16BE dst decoding (A3)', () => {
+  it('decodes a 2-code-unit ligature dst <00660069> as "fi"', () => {
+    const cmap = 'beginbfchar\n<0003> <00660069>\nendbfchar';
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0003)).toBe('fi');
+  });
+
+  it('combines a UTF-16BE surrogate pair into a single non-BMP code point', () => {
+    // U+1D400 MATHEMATICAL BOLD CAPITAL A → surrogate pair D835 DC00.
+    const cmap = 'beginbfchar\n<0005> <D835DC00>\nendbfchar';
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0005)).toBe(String.fromCodePoint(0x1d400));
+    expect([...(map.get(0x0005) ?? '')]).toHaveLength(1);
+  });
+
+  it('treats a 6-hex dst as UTF-16BE units (not a single 24-bit code point)', () => {
+    // The old parity heuristic decoded <006601> as one code point U+006601.
+    // As UTF-16BE units that is <0066> + a lone trailing nibble; the leading
+    // unit U+0066 ("f") must decode correctly regardless.
+    const cmap = 'beginbfchar\n<0007> <00660041>\nendbfchar';
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0007)).toBe('fA');
+  });
+
+  it('does not crash on a lone high surrogate (skips or replaces it)', () => {
+    const cmap = 'beginbfchar\n<0009> <D835>\nendbfchar';
+    const map = parseToUnicodeCMap(cmap);
+    const v = map.get(0x0009);
+    // No throw; lone surrogate yields either empty or the replacement char.
+    expect(v === '' || v === '�').toBe(true);
+  });
+
+  it('still decodes plain BMP single-unit dst values', () => {
+    const cmap = 'beginbfchar\n<0048> <0048>\n<0065> <0065>\nendbfchar';
+    const map = parseToUnicodeCMap(cmap);
+    expect(map.get(0x0048)).toBe('H');
+    expect(map.get(0x0065)).toBe('e');
+  });
 });
 
 // ── Phase B: font matching ────────────────────────────────────────────────────
@@ -979,5 +1130,172 @@ describe('isSubsetFontName', () => {
     expect(isSubsetFontName('ABCDE+Arial')).toBe(false);   // only 5 letters
     expect(isSubsetFontName('abcdef+Arial')).toBe(false);  // lowercase
     expect(isSubsetFontName('ABCDEFG+Arial')).toBe(false); // 7 letters
+  });
+});
+
+// ── A5: defensive routing for non-editable text ──────────────────────────────────
+
+/**
+ * Build a PDF whose page text is shown by a /Subtype /Type3 font. Type3 fonts
+ * define glyphs as content-stream procedures, not byte→glyph encodings — they
+ * are never safely byte-swappable and must be refused (BUG A5).
+ */
+async function makeType3FontPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const ctx = doc.context;
+
+  // Minimal Type3 font dict (a single glyph at code 0x41).
+  const charProc = ctx.stream(new Uint8Array([0x20])); // trivial glyph proc
+  const charProcRef = ctx.register(charProc);
+  const charProcs = PDFDict.fromMapWithContext(new Map(), ctx);
+  charProcs.set(PDFName.of('a'), charProcRef);
+  const encDict = PDFDict.fromMapWithContext(new Map(), ctx);
+  const diffs = PDFArray.withContext(ctx);
+  diffs.push(ctx.obj(0x41));
+  diffs.push(PDFName.of('a'));
+  encDict.set(PDFName.of('Differences'), diffs);
+  const fontMatrix = PDFArray.withContext(ctx);
+  [0.001, 0, 0, 0.001, 0, 0].forEach(n => fontMatrix.push(ctx.obj(n)));
+  const fontBBox = PDFArray.withContext(ctx);
+  [0, 0, 750, 750].forEach(n => fontBBox.push(ctx.obj(n)));
+  const widths = PDFArray.withContext(ctx);
+  widths.push(ctx.obj(500));
+
+  const fontDict = PDFDict.fromMapWithContext(new Map(), ctx);
+  fontDict.set(PDFName.of('Type'), PDFName.of('Font'));
+  fontDict.set(PDFName.of('Subtype'), PDFName.of('Type3'));
+  fontDict.set(PDFName.of('FontBBox'), fontBBox);
+  fontDict.set(PDFName.of('FontMatrix'), fontMatrix);
+  fontDict.set(PDFName.of('CharProcs'), charProcs);
+  fontDict.set(PDFName.of('Encoding'), encDict);
+  fontDict.set(PDFName.of('FirstChar'), ctx.obj(0x41));
+  fontDict.set(PDFName.of('LastChar'), ctx.obj(0x41));
+  fontDict.set(PDFName.of('Widths'), widths);
+  const fontRef = ctx.register(fontDict);
+
+  const resFont = PDFDict.fromMapWithContext(new Map(), ctx);
+  resFont.set(PDFName.of('T3'), fontRef);
+  const res = PDFDict.fromMapWithContext(new Map(), ctx);
+  res.set(PDFName.of('Font'), resFont);
+  page.node.set(PDFName.of('Resources'), res);
+
+  const content = 'BT /T3 12 Tf 1 0 0 1 50 300 Tm (A) Tj ET';
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  const cs = ctx.stream(cb);
+  page.node.set(PDFName.of('Contents'), ctx.register(cs));
+  return doc.save();
+}
+
+/**
+ * Build a PDF with a standard-font show op rendered under text-render-mode 3
+ * (invisible) — the classic OCR layer over a scanned image. Editing it would
+ * paint visible text over the scan, so it must be refused (BUG A5).
+ */
+async function makeInvisibleTextPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  // Embed Helvetica into the page resources so /F-something resolves.
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  let bytes = await doc.save();
+  // Reload and find the assigned font key, then inject a `3 Tr` invisible op.
+  const d2 = await PDFDocument.load(bytes);
+  const content = await pageContentText(bytes);
+  const tfMatch = content.match(/\/(\w+)\s+1\s+Tf/);
+  const fontKey = tfMatch ? tfMatch[1] : 'F1';
+  const invisible = `\nBT /${fontKey} 12 Tf 3 Tr 1 0 0 1 50 300 Tm (Hidden) Tj ET`;
+  const newContent = content + invisible;
+  const cb = new Uint8Array(newContent.length);
+  for (let i = 0; i < newContent.length; i++) cb[i] = newContent.charCodeAt(i) & 0xff;
+  const p2 = d2.getPage(0);
+  const cs = d2.context.stream(cb);
+  p2.node.set(PDFName.of('Contents'), d2.context.register(cs));
+  bytes = await d2.save();
+  return bytes;
+}
+
+describe('isType3Font (A5)', () => {
+  it('detects a /Subtype /Type3 font in page resources', async () => {
+    const doc = await PDFDocument.load(await makeType3FontPdf());
+    expect(isType3Font(doc, 0, '/T3')).toBe(true);
+  });
+
+  it('returns false for a standard (non-Type3) font', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const content = await pageContentText(await doc.save());
+    const tfMatch = content.match(/\/(\w+)\s+12\s+Tf/);
+    const fontKey = tfMatch ? `/${tfMatch[1]}` : '/F1';
+    expect(isType3Font(doc, 0, fontKey)).toBe(false);
+  });
+});
+
+describe('isVerticalWritingFont (A5)', () => {
+  it('returns false for a horizontal standard font', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const content = await pageContentText(await doc.save());
+    const tfMatch = content.match(/\/(\w+)\s+12\s+Tf/);
+    const fontKey = tfMatch ? `/${tfMatch[1]}` : '/F1';
+    expect(isVerticalWritingFont(doc, 0, fontKey)).toBe(false);
+  });
+
+  it('detects a Type0 font with a vertical (…-V) encoding CMap name', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 400]);
+    const ctx = doc.context;
+    const fontDict = PDFDict.fromMapWithContext(new Map(), ctx);
+    fontDict.set(PDFName.of('Type'), PDFName.of('Font'));
+    fontDict.set(PDFName.of('Subtype'), PDFName.of('Type0'));
+    fontDict.set(PDFName.of('Encoding'), PDFName.of('Identity-V'));
+    const fontRef = ctx.register(fontDict);
+    const resFont = PDFDict.fromMapWithContext(new Map(), ctx);
+    resFont.set(PDFName.of('FV'), fontRef);
+    const res = PDFDict.fromMapWithContext(new Map(), ctx);
+    res.set(PDFName.of('Font'), resFont);
+    page.node.set(PDFName.of('Resources'), res);
+    expect(isVerticalWritingFont(doc, 0, '/FV')).toBe(true);
+  });
+
+  it('treats a Type0 font with a horizontal (…-H) encoding as not vertical', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 400]);
+    const ctx = doc.context;
+    const fontDict = PDFDict.fromMapWithContext(new Map(), ctx);
+    fontDict.set(PDFName.of('Type'), PDFName.of('Font'));
+    fontDict.set(PDFName.of('Subtype'), PDFName.of('Type0'));
+    fontDict.set(PDFName.of('Encoding'), PDFName.of('Identity-H'));
+    const fontRef = ctx.register(fontDict);
+    const resFont = PDFDict.fromMapWithContext(new Map(), ctx);
+    resFont.set(PDFName.of('FH'), fontRef);
+    const res = PDFDict.fromMapWithContext(new Map(), ctx);
+    res.set(PDFName.of('Font'), resFont);
+    page.node.set(PDFName.of('Resources'), res);
+    expect(isVerticalWritingFont(doc, 0, '/FH')).toBe(false);
+  });
+});
+
+describe('replaceTextAt — refuses non-editable text (A5)', () => {
+  it('refuses to edit a Type3-font show op (returns false, original preserved)', async () => {
+    const doc = await PDFDocument.load(await makeType3FontPdf());
+    const ok = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'X');
+    expect(ok).toBe(false);
+    const saved = bytesToLatin1(await doc.save());
+    expect(saved).toContain('(A)'); // original show op untouched
+  });
+
+  it('refuses to edit an invisible (Tr 3) show op (returns false, original preserved)', async () => {
+    const doc = await PDFDocument.load(await makeInvisibleTextPdf());
+    const ok = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Visible');
+    expect(ok).toBe(false);
+    const strings = showStrings(await pageContentText(await doc.save()));
+    expect(strings).toContain('Hidden'); // invisible OCR text left intact
+  });
+
+  it('still edits a normal horizontal visible standard-font op (A5 does not over-refuse)', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const ok = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Bonjour');
+    expect(ok).toBe(true);
+    expect(showStrings(await pageContentText(await doc.save()))).toContain('Bonjour');
   });
 });

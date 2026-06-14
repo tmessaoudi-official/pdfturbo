@@ -11,6 +11,28 @@ import type { SourcePdf } from '../core/documentModel';
 /** Max distance (PDF pts) between a pdf.js item origin and a content-stream show op. */
 const TRUE_EDIT_TOLERANCE = 3;
 
+/**
+ * Fully-resolved inputs for an overlay fallback (redaction cover + text box):
+ * canvas-space geometry, sampled colors, and detected font properties. Computed
+ * once (at click time for the no-match path, or at inline-editor-open time for
+ * the commit-time true-edit-failure fallback) so the overlay can be emitted
+ * later without re-reading the canvas.
+ */
+interface OverlayContext {
+  annX: number;
+  annY: number;
+  w: number;
+  h: number;
+  pageId: string;
+  bgColor: string;
+  textColor: string;
+  fontFamily: string;
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  text: string;
+}
+
 /** Convert a #RRGGBB hex string to a [0,1]-range RGB object, or null on failure. */
 function hexToRgb01(hex: string): { r: number; g: number; b: number } | null {
   const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
@@ -127,6 +149,7 @@ export class TextEditHandler {
           originalText: best.str,
           fontSize: Math.hypot(best.transform[0], best.transform[1]) || target.fontSize || 12,
           itemHeight: Math.max(Math.abs(best.height), 10),
+          itemWidth: Math.max(Math.abs(best.width), 40),
           pageH,
           rotated: (page.rotate + userRot) % 360 !== 0,
           fillColor: target.fillColor,
@@ -137,16 +160,44 @@ export class TextEditHandler {
       // Encrypted or unparseable source PDF — overlay fallback below.
     }
 
-    const tx = best.transform[4];
-    const ty = best.transform[5];
     const w  = Math.max(Math.abs(best.width),  40);
     const h  = Math.max(Math.abs(best.height), 10);
-
     // Canvas-space position: top-left origin
-    const annX = tx;
-    const annY = pageH - ty - h;
+    const annX = best.transform[4];
+    const annY = pageH - best.transform[5] - h;
 
-    const pageId = docPage.id;
+    const detectedFontSize = Math.round(Math.hypot(best.transform[0], best.transform[1]));
+    const fontSize = detectedFontSize >= 6 && detectedFontSize <= 144
+      ? detectedFontSize
+      : Math.max(8, Math.round(h * 0.82));
+
+    const overlayCtx = this._buildOverlayContext(app, {
+      annX, annY, w, h,
+      pageId: docPage.id,
+      fontName: best.fontName,
+      pdfjsFontFamily: styles[best.fontName]?.fontFamily ?? '',
+      fontSize,
+      text: best.str,
+    });
+    this._emitOverlay(app, overlayCtx);
+  }
+
+  /**
+   * Sample the canvas background + foreground colors and resolve font family /
+   * weight for an overlay covering the given canvas-space rectangle. Pure
+   * computation + one canvas read pass — produces the full OverlayContext used by
+   * both the click-time no-match path and the commit-time true-edit-failure
+   * fallback (A1).
+   */
+  private _buildOverlayContext(
+    app: IAppContext,
+    o: {
+      annX: number; annY: number; w: number; h: number;
+      pageId: string; fontName: string; pdfjsFontFamily: string;
+      fontSize: number; text: string;
+    },
+  ): OverlayContext {
+    const { annX, annY, w, h } = o;
 
     // Sample background + foreground colors from the canvas in one pass.
     let bgColor = '#ffffff';
@@ -190,11 +241,9 @@ export class TextEditHandler {
       }
     }
 
-    // Detect font family from pdfjs styles and PS font name
-    const pdfjsFontFamily = styles[best.fontName]?.fontFamily ?? '';
-    const ff = pdfjsFontFamily.toLowerCase();
-    // Use the extracted PS name for more reliable family/weight detection
-    const psNameOverlay = extractPsName(best.fontName).toLowerCase();
+    // Detect font family from pdfjs styles and PS font name.
+    const ff = o.pdfjsFontFamily.toLowerCase();
+    const psNameOverlay = extractPsName(o.fontName).toLowerCase();
     let fontFamily = 'Arial';
     if (/times|roman/i.test(ff) || /times|roman/i.test(psNameOverlay)) {
       fontFamily = 'Times New Roman';
@@ -210,29 +259,37 @@ export class TextEditHandler {
       fontFamily = 'Times New Roman';
     }
 
-    const detectedFontSize = Math.round(Math.hypot(best.transform[0], best.transform[1]));
-    const fontSize = detectedFontSize >= 6 && detectedFontSize <= 144
-      ? detectedFontSize
-      : Math.max(8, Math.round(h * 0.82));
-
     // Detect bold/italic: check both PS name and pdfjs CSS fontFamily string.
-    // For PDFs with opaque font ids (e.g. "g_d0_f2"), the CSS fontFamily is the reliable source.
-    const psNameOverlayFull = extractPsName(best.fontName);
-    const overlayCheck = `${psNameOverlayFull} ${pdfjsFontFamily}`;
+    const overlayCheck = `${extractPsName(o.fontName)} ${o.pdfjsFontFamily}`;
     const bold   = /bold|black|heavy|semibold|demibold/i.test(overlayCheck);
     const italic = /italic|oblique/i.test(overlayCheck);
 
-    const cover = new RedactionElement(annX - 2, annY - 2, w + 4, h + 4, pageId, bgColor);
-    const textEl = new TextElement(annX, annY, pageId, {
-      width: w + 4,
-      height: h + 4,
-      fontSize,
-      color: textColor,
-      fontFamily,
-      bold,
-      italic,
+    return {
+      annX, annY, w, h,
+      pageId: o.pageId,
+      bgColor, textColor, fontFamily,
+      fontSize: o.fontSize,
+      bold, italic,
+      text: o.text,
+    };
+  }
+
+  /**
+   * Build the redaction cover + text overlay from a resolved context and execute
+   * it as a single undoable MacroCmd, then select the new text element.
+   */
+  private _emitOverlay(app: IAppContext, ctx: OverlayContext): void {
+    const cover = new RedactionElement(ctx.annX - 2, ctx.annY - 2, ctx.w + 4, ctx.h + 4, ctx.pageId, ctx.bgColor);
+    const textEl = new TextElement(ctx.annX, ctx.annY, ctx.pageId, {
+      width: ctx.w + 4,
+      height: ctx.h + 4,
+      fontSize: ctx.fontSize,
+      color: ctx.textColor,
+      fontFamily: ctx.fontFamily,
+      bold: ctx.bold,
+      italic: ctx.italic,
     });
-    textEl.text = best.str;
+    textEl.text = ctx.text;
 
     app.historyManager.execute(new MacroCmd([
       new AddElementCmd(app.elements, cover),
@@ -270,6 +327,7 @@ export class TextEditHandler {
       originalText: string;
       fontSize: number;
       itemHeight: number;
+      itemWidth: number;
       pageH: number;
       rotated: boolean;
       fillColor?: string;
@@ -294,6 +352,25 @@ export class TextEditHandler {
     const fontFamily = psNameToCssFontFamily(combined);
     input.style.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${fontPx}px ${fontFamily}`;
     input.style.minWidth = `${Math.max(160, Math.round(opts.originalText.length * fontPx * 0.6))}px`;
+
+    // A1: capture the overlay context NOW (geometry from the matched origin +
+    // colors sampled from the canvas), while the original is still on screen. If
+    // the true edit fails at commit time (replaceTextAt/deleteTextAt return false
+    // — e.g. Type3 / invisible / vertical fonts that only A5 detects after the
+    // editor opened), commit() falls back to this overlay instead of silently
+    // discarding the user's typed change.
+    const overlayH = Math.max(opts.itemHeight, 10);
+    const overlayContext = this._buildOverlayContext(app, {
+      annX: opts.origin.x,
+      annY: opts.pageH - opts.origin.y - overlayH,
+      w: opts.itemWidth,
+      h: overlayH,
+      pageId: opts.pageId,
+      fontName: opts.fontName,
+      pdfjsFontFamily: opts.pdfjsFontFamily,
+      fontSize: Math.round(opts.fontSize),
+      text: opts.originalText,
+    });
 
     // Reflect detected font properties in the formatting toolbar while editing.
     const { ui } = app;
@@ -416,7 +493,14 @@ export class TextEditHandler {
       } : undefined;
 
       const ok = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style);
-      if (!ok) return;
+      if (!ok) {
+        // A1: the true edit refused (e.g. Type3 / invisible / vertical font, or a
+        // subset-font XObject). Don't silently drop the user's change — cover the
+        // original with a redaction and place an editable text box carrying the
+        // typed text, using the context captured when the editor opened.
+        this._emitOverlay(app, { ...overlayContext, text: newText });
+        return;
+      }
 
       const newBytes = await opts.libDoc.save();
       await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);

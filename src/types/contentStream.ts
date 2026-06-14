@@ -44,4 +44,11 @@ export interface TextOpInfo {
   colorOpIndex?: number;
   /** Set when this op was found inside a Form XObject (not directly editable). */
   inXObject?: true;
+  /**
+   * Active text render mode (`Tr`) when this op was shown. 3 = invisible (the
+   * classic OCR layer over a scanned image); 7 = invisible + clip. Editing such
+   * ops would paint visible text over a scan, so they are refused (A5).
+   * Defaults to 0 (fill) when no `Tr` op preceded the show.
+   */
+  renderMode?: number;
 }

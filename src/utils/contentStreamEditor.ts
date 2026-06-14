@@ -291,6 +291,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let fontKey = '';
   let fontSize = 0;
   let leading = 0;
+  let renderMode = 0;
   let fillColor: string | undefined;
   let tfOpIndex: number | undefined;
   let colorOpIndex: number | undefined;
@@ -330,6 +331,9 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         break;
       case 'TL':
         leading = num(op.operands[0]);
+        break;
+      case 'Tr':
+        renderMode = num(op.operands[0]);
         break;
       case 'TD':
         leading = -num(op.operands[1]);
@@ -392,6 +396,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         fillColor,
         tfOpIndex,
         colorOpIndex,
+        renderMode,
       });
     }
   });
@@ -595,19 +600,46 @@ function blankShowOp(op: CsOp): void {
 }
 
 /**
- * Blank all show ops within SHADOW_RADIUS of `primaryOrigin`, skipping the op
- * at `excludeOpIndex` (already handled separately by the caller).
+ * Extract a show op's shown-text payload as a comparable string: the
+ * concatenation of all its string/hexstring operands (raw, brackets stripped).
+ * Used to tell a genuine shadow/outline duplicate (identical payload) apart from
+ * a DISTINCT neighbour that merely shares the origin.
+ */
+function showOpPayload(op: CsOp): string {
+  const parts: CsToken[] =
+    op.operator === 'TJ'
+      ? (op.operands[0]?.items ?? []).filter(t => t.type === 'string' || t.type === 'hexstring')
+      : [op.operands[op.operands.length - 1]].filter(
+          (t): t is CsToken => !!t && (t.type === 'string' || t.type === 'hexstring')
+        );
+  return parts.map(t => t.raw.replace(/^[(<]|[)>]$/g, '')).join('');
+}
+
+/**
+ * Blank only the show ops that are genuine shadow/outline DUPLICATES of the
+ * target: within SHADOW_RADIUS of `primaryOrigin` AND sharing the target's font
+ * key, font size, and shown-text payload. Proximity alone is NOT enough — a
+ * distinct neighbour word sharing the origin must survive (BUG A4). The op at
+ * `excludeOpIndex` is skipped (handled separately by the caller).
  */
 function blankAllNearby(
   ops: CsOp[],
   textOps: TextOpInfo[],
-  primaryOrigin: { x: number; y: number },
-  excludeOpIndex: number
+  target: TextOpInfo,
+  excludeOpIndex: number,
+  targetPayload: string
 ): void {
+  const primaryOrigin = target.origin;
   for (const t of textOps) {
     if (t.opIndex === excludeOpIndex) continue;
     const dist = Math.hypot(t.origin.x - primaryOrigin.x, t.origin.y - primaryOrigin.y);
-    if (dist <= SHADOW_RADIUS) blankShowOp(ops[t.opIndex]);
+    if (dist > SHADOW_RADIUS) continue;
+    // Same logical text only: a true shadow repeats the identical glyph payload
+    // in the same font at the same size. Differ on any of these → keep it.
+    if (t.fontKey !== target.fontKey) continue;
+    if (Math.abs(t.fontSize - target.fontSize) > 0.01) continue;
+    if (showOpPayload(ops[t.opIndex]) !== targetPayload) continue;
+    blankShowOp(ops[t.opIndex]);
   }
 }
 
@@ -704,8 +736,9 @@ export function deleteTextAt(
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
 
+  const delPayload = showOpPayload(found.ops[found.target.opIndex]);
   blankShowOp(found.ops[found.target.opIndex]);
-  blankAllNearby(found.ops, found.textOps, found.target.origin, found.target.opIndex);
+  blankAllNearby(found.ops, found.textOps, found.target, found.target.opIndex, delPayload);
   writeBack(doc, pageIndex, found);
   return true;
 }
@@ -718,16 +751,36 @@ function hexToInt(hex: string): number {
 }
 
 /**
- * Decode a destination hex code from a CMap into a Unicode string.
- * Handles both 1-byte (<XX>) and 2-byte (<XXXX>) codes.
- * Groups hex chars into code points: 4 chars = 1 BMP code point.
+ * Decode a ToUnicode CMap destination hex value into a Unicode string.
+ *
+ * Per the PDF spec (9.10.3), a bfchar/bfrange dst value is a string of UTF-16BE
+ * code units — i.e. 4 hex digits per 16-bit unit, with high+low surrogate pairs
+ * combining into a single non-BMP code point. The previous parity heuristic
+ * (guess 4 vs 2 from length) mis-decoded ligature and non-BMP values (BUG A3);
+ * this decodes strictly as UTF-16BE.
+ *
+ * A lone/unpaired surrogate (malformed CMap) is skipped rather than emitted as a
+ * broken code unit, so the result is always a valid string and never throws.
  */
 function cmapHexToUnicodeStr(hex: string): string {
   const clean = hex.replace(/\s+/g, '').toUpperCase();
-  const chunkSize = clean.length % 4 === 0 && clean.length >= 4 ? 4 : 2;
   let out = '';
-  for (let i = 0; i < clean.length; i += chunkSize) {
-    out += String.fromCodePoint(parseInt(clean.slice(i, i + chunkSize) || '0', 16));
+  for (let i = 0; i + 4 <= clean.length; i += 4) {
+    const unit = parseInt(clean.slice(i, i + 4), 16);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      // High surrogate — needs a following low surrogate to form a code point.
+      const lo = i + 8 <= clean.length ? parseInt(clean.slice(i + 4, i + 8), 16) : NaN;
+      if (lo >= 0xdc00 && lo <= 0xdfff) {
+        const cp = 0x10000 + ((unit - 0xd800) << 10) + (lo - 0xdc00);
+        out += String.fromCodePoint(cp);
+        i += 4; // consumed the low surrogate too
+      }
+      // else: lone high surrogate → skip (malformed)
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      // Lone low surrogate → skip (malformed)
+    } else {
+      out += String.fromCodePoint(unit);
+    }
   }
   return out;
 }
@@ -805,14 +858,29 @@ export function encodeWithSubset(
 /**
  * Replace the hexstring operand of a show op with a new hex payload.
  * Returns true on success; false when no hexstring operand is found.
+ *
+ * For a multi-segment TJ array (`[<h1> -50 <h2> …] TJ`) the FULL new payload is
+ * written into the first hexstring item and EVERY other hexstring item is
+ * blanked to empty `<>` — otherwise the trailing segments keep showing their
+ * STALE original glyphs, producing a garbled edit (BUG A2). Kerning numbers are
+ * left in place (their effect is cosmetic); losing kerning is acceptable, but
+ * leaving stale text is not.
  */
 export function replaceShowOpHex(op: CsOp, newHex: string): boolean {
   if (op.operator === 'TJ') {
     const arr = op.operands[0];
     if (!arr || arr.type !== 'array' || !arr.items) return false;
-    const first = arr.items.find(t => t.type === 'hexstring');
-    if (!first) return false;
-    first.raw = newHex;
+    let replaced = false;
+    for (const item of arr.items) {
+      if (item.type !== 'hexstring') continue;
+      if (!replaced) {
+        item.raw = newHex;
+        replaced = true;
+      } else {
+        item.raw = '<>'; // blank stale trailing segment
+      }
+    }
+    if (!replaced) return false;
     arr.raw = `[${arr.items.map(t => t.raw).join(' ')}]`;
     return true;
   }
@@ -1045,6 +1113,24 @@ export async function replaceTextAt(
   if (!found) return false;
 
   const { ops, target, textOps } = found;
+  // Capture the original shown payload BEFORE any path mutates the op, so the
+  // shadow-duplicate match in blankAllNearby compares against the real text (A4).
+  const targetPayload = showOpPayload(ops[target.opIndex]);
+
+  // A5: refuse cleanly (no blanking, no redraw) for text that cannot be faithfully
+  // re-rendered. Returning false routes the caller to its overlay fallback rather
+  // than producing garbage or painting over a scan. Only refuse on clear evidence
+  // so normal horizontal visible edits are never blocked.
+  //   (a) Type3 fonts — glyphs are content-stream procedures, not byte→glyph.
+  //   (b) invisible text (Tr 3 / 7) — OCR layer over a scanned image.
+  //   (c) vertical writing mode — a page-space horizontal redraw would misplace it.
+  if (
+    isType3Font(doc, pageIndex, target.fontKey) ||
+    target.renderMode === 3 || target.renderMode === 7 ||
+    isVerticalWritingFont(doc, pageIndex, target.fontKey)
+  ) {
+    return false;
+  }
 
   // Subset / embedded / CID fonts carry only the glyphs the document originally
   // used and map byte codes to them through a custom encoding. Blindly
@@ -1057,7 +1143,7 @@ export async function replaceTextAt(
   // Path 1: ASCII literal in-stream replacement (only safe for standard,
   // non-embedded fonts where byte code == ASCII).
   if (!byteSwapUnsafe && replaceShowOpInPlace(ops[target.opIndex], newText)) {
-    blankAllNearby(ops, textOps, target.origin, target.opIndex);
+    blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
     writeBack(doc, pageIndex, found);
     return true;
   }
@@ -1071,7 +1157,7 @@ export async function replaceTextAt(
     for (const [code, uni] of forward) reverseMap.set(uni, code);
     const hexEncoded = encodeWithSubset(newText, reverseMap, bytesPerCode);
     if (hexEncoded !== null && replaceShowOpHex(ops[target.opIndex], hexEncoded)) {
-      blankAllNearby(ops, textOps, target.origin, target.opIndex);
+      blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
       writeBack(doc, pageIndex, found);
       return true;
     }
@@ -1094,7 +1180,7 @@ export async function replaceTextAt(
   }
 
   blankShowOp(ops[target.opIndex]);
-  blankAllNearby(ops, textOps, target.origin, target.opIndex);
+  blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
 
   // Color: explicit style overrides detected fill color (default black).
   let cr = 0, cg = 0, cb = 0;
@@ -1190,6 +1276,35 @@ export function isByteSwapUnsafeFont(doc: PDFDocument, pageIndex: number, fontKe
     if (descriptorHasFontFile(dDesc)) return true;
   }
   return false;
+}
+
+/**
+ * Whether a font is a Type3 font. Type3 fonts define glyphs as content-stream
+ * procedures (CharProcs) rather than a byte→glyph encoding, so neither a literal
+ * byte-swap nor a standard-font redraw can faithfully edit them — the engine
+ * must refuse a true edit and let the caller fall back to an overlay (A5).
+ */
+export function isType3Font(doc: PDFDocument, pageIndex: number, fontKey: string): boolean {
+  const entry = getPageFontEntry(doc, pageIndex, fontKey);
+  if (!entry?.get) return false;
+  return (entry.get(PDFName.of('Subtype'))?.toString() ?? '') === '/Type3';
+}
+
+/**
+ * Whether a font uses vertical writing mode (WMode 1). Detected from a Type0
+ * font's /Encoding when it is a predefined vertical CMap name (ends in `-V`,
+ * e.g. Identity-V, GBK-EUC-V). A page-space horizontal redraw would misplace
+ * vertical text, so such ops are refused (A5). Conservative: only true on clear
+ * evidence (a named vertical CMap); embedded-stream CMaps are not inspected.
+ */
+export function isVerticalWritingFont(doc: PDFDocument, pageIndex: number, fontKey: string): boolean {
+  const entry = getPageFontEntry(doc, pageIndex, fontKey);
+  if (!entry?.get) return false;
+  if ((entry.get(PDFName.of('Subtype'))?.toString() ?? '') !== '/Type0') return false;
+  const enc = entry.get(PDFName.of('Encoding'));
+  if (!enc) return false;
+  // A name encoding serializes as "/Identity-V"; a stream CMap won't match.
+  return /-V$/.test(enc.toString());
 }
 
 /**
