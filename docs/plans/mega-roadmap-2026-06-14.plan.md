@@ -14,9 +14,29 @@ refresh. Evidence-graded. Raw research: `docs/reviews/research-2026-06-14/01..05
 - [2026-06-15] AGREED: Sprint 3 = Fidelity & UX Deep Sweep. Fidelity goal = "(1) scorecard + fix reachable + mark ceiling, THEN (2) attempt the hard ones." Method = hybrid (parallel static-research agents to disk + main-loop live browser empirical testing + TDD fixes). Persist plan → user compacts → resume. Fold the live-found text-tool UX defect into Track 3; recommended fix = separate Add Text (draw-to-place) from Edit PDF text. (user: "1 then 2", "persist plan then I compact", "challenge me")
 - [2026-06-14] AGREED: Sprint 2 = fidelity, BOTH workstreams, gate mode "Default 30/8 with stops" (user). Scope re-cut around correctness-first: Workstream A = A1 B4 XObject no-op→overlay, A2 B3 replaceShowOpHex all-TJ-segments, A3 B2 cmapHexToUnicodeStr UTF-16BE 4-hex+surrogates, A4 B5 blankAllNearby restrict-to-same-font-size, A5 defensive routing (Type3/vertical/invisible-Tr → overlay). Workstream B = B1 broaden font allow-list, B2 page margins, B3 para/line spacing, B4 image x/y positioning, B5 justify+indent. DEFERRED (research-confirmed multi-day/hard): lattice tables, vector→raster, recursive 3-col XY-cut, rotated-page true-edit, RTL logical reorder, A6 cm-rotation redraw (regression risk). Method: 2 parallel TDD agents on disjoint files + parent full gate; locale edits in parent. (user: "Approve full plan")
 
+- [2026-06-15] DONE (Sprint 3, batch 1): Research fan-out (3 agents → `docs/reviews/research-2026-06-15/01-docx-gaps.md`, `02-trueedit-matrix.md`, `03-ux-a11y.md`) + 2 fidelity scorecards (`scorecard-docx.md`, `scorecard-trueedit.md`). Fixes: **UX text-tool trap** (editText edits existing text only; blank click no longer drops a box → reverts ISSUE-5; commit 873dd37) + **DOCX lettered/parenthesized ordered-list markers** (decimal `(1)`/`1)`, lower/upper-alpha paren forms → docx LevelFormat + per-format numbering refs; commit 5a95192) + ISSUE-5 browser guard updated (7730110). Gate: type-check clean, oxlint 0/0, jsdom **842**, browser **11/11**. Docs refreshed (CLAUDE.md, KNOWN_ISSUES.md, FEATURES.md). NOT pushed (manual).
+
 ## Formal Plan
 
 ### ▶ RESUME HERE (post-compact, 2026-06-15) — SPRINT 3 sweep
+
+**Sprint 3 batch 1 LANDED (not pushed).** Commits: `873dd37` (UX text-tool trap fix — editText
+edit-existing-only), `5a95192` (DOCX lettered ordered-lists), `7730110` (ISSUE-5 browser guard). Gate:
+type-check clean, oxlint 0/0, jsdom **842**, browser **11/11**. Scorecards + research in
+`docs/reviews/research-2026-06-15/`. **The true-edit routing matrix answers the user's standing question
+"why does it overlay some text" — see `scorecard-trueedit.md` top paragraph.**
+
+**NEXT reachable gaps (TDD, highest-ROI first), file:line in the scorecards:** DOCX — JPEG re-encode (S,
+extraction hardcodes png), hyperlinks (M, high value: getAnnotations→ExternalHyperlink), list nesting
+(listDepth from x0), spot-color black-collapse (B7), super/subscript, underline/strike, H4-6. True-edit —
+**TJ kerning preservation (biggest-ROI, ~1d)**, Path-3 color canvas-sample fallback, tokenizer exponent.
+**Ceiling (mark, don't chase):** tables, vector→raster, recursive 3-col, RTL reorder, exact subset faces;
+true-edit cm-rotation Path-3, Type3, Arabic. Then: Sprint 3 features (page ops, encrypt, PAdES sig, OCR),
+engine split (contentStreamEditor.ts ~1499L), a11y/SEO P2/P3, command tests.
+
+---
+
+### (original resume context, pre-batch-1)
 
 **State — all committed, all green, CI green.** Sprint 2 landed: commits `780193d` (true-edit A-1..A-5),
 `d662f98` (DOCX B-1..B-5), `45a8423` (docs), `7dd7fd2` (CI flake fix: retry on `issue1-toolbar-dnd`).

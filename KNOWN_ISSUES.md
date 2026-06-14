@@ -156,6 +156,29 @@ DOCX verified to carry the new margins/spacing/font/floating-image XML). Evidenc
 
 ---
 
+## Sprint 3 — fidelity & UX deep sweep (2026-06-15, mega-roadmap)
+
+Hybrid method: 3 parallel static-research agents (raw findings → `docs/reviews/research-2026-06-15/`)
++ main-loop empirical work + TDD. Full gate per fix (type-check + oxlint 0/0 + **842** jsdom + **11**
+browser). **Fidelity scorecards** (honest done/reachable/ceiling, and *why true-edit overlays some
+text*): `docs/reviews/research-2026-06-15/scorecard-docx.md`, `scorecard-trueedit.md`.
+
+| ID | Sev | Area | Fix | Test |
+|----|-----|------|-----|------|
+| UX-TEXT | P0 | Editor UX | **editText blank-click trap** (user-reported): a blank-area click dropped a fixed unselectable box and never left `editText`, where elements are `pointer-events:none` → "keeps adding/displacing text, can't resize/rotate/delete". editText now **edits existing text ONLY** (blank click re-shows the hint); new text uses the draw-to-place `addText` tool (split-button default, auto-switches to select). Reverts the ISSUE-5 unification. | `textEditHandler.test.ts`, `issue5-unified-text.browser.test.ts` |
+| DOCX-LIST | P1 | DOCX | Ordered-list markers widened: decimal `(1)`/`1)` + lower/upper-alpha **paren** forms `a)`/`(a)`/`A)`/`(A)` (never bare-dot — dodges author-initials), each → docx `LevelFormat` (decimal/lowerLetter/upperLetter); writer maps each (format,text) to its own numbering reference (legacy decimal `%1.` keeps `ordered-list` id). | `flowDoc.test.ts`, `flowDocWriters.test.ts` |
+
+**Reachable, queued (file:line + fix in the scorecards / `01-docx-gaps.md` / `02-trueedit-matrix.md`):**
+DOCX — hyperlinks (getAnnotations→`ExternalHyperlink`), JPEG re-encode (S), list nesting, spot-color
+black-collapse, super/subscript, underline/strike, H4–H6. True-edit — **TJ kerning preservation
+(biggest-ROI)**, Path-3 fill-color canvas-sample fallback, number-tokenizer exponent.
+
+**Ceiling (confirmed fundamentally hard client-side):** lattice/borderless tables, vector→raster,
+recursive 3-col XY-cut, RTL logical reorder + Arabic forms, exact subset-font faces; true-edit
+cm-scale/rotation Path-3 redraw, rotated-page input placement, Type3, Arabic shaping.
+
+---
+
 ## Verified working (regression-guard candidates)
 PDF export (all PDF types) · DOCX/MD/TXT **text** extraction · single body-text true-edit (live+PDF+DOCX
 consistent) · annotation create/move/resize · undo/redo · page nav · zoom · find-in-page · QR panel ·
@@ -172,7 +195,8 @@ This is the structural fix that makes ISSUE-1..5 catchable; jsdom never can.
 > Playwright-managed chromium or add `npx playwright install chromium`.
 
 ---
-_Last updated: 2026-06-14 (mega-roadmap Sprint 2 fidelity: true-edit A-1..A-5 + DOCX B-1..B-5).
-Evidence: `docs/reviews/2026-06-14-qa-sweep-findings.md`,
+_Last updated: 2026-06-15 (mega-roadmap Sprint 3: text-tool UX trap fix + DOCX lettered ordered-lists
++ fidelity scorecards; jsdom 842 / browser 11). Evidence: `docs/reviews/research-2026-06-15/` (scorecards
++ 01-docx-gaps + 02-trueedit-matrix + 03-ux-a11y). Prior: `docs/reviews/2026-06-14-qa-sweep-findings.md`,
 `docs/reviews/research-2026-06-14/01-true-edit.md` + `02-docx-fidelity.md`
 + per-fix tests (832 jsdom / 11 browser) + real-Chrome manual QA._

@@ -57,7 +57,7 @@ already exported (ISSUE-3 is specifically the cross-page `commonObjs` case).
 | ISSUE-2 | P1 | ✅ Fixed — `isByteSwapUnsafeFont` gate + in-stream fallback redraw (`contentStreamEditor.ts`) |
 | ISSUE-3 | P1 | ✅ Fixed — resolve `g_` images from `commonObjs` (`exportService.ts`) |
 | ISSUE-4 | P2 | ✅ Fixed — export when text OR images present (`exportService.ts`) |
-| ISSUE-5 | P2 | ✅ Fixed — unified text mode: blank-canvas click adds a box (`textEditHandler.ts`) |
+| ISSUE-5 | P2 | ↩ Reverted (Sprint 3) — text modes are now SEPARATE: `editText` edits existing text only; new text via draw-to-place `addText`. The unified blank-drop trapped users in a non-interactive mode (`textEditHandler.ts`) |
 
 ### Confirmed bugs (still open — pre-existing, out of scope for the 2026-06-14 fix run)
 | ID | Severity | Description |
@@ -900,9 +900,15 @@ Click any word in the PDF. The handler now tries **two paths**:
    `input.true-edit-input` pre-filled with the original text, font, size, bold/italic. **Enter applies**
    (genuinely rewrites the PDF text via `ReplaceSourcePdfBytesCmd` — no overlay), **empty deletes**,
    **Esc cancels**. Undoable.
-2. **Overlay fallback:** when no content-stream match is found, it places a background-colored
-   `RedactionElement` over the original plus an editable `TextElement` on top (a `<textarea>` where Enter
-   inserts a newline; commit by clicking away). Non-destructive overlay, wrapped in a single `MacroCmd`.
+2. **Overlay fallback:** when no content-stream match is found (e.g. Form-XObject / Type3 / vertical /
+   invisible-OCR text), it places a background-colored `RedactionElement` over the original plus an
+   editable `TextElement` on top (a `<textarea>` where Enter inserts a newline; commit by clicking away).
+   Non-destructive overlay, wrapped in a single `MacroCmd`.
+
+**Edit-existing-only (Sprint 3, 2026-06-15):** a click on an **empty** area does NOT create a box (it
+re-shows the mode hint). To **add new text**, use the draw-to-place **Add Text** tool (drag to size, like
+a shape; it auto-switches to Select after placing). This reverts the earlier ISSUE-5 unification, whose
+blank-drop trapped users in a non-interactive mode.
 
 **Verified (2026-06-14):** body-text true-edits are consistent across the live view, exported PDF, and
 exported DOCX (e.g. `"…C#, Bash"`→`"…C#, Go"`; `"Symfony, Angular, API Platform…"`→`"…NestJS, Spring Boot"`).

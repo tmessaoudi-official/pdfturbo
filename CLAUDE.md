@@ -98,8 +98,12 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
   pdf-lib `page.drawText` after `setPageContent` — it orphans the redraw). XObject-embedded targets
   refuse before blanking (no delete-without-replacement). Guarded by
-  `tests/browser/issue2-true-edit.browser.test.ts`. **Unified text mode**: `editText` now also drops a
-  new editable box on a blank-canvas click (`addTextAtPosition`).
+  `tests/browser/issue2-true-edit.browser.test.ts`. **Text modes are SEPARATE (Sprint 3, reverted the
+  ISSUE-5 unification):** `editText` edits EXISTING source text only — a blank-canvas click drops NO box
+  (it re-shows the editText hint). New text is created with the draw-to-place `addText` tool (the
+  split-button default), which sizes by drag and auto-switches to `select`. The old blank-drop trapped
+  the user in `editText` where elements are `pointer-events:none` (`toolModeManager.setMode`), so the box
+  was unselectable and every further click spawned another. Guarded by `issue5-unified-text.browser.test.ts`.
   **Sprint 2 fixes (2026-06-14):** (A-1) a refused edit at commit time is **no longer a silent no-op** —
   the handler captures overlay context (bbox + sampled bg/fg) when the inline input opens and falls back
   to the redact+text overlay via shared `_emitOverlay` when `replaceTextAt` returns false. (A-2)
@@ -146,8 +150,17 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   blocks aren't misread as centered. Verified by a real-Chrome DOCX export QA (margins/spacing/fonts/
   floating-image XML all present, 0 console errors). New tests: `tests/utils/flowDocFidelity.test.ts`,
   `flowDocExtraction.test.ts`.
-  **Remaining**: lattice tables (vector path grid detection), vector→region rasterization, 3-col XY-cut,
-  underline/strike, hyperlinks, super/subscript — all multi-day, deferred (see mega-roadmap plan).
+  **Sprint 3 (2026-06-15):** ordered-list markers widened — `detectListPrefix` now recognizes decimal
+  `(1)`/`1)`, and lower/upper-alpha **paren forms** `a)`/`(a)`/`A)`/`(A)` (NEVER bare-dot `a.`/`A.`/`I.`,
+  to dodge author-initials), each carrying a docx `LevelFormat` (decimal/lowerLetter/upperLetter). The
+  writer maps each distinct (format,text) to its own numbering reference — legacy decimal `%1.` keeps the
+  `ordered-list` id — and restarts instances per-reference. `flowDocWriters.ts` `refKeyOf`/`usedRefs`.
+  **Fidelity scorecards** (honest done/reachable/ceiling): `docs/reviews/research-2026-06-15/scorecard-*.md`.
+  **Reachable, queued** (file:line + fix in `research-2026-06-15/01-docx-gaps.md` / `02-trueedit-matrix.md`):
+  DOCX hyperlinks (getAnnotations→ExternalHyperlink), JPEG re-encode (S), list nesting, spot-color
+  black-collapse, super/subscript, underline/strike, H4-6; true-edit TJ-kerning preservation (biggest-ROI).
+  **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
+  XY-cut, RTL logical reorder, exact subset-font faces; true-edit cm-rotation Path-3 redraw, Type3, Arabic.
 
 ## Git & CI
 
