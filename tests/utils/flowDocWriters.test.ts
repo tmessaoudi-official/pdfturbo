@@ -153,6 +153,41 @@ async function unpackDocx(b64: string): Promise<Record<string, string>> {
   return result;
 }
 
+// ── Batch 3 (c)/(e): super/subscript + roman numbering ───────────────────────
+
+describe('flowDocToDocxBase64 — super/subscript', () => {
+  it('emits w:vertAlign superscript/subscript for vertAlign runs', async () => {
+    const doc: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [para([
+          run('E=mc'), run('2', { vertAlign: 'super', fontSize: 7 }),
+          run(' and H'), run('2', { vertAlign: 'sub', fontSize: 7 }), run('O'),
+        ])],
+      }],
+    };
+    const xml = (await unpackDocx(await flowDocToDocxBase64(doc)))['word/document.xml'];
+    expect(xml).toContain('w:val="superscript"');
+    expect(xml).toContain('w:val="subscript"');
+  });
+});
+
+describe('flowDocToDocxBase64 — roman numbering', () => {
+  it('emits lowerRoman numFmt for a roman-format ordered list', async () => {
+    const doc: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [
+          para([run('first')],  { listType: 'ordered', listFormat: 'lowerRoman', listOrdinalText: '(%1)' }),
+          para([run('second')], { listType: 'ordered', listFormat: 'lowerRoman', listOrdinalText: '(%1)' }),
+        ],
+      }],
+    };
+    const xml = (await unpackDocx(await flowDocToDocxBase64(doc)))['word/numbering.xml'];
+    expect(xml).toContain('w:val="lowerRoman"');
+  });
+});
+
 // ── Phase 4: image embedding ──────────────────────────────────────────────────
 
 const TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';

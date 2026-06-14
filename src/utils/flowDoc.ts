@@ -45,6 +45,8 @@ export interface FlowRun {
   color?: string;
   /** External URL when this run sits under a Link annotation (→ DOCX/MD hyperlink). */
   linkUrl?: string;
+  /** Vertical alignment for super/subscript glyphs (smaller + baseline-offset). */
+  vertAlign?: 'super' | 'sub';
 }
 
 /**
@@ -290,7 +292,15 @@ export function detectColumnSplit(
 const _BULLET_RE = /^[•◦▪●○→►▸-]\s+/;
 
 /** docx LevelFormat for an ordered marker. */
-export type ListFormat = 'decimal' | 'lowerLetter' | 'upperLetter';
+export type ListFormat = 'decimal' | 'lowerLetter' | 'upperLetter' | 'lowerRoman' | 'upperRoman';
+
+// Strict roman-numeral validator (case-insensitive caller). Rejects empty and
+// malformed sequences like "iiii"/"vx" so only true romans become roman lists.
+const _ROMAN_RE = /^m{0,3}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/;
+/** A roman numeral of length ≥2 — unambiguous vs a single-letter marker. */
+function isMultiCharRoman(s: string): boolean {
+  return s.length >= 2 && _ROMAN_RE.test(s.toLowerCase());
+}
 
 // Ordered markers. Each entry pairs a regex with a docx LevelFormat + level-text
 // template ('%1' is the ordinal). Letter markers are matched ONLY in a paren
@@ -319,6 +329,20 @@ export function detectListPrefix(
 ): { type: 'bullet' | 'ordered'; stripped: string; format?: ListFormat; ordinalText?: string } | null {
   const bm = _BULLET_RE.exec(text);
   if (bm) return { type: 'bullet', stripped: text.slice(bm[0].length) };
+  // Multi-char parenthesized roman (`(ii)`, `iv)`, `(III)`) — matched BEFORE the
+  // single-letter markers so it wins, but only for length ≥2 valid romans so a
+  // single `(i)`/`(I)` stays an (ambiguous) letter marker, never roman.
+  const romanParen = /^\(([a-zA-Z]+)\)\s+/.exec(text) ?? /^([a-zA-Z]+)\)\s+/.exec(text);
+  if (romanParen && isMultiCharRoman(romanParen[1])) {
+    const isUpper = romanParen[1] === romanParen[1].toUpperCase();
+    const hasOpenParen = text.startsWith('(');
+    return {
+      type: 'ordered',
+      stripped: text.slice(romanParen[0].length),
+      format: isUpper ? 'upperRoman' : 'lowerRoman',
+      ordinalText: hasOpenParen ? '(%1)' : '%1)',
+    };
+  }
   for (const { re, format, ordinalText } of _ORDERED_MARKERS) {
     const m = re.exec(text);
     if (m) return { type: 'ordered', stripped: text.slice(m[0].length), format, ordinalText };
@@ -337,8 +361,25 @@ function reconstructColumn(
   const lines: Line[] = [];
   for (const w of words) {
     const line = lines[lines.length - 1];
-    if (line && Math.abs(line.y - w.y) <= LINE_Y_TOL * Math.min(line.size, w.size)) {
+    let joins = false;
+    if (line) {
+      const baselineClose = Math.abs(line.y - w.y) <= LINE_Y_TOL * Math.min(line.size, w.size);
+      // Super/subscript: a MUCH smaller glyph whose box vertically overlaps the
+      // line's body box stays on the line (its baseline is offset past the normal
+      // tolerance). Gated on a real size disparity so two equal body lines that
+      // merely graze each other never merge.
+      const overlap = Math.min(line.y + line.size, w.y + w.size) - Math.max(line.y, w.y);
+      const smaller = Math.min(line.size, w.size);
+      const overlapClose =
+        smaller < 0.85 * Math.max(line.size, w.size) && overlap > 0.3 * smaller;
+      joins = baselineClose || overlapClose;
+    }
+    if (line && joins) {
       line.words.push(w);
+      // Track the dominant (largest) glyph as the line's reference baseline/size
+      // so super/subscript detection compares against the body text, not a
+      // super/subscript that happened to be encountered first.
+      if (w.size > line.size) { line.size = w.size; line.y = w.y; }
     } else {
       lines.push({ words: [w], y: w.y, size: w.size, x0: w.x, x1: w.x + w.width });
     }
@@ -380,10 +421,21 @@ function reconstructColumn(
     const runs: FlowRun[] = [];
     for (let li = 0; li < group.length; li++) {
       const line = group[li];
+      // Per-line reference (the body text): the largest glyph size and its
+      // baseline. A word that is BOTH notably smaller AND baseline-offset from
+      // this reference is a super/subscript.
+      const lineRefSize = Math.max(...line.words.map(w => w.size));
+      const lineRefBaseline = (line.words.find(w => w.size === lineRefSize) ?? line.words[0]).y;
       let prevWord: Word | null = null;
       for (const w of line.words) {
         const info = fonts[w.fontName];
         const psName = extractPsName(info?.name ?? w.fontName);
+        const sizeRatio = lineRefSize > 0 ? w.size / lineRefSize : 1;
+        const dy = w.y - lineRefBaseline;
+        const vertAlign: 'super' | 'sub' | undefined =
+          sizeRatio < 0.85 && Math.abs(dy) > 0.12 * lineRefSize
+            ? (dy > 0 ? 'super' : 'sub')
+            : undefined;
         const style: Omit<FlowRun, 'text'> = {
           bold: isBoldName(psName),
           italic: isItalicName(psName),
@@ -393,6 +445,7 @@ function reconstructColumn(
           psName,
           color: w.color,
           linkUrl: w.linkUrl,
+          vertAlign,
         };
         let text = w.text;
         if (prevWord) {
@@ -413,6 +466,7 @@ function reconstructColumn(
           last.psName === style.psName &&
           last.color === style.color &&
           last.linkUrl === style.linkUrl &&
+          last.vertAlign === style.vertAlign &&
           Math.abs(last.fontSize - style.fontSize) < 0.6
         ) {
           last.text += text;

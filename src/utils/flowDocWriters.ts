@@ -223,6 +223,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
             // hyperlinks; otherwise keep the run's own fill color.
             color: r.linkUrl ? '0563C1' : r.color,
             underline: r.linkUrl ? { type: UnderlineType.SINGLE } : undefined,
+            superScript: r.vertAlign === 'super' || undefined,
+            subScript: r.vertAlign === 'sub' || undefined,
           });
 
         // Wrap consecutive runs sharing the same linkUrl in one ExternalHyperlink
@@ -329,6 +331,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     decimal:     LevelFormat.DECIMAL,
     lowerLetter: LevelFormat.LOWER_LETTER,
     upperLetter: LevelFormat.UPPER_LETTER,
+    lowerRoman:  LevelFormat.LOWER_ROMAN,
+    upperRoman:  LevelFormat.UPPER_ROMAN,
   };
   const numberingConfig = usedRefs.size > 0
     ? {
