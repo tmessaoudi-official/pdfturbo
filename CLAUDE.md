@@ -13,12 +13,20 @@ npm run build        # production build → dist/
 npm run preview      # serve the production build locally
 npm run type-check   # tsc --noEmit
 npm run lint         # eslint .
-npm run test         # vitest run (jsdom)
+npm run test         # vitest run (jsdom) — excludes tests/browser/**
+npm run test:browser # vitest run in REAL Chrome (@vitest/browser + Playwright) — tests/browser/*.browser.test.ts
 npm run test:watch   # vitest watch mode
 ```
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test` — this is
 exactly what CI runs; a failure pushed to `master` blocks the deploy.
+
+**Browser harness** (`vitest.browser.config.ts`): real-browser regression tests for things jsdom
+cannot exercise — canvas/pdf.js rasterization, pointer drag, image (`commonObjs`/`VideoFrame`)
+extraction, content-stream edits verified by pixels. Uses the system Google Chrome via Playwright's
+`channel: 'chrome'` (no browser download). **CI runs it** (deploy.yml: after the jsdom suite, before
+build, using the runner's system Chrome). Run it locally for any editor/export/DnD change. Guards
+ISSUE-1..5 (see `KNOWN_ISSUES.md`).
 
 ## Architecture
 
@@ -64,8 +72,9 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 - **PWA is `registerType: 'autoUpdate'`** — every push to `master` deploys AND silently
   updates open client sessions. Treat pushes to master as production releases.
 - **Tests run in jsdom**: canvas rendering, real PDF rasterization, and pointer gestures
-  are not exercised. `pdfTurboApp.ts` has near-zero unit coverage — editor-level changes
-  need manual browser verification (`npm run dev`) in addition to the test suite.
+  are not exercised by `npm run test`. There is now a real-browser harness — `npm run test:browser`
+  (`tests/browser/*.browser.test.ts`, real Chrome) — that DOES exercise these; use it for
+  editor/export/DnD changes alongside `npm run dev` manual checks. CI runs both suites (deploy.yml).
 - **Only `@cantoo/pdf-lib` is the PDF write library** (the dead `pdf-lib` and `qpdf-wasm`
   deps were removed 2026-06-11). Never add the bare `pdf-lib` back — it has been abandoned
   upstream since ~2021.
@@ -77,6 +86,14 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   + pdfjs doc via `ReplaceSourcePdfBytesCmd` (undoable; old pdfjs docs stay alive on the
   history stack by design). See `docs/reviews/2026-06-11-pdf-text-editing-verdict.md` for
   remaining limitations (cm transforms, XObjects, Helvetica fallback font — Phase B/C).
+  **ISSUE-2 fix (2026-06-14):** `replaceTextAt` has 3 paths — (1) literal byte-swap, now GATED by
+  `isByteSwapUnsafeFont()` so it NEVER runs for subset/CID/embedded fonts (byte≠glyph there → was the
+  heading "data-loss" bug); (2) subset glyph reuse via ToUnicode (keeps original font for in-subset
+  edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
+  pdf-lib `page.drawText` after `setPageContent` — it orphans the redraw). XObject-embedded targets
+  refuse before blanking (no delete-without-replacement). Guarded by
+  `tests/browser/issue2-true-edit.browser.test.ts`. **Unified text mode**: `editText` now also drops a
+  new editable box on a blank-canvas click (`addTextAtPosition`).
 - **Private-method convention**: `_underscore` prefix throughout; eslint allows unused
   args only when `_`-prefixed.
 - **PDF→DOCX/MD export (beta)**: `src/utils/flowDoc.ts` reconstructs a flow model
@@ -95,7 +112,12 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   requires a real browser (`_extractFlowDoc` renders each image-bearing page off-screen first
   to populate `page.objs` before iterating; pdfjs-dist v6 stores images as `{ width, height,
   bitmap?: ImageBitmap }`, not HTMLCanvasElement — bitmap is drawn onto a temp canvas for
-  base64. Browser QA required to verify on unviewed/un-scrolled pages). Also:
+  base64. Browser QA required to verify on unviewed/un-scrolled pages).
+  **ISSUE-3 fix (2026-06-14):** an image reused across ≥2 pages is promoted by pdf.js to
+  `page.commonObjs` with a `g_` name; extraction now resolves `g_`-prefixed names from `commonObjs`
+  (not just `page.objs`) — bitmap typed as `CanvasImageSource` (v6 bitmaps are `VideoFrame`). Guarded by
+  `tests/browser/issue3-docx-images.browser.test.ts`. **ISSUE-4 fix:** `exportAsDocx` emits a file when
+  there is text OR images (image-only PDFs export their images instead of a silent no-op). Also:
   **export-path dedup** — extracted `_applyOverlaysToPage` + `_savePdfDocAndDownload` helpers
   in `exportService.ts`, eliminating the triplicated 10-param `buildPageOverlays` block.
   **Remaining**: lattice tables (vector path grid detection — complex, low priority).

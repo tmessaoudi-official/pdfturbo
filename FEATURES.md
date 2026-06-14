@@ -36,7 +36,30 @@ Full browser audit completed (CDP automation against built app). All tools exerc
 | `B` shortcut row missing from help modal table | `index.html` | Added `<tr><td>B</td><td data-i18n="modal.help.actions.B">Fill bucket</td></tr>` |
 | `fillBucketTitle` tooltip missing from toolbar button | `index.html` | Added `data-i18n-title="toolbar.fillBucketTitle"` to the fill bucket toolbar button |
 
-### Confirmed bugs (open)
+## AUDIT STATUS — 2026-06-14 (browser QA-sweep → ALL FIXED)
+
+Real-browser sweep (Playwright MCP + in-page pdf.js / DOCX-unzip / pixel instrumentation) across 5 PDF
+types. Full evidence: [`docs/reviews/2026-06-14-qa-sweep-findings.md`](docs/reviews/2026-06-14-qa-sweep-findings.md).
+Living tracker: [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md). 0 uncaught console errors — all defects were *silent*.
+
+**ISSUE-1..5 are all FIXED**, each with a real-browser regression test (`npm run test:browser`):
+toolbar DnD (forceFallback/pointer), subset/embedded-font true-edit data loss (gate byte-swap +
+in-stream redraw), DOCX `commonObjs` images, DOCX no-op on image-only PDFs, and unified text mode.
+A real-browser harness now exists (`@vitest/browser` + Playwright) — the structural gap that let these
+ship green. **Two earlier findings were false positives, corrected during the fix run:** the toolbar
+SortableJS was already attached (real bug = native-DnD mode), and `qa-imagetext.pdf` page-local images
+already exported (ISSUE-3 is specifically the cross-page `commonObjs` case).
+
+### Resolved (2026-06-14) — see KNOWN_ISSUES.md for fix + test per issue
+| ID | Severity | Status |
+|---|---|---|
+| ISSUE-1 | P1 | ✅ Fixed — `forceFallback` pointer DnD (`toolbarCustomizer.ts`) |
+| ISSUE-2 | P1 | ✅ Fixed — `isByteSwapUnsafeFont` gate + in-stream fallback redraw (`contentStreamEditor.ts`) |
+| ISSUE-3 | P1 | ✅ Fixed — resolve `g_` images from `commonObjs` (`exportService.ts`) |
+| ISSUE-4 | P2 | ✅ Fixed — export when text OR images present (`exportService.ts`) |
+| ISSUE-5 | P2 | ✅ Fixed — unified text mode: blank-canvas click adds a box (`textEditHandler.ts`) |
+
+### Confirmed bugs (still open — pre-existing, out of scope for the 2026-06-14 fix run)
 | ID | Severity | Description |
 |---|---|---|
 | BUG-01 | P1 | **Element visual distortion on rotation**: position math fixed; CSS `transform: rotate()` still missing — content wraps into narrow column on rotated pages |
@@ -275,7 +298,9 @@ Text tool, Signature tool, Image tool, Comment/note, Arrow/Rect/Circle shapes, F
 3. Verify the canvas shows the new page 1.
 4. Press **Ctrl+Z** → verify the original order is restored.
 
-**Known bugs**: None.
+**Known bugs**: ⚠ Unverified by automation (2026-06-14). Thumbnails have `ondragstart` handlers, but
+neither Playwright `dragTo` nor a manual HTML5 DnD sequence reordered pages — Playwright cannot reliably
+drive native HTML5 drag-and-drop, so this needs **manual** confirmation (THUMB-DND in `KNOWN_ISSUES.md`).
 
 ---
 
@@ -866,14 +891,22 @@ Zoom range: 0.25× – 3.0×. Display shows integer percentage. On zoom: full pa
 
 ## 38. Edit Text Tool
 
-**How it works**: Activate with **✎ Edit Text** button. Click any word in the PDF to overlay and edit it in place. The handler:
-1. Reads the pdf.js text layer at the click position (12 px tolerance hitbox).
-2. Samples the canvas background color at the click point.
-3. Places a `RedactionElement` (colored to match the background) to cover the original word.
-4. Places a `TextElement` pre-filled with the word's text, font, size, bold, and italic — positioned exactly over the original.
-5. Immediately enters SELECT mode and focuses the new text element for editing.
+**How it works** (updated 2026-06-14): Activate with the **✎ Edit Text** button (mode badge "✎ EDIT TEXT").
+Click any word in the PDF. The handler now tries **two paths**:
 
-This is a non-destructive overlay: the original PDF text is visually covered by the background-colored box, and the editable text element sits on top. Fully undoable (single `MacroCmd` wrapping both elements).
+1. **True content-stream edit (preferred):** `findTextOpAt` (`contentStreamEditor.ts`) matches the
+   clicked pdf.js item to a content-stream show-op within `TRUE_EDIT_TOLERANCE` (3 pt), with a
+   multi-candidate fallback (50 pt radius) for sub-word items. On a match it opens a floating
+   `input.true-edit-input` pre-filled with the original text, font, size, bold/italic. **Enter applies**
+   (genuinely rewrites the PDF text via `ReplaceSourcePdfBytesCmd` — no overlay), **empty deletes**,
+   **Esc cancels**. Undoable.
+2. **Overlay fallback:** when no content-stream match is found, it places a background-colored
+   `RedactionElement` over the original plus an editable `TextElement` on top (a `<textarea>` where Enter
+   inserts a newline; commit by clicking away). Non-destructive overlay, wrapped in a single `MacroCmd`.
+
+**Verified (2026-06-14):** body-text true-edits are consistent across the live view, exported PDF, and
+exported DOCX (e.g. `"…C#, Bash"`→`"…C#, Go"`; `"Symfony, Angular, API Platform…"`→`"…NestJS, Spring Boot"`).
+Undo restores the original cleanly.
 
 **Test steps**:
 1. Load a text-based PDF (must have a text layer — scanned images won't work).
@@ -881,10 +914,22 @@ This is a non-destructive overlay: the original PDF text is visually covered by 
 3. Click on a word in the PDF → verify a text box appears over it, pre-filled with the word's text.
 4. Edit the text → verify the new text replaces the original visually.
 5. Press **Ctrl+Z** → verify both the cover element and the text element are removed.
-6. Click on whitespace (no text nearby) → verify nothing is placed.
+6. Click on whitespace (no text nearby) → verify a **new editable text box** is created there
+   (unified text mode — ISSUE-5 fix; previously a no-op).
 7. Download the PDF → verify the edited word appears correctly in the export.
 
-**Known bugs**: Works only on PDFs with a text layer (pdfjs extraction required). Scanned image PDFs have no text layer and will not respond to clicks.
+**Known bugs / limitations**:
+- **ISSUE-2 (P1, data loss) — ✅ FIXED 2026-06-14.** Editing a heading drawn in a subset/embedded font
+  used to delete the original and lose the replacement (subset byte-swap → wrong/blank glyphs; the
+  fallback redraw was orphaned). Now: the literal byte-swap is gated by `isByteSwapUnsafeFont`, the
+  standard-font fallback redraw is emitted as in-stream operators (renders + stays extractable), and
+  XObject targets refuse before blanking. Verified on the real CV (ink 4878→5499, text extractable) and
+  guarded by `tests/browser/issue2-true-edit.browser.test.ts`. Out-of-subset characters fall back to a
+  standard font; in-subset edits keep the original font via glyph reuse.
+- Works only on PDFs with a text layer (pdf.js extraction required). Scanned/image-only PDFs have no text
+  layer and will not respond to clicks.
+- Whether a click true-edits vs. falls back to overlay depends on the pdf.js item ↔ content-stream
+  position match (3 pt tolerance + 50 pt multi-candidate fallback).
 
 ---
 
@@ -946,5 +991,41 @@ After configuring, click **Place on PDF →** → click-drag on the canvas to de
 11. Verify mode badge shows "⊡ CODE" when code placement is active.
 
 **Export check**: QR codes and barcodes are embedded as rasterized PNG images in the exported PDF.
+
+---
+
+## 41. Export — DOCX / Markdown / TXT (PDF → editable document)
+
+**How it works**: From the **Export options (▾)** flyout, choose **DOCX** (`#exportDocxBtn`), **MD**, or
+TXT. The pipeline reconstructs a flow model (lines → paragraphs → headings/styles/RTL/lists/2-column) from
+the pdf.js text items (`flowDoc.ts`) and emits the chosen format (`flowDocWriters.ts`; the `docx` npm
+package is **dynamically imported** — a ~395 KB lazy chunk). Source-PDF text only — overlay annotations are
+NOT exported. Reflects in-place true-edits (edited PDF bytes are the source).
+
+**Usage**:
+1. Open a PDF → **Export options (▾)** → **DOCX** / **MD**.
+2. The file downloads as `<name>.docx` / `<name>.md`.
+3. DOCX includes native heading styles, ordered-list numbering (`w:numPr`), and (when extractable) images.
+
+**Verified working (2026-06-14, across 5 PDFs)**: text extraction is accurate for every text-bearing PDF
+(headings, body, key/value rows, FR/RTL). Edited body text is carried into both DOCX and PDF exports.
+
+**Known bugs / limitations**:
+- **ISSUE-3 (P1) — ✅ FIXED 2026-06-14.** Images reused across pages land in pdf.js `commonObjs` with a
+  `g_` name; extraction read `page.objs` only and silently dropped them. Now resolved from `commonObjs`
+  (bitmap typed `CanvasImageSource`; v6 `VideoFrame` handled). Guarded by
+  `tests/browser/issue3-docx-images.browser.test.ts`.
+- **ISSUE-4 (P2) — ✅ FIXED 2026-06-14.** An image-only PDF now exports a DOCX containing its images;
+  only a genuinely empty document shows the "no extractable text" toast (never a silent no-op).
+- By design: overlay annotations (added text boxes, shapes, signatures, QR) are not exported to DOCX/MD/TXT
+  — only source-PDF text. Lattice tables are not yet reconstructed.
+
+See `KNOWN_ISSUES.md` and `docs/reviews/2026-06-14-qa-sweep-findings.md`.
+
+**Test steps**:
+1. Export DOCX from a text PDF → unzip → verify `word/document.xml` has the expected `<w:t>` runs.
+2. Export DOCX from a PDF with a `commonObjs` (cross-page reused) image → verify `word/media/` is non-empty (ISSUE-3 fix).
+3. Export DOCX from a scanned/image-only PDF → verify a file with the image is produced (ISSUE-4 fix).
+4. True-edit a body line → export DOCX and PDF → verify both contain the new text.
 
 **Known bugs**: None.
