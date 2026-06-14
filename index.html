@@ -1045,6 +1045,7 @@
       <input type="file" id="addImageInput" accept="image/*">
       <button id="addCodeBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n-title="toolbar.addCodeTitle" title="Add QR / Barcode (Q)">⊡ <span class="btn-label" data-i18n="toolbar.addCodeLabel">Code</span></button>
       <button id="ocrBtn" class="btn btn-secondary" disabled data-i18n-title="toolbar.ocrTitle" title="Recognize text in a scanned page (OCR)">🔎📝 <span class="btn-label" data-i18n="toolbar.ocrLabel">OCR</span></button>
+      <button id="signBtn" class="btn btn-secondary" disabled data-i18n-title="toolbar.signTitle" title="Sign the PDF with a certificate">🔏 <span class="btn-label" data-i18n="toolbar.signLabel">Sign</span></button>
       <button id="findBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.findTitle" title="Find in page (Ctrl+F)">🔍</button>
     </div>
     <div class="toolbar-sep" id="tbsep-2"></div>
@@ -1351,6 +1352,54 @@
   </div>
 </div>
 
+<div class="code-modal" id="signModal" role="dialog" aria-modal="true" aria-labelledby="signModalTitle">
+  <div class="code-modal-content">
+    <h2 id="signModalTitle" data-i18n="modal.sign.title">Sign PDF</h2>
+    <div class="code-field">
+      <label for="signCertInput" data-i18n="modal.sign.certLabel">Certificate (.p12 / .pfx)</label>
+      <input type="file" id="signCertInput" accept=".p12,.pfx,application/x-pkcs12">
+    </div>
+    <div class="code-field">
+      <label for="signPassword" data-i18n="modal.sign.passwordLabel">Certificate password</label>
+      <input type="password" id="signPassword" autocomplete="off">
+    </div>
+    <div class="code-field">
+      <label for="signPage" data-i18n="modal.sign.pageLabel">Page number</label>
+      <input type="number" id="signPage" min="1" step="1" value="1">
+    </div>
+    <div class="code-field">
+      <label data-i18n="modal.sign.positionLabel">Signature box (points: X, Y, width, height)</label>
+      <div class="sign-rect-row" style="display:flex;gap:6px">
+        <input type="number" id="signX" step="1" value="360" data-i18n-placeholder="modal.sign.x" placeholder="X" style="width:25%">
+        <input type="number" id="signY" step="1" value="40" data-i18n-placeholder="modal.sign.y" placeholder="Y" style="width:25%">
+        <input type="number" id="signW" step="1" value="200" data-i18n-placeholder="modal.sign.width" placeholder="W" style="width:25%">
+        <input type="number" id="signH" step="1" value="64" data-i18n-placeholder="modal.sign.height" placeholder="H" style="width:25%">
+      </div>
+    </div>
+    <div class="code-field">
+      <label for="signReason" data-i18n="modal.sign.reasonLabel">Reason (optional)</label>
+      <input type="text" id="signReason">
+    </div>
+    <div class="code-field">
+      <label for="signLocation" data-i18n="modal.sign.locationLabel">Location (optional)</label>
+      <input type="text" id="signLocation">
+    </div>
+    <div class="code-field">
+      <label for="signName" data-i18n="modal.sign.nameLabel">Signer name (optional, defaults to certificate name)</label>
+      <input type="text" id="signName">
+    </div>
+    <p class="code-preview-hint" data-i18n="modal.sign.privacyNote">Your certificate never leaves your browser. The signature covers your current edits and annotations.</p>
+    <p id="signError" class="sign-error" role="alert" style="display:none;color:#c0392b"></p>
+    <div class="code-field" id="signProgressRow" style="display:none">
+      <progress id="signProgress" style="width:100%"></progress>
+      <div data-i18n="progress.signing">Signing…</div>
+    </div>
+    <div class="code-modal-actions">
+      <button id="cancelSignModal" class="btn btn-secondary" data-i18n="modal.sign.cancel">Cancel</button>
+      <button id="runSignModal" class="btn btn-success" data-i18n="modal.sign.run">Sign →</button>
+    </div>
+  </div>
+</div>
 <div class="code-modal" id="ocrModal" role="dialog" aria-modal="true" aria-labelledby="ocrModalTitle">
   <div class="code-modal-content">
     <h2 id="ocrModalTitle" data-i18n="modal.ocr.title">Recognize text (OCR)</h2>

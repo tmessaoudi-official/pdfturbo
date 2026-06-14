@@ -43,6 +43,8 @@
     "addCodeTitle": "Add QR code / barcode (Q)",
     "ocrLabel": "OCR",
     "ocrTitle": "Recognize text in a scanned page (OCR)",
+    "signLabel": "Sign",
+    "signTitle": "Sign the PDF with a certificate",
     "newBlankPage": "📄 New Blank Page…",
     "lockPdf": "🔒 Lock PDF…",
     "langTitle": "Change language",
@@ -219,6 +221,23 @@
       "run": "Run OCR →",
       "cancel": "Cancel"
     },
+    "sign": {
+      "title": "Sign PDF",
+      "certLabel": "Certificate (.p12 / .pfx)",
+      "passwordLabel": "Certificate password",
+      "pageLabel": "Page number",
+      "positionLabel": "Signature box (points: X, Y, width, height)",
+      "x": "X",
+      "y": "Y",
+      "width": "W",
+      "height": "H",
+      "reasonLabel": "Reason (optional)",
+      "locationLabel": "Location (optional)",
+      "nameLabel": "Signer name (optional, defaults to certificate name)",
+      "privacyNote": "Your certificate never leaves your browser. The signature covers your current edits and annotations.",
+      "run": "Sign →",
+      "cancel": "Cancel"
+    },
     "code": {
       "title": "Add QR / Barcode",
       "titleEdit": "Edit Code",
@@ -263,6 +282,7 @@
     "ocrDone": "Text recognized — {{count}} words added (Ctrl+Z to undo)",
     "ocrNoText": "No text found on this page",
     "ocrFailed": "OCR failed — please try again",
+    "signed": "PDF signed by {{name}} — downloaded",
     "docxExported": "Word document exported — text content only (beta)",
     "mdExported": "Markdown exported — text content only (beta)",
     "exportNoText": "No extractable text found — try the OCR tool on scanned pages first",
@@ -390,8 +410,22 @@
     "por": "Portuguese",
     "nld": "Dutch"
   },
+  "sign": {
+    "error": {
+      "INVALID_P12": "Invalid certificate file (.p12 / .pfx).",
+      "WRONG_PASSPHRASE": "Wrong certificate password.",
+      "NO_PRIVATE_KEY": "No private key found in the certificate.",
+      "NO_CERTIFICATE": "No signing certificate found in the file.",
+      "INVALID_PAGE": "The page number is out of range.",
+      "INVALID_RECT": "The signature box is off the page or has no size.",
+      "PDF_PARSE_FAILED": "Could not read the PDF for signing.",
+      "PLACEHOLDER_NOT_FOUND": "Signing failed (internal placeholder error).",
+      "SIGN_FAILED": "Signing failed. Please try again."
+    }
+  },
   "progress": {
     "ocrRecognizing": "Recognizing text…",
+    "signing": "Signing…",
     "loadingDocument": "Loading document…",
     "generatingPdf": "Generating PDF…",
     "exportingPage": "Exporting page…",

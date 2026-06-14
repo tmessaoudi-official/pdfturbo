@@ -21,6 +21,9 @@ import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { OcrHandler } from '../handlers/ocrHandler';
+import { SigningHandler, type SignFormInput } from '../handlers/signingHandler';
+import { SignError } from '../signing';
+import { t } from '../utils/i18n';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
 
@@ -100,6 +103,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _toolModeManager!: ToolModeManager;
   private _codeModalManager!: CodeModalManager;
   private _ocrHandler!: OcrHandler;
+  private _signingHandler!: SigningHandler;
   private _watermarkPanel!: WatermarkPanel;
   private _findBarController!: FindBarController;
   private _documentLoader!: DocumentLoader;
@@ -293,6 +297,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._toolModeManager = new ToolModeManager(this);
     this._codeModalManager = new CodeModalManager(this);
     this._ocrHandler = new OcrHandler(this);
+    this._signingHandler = new SigningHandler(this);
     this._watermarkPanel = new WatermarkPanel(this);
     this._findBarController = new FindBarController(this);
     this._documentLoader = new DocumentLoader(this);
@@ -518,6 +523,61 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     }
   }
 
+  // ── Sign modal ────────────────────────────────────────────────────────────
+  openSignModal(): void {
+    if (!this.documentModel.pageCount) return;
+    this.ui.signError.style.display = 'none';
+    this.ui.signError.textContent = '';
+    this.ui.signProgressRow.style.display = 'none';
+    this.ui.signPage.max = String(this.documentModel.pageCount);
+    this.ui.runSignModal.disabled = false;
+    this.ui.signModal.classList.add('active');
+  }
+  closeSignModal(): void {
+    this.ui.signModal.classList.remove('active');
+    // Scrub credentials from the DOM when the modal closes.
+    this.ui.signPassword.value = '';
+    this.ui.signCertInput.value = '';
+  }
+  async signPdf(): Promise<void> {
+    const file = this.ui.signCertInput.files?.[0] ?? null;
+    this.ui.signError.style.display = 'none';
+    if (!file) {
+      this._showSignError('sign.error.INVALID_P12');
+      return;
+    }
+    this.ui.runSignModal.disabled = true;
+    this.ui.signProgressRow.style.display = '';
+    try {
+      const form: SignFormInput = {
+        p12: new Uint8Array(await file.arrayBuffer()),
+        passphrase: this.ui.signPassword.value,
+        page: parseInt(this.ui.signPage.value, 10) || 1,
+        x: parseFloat(this.ui.signX.value) || 0,
+        y: parseFloat(this.ui.signY.value) || 0,
+        width: parseFloat(this.ui.signW.value) || 0,
+        height: parseFloat(this.ui.signH.value) || 0,
+        reason: this.ui.signReason.value,
+        location: this.ui.signLocation.value,
+        name: this.ui.signName.value,
+      };
+      const cn = await this._signingHandler.sign(form);
+      this.closeSignModal();
+      this.reportError.info('toast.signed', { name: cn ?? '' });
+    } catch (err) {
+      const code = err instanceof SignError ? err.code : 'SIGN_FAILED';
+      this._showSignError(`sign.error.${code}`);
+    } finally {
+      this.ui.runSignModal.disabled = false;
+      this.ui.signProgressRow.style.display = 'none';
+      this.ui.signPassword.value = '';
+    }
+  }
+  private _showSignError(key: string): void {
+    this.ui.signError.textContent = t(key);
+    this.ui.signError.style.display = '';
+  }
+
   selectElement(element: PDFElement | null) {
     if (this.selectedElement === element) { this._updateFormattingToolbar(); return; }
     this._cleanEmptyTextElements();
@@ -603,6 +663,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   downloadPageAsImage(pageIdx?: number): Promise<void> { return this._exportService.downloadPageAsImage(pageIdx); }
   exportAsDocx(): Promise<void> { return this._exportService.exportAsDocx(); }
   exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }
+  /** Assembled (edited) document bytes — used by the e-signing flow. */
+  assemblePdfBytes(): Promise<Uint8Array> { return this._exportService.assemblePdfBytes(); }
 
   _updatePlacementGhost(e: PointerEvent): void { this._placementManager.updatePlacementGhost(e); }
 }

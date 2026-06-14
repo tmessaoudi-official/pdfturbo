@@ -43,6 +43,8 @@
     "addCodeTitle": "Ajouter un QR code / code-barres (Q)",
     "ocrLabel": "OCR",
     "ocrTitle": "Reconnaître le texte d'une page numérisée (OCR)",
+    "signLabel": "Signer",
+    "signTitle": "Signer le PDF avec un certificat",
     "newBlankPage": "📄 Nouvelle page vierge…",
     "lockPdf": "🔒 Verrouiller le PDF…",
     "langTitle": "Changer de langue",
@@ -219,6 +221,23 @@
       "run": "Lancer l'OCR →",
       "cancel": "Annuler"
     },
+    "sign": {
+      "title": "Signer le PDF",
+      "certLabel": "Certificat (.p12 / .pfx)",
+      "passwordLabel": "Mot de passe du certificat",
+      "pageLabel": "Numéro de page",
+      "positionLabel": "Cadre de signature (points : X, Y, largeur, hauteur)",
+      "x": "X",
+      "y": "Y",
+      "width": "L",
+      "height": "H",
+      "reasonLabel": "Motif (facultatif)",
+      "locationLabel": "Lieu (facultatif)",
+      "nameLabel": "Nom du signataire (facultatif, par défaut le nom du certificat)",
+      "privacyNote": "Votre certificat ne quitte jamais votre navigateur. La signature couvre vos modifications et annotations actuelles.",
+      "run": "Signer →",
+      "cancel": "Annuler"
+    },
     "code": {
       "title": "Ajouter un QR / code-barres",
       "titleEdit": "Modifier le code",
@@ -263,6 +282,7 @@
     "ocrDone": "Texte reconnu — {{count}} mots ajoutés (Ctrl+Z pour annuler)",
     "ocrNoText": "Aucun texte trouvé sur cette page",
     "ocrFailed": "Échec de l'OCR — veuillez réessayer",
+    "signed": "PDF signé par {{name}} — téléchargé",
     "docxExported": "Document Word exporté — contenu texte uniquement (bêta)",
     "mdExported": "Markdown exporté — contenu texte uniquement (bêta)",
     "exportNoText": "Aucun texte extractible — utilisez d'abord l'outil OCR sur les pages numérisées",
@@ -390,8 +410,22 @@
     "por": "Portugais",
     "nld": "Néerlandais"
   },
+  "sign": {
+    "error": {
+      "INVALID_P12": "Fichier de certificat invalide (.p12 / .pfx).",
+      "WRONG_PASSPHRASE": "Mot de passe du certificat incorrect.",
+      "NO_PRIVATE_KEY": "Aucune clé privée trouvée dans le certificat.",
+      "NO_CERTIFICATE": "Aucun certificat de signature trouvé dans le fichier.",
+      "INVALID_PAGE": "Le numéro de page est hors limites.",
+      "INVALID_RECT": "Le cadre de signature est hors de la page ou sans dimension.",
+      "PDF_PARSE_FAILED": "Impossible de lire le PDF à signer.",
+      "PLACEHOLDER_NOT_FOUND": "Échec de la signature (erreur interne de placeholder).",
+      "SIGN_FAILED": "Échec de la signature. Veuillez réessayer."
+    }
+  },
   "progress": {
     "ocrRecognizing": "Reconnaissance du texte…",
+    "signing": "Signature en cours…",
     "loadingDocument": "Chargement du document…",
     "generatingPdf": "Génération du PDF…",
     "exportingPage": "Exportation de la page…",

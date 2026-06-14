@@ -39,12 +39,49 @@ export class ExportService {
   // ── Public export entry points ───────────────────────────────────────────
 
   async downloadPDF(): Promise<void> {
-    const { documentModel, elements, reportError, progress, formValues } = this._ctx;
+    const { documentModel, reportError, progress } = this._ctx;
     if (!documentModel.pageCount) return;
     this._ctx.cleanEmptyTextElements();
     const _prog = progress.begin('progress.generatingPdf');
-    const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     try {
+      const pdfDoc = await this._assemblePdfDoc();
+      await this._savePdfDocAndDownload(pdfDoc, this._exportBaseName() + '-edited.pdf');
+      reportError.info('toast.pdfDownloaded');
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.pdfExportFailed', err);
+      _prog.failed();
+    } finally {
+      await this._ctx.renderCurrentPage();
+      this._ctx.rebuildElementLayer();
+    }
+  }
+
+  /**
+   * Return the current document — every edit, annotation, overlay, redaction,
+   * form-fill and watermark baked in — as PDF bytes. Shares downloadPDF()'s
+   * assembly pipeline so callers operate on the user's EDITED document, not the
+   * raw source. Exposed for the e-signing flow ("sign WITH edits").
+   *
+   * Encryption is intentionally NOT applied: the signer needs a plain byte
+   * stream to compute its /ByteRange, and encrypt-then-sign is out of v1 scope.
+   *
+   * @throws {Error} when no document is loaded.
+   */
+  async assemblePdfBytes(): Promise<Uint8Array> {
+    if (!this._ctx.documentModel.pageCount) {
+      throw new Error('No document loaded to assemble.');
+    }
+    this._ctx.cleanEmptyTextElements();
+    const pdfDoc = await this._assemblePdfDoc();
+    return pdfDoc.save({ useObjectStreams: false });
+  }
+
+  /** Build the flattened, edits-baked-in pdf-lib document (no save, no encrypt). */
+  private async _assemblePdfDoc(): Promise<import('@cantoo/pdf-lib').PDFDocument> {
+    const { documentModel, elements, reportError, formValues } = this._ctx;
+    const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
+    {
       const pdfDoc = await PDFDocument.create();
 
       // Load each source PDF once
@@ -115,15 +152,7 @@ export class ExportService {
         await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
       }
 
-      await this._savePdfDocAndDownload(pdfDoc, this._exportBaseName() + '-edited.pdf');
-      reportError.info('toast.pdfDownloaded');
-      _prog.done();
-    } catch (err) {
-      reportError.error('toast.pdfExportFailed', err);
-      _prog.failed();
-    } finally {
-      await this._ctx.renderCurrentPage();
-      this._ctx.rebuildElementLayer();
+      return pdfDoc;
     }
   }
 

@@ -25,6 +25,10 @@ export function bindToolEvents(app: PDFTurboApp): void {
     if (!app.documentModel.pageCount) return;
     app.openOcrModal();
   });
+  app.ui.signBtn.addEventListener('click', () => {
+    if (!app.documentModel.pageCount) return;
+    app.openSignModal();
+  });
   app.ui.highlightBtn.addEventListener('click', () => {
     if (!app.documentModel.pageCount) return;
     app.setMode(app.mode === 'drawHighlight' ? 'select' : 'drawHighlight');

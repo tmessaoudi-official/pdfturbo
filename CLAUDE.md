@@ -175,6 +175,23 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   list marker→continuation merge; true-edit Path-3 fill-color canvas-sample, number-tokenizer exponent.
   **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
   XY-cut, RTL logical reorder, exact subset-font faces; true-edit cm-rotation Path-3 redraw, Type3, Arabic.
+- **OCR (Sprint 4, 2026-06-15)**: `src/ocr/*` wraps **tesseract.js@7** (dynamically imported, lang data
+  lazy-fetched from CDN on first use → offline caveat). `src/handlers/ocrHandler.ts` renders the current
+  source page to a canvas at scale 2, recognizes words, and inserts them as real `TextElement`s via ONE
+  `MacroCmd` (undoable, selectable, DOCX/MD-exportable) — not a bespoke overlay. `ocrWordToTextElement` is
+  the pure bbox→element map (top-left origin both sides → no Y-flip). Wired: `ocrBtn` + `ocrModal`.
+- **E-signing (Sprint 4, 2026-06-15)**: `src/signing/*` produces a single visible PKCS#12/CMS signature
+  via **node-forge@1.3.1** (dynamically imported; pure-JS, runs in jsdom AND browser). `PdfSigner.sign`
+  reserves a fixed `/Contents` hex slot + `/ByteRange`, serialises without object streams, then splices the
+  detached CMS. **"Sign WITH edits"**: `signingHandler.ts` signs `app.assemblePdfBytes()` (the shared
+  downloadPDF assembly — edits/annotations/redactions/form-fills baked in — exposed on `exportService`),
+  NOT the raw source. Encryption is intentionally NOT applied to the assembled bytes (the signer needs a
+  plain stream for its ByteRange; encrypt-then-sign is out of v1 scope). Output is **download-only**
+  (`<base>-signed.pdf`) — NO auto-resign (rejected as a security/trust anti-pattern: re-editing a signed
+  PDF must visibly invalidate the signature, never silently re-sign). `.p12` bytes are zeroed after signing;
+  the password field is cleared on close. `buildSignOptions` is the pure 1-based-UI→0-based-signer map.
+  Wired: `signBtn` + `signModal`; `SignErrorCode`→`sign.error.<CODE>` i18n.
+  **NOT yet supported**: TSA timestamp, LTV/DSS, multi-signature rounds (v1 scope).
 
 ## Git & CI
 

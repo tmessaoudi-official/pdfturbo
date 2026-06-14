@@ -17,6 +17,13 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.cancelOcrModal.addEventListener('click', () => app.closeOcrModal());
   app.ui.runOcrModal.addEventListener('click', () => void app.runOcr());
 
+  // ── Sign modal ─────────────────────────────────────────────────
+  app.ui.cancelSignModal.addEventListener('click', () => app.closeSignModal());
+  app.ui.runSignModal.addEventListener('click', () => void app.signPdf());
+  app.ui.signModal.addEventListener('click', (e) => {
+    if (e.target === app.ui.signModal) app.closeSignModal();
+  });
+
   // ── Code modal ─────────────────────────────────────────────────
   app.ui.cancelCodeModal.addEventListener('click', () => app.closeCodeModal());
   app.ui.saveCodeModal.addEventListener('click', () => void app.saveCodeModal());

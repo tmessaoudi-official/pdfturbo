@@ -18,7 +18,8 @@ export default defineConfig({
   // chunk; fflate is used by tests to unzip the DOCX). Without this, Vite
   // discovers them mid-run and re-optimizes, which aborts the in-flight dynamic
   // import ("Failed to fetch dynamically imported module").
-  optimizeDeps: { include: ['docx', 'fflate'] },
+  // node-forge is the e-signing crypto dep (dynamically imported by src/signing).
+  optimizeDeps: { include: ['docx', 'fflate', 'node-forge'] },
   test: {
     include: ['tests/browser/**/*.browser.test.ts'],
     // jsdom setup (fake-indexeddb etc.) is irrelevant here — real browser has real APIs.

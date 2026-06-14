@@ -121,6 +121,22 @@ export interface AppDOMRefs {
   ocrProgressLabel: HTMLElement;
   runOcrModal:      HTMLButtonElement;
   cancelOcrModal:   HTMLButtonElement;
+  signBtn:          HTMLButtonElement;
+  signModal:        HTMLElement;
+  signCertInput:    HTMLInputElement;
+  signPassword:     HTMLInputElement;
+  signPage:         HTMLInputElement;
+  signX:            HTMLInputElement;
+  signY:            HTMLInputElement;
+  signW:            HTMLInputElement;
+  signH:            HTMLInputElement;
+  signReason:       HTMLInputElement;
+  signLocation:     HTMLInputElement;
+  signName:         HTMLInputElement;
+  signError:        HTMLElement;
+  signProgressRow:  HTMLElement;
+  runSignModal:     HTMLButtonElement;
+  cancelSignModal:  HTMLButtonElement;
   codeModal:        HTMLElement;
   codeFormatSelect: HTMLSelectElement;
   codeDataInput:    HTMLTextAreaElement;
@@ -270,6 +286,22 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       ocrProgressLabel: document.getElementById('ocrProgressLabel') as HTMLElement,
       runOcrModal:      document.getElementById('runOcrModal')      as HTMLButtonElement,
       cancelOcrModal:   document.getElementById('cancelOcrModal')   as HTMLButtonElement,
+      signBtn:          document.getElementById('signBtn')          as HTMLButtonElement,
+      signModal:        document.getElementById('signModal')        as HTMLElement,
+      signCertInput:    document.getElementById('signCertInput')    as HTMLInputElement,
+      signPassword:     document.getElementById('signPassword')     as HTMLInputElement,
+      signPage:         document.getElementById('signPage')         as HTMLInputElement,
+      signX:            document.getElementById('signX')            as HTMLInputElement,
+      signY:            document.getElementById('signY')            as HTMLInputElement,
+      signW:            document.getElementById('signW')            as HTMLInputElement,
+      signH:            document.getElementById('signH')            as HTMLInputElement,
+      signReason:       document.getElementById('signReason')       as HTMLInputElement,
+      signLocation:     document.getElementById('signLocation')     as HTMLInputElement,
+      signName:         document.getElementById('signName')         as HTMLInputElement,
+      signError:        document.getElementById('signError')        as HTMLElement,
+      signProgressRow:  document.getElementById('signProgressRow')  as HTMLElement,
+      runSignModal:     document.getElementById('runSignModal')     as HTMLButtonElement,
+      cancelSignModal:  document.getElementById('cancelSignModal')  as HTMLButtonElement,
       codeModal:        document.getElementById('codeModal')        as HTMLElement,
       codeFormatSelect: document.getElementById('codeFormatSelect') as HTMLSelectElement,
       codeDataInput:    document.getElementById('codeDataInput')    as HTMLTextAreaElement,
@@ -335,6 +367,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.exportMdBtn.disabled    = false;
     r.editTextBtn.disabled    = false;
     r.ocrBtn.disabled         = false;
+    r.signBtn.disabled        = false;
     const eyedropper = document.getElementById('redactEyedropperBtn') as HTMLButtonElement | null;
     if (eyedropper) eyedropper.disabled = false;
     r.colorEyedropperBtn.disabled = false;
