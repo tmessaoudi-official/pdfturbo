@@ -100,6 +100,15 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   refuse before blanking (no delete-without-replacement). Guarded by
   `tests/browser/issue2-true-edit.browser.test.ts`. **Unified text mode**: `editText` now also drops a
   new editable box on a blank-canvas click (`addTextAtPosition`).
+  **Sprint 2 fixes (2026-06-14):** (A-1) a refused edit at commit time is **no longer a silent no-op** —
+  the handler captures overlay context (bbox + sampled bg/fg) when the inline input opens and falls back
+  to the redact+text overlay via shared `_emitOverlay` when `replaceTextAt` returns false. (A-2)
+  `replaceShowOpHex` now replaces the full payload in the first `TJ` hexstring AND blanks every other hex
+  item (no stale glyphs). (A-3) `cmapHexToUnicodeStr` decodes ToUnicode as UTF-16BE code units +
+  surrogate pairs (the old length-parity guess was wrong for ligatures/non-BMP). (A-4) `blankAllNearby`
+  only blanks true shadow duplicates (same fontKey+size+payload, captured pre-mutation). (A-5) Type3 /
+  vertical (`-V`) / invisible-`Tr` (mode 3/7) text now **refuse** true-edit (→ overlay) via `isType3Font`/
+  `isVerticalWritingFont` + `renderMode` on `TextOpInfo`.
 - **Private-method convention**: `_underscore` prefix throughout; oxlint's `no-unused-vars`
   allows unused args/vars only when `_`-prefixed (`argsIgnorePattern`/`varsIgnorePattern`).
   `no-underscore-dangle` is deliberately OFF in `.oxlintrc.json` so it doesn't fight this convention.
@@ -127,7 +136,18 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   there is text OR images (image-only PDFs export their images instead of a silent no-op). Also:
   **export-path dedup** — extracted `_applyOverlaysToPage` + `_savePdfDocAndDownload` helpers
   in `exportService.ts`, eliminating the triplicated 10-param `buildPageOverlays` block.
-  **Remaining**: lattice tables (vector path grid detection — complex, low priority).
+  **Sprint 2 fidelity (2026-06-14):** (B-1) real font faces via 28-entry `WORD_FONT_ALLOWLIST` +
+  `resolveWordFont` (strips subset/style/foundry suffix; unknown → serif/sans/mono fallback) instead of
+  collapsing every face to 3 generics. (B-2) page margins from per-page text bbox (Q1/Q3, outlier-robust,
+  clamped to ≤40% page dim) → `w:pgMar`. (B-3) paragraph/line spacing from baseline gaps → `w:spacing`.
+  (B-4) images are **floating-anchored** at PDF coords (`wp:anchor`/`wp:posOffset`, Y-flipped EMU), no
+  longer centered-trailing — still via `word/media/` (ISSUE-3/4 guard). (B-5) justified detection
+  (`AlignmentType.JUSTIFIED`) + first-line/left `w:ind`; `isCentered` tightened so full-width justified
+  blocks aren't misread as centered. Verified by a real-Chrome DOCX export QA (margins/spacing/fonts/
+  floating-image XML all present, 0 console errors). New tests: `tests/utils/flowDocFidelity.test.ts`,
+  `flowDocExtraction.test.ts`.
+  **Remaining**: lattice tables (vector path grid detection), vector→region rasterization, 3-col XY-cut,
+  underline/strike, hyperlinks, super/subscript — all multi-day, deferred (see mega-roadmap plan).
 
 ## Git & CI
 

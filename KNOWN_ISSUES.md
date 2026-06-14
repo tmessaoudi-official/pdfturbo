@@ -124,6 +124,38 @@ All TDD (failing test first), all confirmed via the full gate (type-check + oxli
 
 ---
 
+## Sprint 2 — fidelity (2026-06-14, mega-roadmap)
+
+All TDD (failing test first), confirmed via the full gate (type-check + oxlint 0/0 + **832** jsdom +
+**11** browser) and a real-Chrome manual QA pass (PDF render + DOCX export, 0 console errors; exported
+DOCX verified to carry the new margins/spacing/font/floating-image XML). Evidence:
+`docs/reviews/research-2026-06-14/01-true-edit.md`, `02-docx-fidelity.md`.
+
+### Workstream A — true PDF text-edit correctness
+| ID | Sev | Area | Fix | Test |
+|----|-----|------|-----|------|
+| A-1 (B4) | P1 | Edit text | XObject / refused edit was a **silent no-op at commit time** (typed text vanished). Handler now captures the overlay context (bbox + sampled bg/fg colors) when the inline input opens, and on a `replaceTextAt`=false commit falls back to the **overlay** (redact+text) via a shared `_emitOverlay`. | `textEditHandler.test.ts` |
+| A-2 (B3) | P1 | Edit text | `replaceShowOpHex` on a multi-segment `TJ` array replaced **only the first** hex item, leaving stale old glyphs. Now writes the full payload into the first hexstring and **blanks every other** hex item — no stale text survives. | `contentStreamEditor.test.ts` |
+| A-3 (B2) | P1 | Edit text | `cmapHexToUnicodeStr` used a length-parity guess → wrong decode for ligatures / non-BMP. Now decodes ToUnicode dst as **UTF-16BE code units** (4 hex/unit), combining surrogate pairs and guarding a lone surrogate. | `contentStreamEditor.test.ts` |
+| A-4 (B5) | P1 | Edit text | `blankAllNearby` blanked distinct neighbours sharing an origin (origin-only proximity). Now restricted to true shadow/outline duplicates — **same font key + size + identical payload** (payload captured before mutation). | `contentStreamEditor.test.ts` |
+| A-5 | P2 | Edit text | **Defensive routing**: Type3 fonts, vertical writing (Type0 `-V` CMap), and invisible text-render-mode (`Tr` 3/7) now **refuse** true-edit (→ A-1 overlay) instead of producing garbage / painting over scans. `renderMode` tracked in `locateTextOps`. | `contentStreamEditor.test.ts` |
+
+### Workstream B — PDF→DOCX fidelity
+| ID | Sev | Area | Fix | Test |
+|----|-----|------|-----|------|
+| B-1 | P0 | DOCX | Every non-Arial/Times/Courier face collapsed to **3 generics**. New 28-entry `WORD_FONT_ALLOWLIST` + `resolveWordFont` (strips subset tag/style/foundry suffix) maps Calibri/Garamond/Verdana/Georgia/… to real Word faces; unknown faces still fall back to serif/sans/mono. | `flowDocFidelity.test.ts` |
+| B-2 | P0 | DOCX | No page margins emitted → Word forced 1″ margins (global drift). Margins now derived from per-page text bbox (Q1/Q3 glyph edges, outlier-robust), clamped to `[0, 40% of page dim]`, emitted as `w:pgMar`. | `flowDocExtraction.test.ts` |
+| B-3 | P0 | DOCX | No paragraph/line spacing → flat Word default rhythm. `reconstructColumn` now records line height + inter-para gaps (clamped); writer emits `w:spacing before/after/line`. | `flowDocFidelity.test.ts` |
+| B-4 | P1 | DOCX | Images were dumped **center-aligned after all text**. Now emitted as **floating anchored** `ImageRun` (`wp:anchor`/`wp:posOffset`, page-relative EMU, Y-flipped) at their PDF coords. Still routes through `word/media/` (ISSUE-3/4 guard intact). | `flowDocFidelity.test.ts` |
+| B-5 | P2 | DOCX | Justified text became left; indentation dropped. Added `'justify'` to the alignment union (both-edges-flush detection) + first-line/left `w:ind`; tightened `isCentered` so full-width justified blocks aren't misread as centered. | `flowDocFidelity.test.ts` |
+
+> **Still deferred (research-confirmed multi-day / fundamentally hard):** lattice tables (vector ruling
+> detection), vector graphics → region rasterization, recursive 3-col XY-cut, rotated-page true-edit,
+> RTL logical reordering / Arabic normalization, `cm` scale+rotation in the Path-3 redraw. Tracked in
+> `docs/plans/mega-roadmap-2026-06-14.plan.md`.
+
+---
+
 ## Verified working (regression-guard candidates)
 PDF export (all PDF types) · DOCX/MD/TXT **text** extraction · single body-text true-edit (live+PDF+DOCX
 consistent) · annotation create/move/resize · undo/redo · page nav · zoom · find-in-page · QR panel ·
@@ -140,6 +172,7 @@ This is the structural fix that makes ISSUE-1..5 catchable; jsdom never can.
 > Playwright-managed chromium or add `npx playwright install chromium`.
 
 ---
-_Last updated: 2026-06-14 (mega-roadmap Sprint 1 hazard fixes). Evidence:
-`docs/reviews/2026-06-14-qa-sweep-findings.md`, `docs/reviews/research-2026-06-14/sprint1-*.md`
-+ per-issue tests (800 jsdom / 11 browser)._
+_Last updated: 2026-06-14 (mega-roadmap Sprint 2 fidelity: true-edit A-1..A-5 + DOCX B-1..B-5).
+Evidence: `docs/reviews/2026-06-14-qa-sweep-findings.md`,
+`docs/reviews/research-2026-06-14/01-true-edit.md` + `02-docx-fidelity.md`
++ per-fix tests (832 jsdom / 11 browser) + real-Chrome manual QA._
