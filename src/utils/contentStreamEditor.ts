@@ -25,7 +25,6 @@ import {
   PDFRef,
   StandardFonts,
   decodePDFRawStream,
-  rgb,
 } from '@cantoo/pdf-lib';
 
 import type { CsToken, CsOp, TextOpInfo } from '../types/contentStream';
@@ -1070,8 +1069,17 @@ export async function replaceTextAt(
 
   const { ops, target, textOps } = found;
 
-  // Path 1: ASCII literal in-stream replacement.
-  if (replaceShowOpInPlace(ops[target.opIndex], newText)) {
+  // Subset / embedded / CID fonts carry only the glyphs the document originally
+  // used and map byte codes to them through a custom encoding. Blindly
+  // overwriting the bytes with new ASCII (Path 1) renders wrong/blank glyphs and
+  // breaks text extraction — the heading "data loss" bug. For such fonts, skip
+  // the literal byte-swap and rely on glyph reuse (Path 2) or a standard-font
+  // redraw (Path 3).
+  const byteSwapUnsafe = isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
+
+  // Path 1: ASCII literal in-stream replacement (only safe for standard,
+  // non-embedded fonts where byte code == ASCII).
+  if (!byteSwapUnsafe && replaceShowOpInPlace(ops[target.opIndex], newText)) {
     blankAllNearby(ops, textOps, target.origin, target.opIndex);
     writeBack(doc, pageIndex, found);
     return true;
@@ -1092,21 +1100,35 @@ export async function replaceTextAt(
     }
   }
 
-  // Path 3: Font-matched fallback — blank then redraw with best standard font.
-  blankShowOp(ops[target.opIndex]);
-  blankAllNearby(ops, textOps, target.origin, target.opIndex);
-  writeBack(doc, pageIndex, found);
-
-  // Color: explicit style overrides detected fill color
-  let drawColor: ReturnType<typeof rgb> | undefined;
-  if (style?.color) {
-    drawColor = rgb(style.color.r, style.color.g, style.color.b);
-  } else if (target.fillColor) {
-    const c = parseFillColorToRgb(target.fillColor);
-    if (c) drawColor = rgb(c.r, c.g, c.b);
+  // Path 3: Font-matched fallback — blank the original and redraw with the best
+  // standard font. The redraw is appended as explicit text operators to the SAME
+  // page content stream and written back in a single pass. (Using pdf-lib's
+  // page.drawText() here would orphan the redraw: writeBack/setPageContent has
+  // already replaced the page /Contents, so pdf-lib's drawText appends to a
+  // stream no longer referenced by the page — the new text renders nowhere and
+  // is not even text-extractable. Verified on a real CID-font heading.)
+  if (found.xObjectName) {
+    // The target lives inside a Form XObject (its own coordinate space + subset
+    // font). A page-space redraw would misplace it, and re-encoding into the
+    // subset font isn't possible. Refuse WITHOUT blanking so the original text is
+    // preserved; the caller falls back to an overlay text box. Never delete
+    // without a visible replacement.
+    return false;
   }
 
-  // Font: style bold/italic/fontFamily override font detection from PDF
+  blankShowOp(ops[target.opIndex]);
+  blankAllNearby(ops, textOps, target.origin, target.opIndex);
+
+  // Color: explicit style overrides detected fill color (default black).
+  let cr = 0, cg = 0, cb = 0;
+  if (style?.color) {
+    ({ r: cr, g: cg, b: cb } = style.color);
+  } else if (target.fillColor) {
+    const c = parseFillColorToRgb(target.fillColor);
+    if (c) ({ r: cr, g: cg, b: cb } = c);
+  }
+
+  // Font: style bold/italic/fontFamily override font detection from PDF.
   const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
   const descriptor = getPageFontDescriptor(doc, pageIndex, target.fontKey);
   const baseFlags = descriptor?.flags ?? 0;
@@ -1114,16 +1136,112 @@ export async function replaceTextAt(
   const effectiveFlags = style ? buildEffectiveFlags(baseFlags, style) : baseFlags;
   const stdFont = matchStandardFont(effectiveName, effectiveFlags);
   const font = await doc.embedFont(stdFont);
-  const page = doc.getPage(pageIndex);
-  page.drawText(newText, {
-    x: target.origin.x,
-    y: target.origin.y,
-    size: style?.fontSize ?? target.fontSize ?? 12,
-    font,
-    ...(drawColor ? { color: drawColor } : {}),
-  });
+  const resName = addPageFontResource(doc, pageIndex, font.ref);
+  const size = style?.fontSize ?? target.fontSize ?? 12;
+  // Encode through the embedded font so its (WinAnsi) encoding is honoured —
+  // handles accented Latin text, not just pure ASCII.
+  const showOperand = font.encodeText(newText).toString();
+  const redraw =
+    `\nq\n${fmtNum(cr)} ${fmtNum(cg)} ${fmtNum(cb)} rg\nBT\n` +
+    `/${resName} ${fmtNum(size)} Tf\n` +
+    `1 0 0 1 ${fmtNum(target.origin.x)} ${fmtNum(target.origin.y)} Tm\n` +
+    `${showOperand} Tj\nET\nQ`;
+  setPageContent(doc, pageIndex, serializeOps(ops) + redraw);
 
   return true;
+}
+
+/** Format a number for a content stream (trim noise, no exponent). */
+function fmtNum(n: number): string {
+  return (Math.round(n * 1000) / 1000).toString();
+}
+
+/** A subset font has a 6-uppercase-letter tag prefix, e.g. "ABCDEF+Arial". */
+export function isSubsetFontName(baseName: string): boolean {
+  return /^[A-Z]{6}\+/.test(baseName.replace(/^\//, ''));
+}
+
+/** Resolve a page's font resource entry dict for a given font key. */
+function getPageFontEntry(doc: PDFDocument, pageIndex: number, fontKey: string): PDFDict | null {
+  try {
+    const page = doc.getPage(pageIndex);
+    const name = fontKey.replace(/^\//, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (!resources?.get) return null;
+    const fontDictRaw = resources.get(PDFName.of('Font'));
+    if (!fontDictRaw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    if (!fontDict?.get) return null;
+    const entryRaw = fontDict.get(PDFName.of(name));
+    if (!entryRaw) return null;
+    return doc.context.lookup(entryRaw) as PDFDict;
+  } catch {
+    return null;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function descriptorHasFontFile(desc: any): boolean {
+  if (!desc?.get) return false;
+  return ['FontFile', 'FontFile2', 'FontFile3'].some(k => !!desc.get(PDFName.of(k)));
+}
+
+/**
+ * Whether overwriting a show op's bytes with new ASCII (the literal in-place
+ * edit) would corrupt the glyphs. True for fonts that don't guarantee a plain
+ * byte→ASCII mapping: subset-tagged fonts, CID/Type0 fonts, and any font with an
+ * embedded program (its encoding may remap byte codes to arbitrary glyphs).
+ * Such fonts must be edited via glyph reuse or a standard-font redraw instead.
+ */
+export function isByteSwapUnsafeFont(doc: PDFDocument, pageIndex: number, fontKey: string): boolean {
+  if (isSubsetFontName(getPageFontBaseName(doc, pageIndex, fontKey))) return true;
+  const entry = getPageFontEntry(doc, pageIndex, fontKey);
+  if (!entry?.get) return false;
+  const subtype = entry.get(PDFName.of('Subtype'))?.toString() ?? '';
+  if (subtype.includes('Type0')) return true; // CID fonts never use plain byte=ASCII
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const topDesc = doc.context.lookup(entry.get(PDFName.of('FontDescriptor'))) as any;
+  if (descriptorHasFontFile(topDesc)) return true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const descendants = doc.context.lookup(entry.get(PDFName.of('DescendantFonts'))) as any;
+  if (descendants?.get) {
+    const d0 = doc.context.lookup(descendants.get(0));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dDesc = doc.context.lookup((d0 as any)?.get?.(PDFName.of('FontDescriptor'))) as any;
+    if (descriptorHasFontFile(dDesc)) return true;
+  }
+  return false;
+}
+
+/**
+ * Add a font ref to a page's /Resources/Font dict under a fresh name, creating
+ * the Resources and Font dicts if absent. Returns the resource name (no slash).
+ */
+function addPageFontResource(doc: PDFDocument, pageIndex: number, fontRef: PDFRef): string {
+  const node = doc.getPage(pageIndex).node;
+  const resources = node.get(PDFName.of('Resources'));
+  let resDict: PDFDict;
+  if (resources) {
+    resDict = doc.context.lookup(resources) as PDFDict;
+  } else {
+    resDict = PDFDict.fromMapWithContext(new Map(), doc.context);
+    node.set(PDFName.of('Resources'), resDict);
+  }
+  const fontRaw = resDict.get(PDFName.of('Font'));
+  let fontDict: PDFDict;
+  if (fontRaw) {
+    fontDict = doc.context.lookup(fontRaw) as PDFDict;
+  } else {
+    fontDict = PDFDict.fromMapWithContext(new Map(), doc.context);
+    resDict.set(PDFName.of('Font'), fontDict);
+  }
+  let i = 0;
+  let name = `GSEdit${i}`;
+  while (fontDict.get(PDFName.of(name))) name = `GSEdit${++i}`;
+  fontDict.set(PDFName.of(name), fontRef);
+  return name;
 }
 
 /**

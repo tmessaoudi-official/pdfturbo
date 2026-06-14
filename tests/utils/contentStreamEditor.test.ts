@@ -24,6 +24,7 @@ import {
   applyMatrixToPoint,
   getPageRotation,
   locatePageTextOps,
+  isSubsetFontName,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -833,5 +834,26 @@ describe('changeColorAt', () => {
 
     const ok = await changeColorAt(doc2, 0, { x: 50, y: 300 }, { r: 1, g: 0, b: 0 }, 5);
     expect(ok).toBe(false);
+  });
+});
+
+// ── ISSUE-2: subset-font detection (gates the literal in-place edit) ──────────────
+describe('isSubsetFontName', () => {
+  it('detects a 6-letter tag prefix (subset font)', () => {
+    expect(isSubsetFontName('ABCDEF+Arial')).toBe(true);
+    expect(isSubsetFontName('/WXYZAB+Helvetica-Bold')).toBe(true);
+  });
+
+  it('treats untagged / standard font names as non-subset', () => {
+    expect(isSubsetFontName('Arial')).toBe(false);
+    expect(isSubsetFontName('/Helvetica')).toBe(false);
+    expect(isSubsetFontName('TimesNewRoman')).toBe(false);
+    expect(isSubsetFontName('')).toBe(false);
+  });
+
+  it('does not mistake a short/lowercase prefix for a subset tag', () => {
+    expect(isSubsetFontName('ABCDE+Arial')).toBe(false);   // only 5 letters
+    expect(isSubsetFontName('abcdef+Arial')).toBe(false);  // lowercase
+    expect(isSubsetFontName('ABCDEFG+Arial')).toBe(false); // 7 letters
   });
 });
