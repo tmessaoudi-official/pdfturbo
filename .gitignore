@@ -6,3 +6,10 @@
 /.vite
 /coverage
 /.claude/settings.local.json
+/.claude/worktrees
+# Black-box fidelity fixtures — real/confidential documents (C1/C2 but private,
+# or personal/RGPD data). NEVER commit or push these. Used locally only to
+# drive fidelity QA; committed regression tests use synthetic tests/fixtures/*.pdf.
+/tests/fixtures/private/
+# Safety net: never commit ad-hoc PDFs dropped in the repo root.
+/*.pdf
