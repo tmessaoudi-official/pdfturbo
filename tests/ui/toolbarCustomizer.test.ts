@@ -250,6 +250,23 @@ describe('ToolbarCustomizer', () => {
     expect(opts['delayOnTouchOnly']).toBe(true);
   });
 
+  it('enableDragDrop() forces the pointer-based fallback on every Sortable (ISSUE-1)', () => {
+    // Native HTML5 DnD is flaky inside the dense toolbar and cannot be driven by
+    // automation; forceFallback switches SortableJS to pointer events, which is
+    // both more reliable and testable. Guard every instance (groups + container).
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    tc.enableDragDrop();
+    const MockS = vi.mocked(Sortable);
+    for (const call of MockS.mock.calls) {
+      const opts = call[1] as Record<string, unknown>;
+      expect(opts['forceFallback']).toBe(true);
+    }
+  });
+
   it('enableDragDrop() is idempotent — does not create additional Sortable instances', () => {
     const toolbar = makeToolbar([{ id: 'g1', buttons: ['a'] }]);
     const tc = new ToolbarCustomizer(toolbar, storage);

@@ -51,6 +51,9 @@ export class ToolbarCustomizer {
       animation: 150,
       delay: 200,
       delayOnTouchOnly: true,
+      // Pointer-based fallback instead of native HTML5 DnD: reliable inside the
+      // dense toolbar and drivable by automation (ISSUE-1).
+      forceFallback: true,
       draggable: '.toolbar-group',
       filter: `${DRAG_FILTER},${DRAG_ITEMS}`,
       onEnd: () => this.save(),
@@ -185,6 +188,8 @@ export class ToolbarCustomizer {
         animation: 150,
         delay: 200,
         delayOnTouchOnly: true,
+        // Pointer-based fallback instead of native HTML5 DnD (ISSUE-1).
+        forceFallback: true,
         filter: DRAG_FILTER,
         draggable: DRAG_ITEMS,
         onEnd: (evt) => {
