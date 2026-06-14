@@ -1,7 +1,7 @@
 // Main entry point
 import './utils/polyfills';
 import { PDFTurboApp } from './core/pdfTurboApp';
-import { initI18n, changeLanguage, onLanguageChanged } from './utils/i18n';
+import { initI18n, changeLanguage, onLanguageChanged, t } from './utils/i18n';
 import { registerSW } from 'virtual:pwa-register';
 
 registerSW({
@@ -13,7 +13,7 @@ registerSW({
       appInstance.reportError.info('toast.appUpdateAvailable');
     } else {
       const toast = document.getElementById('toast');
-      if (toast) { toast.textContent = 'Update available — reload to apply'; toast.className = 'show'; }
+      if (toast) { toast.textContent = t('toast.appUpdateAvailable'); toast.className = 'show'; }
     }
   },
 });

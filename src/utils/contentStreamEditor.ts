@@ -30,8 +30,15 @@ import {
 import type { CsToken, CsOp, TextOpInfo } from '../types/contentStream';
 export type { CsToken, CsOp, TextOpInfo } from '../types/contentStream';
 
-/** Radius (PDF points) within which secondary show ops are blanked as shadows. */
-const SHADOW_RADIUS = 4;
+/**
+ * Max distance (PDF points) at which a secondary show op is treated as belonging
+ * to the SAME logical target as the primary — i.e. a drop-shadow / outline pass
+ * drawn at (essentially) the same baseline origin. Kept sub-point so it never
+ * sweeps up a DISTINCT neighbour word that merely sits a few points away (BUG A2):
+ * a genuine shadow is rendered at the same origin (offset, if any, comes from a
+ * sub-pixel CTM nudge), whereas a separate word has a clearly different origin.
+ */
+const SHADOW_RADIUS = 0.5;
 
 const WHITESPACE = new Set([' ', '\t', '\r', '\n', '\f', '\0']);
 const DELIMITERS = new Set(['(', ')', '<', '>', '[', ']', '{', '}', '/', '%']);
@@ -536,7 +543,7 @@ function setFormXObjectContent(
   try {
     const page = doc.getPage(pageIndex);
     const name = xobjName.replace(/^\//, '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
     if (!resources?.get) return;
     const xobjDictRaw = resources.get(PDFName.of('XObject'));
@@ -659,7 +666,9 @@ function findTarget(
       const ps = applyMatrixToPoint(xMatrix, t.origin.x, t.origin.y);
       const dist = Math.hypot(ps.x - point.x, ps.y - point.y);
       if (dist <= tolerance && dist < (bestX?.dist ?? Infinity)) {
-        bestX = { dist, target: t, ops: xOps, textOps: xTextOps, xObjectName: raw.replace(/^\//, '') };
+        // Flag the target as XObject-sourced so callers (textEditHandler) can
+        // treat it as not-truly-editable and fall back to an overlay (A1).
+        bestX = { dist, target: { ...t, inXObject: true }, ops: xOps, textOps: xTextOps, xObjectName: raw.replace(/^\//, '') };
       }
     }
   }
@@ -672,45 +681,13 @@ function findTarget(
  * Locate the text-show op nearest to `point` without modifying anything.
  * Lets callers test whether a true edit is possible before offering it.
  */
-export async function findTextOpAt(
+export function findTextOpAt(
   doc: PDFDocument,
   pageIndex: number,
   point: { x: number; y: number },
   tolerance = 5
-): Promise<TextOpInfo | null> {
+): TextOpInfo | null {
   return findTarget(doc, pageIndex, point, tolerance)?.target ?? null;
-}
-
-/** Diagnostic: returns content stream length, direct+xobject text ops count, and first 5 origins. */
-export function diagnosePage(doc: PDFDocument, pageIndex: number): {
-  contentLen: number; directOps: number; xObjectOps: number; first5: Array<{op: string; x: number; y: number; inXObj?: string}>;
-} {
-  const content = getPageContent(doc, pageIndex);
-  const pageOps = content ? groupOps(tokenizeContentStream(content)) : [];
-  const directTextOps = locateTextOps(pageOps);
-  let xObjectOpsCount = 0;
-  const xFirst5: Array<{op: string; x: number; y: number; inXObj: string}> = [];
-  for (const op of pageOps) {
-    if (op.operator !== 'Do') continue;
-    const raw = op.operands[0]?.raw ?? '';
-    const xContent = raw ? getFormXObjectContent(doc, pageIndex, raw) : null;
-    if (!xContent) continue;
-    const xMatrix = getFormXObjectMatrix(doc, pageIndex, raw);
-    const xOps = groupOps(tokenizeContentStream(xContent));
-    const xTextOps = locateTextOps(xOps);
-    xObjectOpsCount += xTextOps.length;
-    if (xFirst5.length < 5) {
-      for (const t of xTextOps.slice(0, 5 - xFirst5.length)) {
-        const ps = applyMatrixToPoint(xMatrix, t.origin.x, t.origin.y);
-        xFirst5.push({ op: t.operator, x: Math.round(ps.x*100)/100, y: Math.round(ps.y*100)/100, inXObj: raw });
-      }
-    }
-  }
-  const first5 = [
-    ...directTextOps.slice(0, 5).map(t => ({ op: t.operator, x: Math.round(t.origin.x*100)/100, y: Math.round(t.origin.y*100)/100 })),
-    ...xFirst5,
-  ].slice(0, 5);
-  return { contentLen: content.length, directOps: directTextOps.length, xObjectOps: xObjectOpsCount, first5 };
 }
 
 /**
@@ -718,12 +695,12 @@ export function diagnosePage(doc: PDFDocument, pageIndex: number): {
  * Also blanks shadow ops within SHADOW_RADIUS of the target to remove outline effects.
  * Returns false when no show op lies within `tolerance`.
  */
-export async function deleteTextAt(
+export function deleteTextAt(
   doc: PDFDocument,
   pageIndex: number,
   point: { x: number; y: number },
   tolerance = 5
-): Promise<boolean> {
+): boolean {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
 
@@ -893,22 +870,22 @@ export function getPageFontDescriptor(
   try {
     const page = doc.getPage(pageIndex);
     const name = fontKey.replace(/^\//, '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
     if (!resources?.get) return null;
     const fontDictRaw = resources.get(PDFName.of('Font'));
     if (!fontDictRaw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const fontDict = doc.context.lookup(fontDictRaw) as any;
     if (!fontDict?.get) return null;
     const fontEntryRaw = fontDict.get(PDFName.of(name));
     if (!fontEntryRaw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const fontEntry = doc.context.lookup(fontEntryRaw) as any;
     if (!fontEntry?.get) return null;
     const descRaw = fontEntry.get(PDFName.of('FontDescriptor'));
     if (!descRaw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const desc = doc.context.lookup(descRaw) as any;
     if (!desc?.get) return null;
     const flags = desc.get(PDFName.of('Flags'))?.value() ?? 0;
@@ -931,17 +908,17 @@ export function getPageFontToUnicode(
   try {
     const page = doc.getPage(pageIndex);
     const name = fontKey.replace(/^\//, '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
     if (!resources?.get) return null;
     const fontDictRaw = resources.get(PDFName.of('Font'));
     if (!fontDictRaw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const fontDict = doc.context.lookup(fontDictRaw) as any;
     if (!fontDict?.get) return null;
     const fontEntryRaw = fontDict.get(PDFName.of(name));
     if (!fontEntryRaw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const fontEntry = doc.context.lookup(fontEntryRaw) as any;
     if (!fontEntry?.get) return null;
     const tuRaw = fontEntry.get(PDFName.of('ToUnicode'));
@@ -1000,13 +977,13 @@ function buildEffectiveFlags(baseFlags: number, style: TextStyle): number {
  * Change only the font size for the text op nearest `point` (in-stream Tf mutation).
  * Returns false when no op is found, or when the op has no tracked tfOpIndex.
  */
-export async function changeSizeAt(
+export function changeSizeAt(
   doc: PDFDocument,
   pageIndex: number,
   point: { x: number; y: number },
   newSize: number,
   tolerance = 5
-): Promise<boolean> {
+): boolean {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
   const { ops, target } = found;
@@ -1030,13 +1007,13 @@ function fmtColorComponent(v: number): string {
  * Change only the fill color for the text op nearest `point` (in-stream rg mutation).
  * Returns false when no op is found, or when the op has no tracked colorOpIndex.
  */
-export async function changeColorAt(
+export function changeColorAt(
   doc: PDFDocument,
   pageIndex: number,
   point: { x: number; y: number },
   color: { r: number; g: number; b: number },
   tolerance = 5
-): Promise<boolean> {
+): boolean {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
   const { ops, target } = found;
@@ -1166,12 +1143,12 @@ function getPageFontEntry(doc: PDFDocument, pageIndex: number, fontKey: string):
   try {
     const page = doc.getPage(pageIndex);
     const name = fontKey.replace(/^\//, '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
     if (!resources?.get) return null;
     const fontDictRaw = resources.get(PDFName.of('Font'));
     if (!fontDictRaw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const fontDict = doc.context.lookup(fontDictRaw) as any;
     if (!fontDict?.get) return null;
     const entryRaw = fontDict.get(PDFName.of(name));
@@ -1182,7 +1159,7 @@ function getPageFontEntry(doc: PDFDocument, pageIndex: number, fontKey: string):
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
 function descriptorHasFontFile(desc: any): boolean {
   if (!desc?.get) return false;
   return ['FontFile', 'FontFile2', 'FontFile3'].some(k => !!desc.get(PDFName.of(k)));
@@ -1201,14 +1178,14 @@ export function isByteSwapUnsafeFont(doc: PDFDocument, pageIndex: number, fontKe
   if (!entry?.get) return false;
   const subtype = entry.get(PDFName.of('Subtype'))?.toString() ?? '';
   if (subtype.includes('Type0')) return true; // CID fonts never use plain byte=ASCII
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
   const topDesc = doc.context.lookup(entry.get(PDFName.of('FontDescriptor'))) as any;
   if (descriptorHasFontFile(topDesc)) return true;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
   const descendants = doc.context.lookup(entry.get(PDFName.of('DescendantFonts'))) as any;
   if (descendants?.get) {
     const d0 = doc.context.lookup(descendants.get(0));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const dDesc = doc.context.lookup((d0 as any)?.get?.(PDFName.of('FontDescriptor'))) as any;
     if (descriptorHasFontFile(dDesc)) return true;
   }
@@ -1253,17 +1230,17 @@ export function getPageFontBaseName(doc: PDFDocument, pageIndex: number, fontKey
   try {
     const page = doc.getPage(pageIndex);
     const name = fontKey.replace(/^\//, '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
     if (!resources?.get) return '';
     const fontDictRaw = resources.get(PDFName.of('Font'));
     if (!fontDictRaw) return '';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const fontDict = doc.context.lookup(fontDictRaw) as any;
     if (!fontDict?.get) return '';
     const fontEntryRaw = fontDict.get(PDFName.of(name));
     if (!fontEntryRaw) return '';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const fontEntry = doc.context.lookup(fontEntryRaw) as any;
     if (!fontEntry?.get) return '';
     return fontEntry.get(PDFName.of('BaseFont'))?.toString() ?? '';
@@ -1301,19 +1278,19 @@ function getFormXObjectContent(
   try {
     const page = doc.getPage(pageIndex);
     const name = xobjName.replace(/^\//, '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
     if (!resources?.get) return null;
     const xobjDictRaw = resources.get(PDFName.of('XObject'));
     if (!xobjDictRaw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const xobjDict = doc.context.lookup(xobjDictRaw) as any;
     if (!xobjDict?.get) return null;
     const streamRef = xobjDict.get(PDFName.of(name));
     if (!streamRef) return null;
     const stream = doc.context.lookup(streamRef);
     if (!(stream instanceof PDFRawStream)) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const subtype = (stream.dict as any).get(PDFName.of('Subtype'));
     if (subtype?.toString() !== '/Form') return null;
     const bytes = decodePDFRawStream(stream).decode();
@@ -1337,19 +1314,19 @@ function getFormXObjectMatrix(
   try {
     const page = doc.getPage(pageIndex);
     const name = xobjName.replace(/^\//, '');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
     if (!resources?.get) return [...IDENTITY];
     const xobjDictRaw = resources.get(PDFName.of('XObject'));
     if (!xobjDictRaw) return [...IDENTITY];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const xobjDict = doc.context.lookup(xobjDictRaw) as any;
     if (!xobjDict?.get) return [...IDENTITY];
     const streamRef = xobjDict.get(PDFName.of(name));
     if (!streamRef) return [...IDENTITY];
     const stream = doc.context.lookup(streamRef);
     if (!(stream instanceof PDFRawStream)) return [...IDENTITY];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const matrixVal = (stream.dict as any).get(PDFName.of('Matrix'));
     if (!matrixVal) return [...IDENTITY];
     const arr = doc.context.lookup(matrixVal);
@@ -1369,10 +1346,10 @@ function getFormXObjectMatrix(
  * XObject-sourced ops are flagged with `inXObject: true`.
  * XObject ops have opIndex = -1 (they cannot be directly edited via the page stream).
  */
-export async function locatePageTextOps(
+export function locatePageTextOps(
   doc: PDFDocument,
   pageIndex: number
-): Promise<TextOpInfo[]> {
+): TextOpInfo[] {
   const content = getPageContent(doc, pageIndex);
   if (!content) return [];
 

@@ -343,7 +343,21 @@
   "element": {
     "deleteTitle": "Delete",
     "rotateTitle": "Rotate",
-    "burnLabel": "⚠ Burn on export"
+    "burnLabel": "⚠ Burn on export",
+    "aria": {
+      "label": "{{type}} annotation",
+      "labelWithContent": "{{type}} annotation: {{content}}",
+      "type": {
+        "text": "Text",
+        "signature": "Signature",
+        "shape": "Shape",
+        "image": "Image",
+        "highlight": "Highlight",
+        "comment": "Comment",
+        "redaction": "Redaction",
+        "code": "Barcode"
+      }
+    }
   },
   "footer": {
     "privacyPolicy": "Privacy Policy",

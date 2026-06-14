@@ -28,6 +28,7 @@ function buildProbe(doc: pdfjsLib.PDFDocumentProxy): ExportProbe {
       pages: Array.from({ length: doc.numPages }, (_u, i) => ({ sourcePdfId: 's1', sourcePageNum: i + 1 })),
       sourcePdfs: new Map([['s1', { doc, bytes: new Uint8Array() }]]),
     },
+    elements: [],
     currentFilename: 'scan.pdf',
     reportError: { info() {}, warn: (k: string) => warned.push(k), error() {} },
     progress: { begin: () => handle },

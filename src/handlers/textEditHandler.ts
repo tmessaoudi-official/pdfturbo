@@ -106,8 +106,12 @@ export class TextEditHandler {
       let matchedOrigin = { x: best.transform[4], y: best.transform[5] };
       for (const candidate of [best, ...fallbackCandidates]) {
         const o = { x: candidate.transform[4], y: candidate.transform[5] };
-        target = await findTextOpAt(libDoc, docPage.sourcePageNum - 1, o, TRUE_EDIT_TOLERANCE);
-        if (target) { matchedOrigin = o; break; }
+        const hit = await findTextOpAt(libDoc, docPage.sourcePageNum - 1, o, TRUE_EDIT_TOLERANCE);
+        // A target inside a Form XObject cannot be truly edited (its own coord
+        // space + subset font; replaceTextAt refuses without blanking to avoid
+        // delete-without-replacement). Treat it as a MISS so we fall through to
+        // the overlay path instead of opening an editor that would no-op (A1).
+        if (hit && !hit.inXObject) { target = hit; matchedOrigin = o; break; }
       }
 
       if (target) {

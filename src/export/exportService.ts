@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, type FlowDoc, type FlowImage, type FontInfoMap, type RawTextItem } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, type FlowDoc, type FlowImage, type FontInfoMap, type RawTextItem, type RedactionRect } from '../utils/flowDoc';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -301,12 +301,20 @@ export class ExportService {
    * Blank pages and pages without a source are skipped.
    */
   private async _extractFlowDoc(): Promise<FlowDoc> {
-    const { documentModel } = this._ctx;
+    const { documentModel, elements } = this._ctx;
     const flowDoc: FlowDoc = { pages: [] };
     for (const docPage of documentModel.pages) {
       const src = documentModel.sourcePdfs.get(docPage.sourcePdfId);
       if (!src || !docPage.sourcePageNum) continue;
       const page = await src.doc.getPage(docPage.sourcePageNum);
+
+      // Redaction-aware extraction: drop any source text item that sits under a
+      // redaction box on this page so redacted text never leaks into the flow
+      // export (DOCX/MD/TXT). Rects are in editor space (top-left origin), the
+      // same space rasterizePageWithRedactions fills for the PDF export path.
+      const redactions: RedactionRect[] = elements
+        .filter(el => el.pageId === docPage.id && el.type === 'redaction')
+        .map(el => ({ x: el.x, y: el.y, width: el.width, height: el.height }));
 
       const [content, opList] = await Promise.all([
         page.getTextContent(),
@@ -437,7 +445,7 @@ export class ExportService {
         } catch { /* operator list unavailable */ }
       }
 
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap);
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions);
       if (pageImages.length > 0) flowPage.images = pageImages;
       flowDoc.pages.push(flowPage);
     }

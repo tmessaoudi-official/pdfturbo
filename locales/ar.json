@@ -343,7 +343,21 @@
   "element": {
     "deleteTitle": "حذف",
     "rotateTitle": "تدوير",
-    "burnLabel": "⚠ يُطبَّق عند التصدير"
+    "burnLabel": "⚠ يُطبَّق عند التصدير",
+    "aria": {
+      "label": "تعليق {{type}}",
+      "labelWithContent": "تعليق {{type}}: {{content}}",
+      "type": {
+        "text": "نص",
+        "signature": "توقيع",
+        "shape": "شكل",
+        "image": "صورة",
+        "highlight": "تمييز",
+        "comment": "تعليق",
+        "redaction": "تنقيح",
+        "code": "رمز شريطي"
+      }
+    }
   },
   "footer": {
     "privacyPolicy": "سياسة الخصوصية",

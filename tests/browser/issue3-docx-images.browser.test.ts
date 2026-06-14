@@ -30,12 +30,14 @@ function makeExtractor(doc: pdfjsLib.PDFDocumentProxy): FlowDocExtractor {
     sourcePdfId: 's1',
     sourcePageNum: i + 1,
   }));
-  // _extractFlowDoc only reads documentModel.pages + documentModel.sourcePdfs.
+  // _extractFlowDoc reads documentModel.pages + documentModel.sourcePdfs and
+  // elements (for redaction-aware filtering — none here).
   const ctx = {
     documentModel: {
       pages,
       sourcePdfs: new Map([['s1', { doc, bytes: new Uint8Array() }]]),
     },
+    elements: [],
   } as unknown as IExportContext;
   return new ExportService(ctx) as unknown as FlowDocExtractor;
 }
@@ -45,7 +47,7 @@ async function loadFromUrl(url: string): Promise<pdfjsLib.PDFDocumentProxy> {
   return pdfjsLib.getDocument({ data: bytes }).promise;
 }
 
-async function makePngBytes(): Promise<Uint8Array> {
+function makePngBytes(): Promise<Uint8Array> {
   const c = document.createElement('canvas');
   c.width = 64;
   c.height = 64;
@@ -55,7 +57,7 @@ async function makePngBytes(): Promise<Uint8Array> {
   ctx.fillRect(0, 0, 64, 64);
   ctx.fillStyle = '#2980b9';
   ctx.fillRect(16, 16, 32, 32);
-  return Uint8Array.from(atob(c.toDataURL('image/png').split(',')[1]), (ch) => ch.charCodeAt(0));
+  return Promise.resolve(Uint8Array.from(atob(c.toDataURL('image/png').split(',')[1]), (ch) => ch.charCodeAt(0)));
 }
 
 // One embedded image drawn on 3 pages → pdf.js promotes it to commonObjs (g_).

@@ -1,10 +1,25 @@
-import type { PDFElement } from '../elements/annotationElement';
+import type { PDFElement, ElementType } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { AppDOMRefs } from './uiController';
 import type { ToolMode } from '../types/tools';
 import type { CodeElement } from '../elements/codeElement';
 import type { TextElement } from '../elements/textElement';
+import { t } from '../utils/i18n';
+
+// Maps each annotation element type to the ARIA role that best conveys its
+// nature to assistive tech. Images use 'img'; everything else is a 'group'
+// (a focusable, labelled composite the user can act on).
+const _ELEMENT_ROLE: Record<ElementType, string> = {
+  text: 'group',
+  signature: 'img',
+  shape: 'img',
+  image: 'img',
+  highlight: 'group',
+  comment: 'group',
+  redaction: 'group',
+  code: 'img',
+};
 
 export interface IElementLayerContext {
   readonly elements: PDFElement[];
@@ -38,6 +53,7 @@ export class ElementLayerRenderer {
       .filter(el => el.pageId === currentPageId)
       .forEach(element => {
         const div = element.render(this._ctx.ui.container, canvasOffset, this._ctx.zoomScale);
+        this._applyA11y(div, element);
         div.style.pointerEvents = interactable ? 'auto' : 'none';
         if (element.rotation) {
           div.style.transform = `rotate(${element.rotation}deg)`;
@@ -65,6 +81,31 @@ export class ElementLayerRenderer {
         }
         this._ctx.ui.container.appendChild(div);
       });
+  }
+
+  /**
+   * Expose a placed annotation element to assistive tech (WCAG 2.1.1, 4.1.2):
+   * a role appropriate to its type, keyboard focusability, and a translated
+   * accessible name. The label text content (if any) is passed as a plain
+   * string via setAttribute — never injected as HTML — so it is safe even
+   * though i18next runs with escapeValue:false.
+   */
+  private _applyA11y(div: HTMLDivElement, element: PDFElement): void {
+    div.setAttribute('role', _ELEMENT_ROLE[element.type] ?? 'group');
+    div.setAttribute('tabindex', '0');
+    const content = this._a11yContent(element);
+    const label = content
+      ? t('element.aria.labelWithContent', { type: t(`element.aria.type.${element.type}`), content })
+      : t('element.aria.label', { type: t(`element.aria.type.${element.type}`) });
+    div.setAttribute('aria-label', label);
+  }
+
+  /** Best-effort short text content for the accessible name (plain string). */
+  private _a11yContent(element: PDFElement): string {
+    const raw = (element as unknown as { text?: unknown }).text;
+    if (typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    return trimmed.length > 60 ? trimmed.slice(0, 60) + '…' : trimmed;
   }
 
   renderInkLayer(): void {

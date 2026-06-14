@@ -29,7 +29,13 @@ export class HistoryManager {
 
   private _push(cmd: Command): void {
     this.undoStack.push(cmd);
-    if (this.undoStack.length > this.maxSize) this.undoStack.shift();
+    // Overflow: the oldest command falls off the undo branch and is unreachable forever.
+    if (this.undoStack.length > this.maxSize) {
+      const evicted = this.undoStack.shift();
+      evicted?.dispose?.();
+    }
+    // A fresh push invalidates the redo branch: those commands can never be reached again.
+    for (const stale of this.redoStack) stale.dispose?.();
     this.redoStack = [];
     this.onChange(true, false);
   }
@@ -58,6 +64,9 @@ export class HistoryManager {
   canRedo(): boolean { return this.redoStack.length > 0; }
 
   clear(): void {
+    // Every command on both stacks is being discarded for good — release their resources.
+    for (const cmd of this.undoStack) cmd.dispose?.();
+    for (const cmd of this.redoStack) cmd.dispose?.();
     this.undoStack = [];
     this.redoStack = [];
     this.onChange(false, false);

@@ -343,7 +343,21 @@
   "element": {
     "deleteTitle": "Supprimer",
     "rotateTitle": "Pivoter",
-    "burnLabel": "⚠ Appliqué à l'export"
+    "burnLabel": "⚠ Appliqué à l'export",
+    "aria": {
+      "label": "Annotation {{type}}",
+      "labelWithContent": "Annotation {{type}} : {{content}}",
+      "type": {
+        "text": "Texte",
+        "signature": "Signature",
+        "shape": "Forme",
+        "image": "Image",
+        "highlight": "Surlignage",
+        "comment": "Commentaire",
+        "redaction": "Caviardage",
+        "code": "Code-barres"
+      }
+    }
   },
   "footer": {
     "privacyPolicy": "Politique de confidentialité",

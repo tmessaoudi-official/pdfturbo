@@ -79,6 +79,46 @@ export interface FlowDoc {
   pages: FlowPage[];
 }
 
+/**
+ * A redaction rectangle in editor/element coordinate space: page-point units,
+ * TOP-LEFT origin (y grows downward) — the same space `el.x/el.y/el.width/el.height`
+ * live in (see exportPipeline.rasterizePageWithRedactions, which fills
+ * `ctx.fillRect(el.x*SCALE, el.y*SCALE, ...)` on a viewport-sized canvas).
+ */
+export interface RedactionRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * True when a source text item's bounding box intersects a redaction rectangle.
+ *
+ * Coordinate bridge: text items are in PDF space (y-up, baseline at transform[5]);
+ * redaction rects are in editor space (y-down, top-left origin). We convert the
+ * glyph box into top-origin space and test for axis-aligned rectangle overlap.
+ * Any intersection (not full containment) redacts the item — partial overlap of a
+ * word still means part of it sits under the box, so it must not leak.
+ */
+export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageHeight: number): boolean {
+  const size = Math.hypot(item.transform[0], item.transform[1]) || Math.abs(item.height) || 12;
+  const x0 = item.transform[4];
+  const x1 = x0 + Math.abs(item.width);
+  // Baseline in y-up PDF space; glyph box spans roughly [baseline, baseline+size].
+  const baseline = item.transform[5];
+  // Convert to top-origin (y-down) space: topY is the box top, botY the box bottom.
+  const topY = pageHeight - (baseline + size);
+  const botY = pageHeight - baseline;
+  const redLeft = red.x;
+  const redRight = red.x + red.width;
+  const redTop = red.y;
+  const redBottom = red.y + red.height;
+  const overlapX = x0 < redRight && x1 > redLeft;
+  const overlapY = topY < redBottom && botY > redTop;
+  return overlapX && overlapY;
+}
+
 // ── Internal working shapes ─────────────────────────────────────────────
 
 interface Word {
@@ -338,17 +378,22 @@ function reconstructColumn(
  *
  * @param colorMap  Optional map from `"${Math.round(x)},${Math.round(y)}"` → hex color
  *                  (6 uppercase chars, no '#'). Built from getOperatorList() in the caller.
+ * @param redactions  Optional redaction rectangles (editor space, top-left origin).
+ *                  Any source text item intersecting a rectangle is dropped so redacted
+ *                  text never leaks into the DOCX/MD/TXT flow export.
  */
 export function reconstructPage(
   items: RawTextItem[],
   fonts: FontInfoMap,
   pageWidth: number,
   pageHeight: number,
-  colorMap?: Map<string, string>
+  colorMap?: Map<string, string>,
+  redactions?: RedactionRect[]
 ): FlowPage {
   const words: Word[] = [];
   for (const it of items) {
     if (!it.str || !it.str.trim()) continue;
+    if (redactions?.length && redactions.some(r => isItemRedacted(it, r, pageHeight))) continue;
     const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
     const x = it.transform[4];
     const y = it.transform[5];

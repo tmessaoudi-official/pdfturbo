@@ -39,7 +39,7 @@ function makeFakePage(items: FakeItem[], pageHeight = 841) {
   return {
     rotate: 0,
     getViewport: vi.fn(() => ({ height: pageHeight })),
-    getTextContent: vi.fn(async () => ({ items, styles: {} })),
+    getTextContent: vi.fn(() => Promise.resolve({ items, styles: {} })),
   };
 }
 
@@ -109,7 +109,7 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     const itemA = makeItem('de',          157, 453);
     const itemB = makeItem('Attestation', 161, 457);
 
-    mockFindTextOpAt.mockImplementation(async (_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
       if (Math.abs(origin.x - 161) < 1 && Math.abs(origin.y - 457) < 1) {
         return { fontKey: 'F1', fontSize: 14, fillColor: undefined };
       }
@@ -130,7 +130,7 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     const pageH = 841;
     const item = makeItem('Hello', 100, 600);
 
-    mockFindTextOpAt.mockImplementation(async (_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
       if (Math.abs(origin.x - 100) < 1 && Math.abs(origin.y - 600) < 1) {
         return { fontKey: 'F1', fontSize: 12, fillColor: undefined };
       }
@@ -160,6 +160,30 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
 
     // Overlay added two elements (redaction + text) via MacroCmd
     expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+    expect(document.body.querySelector('.true-edit-input')).toBeNull();
+  });
+
+  // BUG A1: when the only content-stream match lives inside a Form XObject, the
+  // true editor opened but replaceTextAt refused → click+type did NOTHING. The
+  // handler must treat an inXObject target as a MISS and fall back to the overlay
+  // path, exactly like the no-match case (never a silent no-op).
+  it('falls back to overlay when the only match is inside a Form XObject (A1)', async () => {
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
+      if (Math.abs(origin.x - 100) < 1 && Math.abs(origin.y - 400) < 1) {
+        return { fontKey: 'F1', fontSize: 12, fillColor: undefined, inXObject: true };
+      }
+      return null;
+    });
+
+    const item = makeItem('hello', 100, 400);
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item]));
+    // pdfY = 841 - (841-400) = 400
+    await handler.handleCanvasClick(click(115, 441), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    // Overlay (redaction + text) must fire — not a silent no-op.
+    expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+    // The true-edit inline input must NOT have opened.
     expect(document.body.querySelector('.true-edit-input')).toBeNull();
   });
 });

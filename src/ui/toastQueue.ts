@@ -18,6 +18,12 @@ export class ToastQueue implements IToastQueue {
 
   constructor(el: HTMLElement) {
     this._el = el;
+    // Announce toasts to assistive tech (WCAG 4.1.3). role=status implies an
+    // aria-live=polite region; we set both explicitly plus aria-atomic so the
+    // whole message is re-read on each change rather than only the diff.
+    this._el.setAttribute('role', 'status');
+    this._el.setAttribute('aria-live', 'polite');
+    this._el.setAttribute('aria-atomic', 'true');
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', () => this._reposition());
       window.visualViewport.addEventListener('scroll', () => this._reposition());

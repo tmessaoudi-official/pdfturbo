@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PDFDocument, PDFName, PDFRawStream, StandardFonts, decodePDFRawStream, degrees, rgb } from '@cantoo/pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, StandardFonts, decodePDFRawStream, degrees, rgb } from '@cantoo/pdf-lib';
 import {
   tokenizeContentStream,
   serializeTokens,
@@ -179,14 +179,92 @@ async function makeThreeStringPdf(): Promise<Uint8Array> {
   return doc.save();
 }
 
-/** Build a 3-text PDF with two overlapping ops (within 4pt) and one separate. */
+/**
+ * Build a PDF with a genuine same-origin drop shadow: the SAME string drawn
+ * twice at the exact same baseline origin (the legitimate multi-op-same-origin
+ * case the nearby-blanking is meant to clean up), plus one separate string.
+ */
 async function makeOverlappingTextPdf(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([400, 400]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   page.drawText('Shadow1', { x: 50, y: 300, size: 12, font }); // primary
-  page.drawText('Shadow2', { x: 52, y: 298, size: 12, font }); // within 4pt of Shadow1
+  page.drawText('ShadowDup', { x: 50, y: 300, size: 12, font }); // SAME origin → true shadow
   page.drawText('Separate', { x: 50, y: 200, size: 12, font }); // 100pt away
+  return doc.save();
+}
+
+/**
+ * Build a PDF with two DISTINCT words at clearly different origins only ~2.5pt
+ * apart — close enough that a 4pt nearby-blanking radius wrongly wipes the
+ * neighbour (BUG A2), but far enough that exact/sub-point origin matching keeps
+ * it intact.
+ */
+async function makeAdjacentWordsPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('EditMe', { x: 50, y: 300, size: 12, font });    // target
+  page.drawText('Neighbour', { x: 52, y: 298.5, size: 12, font }); // ~2.5pt away, DISTINCT
+  return doc.save();
+}
+
+/**
+ * Build a PDF whose ONLY text lives inside a Form XObject, invoked from the page
+ * via a `Do` operator. Used to exercise the XObject-target path (BUG A1): such a
+ * target must be flagged inXObject and must NOT be blanked without replacement.
+ */
+async function makeXObjectTextPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  // Embed the font into the page once so the XObject can reference it by name.
+  page.drawText(' ', { x: 0, y: 0, size: 1, font });
+
+  const ctx = doc.context;
+  // Form XObject content: draw "InsideXObj" at (50,300) in the XObject's space.
+  const xContent = 'q BT /F1 12 Tf 1 0 0 1 50 300 Tm (InsideXObj) Tj ET Q';
+  const xBytes = new Uint8Array(xContent.length);
+  for (let i = 0; i < xContent.length; i++) xBytes[i] = xContent.charCodeAt(i) & 0xff;
+
+  // Reuse the page's /Resources/Font dict so /F1 resolves inside the XObject.
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDictRef = pageRes.get(PDFName.of('Font'));
+
+  const xDict = PDFDict.fromMapWithContext(new Map(), ctx);
+  xDict.set(PDFName.of('Type'), PDFName.of('XObject'));
+  xDict.set(PDFName.of('Subtype'), PDFName.of('Form'));
+  xDict.set(PDFName.of('FormType'), ctx.obj(1));
+  const bbox = PDFArray.withContext(ctx);
+  [0, 0, 400, 400].forEach(n => bbox.push(ctx.obj(n)));
+  xDict.set(PDFName.of('BBox'), bbox);
+  const xRes = PDFDict.fromMapWithContext(new Map(), ctx);
+  if (fontDictRef) xRes.set(PDFName.of('Font'), fontDictRef);
+  xDict.set(PDFName.of('Resources'), xRes);
+  xDict.set(PDFName.of('Length'), ctx.obj(xBytes.length));
+  const xStream = PDFRawStream.of(xDict, xBytes);
+  const xRef = ctx.register(xStream);
+
+  // Register the XObject on the page resources under /Fx0.
+  let xobjDict = ctx.lookup(pageRes.get(PDFName.of('XObject'))) as PDFDict | undefined;
+  if (!xobjDict?.set) {
+    xobjDict = PDFDict.fromMapWithContext(new Map(), ctx);
+    pageRes.set(PDFName.of('XObject'), xobjDict);
+  }
+  xobjDict.set(PDFName.of('Fx0'), xRef);
+
+  // Append a `Do` to the page content stream so the XObject is actually drawn.
+  const pageContent = '\nq /Fx0 Do Q';
+  const pcBytes = new Uint8Array(pageContent.length);
+  for (let i = 0; i < pageContent.length; i++) pcBytes[i] = pageContent.charCodeAt(i) & 0xff;
+  const doStream = ctx.stream(pcBytes);
+  const doRef = ctx.register(doStream);
+  const existing = page.node.get(PDFName.of('Contents'));
+  const contentsArr = PDFArray.withContext(ctx);
+  if (existing) contentsArr.push(existing);
+  contentsArr.push(doRef);
+  page.node.set(PDFName.of('Contents'), contentsArr);
+
   return doc.save();
 }
 
@@ -221,9 +299,9 @@ async function pageContentText(bytes: Uint8Array): Promise<string> {
 
 /** Extract all shown strings (hex-decoded) from a content stream. */
 function showStrings(content: string): string[] {
-  const ops = groupOps(tokenizeContentStream(content));
+  const innerOps = groupOps(tokenizeContentStream(content));
   const out: string[] = [];
-  for (const op of ops) {
+  for (const op of innerOps) {
     if (!['Tj', "'", '"', 'TJ'].includes(op.operator)) continue;
     const toks =
       op.operator === 'TJ'
@@ -268,8 +346,8 @@ describe('tokenizeContentStream', () => {
 describe('groupOps + locateTextOps', () => {
   it('locates Td-positioned show ops with correct origins and font size', () => {
     const src = 'BT /F1 10 Tf 10 20 Td (A) Tj 0 -15 Td (B) Tj ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const text = locateTextOps(ops);
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const text = locateTextOps(innerOps);
     expect(text).toHaveLength(2);
     expect(text[0].origin).toEqual({ x: 10, y: 20 });
     expect(text[0].fontSize).toBe(10);
@@ -305,6 +383,39 @@ describe('findTextOpAt', () => {
     const doc = await PDFDocument.load(await makeThreeStringPdf());
     expect(await findTextOpAt(doc, 0, { x: 350, y: 30 })).toBeNull();
   });
+
+  // BUG A1: a target found only inside a Form XObject must be flagged inXObject
+  // so callers can fall back to an overlay rather than no-op.
+  it('flags a target found inside a Form XObject with inXObject (A1)', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf());
+    const info = await findTextOpAt(doc, 0, { x: 50, y: 300 });
+    expect(info).not.toBeNull();
+    expect(info?.inXObject).toBe(true);
+  });
+});
+
+describe('XObject target edit safety (A1)', () => {
+  // The user-facing A1 fix (no silent no-op) lives in textEditHandler: an
+  // inXObject target is treated as a MISS and routed to the overlay path. At the
+  // engine level the invariant under test is "never delete without replacement":
+  // editing an XObject target must never leave the original blanked with no new
+  // text in its place. (A standard-font literal op edits in place; a subset/CID
+  // op that would hit the Path-3 redraw refuses outright — both honour this.)
+  it('replaceTextAt never blanks an XObject target without a replacement', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf());
+    const ok = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Changed');
+    const saved = bytesToLatin1(await doc.save());
+    if (ok) {
+      // In-place literal swap succeeded → the new text is present.
+      expect(saved).toContain('Changed');
+    } else {
+      // Refused (Path-3 XObject case) → the original survives untouched.
+      expect(saved).toContain('InsideXObj');
+    }
+    // Either way, the document must remain parseable.
+    const reloaded = await PDFDocument.load(await doc.save());
+    expect(reloaded.getPageCount()).toBe(1);
+  });
 });
 
 describe('deleteTextAt', () => {
@@ -336,14 +447,27 @@ describe('deleteTextAt', () => {
     expect(reloaded.getPageCount()).toBe(1);
   });
 
-  it('also blanks shadow ops within 4pt of the primary origin', async () => {
+  it('also blanks a same-origin drop-shadow op (legitimate multi-op-same-origin)', async () => {
     const doc = await PDFDocument.load(await makeOverlappingTextPdf());
     await deleteTextAt(doc, 0, { x: 50, y: 300 });
     const saved = await doc.save();
     const strings = showStrings(await pageContentText(saved));
-    expect(strings).not.toContain('Shadow1'); // primary — blanked
-    expect(strings).not.toContain('Shadow2'); // shadow within 4pt — also blanked
-    expect(strings).toContain('Separate');   // 100pt away — untouched
+    expect(strings).not.toContain('Shadow1');   // primary — blanked
+    expect(strings).not.toContain('ShadowDup'); // SAME origin shadow — also blanked
+    expect(strings).toContain('Separate');      // 100pt away — untouched
+  });
+
+  // BUG A2: a 4pt nearby-blanking radius wipes a DISTINCT neighbour word that
+  // merely sits a couple of points away. Only ops at the matched origin must be
+  // blanked.
+  it('does NOT blank a distinct neighbour word ~2.5pt from the target origin (A2)', async () => {
+    const doc = await PDFDocument.load(await makeAdjacentWordsPdf());
+    const removed = await deleteTextAt(doc, 0, { x: 50, y: 300 });
+    expect(removed).toBe(true);
+    const saved = await doc.save();
+    const strings = showStrings(await pageContentText(saved));
+    expect(strings).not.toContain('EditMe');     // target — blanked
+    expect(strings).toContain('Neighbour');      // distinct neighbour — preserved
   });
 });
 
@@ -460,14 +584,14 @@ describe('fillColorToHex', () => {
 describe('replaceShowOpInPlace', () => {
   it('replaces an ASCII literal Tj string in-place, preserving font context ops', () => {
     const src = 'BT /F1 12 Tf 50 300 Td (OrigText) Tj ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const textOps = locateTextOps(ops);
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
     expect(textOps).toHaveLength(1);
 
-    const ok = replaceShowOpInPlace(ops[textOps[0].opIndex], 'NewText');
+    const ok = replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'NewText');
     expect(ok).toBe(true);
 
-    const serialized = serializeOps(ops);
+    const serialized = serializeOps(innerOps);
     expect(serialized).toContain('(NewText)');
     expect(serialized).not.toContain('(OrigText)');
     expect(serialized).toContain('/F1');
@@ -476,27 +600,27 @@ describe('replaceShowOpInPlace', () => {
 
   it('replaces the first string element of a TJ array in-place', () => {
     const src = 'BT /F1 12 Tf [(Hello) -120 (World)] TJ ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const textOps = locateTextOps(ops);
-    const ok = replaceShowOpInPlace(ops[textOps[0].opIndex], 'Hi');
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'Hi');
     expect(ok).toBe(true);
-    const serialized = serializeOps(ops);
+    const serialized = serializeOps(innerOps);
     expect(serialized).toContain('(Hi)');
     expect(serialized).not.toContain('(Hello)');
   });
 
   it('returns false for a hex-encoded string operand (Tj)', () => {
     const src = 'BT <48656C6C6F> Tj ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const textOps = locateTextOps(ops);
-    expect(replaceShowOpInPlace(ops[textOps[0].opIndex], 'NewText')).toBe(false);
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    expect(replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'NewText')).toBe(false);
   });
 
   it('returns false when newText contains non-ASCII characters', () => {
     const src = 'BT (Hello) Tj ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const textOps = locateTextOps(ops);
-    expect(replaceShowOpInPlace(ops[textOps[0].opIndex], 'Héllo')).toBe(false);
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    expect(replaceShowOpInPlace(innerOps[textOps[0].opIndex], 'Héllo')).toBe(false);
   });
 });
 
@@ -613,28 +737,28 @@ describe('encodeWithSubset', () => {
 describe('replaceShowOpHex', () => {
   it('replaces a hexstring operand on a Tj op', () => {
     const src = 'BT <48656C6C6F> Tj ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const textOps = locateTextOps(ops);
-    const ok = replaceShowOpHex(ops[textOps[0].opIndex], '<0048006900>');
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpHex(innerOps[textOps[0].opIndex], '<0048006900>');
     expect(ok).toBe(true);
-    expect(serializeOps(ops)).toContain('<0048006900>');
-    expect(serializeOps(ops)).not.toContain('<48656C6C6F>');
+    expect(serializeOps(innerOps)).toContain('<0048006900>');
+    expect(serializeOps(innerOps)).not.toContain('<48656C6C6F>');
   });
 
   it('replaces the first hexstring in a TJ array', () => {
     const src = 'BT [<4865> -120 <6C6C6F>] TJ ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const textOps = locateTextOps(ops);
-    const ok = replaceShowOpHex(ops[textOps[0].opIndex], '<0048>');
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpHex(innerOps[textOps[0].opIndex], '<0048>');
     expect(ok).toBe(true);
-    expect(serializeOps(ops)).toContain('<0048>');
+    expect(serializeOps(innerOps)).toContain('<0048>');
   });
 
   it('returns false when the op has no hexstring operand', () => {
     const src = 'BT (Hello) Tj ET';
-    const ops = groupOps(tokenizeContentStream(src));
-    const textOps = locateTextOps(ops);
-    expect(replaceShowOpHex(ops[textOps[0].opIndex], '<0048>')).toBe(false);
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    expect(replaceShowOpHex(innerOps[textOps[0].opIndex], '<0048>')).toBe(false);
   });
 });
 
