@@ -209,7 +209,13 @@ export class ExportService {
     const _prog = progress.begin('progress.generatingDocx');
     try {
       const flowDoc = await this._extractFlowDoc();
-      if (!flowDoc.pages.some(p => p.paragraphs.length > 0)) {
+      // Emit a DOCX when there is text OR images. Only a document with neither
+      // (e.g. a scanned PDF before OCR) is rejected — and even then with a
+      // visible toast, never a silent no-op.
+      const hasContent = flowDoc.pages.some(
+        p => p.paragraphs.length > 0 || (p.images?.length ?? 0) > 0,
+      );
+      if (!hasContent) {
         reportError.warn('toast.exportNoText');
         _prog.done();
         return;
@@ -368,8 +374,17 @@ export class ExportService {
             } else if (fn === OPS['paintImageXObject']) {
               const imageName = args[0] as unknown as string;
               try {
-                if (!(page.objs as { has(id: string): boolean }).has(imageName)) continue;
-                const imgData = page.objs.get(imageName) as { width: number; height: number; bitmap?: ImageBitmap } | null;
+                // Images reused across ≥2 pages are promoted by pdf.js's
+                // GlobalImageCache to the document-global `commonObjs` store with
+                // a `g_`-prefixed name; page-local images stay in `page.objs`.
+                // Resolve from whichever store actually holds this name —
+                // reading the wrong store throws and silently drops the image.
+                const store = (imageName.startsWith('g_') ? page.commonObjs : page.objs) as {
+                  has(id: string): boolean;
+                  get(id: string): unknown;
+                };
+                if (!store.has(imageName)) continue;
+                const imgData = store.get(imageName) as { width: number; height: number; bitmap?: CanvasImageSource } | null;
                 if (!imgData?.bitmap) continue;
                 const imgCanvas = document.createElement('canvas');
                 imgCanvas.width = imgData.width;
