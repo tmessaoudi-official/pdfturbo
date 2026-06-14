@@ -3,7 +3,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { DocumentModel, PAGE_SIZES } from '../../src/core/documentModel';
 
 function makeDoc(numPages: number) {
-  return { numPages, getPage: async () => ({}) } as unknown as PDFDocumentProxy;
+  return { numPages, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy;
 }
 
 describe('DocumentModel', () => {

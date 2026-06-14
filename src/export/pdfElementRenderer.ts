@@ -10,11 +10,11 @@ import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { transformPoint, hexToRgbValues } from '../utils/geometry';
 
 export interface PdfRenderCtx {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFDocument internals are untyped here
   pdfDoc: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFPage internals are untyped here
   page: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib runtime helpers (rgb/StandardFonts/degrees) are untyped here
   libs: { rgb: any; StandardFonts: any; degrees?: any };
   /** Effective height after rotation swap (h_eff). */
   h: number;
@@ -28,8 +28,8 @@ export interface PdfRenderCtx {
 }
 
 /** Embed a raster image (JPEG or PNG/other via canvas re-encode) into a pdf-lib document. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function embedImage(pdfDoc: any, src: string): Promise<any> {
+// oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFDocument/PDFImage internals are untyped here
+export function embedImage(pdfDoc: any, src: string): Promise<any> {
   if (src.startsWith('data:image/jpeg') || src.startsWith('data:image/jpg')) {
     return pdfDoc.embedJpg(dataUrlToUint8Array(src));
   }

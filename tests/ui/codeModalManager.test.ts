@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CodeModalManager, type ICodeModalContext } from '../../src/ui/codeModalManager';
 import type { AppDOMRefs } from '../../src/ui/uiController';
 import type { ToolMode } from '../../src/core/pdfTurboApp';
+import type { CodeElement } from '../../src/elements/codeElement';
+import type { PDFElement } from '../../src/elements/annotationElement';
 
 vi.mock('../../src/utils/i18n', () => ({ t: (key: string) => key }));
 vi.mock('../../src/utils/focusTrap', () => ({ trapFocus: vi.fn().mockReturnValue(vi.fn()) }));
@@ -82,7 +84,7 @@ function makeUI(): Pick<AppDOMRefs,
     qrStyleSection,
     qrStyleControls,
     barcodeShowTextRow,
-  } as unknown as Pick<AppDOMRefs, any>;
+  } as unknown as AppDOMRefs;
 }
 
 function makeCtx(ui: ReturnType<typeof makeUI>, initialMode: ToolMode = 'select'): ICodeModalContext & { mode: ToolMode } {
@@ -189,8 +191,8 @@ describe('CodeModalManager.save', () => {
   it('updates existing element in-place and calls autosave + rebuildElementLayer', async () => {
     const ui = makeUI();
     const ctx = makeCtx(ui);
-    const fakeEl = { id: 42, codeType: 'qrcode', data: 'old', qrStyle: null, bwipOpts: null, cachedDataUrl: '' } as any;
-    (ctx as any).elements.push(fakeEl);
+    const fakeEl = { id: 42, codeType: 'qrcode', data: 'old', qrStyle: null, bwipOpts: null, cachedDataUrl: '' } as unknown as CodeElement;
+    (ctx.elements as PDFElement[]).push(fakeEl);
     const mgr = new CodeModalManager(ctx);
     mgr.open(fakeEl);
     ui.codeDataInput.value = 'new-data';

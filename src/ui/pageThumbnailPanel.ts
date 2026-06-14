@@ -45,6 +45,7 @@ export class PageThumbnailPanel {
     this.container.appendChild(this.strip);
   }
 
+  // oxlint-disable-next-line eslint/require-await -- Promise contract: callers (renderThumbnails, tests) await the returned Promise<void>
   async render(): Promise<void> {
     this.strip.innerHTML = '';
     const pages = this.model.pages;

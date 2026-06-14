@@ -63,7 +63,7 @@ function makeCtx(overrides: Partial<IDocumentLoaderContext> = {}): IDocumentLoad
       currentPage: null,
       addSourcePdf: vi.fn().mockReturnValue({ id: 'src1', doc: {} }),
       addPagesFrom: vi.fn(),
-    } as any,
+    } as unknown as IDocumentLoaderContext['documentModel'],
     resetDocumentModel: vi.fn(),
     elements,
     setFormValues: vi.fn(),
@@ -73,15 +73,15 @@ function makeCtx(overrides: Partial<IDocumentLoaderContext> = {}): IDocumentLoad
     setClipboard: vi.fn(),
     isFitMode: false,
     setPendingPasswordResolve: vi.fn(),
-    renderer: { computeFitScale: vi.fn().mockResolvedValue(1.0), setScale: vi.fn(), pdfDoc: null, canvas: document.createElement('canvas') } as any,
-    historyManager: { clear: vi.fn() } as any,
-    formFieldOverlay: { clear: vi.fn() } as any,
-    textLayerManager: { clear: vi.fn() } as any,
-    textSearch: { clearCache: vi.fn() } as any,
-    inkLayer: { clearAll: vi.fn(), fromJSON: vi.fn() } as any,
+    renderer: { computeFitScale: vi.fn().mockResolvedValue(1.0), setScale: vi.fn(), pdfDoc: null, canvas: document.createElement('canvas') } as unknown as IDocumentLoaderContext['renderer'],
+    historyManager: { clear: vi.fn() } as unknown as IDocumentLoaderContext['historyManager'],
+    formFieldOverlay: { clear: vi.fn() } as unknown as IDocumentLoaderContext['formFieldOverlay'],
+    textLayerManager: { clear: vi.fn() } as unknown as IDocumentLoaderContext['textLayerManager'],
+    textSearch: { clearCache: vi.fn() } as unknown as IDocumentLoaderContext['textSearch'],
+    inkLayer: { clearAll: vi.fn(), fromJSON: vi.fn() } as unknown as IDocumentLoaderContext['inkLayer'],
     ui,
     reportError: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), silent: vi.fn() },
-    progress: { begin: vi.fn().mockReturnValue({ done: vi.fn(), failed: vi.fn() }) } as any,
+    progress: { begin: vi.fn().mockReturnValue({ done: vi.fn(), failed: vi.fn() }) } as unknown as IDocumentLoaderContext['progress'],
     reinitThumbnailPanel: vi.fn(),
     clearThumbnailPanel: vi.fn(),
     renderThumbnails: vi.fn().mockResolvedValue(undefined),
@@ -208,8 +208,8 @@ describe('DocumentLoader.restoreSession', () => {
 
   it('returns early when already loading', async () => {
     const { loadState } = await import('../../src/infra/storage');
-    vi.mocked(loadState).mockResolvedValueOnce({ pages: [{}] } as any);
-    const ctx = makeCtx({ isLoading: true } as any);
+    vi.mocked(loadState).mockResolvedValueOnce({ pages: [{}] } as unknown as Awaited<ReturnType<typeof loadState>>);
+    const ctx = makeCtx({ isLoading: true });
     const loader = new DocumentLoader(ctx);
     await loader.restoreSession();
     expect(ctx.progress.begin).not.toHaveBeenCalled();

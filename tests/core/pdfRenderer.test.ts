@@ -18,6 +18,7 @@ function makeCanvas() {
 
 function makeDoc(failOnPage?: number) {
   return {
+    // oxlint-disable-next-line eslint/require-await -- async keeps reject semantics: a thrown error becomes a rejected Promise the renderer awaits
     getPage: vi.fn(async (n: number) => {
       if (failOnPage !== undefined && n === failOnPage) throw new Error(`page ${n} corrupt`);
       return {

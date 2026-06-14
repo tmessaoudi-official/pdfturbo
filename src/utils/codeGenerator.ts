@@ -50,6 +50,7 @@ const is2DCode = (formatId: string) => ['qrcode', 'datamatrix', 'azteccode', 'pd
  * Uses bwip-js for all formats; qr-code-styling for styled QR with logo/colors.
  * Throws on invalid data (bad checksum, unsupported characters, etc.).
  */
+// oxlint-disable-next-line eslint/require-await -- normalizes sync (generateBwip: string) and async (generateStyledQR: Promise<string>) return paths to Promise<string>
 export async function generateCodeDataUrl(
   formatId: string,
   data: string,

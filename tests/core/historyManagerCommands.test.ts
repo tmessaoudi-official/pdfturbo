@@ -408,7 +408,7 @@ describe('TransformAnnotationsCmd', () => {
 // ── SnapshotCmd ────────────────────────────────────────────────────────────────
 describe('SnapshotCmd', () => {
   function makeDocProxy(n = 1) {
-    return { numPages: n, getPage: async () => ({}) } as unknown as PDFDocumentProxy;
+    return { numPages: n, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy;
   }
 
   it('execute restores elements from captureAfter snapshot', () => {
@@ -470,7 +470,7 @@ describe('ReorderPagesCmd', () => {
   function makeModel3() {
     const model = new DocumentModel();
     const src = model.addSourcePdf(
-      { numPages: 3, getPage: async () => ({}) } as unknown as PDFDocumentProxy,
+      { numPages: 3, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy,
       new Uint8Array(), 'test.pdf'
     );
     model.addPagesFrom(src.id);
@@ -504,7 +504,7 @@ describe('DeletePageCmd', () => {
   function makeModel2() {
     const model = new DocumentModel();
     const src = model.addSourcePdf(
-      { numPages: 2, getPage: async () => ({}) } as unknown as PDFDocumentProxy,
+      { numPages: 2, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy,
       new Uint8Array(), 'test.pdf'
     );
     model.addPagesFrom(src.id);
@@ -551,7 +551,7 @@ describe('AddPagesCmd', () => {
   it('execute adds pages from source PDF', () => {
     const model = new DocumentModel();
     const src = model.addSourcePdf(
-      { numPages: 3, getPage: async () => ({}) } as unknown as PDFDocumentProxy,
+      { numPages: 3, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy,
       new Uint8Array(), 'test.pdf'
     );
     const onUpdate = vi.fn();
@@ -564,7 +564,7 @@ describe('AddPagesCmd', () => {
   it('undo removes the added pages', () => {
     const model = new DocumentModel();
     const src = model.addSourcePdf(
-      { numPages: 2, getPage: async () => ({}) } as unknown as PDFDocumentProxy,
+      { numPages: 2, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy,
       new Uint8Array(), 'test.pdf'
     );
     const onUpdate = vi.fn();
@@ -579,7 +579,7 @@ describe('AddPagesCmd', () => {
   it('adds only specified page numbers when pageNums is provided', () => {
     const model = new DocumentModel();
     const src = model.addSourcePdf(
-      { numPages: 5, getPage: async () => ({}) } as unknown as PDFDocumentProxy,
+      { numPages: 5, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy,
       new Uint8Array(), 'test.pdf'
     );
     const cmd = new AddPagesCmd(model, src.id, [1, 3], vi.fn());
@@ -595,7 +595,7 @@ describe('RotatePageCmd', () => {
   function makeModelWithPage() {
     const model = new DocumentModel();
     const src = model.addSourcePdf(
-      { numPages: 1, getPage: async () => ({}) } as unknown as PDFDocumentProxy,
+      { numPages: 1, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy,
       new Uint8Array(), 'test.pdf'
     );
     model.addPagesFrom(src.id);

@@ -6,9 +6,9 @@
 import { describe, it, expect } from 'vitest';
 import { DocumentModel, type DocumentPage } from '../../src/core/documentModel';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any -- minimal PDFDocumentProxy stub; full type is not needed for this test
 function makeDoc(numPages: number): any {
-  return { numPages, getPage: async () => ({}) };
+  return { numPages, getPage: () => Promise.resolve({}) };
 }
 
 // ── currentPage getter ─────────────────────────────────────────────────────────

@@ -354,7 +354,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   // ── Find bar (delegated to FindBarController) ───────────────────────────
   _openFindBar(): void { this._findBarController.open(); }
   _closeFindBar(): void { this.closeFindBar(); }
-  async _search(): Promise<void> { return this._findBarController.search(); }
+  _search(): Promise<void> { return this._findBarController.search(); }
   _nextMatch(): void { this._findBarController.nextMatch(); }
   _prevMatch(): void { this._findBarController.prevMatch(); }
   _highlightCurrentMatch(): void { this._findBarController.highlightCurrentMatch(); }
@@ -368,13 +368,13 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   }
 
    // ── PDF page management — delegate to PageService ──────────────────────
-  async _handleAddPdfUpload(e: Event): Promise<void> { return this._pageService.addPages(e); }
+  _handleAddPdfUpload(e: Event): Promise<void> { return this._pageService.addPages(e); }
   _deletePage(pageId: string): void { this._pageService.deletePage(pageId); }
   _reorderPages(newOrder: string[]): void { this._pageService.reorderPages(newOrder); }
-  async _rotatePage(pageId: string, delta: number): Promise<void> { return this._pageService.rotatePage(pageId, delta); }
+  _rotatePage(pageId: string, delta: number): Promise<void> { return this._pageService.rotatePage(pageId, delta); }
 
 
-  async _onPageStructureChange(): Promise<void> { return this._pageNavController.onPageStructureChange(); }
+  _onPageStructureChange(): Promise<void> { return this._pageNavController.onPageStructureChange(); }
 
   // ── Undo / Redo ───────────────────────────────────────────────
   undo(): void { this._undoRedoController.undo(); }
@@ -455,7 +455,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
 
   _closeDocument(): void { this._documentLoader.closeDocument(); }
 
-  async _loadDocument(e: Event): Promise<void> { return this._documentLoader.load(e); }
+  _loadDocument(e: Event): Promise<void> { return this._documentLoader.load(e); }
 
   enableUI() { this.uiController.enableUI(); }
 
@@ -483,7 +483,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   // ── Code modal (delegated to CodeModalManager) ──────────────────────────
   openCodeModal(el?: CodeElement): void { this._codeModalManager.open(el); }
   closeCodeModal(): void { this._codeModalManager.close(); }
-  async saveCodeModal(): Promise<void> { return this._codeModalManager.save(); }
+  saveCodeModal(): Promise<void> { return this._codeModalManager.save(); }
   _syncCodeOptionsVisibility(): void { this._codeModalManager.syncVisibility(); }
   _triggerCodePreview(delay?: number): void { this._codeModalManager.triggerPreview(delay); }
 
@@ -534,7 +534,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   // ── Navigation ────────────────────────────────────────────────
   private _renderCurrentPage(): Promise<void> { return this._pageRenderPipeline.renderCurrentPage(); }
 
-    async _goToPageIndex(index: number): Promise<void> { return this._pageService.goToPageIndex(index); }
+    _goToPageIndex(index: number): Promise<void> { return this._pageService.goToPageIndex(index); }
 
   async _goToPage(n: number): Promise<void> {
     await this._goToPageIndex(n - 1);
@@ -547,7 +547,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.uiController.updatePageInfo(this.documentModel.currentPageIndex + 1, this.documentModel.pageCount);
   }
 
-    async applyZoom(newScale: number): Promise<void> { return this._pageService.applyZoom(newScale); }
+    applyZoom(newScale: number): Promise<void> { return this._pageService.applyZoom(newScale); }
 
   _showExportPreview(): void { this._exportPreviewPanel.show(); }
   _hideExportPreview(): void { this._exportPreviewPanel.hide(); }
@@ -567,11 +567,11 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   }
 
   // ── Export — delegate to ExportService ──────────────────────────────
-  async downloadPDF(): Promise<void> { return this._exportService.downloadPDF(); }
-  async downloadPage(pageIdx: number): Promise<void> { return this._exportService.downloadPage(pageIdx); }
-  async downloadPageAsImage(pageIdx?: number): Promise<void> { return this._exportService.downloadPageAsImage(pageIdx); }
-  async exportAsDocx(): Promise<void> { return this._exportService.exportAsDocx(); }
-  async exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }
+  downloadPDF(): Promise<void> { return this._exportService.downloadPDF(); }
+  downloadPage(pageIdx: number): Promise<void> { return this._exportService.downloadPage(pageIdx); }
+  downloadPageAsImage(pageIdx?: number): Promise<void> { return this._exportService.downloadPageAsImage(pageIdx); }
+  exportAsDocx(): Promise<void> { return this._exportService.exportAsDocx(); }
+  exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }
 
   _updatePlacementGhost(e: PointerEvent): void { this._placementManager.updatePlacementGhost(e); }
 }

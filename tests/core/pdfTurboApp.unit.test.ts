@@ -96,6 +96,7 @@ describe('_loadDocument error handling (BUG-03 + BUG-09)', () => {
   it('try/catch/finally pattern releases lock on error', () => {
     let isLoading = false;
     let toastShown = '';
+    // oxlint-disable-next-line eslint/require-await -- the test consumes run() as a Promise via run().then(...); async keeps that contract
     const run = async () => {
       if (isLoading) return;
       isLoading = true;
@@ -142,6 +143,7 @@ describe('undo/redo error surfacing (BUG-18)', () => {
     const toasts: string[] = [];
     const showToast = (msg: string) => toasts.push(msg);
     const catchHandler = (err: unknown) => {
+      // oxlint-disable-next-line eslint/no-console -- fixture mirrors the production undo/redo catch handler under test
       console.error('[undo/redo render]', err);
       showToast('Render failed after undo/redo — try reloading');
     };

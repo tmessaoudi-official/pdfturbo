@@ -34,10 +34,10 @@ function makeCtx(overrides: Partial<IFindBarContext> = {}): IFindBarContext {
   return {
     ui: makeUI() as unknown as AppDOMRefs,
     elements: [],
-    documentModel: { currentPage: { id: 'p1' } } as any,
+    documentModel: { currentPage: { id: 'p1' } } as unknown as IFindBarContext['documentModel'],
     zoomScale: 1.0,
-    searchManager: sm as any,
-    textSearch: {} as any,
+    searchManager: sm as unknown as IFindBarContext['searchManager'],
+    textSearch: {} as unknown as IFindBarContext['textSearch'],
     addHighlightForMatch: vi.fn(),
     autosave: vi.fn(),
     rebuildElementLayer: vi.fn(),
@@ -109,7 +109,7 @@ describe('FindBarController.search', () => {
   it('does not show matches when settled is false', async () => {
     const sm = makeSearchManager([{ x: 0, y: 0, width: 10, height: 10 }]);
     sm.run = vi.fn().mockResolvedValue(false);
-    const ctx = makeCtx({ searchManager: sm as any });
+    const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'] });
     const ctrl = new FindBarController(ctx);
     await ctrl.search();
     expect(ctx.ui.container.querySelectorAll('.search-match').length).toBe(0);
@@ -122,7 +122,7 @@ describe('FindBarController.nextMatch / prevMatch', () => {
   it('nextMatch calls searchManager.next when count > 0', () => {
     const sm = makeSearchManager([{ x: 0, y: 0, width: 10, height: 10 }]);
     sm.count = 1;
-    const ctx = makeCtx({ searchManager: sm as any });
+    const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'] });
     const ctrl = new FindBarController(ctx);
     ctrl.nextMatch();
     expect(sm.next).toHaveBeenCalled();
@@ -144,7 +144,7 @@ describe('FindBarController.highlightCurrentMatch', () => {
     const sm = makeSearchManager([match]);
     sm.count = 1;
     sm.currentMatch = match;
-    const ctx = makeCtx({ searchManager: sm as any });
+    const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'] });
     const ctrl = new FindBarController(ctx);
     ctrl.highlightCurrentMatch();
     expect(ctx.addHighlightForMatch).toHaveBeenCalledWith(match, 'p1');

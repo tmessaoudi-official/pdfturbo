@@ -1,3 +1,4 @@
+// oxlint-disable eslint/no-console -- this suite spies on and asserts against console.error/warn to verify ErrorReporter's logging contract
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ErrorReporter, DURATION } from '../../src/core/errorReporter';
 import type { IToastQueue } from '../../src/ui/toastQueue';

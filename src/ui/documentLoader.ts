@@ -215,6 +215,7 @@ export class DocumentLoader {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const isJpeg = file.type === 'image/jpeg' || file.type === 'image/jpg';
       const img = isJpeg ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(
+        // oxlint-disable-next-line eslint/require-await -- normalizes both return paths (sync bytes / Promise) to Promise<Uint8Array> for embedPng
         await (async () => {
           // convert non-PNG/JPEG to PNG via canvas
           if (file.type === 'image/png') return bytes;

@@ -138,7 +138,7 @@ export class DrawingHandler {
       try {
         await this.app.applyZoom(newScale);
       } catch (err) {
-        console.error('[DrawingHandler] applyZoom failed:', err);
+        this.app.reportError.silent(err, '[DrawingHandler] applyZoom failed');
         return;
       }
 

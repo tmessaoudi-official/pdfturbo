@@ -22,11 +22,13 @@ export class ErrorReporter implements IErrorReporter {
   }
 
   error(msgKey: string, err?: unknown, params?: Record<string, string | number>): void {
+    // oxlint-disable-next-line eslint/no-console -- deliberate diagnostic sink: this is the app-wide error reporter
     console.error('[PDFturbo]', err ?? msgKey);
     this._queue.enqueue(t(msgKey, params), 'error', DURATION.error);
   }
 
   silent(err?: unknown, context?: string): void {
+    // oxlint-disable-next-line eslint/no-console -- deliberate diagnostic sink: silent() logs without a user toast by design
     console.warn('[PDFturbo:silent]', context ?? '', err);
   }
 }

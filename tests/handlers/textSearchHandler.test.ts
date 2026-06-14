@@ -4,7 +4,7 @@ import { TextSearchHandler } from '../../src/handlers/textSearchHandler';
 
 function makePage(text: string) {
   return {
-    getTextContent: async () => ({
+    getTextContent: () => Promise.resolve({
       items: [{ str: text, transform: [1, 0, 0, 1, 50, 500], width: text.length * 7, height: 14 }],
     }),
   } as unknown as PDFPageProxy;
