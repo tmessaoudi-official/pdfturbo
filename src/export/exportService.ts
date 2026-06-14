@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, pickImageMime, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, pickImageMime, fillOpToHex, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect } from '../utils/flowDoc';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -360,8 +360,33 @@ export class ExportService {
       if (opList) {
         try {
           const OPS = pdfjsLib.OPS as unknown as Record<string, number>;
-          let fillR = 0, fillG = 0, fillB = 0;
+          // Current text fill color as an uppercase 6-hex string (no '#').
+          // pdf.js v6 pre-resolves RGB/Gray/CMYK/Separation/spot color spaces
+          // and delivers `setFillRGBColor` with a single "#rrggbb" string arg —
+          // `fillOpToHex` normalizes that (and the legacy float shapes).
+          let fillHex = '000000';
+          // Text matrix (Tm), text-line matrix (Tlm) and leading (TL) — tracked
+          // so the fill-color attaches at the SAME position getTextContent will
+          // report for each show op. pdf.js v6 packs the Tm as a single
+          // Float32Array arg (not 6 scalars), and text is positioned via Td/TD/T*
+          // far more often than via Tm — both must be handled or the color key
+          // never matches the text item and every colored run silently goes black.
           let textMatrix = [1, 0, 0, 1, 0, 0];
+          let textLineMatrix = [1, 0, 0, 1, 0, 0];
+          let textLeading = 0;
+          const unpackMatrix = (a: unknown[]): number[] => {
+            const a0 = a[0];
+            const m = (Array.isArray(a0) || ArrayBuffer.isView(a0))
+              ? (a0 as ArrayLike<number>)
+              : (a as ArrayLike<number>);
+            return [Number(m[0]), Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])];
+          };
+          // Tlm := [1 0 0 1 tx ty] × Tlm ; Tm := Tlm  (PDF Td/TD/T* semantics).
+          const translateTextLine = (tx: number, ty: number) => {
+            const [a, b, c, d, e, f] = textLineMatrix;
+            textLineMatrix = [a, b, c, d, tx * a + ty * c + e, tx * b + ty * d + f];
+            textMatrix = [...textLineMatrix];
+          };
           // CTM stack for image position/size extraction (q/Q/cm operators)
           type Ctm = [number, number, number, number, number, number];
           const ctmStack: Ctm[] = [];
@@ -442,29 +467,46 @@ export class ExportService {
                 }
               } catch { /* graceful skip if bitmap unavailable */ }
             } else if (fn === OPS['setFillRGBColor']) {
-              [fillR, fillG, fillB] = args;
+              fillHex = fillOpToHex('rgb', args as unknown[]) ?? fillHex;
             } else if (fn === OPS['setFillGray']) {
-              fillR = fillG = fillB = args[0];
+              // Defensive: v6 rewrites gray→setFillRGBColor, kept for resilience.
+              fillHex = fillOpToHex('gray', args as unknown[]) ?? fillHex;
             } else if (fn === OPS['setFillCMYKColor']) {
-              const [c, m, y, k] = args;
-              fillR = (1 - c) * (1 - k);
-              fillG = (1 - m) * (1 - k);
-              fillB = (1 - y) * (1 - k);
+              // Defensive: v6 rewrites cmyk→setFillRGBColor, kept for resilience.
+              fillHex = fillOpToHex('cmyk', args as unknown[]) ?? fillHex;
+            } else if (fn === OPS['beginText']) {
+              textMatrix = [1, 0, 0, 1, 0, 0];
+              textLineMatrix = [1, 0, 0, 1, 0, 0];
             } else if (fn === OPS['setTextMatrix']) {
-              textMatrix = args.slice(0, 6);
+              textMatrix = unpackMatrix(args as unknown[]);
+              textLineMatrix = [...textMatrix];
+            } else if (fn === OPS['setLeading']) {
+              textLeading = Number(args[0]);
+            } else if (fn === OPS['moveText']) {
+              translateTextLine(Number(args[0]), Number(args[1]));
+            } else if (fn === OPS['setLeadingMoveText']) {
+              textLeading = -Number(args[1]);
+              translateTextLine(Number(args[0]), Number(args[1]));
+            } else if (fn === OPS['nextLine']) {
+              translateTextLine(0, -textLeading);
             } else if (
               fn === OPS['showText'] ||
               fn === OPS['showSpacedText'] ||
               fn === OPS['nextLineShowText'] ||
               fn === OPS['nextLineSetSpacingShowText']
             ) {
-              const px = Math.round(textMatrix[4]);
-              const py = Math.round(textMatrix[5]);
-              if (fillR !== 0 || fillG !== 0 || fillB !== 0) {
-                const toHex = (v: number) =>
-                  Math.round(Math.max(0, Math.min(255, v * 255)))
-                    .toString(16).padStart(2, '0').toUpperCase();
-                colorMap.set(`${px},${py}`, toHex(fillR) + toHex(fillG) + toHex(fillB));
+              // ' and " advance to the next line before showing (implicit T*).
+              if (fn === OPS['nextLineShowText'] || fn === OPS['nextLineSetSpacingShowText']) {
+                translateTextLine(0, -textLeading);
+              }
+              // Text origin in page user space = Tm translation × CTM, matching
+              // the position getTextContent reports for this item.
+              const ox = textMatrix[4], oy = textMatrix[5];
+              const px = Math.round(ctm[0] * ox + ctm[2] * oy + ctm[4]);
+              const py = Math.round(ctm[1] * ox + ctm[3] * oy + ctm[5]);
+              // Only record non-black so reconstructPage defaults to black text.
+              if (fillHex !== '000000') {
+                colorMap.set(`${px},${py}`, fillHex);
               }
             }
           }

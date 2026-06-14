@@ -495,7 +495,11 @@ export class TextEditHandler {
         ...(colorChanged  ? { color: hexToRgb01(newColorHex) ?? undefined } : {}),
       } : undefined;
 
-      const ok = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style);
+      // Canvas-sampled glyph color: only used by the Path-3 redraw when the
+      // in-stream fill can't be resolved (scn/Separation/spot) and no style
+      // color was set — keeps spot-colored text from being recolored black.
+      const sampledFallback = hexToRgb01(overlayContext.textColor) ?? undefined;
+      const ok = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style, sampledFallback);
       if (!ok) {
         // A1: the true edit refused (e.g. Type3 / invisible / vertical font, or a
         // subset-font XObject). Don't silently drop the user's change — cover the

@@ -416,7 +416,28 @@ export function extractPsName(internalId: string): string {
   return m ? m[1] : internalId;
 }
 
-interface Rgb { r: number; g: number; b: number }
+export interface Rgb { r: number; g: number; b: number }
+
+/**
+ * Decide the RGB the Path-3 redraw should paint, in precedence order:
+ *   1. an explicit style color (toolbar override),
+ *   2. a parseable in-stream fill (rg / g / k),
+ *   3. a canvas-sampled fallback (for scn/Separation/spot, whose true color the
+ *      stream parser cannot resolve but the rendered page already shows),
+ *   4. black.
+ * Pure — unit-testable without a PDFDocument.
+ */
+export function resolveRedrawColor(
+  styleColor: Rgb | undefined,
+  fillColorRaw: string | undefined,
+  fallbackColor?: Rgb
+): Rgb {
+  if (styleColor) return styleColor;
+  const parsed = fillColorRaw ? parseFillColorToRgb(fillColorRaw) : null;
+  if (parsed) return parsed;
+  if (fallbackColor) return fallbackColor;
+  return { r: 0, g: 0, b: 0 };
+}
 
 function parseFillColorToRgb(raw: string): Rgb | null {
   const rgMatch = raw.match(/^([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+[rR][gG]$/);
@@ -1164,7 +1185,11 @@ export async function replaceTextAt(
   point: { x: number; y: number },
   newText: string,
   tolerance = 5,
-  style?: TextStyle
+  style?: TextStyle,
+  // Canvas-sampled glyph color, used by the Path-3 redraw ONLY when the
+  // in-stream fill can't be resolved (scn/Separation/spot) and no style color
+  // was given — stops spot-colored text from being recolored black.
+  fallbackColor?: Rgb
 ): Promise<boolean> {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
@@ -1239,14 +1264,9 @@ export async function replaceTextAt(
   blankShowOp(ops[target.opIndex]);
   blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
 
-  // Color: explicit style overrides detected fill color (default black).
-  let cr = 0, cg = 0, cb = 0;
-  if (style?.color) {
-    ({ r: cr, g: cg, b: cb } = style.color);
-  } else if (target.fillColor) {
-    const c = parseFillColorToRgb(target.fillColor);
-    if (c) ({ r: cr, g: cg, b: cb } = c);
-  }
+  // Color precedence: style override > parseable in-stream fill > sampled
+  // fallback (scn/Separation/spot) > black.
+  const { r: cr, g: cg, b: cb } = resolveRedrawColor(style?.color, target.fillColor, fallbackColor);
 
   // Font: style bold/italic/fontFamily override font detection from PDF.
   const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');

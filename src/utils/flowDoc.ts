@@ -529,6 +529,64 @@ function reconstructColumn(
 }
 
 /**
+ * Normalize a pdf.js fill-color operator's args to an uppercase 6-hex color
+ * string (no leading '#'), or `null` if it can't be resolved (e.g. a pattern
+ * fill, or malformed args).
+ *
+ * pdf.js v6's `PartialEvaluator.getOperatorList` pre-resolves EVERY non-pattern
+ * fill color space (RGB / Gray / CMYK / Separation / spot / ICC) and re-emits a
+ * single `setFillRGBColor` op whose arg is a `"#rrggbb"` STRING (getRgbHex →
+ * Util.makeHexColor). The legacy float-component shapes are still accepted here
+ * for resilience across pdf.js versions:
+ *   - 'rgb'  : `["#rrggbb"]` | `["#rgb"]` | `[r, g, b]` (each 0..1)
+ *   - 'gray' : `[g]` (0..1) | `["#rrggbb"]`
+ *   - 'cmyk' : `[c, m, y, k]` (each 0..1)
+ */
+export function fillOpToHex(
+  op: 'rgb' | 'gray' | 'cmyk',
+  args: readonly unknown[]
+): string | null {
+  const byte = (v: number) =>
+    Math.round(Math.max(0, Math.min(255, v)))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+  const fromHexString = (s: string): string | null => {
+    const h = s.replace(/^#/, '').toUpperCase();
+    if (/^[0-9A-F]{6}$/.test(h)) return h;
+    if (/^[0-9A-F]{3}$/.test(h)) return h.split('').map((c) => c + c).join('');
+    return null;
+  };
+  if (op === 'rgb') {
+    const a0 = args[0];
+    if (typeof a0 === 'string') return fromHexString(a0);
+    if (typeof a0 === 'number' && typeof args[1] === 'number' && typeof args[2] === 'number') {
+      return byte(a0 * 255) + byte(args[1] * 255) + byte(args[2] * 255);
+    }
+    return null;
+  }
+  if (op === 'gray') {
+    const g = args[0];
+    if (typeof g === 'string') return fromHexString(g);
+    if (typeof g === 'number') {
+      const h = byte(g * 255);
+      return h + h + h;
+    }
+    return null;
+  }
+  // cmyk
+  const [c, m, y, k] = args;
+  if ([c, m, y, k].every((v) => typeof v === 'number')) {
+    return (
+      byte((1 - (c as number)) * (1 - (k as number)) * 255) +
+      byte((1 - (m as number)) * (1 - (k as number)) * 255) +
+      byte((1 - (y as number)) * (1 - (k as number)) * 255)
+    );
+  }
+  return null;
+}
+
+/**
  * Reconstruct the flow structure of one page from its positioned text items.
  * Pure function — fully unit-testable without pdf.js.
  *
