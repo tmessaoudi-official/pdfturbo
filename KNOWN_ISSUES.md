@@ -101,6 +101,29 @@ test each one needs before it can be called "fixed with confidence."
 
 ---
 
+## Sprint 1 — hazard fixes (2026-06-14, mega-roadmap)
+
+All TDD (failing test first), all confirmed via the full gate (type-check + oxlint 0/0 +
+800 jsdom + 11 browser). Evidence: `docs/reviews/research-2026-06-14/sprint1-*.md`.
+
+| ID | Sev | Area | Fix | Test |
+|----|-----|------|-----|------|
+| REDACT-DOCX | P0 | DOCX/MD/TXT export | Redacted source text **leaked** into flow export (extractor read source text, ignored redaction overlays). Now `flowDoc.reconstructPage` drops any text item under a redaction rect; `_extractFlowDoc` passes per-page redactions. | `tests/utils/flowDocRedaction.test.ts` (RED proved leak) |
+| MEMLEAK | P1 | Undo stack | `ReplaceSourcePdfBytesCmd` pinned multi-MB pdf.js docs; evicted/cleared commands never freed them. Added optional `Command.dispose()`; `historyManager` calls it on overflow-eviction, dropped redo branch, and `clear()`. **Teardown via `doc.loadingTask.destroy()`** (pdfjs v6 has no `PDFDocumentProxy.destroy()` — the first draft was a no-op). Destroys only non-live docs (use-after-free safe). | `tests/core/historyManagerDispose.test.ts` (10) |
+| TRUEEDIT-XOBJECT | P1 | Edit text | True-edit on Form-XObject text **silently did nothing**. `findTarget` now flags `inXObject`; handler treats it as a miss → falls back to overlay (redact+text). | `contentStreamEditor` + `textEditHandler` tests |
+| TRUEEDIT-OVERBLANK | P1 | Edit text | Editing a word **wiped a distinct neighbor** within 4pt. Shadow-blank radius 4pt → 0.5pt (only true same-origin ops blanked). | `contentStreamEditor.test.ts` |
+| A11Y-CANVAS | P1 | a11y | Placed annotation elements had no role/tabindex/name → invisible to keyboard + SR. Added `role`/`tabindex=0`/`aria-label` (via `t()`). WCAG 2.1.1/4.1.2. | `elementLayerRenderer.a11y.test.ts` |
+| A11Y-TOAST | P1 | a11y | Toasts not announced. Added `role=status`/`aria-live=polite`/`aria-atomic` to the live region. WCAG 4.1.3. | `toastQueue.a11y.test.ts` |
+| I18N-UPDATE-TOAST | P1 | i18n | Hardcoded English app-update toast shown to FR/AR users → now `t('toast.appUpdateAvailable')`. | `main.swUpdate.test.ts` |
+
+> **Known limitation (unchanged):** redaction geometry on **rotated pages** is approximate in
+> both the PDF and the new flow-export path — pre-existing, not introduced here. Tracked in the
+> mega-roadmap (`docs/plans/mega-roadmap-2026-06-14.plan.md`).
+> **Behavior note:** standard-font text inside a Form XObject now also routes to the overlay
+> path (previously could true-edit) — safe, but a deliberate trade for fixing the silent no-op.
+
+---
+
 ## Verified working (regression-guard candidates)
 PDF export (all PDF types) · DOCX/MD/TXT **text** extraction · single body-text true-edit (live+PDF+DOCX
 consistent) · annotation create/move/resize · undo/redo · page nav · zoom · find-in-page · QR panel ·
@@ -117,5 +140,6 @@ This is the structural fix that makes ISSUE-1..5 catchable; jsdom never can.
 > Playwright-managed chromium or add `npx playwright install chromium`.
 
 ---
-_Last updated: 2026-06-14 (browser-harness fix execution). Evidence:
-`docs/reviews/2026-06-14-qa-sweep-findings.md` + this run's per-issue browser tests._
+_Last updated: 2026-06-14 (mega-roadmap Sprint 1 hazard fixes). Evidence:
+`docs/reviews/2026-06-14-qa-sweep-findings.md`, `docs/reviews/research-2026-06-14/sprint1-*.md`
++ per-issue tests (800 jsdom / 11 browser)._

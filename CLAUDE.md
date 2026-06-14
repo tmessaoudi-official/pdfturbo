@@ -57,20 +57,26 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   app-wide API. Adding handler↔app interactions widens this coupling — prefer extending
   an existing seam.
 
-## Gotchas (verified by the 2026-06-11 craftsmanship review — docs/reviews/)
+## Gotchas (verified by the 2026-06-11 craftsmanship review, refreshed 2026-06-14 — docs/reviews/)
 
-- **Three duplicated export paths**: `downloadPDF`, `downloadPage`, `downloadPageAsImage`
-  in `pdfTurboApp.ts` triplicate rotation/cropbox/watermark/ink logic. Any export fix
-  must be applied to ALL THREE (or the long-term fix: extract the shared pipeline).
+- **Export paths are consolidated** (the historic triplication is RESOLVED): `downloadPDF`,
+  `downloadPage`, `downloadPageAsImage` on `pdfTurboApp.ts` (lines ~570-572) are now thin
+  one-line delegators to `_exportService`; the shared rotation/cropbox/watermark/ink logic
+  lives once in `src/export/exportPipeline.ts` (`buildPageOverlays`) + `exportService.ts`
+  helpers (`_applyOverlaysToPage`, `_savePdfDocAndDownload`). Apply export fixes in
+  `exportService`/`exportPipeline`, not in three places.
 - **`renderElements()` destroys and recreates every element DOM node** on each call.
   Focus-restoration hacks depend on this; keyed identity is NOT preserved.
-- **i18n**: every user-visible string goes through `t()`; `escapeValue: false` is set, so
-  NEVER interpolate user-controlled data into a translation that lands in `innerHTML`.
-  The three locale files must stay key-identical (a hook checks this on write). Arabic
-  values still need native-speaker review before being treated as final.
+- **i18n**: every user-visible string goes through `t()`; `escapeValue: true` is set
+  (`i18n.ts:70`) — i18next HTML-escapes interpolated values, so the XSS surface is small.
+  Still prefer `textContent` over `innerHTML` for any user/translation data, and never
+  disable escaping. The three locale files must stay key-identical (a hook checks this on
+  write). Arabic values still need native-speaker review before being treated as final.
 - **Base path is `/pdfturbo/`** (vite.config.ts) — asset URLs and SW scope depend on it.
-- **PWA is `registerType: 'autoUpdate'`** — every push to `master` deploys AND silently
-  updates open client sessions. Treat pushes to master as production releases.
+- **PWA is `registerType: 'prompt'`** (`vite.config.ts:12`) — a new deploy does NOT silently
+  swap open sessions; the SW waits and the app surfaces an update prompt (`toast.appUpdateAvailable`).
+  Pushes to `master` are still production releases (auto-deployed via GitHub Pages), but open
+  clients update only on user action / next load, not instantly.
 - **Tests run in jsdom**: canvas rendering, real PDF rasterization, and pointer gestures
   are not exercised by `npm run test`. There is now a real-browser harness — `npm run test:browser`
   (`tests/browser/*.browser.test.ts`, real Chrome) — that DOES exercise these; use it for

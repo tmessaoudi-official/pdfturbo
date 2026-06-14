@@ -28,3 +28,17 @@ Security concerns most relevant to this project:
 - XSS via malicious PDF content
 - Malicious PDF files causing unexpected behavior in pdf.js
 - Privacy: PDFs are processed locally and never uploaded anywhere
+
+## Data at rest (session persistence)
+
+To restore your work after a reload, PDFturbo saves the open document — **including the raw
+PDF bytes** — in your browser's **IndexedDB**. This data:
+
+- **never leaves your device** (no upload, no sync, no network);
+- is stored **unencrypted**, like normal browser site data, so anyone with access to your OS
+  user profile / browser data can read it;
+- persists until you clear it. Use **"Start fresh"** on load, clear site data, or use a
+  private/incognito window if you are editing sensitive documents on a shared machine.
+
+If you need stronger guarantees for sensitive files, edit them in a private window and do not
+restore the saved session.
