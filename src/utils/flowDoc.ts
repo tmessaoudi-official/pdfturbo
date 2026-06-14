@@ -49,12 +49,22 @@ export interface FlowParagraph {
   runs: FlowRun[];
   /** 0 = body, 1–3 = heading level (assigned document-wide by assignHeadings). */
   heading: 0 | 1 | 2 | 3;
-  alignment: 'left' | 'center' | 'right';
+  alignment: 'left' | 'center' | 'right' | 'justify';
   rtl: boolean;
   /** Set when the paragraph opens a list item; prefix marker stripped from first run. */
   listType?: 'bullet' | 'ordered';
   /** Nesting depth of the list item (0 = top-level). */
   listDepth?: number;
+  /** Left indent of the whole block relative to its column, in PDF points (>0 when inset). */
+  indentLeft?: number;
+  /** First-line-only indent relative to the block left, in PDF points (>0 when inset). */
+  indentFirstLine?: number;
+  /** Inter-line leading (baseline gap) within the paragraph, in PDF points. */
+  lineHeight?: number;
+  /** Vertical gap before this paragraph (from the previous one), in PDF points. */
+  spaceBefore?: number;
+  /** Vertical gap after this paragraph (to the next one), in PDF points. */
+  spaceAfter?: number;
 }
 
 export interface FlowImage {
@@ -67,12 +77,22 @@ export interface FlowImage {
   mimeType: 'image/png' | 'image/jpeg';
 }
 
+/** Page margins (text-block inset from each edge), in PDF points. */
+export interface PageMargins {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 export interface FlowPage {
   width: number;
   height: number;
   paragraphs: FlowParagraph[];
   /** Embedded raster images extracted from the PDF page (populated by exportService). */
   images?: FlowImage[];
+  /** Text-block bounding-box margins (PDF points), derived from the main body block. */
+  margins?: PageMargins;
 }
 
 export interface FlowDoc {
@@ -283,8 +303,19 @@ function reconstructColumn(
     }
   }
 
+  // Column reference edges: the robust left/right of the body block. Using a
+  // 5th/95th percentile of line edges (not the raw min/max) ignores a single
+  // stray-left or stray-right line — a margin glyph, a hanging marker — while
+  // still tracking the leftmost real body text (so indented blocks measure as
+  // insets FROM it, not vs. the indented majority).
+  // Failure mode prevented: one outlier line dragging the column edge, which
+  // would either hide a real indent or invent a false one.
+  const colLeft = lines.length ? percentile(lines.map(l => l.x0), 0.05, 0) : 0;
+  const colRight = lines.length ? percentile(lines.map(l => l.x1), 0.95, pageWidth) : pageWidth;
+  const indentTol = (s: number) => Math.max(2, s * 0.5); // half a font size, ≥2pt
+
   // 3. Build paragraphs: merge same-style words into runs, infer alignment, bidi, and list type.
-  return paraLines.map(group => {
+  const paras: FlowParagraph[] = paraLines.map((group, gi) => {
     const runs: FlowRun[] = [];
     for (let li = 0; li < group.length; li++) {
       const line = group[li];
@@ -335,23 +366,77 @@ function reconstructColumn(
 
     const pageCenter = pageWidth / 2;
     const centerTol = pageWidth * 0.05;
+    // A genuinely centered block is also NARROW: full-width content whose center
+    // merely happens to sit near the page center is justified/left, not centered.
+    // Without the width cap, a flush-both-edges (justified) paragraph would be
+    // misread as centered because its midpoint is, by construction, near center.
     const isCentered =
       group.every(l => Math.abs((l.x0 + l.x1) / 2 - pageCenter) < centerTol) &&
-      group.every(l => l.x0 > pageWidth * 0.15);
+      group.every(l => l.x0 > pageWidth * 0.15) &&
+      group.every(l => l.x1 - l.x0 < pageWidth * 0.6);
     const isRight =
       !isCentered &&
       group.every(l => l.x0 > pageWidth * 0.5) &&
       group.every(l => Math.abs(l.x1 - group[0].x1) < pageWidth * 0.02);
 
+    // Justify: a multi-line block whose lines are flush at BOTH the column-left
+    // and the column-right (except, conventionally, the last line which may be
+    // short). Single-line blocks can't be distinguished from plain left-aligned.
+    const domSize = group.reduce((m, l) => Math.max(m, l.size), 0) || 12;
+    const edgeTol = indentTol(domSize);
+    const bodyLines = group.length > 1 ? group.slice(0, -1) : group;
+    const isJustified =
+      !isCentered && !isRight && group.length >= 2 &&
+      bodyLines.every(l => Math.abs(l.x0 - colLeft) <= edgeTol) &&
+      bodyLines.every(l => Math.abs(l.x1 - colRight) <= edgeTol);
+
     const rtlChars = runs.reduce((n, r) => n + (r.rtl ? r.text.length : 0), 0);
     const totalChars = runs.reduce((n, r) => n + r.text.length, 0);
+
+    const alignment: FlowParagraph['alignment'] =
+      isCentered ? 'center' : isRight ? 'right' : isJustified ? 'justify' : 'left';
 
     const para: FlowParagraph = {
       runs,
       heading: 0 as const,
-      alignment: isCentered ? ('center' as const) : isRight ? ('right' as const) : ('left' as const),
+      alignment,
       rtl: totalChars > 0 && rtlChars / totalChars > 0.5,
     };
+
+    // Indentation (only meaningful for left/justify blocks). blockLeft is the
+    // common left edge of the continuation lines; the first line may be further
+    // inset (first-line indent) or the whole block may be inset (left indent).
+    if (!isCentered && !isRight) {
+      const firstLineX = group[0].x0;
+      const restLines = group.length > 1 ? group.slice(1) : group;
+      const blockLeft = Math.min(...restLines.map(l => l.x0));
+      const left = blockLeft - colLeft;
+      const firstLine = firstLineX - blockLeft;
+      if (left > edgeTol) para.indentLeft = Math.round(left);
+      if (firstLine > edgeTol) para.indentFirstLine = Math.round(firstLine);
+    }
+
+    // Line spacing: average baseline gap between consecutive lines in this block.
+    if (group.length >= 2) {
+      let sum = 0;
+      for (let k = 1; k < group.length; k++) sum += group[k - 1].y - group[k].y;
+      const avg = sum / (group.length - 1);
+      if (avg > 0 && avg < domSize * 4) para.lineHeight = Math.round(avg * 10) / 10;
+    }
+
+    // Paragraph spacing: gap to the previous / next paragraph block, clamped to a
+    // sane range so an absurd page-spanning gap doesn't emit a giant spacing value.
+    const prevGroup = gi > 0 ? paraLines[gi - 1] : null;
+    const nextGroup = gi < paraLines.length - 1 ? paraLines[gi + 1] : null;
+    if (prevGroup) {
+      const prevBottom = prevGroup[prevGroup.length - 1].y;
+      const gap = prevBottom - group[0].y - domSize;
+      if (gap > 0) para.spaceBefore = Math.round(Math.min(gap, domSize * 6));
+    }
+    if (nextGroup) {
+      const gap = group[group.length - 1].y - nextGroup[0].y - domSize;
+      if (gap > 0) para.spaceAfter = Math.round(Math.min(gap, domSize * 6));
+    }
 
     // List detection: check first run for a leading bullet or ordered marker.
     if (runs.length > 0) {
@@ -368,6 +453,8 @@ function reconstructColumn(
 
     return para;
   });
+
+  return paras;
 }
 
 /**
@@ -415,7 +502,58 @@ export function reconstructPage(
     paragraphs = reconstructColumn(words, fonts, pageWidth);
   }
 
-  return { width: pageWidth, height: pageHeight, paragraphs };
+  const margins = computeMargins(words, pageWidth, pageHeight);
+  const page: FlowPage = { width: pageWidth, height: pageHeight, paragraphs };
+  if (margins) page.margins = margins;
+  return page;
+}
+
+/** Nearest-rank percentile of a numeric array (p in [0,1]). Empty → fallback. */
+function percentile(values: number[], p: number, fallback: number): number {
+  if (!values.length) return fallback;
+  const s = [...values].sort((a, b) => a - b);
+  const idx = Math.min(s.length - 1, Math.max(0, Math.round(p * (s.length - 1))));
+  return s[idx];
+}
+
+/**
+ * Derive page margins (PDF points) from the text-block bounding box.
+ *
+ * Robustness: uses the 1st-quartile / 3rd-quartile of glyph edges rather than the
+ * raw min/max, so a minority of outlier elements — a running head pinned to the
+ * corner, a page-number glyph in the far margin — cannot collapse a margin to ~0
+ * (or, after the non-negative clamp, leave the page looking edge-to-edge).
+ * Quartiles (vs. 5th/95th percentile) survive very small word counts, where a
+ * single outlier is still >5% of the sample. Failure mode prevented: one stray
+ * item at x≈0 → left margin ≈ 0 → Word renders body text flush to the page edge,
+ * WORSE drift than the 1" default this fix replaces.
+ *
+ * All four margins are clamped to [0, 40% of the corresponding page dimension].
+ */
+function computeMargins(words: Word[], pageWidth: number, pageHeight: number): PageMargins | null {
+  if (!words.length) return null;
+  const lefts = words.map(w => w.x);
+  const rights = words.map(w => w.x + w.width);
+  // Glyph top in y-up PDF space ≈ baseline + size; bottom ≈ baseline.
+  const tops = words.map(w => w.y + w.size);
+  const bottoms = words.map(w => w.y);
+
+  // Inner quartiles ignore a minority of margin outliers; the true body block
+  // sits between Q1 and Q3 of the edge distributions.
+  const leftEdge = percentile(lefts, 0.25, 0);
+  const rightEdge = percentile(rights, 0.75, pageWidth);
+  const topEdge = percentile(tops, 0.75, pageHeight);
+  const bottomEdge = percentile(bottoms, 0.25, 0);
+
+  const clampW = (v: number) => Math.round(Math.max(0, Math.min(v, pageWidth * 0.4)));
+  const clampH = (v: number) => Math.round(Math.max(0, Math.min(v, pageHeight * 0.4)));
+
+  return {
+    left: clampW(leftEdge),
+    right: clampW(pageWidth - rightEdge),
+    top: clampH(pageHeight - topEdge),
+    bottom: clampH(bottomEdge),
+  };
 }
 
 /**

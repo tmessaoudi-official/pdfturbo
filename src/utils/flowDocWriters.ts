@@ -6,16 +6,105 @@
 
 import type { FlowDoc, FlowParagraph, FlowRun, FlowImage } from './flowDoc';
 
-// Word-safe font mapping — PDF subset fonts can't be carried over directly,
-// so each run maps to the closest universally-available family.
+// Word-safe font mapping — when a run's real face is unknown we fall back to the
+// closest universally-available family by serif/sans/mono classification.
 const FAMILY_TO_WORD: Record<FlowRun['fontFamily'], string> = {
   serif: 'Times New Roman',
   'sans-serif': 'Arial',
   monospace: 'Courier New',
 };
 
+// Broad allow-list of common faces that Word ships (or aliases). Keyed by the
+// lowercased base family name; value is the exact Word font name. A real face on
+// this list is preserved instead of being flattened to one of the 3 generics —
+// the single biggest "doesn't look like the PDF" issue (B-1).
+const WORD_FONT_ALLOWLIST: Record<string, string> = {
+  calibri: 'Calibri',
+  cambria: 'Cambria',
+  candara: 'Candara',
+  consolas: 'Consolas',
+  constantia: 'Constantia',
+  corbel: 'Corbel',
+  garamond: 'Garamond',
+  georgia: 'Georgia',
+  verdana: 'Verdana',
+  tahoma: 'Tahoma',
+  'trebuchet ms': 'Trebuchet MS',
+  trebuchet: 'Trebuchet MS',
+  'comic sans ms': 'Comic Sans MS',
+  'comic sans': 'Comic Sans MS',
+  'century gothic': 'Century Gothic',
+  'franklin gothic': 'Franklin Gothic',
+  'franklin gothic book': 'Franklin Gothic',
+  'palatino linotype': 'Palatino Linotype',
+  palatino: 'Palatino Linotype',
+  'book antiqua': 'Book Antiqua',
+  'lucida sans': 'Lucida Sans',
+  'lucida console': 'Lucida Console',
+  lucida: 'Lucida Sans',
+  'segoe ui': 'Segoe UI',
+  segoe: 'Segoe UI',
+  // Core PDF base-14 families → their Word equivalents.
+  helvetica: 'Arial',
+  arial: 'Arial',
+  times: 'Times New Roman',
+  'times new roman': 'Times New Roman',
+  'times roman': 'Times New Roman',
+  courier: 'Courier New',
+  'courier new': 'Courier New',
+};
+
+/**
+ * Strip subset prefixes and style suffixes from a PostScript/base font name to
+ * recover the bare family, then map to a Word font.
+ *
+ * Examples: 'ABCDEF+Verdana' → 'Verdana'; 'Garamond-Bold' → 'Garamond';
+ * 'Tahoma,Bold' → 'Tahoma'; 'Arial-BoldMT' → 'Arial'.
+ *
+ * Unknown faces fall back to the serif/sans/mono generic (the safety net) so the
+ * output is always a font Word can render.
+ */
+function resolveWordFont(run: FlowRun): string {
+  const raw = run.psName ?? '';
+  // Drop a 6-uppercase-letter subset tag: 'ABCDEF+Verdana' → 'Verdana'.
+  let name = raw.replace(/^[A-Z]{6}\+/, '');
+  // Drop everything from the first style separator: '-Bold', ',Italic', '-BoldMT'.
+  name = name.replace(/[-,].*$/, '');
+  // Drop a trailing 'MT'/'PS'/'PSMT' foundry suffix on the bare name (e.g. 'ArialMT').
+  name = name.replace(/(MT|PS|PSMT)$/, '');
+  const key = name.trim().toLowerCase();
+  return WORD_FONT_ALLOWLIST[key] ?? FAMILY_TO_WORD[run.fontFamily];
+}
+
 function paragraphText(p: FlowParagraph): string {
   return p.runs.map(r => r.text).join('');
+}
+
+/** docx LineRuleType shape (subset). Avoids importing the value at module load. */
+type LineRuleTypeEnum = { readonly EXACT: LineRuleValue; readonly AUTO: LineRuleValue };
+type LineRuleValue = 'atLeast' | 'exactly' | 'exact' | 'auto';
+type SpacingObject = { before?: number; after?: number; line?: number; lineRule?: LineRuleValue };
+
+/**
+ * Build a docx `spacing` object from a paragraph's measured leading/gaps (B-3).
+ * Returns undefined when nothing useful was measured, so unaffected paragraphs
+ * keep Word's default rhythm. All inputs are clamped to a sane point range first
+ * — a mis-measured page-spanning gap must not emit a giant before/after value.
+ */
+function buildSpacing(
+  p: FlowParagraph,
+  ptToTwip: number,
+  lineRule: LineRuleTypeEnum,
+): SpacingObject | undefined {
+  const clampPt = (v: number, max: number) => Math.max(0, Math.min(v, max));
+  const spacing: SpacingObject = {};
+  if ((p.spaceBefore ?? 0) > 0) spacing.before = Math.round(clampPt(p.spaceBefore ?? 0, 200) * ptToTwip);
+  if ((p.spaceAfter ?? 0) > 0) spacing.after = Math.round(clampPt(p.spaceAfter ?? 0, 200) * ptToTwip);
+  if ((p.lineHeight ?? 0) > 0) {
+    spacing.line = Math.round(clampPt(p.lineHeight ?? 0, 200) * ptToTwip);
+    spacing.lineRule = lineRule.EXACT;
+  }
+  return Object.keys(spacing).length ? spacing : undefined;
 }
 
 export function flowDocToText(doc: FlowDoc): string {
@@ -65,13 +154,21 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
 /** Build the DOCX and return it as a base64 string (jsdom-testable core). */
 export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
   const docx = await import('docx');
-  const { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, LevelFormat } = docx;
+  const {
+    Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, LevelFormat,
+    LineRuleType, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType,
+  } = docx;
+
+  // Unit conversions: 1pt = 20 twips; 1pt = 12700 EMU (914400 EMU/inch ÷ 72).
+  const PT_TO_TWIP = 20;
+  const PT_TO_EMU = 12700;
 
   const HEADINGS = [undefined, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3] as const;
   const ALIGN = {
     left: AlignmentType.LEFT,
     center: AlignmentType.CENTER,
     right: AlignmentType.RIGHT,
+    justify: AlignmentType.JUSTIFIED,
   } as const;
 
   // Assign ordered-list instance numbers: consecutive ordered paragraphs share
@@ -101,16 +198,36 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
               text: r.text,
               bold: r.bold || undefined,
               italics: r.italic || undefined,
-              font: FAMILY_TO_WORD[r.fontFamily],
+              // B-1: preserve the real face when known; generic only as fallback.
+              font: resolveWordFont(r),
               size: Math.round(r.fontSize * 2), // docx half-points
               rightToLeft: r.rtl || undefined,
               color: r.color,
             })
         );
+
+        // B-3: paragraph + line spacing. before/after are in twips; line is in
+        // twips with an EXACT rule (so a measured leading maps to a real height).
+        // Clamp absurd values so a mis-measured gap can't blow out the layout.
+        const spacing = buildSpacing(p, PT_TO_TWIP, LineRuleType);
+
+        // B-5: first-line / left indent (twips). Only emitted when non-trivial.
+        const indent =
+          (p.indentLeft ?? 0) > 0 || (p.indentFirstLine ?? 0) > 0
+            ? {
+                left: Math.round((p.indentLeft ?? 0) * PT_TO_TWIP),
+                firstLine: (p.indentFirstLine ?? 0) > 0
+                  ? Math.round((p.indentFirstLine ?? 0) * PT_TO_TWIP)
+                  : undefined,
+              }
+            : undefined;
+
         return new Paragraph({
           heading: p.listType ? undefined : HEADINGS[p.heading],
           alignment: ALIGN[p.alignment],
           bidirectional: p.rtl || undefined,
+          spacing,
+          indent,
           bullet: p.listType === 'bullet' ? { level: p.listDepth ?? 0 } : undefined,
           numbering: p.listType === 'ordered'
             ? { reference: 'ordered-list', level: p.listDepth ?? 0, instance: orderedInstances.get(p) }
@@ -119,12 +236,17 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
         });
       });
 
+    // B-4: place each image by its PDF x/y via a floating (anchored) ImageRun
+    // rather than dumping it centered after all text. The image still lands in
+    // word/media/ (ISSUE-3/4 guard) — only placement changes.
     const imageChildren = (page.images ?? []).map((img: FlowImage) => {
       const bin = atob(img.base64);
       const data = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+      // Flip PDF y-up (bottom-left origin) to DOCX top-left page offset.
+      const topOffsetPt = Math.max(0, page.height - img.y - img.height);
+      const leftOffsetPt = Math.max(0, img.x);
       return new Paragraph({
-        alignment: AlignmentType.CENTER,
         children: [new ImageRun({
           data,
           transformation: {
@@ -133,15 +255,38 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
             height: Math.round(img.height * 96 / 72),
           },
           type: img.mimeType === 'image/jpeg' ? 'jpg' : 'png',
+          floating: {
+            horizontalPosition: {
+              relative: HorizontalPositionRelativeFrom.PAGE,
+              offset: Math.round(leftOffsetPt * PT_TO_EMU),
+            },
+            verticalPosition: {
+              relative: VerticalPositionRelativeFrom.PAGE,
+              offset: Math.round(topOffsetPt * PT_TO_EMU),
+            },
+            allowOverlap: true,
+            wrap: { type: TextWrappingType.NONE },
+          },
         })],
       });
     });
+
+    // B-2: emit page margins (twips) from the text-block bbox when available.
+    const margin = page.margins
+      ? {
+          top: Math.round(page.margins.top * PT_TO_TWIP),
+          right: Math.round(page.margins.right * PT_TO_TWIP),
+          bottom: Math.round(page.margins.bottom * PT_TO_TWIP),
+          left: Math.round(page.margins.left * PT_TO_TWIP),
+        }
+      : undefined;
 
     return {
       properties: {
         page: {
           // PDF points → DOCX twips (1pt = 20 twips)
           size: { width: Math.round(page.width * 20), height: Math.round(page.height * 20) },
+          margin,
         },
       },
       children: [...textChildren, ...imageChildren],
