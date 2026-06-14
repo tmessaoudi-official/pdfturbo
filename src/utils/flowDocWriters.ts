@@ -4,7 +4,7 @@
  * dynamic import so the writer chunk never bloats the initial bundle.
  */
 
-import type { FlowDoc, FlowParagraph, FlowRun, FlowImage } from './flowDoc';
+import type { FlowDoc, FlowParagraph, FlowRun, FlowImage, ListFormat } from './flowDoc';
 
 // Word-safe font mapping — when a run's real face is unknown we fall back to the
 // closest universally-available family by serif/sans/mono classification.
@@ -171,19 +171,31 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     justify: AlignmentType.JUSTIFIED,
   } as const;
 
-  // Assign ordered-list instance numbers: consecutive ordered paragraphs share
-  // one instance; a non-ordered paragraph between them starts a new instance.
-  // A different instance value causes Word to restart numbering from 1.
+  // Each distinct ordered marker FORMAT (decimal `%1.`/`%1)`/`(%1)`, lower/upper
+  // alpha) gets its own numbering reference. Backward-compat: plain decimal `%1.`
+  // keeps the legacy id 'ordered-list'. Consecutive ordered paragraphs sharing
+  // the SAME reference continue one instance; any break (non-ordered paragraph or
+  // a different reference) starts a new instance → Word restarts numbering at 1.
+  const refKeyOf = (p: FlowParagraph): string => {
+    const fmt = p.listFormat ?? 'decimal';
+    const txt = p.listOrdinalText ?? '%1.';
+    if (fmt === 'decimal' && txt === '%1.') return 'ordered-list';
+    return `ordered-${fmt}-${txt.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  };
   const orderedInstances = new Map<FlowParagraph, number>();
+  const usedRefs = new Map<string, { format: ListFormat; text: string }>();
   let instanceCounter = 0;
-  let inOrderedRun = false;
+  let lastRefKey: string | null = null;
   for (const page of doc.pages) {
     for (const p of page.paragraphs) {
       if (p.listType === 'ordered') {
-        if (!inOrderedRun) { instanceCounter++; inOrderedRun = true; }
+        const key = refKeyOf(p);
+        if (key !== lastRefKey) instanceCounter++;
         orderedInstances.set(p, instanceCounter);
+        usedRefs.set(key, { format: p.listFormat ?? 'decimal', text: p.listOrdinalText ?? '%1.' });
+        lastRefKey = key;
       } else {
-        inOrderedRun = false;
+        lastRefKey = null;
       }
     }
   }
@@ -230,7 +242,7 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
           indent,
           bullet: p.listType === 'bullet' ? { level: p.listDepth ?? 0 } : undefined,
           numbering: p.listType === 'ordered'
-            ? { reference: 'ordered-list', level: p.listDepth ?? 0, instance: orderedInstances.get(p) }
+            ? { reference: refKeyOf(p), level: p.listDepth ?? 0, instance: orderedInstances.get(p) }
             : undefined,
           children: textRuns,
         });
@@ -293,17 +305,22 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     };
   });
 
-  const numberingConfig = instanceCounter > 0
+  const LEVEL_FORMAT: Record<ListFormat, (typeof LevelFormat)[keyof typeof LevelFormat]> = {
+    decimal:     LevelFormat.DECIMAL,
+    lowerLetter: LevelFormat.LOWER_LETTER,
+    upperLetter: LevelFormat.UPPER_LETTER,
+  };
+  const numberingConfig = usedRefs.size > 0
     ? {
-        config: [{
-          reference: 'ordered-list',
+        config: [...usedRefs.entries()].map(([reference, { format, text }]) => ({
+          reference,
           levels: [{
             level: 0,
-            format: LevelFormat.DECIMAL,
-            text: '%1.',
+            format: LEVEL_FORMAT[format] ?? LevelFormat.DECIMAL,
+            text,
             alignment: AlignmentType.START,
           }],
-        }],
+        })),
       }
     : undefined;
 

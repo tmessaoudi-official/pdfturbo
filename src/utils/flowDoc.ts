@@ -55,6 +55,10 @@ export interface FlowParagraph {
   listType?: 'bullet' | 'ordered';
   /** Nesting depth of the list item (0 = top-level). */
   listDepth?: number;
+  /** Ordered-list marker number format (decimal / lower-alpha / upper-alpha). */
+  listFormat?: ListFormat;
+  /** Ordered-list docx level-text template, e.g. '%1.', '%1)', '(%1)'. */
+  listOrdinalText?: string;
   /** Left indent of the whole block relative to its column, in PDF points (>0 when inset). */
   indentLeft?: number;
   /** First-line-only indent relative to the block left, in PDF points (>0 when inset). */
@@ -248,20 +252,41 @@ export function detectColumnSplit(
 
 // Matches leading list markers: unambiguous unicode bullets or dash/asterisk, then whitespace.
 const _BULLET_RE = /^[•◦▪●○→►▸-]\s+/;
-// Numeric ordered markers only — avoids false positives on "A. Firstname" author names.
-const _ORDERED_RE = /^\d+[.)]\s+/;
+
+/** docx LevelFormat for an ordered marker. */
+export type ListFormat = 'decimal' | 'lowerLetter' | 'upperLetter';
+
+// Ordered markers. Each entry pairs a regex with a docx LevelFormat + level-text
+// template ('%1' is the ordinal). Letter markers are matched ONLY in a paren
+// form (`a)`, `(a)`) — NEVER bare-dot (`a.`, `A.`, `I.`) — to avoid author-initial
+// ("A. Smith") and sentence-start false positives. Roman is intentionally not
+// distinguished from letters (ambiguous per-paragraph); a parenthesized single
+// letter maps to lowerLetter/upperLetter. Order: parenthesized before close-paren
+// (disjoint anyway), decimal before alpha.
+const _ORDERED_MARKERS: { re: RegExp; format: ListFormat; ordinalText: string }[] = [
+  { re: /^(\d+)\.\s+/,    format: 'decimal',     ordinalText: '%1.'  }, // 1.
+  { re: /^(\d+)\)\s+/,    format: 'decimal',     ordinalText: '%1)'  }, // 1)
+  { re: /^\((\d+)\)\s+/,  format: 'decimal',     ordinalText: '(%1)' }, // (1)
+  { re: /^\(([a-z])\)\s+/, format: 'lowerLetter', ordinalText: '(%1)' }, // (a)
+  { re: /^([a-z])\)\s+/,  format: 'lowerLetter', ordinalText: '%1)'  }, // a)
+  { re: /^\(([A-Z])\)\s+/, format: 'upperLetter', ordinalText: '(%1)' }, // (A)
+  { re: /^([A-Z])\)\s+/,  format: 'upperLetter', ordinalText: '%1)'  }, // A)
+];
 
 /**
  * Detect and strip a list prefix from the start of a paragraph's text.
- * Returns `{ type, stripped }` when a prefix is found, or null otherwise.
+ * Returns `{ type, stripped, format?, ordinalText? }` when a prefix is found
+ * (format/ordinalText set only for ordered markers), or null otherwise.
  */
 export function detectListPrefix(
   text: string,
-): { type: 'bullet' | 'ordered'; stripped: string } | null {
+): { type: 'bullet' | 'ordered'; stripped: string; format?: ListFormat; ordinalText?: string } | null {
   const bm = _BULLET_RE.exec(text);
   if (bm) return { type: 'bullet', stripped: text.slice(bm[0].length) };
-  const om = _ORDERED_RE.exec(text);
-  if (om) return { type: 'ordered', stripped: text.slice(om[0].length) };
+  for (const { re, format, ordinalText } of _ORDERED_MARKERS) {
+    const m = re.exec(text);
+    if (m) return { type: 'ordered', stripped: text.slice(m[0].length), format, ordinalText };
+  }
   return null;
 }
 
@@ -448,6 +473,10 @@ function reconstructColumn(
         runs[0].text = firstText.slice(0, leading) + match.stripped;
         para.listType = match.type;
         para.listDepth = 0;
+        if (match.format) {
+          para.listFormat = match.format;
+          para.listOrdinalText = match.ordinalText;
+        }
       }
     }
 

@@ -212,6 +212,32 @@ describe('flowDocToDocxBase64 — native ordered-list numbering', () => {
     expect(docXml).not.toContain('>1. <');
   });
 
+  // Gap 4 (Sprint 3): lettered ordered markers map to the matching docx
+  // LevelFormat in numbering.xml (not collapsed to decimal).
+  it('a lowerLetter ordered list emits w:numFmt val="lowerLetter" in numbering.xml', async () => {
+    const doc: FlowDoc = {
+      pages: [{ width: 612, height: 792, paragraphs: [
+        para([run('sub-item')], { listType: 'ordered', listDepth: 0, listFormat: 'lowerLetter', listOrdinalText: '%1)' }),
+      ] }],
+    };
+    const files = await unpackDocx(await flowDocToDocxBase64(doc));
+    expect(files['word/numbering.xml']).toContain('lowerLetter');
+  });
+
+  it('decimal and lowerLetter lists in one doc use distinct numbering references', async () => {
+    const doc: FlowDoc = {
+      pages: [{ width: 612, height: 792, paragraphs: [
+        para([run('One')], { listType: 'ordered', listDepth: 0, listFormat: 'decimal', listOrdinalText: '%1.' }),
+        para([run('Body')]),
+        para([run('aye')], { listType: 'ordered', listDepth: 0, listFormat: 'lowerLetter', listOrdinalText: '%1)' }),
+      ] }],
+    };
+    const files = await unpackDocx(await flowDocToDocxBase64(doc));
+    const numbering = files['word/numbering.xml'];
+    expect(numbering).toContain('decimal');
+    expect(numbering).toContain('lowerLetter');
+  });
+
   it('two ordered lists separated by plain text get distinct numId values (restart)', async () => {
     const doc: FlowDoc = {
       pages: [{

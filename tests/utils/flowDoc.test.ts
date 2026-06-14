@@ -276,6 +276,41 @@ describe('detectListPrefix', () => {
   it('returns null for plain body text', () => {
     expect(detectListPrefix('This is regular paragraph text.')).toBeNull();
   });
+
+  // Gap 4 (Sprint 3): widen ordered markers to decimal-paren / parenthesized /
+  // lettered forms, each carrying a docx LevelFormat hint. Letter/roman markers
+  // are matched ONLY in a parenthesis form (`a)`, `(a)`) — never bare-dot
+  // (`a.`, `A.`) — to avoid author-initial ("A. Smith") and sentence-start
+  // false positives.
+  it('detects close-paren decimal `1)` as decimal with %1) text', () => {
+    const r = detectListPrefix('1) First');
+    expect(r).toMatchObject({ type: 'ordered', stripped: 'First', format: 'decimal', ordinalText: '%1)' });
+  });
+  it('detects parenthesized decimal `(1)` as decimal with (%1) text', () => {
+    const r = detectListPrefix('(1) First');
+    expect(r).toMatchObject({ type: 'ordered', stripped: 'First', format: 'decimal', ordinalText: '(%1)' });
+  });
+  it('detects close-paren lower-alpha `a)` as lowerLetter', () => {
+    const r = detectListPrefix('a) sub-item');
+    expect(r).toMatchObject({ type: 'ordered', stripped: 'sub-item', format: 'lowerLetter', ordinalText: '%1)' });
+  });
+  it('detects parenthesized lower-alpha `(a)` as lowerLetter', () => {
+    const r = detectListPrefix('(a) sub-item');
+    expect(r).toMatchObject({ type: 'ordered', stripped: 'sub-item', format: 'lowerLetter', ordinalText: '(%1)' });
+  });
+  it('detects close-paren upper-alpha `A)` as upperLetter', () => {
+    const r = detectListPrefix('A) Section');
+    expect(r).toMatchObject({ type: 'ordered', stripped: 'Section', format: 'upperLetter', ordinalText: '%1)' });
+  });
+  it('plain decimal `3.` keeps the legacy %1. text template', () => {
+    const r = detectListPrefix('3. Third item');
+    expect(r).toMatchObject({ type: 'ordered', format: 'decimal', ordinalText: '%1.' });
+  });
+  it('does NOT treat bare-dot letters as lists (author initials / sentence starts)', () => {
+    expect(detectListPrefix('a. some clause')).toBeNull();
+    expect(detectListPrefix('A. Smith wrote this')).toBeNull();
+    expect(detectListPrefix('I. introduction')).toBeNull();
+  });
 });
 
 // ── New: reconstructPage — 2-column XY-cut ───────────────────────────────────
