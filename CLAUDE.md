@@ -248,10 +248,19 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   plain stream for its ByteRange; encrypt-then-sign is out of v1 scope). Output is **download-only**
   (`<base>-signed.pdf`) — NO auto-resign (rejected as a security/trust anti-pattern: re-editing a signed
   PDF must visibly invalidate the signature, never silently re-sign). **Re-signing an already-signed PDF
-  is refused (S3, 2026-06-15)**: `_assertNotAlreadySigned` detects a `/ByteRange` + sig SubFilter and throws
-  a typed `ALREADY_SIGNED` SignError (pdf-lib's full re-save would otherwise corrupt the existing ByteRange
-  with an opaque crash). `.p12` bytes are zeroed after signing;
+  is refused (S3, 2026-06-15)**: the exported `isPdfSigned(bytes)` detects a `/ByteRange` + sig SubFilter and
+  `PdfSigner.preflight` throws a typed `ALREADY_SIGNED` SignError (pdf-lib's full re-save would otherwise
+  corrupt the existing ByteRange with an opaque crash). `.p12` bytes are zeroed after signing;
   the password field is cleared on close. `buildSignOptions` is the pure 1-based-UI→0-based-signer map.
+  **S-FLOW cert-free pre-flight (2026-06-15)**: `PdfSigner.preflight(bytes, page, rect)` runs the
+  cert-INDEPENDENT checks (already-signed + page-index + rect-bounds) and is called by `pdfTurboApp.signPdf`
+  **BEFORE** any certificate is generated/loaded — so an off-page rect or already-signed PDF shows the error
+  and bails WITHOUT downloading an orphan generated `.p12`/`.pem` (the prior bug). `sign()` reuses `preflight`
+  internally (DRY; standalone API stays safe). The generate-mode password is **no longer wiped in the
+  `finally`** (only on `closeSignModal`) — wiping it made a naive retry silently bail at the `if (!genPw)`
+  guard while a stale error stayed on screen. `signingHandler.sign(form, preassembled?)` accepts the
+  already-assembled bytes so the app preflights and signs the SAME bytes (one assembly). Guard:
+  `tests/signing/preflight.test.ts`.
   Wired: `signBtn` + `signModal`; `SignErrorCode`→`sign.error.<CODE>` i18n.
   **Generate-a-cert-on-the-spot (2026-06-15)**: the sign modal has a source toggle —
   "Use my .p12" vs "Generate one now". `src/signing/certGen.ts` `generateSelfSignedP12`

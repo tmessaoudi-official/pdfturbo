@@ -15,7 +15,7 @@
  * core, so importing this module does NOT pull forge into the main bundle.
  */
 
-export { PdfSigner, signPdf } from './pdfSigner';
+export { PdfSigner, signPdf, isPdfSigned } from './pdfSigner';
 export { SignError } from './types';
 export type {
   SignOptions,

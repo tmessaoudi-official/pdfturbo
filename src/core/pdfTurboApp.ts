@@ -23,7 +23,7 @@ import { TextEditHandler } from '../handlers/textEditHandler';
 import { OcrHandler } from '../handlers/ocrHandler';
 import { SigningHandler, type SignFormInput } from '../handlers/signingHandler';
 import { generateSelfSignedP12 } from '../signing/certGen';
-import { SignError } from '../signing';
+import { SignError, PdfSigner } from '../signing';
 import { t } from '../utils/i18n';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
@@ -553,18 +553,49 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.signError.style.display = 'none';
     const generate = (document.getElementById('signSourceGenerate') as HTMLInputElement | null)?.checked ?? false;
 
-    // Resolve PKCS#12 material + signer name from the chosen source.
+    // Cheap source-specific required-field checks first (no work to undo).
+    const cn = (document.getElementById('signGenCN') as HTMLInputElement | null)?.value.trim() ?? '';
+    const genPw = (document.getElementById('signGenPassword') as HTMLInputElement | null)?.value ?? '';
+    const certFile = this.ui.signCertInput.files?.[0] ?? null;
+    if (generate) {
+      if (!cn) { this._showSignError('sign.error.NO_CERTIFICATE'); return; }
+      if (!genPw) { this.reportError.warn('toast.passwordRequired'); return; }
+    } else if (!certFile) {
+      this._showSignError('sign.error.INVALID_P12');
+      return;
+    }
+
+    // Parse placement ONCE; reused for both the preflight and the signer form.
+    const page1 = parseInt(this.ui.signPage.value, 10) || 1;
+    const rect = {
+      x: parseFloat(this.ui.signX.value) || 0,
+      y: parseFloat(this.ui.signY.value) || 0,
+      width: parseFloat(this.ui.signW.value) || 0,
+      height: parseFloat(this.ui.signH.value) || 0,
+    };
+
+    // Assemble the edited document ONCE, then run the cert-free preflight BEFORE
+    // any certificate work. A placement / already-signed (or assembly) failure here
+    // must NOT generate a key or download an orphan .p12 (S-FLOW) — show the error
+    // and bail with the typed passwords still intact for an immediate retry.
+    let assembled: Uint8Array;
+    try {
+      assembled = await this.assemblePdfBytes();
+      await new PdfSigner().preflight(assembled, Math.max(0, page1 - 1), rect);
+    } catch (err) {
+      const code = err instanceof SignError ? err.code : 'SIGN_FAILED';
+      this._showSignError(`sign.error.${code}`);
+      return;
+    }
+
+    // Placement is valid — now resolve PKCS#12 material from the chosen source.
     let p12: Uint8Array;
     let passphrase: string;
     let genName: string | undefined;
+    this.ui.runSignModal.disabled = true;
+    this.ui.signProgressRow.style.display = '';
 
     if (generate) {
-      const cn = (document.getElementById('signGenCN') as HTMLInputElement).value.trim();
-      const genPw = (document.getElementById('signGenPassword') as HTMLInputElement).value;
-      if (!cn) { this._showSignError('sign.error.NO_CERTIFICATE'); return; }
-      if (!genPw) { this.reportError.warn('toast.passwordRequired'); return; }
-      this.ui.runSignModal.disabled = true;
-      this.ui.signProgressRow.style.display = '';
       try {
         const gen = await generateSelfSignedP12({
           commonName: cn,
@@ -585,40 +616,44 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         this.ui.signProgressRow.style.display = 'none';
         return;
       }
-    } else {
-      const file = this.ui.signCertInput.files?.[0] ?? null;
-      if (!file) { this._showSignError('sign.error.INVALID_P12'); return; }
-      this.ui.runSignModal.disabled = true;
-      this.ui.signProgressRow.style.display = '';
-      p12 = new Uint8Array(await file.arrayBuffer());
+    } else if (certFile) {
+      p12 = new Uint8Array(await certFile.arrayBuffer());
       passphrase = this.ui.signPassword.value;
+    } else {
+      // Unreachable: a missing file already returned in the early guard above.
+      this.ui.runSignModal.disabled = false;
+      this.ui.signProgressRow.style.display = 'none';
+      this._showSignError('sign.error.INVALID_P12');
+      return;
     }
 
     try {
       const form: SignFormInput = {
         p12,
         passphrase,
-        page: parseInt(this.ui.signPage.value, 10) || 1,
-        x: parseFloat(this.ui.signX.value) || 0,
-        y: parseFloat(this.ui.signY.value) || 0,
-        width: parseFloat(this.ui.signW.value) || 0,
-        height: parseFloat(this.ui.signH.value) || 0,
+        page: page1,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
         reason: this.ui.signReason.value,
         location: this.ui.signLocation.value,
         name: genName ?? this.ui.signName.value,
       };
-      const cn = await this._signingHandler.sign(form);
+      const signedCn = await this._signingHandler.sign(form, assembled);
       this.closeSignModal();
-      this.reportError.info('toast.signed', { name: cn ?? '' });
+      this.reportError.info('toast.signed', { name: signedCn ?? '' });
     } catch (err) {
       const code = err instanceof SignError ? err.code : 'SIGN_FAILED';
       this._showSignError(`sign.error.${code}`);
     } finally {
       this.ui.runSignModal.disabled = false;
       this.ui.signProgressRow.style.display = 'none';
+      // Clear only the uploaded-cert passphrase here. The generate-mode password is
+      // NOT wiped on a failed attempt (S-FLOW): wiping it made a naive retry bail at
+      // the `if (!genPw)` guard above while the stale error stayed on screen. It is
+      // scrubbed in closeSignModal() on success / modal close instead.
       this.ui.signPassword.value = '';
-      const gp = document.getElementById('signGenPassword') as HTMLInputElement | null;
-      if (gp) gp.value = '';
     }
   }
 

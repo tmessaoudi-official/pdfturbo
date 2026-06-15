@@ -62,12 +62,15 @@ export class SigningHandler {
    * block; the passphrase string cannot be scrubbed (JS strings are immutable) —
    * the caller clears the password input field after this resolves.
    *
+   * @param preassembled  Already-assembled document bytes — passed by the app so
+   *   it can preflight the SAME bytes before cert generation (S-FLOW) without
+   *   re-running `assemblePdfBytes()`. Omitted callers assemble here.
    * @returns the signer common name (CN) on success.
    * @throws {import('../signing').SignError} on any validation/crypto failure.
    */
-  async sign(form: SignFormInput): Promise<string | undefined> {
+  async sign(form: SignFormInput, preassembled?: Uint8Array): Promise<string | undefined> {
     try {
-      const assembled = await this.app.assemblePdfBytes();
+      const assembled = preassembled ?? (await this.app.assemblePdfBytes());
       const { bytes, signerCommonName } = await new PdfSigner().sign(
         assembled,
         buildSignOptions(form),

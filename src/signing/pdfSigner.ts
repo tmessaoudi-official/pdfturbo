@@ -19,7 +19,7 @@
  * in memory; nothing is uploaded.
  */
 
-import { SignError, type SignOptions, type SignResult } from './types';
+import { SignError, type SignOptions, type SignResult, type SignatureRect } from './types';
 import {
   buildAppearanceLines,
   formatPdfDate,
@@ -44,6 +44,26 @@ import {
 const SIGNATURE_CAPACITY_BYTES = 8192;
 const HEX_SLOT_CAPACITY = SIGNATURE_CAPACITY_BYTES * 2;
 
+/**
+ * Whether a PDF already carries a signature. A signature dictionary always pairs
+ * a `/ByteRange [` with a known signature `/SubFilter` (or `/Type /Sig`); an
+ * unsigned PDF has neither. Requiring BOTH avoids false positives from those byte
+ * sequences appearing incidentally in content streams.
+ *
+ * Cert-free and synchronous — exported so the UI can gate cert generation on it
+ * (S-FLOW: never download a generated .p12 for a PDF that can't be signed).
+ */
+export function isPdfSigned(bytes: Uint8Array): boolean {
+  let s = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    s += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)) as number[]);
+  }
+  const hasByteRange = /\/ByteRange\s*\[/.test(s);
+  const hasSig = /\/SubFilter\s*\/(adbe\.pkcs7|adbe\.x509|ETSI\.)/.test(s) || /\/Type\s*\/Sig\b/.test(s);
+  return hasByteRange && hasSig;
+}
+
 export class PdfSigner {
   /**
    * Sign a PDF and return the signed bytes. The input is never mutated.
@@ -53,24 +73,17 @@ export class PdfSigner {
   async sign(pdfBytes: Uint8Array, opts: SignOptions): Promise<SignResult> {
     validateSignOptionsShape(opts);
 
-    // Refuse re-signing an already-signed PDF up front (S3). pdf-lib does a FULL
-    // re-save, not an incremental update, which corrupts an existing signature's
-    // ByteRange and throws an opaque internal error. Detect + refuse cleanly so the
-    // message is meaningful (and the trust model stays honest: re-editing a signed
-    // PDF must invalidate it, never silently re-sign).
-    this._assertNotAlreadySigned(pdfBytes);
+    // Cert-free checks first (already-signed + page + rect bounds). Doing these
+    // before loadP12 means the UI can run the SAME preflight up front to gate
+    // certificate generation (S-FLOW), and a standalone caller still fails fast on
+    // a bad placement before paying for crypto.
+    await this.preflight(pdfBytes, opts.page, opts.rect);
 
-    // Load cert material first — fail fast on bad passphrase before touching the PDF.
     const material = await loadP12(opts.p12, opts.passphrase);
 
     const pdfLib = await import('@cantoo/pdf-lib');
     const doc = await this._loadDocument(pdfLib, pdfBytes);
-
-    const pageCount = doc.getPageCount();
-    validatePageIndex(opts.page, pageCount);
     const page = doc.getPage(opts.page);
-    const { width, height } = page.getSize();
-    validateRect(opts.rect, { width, height });
 
     const signerName = (opts.name ?? '').trim() || material.commonName;
     const signDate = new Date();
@@ -88,25 +101,31 @@ export class PdfSigner {
   }
 
   /**
-   * Throw ALREADY_SIGNED if the input PDF already carries a signature. A signature
-   * dictionary always pairs a `/ByteRange [` with a known signature `/SubFilter`
-   * (or `/Type /Sig`); an unsigned PDF has neither. Requiring BOTH avoids false
-   * positives from those byte sequences appearing incidentally in content streams.
+   * Cert-free validation that a PDF CAN be signed at the requested placement:
+   * not already signed (S3), page index in range, and appearance rect within the
+   * target page's media box. Touches no certificate — callers run this BEFORE
+   * generating/loading key material so a placement error never triggers an orphan
+   * cert download (S-FLOW). {@link sign} reuses it so the standalone API stays safe.
+   *
+   * @throws {SignError} `ALREADY_SIGNED` | `INVALID_PAGE` | `INVALID_RECT` | `PDF_PARSE_FAILED`.
    */
-  private _assertNotAlreadySigned(pdfBytes: Uint8Array): void {
-    let s = '';
-    const CHUNK = 0x8000;
-    for (let i = 0; i < pdfBytes.length; i += CHUNK) {
-      s += String.fromCharCode.apply(null, Array.from(pdfBytes.subarray(i, i + CHUNK)) as number[]);
-    }
-    const hasByteRange = /\/ByteRange\s*\[/.test(s);
-    const hasSig = /\/SubFilter\s*\/(adbe\.pkcs7|adbe\.x509|ETSI\.)/.test(s) || /\/Type\s*\/Sig\b/.test(s);
-    if (hasByteRange && hasSig) {
+  async preflight(pdfBytes: Uint8Array, page: number, rect: SignatureRect): Promise<void> {
+    // Refuse re-signing an already-signed PDF up front (S3): pdf-lib does a FULL
+    // re-save, not an incremental update, which corrupts an existing signature's
+    // ByteRange and throws an opaque internal error. The trust model stays honest —
+    // re-editing a signed PDF must invalidate it, never silently re-sign.
+    if (isPdfSigned(pdfBytes)) {
       throw new SignError(
         'ALREADY_SIGNED',
         'This PDF is already signed. Re-signing would invalidate the existing signature — export an unsigned copy first.',
       );
     }
+
+    const pdfLib = await import('@cantoo/pdf-lib');
+    const doc = await this._loadDocument(pdfLib, pdfBytes);
+    validatePageIndex(page, doc.getPageCount());
+    const { width, height } = doc.getPage(page).getSize();
+    validateRect(rect, { width, height });
   }
 
   private async _loadDocument(
