@@ -27,7 +27,7 @@ Pipeline: `_extractFlowDoc` → pdf.js `getTextContent`+`getOperatorList` → `r
 | 10 | Bullet lists (flat) | ✅ | `_BULLET_RE` |
 | 11 | Ordered lists — decimal `1.`/`1)`/`(1)` | ✅ | **Sprint 3** widened markers + per-format refs |
 | 12 | Ordered lists — lettered `a)`/`(a)`/`A)` | ✅ | **Sprint 3** `lowerLetter`/`upperLetter` LevelFormat |
-| 13 | Ordered lists — roman `(i)` | 🟡 | maps to lowerLetter today (ambiguous per-paragraph); true roman queued |
+| 13 | Ordered lists — roman `(i)` | ✅ | **Sprint 4** lowerRoman/upperRoman — `flowDoc.ts:370,407-420`, writer LEVEL_FORMAT (was 🟡; verified shipped 2026-06-15) |
 | 14 | List nesting (multi-level `w:ilvl`) | ✅ | `listDepth` now bucketed from item x0 vs colLeft in font-size units (Sprint 3 batch 2) |
 | 15 | Headings (size-cluster H1–H3) | ✅ | `assignHeadings` |
 | 16 | Headings H4–H6 (size cluster) | ✅ | type widened `0..6`, `slice(0,6)`, writer `HEADINGS` extended (Sprint 3 batch 2). Bold/caps promotion still 🟡 |
@@ -35,12 +35,12 @@ Pipeline: `_extractFlowDoc` → pdf.js `getTextContent`+`getOperatorList` → `r
 | 18 | Color spot / Separation / scn | 🟡 | `setFillColorN` unhandled → black collapse (Gap 6, B7); canvas-sample fallback queued |
 | 19 | Images embedded + positioned | ✅ | floating `wp:anchor`, page-relative EMU (B-4, ISSUE-3/4) |
 | 20 | Image JPEG re-encode (no PNG bloat) | ✅ | `pickImageMime`: alpha→PNG, large opaque (≥200×200)→JPEG q0.85; extraction samples canvas alpha (Sprint 3 batch 2) |
-| 21 | Rotated / skewed image sizing | 🟡 | axis-aligned only; CTM decompose queued (Gap 8) |
+| 21 | Rotated / skewed image sizing | ✅ | **Sprint 4** `decomposeImageCtm` `flowDoc.ts:163-171`, writer `rotation` deg (was 🟡; verified shipped 2026-06-15) |
 | 22 | Hyperlinks | ✅ | `getAnnotations` Link+url → `FlowLinkRect` → bbox-tag `FlowRun.linkUrl` → `ExternalHyperlink` + MD `[text](url)` (Sprint 3 batch 2) |
-| 23 | Underline / strikethrough | 🟡 | geometric path-seg detection (Gap 1, needs path-op infra) |
-| 24 | Super / subscript | 🟡 | baseline+size-ratio detection (Gap 3) |
+| 23 | Underline / strikethrough | ✅ | **Sprint 4** `classifyRuleAsUnderline` `flowDoc.ts:74-90` + op-walk rules (was 🟡; verified shipped 2026-06-15) |
+| 24 | Super / subscript | ✅ | **Sprint 4** vertAlign detect `flowDoc.ts:549-554`, writer `superScript`/`subScript` (was 🟡; verified shipped 2026-06-15) |
 | 25 | Redaction-aware (no leak) | ✅ | items under redaction dropped pre-flow (Sprint 1 P0) |
-| 26 | RTL flags | 🟡 | flags only; logical reorder = ⛔ |
+| 26 | RTL flags + single-line reorder | ✅-partial | **Sprint Arabic** `orderLineWords`/`reverseRtlText` `flowDoc.ts:442-463` (single-RTL-line logical reorder works); mixed LTR+RTL one-line reorder still ⛔ (was 🟡) |
 | 27 | Per-page sections (size+margin) | ✅ | one docx section per page |
 | 28 | Lattice / borderless tables | ⛔ | vector-ruling / column-gap detection — chronic FP, multi-day |
 | 29 | Vector graphics (logos/charts) | ⛔ | region rasterization only; no path→OOXML |
@@ -51,9 +51,11 @@ Pipeline: `_extractFlowDoc` → pdf.js `getTextContent`+`getOperatorList` → `r
 | 34 | Exact subset-font face match | ⛔ | no recoverable family from `ABCDEF+` subset — honest ceiling |
 
 ## Tally
-- **✅ done: 20** (incl. Sprint 3 batch 2: row 14 list nesting, 16 H4–H6, 20 JPEG, 22 hyperlinks)
-- **🟡 reachable, queued: 7** (rows 13 roman, 18 spot-color, 21 rotated-image, 23 underline/strike,
-  24 super/subscript, 26 RTL flags, + row-16 bold/caps heading promotion) — file:line + fix in `01-docx-gaps.md`
+- **✅ done: 25** (Sprint 4 verified 2026-06-15: rows 13 roman, 21 rotated-image, 23 underline/strike,
+  24 super/subscript already shipped; 26 RTL single-line reorder ✅-partial)
+- **🟡 reachable, queued: 2** (row 18 spot-color — narrowed since v6 pre-resolves most spaces; + row-16
+  bold/caps heading promotion). **Plus** the MD/TXT-writer gaps (ordinals, nesting, image loss) newly
+  tracked + test-confirmed in `../research-2026-06-15-blockers/` (this scorecard was DOCX-only).
 - **⛔ ceiling: 7** (rows 28–34) — confirmed fundamentally hard; documented, not promised
 
 ## Honest fidelity statement

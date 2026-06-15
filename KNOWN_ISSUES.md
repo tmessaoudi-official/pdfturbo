@@ -5,6 +5,10 @@ test each one needs before it can be called "fixed with confidence."
 
 - **Proof:** every entry was reproduced in a real browser. Full evidence + method:
   [`docs/reviews/2026-06-14-qa-sweep-findings.md`](docs/reviews/2026-06-14-qa-sweep-findings.md).
+- **Blockers-to-100% (all domains, test-backed):**
+  [`docs/reviews/research-2026-06-15-blockers/CONSOLIDATED.md`](docs/reviews/research-2026-06-15-blockers/CONSOLIDATED.md)
+  — 11 blockers proven by `tests/blockers/*.blockers.test.ts` (`it.fails` convention), incl. P0
+  redaction-on-rotated-pages + AES-128 encryption.
 - **Feature-level status & usage:** [`FEATURES.md`](FEATURES.md).
 - **Confidence scale:** Verified (reproduced + measured) · Inferred (consistent with evidence) ·
   Needs-manual (automation couldn't drive it).
