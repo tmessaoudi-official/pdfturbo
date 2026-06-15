@@ -191,8 +191,16 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   converts to 60000ths — NOT EMU). Guards: `tests/utils/flowDocUnderlineStrike.test.ts` (9),
   `flowDocImageRotation.test.ts` (7), writer XML tests, `tests/browser/underline-strike.browser.test.ts`
   (real pdf.js op-list → reconstructPage → DOCX e2e).
-  **Reachable, still queued** (file:line + fix in `research-2026-06-15/01-docx-gaps.md` / `02-trueedit-matrix.md`):
-  list marker→continuation merge; true-edit Path-3 fill-color canvas-sample, number-tokenizer exponent.
+  **List continuation merge DONE (2026-06-15):** a wrapped list item whose continuation line split into a
+  separate marker-less paragraph used to reset the writer's numbering instance (next item restarted at 1).
+  `reconstructColumn` now re-absorbs a single-line, body-sized, hanging-INDENTED (right of the marker),
+  marker-less paragraph directly after a list item back into that item — genuine body paragraphs (start at
+  the column-left edge) and real list items (carry a marker) stay separate. Guard: `tests/utils/flowDoc.test.ts`
+  (`reconstructColumn — wrapped list-item continuation merge`).
+  **Number-tokenizer exponent already DONE (B-1):** `consumeNumberBody` keeps `1e-3`/`2.5E+2` as one token in
+  BOTH the main loop and `tokenizeOne` (array parser) — verified 2026-06-15.
+  **Reachable, still queued** (file:line + fix in `research-2026-06-15/02-trueedit-matrix.md`):
+  true-edit Path-3 fill-color canvas-sample (Separation/spot text redraws black — needs real-browser canvas sampling).
   **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
   XY-cut, exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
   true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder; tashkeel GPOS positioning.

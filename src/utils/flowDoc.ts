@@ -558,6 +558,8 @@ function reconstructColumn(
   const indentTol = (s: number) => Math.max(2, s * 0.5); // half a font size, ≥2pt
 
   // 3. Build paragraphs: merge same-style words into runs, infer alignment, bidi, and list type.
+  // Per-paragraph geometry kept alongside for the continuation-merge pass below.
+  const paraGeom: { x0: number; lines: number; size: number }[] = [];
   const paras: FlowParagraph[] = paraLines.map((group, gi) => {
     const runs: FlowRun[] = [];
     for (let li = 0; li < group.length; li++) {
@@ -725,10 +727,43 @@ function reconstructColumn(
       }
     }
 
+    paraGeom[gi] = { x0: group[0].x0, lines: group.length, size: domSize };
     return para;
   });
 
-  return paras;
+  // Wrapped list-item continuation merge (Gap 4): step-2 splits a list item whose
+  // wrap exceeds the paragraph gap/size band into a separate, marker-less
+  // paragraph. Left as-is, that orphan paragraph resets the writer's numbering
+  // instance (the next item restarts at 1). Re-absorb a continuation — a
+  // single-line, body-sized, hanging-INDENTED (starts right of the marker), non-
+  // marker paragraph directly after a list item — back into that item. The
+  // hanging-indent guard keeps genuine following body paragraphs (which start at
+  // the column-left edge) and real list items (which carry a marker) separate.
+  const result: FlowParagraph[] = [];
+  const resultGeom: typeof paraGeom = [];
+  for (let gi = 0; gi < paras.length; gi++) {
+    const p = paras[gi];
+    const g = paraGeom[gi];
+    const prev = result[result.length - 1];
+    const prevG = resultGeom[resultGeom.length - 1];
+    const isContinuation =
+      !!prev && !!prev.listType && !p.listType && p.heading === 0 &&
+      g.lines === 1 && Math.abs(g.size - prevG.size) < 1 &&
+      g.x0 > prevG.x0 + indentTol(prevG.size) &&
+      p.alignment !== 'center' && p.alignment !== 'right';
+    if (isContinuation && prev) {
+      const lastRun = prev.runs[prev.runs.length - 1];
+      const firstRun = p.runs[0];
+      if (lastRun && firstRun && !/\s$/.test(lastRun.text) && !/^\s/.test(firstRun.text)) {
+        lastRun.text += ' ';
+      }
+      prev.runs.push(...p.runs);
+    } else {
+      result.push(p);
+      resultGeom.push(g);
+    }
+  }
+  return result;
 }
 
 /**

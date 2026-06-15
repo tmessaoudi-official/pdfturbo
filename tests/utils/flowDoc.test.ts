@@ -9,6 +9,7 @@ import {
   type FontInfoMap,
   type FlowDoc,
 } from '../../src/utils/flowDoc';
+import { flowDocToMarkdown } from '../../src/utils/flowDocWriters';
 
 const FONTS: FontInfoMap = {
   f1: { name: 'Helvetica', family: 'sans-serif' },
@@ -416,5 +417,59 @@ describe('reconstructPage — list detection', () => {
     const items = [mkItem('Regular paragraph text here.', 50, 700)];
     const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
     expect(page.paragraphs[0].listType).toBeUndefined();
+  });
+});
+
+describe('reconstructColumn — wrapped list-item continuation merge (Gap 4)', () => {
+  // A list item whose wrap splits into a separate paragraph (baseline gap >
+  // PARA_GAP×size) used to become a marker-less plain paragraph between items —
+  // which resets the writer's numbering instance (item 2 restarts at 1). The
+  // continuation (hanging-indented, single-line, body-sized) should merge back
+  // into the prior list item so numbering stays contiguous.
+  it('merges a hanging-indent continuation line into the prior list item', () => {
+    const items = [
+      mkItem('1. First item that runs long', 72, 700),
+      // No marker, indented under the item TEXT (x=92 > marker x=72), gap 28pt
+      // (> 1.6×12=19.2) so step-2 splits it into its own paragraph.
+      mkItem('continuation of the first item', 92, 672),
+      mkItem('2. Second item', 72, 632),
+    ];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    const ordered = page.paragraphs.filter(p => p.listType === 'ordered');
+    expect(ordered).toHaveLength(2);
+    // The continuation is absorbed into item 1, NOT left as an orphan plain para.
+    const item1Text = ordered[0].runs.map(r => r.text).join('');
+    expect(item1Text).toContain('continuation of the first item');
+    // No marker-less body paragraph survives between the two list items.
+    const plainBetween = page.paragraphs.some(p => !p.listType && p.runs.map(r => r.text).join('').includes('continuation'));
+    expect(plainBetween).toBe(false);
+  });
+
+  it('does NOT merge a genuine body paragraph that starts at the column-left edge', () => {
+    const items = [
+      mkItem('1. Only list item', 72, 700),
+      // Starts at the SAME left edge as the marker (x=72) → a new body paragraph,
+      // not a hanging continuation. Must stay separate.
+      mkItem('A following body paragraph at the column left edge', 72, 660),
+    ];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    const item1 = page.paragraphs.find(p => p.listType === 'ordered');
+    expect(item1?.runs.map(r => r.text).join('')).not.toContain('following body paragraph');
+    expect(page.paragraphs.some(p => !p.listType && p.runs.map(r => r.text).join('').includes('following body paragraph'))).toBe(true);
+  });
+
+  it('keeps ordered numbering contiguous across a wrapped item (end-to-end markdown)', () => {
+    const items = [
+      mkItem('1. First item that runs long', 72, 700),
+      mkItem('continuation of the first item', 92, 672),
+      mkItem('2. Second item', 72, 632),
+    ];
+    const page = reconstructPage(items, FONTS, PAGE_W, PAGE_H);
+    const md = flowDocToMarkdown({ pages: [page] });
+    // Item 2 must be "2." — before the merge the orphan continuation reset the
+    // instance and it rendered as "1." again.
+    expect(md).toMatch(/^1\. .*First item/m);
+    expect(md).toMatch(/^2\. Second item/m);
+    expect(md).not.toMatch(/^1\. Second item/m);
   });
 });
