@@ -222,7 +222,10 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
             // Linked runs get the conventional blue + underline so they read as
             // hyperlinks; otherwise keep the run's own fill color.
             color: r.linkUrl ? '0563C1' : r.color,
-            underline: r.linkUrl ? { type: UnderlineType.SINGLE } : undefined,
+            // Hyperlinks force the conventional underline; otherwise honour a
+            // detected baseline rule (b — underline/strikethrough fidelity).
+            underline: r.linkUrl || r.underline ? { type: UnderlineType.SINGLE } : undefined,
+            strike: r.strikethrough || undefined,
             superScript: r.vertAlign === 'super' || undefined,
             subScript: r.vertAlign === 'sub' || undefined,
           });
@@ -287,6 +290,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
             // PDF points → pixels at 96 DPI (1pt = 96/72 px)
             width: Math.round(img.width * 96 / 72),
             height: Math.round(img.height * 96 / 72),
+            // docx takes rotation in DEGREES (converts to 60000ths internally).
+            ...(img.rotation ? { rotation: img.rotation } : {}),
           },
           type: img.mimeType === 'image/jpeg' ? 'jpg' : 'png',
           floating: {

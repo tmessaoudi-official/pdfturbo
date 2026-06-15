@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, pickImageMime, fillOpToHex, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, pickImageMime, fillOpToHex, decomposeImageCtm, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -385,6 +385,7 @@ export class ExportService {
       const vp = page.getViewport({ scale: 1 });
       const colorMap = new Map<string, string>();
       const pageImages: FlowImage[] = [];
+      const pageRules: RuleRect[] = [];
 
       if (opList) {
         try {
@@ -483,18 +484,53 @@ export class ExportService {
                 const dataUrl = imgCanvas.toDataURL(mimeType, mimeType === 'image/jpeg' ? 0.85 : undefined);
                 const base64 = dataUrl.split(',')[1];
                 if (base64) {
-                  // Axis-aligned: width=|a|, height=|d|; PDF y-up → DOCX y-down
-                  const w = Math.abs(ctm[0]) || Math.abs(ctm[2]);
-                  const h = Math.abs(ctm[3]) || Math.abs(ctm[1]);
+                  // Decompose scale + rotation from the draw CTM. For axis-aligned
+                  // images this reduces to width=|a|, height=|d|; for rotated ones
+                  // it recovers the true on-page size AND the rotation angle (was
+                  // silently dropped before — (d) rotated-image fidelity).
+                  const { scaleX, scaleY, rotation } = decomposeImageCtm(ctm);
+                  const w = scaleX, h = scaleY;
                   if (w > 10 && h > 10) {
-                    pageImages.push({
+                    const img: FlowImage = {
                       x: ctm[4], y: vp.height - ctm[5] - h,
                       width: w, height: h,
                       base64, mimeType,
-                    });
+                    };
+                    // Snap near-zero noise to 0; store only meaningful rotation.
+                    if (rotation > 0.5 && rotation < 359.5) img.rotation = Math.round(rotation);
+                    pageImages.push(img);
                   }
                 }
               } catch { /* graceful skip if bitmap unavailable */ }
+            } else if (fn === OPS['constructPath']) {
+              // (b) underline/strike: a thin horizontal filled/stroked rule. v6
+              // packs paths into constructPath: args = [paintOp, pathData, minMax].
+              // The minMax bbox is path-local; transform it by the CTM into PDF
+              // user space (y-up) — the SAME space reconstructPage's words use.
+              const a = args as unknown[];
+              const paintOp = Number(a[0]);
+              const isFill = paintOp === OPS['fill'] || paintOp === OPS['eoFill'] ||
+                paintOp === OPS['fillStroke'] || paintOp === OPS['eoFillStroke'];
+              const isStroke = paintOp === OPS['stroke'] || paintOp === OPS['closeStroke'];
+              const mm = a[2] as Record<number, number> | undefined;
+              if (mm && (isFill || isStroke)) {
+                const corners: Array<[number, number]> = [
+                  [mm[0], mm[1]], [mm[2], mm[1]], [mm[2], mm[3]], [mm[0], mm[3]],
+                ];
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const [lx, ly] of corners) {
+                  const dx = ctm[0] * lx + ctm[2] * ly + ctm[4];
+                  const dy = ctm[1] * lx + ctm[3] * ly + ctm[5];
+                  if (dx < minX) minX = dx; if (dx > maxX) maxX = dx;
+                  if (dy < minY) minY = dy; if (dy > maxY) maxY = dy;
+                }
+                const rw = maxX - minX, rh = maxY - minY;
+                // Keep only thin, horizontal, line-like rules — bounds array size
+                // and excludes shading blocks / vector art / vertical bars.
+                if (rw > 2 && rh < 8 && rw > rh * 3) {
+                  pageRules.push({ x: minX, y: minY, width: rw, height: rh });
+                }
+              }
             } else if (fn === OPS['setFillRGBColor']) {
               fillHex = fillOpToHex('rgb', args as unknown[]) ?? fillHex;
             } else if (fn === OPS['setFillGray']) {
@@ -542,7 +578,7 @@ export class ExportService {
         } catch { /* operator list unavailable */ }
       }
 
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined);
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined);
       if (pageImages.length > 0) flowPage.images = pageImages;
       flowDoc.pages.push(flowPage);
     }

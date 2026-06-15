@@ -47,6 +47,46 @@ export interface FlowRun {
   linkUrl?: string;
   /** Vertical alignment for super/subscript glyphs (smaller + baseline-offset). */
   vertAlign?: 'super' | 'sub';
+  /** Set when a thin rule sits at this run's baseline (→ DOCX underline). */
+  underline?: boolean;
+  /** Set when a thin rule crosses this run's x-height (→ DOCX strikethrough). */
+  strikethrough?: boolean;
+}
+
+/**
+ * A thin graphic rule (filled/stroked path) in PDF user space (y-up), collected
+ * from the export op-walk and matched against text runs to detect underlines and
+ * strikethroughs. `y` is the bottom edge; height 0 is a pure horizontal stroke.
+ */
+export interface RuleRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Classify a thin rule against a text run's baseline (all in PDF user space,
+ * y-up). Returns 'underline' (rule sits at/just below the baseline), 'strikethrough'
+ * (rule crosses mid x-height), or null (shading block, vertical bar, separator far
+ * from the text, or insufficient horizontal overlap). Pure → jsdom-unit-testable.
+ */
+export function classifyRuleAsUnderline(
+  rule: RuleRect,
+  run: { x: number; y: number; width: number; size: number },
+): 'underline' | 'strikethrough' | null {
+  if (run.size <= 0 || run.width <= 0) return null;
+  // Reject shading blocks (too tall relative to the font) and vertical bars.
+  if (rule.height > 0.18 * run.size) return null;
+  if (rule.width <= rule.height * 3 || rule.width <= 2) return null;
+  // Require the rule to cover at least half of the run horizontally.
+  const overlap = Math.min(rule.x + rule.width, run.x + run.width) - Math.max(rule.x, run.x);
+  if (overlap < 0.5 * run.width) return null;
+  // Vertical band relative to the baseline (positive dy = above the baseline).
+  const dy = (rule.y + rule.height / 2 - run.y) / run.size;
+  if (dy >= -0.35 && dy <= 0.1) return 'underline';
+  if (dy >= 0.18 && dy <= 0.62) return 'strikethrough';
+  return null;
 }
 
 /**
@@ -96,6 +136,38 @@ export interface FlowImage {
   /** Raw image data as base64 (no data-URL prefix). */
   base64: string;
   mimeType: 'image/png' | 'image/jpeg';
+  /** Clockwise rotation in degrees [0,360); only set when meaningfully non-zero. */
+  rotation?: number;
+}
+
+/** Scale + rotation extracted from an image-draw CTM (see {@link decomposeImageCtm}). */
+export interface DecomposedCtm {
+  /** Horizontal scale magnitude (≈ on-page width in points for an image XObject). */
+  scaleX: number;
+  /** Vertical scale magnitude (≈ on-page height in points for an image XObject). */
+  scaleY: number;
+  /** Clockwise rotation in degrees, normalized to [0,360). */
+  rotation: number;
+}
+
+/**
+ * Decompose a 2D affine CTM `[a,b,c,d,e,f]` into positive scale magnitudes and a
+ * rotation angle. pdf.js folds an image's scale and rotation into `[a,b,c,d]`;
+ * `[e,f]` is translation and does not affect scale/rotation.
+ *
+ * `scaleX = hypot(a,b)`, `scaleY = hypot(c,d)`, `rotation = atan2(b,a)` (the
+ * first basis vector's angle), normalized to [0,360). Scales are returned as
+ * magnitudes (a flipped/negative-determinant image still reports positive size);
+ * pure shear is not modelled (Word can't render it) and collapses into the scales.
+ */
+export function decomposeImageCtm(
+  ctm: readonly [number, number, number, number, number, number],
+): DecomposedCtm {
+  const [a, b, c, d] = ctm;
+  const scaleX = Math.hypot(a, b);
+  const scaleY = Math.hypot(c, d);
+  const rotation = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
+  return { scaleX, scaleY, rotation };
 }
 
 /**
@@ -192,6 +264,8 @@ interface Word {
   rtl: boolean;
   color?: string;
   linkUrl?: string;
+  underline?: boolean;
+  strikethrough?: boolean;
 }
 
 interface Line {
@@ -446,6 +520,8 @@ function reconstructColumn(
           color: w.color,
           linkUrl: w.linkUrl,
           vertAlign,
+          underline: w.underline,
+          strikethrough: w.strikethrough,
         };
         let text = w.text;
         if (prevWord) {
@@ -467,6 +543,8 @@ function reconstructColumn(
           last.color === style.color &&
           last.linkUrl === style.linkUrl &&
           last.vertAlign === style.vertAlign &&
+          last.underline === style.underline &&
+          last.strikethrough === style.strikethrough &&
           Math.abs(last.fontSize - style.fontSize) < 0.6
         ) {
           last.text += text;
@@ -659,7 +737,8 @@ export function reconstructPage(
   pageHeight: number,
   colorMap?: Map<string, string>,
   redactions?: RedactionRect[],
-  links?: FlowLinkRect[]
+  links?: FlowLinkRect[],
+  rules?: RuleRect[]
 ): FlowPage {
   const words: Word[] = [];
   for (const it of items) {
@@ -669,6 +748,18 @@ export function reconstructPage(
     const x = it.transform[4];
     const y = it.transform[5];
     const color = colorMap?.get(`${Math.round(x)},${Math.round(y)}`);
+    // Underline / strikethrough: match thin rules to this glyph run (b).
+    let underline: boolean | undefined;
+    let strikethrough: boolean | undefined;
+    if (rules?.length) {
+      const runGeom = { x, y, width: Math.abs(it.width), size };
+      for (const r of rules) {
+        const kind = classifyRuleAsUnderline(r, runGeom);
+        if (kind === 'underline') underline = true;
+        else if (kind === 'strikethrough') strikethrough = true;
+        if (underline && strikethrough) break;
+      }
+    }
     // Hyperlink tagging: a word belongs to a Link annotation when its mid-glyph
     // centre (PDF y-up space) falls inside the link rectangle. Centre (not the
     // baseline origin) avoids edge words at a rect boundary being missed.
@@ -680,7 +771,7 @@ export function reconstructPage(
         if (cx >= ln.x0 && cx <= ln.x1 && cy >= ln.y0 && cy <= ln.y1) { linkUrl = ln.url; break; }
       }
     }
-    words.push({ text: it.str, x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl });
+    words.push({ text: it.str, x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl, underline, strikethrough });
   }
 
   const split = detectColumnSplit(words, pageWidth);

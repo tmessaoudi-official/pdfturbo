@@ -170,8 +170,20 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   stop shifting. New `decodeLiteralString` measures segment lengths. The A2 no-stale-glyph guarantee still
   holds. Guards: `tests/utils/{flowDoc,flowDocWriters,flowDocHyperlinks,flowDocImageMime,contentStreamEditor}.test.ts`
   + `tests/browser/issue3-docx-images.browser.test.ts` (Gap 7 JPEG).
+  **Sprint 4 fidelity DONE (2026-06-15):** super/subscript + roman lists (50ac4d5); spot-color/Separation
+  black-collapse fixed via the v6 hex-string color path (d7879fb). **(b) underline/strikethrough** —
+  `classifyRuleAsUnderline(rule, run)` (pure, y-up PDF space) matches thin filled/stroked rules from the
+  export op-walk to text-run baselines; rules are collected by decoding v6 `constructPath` args
+  `[paintOp, pathData, minMax]` and transforming the path-local minMax bbox by the CTM into Word space
+  (`Word.x/y = it.transform[4]/[5]`, the same space) → `FlowRun.underline/strikethrough` → docx `w:u`/`w:strike`.
+  Thresholds: height ≤ 0.18×fontSize (rejects shading), width > 3×height (rejects vertical bars), ≥50%
+  x-overlap, baseline band dy∈[-0.35,0.10]×size (underline) / [0.18,0.62] (strike). **(d) rotated-image
+  sizing** — `decomposeImageCtm([a,b,c,d,e,f])` → {scaleX,scaleY,rotation}; image extraction uses scaleX/scaleY
+  for true on-page size and stores `FlowImage.rotation` → docx `transformation.rotation` (DEGREES; docx
+  converts to 60000ths — NOT EMU). Guards: `tests/utils/flowDocUnderlineStrike.test.ts` (9),
+  `flowDocImageRotation.test.ts` (7), writer XML tests, `tests/browser/underline-strike.browser.test.ts`
+  (real pdf.js op-list → reconstructPage → DOCX e2e).
   **Reachable, still queued** (file:line + fix in `research-2026-06-15/01-docx-gaps.md` / `02-trueedit-matrix.md`):
-  underline/strike (geometric), super/subscript, spot-color/Separation black-collapse, rotated-image sizing,
   list marker→continuation merge; true-edit Path-3 fill-color canvas-sample, number-tokenizer exponent.
   **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
   XY-cut, RTL logical reorder, exact subset-font faces; true-edit cm-rotation Path-3 redraw, Type3, Arabic.

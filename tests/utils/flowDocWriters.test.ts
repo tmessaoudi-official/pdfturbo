@@ -155,6 +155,30 @@ async function unpackDocx(b64: string): Promise<Record<string, string>> {
 
 // ── Batch 3 (c)/(e): super/subscript + roman numbering ───────────────────────
 
+describe('flowDocToDocxBase64 — underline/strike (Gap b)', () => {
+  it('underline run emits <w:u> and strikethrough run emits <w:strike>', async () => {
+    const doc: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [para([
+          run('under', { underline: true }),
+          run(' normal '),
+          run('struck', { strikethrough: true }),
+        ])],
+      }],
+    };
+    const xml = (await unpackDocx(await flowDocToDocxBase64(doc)))['word/document.xml'];
+    expect(xml).toContain('<w:u ');
+    expect(xml).toContain('<w:strike');
+  });
+
+  it('plain runs emit neither underline nor strike', async () => {
+    const xml = (await unpackDocx(await flowDocToDocxBase64(DOC)))['word/document.xml'];
+    expect(xml).not.toContain('<w:u ');
+    expect(xml).not.toContain('<w:strike');
+  });
+});
+
 describe('flowDocToDocxBase64 — super/subscript', () => {
   it('emits w:vertAlign superscript/subscript for vertAlign runs', async () => {
     const doc: FlowDoc = {
@@ -210,6 +234,30 @@ describe('flowDocToDocxBase64 — image embedding', () => {
     const b64 = await flowDocToDocxBase64(DOC);
     const files = await unpackDocx(b64);
     expect(files['word/document.xml']).not.toContain('w:drawing');
+  });
+
+  it('rotated FlowImage emits a rot attribute (degrees × 60000) in document.xml', async () => {
+    const docWithRot: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [],
+        images: [{ x: 100, y: 400, width: 200, height: 150, base64: TINY_PNG_B64, mimeType: 'image/png', rotation: 90 }],
+      }],
+    };
+    const xml = (await unpackDocx(await flowDocToDocxBase64(docWithRot)))['word/document.xml'];
+    expect(xml).toContain('rot="5400000"'); // 90 × 60000
+  });
+
+  it('non-rotated FlowImage emits no rot attribute', async () => {
+    const docNoRot: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [],
+        images: [{ x: 100, y: 400, width: 200, height: 150, base64: TINY_PNG_B64, mimeType: 'image/png' }],
+      }],
+    };
+    const xml = (await unpackDocx(await flowDocToDocxBase64(docNoRot)))['word/document.xml'];
+    expect(xml).not.toContain('rot=');
   });
 
   it('DOCX with image still produces a valid ZIP container', async () => {
