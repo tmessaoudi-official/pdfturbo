@@ -3,9 +3,15 @@
  *
  * @cantoo/pdf-lib selects the encryption revision purely from the document's
  * header version string (PDFSecurity.initialize switch): header "1.7" → V4/AESV2
- * (128-bit); header "1.7ext3" → V5/R6/AESV3 (256-bit). There is no `algorithm`
+ * (128-bit); header "1.7ext3" → V5/R5/AESV3 (256-bit). There is no `algorithm`
  * option — the header is the lever. We therefore bump the header to 1.7ext3 so a
  * locked PDF gets modern AES-256 instead of the silent AES-128 default.
+ *
+ * Revision note: the library hardcodes /R 5 (Adobe Extension Level 3) in
+ * initializeV5 — the PDF-2.0-hardened /R 6 (iterated key-derivation, Algorithm
+ * 2.B) has NO code path here and is unreachable without swapping the write
+ * library. R5 AES-256 is a large step up from the AES-128 default; its only
+ * weakness vs R6 is weaker password-hash hardening, not the AES cipher itself.
  *
  * We also pass an EXPLICIT permissions object. Omitting `permissions` makes the
  * library clear every allow-bit (`0xfffff0c0`), producing a doc that denies
