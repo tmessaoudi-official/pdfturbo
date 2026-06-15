@@ -116,6 +116,7 @@ export interface AppDOMRefs {
   ocrBtn:           HTMLButtonElement;
   ocrModal:         HTMLElement;
   ocrLangSelect:    HTMLSelectElement;
+  ocrModeSelect:    HTMLSelectElement;
   ocrProgressRow:   HTMLElement;
   ocrProgress:      HTMLProgressElement;
   ocrProgressLabel: HTMLElement;
@@ -281,6 +282,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       ocrBtn:           document.getElementById('ocrBtn')           as HTMLButtonElement,
       ocrModal:         document.getElementById('ocrModal')         as HTMLElement,
       ocrLangSelect:    document.getElementById('ocrLangSelect')    as HTMLSelectElement,
+      ocrModeSelect:    document.getElementById('ocrModeSelect')    as HTMLSelectElement,
       ocrProgressRow:   document.getElementById('ocrProgressRow')   as HTMLElement,
       ocrProgress:      document.getElementById('ocrProgress')      as HTMLProgressElement,
       ocrProgressLabel: document.getElementById('ocrProgressLabel') as HTMLElement,

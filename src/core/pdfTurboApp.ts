@@ -20,7 +20,8 @@ import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
 import { TextEditHandler } from '../handlers/textEditHandler';
-import { OcrHandler } from '../handlers/ocrHandler';
+import { OcrHandler, type OcrOutputMode } from '../handlers/ocrHandler';
+import { SearchableLayerError } from '../ocr/searchableTextLayer';
 import { SigningHandler, type SignFormInput } from '../handlers/signingHandler';
 import { generateSelfSignedP12 } from '../signing/certGen';
 import { SignError, PdfSigner } from '../signing';
@@ -507,17 +508,26 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   closeOcrModal(): void { this.ui.ocrModal.classList.remove('active'); }
   async runOcr(): Promise<void> {
     const lang = this.ui.ocrLangSelect.value;
+    const mode: OcrOutputMode = this.ui.ocrModeSelect.value === 'visible' ? 'visible' : 'searchable';
     this.ui.ocrProgressRow.style.display = '';
     this.ui.runOcrModal.disabled = true;
     try {
-      const n = await this._ocrHandler.run(lang, ({ progress }) => {
+      const n = await this._ocrHandler.run(lang, mode, ({ progress }) => {
         this.ui.ocrProgress.value = Math.round(progress * 100);
       });
       this.closeOcrModal();
-      if (n > 0) this.reportError.info('toast.ocrDone', { count: n });
-      else this.reportError.warn('toast.ocrNoText');
-    } catch {
-      this.reportError.error('toast.ocrFailed');
+      if (n > 0) {
+        this.reportError.info(mode === 'searchable' ? 'toast.ocrSearchableDone' : 'toast.ocrDone', { count: n });
+      } else {
+        this.reportError.warn('toast.ocrNoText');
+      }
+    } catch (err) {
+      // Rotated pages can't yet be mapped into the unrotated source-page space.
+      if (err instanceof SearchableLayerError && err.code === 'ROTATED_PAGE') {
+        this.reportError.warn('toast.ocrRotatedUnsupported');
+      } else {
+        this.reportError.error('toast.ocrFailed');
+      }
     } finally {
       this.ui.runOcrModal.disabled = false;
       this.ui.ocrProgressRow.style.display = 'none';

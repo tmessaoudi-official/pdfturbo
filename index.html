@@ -1476,6 +1476,13 @@
         <option value="nld" data-i18n="ocrLang.nld">Dutch</option>
       </select>
     </div>
+    <div class="code-field">
+      <label for="ocrModeSelect" data-i18n="modal.ocr.modeLabel">Output</label>
+      <select id="ocrModeSelect">
+        <option value="searchable" data-i18n="modal.ocr.modeSearchable">Searchable layer (invisible text over the scan)</option>
+        <option value="visible" data-i18n="modal.ocr.modeVisible">Editable text boxes</option>
+      </select>
+    </div>
     <p class="code-preview-hint" data-i18n="modal.ocr.hint">Recognizes text on the current page and adds it as editable text. Language data is downloaded on first use.</p>
     <div class="code-field" id="ocrProgressRow" style="display:none">
       <progress id="ocrProgress" max="100" value="0" style="width:100%"></progress>

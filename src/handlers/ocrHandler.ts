@@ -18,6 +18,17 @@ import type { PDFTurboApp } from '../core/pdfTurboApp';
 import { recognizePage, resolveLanguage } from '../ocr';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
+import { applySearchableLayerToPdf, partitionWordsByFont } from '../ocr/searchableTextLayer';
+
+/**
+ * OCR output mode:
+ * - `'visible'`    — recognized words become editable, selectable TextElements (the
+ *                    original behaviour; the default so existing callers are unchanged).
+ * - `'searchable'` — recognized words become an INVISIBLE (`3 Tr`) text layer baked
+ *                    into the source page, making a scan selectable/searchable with
+ *                    no visible change (the canonical "OCR a scan" deliverable).
+ */
+export type OcrOutputMode = 'visible' | 'searchable';
 
 export interface OcrRunProgress {
   /** 0..1 recognition progress. */
@@ -87,11 +98,17 @@ export class OcrHandler {
   constructor(private readonly app: PDFTurboApp) {}
 
   /**
-   * Recognize text on the current page and add it as text elements.
-   * @returns the number of words added (0 when the page is blank/has no source,
-   *          or no text was found).
+   * Recognize text on the current page and emit it in the requested {@link OcrOutputMode}.
+   * @returns the number of words placed (0 when the page is blank/has no source,
+   *          or no usable text was found).
+   * @throws SearchableLayerError('ROTATED_PAGE') in `'searchable'` mode on a rotated
+   *   page (the source bbox space can't be mapped to unrotated PDF coords yet).
    */
-  async run(language: string, onProgress?: (p: OcrRunProgress) => void): Promise<number> {
+  async run(
+    language: string,
+    mode: OcrOutputMode = 'visible',
+    onProgress?: (p: OcrRunProgress) => void,
+  ): Promise<number> {
     const app = this.app;
     const page = app.documentModel.currentPage;
     if (!page) return 0;
@@ -117,6 +134,21 @@ export class OcrHandler {
       workerPath: paths.workerPath,
       langPath: paths.langPath,
     });
+
+    if (mode === 'searchable') {
+      // Count what will actually be placed (Arabic + WinAnsi-safe Latin); non-Latin
+      // non-Arabic and empties are dropped by the partition.
+      const { latin, arabic } = partitionWordsByFont(result.words);
+      const placed = latin.length + arabic.length;
+      if (placed === 0) return 0;
+      // Throws SearchableLayerError('ROTATED_PAGE') on a rotated page — let it
+      // propagate so the caller can show a specific message.
+      const newBytes = await applySearchableLayerToPdf(src.bytes, page.sourcePageNum, result.words, scale);
+      if (!newBytes) return 0;
+      // Reuse the true-edit byte-swap: undoable (ReplaceSourcePdfBytesCmd) + persisted.
+      await app._applySourcePdfEdit(src, newBytes, page.id);
+      return placed;
+    }
 
     const cmds = result.words
       .filter((w) => w.text.trim().length > 0)

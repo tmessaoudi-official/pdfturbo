@@ -254,6 +254,25 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   returns words ONLY nested under `data.blocks[].paragraphs[].lines[].words[]`; `flattenBlockWords`
   (tesseractMapper) flattens them. Without this OCR completed but added 0 elements (silent "no text").
   OCR targets SCANNED/image pages — clear large text recognizes well; tiny/thin vector text may yield 0.
+  **Searchable-OCR layer (SHIPPED 2026-06-16)** — `src/ocr/searchableTextLayer.ts`:
+  `wordToTextPlacement` (OCR-px top-left → PDF-pt bottom-left: `x0/scale`, `pageHeight−y1/scale`
+  baseline, `(y1−y0)/scale` size) + `buildInvisibleTextLayerOps` (`BT·Tr(3)·Tf·Tm·Tj·ET` per word,
+  `arabicOverlay` `pushOperators` pattern + `setTextRenderingMode(Invisible)`) +
+  `partitionWordsByFont` (Arabic→Noto Naskh / WinAnsi-Latin→Helvetica / else skipped) +
+  `applySearchableLayerToPdf` (loads pdf-lib doc, embeds fonts, pushes ops, returns rewritten bytes;
+  throws `SearchableLayerError('ROTATED_PAGE')` on rotated pages — bbox space ≠ unrotated PDF coords).
+  Wired: `ocrHandler.run(lang, mode, onProgress)` with `mode:'visible'|'searchable'` (default
+  `'visible'`); `'searchable'` swaps source bytes via the existing `_applySourcePdfEdit`
+  (`ReplaceSourcePdfBytesCmd`, undoable + persisted). UI: `ocrModeSelect` in `ocrModal` (default
+  "Searchable layer"); toasts `ocrSearchableDone`/`ocrRotatedUnsupported` (3 locales).
+  **Latin-7 (eng/fra/deu/spa/ita/por/nld) is exact-searchable.** **Arabic is a documented PARTIAL:**
+  recovers as real Arabic Unicode (selectable + screen-reader-accessible) but full-word exact search
+  is imperfect — fontkit GSUB shaping yields contextual glyphs with incomplete pdf-lib ToUnicode (same
+  ceiling as the visible Arabic overlay). A clean-ToUnicode PoC (per-codepoint isolated encoding) was
+  tried + REJECTED: it traded the artifact for RTL order reversal in pdf.js `getTextContent`. Rotated
+  pages: NOT yet supported (warn + skip). Guards: `tests/ocr/searchableTextLayer.test.ts` (14 jsdom:
+  transform/partition/apply/rotation) + `tests/browser/searchable-ocr.browser.test.ts` (Latin exact +
+  Arabic honest contract + invisible-ink). Verdict: `docs/reviews/2026-06-15-searchable-ocr-spike-verdict.md`.
 - **E-signing (Sprint 4, 2026-06-15)**: `src/signing/*` produces a single visible PKCS#12/CMS signature
   via **node-forge@1.3.1** (dynamically imported; pure-JS, runs in jsdom AND browser). `PdfSigner.sign`
   reserves a fixed `/Contents` hex slot + `/ByteRange`, serialises without object streams, then splices the

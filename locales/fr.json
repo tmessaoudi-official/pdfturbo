@@ -227,6 +227,9 @@
     "ocr": {
       "title": "Reconnaître le texte (OCR)",
       "languageLabel": "Langue",
+      "modeLabel": "Sortie",
+      "modeSearchable": "Couche interrogeable (texte invisible sur le scan)",
+      "modeVisible": "Zones de texte modifiables",
       "hint": "Reconnaît le texte de la page actuelle et l'ajoute en tant que texte modifiable. Les données linguistiques sont téléchargées à la première utilisation.",
       "run": "Lancer l'OCR →",
       "cancel": "Annuler"
@@ -300,6 +303,8 @@
     "trueTextEdited": "Texte modifié dans le PDF — Ctrl+Z pour annuler",
     "trueTextDeleted": "Texte supprimé du PDF — Ctrl+Z pour annuler",
     "ocrDone": "Texte reconnu — {{count}} mots ajoutés (Ctrl+Z pour annuler)",
+    "ocrSearchableDone": "Couche interrogeable ajoutée — {{count}} mots désormais sélectionnables (Ctrl+Z pour annuler)",
+    "ocrRotatedUnsupported": "La couche interrogeable n'est pas encore prise en charge sur les pages pivotées — essayez « Zones de texte modifiables »",
     "ocrNoText": "Aucun texte trouvé sur cette page",
     "ocrFailed": "Échec de l'OCR — veuillez réessayer",
     "signed": "PDF signé par {{name}} — téléchargé",

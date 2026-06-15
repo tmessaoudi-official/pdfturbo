@@ -227,6 +227,9 @@
     "ocr": {
       "title": "Recognize text (OCR)",
       "languageLabel": "Language",
+      "modeLabel": "Output",
+      "modeSearchable": "Searchable layer (invisible text over the scan)",
+      "modeVisible": "Editable text boxes",
       "hint": "Recognizes text on the current page and adds it as editable text. Language data is downloaded on first use.",
       "run": "Run OCR →",
       "cancel": "Cancel"
@@ -300,6 +303,8 @@
     "trueTextEdited": "Text edited in the PDF — Ctrl+Z to undo",
     "trueTextDeleted": "Text deleted from the PDF — Ctrl+Z to undo",
     "ocrDone": "Text recognized — {{count}} words added (Ctrl+Z to undo)",
+    "ocrSearchableDone": "Searchable layer added — {{count}} words now selectable (Ctrl+Z to undo)",
+    "ocrRotatedUnsupported": "Searchable layer isn't supported on rotated pages yet — try \"Editable text boxes\"",
     "ocrNoText": "No text found on this page",
     "ocrFailed": "OCR failed — please try again",
     "signed": "PDF signed by {{name}} — downloaded",

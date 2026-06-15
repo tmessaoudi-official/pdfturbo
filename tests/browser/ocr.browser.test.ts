@@ -85,7 +85,7 @@ describe('OcrHandler.run (real canvas, mocked tesseract)', () => {
     const handler = new OcrHandler(makeFakeApp(doc, elements, history) as any);
 
     const progresses: number[] = [];
-    const count = await handler.run('eng', ({ progress }) => progresses.push(progress));
+    const count = await handler.run('eng', 'visible', ({ progress }) => progresses.push(progress));
 
     expect(count).toBe(2);
     expect(elements.length).toBe(2);
