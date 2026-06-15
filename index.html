@@ -1374,12 +1374,50 @@
   <div class="code-modal-content">
     <h2 id="signModalTitle" data-i18n="modal.sign.title">Sign PDF</h2>
     <div class="code-field">
-      <label for="signCertInput" data-i18n="modal.sign.certLabel">Certificate (.p12 / .pfx)</label>
-      <input type="file" id="signCertInput" accept=".p12,.pfx,application/x-pkcs12">
+      <label data-i18n="modal.sign.sourceLabel">Signing certificate</label>
+      <div class="sign-source-row" role="radiogroup" style="display:flex;gap:16px">
+        <label style="font-weight:normal"><input type="radio" name="signCertSource" id="signSourceUpload" value="upload" checked> <span data-i18n="modal.sign.sourceUpload">Use my .p12 / .pfx</span></label>
+        <label style="font-weight:normal"><input type="radio" name="signCertSource" id="signSourceGenerate" value="generate"> <span data-i18n="modal.sign.sourceGenerate">Generate one now</span></label>
+      </div>
     </div>
-    <div class="code-field">
-      <label for="signPassword" data-i18n="modal.sign.passwordLabel">Certificate password</label>
-      <input type="password" id="signPassword" autocomplete="off">
+    <div id="signUploadGroup">
+      <div class="code-field">
+        <label for="signCertInput" data-i18n="modal.sign.certLabel">Certificate (.p12 / .pfx)</label>
+        <input type="file" id="signCertInput" accept=".p12,.pfx,application/x-pkcs12">
+      </div>
+      <div class="code-field">
+        <label for="signPassword" data-i18n="modal.sign.passwordLabel">Certificate password</label>
+        <input type="password" id="signPassword" autocomplete="off">
+      </div>
+    </div>
+    <div id="signGenGroup" style="display:none">
+      <p class="code-preview-hint" data-i18n="modal.sign.genTrustNote">A generated certificate is self-signed: the signature is cryptographically valid, but readers (e.g. Adobe) show "validity unknown" until they explicitly trust it. The .p12 and .pem are downloaded so you can reuse and share them.</p>
+      <div class="code-field">
+        <label for="signGenCN" data-i18n="modal.sign.genCNLabel">Name (Common Name) — required</label>
+        <input type="text" id="signGenCN" autocomplete="off">
+      </div>
+      <div class="code-field">
+        <label for="signGenOrg" data-i18n="modal.sign.genOrgLabel">Organization (optional)</label>
+        <input type="text" id="signGenOrg" autocomplete="off">
+      </div>
+      <div class="code-field">
+        <label for="signGenEmail" data-i18n="modal.sign.genEmailLabel">Email (optional)</label>
+        <input type="email" id="signGenEmail" autocomplete="off">
+      </div>
+      <div class="code-field" style="display:flex;gap:6px">
+        <div style="flex:1">
+          <label for="signGenCountry" data-i18n="modal.sign.genCountryLabel">Country (2-letter, optional)</label>
+          <input type="text" id="signGenCountry" maxlength="2" autocomplete="off" style="text-transform:uppercase">
+        </div>
+        <div style="flex:1">
+          <label for="signGenValidity" data-i18n="modal.sign.genValidityLabel">Valid for (years)</label>
+          <input type="number" id="signGenValidity" min="1" max="30" step="1" value="1">
+        </div>
+      </div>
+      <div class="code-field">
+        <label for="signGenPassword" data-i18n="modal.sign.genPasswordLabel">Passphrase for the downloaded .p12 — required</label>
+        <input type="password" id="signGenPassword" autocomplete="off">
+      </div>
     </div>
     <div class="code-field">
       <label for="signPage" data-i18n="modal.sign.pageLabel">Page number</label>

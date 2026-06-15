@@ -24,6 +24,16 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.signModal.addEventListener('click', (e) => {
     if (e.target === app.ui.signModal) app.closeSignModal();
   });
+  // Certificate source toggle: show the upload fields or the generate fields.
+  const syncSignSource = (): void => {
+    const generate = (document.getElementById('signSourceGenerate') as HTMLInputElement | null)?.checked ?? false;
+    const upload = document.getElementById('signUploadGroup');
+    const gen = document.getElementById('signGenGroup');
+    if (upload) upload.style.display = generate ? 'none' : '';
+    if (gen) gen.style.display = generate ? '' : 'none';
+  };
+  document.getElementById('signSourceUpload')?.addEventListener('change', syncSignSource);
+  document.getElementById('signSourceGenerate')?.addEventListener('change', syncSignSource);
 
   // ── Code modal ─────────────────────────────────────────────────
   app.ui.cancelCodeModal.addEventListener('click', () => app.closeCodeModal());

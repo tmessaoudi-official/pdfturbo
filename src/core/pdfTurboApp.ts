@@ -22,6 +22,7 @@ import { TextLayerManager } from '../utils/textLayer';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { OcrHandler } from '../handlers/ocrHandler';
 import { SigningHandler, type SignFormInput } from '../handlers/signingHandler';
+import { generateSelfSignedP12 } from '../signing/certGen';
 import { SignError } from '../signing';
 import { t } from '../utils/i18n';
 import { CodeElement } from '../elements/codeElement';
@@ -531,6 +532,13 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.signProgressRow.style.display = 'none';
     this.ui.signPage.max = String(this.documentModel.pageCount);
     this.ui.runSignModal.disabled = false;
+    // Reset the certificate source to "upload" and reveal the matching fields.
+    const upRadio = document.getElementById('signSourceUpload') as HTMLInputElement | null;
+    if (upRadio) upRadio.checked = true;
+    const upGroup = document.getElementById('signUploadGroup');
+    const genGroup = document.getElementById('signGenGroup');
+    if (upGroup) upGroup.style.display = '';
+    if (genGroup) genGroup.style.display = 'none';
     this.ui.signModal.classList.add('active');
   }
   closeSignModal(): void {
@@ -538,20 +546,58 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     // Scrub credentials from the DOM when the modal closes.
     this.ui.signPassword.value = '';
     this.ui.signCertInput.value = '';
+    const gp = document.getElementById('signGenPassword') as HTMLInputElement | null;
+    if (gp) gp.value = '';
   }
   async signPdf(): Promise<void> {
-    const file = this.ui.signCertInput.files?.[0] ?? null;
     this.ui.signError.style.display = 'none';
-    if (!file) {
-      this._showSignError('sign.error.INVALID_P12');
-      return;
+    const generate = (document.getElementById('signSourceGenerate') as HTMLInputElement | null)?.checked ?? false;
+
+    // Resolve PKCS#12 material + signer name from the chosen source.
+    let p12: Uint8Array;
+    let passphrase: string;
+    let genName: string | undefined;
+
+    if (generate) {
+      const cn = (document.getElementById('signGenCN') as HTMLInputElement).value.trim();
+      const genPw = (document.getElementById('signGenPassword') as HTMLInputElement).value;
+      if (!cn) { this._showSignError('sign.error.NO_CERTIFICATE'); return; }
+      if (!genPw) { this.reportError.warn('toast.passwordRequired'); return; }
+      this.ui.runSignModal.disabled = true;
+      this.ui.signProgressRow.style.display = '';
+      try {
+        const gen = await generateSelfSignedP12({
+          commonName: cn,
+          organization: (document.getElementById('signGenOrg') as HTMLInputElement).value,
+          email: (document.getElementById('signGenEmail') as HTMLInputElement).value,
+          country: (document.getElementById('signGenCountry') as HTMLInputElement).value,
+          validityYears: parseInt((document.getElementById('signGenValidity') as HTMLInputElement).value, 10) || 1,
+        }, genPw);
+        // Download the .p12 (key + cert) and .pem (public cert) for reuse / sharing.
+        const base = cn.replace(/[^\w.-]+/g, '_') || 'certificate';
+        this._downloadBytes(gen.p12, `${base}.p12`, 'application/x-pkcs12');
+        this._downloadBytes(new TextEncoder().encode(gen.pem), `${base}.pem`, 'application/x-pem-file');
+        p12 = gen.p12; passphrase = genPw; genName = cn;
+      } catch (err) {
+        const code = err instanceof SignError ? err.code : 'SIGN_FAILED';
+        this._showSignError(`sign.error.${code}`);
+        this.ui.runSignModal.disabled = false;
+        this.ui.signProgressRow.style.display = 'none';
+        return;
+      }
+    } else {
+      const file = this.ui.signCertInput.files?.[0] ?? null;
+      if (!file) { this._showSignError('sign.error.INVALID_P12'); return; }
+      this.ui.runSignModal.disabled = true;
+      this.ui.signProgressRow.style.display = '';
+      p12 = new Uint8Array(await file.arrayBuffer());
+      passphrase = this.ui.signPassword.value;
     }
-    this.ui.runSignModal.disabled = true;
-    this.ui.signProgressRow.style.display = '';
+
     try {
       const form: SignFormInput = {
-        p12: new Uint8Array(await file.arrayBuffer()),
-        passphrase: this.ui.signPassword.value,
+        p12,
+        passphrase,
         page: parseInt(this.ui.signPage.value, 10) || 1,
         x: parseFloat(this.ui.signX.value) || 0,
         y: parseFloat(this.ui.signY.value) || 0,
@@ -559,7 +605,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         height: parseFloat(this.ui.signH.value) || 0,
         reason: this.ui.signReason.value,
         location: this.ui.signLocation.value,
-        name: this.ui.signName.value,
+        name: genName ?? this.ui.signName.value,
       };
       const cn = await this._signingHandler.sign(form);
       this.closeSignModal();
@@ -571,7 +617,20 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       this.ui.runSignModal.disabled = false;
       this.ui.signProgressRow.style.display = 'none';
       this.ui.signPassword.value = '';
+      const gp = document.getElementById('signGenPassword') as HTMLInputElement | null;
+      if (gp) gp.value = '';
     }
+  }
+
+  /** Trigger a browser download of in-memory bytes (used for generated .p12 / .pem). */
+  private _downloadBytes(bytes: Uint8Array, filename: string, mime: string): void {
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
   }
   private _showSignError(key: string): void {
     this.ui.signError.textContent = t(key);

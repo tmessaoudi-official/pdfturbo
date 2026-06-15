@@ -236,7 +236,15 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   PDF must visibly invalidate the signature, never silently re-sign). `.p12` bytes are zeroed after signing;
   the password field is cleared on close. `buildSignOptions` is the pure 1-based-UI→0-based-signer map.
   Wired: `signBtn` + `signModal`; `SignErrorCode`→`sign.error.<CODE>` i18n.
-  **NOT yet supported**: TSA timestamp, LTV/DSS, multi-signature rounds (v1 scope).
+  **Generate-a-cert-on-the-spot (2026-06-15)**: the sign modal has a source toggle —
+  "Use my .p12" vs "Generate one now". `src/signing/certGen.ts` `generateSelfSignedP12`
+  (node-forge, lazy) makes an RSA-2048 key + self-signed X.509 (full subject: CN/O/email/C)
+  packaged as PKCS#12, feeds the SAME `PdfSigner` (no signer change — it only wants
+  `{p12,passphrase}`), and the app downloads the `.p12` + `.pem` for reuse/sharing. Self-signed
+  ⇒ readers show "validity unknown" until trusted (surfaced via `modal.sign.genTrustNote`).
+  Guards: `tests/signing/certGen.test.ts` (round-trip: generated p12 actually signs) +
+  `tests/browser/cert-gen.browser.test.ts` (real-Chrome keygen+sign).
+  **NOT yet supported**: TSA timestamp, LTV/DSS, multi-signature rounds, CA-issued/trusted certs (v1 scope).
 
 ## Git & CI
 

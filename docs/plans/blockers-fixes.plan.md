@@ -13,7 +13,7 @@ finish line). TDD: convert the `it.fails` → normal `it` FIRST (it goes red), t
 - [2026-06-15] NOTE: research + tests pass already committed (23e1ceb). Unpushed: 23e1ceb (blockers), 48ed109 (a11y), c3f57e9 (OCR). Push is MANUAL.
 - [2026-06-15] FINDING (fix #1): CORE-P0-1 was MISLOCATED by the research agent. Empirical browser test proved the raster `fillRect` path is CORRECT at all rotations (3rd source-read false positive this session). The real leak was the flow-export (DOCX/MD/TXT) path — FIXED. Verify-before-fix paid off again.
 - [2026-06-15] AGREED (fix #2): CORE-P0-2 = Option 1 — AES-256 (header 1.7ext3) + explicit FULL_PERMISSIONS + random owner≠user. (AskUserQuestion)
-- [2026-06-15] NEW FEATURE REQUEST (queued after #2): in-browser "generate a cert on the spot" to e-sign without uploading a .p12 (node-forge can RSA-keygen → self-signed X.509 → PKCS#12 in-browser). To be slotted into the signing flow.
+- [2026-06-15] NEW FEATURE REQUEST → ✅ DONE: in-browser "generate a cert on the spot" to e-sign without uploading a .p12. Decision: Full subject (CN+O+email+country) + download .p12 (user passphrase) + .pem. Impl: `src/signing/certGen.ts` (`generateSelfSignedP12`, RSA-2048 self-signed X.509 → PKCS#12), sign-modal source toggle (`signSourceUpload`/`signSourceGenerate`), `pdfTurboApp.signPdf` generate branch + `_downloadBytes`, 10 i18n keys ×3 locales, self-signed trust caveat surfaced. Guards: `tests/signing/certGen.test.ts` (round-trip sign), `tests/browser/cert-gen.browser.test.ts`. Gate: tsc 0 / oxlint 0 / jsdom 1022+10 / browser 32.
 
 ## State at plan time
 - HEAD = 23e1ceb. Tree clean. Gate green: tsc 0 / oxlint 0/0 / jsdom 1012 pass + 11 expected-fail.
