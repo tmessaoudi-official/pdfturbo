@@ -203,7 +203,7 @@
       "cancel": "Cancel",
       "apply": "Apply Lock",
       "userPasswordPlaceholder": "User password…",
-      "ownerPasswordPlaceholder": "Owner password (leave empty to use user password)…"
+      "ownerPasswordPlaceholder": "Owner password (leave empty to auto-generate a random one)…"
     },
     "blankPage": {
       "title": "Insert Blank Page",

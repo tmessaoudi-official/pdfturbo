@@ -203,7 +203,7 @@
       "cancel": "Annuler",
       "apply": "Appliquer le verrou",
       "userPasswordPlaceholder": "Mot de passe utilisateur…",
-      "ownerPasswordPlaceholder": "Mot de passe propriétaire (laisser vide pour utiliser le mot de passe utilisateur)…"
+      "ownerPasswordPlaceholder": "Mot de passe propriétaire (laisser vide pour en générer un aléatoire)…"
     },
     "blankPage": {
       "title": "Insérer une page vierge",

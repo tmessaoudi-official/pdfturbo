@@ -63,8 +63,10 @@
     /* ── Language switcher ─────────────────────────── */
     .lang-switcher { display: flex; gap: 4px; }
     .lang-btn {
-      background: rgba(255,255,255,0.2);
-      border: 1px solid rgba(255,255,255,0.4);
+      /* A1: dark-glass bg so white text clears WCAG AA 4.5:1 over the blue banner
+         (rgba(255,255,255,0.2) composited to ~3.6:1 — below AA for 12px bold). */
+      background: rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,0.5);
       color: white;
       border-radius: 4px;
       padding: 2px 8px;
@@ -73,7 +75,7 @@
       font-weight: 700;
       letter-spacing: 0.05em;
     }
-    .lang-btn:hover { background: rgba(255,255,255,0.3); }
+    .lang-btn:hover { background: rgba(0,0,0,0.38); }
     .lang-btn.lang-active { background: white; color: #2563eb; }
     .toolbar {
       padding: 7px 12px;
@@ -358,18 +360,20 @@
       .header { padding: 10px 16px; }
       .header h1 { font-size: 16px; }
       .toolbar { padding: 6px 8px; gap: 5px; }
-      /* Minimum 40px touch targets for all interactive toolbar elements */
+      /* 44px touch targets for all interactive toolbar elements (A2: iOS HIG /
+         WCAG 2.5.5 AAA comfortable-tap size; the toolbar scrolls so the extra
+         width is absorbed). */
       .btn-icon {
-        min-width: 40px;
-        min-height: 40px;
+        min-width: 44px;
+        min-height: 44px;
         padding: 8px 6px;
         font-size: 15px;
         display: flex;
         align-items: center;
         justify-content: center;
       }
-      .btn { min-height: 40px; padding: 8px 10px; font-size: 13px; }
-      .btn-sm { min-height: 36px; }
+      .btn { min-height: 44px; padding: 8px 10px; font-size: 13px; }
+      .btn-sm { min-height: 44px; }
       .toolbar-color { width: 36px; height: 36px; }
       .toolbar-number { width: 40px; padding: 4px 2px; }
       .page-input { width: 36px; }
@@ -1590,7 +1594,7 @@
     <label style="display:block;margin-bottom:4px;font-size:13px;color:#94a3b8;" data-i18n="modal.lockPdf.ownerPasswordLabel">Owner password (optional, for permissions)</label>
     <input type="password" id="lockOwnerPassword" autocomplete="new-password"
       style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:7px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:14px;margin-bottom:16px;"
-      data-i18n-placeholder="modal.lockPdf.ownerPasswordPlaceholder" placeholder="Owner password (leave empty to use user password)…">
+      data-i18n-placeholder="modal.lockPdf.ownerPasswordPlaceholder" placeholder="Owner password (leave empty to auto-generate a random one)…">
     <p id="lockPdfStatus" style="display:none;color:#4ade80;font-size:12px;margin:0 0 12px;" data-i18n="modal.lockPdf.locked">PDF will be locked on next export.</p>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button id="lockPdfRemoveBtn" class="btn btn-icon" data-i18n="modal.lockPdf.removeLock">Remove Lock</button>

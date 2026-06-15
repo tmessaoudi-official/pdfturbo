@@ -203,7 +203,7 @@
       "cancel": "إلغاء",
       "apply": "تطبيق القفل",
       "userPasswordPlaceholder": "كلمة مرور المستخدم…",
-      "ownerPasswordPlaceholder": "كلمة مرور المالك (اتركها فارغة لاستخدام كلمة مرور المستخدم)…"
+      "ownerPasswordPlaceholder": "كلمة مرور المالك (اتركها فارغة لتوليد واحدة عشوائية)…"
     },
     "blankPage": {
       "title": "إدراج صفحة فارغة",
