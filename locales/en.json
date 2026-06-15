@@ -440,6 +440,7 @@
       "INVALID_RECT": "The signature box is off the page or has no size.",
       "PDF_PARSE_FAILED": "Could not read the PDF for signing.",
       "PLACEHOLDER_NOT_FOUND": "Signing failed (internal placeholder error).",
+      "ALREADY_SIGNED": "This PDF is already signed. Export an unsigned copy before signing again.",
       "SIGN_FAILED": "Signing failed. Please try again."
     }
   },

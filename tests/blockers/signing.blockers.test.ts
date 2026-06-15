@@ -46,13 +46,18 @@ const ascii = (bytes: Uint8Array): string => {
 const RECT = { x: 72, y: 72, width: 240, height: 70 };
 
 describe('Signing blocker S6 — uses legacy PKCS#7, not PAdES (ETSI.CAdES)', () => {
-  // REACHABLE (B-B ESS attrs + CAdES SubFilter). The signer emits the legacy
-  // ISO 32000-1 SubFilter adbe.pkcs7.detached; PAdES requires ETSI.CAdES.detached.
-  it.fails('emits a PAdES ETSI.CAdES.detached SubFilter', async () => {
+  // CEILING (re-scoped 2026-06-15 after investigation). A compliant PAdES-BES needs
+  // the ESS signing-certificate-v2 SIGNED attribute, but node-forge's pkcs7
+  // `_attributeToAsn1` only encodes contentType/messageDigest/signingTime — for any
+  // other OID the value is left undefined (a broken attribute). So the ESS attr
+  // CANNOT be added via the forge API; emitting only the ETSI.CAdES.detached
+  // SubFilter without it would be MALFORMED PAdES — strictly worse than the valid
+  // ISO 32000-1 adbe.pkcs7.detached we emit today. A real fix means hand-rolling the
+  // CAdES SignedData ASN.1 (or a different crypto lib): deferred, NOT test-gamed.
+  it.fails('emits a PAdES ETSI.CAdES.detached SubFilter (ceiling: forge cannot add the ESS attr)', async () => {
     const s = ascii(await (await new PdfSigner().sign(await makePdf(), {
       p12: await makeP12('pw'), passphrase: 'pw', page: 0, rect: RECT,
     })).bytes);
-    // DESIRED: PAdES baseline. TODAY: /SubFilter /adbe.pkcs7.detached.
     expect(s).toContain('/SubFilter /ETSI.CAdES.detached');
   });
 });
@@ -69,13 +74,11 @@ describe('Signing blocker S2 — no LTV / DSS validation material', () => {
   });
 });
 
-describe('Signing blocker S3 — re-signing fails with an opaque crash, not a clean refusal', () => {
-  // pdf-lib does a FULL re-save (not an incremental update). Re-signing an
-  // already-signed PDF does NOT silently corrupt (the original research claim was
-  // wrong) — it throws an OPAQUE internal error ("Real /ByteRange (33B) longer than
-  // reserved span (31B)") with no SignErrorCode. The REACHABLE fix is to detect an
-  // existing signature up front and refuse cleanly with a typed code.
-  it.fails('rejects re-signing with a clear ALREADY_SIGNED SignError, not an opaque crash', async () => {
+describe('Signing blocker S3 — re-signing refuses cleanly (FIXED)', () => {
+  // FIXED: pdf-lib does a FULL re-save (not an incremental update), so re-signing
+  // an already-signed PDF used to throw an OPAQUE ByteRange error. The signer now
+  // detects an existing signature up front and refuses with a typed ALREADY_SIGNED.
+  it('rejects re-signing with a clear ALREADY_SIGNED SignError, not an opaque crash', async () => {
     const signer = new PdfSigner();
     const p12 = await makeP12('pw');
     const first = await signer.sign(await makePdf(), { p12, passphrase: 'pw', page: 0, rect: RECT });

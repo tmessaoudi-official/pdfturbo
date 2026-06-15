@@ -56,6 +56,7 @@ export type SignErrorCode =
   | 'INVALID_RECT' // appearance rectangle is degenerate / off-page
   | 'PDF_PARSE_FAILED' // the input PDF could not be loaded
   | 'PLACEHOLDER_NOT_FOUND' // internal: signature placeholder lost after save
+  | 'ALREADY_SIGNED' // the input PDF already carries a signature (re-signing refused)
   | 'SIGN_FAILED'; // CMS/PKCS#7 production failed
 
 /** Typed error carrying a {@link SignErrorCode} for UI branching. */

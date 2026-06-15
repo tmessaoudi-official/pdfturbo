@@ -440,6 +440,7 @@
       "INVALID_RECT": "Le cadre de signature est hors de la page ou sans dimension.",
       "PDF_PARSE_FAILED": "Impossible de lire le PDF à signer.",
       "PLACEHOLDER_NOT_FOUND": "Échec de la signature (erreur interne de placeholder).",
+      "ALREADY_SIGNED": "Ce PDF est déjà signé. Exportez une copie non signée avant de signer à nouveau.",
       "SIGN_FAILED": "Échec de la signature. Veuillez réessayer."
     }
   },

@@ -133,7 +133,14 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
   recognition accuracy (non-deterministic).
 
 ### E-signing  (`raw/ocr-signing.md`)
-- **REACHABLE (tested):** S6 PAdES SubFilter, S3 clean re-sign refusal.
+- ✅ **FIXED (2026-06-15):** S3 — re-signing an already-signed PDF now refuses with a typed
+  `ALREADY_SIGNED` SignError (`_assertNotAlreadySigned` detects `/ByteRange` + a sig SubFilter) instead of
+  the opaque pdf-lib ByteRange crash.
+- ⛔ **RE-SCOPED to CEILING (2026-06-15):** S6 PAdES. Investigation showed node-forge's pkcs7
+  `_attributeToAsn1` only encodes contentType/messageDigest/signingTime — it CANNOT add the ESS
+  signing-certificate-v2 signed attribute that PAdES-BES requires. Emitting only the `ETSI.CAdES.detached`
+  SubFilter without it = malformed PAdES (worse than the valid `adbe.pkcs7.detached` today). A real fix
+  needs hand-rolled CAdES SignedData ASN.1 or a different crypto lib — not done (would not be test-gamed).
 - **REACHABLE (designed):** S5 SHA-384/512 + ECDSA, S7 widget `/AP` appearance stream, S8 size the
   `/Contents` slot to the real CMS (8 KiB fixed → overflows on big chains/RSA-4096), S9 select the leaf
   by key/CA test (P12 bag-order assumption), S12 `findContentsSlot` decoy-hex robustness.
@@ -158,7 +165,7 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
 4. ~~**OCR O1** language parity~~ ✅ **DONE (2026-06-15)** — vendor all 8 (deu/spa/ita/por/nld added; URLs verified 200). _(orig)_ single-source-of-truth, 5 advertised languages broken today under CSP.
 5. ~~**MD-1/TX-1 + MD-2 + MD-3**~~ ✅ **DONE (2026-06-15)** — MD/TXT ordinals, nesting, images. _(orig)_ the most visible MD/TXT defects; all data already exists from the DOCX path.
 6. ~~**Arabic AR-1**~~ ✅ **DONE (2026-06-15)** — word-level UAX#9 L2 run-reversal (embedded LTR runs kept forward). _(orig)_ route DOCX reorder through the installed `bidi-js`; biggest Arabic correctness win, zero new dep.
-7. **Signing S3 + S8 + S9** — clean re-sign refusal, right-size the `/Contents` slot, pick the real leaf.
+7. **Signing S3** ✅ **DONE (2026-06-15)** (clean re-sign refusal); S6 ⛔ re-scoped to ceiling (forge can't add ESS attr); S8 + S9 still designed — right-size the `/Contents` slot, pick the real leaf.
 
 ## Scorecard hygiene (Phase 7, done)
 `scorecard-docx.md` rows 13/21/23/24 → ✅, row 26 → ✅-partial; `KNOWN_ISSUES.md` cross-links the

@@ -247,7 +247,10 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   NOT the raw source. Encryption is intentionally NOT applied to the assembled bytes (the signer needs a
   plain stream for its ByteRange; encrypt-then-sign is out of v1 scope). Output is **download-only**
   (`<base>-signed.pdf`) — NO auto-resign (rejected as a security/trust anti-pattern: re-editing a signed
-  PDF must visibly invalidate the signature, never silently re-sign). `.p12` bytes are zeroed after signing;
+  PDF must visibly invalidate the signature, never silently re-sign). **Re-signing an already-signed PDF
+  is refused (S3, 2026-06-15)**: `_assertNotAlreadySigned` detects a `/ByteRange` + sig SubFilter and throws
+  a typed `ALREADY_SIGNED` SignError (pdf-lib's full re-save would otherwise corrupt the existing ByteRange
+  with an opaque crash). `.p12` bytes are zeroed after signing;
   the password field is cleared on close. `buildSignOptions` is the pure 1-based-UI→0-based-signer map.
   Wired: `signBtn` + `signModal`; `SignErrorCode`→`sign.error.<CODE>` i18n.
   **Generate-a-cert-on-the-spot (2026-06-15)**: the sign modal has a source toggle —
@@ -259,6 +262,9 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   Guards: `tests/signing/certGen.test.ts` (round-trip: generated p12 actually signs) +
   `tests/browser/cert-gen.browser.test.ts` (real-Chrome keygen+sign).
   **NOT yet supported**: TSA timestamp, LTV/DSS, multi-signature rounds, CA-issued/trusted certs (v1 scope).
+  **PAdES (ETSI.CAdES.detached) is a ceiling** with node-forge: its pkcs7 `_attributeToAsn1` can't add the
+  ESS signing-certificate-v2 signed attribute PAdES-BES requires, so we keep the valid ISO 32000-1
+  `adbe.pkcs7.detached` rather than emit a malformed PAdES. A real PAdES needs hand-rolled CAdES ASN.1.
 
 ## Git & CI
 

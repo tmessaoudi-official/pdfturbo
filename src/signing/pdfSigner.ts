@@ -53,6 +53,13 @@ export class PdfSigner {
   async sign(pdfBytes: Uint8Array, opts: SignOptions): Promise<SignResult> {
     validateSignOptionsShape(opts);
 
+    // Refuse re-signing an already-signed PDF up front (S3). pdf-lib does a FULL
+    // re-save, not an incremental update, which corrupts an existing signature's
+    // ByteRange and throws an opaque internal error. Detect + refuse cleanly so the
+    // message is meaningful (and the trust model stays honest: re-editing a signed
+    // PDF must invalidate it, never silently re-sign).
+    this._assertNotAlreadySigned(pdfBytes);
+
     // Load cert material first — fail fast on bad passphrase before touching the PDF.
     const material = await loadP12(opts.p12, opts.passphrase);
 
@@ -78,6 +85,28 @@ export class PdfSigner {
     const signedBytes = await this._spliceSignature(draftBytes, material);
 
     return { bytes: signedBytes, signerCommonName: material.commonName };
+  }
+
+  /**
+   * Throw ALREADY_SIGNED if the input PDF already carries a signature. A signature
+   * dictionary always pairs a `/ByteRange [` with a known signature `/SubFilter`
+   * (or `/Type /Sig`); an unsigned PDF has neither. Requiring BOTH avoids false
+   * positives from those byte sequences appearing incidentally in content streams.
+   */
+  private _assertNotAlreadySigned(pdfBytes: Uint8Array): void {
+    let s = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < pdfBytes.length; i += CHUNK) {
+      s += String.fromCharCode.apply(null, Array.from(pdfBytes.subarray(i, i + CHUNK)) as number[]);
+    }
+    const hasByteRange = /\/ByteRange\s*\[/.test(s);
+    const hasSig = /\/SubFilter\s*\/(adbe\.pkcs7|adbe\.x509|ETSI\.)/.test(s) || /\/Type\s*\/Sig\b/.test(s);
+    if (hasByteRange && hasSig) {
+      throw new SignError(
+        'ALREADY_SIGNED',
+        'This PDF is already signed. Re-signing would invalidate the existing signature — export an unsigned copy first.',
+      );
+    }
   }
 
   private async _loadDocument(

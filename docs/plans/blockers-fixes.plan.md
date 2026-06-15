@@ -109,6 +109,14 @@ bidi (digits-in-RTL, multi-level, single mixed token) remains a documented parti
 
 ---
 
+### 7. Signing S3 + S6  (post-batch, user-approved 2026-06-15)
+- **S3 ✅ DONE:** `PdfSigner._assertNotAlreadySigned` detects `/ByteRange` + sig SubFilter → typed
+  `ALREADY_SIGNED` SignError (new code + en/fr/ar i18n). Flipped `signing.blockers` S3 it.fails→passing.
+- **S6 ⛔ RE-SCOPED to CEILING:** investigation found node-forge's pkcs7 `_attributeToAsn1` can't add the
+  ESS signing-certificate-v2 attribute PAdES-BES needs; SubFilter-only would be malformed PAdES (worse than
+  today's valid adbe.pkcs7.detached). NOT test-gamed — kept it.fails, documented as ceiling. Real fix =
+  hand-rolled CAdES ASN.1 / different lib. Gate: tsc 0/oxlint 0/jsdom 1036+2/browser 32.
+
 ## Per-fix gate (every item)
 1. Flip the `it.fails`→`it` (or add the new test) → confirm RED for the right reason.
 2. Implement the fix.
