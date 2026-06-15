@@ -94,7 +94,9 @@ documented, not promised. Everything marked **REACHABLE** is a real, bounded cli
 Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-signing,core}.md`.
 
 ### DOCX / Markdown / TXT  (`raw/docx.md`)
-- **REACHABLE (tested):** MD-1/TX-1 ordinals, MD-2 nesting, MD-3 image loss.
+- ✅ **FIXED (2026-06-15):** MD-1/TX-1 ordinals (`orderedMarker` + `computeOrderedOrdinals`, shared
+  instance logic with DOCX), MD-2 nesting (`'  '.repeat(listDepth)`), MD-3 image loss (data-URI `![]`
+  in MD, `[image]` in TXT). `flowDocWriters.ts`.
 - **REACHABLE (designed):** MD-4 GFM strikethrough/sup/sub, G5 heading bold/caps promotion, G7 colorMap
   ±2pt tolerance (intermittent black text), G6 spot-color (narrowed — v6 pre-resolves most spaces).
 - **CEILING:** lattice/borderless tables, vector→DrawingML, 3+col recursive XY-cut, tagged-PDF struct
@@ -149,7 +151,7 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
    <!-- original --> explicit permissions, AES-256 header, stop owner==user.
 3. ~~**True-edit B-3** non-WinAnsi refusal + B-1 exponent~~ ✅ **DONE (2026-06-15)** — `hasNonWinAnsi`→overlay, `consumeNumberBody` keeps `1e-3` one token.
 4. ~~**OCR O1** language parity~~ ✅ **DONE (2026-06-15)** — vendor all 8 (deu/spa/ita/por/nld added; URLs verified 200). _(orig)_ single-source-of-truth, 5 advertised languages broken today under CSP.
-5. **MD-1/TX-1 + MD-2 + MD-3** — the most visible MD/TXT defects; all data already exists from the DOCX path.
+5. ~~**MD-1/TX-1 + MD-2 + MD-3**~~ ✅ **DONE (2026-06-15)** — MD/TXT ordinals, nesting, images. _(orig)_ the most visible MD/TXT defects; all data already exists from the DOCX path.
 6. **Arabic AR-1** — route DOCX reorder through the installed `bidi-js`; biggest Arabic correctness win, zero new dep.
 7. **Signing S3 + S8 + S9** — clean re-sign refusal, right-size the `/Contents` slot, pick the real leaf.
 

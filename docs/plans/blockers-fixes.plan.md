@@ -80,7 +80,14 @@ downloads all 8 — ~+50MB dist.) _Original notes below._
 - Test that flips: `tests/blockers/ocr.blockers.test.ts` O1 `it.fails`→`it`; update the pin (vendored set) accordingly.
 - Effort: S. DECISION NEEDED from user: ship 8 languages (bigger) or advertise only 3?
 
-### 5. MD/TXT writers — MD-1/TX-1 ordinals, MD-2 nesting, MD-3 image loss  [reachable]
+### 5. MD/TXT writers — MD-1/TX-1 ordinals, MD-2 nesting, MD-3 image loss  ✅ DONE (2026-06-15)
+**Outcome:** added module helpers `orderedRefKey`/`orderedMarker`/`computeOrderedOrdinals` (toAlpha/toRoman)
+to flowDocWriters; MD/TXT now render per-instance ordinals honoring `listFormat`/`listOrdinalText`, indent
+by `listDepth` (`'  '.repeat`), and emit images (MD data-URI `![]`, TXT `[image]`). DOCX writer DRYed to
+the shared `orderedRefKey`. Guards: `docx-md.blockers.test.ts` (4, it.fails→passing). Gate: tsc 0/oxlint 0/jsdom 1033+3/browser 32.
+_Original notes below._
+
+#### (original) MD/TXT writers — MD-1/TX-1 ordinals, MD-2 nesting, MD-3 image loss  [reachable]
 - file:line: `src/utils/flowDocWriters.ts` — `flowDocToText:115-125`, `flowDocToMarkdown:132-158`. All hardcode `1.`, ignore `listDepth`, never read `page.images`.
 - Fix: running ordinal counter per ordered-list instance (reset on non-list para) honoring `listFormat`/`listOrdinalText` (DOCX writer already computes instance boundaries ~`:200-212`); `'  '.repeat(depth)` indent for nesting; emit `![](data:<mime>;base64,<b64>)` (MD) / `[image]` (TXT) for `page.images`.
 - Tests that flip: `tests/blockers/docx-md.blockers.test.ts` MD-1, TX-1, MD-2, MD-3 → passing.

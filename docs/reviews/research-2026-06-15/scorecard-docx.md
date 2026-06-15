@@ -54,8 +54,8 @@ Pipeline: `_extractFlowDoc` → pdf.js `getTextContent`+`getOperatorList` → `r
 - **✅ done: 25** (Sprint 4 verified 2026-06-15: rows 13 roman, 21 rotated-image, 23 underline/strike,
   24 super/subscript already shipped; 26 RTL single-line reorder ✅-partial)
 - **🟡 reachable, queued: 2** (row 18 spot-color — narrowed since v6 pre-resolves most spaces; + row-16
-  bold/caps heading promotion). **Plus** the MD/TXT-writer gaps (ordinals, nesting, image loss) newly
-  tracked + test-confirmed in `../research-2026-06-15-blockers/` (this scorecard was DOCX-only).
+  bold/caps heading promotion). The MD/TXT-writer gaps (ordinals, nesting, image loss) are now **✅ FIXED
+  (2026-06-15)** — see `../research-2026-06-15-blockers/` (this scorecard was DOCX-only).
 - **⛔ ceiling: 7** (rows 28–34) — confirmed fundamentally hard; documented, not promised
 
 ## Honest fidelity statement

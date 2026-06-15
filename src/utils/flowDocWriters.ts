@@ -112,16 +112,87 @@ function buildSpacing(
   return Object.keys(spacing).length ? spacing : undefined;
 }
 
+// ── Ordered-list numbering (shared by DOCX/MD/TXT) ───────────────────────────
+
+/** Numbering reference key for an ordered paragraph (decimal `%1.` keeps the legacy id). */
+export function orderedRefKey(p: FlowParagraph): string {
+  const fmt = p.listFormat ?? 'decimal';
+  const txt = p.listOrdinalText ?? '%1.';
+  if (fmt === 'decimal' && txt === '%1.') return 'ordered-list';
+  return `ordered-${fmt}-${txt.replace(/[^a-zA-Z0-9]/g, '_')}`;
+}
+
+/** 1→A, 26→Z, 27→AA … (spreadsheet-style alpha). */
+function toAlpha(n: number): string {
+  let s = '';
+  let v = n;
+  while (v > 0) { const r = (v - 1) % 26; s = String.fromCharCode(65 + r) + s; v = Math.floor((v - 1) / 26); }
+  return s || 'A';
+}
+
+/** 1→I, 4→IV … (roman). */
+function toRoman(n: number): string {
+  const map: Array<[number, string]> = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+    [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+  ];
+  let s = '';
+  let v = n;
+  for (const [val, sym] of map) while (v >= val) { s += sym; v -= val; }
+  return s || 'I';
+}
+
+/** Render the n-th (1-based) ordinal in the paragraph's list format into its template. */
+function orderedMarker(p: FlowParagraph, n: number): string {
+  const fmt = p.listFormat ?? 'decimal';
+  const tmpl = p.listOrdinalText ?? '%1.';
+  const ord =
+    fmt === 'lowerLetter' ? toAlpha(n).toLowerCase()
+    : fmt === 'upperLetter' ? toAlpha(n)
+    : fmt === 'lowerRoman' ? toRoman(n).toLowerCase()
+    : fmt === 'upperRoman' ? toRoman(n)
+    : String(n);
+  return tmpl.replace('%1', ord);
+}
+
+/**
+ * Per-paragraph 1-based ordinal within its ordered-list instance. Consecutive
+ * ordered paragraphs sharing a reference continue; any break (non-ordered para or
+ * a different reference) restarts at 1 — same instance logic as the DOCX writer.
+ */
+function computeOrderedOrdinals(doc: FlowDoc): Map<FlowParagraph, number> {
+  const out = new Map<FlowParagraph, number>();
+  let lastKey: string | null = null;
+  let n = 0;
+  for (const page of doc.pages) {
+    for (const p of page.paragraphs) {
+      if (p.listType === 'ordered') {
+        const key = orderedRefKey(p);
+        if (key === lastKey) n++; else { n = 1; lastKey = key; }
+        out.set(p, n);
+      } else {
+        lastKey = null;
+      }
+    }
+  }
+  return out;
+}
+
 export function flowDocToText(doc: FlowDoc): string {
-  return doc.pages
-    .flatMap(page => page.paragraphs.map(p => {
+  const ordinals = computeOrderedOrdinals(doc);
+  const blocks: string[] = [];
+  for (const page of doc.pages) {
+    for (const p of page.paragraphs) {
       const text = paragraphText(p);
-      if (p.listType === 'bullet') return `• ${text}`;
-      if (p.listType === 'ordered') return `1. ${text}`;
-      return text;
-    }))
-    .filter(t => t.trim().length > 0)
-    .join('\n\n');
+      if (!text.trim()) continue;
+      const indent = '  '.repeat(p.listDepth ?? 0);
+      if (p.listType === 'bullet') blocks.push(`${indent}• ${text}`);
+      else if (p.listType === 'ordered') blocks.push(`${indent}${orderedMarker(p, ordinals.get(p) ?? 1)} ${text}`);
+      else blocks.push(text);
+    }
+    for (const _img of page.images ?? []) blocks.push('[image]');
+  }
+  return blocks.filter(t => t.trim().length > 0).join('\n\n');
 }
 
 function mdEscapeInline(text: string): string {
@@ -130,6 +201,7 @@ function mdEscapeInline(text: string): string {
 }
 
 export function flowDocToMarkdown(doc: FlowDoc): string {
+  const ordinals = computeOrderedOrdinals(doc);
   const blocks: string[] = [];
   for (const page of doc.pages) {
     for (const p of page.paragraphs) {
@@ -149,9 +221,15 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
           return lead + styled + trail;
         })
         .join('');
-      if (p.listType === 'bullet') { blocks.push(`- ${body.trim()}`); continue; }
-      if (p.listType === 'ordered') { blocks.push(`1. ${body.trim()}`); continue; }
+      const indent = '  '.repeat(p.listDepth ?? 0); // 2 spaces / nesting level
+      if (p.listType === 'bullet') { blocks.push(`${indent}- ${body.trim()}`); continue; }
+      if (p.listType === 'ordered') { blocks.push(`${indent}${orderedMarker(p, ordinals.get(p) ?? 1)} ${body.trim()}`); continue; }
       blocks.push(p.heading > 0 ? `${'#'.repeat(p.heading)} ${body.trim()}` : body);
+    }
+    // Images the DOCX path embeds — emit a data-URI image reference so an
+    // image-only page isn't silently empty (MD-3).
+    for (const img of page.images ?? []) {
+      blocks.push(`![image](data:${img.mimeType};base64,${img.base64})`);
     }
   }
   return blocks.join('\n\n');
@@ -187,12 +265,7 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
   // keeps the legacy id 'ordered-list'. Consecutive ordered paragraphs sharing
   // the SAME reference continue one instance; any break (non-ordered paragraph or
   // a different reference) starts a new instance → Word restarts numbering at 1.
-  const refKeyOf = (p: FlowParagraph): string => {
-    const fmt = p.listFormat ?? 'decimal';
-    const txt = p.listOrdinalText ?? '%1.';
-    if (fmt === 'decimal' && txt === '%1.') return 'ordered-list';
-    return `ordered-${fmt}-${txt.replace(/[^a-zA-Z0-9]/g, '_')}`;
-  };
+  const refKeyOf = orderedRefKey; // shared module helper (also used by MD/TXT writers)
   const orderedInstances = new Map<FlowParagraph, number>();
   const usedRefs = new Map<string, { format: ListFormat; text: string }>();
   let instanceCounter = 0;

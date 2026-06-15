@@ -125,6 +125,10 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `flowDocWriters.ts` emits DOCX (via `docx` npm, **dynamically imported** — keep it that
   way, it's a ~395 KB lazy chunk) + Markdown + TXT. Source-PDF text only — overlay
   annotations are NOT exported. Heuristic thresholds are font-size-relative.
+  **MD/TXT parity (2026-06-15):** the Markdown/TXT writers now carry ordered-list ordinals
+  (`orderedMarker` + `computeOrderedOrdinals`, sharing `orderedRefKey`'s instance logic with the
+  DOCX writer — letters/roman/decimal per `listFormat`), list nesting (`'  '.repeat(listDepth)`),
+  and images (data-URI `![]` in MD, `[image]` in TXT) — previously all three were dropped.
   Phase 2 (2026-06-13): added 2-column XY-cut (`detectColumnSplit`) and list detection
   (`detectListPrefix`) — see `docs/reviews/2026-06-11-pdf-to-docx-verdict.md`.
   Phase 3 (2026-06-13): native DOCX ordered-list numbering via `w:numPr` + instance-based

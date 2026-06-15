@@ -2,8 +2,9 @@
  * DOCX/MD/TXT export blockers — confirming tests. See ./README.md for the convention.
  * Source research: docs/reviews/research-2026-06-15-blockers/raw/docx.md
  *
- * Focus: the Markdown/TXT writers (the DOCX scorecard never covered them) — they
- * drop ordered-list ordinals, list nesting, and images that the DOCX path keeps.
+ * Focus: the Markdown/TXT writers (the DOCX scorecard never covered them). These
+ * blockers are now FIXED — the writers carry ordered-list ordinals, list nesting,
+ * and images. The tests assert that corrected behavior (formerly it.fails).
  */
 import { describe, it, expect } from 'vitest';
 import { flowDocToMarkdown, flowDocToText } from '../../src/utils/flowDocWriters';
@@ -26,7 +27,7 @@ const orderedPara = (text: string): FlowParagraph =>
 describe('DOCX/MD blocker MD-1 — Markdown ordered lists lose their ordinals', () => {
   // REACHABLE. flowDocToMarkdown hardcodes "1. " for every ordered item, ignoring
   // listFormat/listOrdinalText and sequence position → a numbered list reads 1. 1. 1.
-  it.fails('renders distinct ordinals for successive ordered items', () => {
+  it('renders distinct ordinals for successive ordered items', () => {
     const md = flowDocToMarkdown(docOf(page({
       paragraphs: [orderedPara('alpha'), orderedPara('beta'), orderedPara('gamma')],
     })));
@@ -37,7 +38,7 @@ describe('DOCX/MD blocker MD-1 — Markdown ordered lists lose their ordinals', 
 });
 
 describe('DOCX/TXT blocker TX-1 — TXT ordered lists lose their ordinals', () => {
-  it.fails('renders distinct ordinals for successive ordered items', () => {
+  it('renders distinct ordinals for successive ordered items', () => {
     const txt = flowDocToText(docOf(page({
       paragraphs: [orderedPara('alpha'), orderedPara('beta')],
     })));
@@ -49,7 +50,7 @@ describe('DOCX/TXT blocker TX-1 — TXT ordered lists lose their ordinals', () =
 describe('DOCX/MD blocker MD-2 — Markdown ignores list nesting depth', () => {
   // REACHABLE. listDepth is computed and honored by the DOCX writer, but the MD
   // writer emits every item flush-left regardless of depth.
-  it.fails('indents a nested list item', () => {
+  it('indents a nested list item', () => {
     const md = flowDocToMarkdown(docOf(page({
       paragraphs: [para({ listType: 'bullet', listDepth: 2, runs: [run('nested')] })],
     })));
@@ -61,7 +62,7 @@ describe('DOCX/MD blocker MD-2 — Markdown ignores list nesting depth', () => {
 describe('DOCX/MD blocker MD-3 — Markdown silently drops images', () => {
   // REACHABLE. The DOCX writer embeds page.images; the MD writer never reads them,
   // so an image-only page exports as an EMPTY .md while its .docx has the picture.
-  it.fails('emits an image reference for an image-only page', () => {
+  it('emits an image reference for an image-only page', () => {
     const img: FlowImage = {
       x: 0, y: 0, width: 100, height: 100, base64: 'iVBORw0KGgo=', mimeType: 'image/png',
     };
