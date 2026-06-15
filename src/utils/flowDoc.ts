@@ -274,6 +274,7 @@ interface Line {
   size: number; // dominant font size on the line
   x0: number;
   x1: number;
+  rtl?: boolean; // line reads right-to-left (majority rtl words)
 }
 
 // Same line when baselines are within half the font size (pdfminer.six recipe).
@@ -424,6 +425,43 @@ export function detectListPrefix(
   return null;
 }
 
+/** Unicode ranges that are Arabic script (block, supplement, extended-A, presentation forms). */
+const _ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+
+/** True when the string contains any Arabic-script codepoint. */
+export function isArabicText(s: string): boolean {
+  return _ARABIC_RE.test(s);
+}
+
+/**
+ * Reverse a string by codepoint (surrogate-pair-safe). pdf.js returns RTL runs
+ * already visually reversed; reversing again restores logical character order so
+ * Word's bidi engine can lay it out correctly. (Combining-mark reordering is an
+ * accepted edge-case limitation — see the Arabic-export ceiling notes.)
+ */
+export function reverseRtlText(s: string): string {
+  return [...s].reverse().join('');
+}
+
+/**
+ * Order one line's words into LOGICAL reading order and restore logical character
+ * order for RTL runs. A line is treated as RTL when the majority of its words are
+ * rtl: words are then ordered right-to-left (rightmost = first read) and each rtl
+ * word's text is reversed back to logical order. LTR lines keep ascending-x order
+ * with text untouched. Pure (returns new objects) → jsdom-unit-testable.
+ */
+export function orderLineWords<T extends { x: number; width: number; rtl: boolean; text: string }>(
+  words: T[],
+): { words: T[]; rtl: boolean } {
+  const rtlCount = words.reduce((n, x) => n + (x.rtl ? 1 : 0), 0);
+  const rtl = words.length > 0 && rtlCount * 2 > words.length;
+  if (!rtl) {
+    return { words: [...words].sort((a, b) => a.x - b.x), rtl: false };
+  }
+  const ordered = [...words].sort((a, b) => b.x - a.x); // rightmost (logical-first) first
+  return { words: ordered.map((x) => (x.rtl ? { ...x, text: reverseRtlText(x.text) } : x)), rtl: true };
+}
+
 /** Build FlowParagraph[] from a pre-sorted, pre-filtered array of words. */
 function reconstructColumn(
   words: Word[],
@@ -459,7 +497,11 @@ function reconstructColumn(
     }
   }
   for (const line of lines) {
-    line.words.sort((a, b) => a.x - b.x);
+    // Order words for reading + restore logical char order on RTL lines (Arabic):
+    // pdf.js delivers RTL visually-reversed, which Word would double-reverse.
+    const ordered = orderLineWords(line.words);
+    line.words = ordered.words;
+    line.rtl = ordered.rtl;
     line.x0 = Math.min(...line.words.map(w => w.x));
     line.x1 = Math.max(...line.words.map(w => w.x + w.width));
     line.size = line.words.reduce((m, w) => (w.text.length > m.text.length ? w : m), line.words[0]).size;
@@ -525,7 +567,11 @@ function reconstructColumn(
         };
         let text = w.text;
         if (prevWord) {
-          const gap = w.x - (prevWord.x + prevWord.width);
+          // Reading-order gap: on an RTL line the previous word sits to the RIGHT
+          // of the current one, so measure leftward (prev.x − current right edge).
+          const gap = line.rtl
+            ? prevWord.x - (w.x + w.width)
+            : w.x - (prevWord.x + prevWord.width);
           const needsSpace =
             gap > SPACE_GAP * Math.min(prevWord.size, w.size) &&
             !/\s$/.test(prevWord.text) &&

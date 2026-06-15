@@ -14,6 +14,11 @@ const FAMILY_TO_WORD: Record<FlowRun['fontFamily'], string> = {
   monospace: 'Courier New',
 };
 
+// Complex-script (cs) font for RTL/Arabic runs. Generic families don't carry
+// Arabic glyphs, so the cs slot needs a concrete near-universal Arabic-capable
+// face — Arial ships Arabic on Windows/macOS/Office (A3).
+const ARABIC_CS_FONT = 'Arial';
+
 // Broad allow-list of common faces that Word ships (or aliases). Keyed by the
 // lowercased base family name; value is the exact Word font name. A real face on
 // this list is preserved instead of being flattened to one of the 3 generics —
@@ -210,14 +215,23 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     const textChildren = page.paragraphs
       .filter(p => paragraphText(p).trim().length > 0)
       .map(p => {
-        const mkTextRun = (r: FlowRun) =>
-          new TextRun({
+        const mkTextRun = (r: FlowRun) => {
+          const ascii = resolveWordFont(r);
+          // A3: RTL/Arabic runs need complex-script properties so Word applies the
+          // correct face + bold/italic/size to the cs glyph run. The cs font must
+          // be a concrete Arabic-capable face (generics don't carry Arabic glyphs);
+          // Arial is near-universal and covers Arabic.
+          const halfPt = Math.round(r.fontSize * 2);
+          return new TextRun({
             text: r.text,
             bold: r.bold || undefined,
             italics: r.italic || undefined,
             // B-1: preserve the real face when known; generic only as fallback.
-            font: resolveWordFont(r),
-            size: Math.round(r.fontSize * 2), // docx half-points
+            font: r.rtl ? { ascii, cs: ARABIC_CS_FONT } : ascii,
+            size: halfPt, // docx half-points
+            boldComplexScript: r.rtl ? r.bold || undefined : undefined,
+            italicsComplexScript: r.rtl ? r.italic || undefined : undefined,
+            sizeComplexScript: r.rtl ? halfPt : undefined,
             rightToLeft: r.rtl || undefined,
             // Linked runs get the conventional blue + underline so they read as
             // hyperlinks; otherwise keep the run's own fill color.
@@ -229,6 +243,7 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
             superScript: r.vertAlign === 'super' || undefined,
             subScript: r.vertAlign === 'sub' || undefined,
           });
+        };
 
         // Wrap consecutive runs sharing the same linkUrl in one ExternalHyperlink
         // (Gap 2). Adjacent same-url runs were already prevented from merging in
