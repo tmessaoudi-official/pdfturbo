@@ -112,8 +112,13 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
   Path-3, Type3, in-place reflow/overflow.
 
 ### Arabic / RTL  (`raw/arabic.md`) — most of the prior arabic research already shipped
-- **REACHABLE (designed):** AR-1 route DOCX reorder through the already-installed-but-unused `bidi-js`
-  (biggest correctness win, zero new dep); AR-2 overlay logical-order line-wrapping (silent overflow);
+- ✅ **FIXED (2026-06-15):** AR-1 — `orderLineWords` now applies the UAX#9 L2 run-reversal at WORD level
+  (segment a visual line into same-direction runs, emit RTL-base right→left, keep embedded LTR runs
+  forward). Fixes the embedded Latin/number run that the old blanket descending-x sort reversed. Note: a
+  dedicated bidi lib wasn't needed for word-level (the run-reversal IS the L2 rule); `bidi-js` stays
+  unused/available for any future char-level pass. Guard: `arabic.blockers.test.ts`. Deeper char-level
+  bidi (digits nested in RTL, multi-level, single mixed-script token) remains a documented partial.
+- **REACHABLE (designed):** AR-2 overlay logical-order line-wrapping (silent overflow);
   AR-3 thread rotation into `drawArabicLine` (Latin rotates, Arabic doesn't); AR-5/AR-10 detect-and-warn
   (notdef coverage / PUA fraction); AR-8 RTL list-marker side; AR-9 presentation-form→base table.
 - **CEILING:** mixed LTR+RTL single-line bidi reorder, tashkeel GPOS (needs harfbuzz, 1MB wasm),
@@ -152,7 +157,7 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
 3. ~~**True-edit B-3** non-WinAnsi refusal + B-1 exponent~~ ✅ **DONE (2026-06-15)** — `hasNonWinAnsi`→overlay, `consumeNumberBody` keeps `1e-3` one token.
 4. ~~**OCR O1** language parity~~ ✅ **DONE (2026-06-15)** — vendor all 8 (deu/spa/ita/por/nld added; URLs verified 200). _(orig)_ single-source-of-truth, 5 advertised languages broken today under CSP.
 5. ~~**MD-1/TX-1 + MD-2 + MD-3**~~ ✅ **DONE (2026-06-15)** — MD/TXT ordinals, nesting, images. _(orig)_ the most visible MD/TXT defects; all data already exists from the DOCX path.
-6. **Arabic AR-1** — route DOCX reorder through the installed `bidi-js`; biggest Arabic correctness win, zero new dep.
+6. ~~**Arabic AR-1**~~ ✅ **DONE (2026-06-15)** — word-level UAX#9 L2 run-reversal (embedded LTR runs kept forward). _(orig)_ route DOCX reorder through the installed `bidi-js`; biggest Arabic correctness win, zero new dep.
 7. **Signing S3 + S8 + S9** — clean re-sign refusal, right-size the `/Contents` slot, pick the real leaf.
 
 ## Scorecard hygiene (Phase 7, done)

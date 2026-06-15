@@ -93,7 +93,15 @@ _Original notes below._
 - Tests that flip: `tests/blockers/docx-md.blockers.test.ts` MD-1, TX-1, MD-2, MD-3 → passing.
 - Effort: S–M. Pure jsdom.
 
-### 6. Arabic AR-1 — DOCX reorder via bidi-js  [reachable, correctness]
+### 6. Arabic AR-1 — DOCX line reorder  ✅ DONE (2026-06-15)
+**Outcome:** `orderLineWords` rewritten to apply the UAX#9 L2 run-reversal at WORD level (segment a visual
+line into same-direction runs; emit RTL-base right→left; keep embedded LTR runs forward; char-reverse RTL
+words). Fixes the embedded Latin/number run the old descending-x sort reversed; all prior Arabic tests still
+pass. `bidi-js` NOT needed for word granularity (the run-reversal IS L2) — left unused/available. Guard:
+`tests/blockers/arabic.blockers.test.ts` (2). Gate: tsc 0/oxlint 0/jsdom 1035+3/browser 32. Deeper char-level
+bidi (digits-in-RTL, multi-level, single mixed token) remains a documented partial. _Original notes below._
+
+#### (original) Arabic AR-1 — DOCX reorder via bidi-js  [reachable, correctness]
 - file:line: `src/utils/flowDoc.ts:442-463` (`orderLineWords`/`reverseRtlText` majority-vote single-direction). `bidi-js@1.0.3` installed but unused.
 - Fix: route the DOCX line reorder through `bidi.getEmbeddingLevels` + `getReorderSegments` so mixed LTR+RTL lines reorder per UAX#9 (Latin/digit substrings stay forward). Overlay raster stays browser-verified (separate, AR-2/AR-3 deferred).
 - Test to ADD: jsdom on the reorder helper with a mixed `"PDF ملف"` line → assert correct logical order (today majority-reverse mangles the Latin). (Not currently in tests/blockers — add `arabic.blockers.test.ts`.)

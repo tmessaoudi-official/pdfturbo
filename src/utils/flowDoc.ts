@@ -447,10 +447,18 @@ export function reverseRtlText(s: string): string {
 
 /**
  * Order one line's words into LOGICAL reading order and restore logical character
- * order for RTL runs. A line is treated as RTL when the majority of its words are
- * rtl: words are then ordered right-to-left (rightmost = first read) and each rtl
- * word's text is reversed back to logical order. LTR lines keep ascending-x order
- * with text untouched. Pure (returns new objects) → jsdom-unit-testable.
+ * order for RTL runs. A line is RTL when the majority of its words are rtl.
+ *
+ * For an RTL-base line this applies the UAX#9 L2 reorder at WORD granularity:
+ * lay words out visually (ascending x), split into maximal same-direction runs,
+ * then emit runs right-to-left — RTL runs reversed (and each word char-reversed
+ * back to logical), but each embedded LTR run kept in forward (ascending-x) order.
+ * That fixes the mixed-line bug where a Latin/number run inside Arabic (e.g.
+ * "PDF" in "… PDF …") was previously order-reversed by the blanket descending-x
+ * sort (AR-1). LTR lines keep ascending-x, text untouched. Pure → jsdom-testable.
+ *
+ * Word-level only: deeper char-level bidi (digits nested in RTL, multi-level
+ * embeddings, a single token mixing scripts) remains a documented partial.
  */
 export function orderLineWords<T extends { x: number; width: number; rtl: boolean; text: string }>(
   words: T[],
@@ -460,8 +468,23 @@ export function orderLineWords<T extends { x: number; width: number; rtl: boolea
   if (!rtl) {
     return { words: [...words].sort((a, b) => a.x - b.x), rtl: false };
   }
-  const ordered = [...words].sort((a, b) => b.x - a.x); // rightmost (logical-first) first
-  return { words: ordered.map((x) => (x.rtl ? { ...x, text: reverseRtlText(x.text) } : x)), rtl: true };
+  const visual = [...words].sort((a, b) => a.x - b.x); // page left→right
+  const runs: T[][] = [];
+  for (const word of visual) {
+    const last = runs[runs.length - 1];
+    if (last && last[0].rtl === word.rtl) last.push(word);
+    else runs.push([word]);
+  }
+  const out: T[] = [];
+  for (let s = runs.length - 1; s >= 0; s--) {
+    const run = runs[s];
+    if (run[0].rtl) {
+      for (let i = run.length - 1; i >= 0; i--) out.push({ ...run[i], text: reverseRtlText(run[i].text) });
+    } else {
+      for (const word of run) out.push(word); // embedded LTR run stays forward
+    }
+  }
+  return { words: out, rtl: true };
 }
 
 /** Build FlowParagraph[] from a pre-sorted, pre-filtered array of words. */

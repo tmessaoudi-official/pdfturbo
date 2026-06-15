@@ -199,7 +199,11 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order;
-    `orderLineWords` orders an rtl line right-to-left (logical) with direction-aware spacing; the writer emits
+    `orderLineWords` orders an rtl line right-to-left (logical); **AR-1 (2026-06-15)** it now applies the
+    UAX#9 L2 run-reversal at WORD level — an RTL line is segmented into same-direction runs and emitted
+    right→left, but an embedded LTR run (Latin word / number) keeps forward order (the old blanket
+    descending-x sort reversed it). Word-level only; `bidi-js` is installed but unused (a dedicated lib
+    isn't needed for word granularity — deeper char-level bidi stays a documented partial). The writer emits
     complex-script attrs (`font.cs=Arial`, `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
   - **True-edit**: `replaceTextAt` REFUSES Arabic new-text before the Latin Path-3 redraw (it would emit '?')
     → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still

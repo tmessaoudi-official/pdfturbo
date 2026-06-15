@@ -40,7 +40,7 @@ Pipeline: `_extractFlowDoc` → pdf.js `getTextContent`+`getOperatorList` → `r
 | 23 | Underline / strikethrough | ✅ | **Sprint 4** `classifyRuleAsUnderline` `flowDoc.ts:74-90` + op-walk rules (was 🟡; verified shipped 2026-06-15) |
 | 24 | Super / subscript | ✅ | **Sprint 4** vertAlign detect `flowDoc.ts:549-554`, writer `superScript`/`subScript` (was 🟡; verified shipped 2026-06-15) |
 | 25 | Redaction-aware (no leak) | ✅ | items under redaction dropped pre-flow (Sprint 1 P0). **2026-06-15:** also exact on **rotated** pages — `reconstructPage(pageRotation)` un-rotates rects via `redactionRectToContent` (was leaking on 90/180/270; `tests/browser/blockers-redaction.browser.test.ts`) |
-| 26 | RTL flags + single-line reorder | ✅-partial | **Sprint Arabic** `orderLineWords`/`reverseRtlText` `flowDoc.ts:442-463` (single-RTL-line logical reorder works); mixed LTR+RTL one-line reorder still ⛔ (was 🟡) |
+| 26 | RTL flags + single-line reorder | ✅-partial | **Sprint Arabic** `orderLineWords`/`reverseRtlText`; **AR-1 (2026-06-15)** word-level UAX#9 L2 run-reversal — embedded LTR runs in an RTL line now keep forward order. Deeper char-level bidi (digits-in-RTL, multi-level, single mixed token) still ⛔ |
 | 27 | Per-page sections (size+margin) | ✅ | one docx section per page |
 | 28 | Lattice / borderless tables | ⛔ | vector-ruling / column-gap detection — chronic FP, multi-day |
 | 29 | Vector graphics (logos/charts) | ⛔ | region rasterization only; no path→OOXML |
