@@ -5,7 +5,10 @@
   "type": "module",
   "description": "PDFturbo — edit, annotate, sign and fill PDFs entirely in your browser",
   "scripts": {
+    "ocr:assets": "node scripts/prepare-ocr-assets.mjs",
+    "predev": "node scripts/prepare-ocr-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/prepare-ocr-assets.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",

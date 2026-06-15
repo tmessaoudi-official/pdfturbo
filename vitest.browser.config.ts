@@ -19,7 +19,10 @@ export default defineConfig({
   // discovers them mid-run and re-optimizes, which aborts the in-flight dynamic
   // import ("Failed to fetch dynamically imported module").
   // node-forge is the e-signing crypto dep (dynamically imported by src/signing).
-  optimizeDeps: { include: ['docx', 'fflate', 'node-forge'] },
+  // tesseract.js is the OCR engine (lazy literal import in src/ocr/ocrEngine.ts);
+  // pre-bundle so the real-browser OCR test's dynamic import isn't aborted by a
+  // mid-run re-optimize.
+  optimizeDeps: { include: ['docx', 'fflate', 'node-forge', 'tesseract.js'] },
   test: {
     include: ['tests/browser/**/*.browser.test.ts'],
     // jsdom setup (fake-indexeddb etc.) is irrelevant here — real browser has real APIs.

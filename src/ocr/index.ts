@@ -10,7 +10,13 @@
  */
 
 export { recognizePage, setTesseractLoader } from './ocrEngine';
-export type { TesseractLike, TesseractRecognizeResult } from './ocrEngine';
+export type {
+  TesseractLike,
+  TesseractWorker,
+  TesseractWorkerOptions,
+  TesseractOutputFormats,
+  TesseractRecognizeResult,
+} from './ocrEngine';
 
 export {
   OCR_LANGUAGES,
@@ -27,11 +33,15 @@ export {
   mapWord,
   normalizeBBox,
   clampConfidence,
+  flattenBlockWords,
 } from './tesseractMapper';
 export type {
   RawTesseractPage,
   RawTesseractWord,
   RawTesseractBBox,
+  RawTesseractBlock,
+  RawTesseractParagraph,
+  RawTesseractLine,
 } from './tesseractMapper';
 
 export type {

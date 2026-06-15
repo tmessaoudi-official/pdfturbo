@@ -29,11 +29,47 @@ export interface RawTesseractWord {
   confidence?: number;
 }
 
+/** Nested geometry that tesseract.js v6+ returns under `data.blocks` (blocks
+ * → paragraphs → lines → words). This is the ONLY place per-word boxes live in
+ * v6+ (the top-level `data.words` was removed), so the mapper flattens it. */
+export interface RawTesseractLine {
+  words?: RawTesseractWord[];
+}
+export interface RawTesseractParagraph {
+  lines?: RawTesseractLine[];
+}
+export interface RawTesseractBlock {
+  paragraphs?: RawTesseractParagraph[];
+}
+
 /** Minimal shape of tesseract's `recognize()` `.data` page object. */
 export interface RawTesseractPage {
   text?: string;
   confidence?: number;
+  /** Legacy flat word list (older tesseract.js). Used as a fallback. */
   words?: RawTesseractWord[];
+  /** v6+ nested block geometry (requested via `output: { blocks: true }`). */
+  blocks?: RawTesseractBlock[] | null;
+}
+
+/**
+ * Flatten the v6+ `blocks → paragraphs → lines → words` tree into a flat word
+ * list. Defensive against any missing level. Returns `[]` when `blocks` is
+ * absent/null so callers can fall back to a legacy flat `words` array.
+ */
+export function flattenBlockWords(blocks: RawTesseractBlock[] | null | undefined): RawTesseractWord[] {
+  if (!Array.isArray(blocks)) return [];
+  const out: RawTesseractWord[] = [];
+  for (const block of blocks) {
+    for (const para of block?.paragraphs ?? []) {
+      for (const line of para?.lines ?? []) {
+        for (const word of line?.words ?? []) {
+          out.push(word);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /** Coerce a value to a finite number, falling back to `fallback`. */
@@ -89,7 +125,10 @@ export function mapTesseractResult(
   page: RawTesseractPage | undefined,
   language: string,
 ): OcrResult {
-  const rawWords = Array.isArray(page?.words) ? page.words : [];
+  // Prefer the v6+ nested block geometry; fall back to a legacy flat `words`
+  // array if a future/old tesseract populates it directly.
+  const blockWords = flattenBlockWords(page?.blocks);
+  const rawWords = blockWords.length > 0 ? blockWords : Array.isArray(page?.words) ? page.words : [];
   const words: OcrWord[] = [];
   for (const w of rawWords) {
     const mapped = mapWord(w);

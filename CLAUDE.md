@@ -206,11 +206,25 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     wired in `pdfElementRenderer.ts` text branch, guarded by `isArabicText`, right-aligned. Guards:
     `tests/utils/flowDocArabic.test.ts`, `tests/export/arabicOverlay.test.ts`,
     `tests/browser/arabic-overlay.browser.test.ts` (rasterized: visible ink + RTL right-aligned centroid).
-- **OCR (Sprint 4, 2026-06-15)**: `src/ocr/*` wraps **tesseract.js@7** (dynamically imported, lang data
-  lazy-fetched from CDN on first use → offline caveat). `src/handlers/ocrHandler.ts` renders the current
-  source page to a canvas at scale 2, recognizes words, and inserts them as real `TextElement`s via ONE
-  `MacroCmd` (undoable, selectable, DOCX/MD-exportable) — not a bespoke overlay. `ocrWordToTextElement` is
-  the pure bbox→element map (top-left origin both sides → no Y-flip). Wired: `ocrBtn` + `ocrModal`.
+- **OCR (Sprint 4, 2026-06-15; CSP/engine fix 2026-06-15)**: `src/ocr/*` wraps **tesseract.js@7**
+  (lazily loaded). `src/handlers/ocrHandler.ts` renders the current source page to a canvas at scale 2,
+  recognizes words, and inserts them as real `TextElement`s via ONE `MacroCmd` (undoable, selectable,
+  DOCX/MD-exportable) — not a bespoke overlay. `ocrWordToTextElement` is the pure bbox→element map
+  (top-left origin both sides → no Y-flip). Wired: `ocrBtn` + `ocrModal`.
+  **CSP/engine fix (found by /qa-sweep)** — OCR was non-functional in production for THREE reasons, all
+  now fixed (guards: `tests/browser/ocr-csp.browser.test.ts` real-engine e2e, `tests/ocr/ocrCore.test.ts`):
+  (1) **Assets must be 'self'-served** — the app CSP (`connect-src 'self' blob:`) blocks tesseract's CDN.
+  `scripts/prepare-ocr-assets.mjs` (npm `ocr:assets`, run via predev/prebuild + a CI step before tests)
+  vendors the worker + LSTM core wasm (from node_modules) + **best** eng/fra/ara traineddata (downloaded)
+  into `public/tesseract/` (gitignored). `ocrAssetPaths(import.meta.env.BASE_URL)` builds the local
+  `corePath`/`workerPath`/`langPath`; NEVER reintroduce a CDN path (the `ocrAssetPaths` test guards this).
+  (2) **Literal dynamic import** — `import('tesseract.js')` (NOT the old `@vite-ignore` indirect form,
+  which left a bare specifier the browser couldn't resolve → "Failed to resolve module specifier").
+  (3) **Word geometry needs `blocks: true`** — the engine uses `createWorker` + `worker.recognize(img, {},
+  { text: true, blocks: true })` (the `recognize` convenience hardcodes `{text:true}` → empty words). v7
+  returns words ONLY nested under `data.blocks[].paragraphs[].lines[].words[]`; `flattenBlockWords`
+  (tesseractMapper) flattens them. Without this OCR completed but added 0 elements (silent "no text").
+  OCR targets SCANNED/image pages — clear large text recognizes well; tiny/thin vector text may yield 0.
 - **E-signing (Sprint 4, 2026-06-15)**: `src/signing/*` produces a single visible PKCS#12/CMS signature
   via **node-forge@1.3.1** (dynamically imported; pure-JS, runs in jsdom AND browser). `PdfSigner.sign`
   reserves a fixed `/Contents` hex slot + `/ByteRange`, serialises without object streams, then splices the

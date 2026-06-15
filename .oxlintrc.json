@@ -34,5 +34,13 @@
 
     "no-underscore-dangle": "off",
     "typescript/no-extraneous-class": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
 }

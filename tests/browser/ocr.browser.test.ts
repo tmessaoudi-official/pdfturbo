@@ -16,19 +16,38 @@ import type { PDFElement } from '../../src/elements/annotationElement';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 
+// Mock the createWorker API the engine now uses. Words live under the v6+
+// nested `blocks` structure (the engine requests `blocks: true`); the logger
+// fires from createWorker's worker options.
 const mockTesseract: TesseractLike = {
-  recognize: (_img, _lang, options) => {
+  createWorker: (_langs, _oem, options) => {
     options?.logger?.({ status: 'recognizing text', progress: 0.5 });
     options?.logger?.({ status: 'recognizing text', progress: 1 });
     return Promise.resolve({
-      data: {
-        text: 'Hello World',
-        confidence: 92,
-        words: [
-          { text: 'Hello', bbox: { x0: 40, y0: 60, x1: 180, y1: 110 }, confidence: 95 },
-          { text: 'World', bbox: { x0: 200, y0: 60, x1: 360, y1: 110 }, confidence: 90 },
-        ],
-      },
+      recognize: () =>
+        Promise.resolve({
+          data: {
+            text: 'Hello World',
+            confidence: 92,
+            blocks: [
+              {
+                paragraphs: [
+                  {
+                    lines: [
+                      {
+                        words: [
+                          { text: 'Hello', bbox: { x0: 40, y0: 60, x1: 180, y1: 110 }, confidence: 95 },
+                          { text: 'World', bbox: { x0: 200, y0: 60, x1: 360, y1: 110 }, confidence: 90 },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      terminate: () => Promise.resolve(undefined),
     });
   },
 };

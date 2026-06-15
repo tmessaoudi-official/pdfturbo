@@ -7,13 +7,14 @@
  * traineddata fetched at runtime, so it must stay out of the main bundle and
  * load only when the user actually invokes OCR.
  *
- * ── OFFLINE CAVEAT ────────────────────────────────────────────────────────
- * By default tesseract.js fetches the WASM core and each `<lang>.traineddata.gz`
- * from its CDN (jsDelivr / unpkg) on first use. This means the FIRST OCR run
- * for a given language REQUIRES NETWORK ACCESS. For fully offline operation,
- * pass `langPath` (and a matching `corePath`/`workerPath` at the call site, if
- * bundled) pointing at locally-served assets. For v1 the default CDN fetch is
- * acceptable and is documented as a known requirement.
+ * ── ASSET PATHS (CSP-critical) ────────────────────────────────────────────
+ * By default tesseract.js fetches the WASM core, the worker script and each
+ * `<lang>.traineddata.gz` from its CDN (jsDelivr). The app's CSP
+ * (`connect-src 'self' blob:`) BLOCKS those cross-origin fetches, so the CDN
+ * defaults make OCR fail in production. Callers MUST pass `corePath`,
+ * `workerPath` and `langPath` pointing at 'self'-served assets (vendored by
+ * `scripts/prepare-ocr-assets.mjs`; path-built by `ocrAssetPaths` in the
+ * handler). All three are forwarded verbatim to tesseract's worker options.
  *
  * The tesseract module is reached through a swappable loader (`_loadTesseract`)
  * so tests can inject a mock without installing the WASM dependency.
@@ -33,12 +34,52 @@ export interface TesseractRecognizeResult {
   data: RawTesseractPage;
 }
 
-export interface TesseractLike {
+/** Worker options passed to `createWorker` (a subset of tesseract's WorkerOptions). */
+export interface TesseractWorkerOptions {
+  logger?: (m: { status?: string; progress?: number }) => void;
+  /** Local 'self'-served asset paths — required in this app (CSP blocks the CDN). */
+  langPath?: string;
+  corePath?: string;
+  workerPath?: string;
+}
+
+/** Output flags telling tesseract WHICH data to return (`recognize`'s 3rd arg). */
+export interface TesseractOutputFormats {
+  text?: boolean;
+  /**
+   * Block/word geometry. MUST be true to get per-word boxes: tesseract.js v6+
+   * returns ONLY `data.text` by default (`data.blocks` is null), so without this
+   * the word layer is empty and OCR adds nothing. Word data lives nested under
+   * `data.blocks[].paragraphs[].lines[].words[]` (see the mapper).
+   */
+  blocks?: boolean;
+}
+
+/** A tesseract worker — the API surface we use from `createWorker`. */
+export interface TesseractWorker {
   recognize(
     image: OcrImageInput,
-    lang: string,
-    options?: { logger?: (m: { status?: string; progress?: number }) => void; langPath?: string },
+    options?: Record<string, unknown>,
+    output?: TesseractOutputFormats,
   ): Promise<TesseractRecognizeResult>;
+  terminate(): Promise<unknown>;
+}
+
+/**
+ * Minimal structural type for the slice of tesseract.js v7's API we use. We
+ * deliberately do NOT `import type` from 'tesseract.js' so this file stays
+ * decoupled from tesseract's full type surface and tests can inject a mock.
+ *
+ * We use `createWorker` (not the `recognize` convenience) because only the
+ * worker's `recognize(image, opts, output)` lets us request `blocks` output —
+ * the convenience helper hardcodes `{ text: true }` and so never returns words.
+ */
+export interface TesseractLike {
+  createWorker(
+    langs: string,
+    oem?: number,
+    options?: TesseractWorkerOptions,
+  ): Promise<TesseractWorker>;
 }
 
 /**
@@ -47,16 +88,17 @@ export interface TesseractLike {
  * wrapped in a function so it is never evaluated at module-eval time.
  */
 let _loadTesseract: () => Promise<TesseractLike> = async () => {
-  // Dynamic import, resolved at RUNTIME only:
-  //   - The module specifier is built indirectly so neither Vite's static
-  //     import-analysis nor a bundler eagerly resolves/inlines the heavy WASM
-  //     dependency at build time — it loads lazily on first OCR use.
-  //   - `/* @vite-ignore */` tells Vite to skip static analysis of this import
-  //     (the module is an optional dependency, present at runtime). A non-literal
-  //     specifier also means tsc types the import as `any`, so no static
-  //     'tesseract.js' type resolution is required in the type-check env either.
-  const moduleName = ['tesseract', 'js'].join('.');
-  const mod = (await import(/* @vite-ignore */ moduleName)) as unknown as TesseractLike;
+  // Literal dynamic import. Vite code-splits 'tesseract.js' into its own chunk
+  // that is fetched only on first OCR use (the heavy WASM core stays out of the
+  // main bundle), AND the specifier resolves correctly in BOTH the dev server
+  // and the production build.
+  //
+  // The earlier `import(/* @vite-ignore */ indirectName)` form was wrong: with
+  // @vite-ignore + a non-literal specifier, Vite leaves a bare `tesseract.js`
+  // specifier in the output, which the browser cannot resolve (no import map)
+  // → `Failed to resolve module specifier 'tesseract.js'`, so OCR never loaded.
+  // The cast keeps this file decoupled from tesseract's full type surface.
+  const mod = (await import('tesseract.js')) as unknown as TesseractLike;
   return mod;
 };
 
@@ -91,26 +133,48 @@ export async function recognizePage(
   const language = resolveLanguage(options.language);
   const Tesseract = await _loadTesseract();
 
-  const recognizeOptions: {
-    logger?: (m: { status?: string; progress?: number }) => void;
-    langPath?: string;
-  } = {};
-
+  const workerOptions: TesseractWorkerOptions = {};
   if (options.onProgress) {
     const cb = options.onProgress;
-    recognizeOptions.logger = (m) => {
+    workerOptions.logger = (m) => {
       cb({ status: m.status ?? '', progress: typeof m.progress === 'number' ? m.progress : 0 });
     };
   }
+  // Forward local 'self'-served asset paths so tesseract never hits its
+  // CSP-blocked CDN defaults (see the ASSET PATHS note above).
   if (options.langPath !== undefined) {
-    recognizeOptions.langPath = options.langPath;
+    workerOptions.langPath = options.langPath;
+  }
+  if (options.corePath !== undefined) {
+    workerOptions.corePath = options.corePath;
+  }
+  if (options.workerPath !== undefined) {
+    workerOptions.workerPath = options.workerPath;
+  }
+
+  // oem 1 = LSTM-only (matches the *-lstm WASM cores we vendor).
+  let worker: TesseractWorker;
+  try {
+    worker = await Tesseract.createWorker(language, 1, workerOptions);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`ocr: failed to load engine for language "${language}": ${message}`);
   }
 
   try {
-    const result = await Tesseract.recognize(image, language, recognizeOptions);
+    // `blocks: true` is REQUIRED — without it tesseract returns only `data.text`
+    // and no per-word geometry, so the recognized text layer would be empty.
+    const result = await worker.recognize(image, {}, { text: true, blocks: true });
     return mapTesseractResult(result?.data, language);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`ocr: recognition failed for language "${language}": ${message}`);
+  } finally {
+    // Free the WASM worker; a failure to terminate must not mask a result/error.
+    try {
+      await worker.terminate();
+    } catch {
+      /* ignore terminate errors */
+    }
   }
 }

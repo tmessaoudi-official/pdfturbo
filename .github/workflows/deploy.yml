@@ -27,6 +27,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --audit-level=high
+      # Vendor tesseract OCR assets (core wasm + worker + traineddata) from
+      # node_modules + tessdata, served from 'self' so the app CSP allows OCR.
+      # Must run before the test suites (browser OCR test) and the build.
+      - run: npm run ocr:assets
       - run: npm run type-check
       - run: npm run lint
       - run: npm run test

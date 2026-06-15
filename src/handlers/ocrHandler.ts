@@ -8,9 +8,11 @@
  * immediately searchable / selectable / DOCX-MD-exportable via existing seams —
  * rather than a bespoke transparent overlay layer.
  *
- * 100% client-side: the page never leaves the browser. tesseract's language
- * data is fetched from its CDN on first use (offline requires a bundled langPath
- * — documented in the OCR core).
+ * 100% client-side: the page never leaves the browser. ALL tesseract assets
+ * (worker, WASM core, traineddata) are served from the app origin ('self') so
+ * OCR works under the strict CSP (`connect-src 'self'`) and offline — the CDN
+ * defaults are blocked by that CSP. Assets are vendored by
+ * `scripts/prepare-ocr-assets.mjs`; paths are built by `ocrAssetPaths`.
  */
 import type { PDFTurboApp } from '../core/pdfTurboApp';
 import { recognizePage, resolveLanguage } from '../ocr';
@@ -27,6 +29,35 @@ export interface OcrRunProgress {
 interface OcrWordLike {
   text: string;
   bbox: { x0: number; y0: number; x1: number; y1: number };
+}
+
+/** Local 'self'-served tesseract asset locations (CSP-safe). */
+export interface OcrAssetPaths {
+  /** Directory of the WASM core variants (`tesseract-core*.wasm.js`). */
+  corePath: string;
+  /** URL of the worker script. */
+  workerPath: string;
+  /** Directory base for `<lang>.traineddata.gz`. */
+  langPath: string;
+}
+
+/**
+ * Build the local, same-origin tesseract asset paths from the app's base URL
+ * (`import.meta.env.BASE_URL`, e.g. "/pdfturbo/"). These point at the assets
+ * vendored under `public/tesseract/` so tesseract never falls back to its CDN
+ * (which the app CSP blocks → broken OCR). Pure → unit-testable; the test
+ * guards against any regression that reintroduces a CDN/remote path.
+ */
+export function ocrAssetPaths(base: string): OcrAssetPaths {
+  // Normalize to a single trailing slash so concatenation is predictable
+  // regardless of whether BASE_URL ends with "/".
+  const b = base.endsWith('/') ? base : `${base}/`;
+  const root = `${b}tesseract`;
+  return {
+    corePath: `${root}/core`,
+    workerPath: `${root}/worker.min.js`,
+    langPath: `${root}/lang`,
+  };
 }
 
 /**
@@ -78,9 +109,13 @@ export class OcrHandler {
     if (!ctx) return 0;
     await pdfPage.render({ canvas, canvasContext: ctx, viewport }).promise;
 
+    const paths = ocrAssetPaths(import.meta.env.BASE_URL);
     const result = await recognizePage(canvas, {
       language: resolveLanguage(language),
       onProgress: ({ progress, status }) => onProgress?.({ progress, status }),
+      corePath: paths.corePath,
+      workerPath: paths.workerPath,
+      langPath: paths.langPath,
     });
 
     const cmds = result.words

@@ -80,10 +80,24 @@ export interface OcrOptions {
   /** Optional progress callback (tesseract emits frequent events). */
   onProgress?: OcrProgressCallback;
   /**
-   * Optional override for where tesseract fetches `<lang>.traineddata.gz` from.
-   * Defaults to tesseract's CDN (requires network on first use per language —
-   * see the offline caveat in the engine docs). Point this at a bundled/cached
-   * asset path to run fully offline.
+   * Where tesseract fetches `<lang>.traineddata.gz` from (a directory base; the
+   * worker appends `/<lang>.traineddata.gz`). The app passes a local 'self'-served
+   * path so OCR works under the strict CSP and fully offline. If omitted,
+   * tesseract falls back to its CDN — which the production CSP blocks, so callers
+   * in this app MUST supply it (see `ocrAssetPaths`).
    */
   langPath?: string;
+  /**
+   * Where tesseract loads the WASM core from (a directory containing the
+   * `tesseract-core*.wasm.js` variants, or a specific `.js` file). Local
+   * 'self'-served path for CSP-safe loading; omitting it falls back to the
+   * CDN-blocked default.
+   */
+  corePath?: string;
+  /**
+   * URL of the tesseract worker script (`worker.min.js`). Local 'self'-served
+   * path so the blob-wrapped worker is fetched same-origin under the CSP;
+   * omitting it falls back to the CDN-blocked default.
+   */
+  workerPath?: string;
 }

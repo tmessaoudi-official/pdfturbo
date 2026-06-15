@@ -6,7 +6,7 @@
  * unit-test the deterministic bbox→TextElement mapping in jsdom.
  */
 import { describe, it, expect } from 'vitest';
-import { ocrWordToTextElement } from '../../src/handlers/ocrHandler';
+import { ocrWordToTextElement, ocrAssetPaths } from '../../src/handlers/ocrHandler';
 
 describe('ocrWordToTextElement', () => {
   it('divides the image-px bbox by the render scale (no Y-flip)', () => {
@@ -43,5 +43,38 @@ describe('ocrWordToTextElement', () => {
     expect(el.width).toBe(8);
     expect(el.height).toBe(8);
     expect(el.fontSize).toBeGreaterThanOrEqual(6);
+  });
+});
+
+describe('ocrAssetPaths — CSP-safe local tesseract assets', () => {
+  it('builds same-origin paths under the app base URL', () => {
+    const p = ocrAssetPaths('/pdfturbo/');
+    expect(p.corePath).toBe('/pdfturbo/tesseract/core');
+    expect(p.workerPath).toBe('/pdfturbo/tesseract/worker.min.js');
+    expect(p.langPath).toBe('/pdfturbo/tesseract/lang');
+  });
+
+  it('normalizes a base URL without a trailing slash', () => {
+    const p = ocrAssetPaths('/pdfturbo');
+    expect(p.corePath).toBe('/pdfturbo/tesseract/core');
+    expect(p.workerPath).toBe('/pdfturbo/tesseract/worker.min.js');
+    expect(p.langPath).toBe('/pdfturbo/tesseract/lang');
+  });
+
+  it('works at root base "/"', () => {
+    const p = ocrAssetPaths('/');
+    expect(p.corePath).toBe('/tesseract/core');
+    expect(p.workerPath).toBe('/tesseract/worker.min.js');
+    expect(p.langPath).toBe('/tesseract/lang');
+  });
+
+  // The whole point of the fix: never hand tesseract a remote/CDN path (the
+  // production CSP `connect-src 'self'` blocks those → broken OCR). Guard it.
+  it('never produces a remote/CDN path', () => {
+    for (const base of ['/pdfturbo/', '/', '/app/sub/']) {
+      const all = Object.values(ocrAssetPaths(base)).join(' ');
+      expect(all).not.toMatch(/https?:|cdn|jsdelivr|unpkg|tessdata\.projectnaptha/i);
+      expect(all.startsWith(base.endsWith('/') ? base : `${base}/`)).toBe(true);
+    }
   });
 });
