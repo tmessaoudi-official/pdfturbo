@@ -31,6 +31,38 @@ export function transformCanvasPoint(cx: number, cy: number, W: number, H: numbe
 }
 
 /**
+ * Map a redaction rectangle from editor DISPLAYED space (the on-screen rotated
+ * orientation the user placed it in — y-down, top-left origin, dims = rotated page)
+ * into UNROTATED content space (y-down, top-left origin, W×H = unrotated dims).
+ *
+ * Flow-export (DOCX/MD/TXT) drops text items whose boxes intersect a redaction rect,
+ * but pdf.js reports text items in unrotated content space, so the rect must be
+ * un-rotated to match (see flowDoc.isItemRedacted). Reduces to identity at rotation 0.
+ * `W`/`H` are the UNROTATED content dimensions; `totalRot` is `(page.rotate + userRotation) % 360`.
+ */
+export function redactionRectToContent(
+  rect: { x: number; y: number; width: number; height: number },
+  W: number, H: number, totalRot: number,
+): { x: number; y: number; width: number; height: number } {
+  const corners: Array<[number, number]> = [
+    [rect.x, rect.y],
+    [rect.x + rect.width, rect.y],
+    [rect.x, rect.y + rect.height],
+    [rect.x + rect.width, rect.y + rect.height],
+  ];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [dx, dy] of corners) {
+    const c = transformPoint(dx, dy, W, H, totalRot); // displayed → content (y-up)
+    const cy = H - c.y;                               // content y-up → content y-down (top-left)
+    if (c.x < minX) minX = c.x;
+    if (c.x > maxX) maxX = c.x;
+    if (cy < minY) minY = cy;
+    if (cy > maxY) maxY = cy;
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
  * Parse a CSS hex color string (#RRGGBB or RRGGBB) into normalized [0, 1] RGB components
  * suitable for pdf-lib color APIs.
  */

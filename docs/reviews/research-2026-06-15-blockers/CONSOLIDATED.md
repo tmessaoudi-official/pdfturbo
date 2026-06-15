@@ -55,18 +55,26 @@ documented, not promised. Everything marked **REACHABLE** is a real, bounded cli
 
 ## P0 / security (highest priority)
 
-### CORE-P0-1 — Redaction on ROTATED pages leaves the secret pixels visible  ⚠️ top fix
-- **REACHABLE.** `src/export/exportPipeline.ts:225-233` [Verified by source read]. The page is rasterized
-  at the **rotated** viewport, but the redaction `ctx.fillRect` uses raw, **unrotated** editor coords
-  `el.x*SCALE, el.y*SCALE` with no rotation transform. On a 90/270 page the burn box lands in the wrong
-  quadrant → the sensitive text is *rasterized but uncovered* (the text bytes ARE flattened, so there is
-  no copy-paste leak, but the pixels render in the clear). Acknowledged-unfixed (`KNOWN_ISSUES.md`).
-- **Fix:** rotate the rect corners by the same `totalRot` (`exportPipeline.ts:207`) before `fillRect`.
-- **Test (designed, deferred — heavy harness):** two-tier — jsdom asserts text-byte absence (passes,
-  bytes gone); **browser** rasterizes a rotated page + a redaction over known text and pixel-samples the
-  rotated location → asserts fill color, not glyph ink (fails today). Lands with the fix.
-- *Positive bound:* on NON-rotated pages redaction genuinely flattens the page (no leak); DOCX/MD leak
-  already fixed.
+### CORE-P0-1 — Redaction on ROTATED pages ✅ FIXED (2026-06-15) — RE-SCOPED by empirical test
+- **CORRECTION (the source-read claim was wrong about the location).** The original claim —
+  `exportPipeline.ts:225-233` raster `fillRect` lands in the wrong quadrant on 90/270 pages — was
+  **refuted empirically** [Verified: `tests/browser/blockers-redaction.browser.test.ts`, raster
+  redaction over a known secret renders **0 leaked pixels at all four rotations** + a control proves
+  the secret IS visible without redaction]. The raster path is correct because element coords are
+  stored in DISPLAYED space and the export viewport renders that same displayed orientation
+  (`el.x*SCALE` is already right). This was the **3rd source-read false positive this session** — the
+  raster claim never had a running test (the agent's was "designed, deferred").
+- **The REAL leak (now fixed):** the **flow-export** path (DOCX/MD/TXT). `_extractFlowDoc` passed
+  redaction rects in editor DISPLAYED space, but `reconstructPage`/`isItemRedacted` compare them
+  against pdf.js text items in **UNROTATED content space** — on 90/180/270 pages the mismatch let
+  redacted text leak into the exported document [Verified: same test, flow cases were RED @ 90°/180°].
+- **Fix:** `reconstructPage` gained a `pageRotation` param; it un-rotates each rect once via the new
+  pure `geometry.redactionRectToContent` (identity at 0°). `exportService._extractFlowDoc` passes
+  `totalRot = (page.rotate + docPage.rotation) % 360`. Guards: `blockers-redaction.browser.test.ts`
+  (12 cases, all green) + `tests/core/exportCoords.test.ts` (helper, jsdom).
+- *Residual (honest):* a source page with an **intrinsic `/Rotate`** combined with redaction may still
+  be approximate in flow-export (dims derived from the export viewport). Common case (user rotation on
+  un-rotated source) is exact. Raster path exact at all rotations.
 
 ### CORE-P0-2 — "Lock PDF" is AES-128 and silently denies all permissions  ✅ confirmed by test
 - AES-128 part proven (`core-security.blockers`). Additional: `encrypt()` passes no `permissions` object
@@ -119,7 +127,7 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
   S11 trusted time, B-LT/B-LTA tiers.
 
 ### Core  (`raw/core.md`)
-- **P0:** CORE-P0-1 rotated redaction (above), CORE-P0-2 encryption (tested, above).
+- **P0:** CORE-P0-1 rotated redaction ✅ FIXED + re-scoped (raster correct; flow-export was the real leak — above), CORE-P0-2 encryption (tested, above — next).
 - **REACHABLE (designed):** CORE-2 non-text form fields (checkbox/radio/choice/sig) lost on fill/flatten;
   CORE-3 `/Ch` field fill throws-and-drops; CORE-4 `cleanEmptyTextElements` mutates model outside a
   history Command; CORE-5 IndexedDB `QuotaExceededError` = silent total-session-loss window; CORE-6
@@ -129,7 +137,7 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
 ---
 
 ## Highest-ROI reachable (ranked, value/effort)
-1. **CORE-P0-1** rotated-redaction geometry — true security exposure, bounded fix, already acknowledged.
+1. ~~**CORE-P0-1** rotated-redaction geometry~~ ✅ **DONE (2026-06-15)** — re-scoped: raster path was already correct (false-positive source claim); the real DOCX/MD/TXT flow-export leak is fixed via `reconstructPage(pageRotation)` + `redactionRectToContent`.
 2. **CORE-P0-2 + CORE-7** encryption — explicit permissions, AES-256 header, stop owner==user.
 3. **True-edit B-3** non-WinAnsi ligature refusal — ~1-line guard, closes the "never paint garbage" hole.
 4. **OCR O1** language parity — single-source-of-truth, 5 advertised languages broken today under CSP.

@@ -11,6 +11,7 @@ finish line). TDD: convert the `it.fails` → normal `it` FIRST (it goes red), t
 - [2026-06-15] RECOMMENDED START ORDER (security-first, then cheap-high-ROI): P0-1 → P0-2 → B-3/B-1 → O1 → MD/TXT → AR-1.
   Rationale: P0-1 is the most severe (data exposure); P0-2 is bounded jsdom; the reachable batch is cheap and momentum-building.
 - [2026-06-15] NOTE: research + tests pass already committed (23e1ceb). Unpushed: 23e1ceb (blockers), 48ed109 (a11y), c3f57e9 (OCR). Push is MANUAL.
+- [2026-06-15] FINDING (fix #1): CORE-P0-1 was MISLOCATED by the research agent. Empirical browser test proved the raster `fillRect` path is CORRECT at all rotations (3rd source-read false positive this session). The real leak was the flow-export (DOCX/MD/TXT) path — FIXED. Verify-before-fix paid off again.
 
 ## State at plan time
 - HEAD = 23e1ceb. Tree clean. Gate green: tsc 0 / oxlint 0/0 / jsdom 1012 pass + 11 expected-fail.
@@ -22,7 +23,15 @@ finish line). TDD: convert the `it.fails` → normal `it` FIRST (it goes red), t
 
 ## Fix list (ordered; each: blocker → file:line → fix → test that flips → env/effort)
 
-### 1. CORE-P0-1 — rotated-page redaction pixel leak  [P0, security]
+### 1. CORE-P0-1 — rotated-page redaction  ✅ DONE (2026-06-15) — RE-SCOPED
+**Outcome:** the raster `fillRect` claim was a FALSE POSITIVE (empirically: 0 leaked pixels at all 4
+rotations). The real leak was the **flow-export (DOCX/MD/TXT)** path. Fixed: `reconstructPage` gained a
+`pageRotation` arg + new pure `geometry.redactionRectToContent` un-rotates rects; `_extractFlowDoc`
+passes `totalRot`. Guards: `tests/browser/blockers-redaction.browser.test.ts` (12, RED→GREEN @90/180),
+`tests/core/exportCoords.test.ts` (helper). Gate green: tsc 0 / oxlint 0 / jsdom 1016+11 / browser 31.
+Residual: intrinsic-`/Rotate` source pages still approximate in flow-export (documented). _Original notes below._
+
+#### (original) CORE-P0-1 — rotated-page redaction pixel leak  [P0, security]
 - file:line: `src/export/exportPipeline.ts:225-233` (fillRect) ; rotation at `:207` (`totalRot`), `:210-211` (w_eff/h_eff), SCALE=2 `:216`.
 - Fix: before `ctx.fillRect`, transform the redaction rect from unrotated editor space into the rotated viewport space using `totalRot` (rotate the 4 corners about the page center / map via the same viewport the canvas uses). Mirror how pdf.js viewport rotates content. Cover the rotated AABB of the rect.
 - Test to ADD (designed, deferred): `tests/browser/blockers-redaction.browser.test.ts` — build a 1-page PDF with text at known coords, set docPage.rotation=90, add a redaction over it, call `rasterizePageWithRedactions` (8 args: srcDoc, docPage, elements, targetPdfDoc, libs, watermark, inkLayer, reportError — see signature at exportPipeline.ts:171), render the output page back to a canvas, pixel-sample the rotated location → assert fill color (today: glyph ink). Also keep a jsdom byte-absence assertion (passes both before/after).

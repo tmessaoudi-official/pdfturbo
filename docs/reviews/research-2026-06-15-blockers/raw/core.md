@@ -8,6 +8,15 @@ true-edit, Arabic, OCR, signing (separate agents). Structural read only; no priv
 
 ## P0 / DATA-LOSS / SECURITY — READ FIRST
 
+> **⚠️ CORRECTION (2026-06-15, post-implementation):** This finding was WRONG about the location.
+> An empirical browser test (`tests/browser/blockers-redaction.browser.test.ts`) proves the raster
+> `fillRect` path below is CORRECT at all four rotations (0 leaked pixels) — element coords are in
+> DISPLAYED space and the export viewport renders that same orientation. The REAL leak was the
+> **flow-export (DOCX/MD/TXT)** path: `_extractFlowDoc` passed displayed-space rects to
+> `reconstructPage`, which compares against unrotated-content text → leak on 90/180°. FIXED via
+> `reconstructPage(pageRotation)` + `geometry.redactionRectToContent`. The PDF-raster sub-claim here
+> is retained below for the record but is a false positive (3rd this session from source-reading).
+
 ### CORE-P0-1 — Redaction on ROTATED pages mis-places the burn box → SECRET STAYS VISIBLE
 - **CLASS:** REACHABLE (fix is geometry; flatten path already exists)
 - **file:line:** `src/export/exportPipeline.ts:225-233` (rasterizer fillRect) vs `:188-211` (rotation handling)

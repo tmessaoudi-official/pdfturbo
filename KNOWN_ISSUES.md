@@ -8,7 +8,9 @@ test each one needs before it can be called "fixed with confidence."
 - **Blockers-to-100% (all domains, test-backed):**
   [`docs/reviews/research-2026-06-15-blockers/CONSOLIDATED.md`](docs/reviews/research-2026-06-15-blockers/CONSOLIDATED.md)
   — 11 blockers proven by `tests/blockers/*.blockers.test.ts` (`it.fails` convention), incl. P0
-  redaction-on-rotated-pages + AES-128 encryption.
+  AES-128 encryption. **CORE-P0-1 update (2026-06-15):** the rotated-redaction P0 was empirically
+  re-scoped — the PDF **raster** path is correct; the real leak was the **flow-export** path
+  (DOCX/MD/TXT) and is now **fixed** (see `REDACT-ROT` below).
 - **Feature-level status & usage:** [`FEATURES.md`](FEATURES.md).
 - **Confidence scale:** Verified (reproduced + measured) · Inferred (consistent with evidence) ·
   Needs-manual (automation couldn't drive it).
@@ -119,10 +121,12 @@ All TDD (failing test first), all confirmed via the full gate (type-check + oxli
 | A11Y-CANVAS | P1 | a11y | Placed annotation elements had no role/tabindex/name → invisible to keyboard + SR. Added `role`/`tabindex=0`/`aria-label` (via `t()`). WCAG 2.1.1/4.1.2. | `elementLayerRenderer.a11y.test.ts` |
 | A11Y-TOAST | P1 | a11y | Toasts not announced. Added `role=status`/`aria-live=polite`/`aria-atomic` to the live region. WCAG 4.1.3. | `toastQueue.a11y.test.ts` |
 | I18N-UPDATE-TOAST | P1 | i18n | Hardcoded English app-update toast shown to FR/AR users → now `t('toast.appUpdateAvailable')`. | `main.swUpdate.test.ts` |
+| REDACT-ROT | P0 | Redaction / DOCX-MD-TXT export | **Redacted text leaked into flow export (DOCX/MD/TXT) on rotated pages.** `_extractFlowDoc` passed redaction rects in editor DISPLAYED space, but `reconstructPage`/`isItemRedacted` compare against pdf.js text items in UNROTATED content space — on 90/180/270 pages the spaces mismatched and the box missed the text. Fix: `reconstructPage` takes `pageRotation` and un-rotates each rect via new `geometry.redactionRectToContent` (identity at 0°). **The raster PDF path was NOT affected** — empirically verified pixel-accurate at all four rotations (the original research claim pointed at `exportPipeline.ts:225` fillRect, which is correct). | `tests/browser/blockers-redaction.browser.test.ts` (RED→GREEN @ 90/180; raster pins all 4 rotations), `tests/core/exportCoords.test.ts` (helper) |
 
-> **Known limitation (unchanged):** redaction geometry on **rotated pages** is approximate in
-> both the PDF and the new flow-export path — pre-existing, not introduced here. Tracked in the
-> mega-roadmap (`docs/plans/mega-roadmap-2026-06-14.plan.md`).
+> **Residual (honest):** the flow-export redaction fix derives the un-rotate dims from the
+> export viewport, so a source page with an **intrinsic `/Rotate`** (rare; e.g. some scans)
+> combined with redaction may still be approximate — the common case (user-applied rotation on
+> an un-rotated source) is now exact. The PDF **raster** redaction path is exact at all rotations.
 > **Behavior note:** standard-font text inside a Form XObject now also routes to the overlay
 > path (previously could true-edit) — safe, but a deliberate trade for fixing the silent no-op.
 

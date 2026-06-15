@@ -339,8 +339,11 @@ export class ExportService {
 
       // Redaction-aware extraction: drop any source text item that sits under a
       // redaction box on this page so redacted text never leaks into the flow
-      // export (DOCX/MD/TXT). Rects are in editor space (top-left origin), the
-      // same space rasterizePageWithRedactions fills for the PDF export path.
+      // export (DOCX/MD/TXT). Rects live in editor DISPLAYED space (top-left origin,
+      // rotated orientation); reconstructPage un-rotates them via `totalRot` so they
+      // match pdf.js's UNROTATED content-space text items (CORE-P0-1 — without this,
+      // redacted text leaked on rotated pages). The raster PDF path is unaffected.
+      const totalRot = (((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360 + 360) % 360;
       const redactions: RedactionRect[] = elements
         .filter(el => el.pageId === docPage.id && el.type === 'redaction')
         .map(el => ({ x: el.x, y: el.y, width: el.width, height: el.height }));
@@ -578,7 +581,7 @@ export class ExportService {
         } catch { /* operator list unavailable */ }
       }
 
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined);
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot);
       if (pageImages.length > 0) flowPage.images = pageImages;
       flowDoc.pages.push(flowPage);
     }

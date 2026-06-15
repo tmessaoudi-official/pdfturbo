@@ -12,6 +12,8 @@
  * (DOCX / Markdown / TXT — see flowDocWriters.ts).
  */
 
+import { redactionRectToContent } from './geometry';
+
 /** Shape of a pdf.js TextItem (subset we consume). */
 export interface RawTextItem {
   str: string;
@@ -784,12 +786,19 @@ export function reconstructPage(
   colorMap?: Map<string, string>,
   redactions?: RedactionRect[],
   links?: FlowLinkRect[],
-  rules?: RuleRect[]
+  rules?: RuleRect[],
+  pageRotation = 0
 ): FlowPage {
+  // Redaction rects arrive in editor DISPLAYED space; text items are reported in
+  // UNROTATED content space. Un-rotate the rects once so the intersection test in
+  // isItemRedacted compares like-for-like (identity at rotation 0). CORE-P0-1.
+  const contentRedactions = redactions?.length
+    ? redactions.map(r => redactionRectToContent(r, pageWidth, pageHeight, pageRotation))
+    : undefined;
   const words: Word[] = [];
   for (const it of items) {
     if (!it.str || !it.str.trim()) continue;
-    if (redactions?.length && redactions.some(r => isItemRedacted(it, r, pageHeight))) continue;
+    if (contentRedactions?.length && contentRedactions.some(r => isItemRedacted(it, r, pageHeight))) continue;
     const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
     const x = it.transform[4];
     const y = it.transform[5];

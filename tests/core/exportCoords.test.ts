@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { transformPoint } from '../../src/utils/geometry';
+import { transformPoint, redactionRectToContent } from '../../src/utils/geometry';
 
 // tp() with crop offset — mirrors the fixed production code inside _renderElementToPdfLib
 function tp(px: number, py: number, W: number, H: number, rot: number, cropX: number, cropY: number) {
@@ -417,5 +417,43 @@ describe('_transformPoint properties', () => {
     }
     expect(x).toBeCloseTo(150);
     expect(y).toBeCloseTo(300);
+  });
+});
+
+// ── redactionRectToContent (CORE-P0-1: un-rotate redaction rect for flow export) ──
+describe('redactionRectToContent — displayed → unrotated content space', () => {
+  const W = 200, H = 400; // unrotated content dims
+
+  it('is identity at rotation 0', () => {
+    const r = redactionRectToContent({ x: 30, y: 40, width: 120, height: 60 }, W, H, 0);
+    expect(r.x).toBeCloseTo(30);
+    expect(r.y).toBeCloseTo(40);
+    expect(r.width).toBeCloseTo(120);
+    expect(r.height).toBeCloseTo(60);
+  });
+
+  it('treats 360 as identity (normalized)', () => {
+    const r = redactionRectToContent({ x: 30, y: 40, width: 120, height: 60 }, W, H, 360);
+    expect(r.x).toBeCloseTo(30);
+    expect(r.y).toBeCloseTo(40);
+  });
+
+  it('maps a 90° displayed rect to the correct content-top-left box', () => {
+    // SECRET content (y-up) [30,300]-[150,360] displays at [300,30]-[360,150] under
+    // 90°; un-rotating must recover its content-top-left box [30,40]-[150,100].
+    const r = redactionRectToContent({ x: 300, y: 30, width: 60, height: 120 }, W, H, 90);
+    expect(r.x).toBeCloseTo(30);
+    expect(r.y).toBeCloseTo(40);
+    expect(r.width).toBeCloseTo(120);
+    expect(r.height).toBeCloseTo(60);
+  });
+
+  it('preserves area (no degenerate collapse) at every right angle', () => {
+    const rect = { x: 50, y: 60, width: 40, height: 80 };
+    for (const rot of [0, 90, 180, 270]) {
+      // dims swap at 90/270, so feed the rect in the matching displayed frame
+      const r = redactionRectToContent(rect, W, H, rot);
+      expect(r.width * r.height).toBeCloseTo(40 * 80);
+    }
   });
 });
