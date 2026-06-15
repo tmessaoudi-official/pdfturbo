@@ -1,5 +1,6 @@
 import type { PDFTurboApp, ToolMode } from '../../core/pdfTurboApp';
 import { FlyoutManager } from '../flyoutManager';
+import { randomOwnerPassword } from '../../export/encryption';
 
 export function bindModalEvents(app: PDFTurboApp): void {
   // ── Signature modal ────────────────────────────────────────────
@@ -186,7 +187,11 @@ export function bindModalEvents(app: PDFTurboApp): void {
   document.getElementById('lockPdfApplyBtn')?.addEventListener('click', () => {
     const user = (document.getElementById('lockUserPassword') as HTMLInputElement).value.trim();
     if (!user) { app.reportError.warn('toast.passwordRequired'); return; }
-    const owner = (document.getElementById('lockOwnerPassword') as HTMLInputElement).value.trim() || user;
+    // CORE-P0-2/CORE-7: when no owner password is given, generate a strong random
+    // one instead of reusing the user password — owner==user makes the permission
+    // flags trivially strippable (anyone with the open password gains owner rights).
+    const owner = (document.getElementById('lockOwnerPassword') as HTMLInputElement).value.trim()
+      || randomOwnerPassword();
     app._exportPassword = { user, owner };
     const status = document.getElementById('lockPdfStatus') as HTMLElement;
     status.style.display = 'block';

@@ -8,6 +8,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
 import { reconstructPage, assignHeadings, pickImageMime, fillOpToHex, decomposeImageCtm, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
+import { encryptPdf } from './encryption';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -294,10 +295,11 @@ export class ExportService {
     URL.revokeObjectURL(url);
   }
 
-  private _applyExportPassword(pdfDoc: { encrypt(opts: { userPassword: string; ownerPassword: string }): void }): void {
+  private async _applyExportPassword(pdfDoc: BuildPageCtx['pdfDoc']): Promise<void> {
     const pw = this._ctx.exportPassword;
     if (!pw) return;
-    pdfDoc.encrypt({ userPassword: pw.user, ownerPassword: pw.owner });
+    // CORE-P0-2: AES-256 + full usage permissions (see export/encryption.ts).
+    await encryptPdf(pdfDoc, { userPassword: pw.user, ownerPassword: pw.owner });
   }
 
   private async _applyOverlaysToPage(
@@ -320,7 +322,7 @@ export class ExportService {
   }
 
   private async _savePdfDocAndDownload(pdfDoc: BuildPageCtx['pdfDoc'], filename: string): Promise<void> {
-    this._applyExportPassword(pdfDoc);
+    await this._applyExportPassword(pdfDoc);
     const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
     this._downloadBlob(new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' }), filename);
   }

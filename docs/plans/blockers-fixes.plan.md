@@ -12,6 +12,8 @@ finish line). TDD: convert the `it.fails` → normal `it` FIRST (it goes red), t
   Rationale: P0-1 is the most severe (data exposure); P0-2 is bounded jsdom; the reachable batch is cheap and momentum-building.
 - [2026-06-15] NOTE: research + tests pass already committed (23e1ceb). Unpushed: 23e1ceb (blockers), 48ed109 (a11y), c3f57e9 (OCR). Push is MANUAL.
 - [2026-06-15] FINDING (fix #1): CORE-P0-1 was MISLOCATED by the research agent. Empirical browser test proved the raster `fillRect` path is CORRECT at all rotations (3rd source-read false positive this session). The real leak was the flow-export (DOCX/MD/TXT) path — FIXED. Verify-before-fix paid off again.
+- [2026-06-15] AGREED (fix #2): CORE-P0-2 = Option 1 — AES-256 (header 1.7ext3) + explicit FULL_PERMISSIONS + random owner≠user. (AskUserQuestion)
+- [2026-06-15] NEW FEATURE REQUEST (queued after #2): in-browser "generate a cert on the spot" to e-sign without uploading a .p12 (node-forge can RSA-keygen → self-signed X.509 → PKCS#12 in-browser). To be slotted into the signing flow.
 
 ## State at plan time
 - HEAD = 23e1ceb. Tree clean. Gate green: tsc 0 / oxlint 0/0 / jsdom 1012 pass + 11 expected-fail.
@@ -37,7 +39,15 @@ Residual: intrinsic-`/Rotate` source pages still approximate in flow-export (doc
 - Test to ADD (designed, deferred): `tests/browser/blockers-redaction.browser.test.ts` — build a 1-page PDF with text at known coords, set docPage.rotation=90, add a redaction over it, call `rasterizePageWithRedactions` (8 args: srcDoc, docPage, elements, targetPdfDoc, libs, watermark, inkLayer, reportError — see signature at exportPipeline.ts:171), render the output page back to a canvas, pixel-sample the rotated location → assert fill color (today: glyph ink). Also keep a jsdom byte-absence assertion (passes both before/after).
 - Effort: M (browser harness is the work; geometry fix is small). Heaviest item.
 
-### 2. CORE-P0-2 — encryption AES-128→256 + permissions + owner≠user  [P0]
+### 2. CORE-P0-2 — encryption AES-128→256 + permissions + owner≠user  ✅ DONE (2026-06-15)
+**Outcome:** AES-256 IS reachable in @cantoo/pdf-lib (header `1.7ext3` selects V5/AESV3 — verified in
+`PDFSecurity.js`). New `src/export/encryption.ts` (`encryptPdf` + `FULL_PERMISSIONS` + `randomOwnerPassword`);
+`_applyExportPassword` now async-delegates; `modalBinder` random owner when blank. Guard:
+`core-security.blockers.test.ts` (3: AES-256, permission bits, decrypt round-trip — was the it.fails, now passing).
+Gate: tsc 0 / oxlint 0 / jsdom 1018+10 / browser 31. Residual: %PDF-1.7ext3 header (Adobe ExtLevel3 — modern readers fine).
+_Decision: Option 1 (AES-256 + perms + owner≠user)._ _Original notes below._
+
+#### (original) CORE-P0-2 — encryption AES-128→256 + permissions + owner≠user  [P0]
 - file:line: `src/export/exportService.ts:297-301` (`encrypt({userPassword, ownerPassword})` — no algorithm/permissions); `src/ui/binders/modalBinder.ts:186-194` (owner defaults to user `:189`).
 - Fix: (a) set the PDF header to `1.7ext3` (or whatever @cantoo/pdf-lib needs) BEFORE encrypt → V5/R6 AES-256; verify the lib's encrypt API surface. (b) pass an explicit `permissions` object so a plain password lock does NOT strip print/copy/a11y. (c) stop defaulting owner==user in modalBinder (require/allow a distinct owner pw, or document clearly).
 - Test that flips: `tests/blockers/core-security.blockers.test.ts` CORE-P0-2 `it.fails`→`it` (assert AESV3/V5). Update the pin. Add a permissions assertion if cleanly decodable from `/P`.

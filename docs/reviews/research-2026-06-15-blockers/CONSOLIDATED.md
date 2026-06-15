@@ -76,11 +76,17 @@ documented, not promised. Everything marked **REACHABLE** is a real, bounded cli
   be approximate in flow-export (dims derived from the export viewport). Common case (user rotation on
   un-rotated source) is exact. Raster path exact at all rotations.
 
-### CORE-P0-2 — "Lock PDF" is AES-128 and silently denies all permissions  ✅ confirmed by test
-- AES-128 part proven (`core-security.blockers`). Additional: `encrypt()` passes no `permissions` object
-  → `getPermissionsR3({})` clears every allow-bit (print/copy/a11y denied); owner password defaults to
-  user password (`modalBinder.ts:189`) → restrictions are strippable = security theater.
-- **Fix:** set the `1.7ext3` header for AES-256, pass an explicit `permissions` object, stop owner==user.
+### CORE-P0-2 — "Lock PDF" AES-128 + crippled permissions  ✅ FIXED (2026-06-15)
+- Was: `encrypt({user,owner})` with no header bump → V4/AESV2 (128-bit); no `permissions` object
+  → `getPermissionsR3({})` cleared every allow-bit (print/copy/a11y denied); owner defaulted to user
+  (`modalBinder.ts:189`) → restrictions trivially strippable = security theater.
+- **Fix:** new `src/export/encryption.ts` — `encryptPdf` bumps the header to `1.7ext3` (→ V5/R6/AESV3
+  256-bit), passes `FULL_PERMISSIONS` (confidentiality lock that still permits printing/copying/a11y),
+  and `modalBinder` now generates a strong `randomOwnerPassword()` when the owner field is blank (≠ user).
+  `_applyExportPassword` delegates to it. Guard: `tests/blockers/core-security.blockers.test.ts` (3 — AES-256,
+  permission bits set, decryptable round-trip). [Verified: header lever confirmed in `PDFSecurity.js:25-40`.]
+- *Note:* the literal header becomes `%PDF-1.7ext3` (Adobe Extension Level 3 convention — modern readers
+  fine; round-trip load with the user password is asserted). Encryption stays OFF the signing path by design.
 
 ---
 
@@ -138,7 +144,8 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
 
 ## Highest-ROI reachable (ranked, value/effort)
 1. ~~**CORE-P0-1** rotated-redaction geometry~~ ✅ **DONE (2026-06-15)** — re-scoped: raster path was already correct (false-positive source claim); the real DOCX/MD/TXT flow-export leak is fixed via `reconstructPage(pageRotation)` + `redactionRectToContent`.
-2. **CORE-P0-2 + CORE-7** encryption — explicit permissions, AES-256 header, stop owner==user.
+2. ~~**CORE-P0-2 + CORE-7** encryption~~ ✅ **DONE (2026-06-15)** — AES-256 header, explicit permissions, random owner≠user. _(original below)_
+   <!-- original --> explicit permissions, AES-256 header, stop owner==user.
 3. **True-edit B-3** non-WinAnsi ligature refusal — ~1-line guard, closes the "never paint garbage" hole.
 4. **OCR O1** language parity — single-source-of-truth, 5 advertised languages broken today under CSP.
 5. **MD-1/TX-1 + MD-2 + MD-3** — the most visible MD/TXT defects; all data already exists from the DOCX path.
