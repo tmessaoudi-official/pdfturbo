@@ -186,7 +186,26 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   **Reachable, still queued** (file:line + fix in `research-2026-06-15/01-docx-gaps.md` / `02-trueedit-matrix.md`):
   list marker→continuation merge; true-edit Path-3 fill-color canvas-sample, number-tokenizer exponent.
   **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
-  XY-cut, RTL logical reorder, exact subset-font faces; true-edit cm-rotation Path-3 redraw, Type3, Arabic.
+  XY-cut, exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
+  true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder; tashkeel GPOS positioning.
+- **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
+  - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
+    Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order;
+    `orderLineWords` orders an rtl line right-to-left (logical) with direction-aware spacing; the writer emits
+    complex-script attrs (`font.cs=Arial`, `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
+  - **True-edit**: `replaceTextAt` REFUSES Arabic new-text before the Latin Path-3 redraw (it would emit '?')
+    → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still
+    runs first for in-subset edits. Guard: `isArabicText()` (`contentStreamEditor.ts`).
+  - **Overlay rendering** (`src/export/arabicOverlay.ts`): pdf-lib `drawText` CANNOT place shaped glyphs RTL
+    (fontkit shapes logical-only; drawText paints LTR → mirrored). Fix: `font.encodeText(logical)` shapes +
+    emits 2-byte subset CIDs → `reverseCidHex` reverses the CID PAIRS for visual RTL → raw `Tj` via
+    `page.pushOperators` against **Noto Naskh Arabic** (`@fontsource/noto-naskh-arabic` .woff, OFL, lazy
+    `?url`-fetched, embedded Type0/CID via `@pdf-lib/fontkit`; the embedded W-array advances glyphs). Deps:
+    `@pdf-lib/fontkit`, `@fontsource/noto-naskh-arabic` (0 vulns; single-RTL-run uses CID-pair reversal — no
+    bidi lib needed; mixed LTR+RTL line reorder is a documented ceiling). Browser-only (font fetch);
+    wired in `pdfElementRenderer.ts` text branch, guarded by `isArabicText`, right-aligned. Guards:
+    `tests/utils/flowDocArabic.test.ts`, `tests/export/arabicOverlay.test.ts`,
+    `tests/browser/arabic-overlay.browser.test.ts` (rasterized: visible ink + RTL right-aligned centroid).
 - **OCR (Sprint 4, 2026-06-15)**: `src/ocr/*` wraps **tesseract.js@7** (dynamically imported, lang data
   lazy-fetched from CDN on first use → offline caveat). `src/handlers/ocrHandler.ts` renders the current
   source page to a canvas at scale 2, recognizes words, and inserts them as real `TextElement`s via ONE

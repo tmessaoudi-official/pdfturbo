@@ -28,6 +28,7 @@ import {
 } from '@cantoo/pdf-lib';
 
 import type { CsToken, CsOp, TextOpInfo } from '../types/contentStream';
+import { isArabicText } from './flowDoc';
 export type { CsToken, CsOp, TextOpInfo } from '../types/contentStream';
 
 /**
@@ -1258,6 +1259,16 @@ export async function replaceTextAt(
     // subset font isn't possible. Refuse WITHOUT blanking so the original text is
     // preserved; the caller falls back to an overlay text box. Never delete
     // without a visible replacement.
+    return false;
+  }
+
+  // Arabic (and other complex scripts) cannot be faithfully redrawn here: the
+  // standard Latin fallback font substitutes '?' per codepoint, and pdf-lib
+  // drawText performs no contextual shaping or bidi. Path 2 above already handled
+  // the faithful case (editing within an existing Arabic subset font); anything
+  // reaching here would corrupt. Refuse WITHOUT blanking → the caller's overlay
+  // path renders it with an embedded Arabic font + shaping + bidi (Phase C).
+  if (isArabicText(newText)) {
     return false;
   }
 

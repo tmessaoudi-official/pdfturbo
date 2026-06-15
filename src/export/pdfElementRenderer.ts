@@ -8,6 +8,8 @@ import type { ShapeElement } from '../elements/shapeElement';
 import type { CommentElement } from '../elements/commentElement';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { transformPoint, hexToRgbValues } from '../utils/geometry';
+import { isArabicText } from '../utils/flowDoc';
+import { drawArabicLine } from './arabicOverlay';
 
 export interface PdfRenderCtx {
   // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFDocument internals are untyped here
@@ -101,12 +103,25 @@ export async function renderElementToPdfLib(element: PDFElement, ctx: PdfRenderC
     // 0.9 = measured Arial fontBoundingBoxAscent/fontSize ratio (avg across 8–72px);
     // aligns PDF baseline with the browser's CSS text baseline. Max residual error < 0.6pt.
     const lineHeight = te.fontSize * 1.2;
-    te.text.split('\n').forEach((line, i) => {
-      if (!line) return;
-      const rawAnchor = tp(te.x, te.y + te.fontSize * 0.9 + i * lineHeight);
+    const lines = te.text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      const baseY = te.y + te.fontSize * 0.9 + i * lineHeight;
+      const rawAnchor = tp(te.x, baseY);
       const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
-      page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
-    });
+      if (isArabicText(line)) {
+        // Arabic: render shaped, right-to-left via the embedded Noto Naskh font
+        // (drawText can't place shaped glyphs RTL). Right-align to the box edge.
+        const rightAnchor = tp(te.x + (te.width || 0), baseY);
+        await drawArabicLine(pdfDoc, page, {
+          text: line, x: a.x, y: a.y, right: Math.max(a.x, rightAnchor.x),
+          size: te.fontSize, color: col,
+        });
+      } else {
+        page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+      }
+    }
   } else if (element.type === 'signature') {
     const se = element as SignatureElement;
     const img = await pdfDoc.embedPng(dataUrlToUint8Array(se.data));
