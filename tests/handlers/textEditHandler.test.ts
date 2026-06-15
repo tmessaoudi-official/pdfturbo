@@ -39,10 +39,24 @@ function makeItem(str: string, tx: number, ty: number, w = 30, h = 14, fontName 
   return { str, transform: [0, 0, 0, 0, tx, ty], width: w, height: h, fontName };
 }
 
-function makeFakePage(items: FakeItem[], pageHeight = 841) {
+function makeFakePage(items: FakeItem[], pageHeight = 841, rotation = 0, pageWidth = 600) {
+  // Mirror pdf.js PageViewport.convertToPdfPoint (scale 1) per rotation so the
+  // handler's rotation-aware click mapping can be unit-tested. Rotation 0 ==
+  // the legacy [x, H - y] flip, so the pre-existing cases keep passing.
+  const norm = ((rotation % 360) + 360) % 360;
+  const convertToPdfPoint = (x: number, y: number): [number, number] => {
+    switch (norm) {
+      case 90:  return [y, x];
+      case 180: return [pageWidth - x, y];
+      case 270: return [pageWidth - y, pageHeight - x];
+      default:  return [x, pageHeight - y];
+    }
+  };
+  const vpW = norm % 180 === 0 ? pageWidth : pageHeight;
+  const vpH = norm % 180 === 0 ? pageHeight : pageWidth;
   return {
     rotate: 0,
-    getViewport: vi.fn(() => ({ height: pageHeight })),
+    getViewport: vi.fn(() => ({ width: vpW, height: vpH, convertToPdfPoint })),
     getTextContent: vi.fn(() => Promise.resolve({ items, styles: {} })),
   };
 }
@@ -154,6 +168,34 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     // findTextOpAt called at most twice (best succeeds on first try)
     const calls = (mockFindTextOpAt as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls.length).toBe(1);
+    expect(calls[0][2]).toMatchObject({ x: 100, y: 600 });
+  });
+
+  // R2 (2026-06-15 QA sweep): on a ROTATED page the click→content mapping must
+  // go through viewport.convertToPdfPoint, not the naive `pdfY = pageH - canvasY`
+  // (only valid at rotation 0). With the bug, a click on text on a 90° page never
+  // matched any text-item transform → no editor opened.
+  it('maps the click through the rotated viewport so edit-text works on a 90° page', async () => {
+    // Unrotated page 500×800; item "Rotated" at content (100, 600).
+    // At rotation 90 the test viewport maps convertToPdfPoint(x,y) = [y, x],
+    // so a click at viewport (600, 100) → content (100, 600) = the item.
+    const item = makeItem('Rotated', 100, 600);
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
+      if (Math.abs(origin.x - 100) < 1 && Math.abs(origin.y - 600) < 1) {
+        return { fontKey: 'F1', fontSize: 12, fillColor: undefined };
+      }
+      return null;
+    });
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], 800, 90, 500));
+    app.documentModel.currentPage.rotation = 90;
+
+    await handler.handleCanvasClick(click(600, 100), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    // The rotation-aware mapping found the text and opened the true-edit input.
+    expect(document.body.querySelector('.true-edit-input')).not.toBeNull();
+    const calls = (mockFindTextOpAt as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls[0][2]).toMatchObject({ x: 100, y: 600 });
   });
 

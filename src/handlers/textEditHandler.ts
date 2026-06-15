@@ -69,9 +69,14 @@ export class TextEditHandler {
     const viewport = page.getViewport({ scale: 1, rotation: (page.rotate + userRot) % 360 });
     const pageH = viewport.height;
 
-    // Convert canvas coords (top-left origin) → PDF coords (bottom-left origin)
-    const pdfX = canvasX;
-    const pdfY = pageH - canvasY;
+    // Map the click from displayed (viewport, top-left) space to PDF content
+    // coords (bottom-left origin). viewport.convertToPdfPoint applies the page
+    // rotation; the old `pdfY = pageH - canvasY` only held at rotation 0 and
+    // left edit-text unable to find any text on a rotated page (R2) — the click
+    // never matched the unrotated-content-space text-item transforms. canvasX/Y
+    // are already at scale 1 (zoomScale divided out) and the viewport is built
+    // at scale 1, so they are in viewport space.
+    const [pdfX, pdfY] = viewport.convertToPdfPoint(canvasX, canvasY);
 
     const content = await page.getTextContent();
     const items = content.items as { str: string; transform: number[]; width: number; height: number; fontName: string }[];
