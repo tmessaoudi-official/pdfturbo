@@ -13,6 +13,8 @@ finish line). TDD: convert the `it.fails` → normal `it` FIRST (it goes red), t
 - [2026-06-15] NOTE: research + tests pass already committed (23e1ceb). Unpushed: 23e1ceb (blockers), 48ed109 (a11y), c3f57e9 (OCR). Push is MANUAL.
 - [2026-06-15] FINDING (fix #1): CORE-P0-1 was MISLOCATED by the research agent. Empirical browser test proved the raster `fillRect` path is CORRECT at all rotations (3rd source-read false positive this session). The real leak was the flow-export (DOCX/MD/TXT) path — FIXED. Verify-before-fix paid off again.
 - [2026-06-15] AGREED (fix #2): CORE-P0-2 = Option 1 — AES-256 (header 1.7ext3) + explicit FULL_PERMISSIONS + random owner≠user. (AskUserQuestion)
+- [2026-06-15] AGREED (fix #4 OCR O1): VENDOR ALL 8 languages (download + bundle into public/tesseract; ~+50MB dist) rather than trim to 3. (AskUserQuestion)
+- [2026-06-15] AGREED: continue the reachable batch in order B-3/B-1 → OCR O1 (8 langs) → MD/TXT → Arabic AR-1, one fix per commit. (AskUserQuestion)
 - [2026-06-15] NEW FEATURE REQUEST → ✅ DONE: in-browser "generate a cert on the spot" to e-sign without uploading a .p12. Decision: Full subject (CN+O+email+country) + download .p12 (user passphrase) + .pem. Impl: `src/signing/certGen.ts` (`generateSelfSignedP12`, RSA-2048 self-signed X.509 → PKCS#12), sign-modal source toggle (`signSourceUpload`/`signSourceGenerate`), `pdfTurboApp.signPdf` generate branch + `_downloadBytes`, 10 i18n keys ×3 locales, self-signed trust caveat surfaced. Guards: `tests/signing/certGen.test.ts` (round-trip sign), `tests/browser/cert-gen.browser.test.ts`. Gate: tsc 0 / oxlint 0 / jsdom 1022+10 / browser 32.
 
 ## State at plan time
@@ -53,7 +55,14 @@ _Decision: Option 1 (AES-256 + perms + owner≠user)._ _Original notes below._
 - Test that flips: `tests/blockers/core-security.blockers.test.ts` CORE-P0-2 `it.fails`→`it` (assert AESV3/V5). Update the pin. Add a permissions assertion if cleanly decodable from `/P`.
 - Effort: S–M. Verify @cantoo/pdf-lib AES-256 path first (CONSOLIDATED CORE-C2 flagged it borderline-reachable).
 
-### 3. True-edit B-3 ligature refusal + B-1 exponent  [reachable, cheap]
+### 3. True-edit B-3 + B-1  ✅ DONE (2026-06-15)
+**Outcome:** B-3 — exported `hasNonWinAnsi()` in contentStreamEditor; Path-3 redraw refuses non-WinAnsi
+(CJK/Cyrillic/emoji)→overlay (joins Arabic/Type3 refusals). B-1 — `consumeNumberBody` helper used in both
+tokenizer sites consumes a well-formed exponent so `1e-3`/`2.5E+2` stay ONE number token (lone `e` still
+an operator). Guards: `trueedit.blockers.test.ts` (6, B-1 it.fails→passing). Gate: tsc 0/oxlint 0/jsdom 1028+8/browser 32.
+_Original notes below._
+
+#### (original) True-edit B-3 ligature refusal + B-1 exponent  [reachable, cheap]
 - B-3 file:line: `src/utils/contentStreamEditor.ts:1294` (`font.encodeText` redraw), refusals end `:1273`. Fix: add `if (hasNonWinAnsi(newText)) return false;` guard next to the `isArabicText` refusal at :1271 (refuse→overlay instead of painting a wrong glyph). Need a `hasNonWinAnsi(text)` predicate (codepoint > 255 or outside WinAnsi map). NOTE: `replaceTextAt`/`isArabicText` are NOT exported — add the test against an exported seam or export `hasNonWinAnsi`.
 - B-1 file:line: `:153,156` (main) + `:193,196` (tokenizeOne) — continuation class `[0-9.]` excludes `e`/`E`. Fix: extend the number continuation to accept an exponent (`e`/`E` followed by optional sign + digits) so `1e-3` is one number token. Careful: don't swallow a real `e` operator (numbers only).
 - Tests that flip: `tests/blockers/trueedit.blockers.test.ts` B-1 (value≈0.001 + round-trip) → passing. Add a B-3 test (needs the predicate exported).

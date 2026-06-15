@@ -112,7 +112,11 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   surrogate pairs (the old length-parity guess was wrong for ligatures/non-BMP). (A-4) `blankAllNearby`
   only blanks true shadow duplicates (same fontKey+size+payload, captured pre-mutation). (A-5) Type3 /
   vertical (`-V`) / invisible-`Tr` (mode 3/7) text now **refuse** true-edit (→ overlay) via `isType3Font`/
-  `isVerticalWritingFont` + `renderMode` on `TextOpInfo`.
+  `isVerticalWritingFont` + `renderMode` on `TextOpInfo`. **(B-3, 2026-06-15)** non-WinAnsi new text
+  (CJK/Cyrillic/emoji) also refuses the Path-3 standard-font redraw via `hasNonWinAnsi()` (the WinAnsi
+  base-14 fallback would paint '?') → overlay; joins the Arabic refusal. **(B-1, 2026-06-15)** the
+  content-stream tokenizer (`consumeNumberBody`) now keeps `1e-3`/`2.5E+2` as ONE number token (the old
+  `[0-9.]` class split the exponent, corrupting round-trips) — guarded so a lone `e` stays an operator.
 - **Private-method convention**: `_underscore` prefix throughout; oxlint's `no-unused-vars`
   allows unused args/vars only when `_`-prefixed (`argsIgnorePattern`/`varsIgnorePattern`).
   `no-underscore-dangle` is deliberately OFF in `.oxlintrc.json` so it doesn't fight this convention.

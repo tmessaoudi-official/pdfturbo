@@ -49,9 +49,53 @@ function isRegular(ch: string): boolean {
 }
 
 /** Tokenize a decoded PDF content stream. */
+// CP1252 (WinAnsi) codepoints that live above 0xFF — the standard-font redraw
+// (font.encodeText) can encode these even though they're not Latin-1.
+const _WINANSI_HIGH = new Set([
+  0x20ac, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160,
+  0x2039, 0x0152, 0x017d, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
+  0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x017e, 0x0178,
+]);
+
+/**
+ * True if `text` contains any character NOT representable in WinAnsi (CP1252).
+ * The Path-3 standard-font redraw paints through a WinAnsi-encoded base-14 font;
+ * non-WinAnsi codepoints (CJK, Cyrillic, emoji, …) would be substituted with '?'.
+ * Such edits must REFUSE true-edit and fall back to the overlay (B-3) — never
+ * paint a wrong glyph. Arabic is already refused separately (overlay with shaping).
+ */
+export function hasNonWinAnsi(text: string): boolean {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? -1;
+    if (cp === 0x09 || cp === 0x0a || cp === 0x0d) continue; // tab/newline
+    if (cp >= 0x20 && cp <= 0x7e) continue;                  // ASCII printable
+    if (cp >= 0xa0 && cp <= 0xff) continue;                  // Latin-1 printable
+    if (_WINANSI_HIGH.has(cp)) continue;                     // CP1252 high range
+    return true;
+  }
+  return false;
+}
+
 export function tokenizeContentStream(src: string): CsToken[] {
   const tokens: CsToken[] = [];
   let i = 0;
+
+  // Advance `i` over a number body: mantissa [0-9.] then an optional, WELL-FORMED
+  // exponent (`e`/`E` + optional sign + ≥1 digit). Keeping `1e-3` as ONE number
+  // token preserves content-stream meaning on round-trip; a lone `e` not followed
+  // by a valid exponent is left for the operator scanner (B-1).
+  const consumeNumberBody = (): void => {
+    while (i < src.length && /[0-9.]/.test(src[i])) i++;
+    if (src[i] === 'e' || src[i] === 'E') {
+      let j = i + 1;
+      if (src[j] === '+' || src[j] === '-') j++;
+      if (j < src.length && /[0-9]/.test(src[j])) {
+        j++;
+        while (j < src.length && /[0-9]/.test(src[j])) j++;
+        i = j;
+      }
+    }
+  };
 
   const readLiteralString = (): string => {
     const start = i;
@@ -153,7 +197,7 @@ export function tokenizeContentStream(src: string): CsToken[] {
     if (/[0-9+\-.]/.test(ch)) {
       const start = i;
       i++;
-      while (i < src.length && /[0-9.]/.test(src[i])) i++;
+      consumeNumberBody();
       const raw = src.slice(start, i);
       tokens.push({ type: 'number', raw, value: parseFloat(raw) });
       continue;
@@ -193,7 +237,7 @@ export function tokenizeContentStream(src: string): CsToken[] {
     if (/[0-9+\-.]/.test(c)) {
       const start = i;
       i++;
-      while (i < src.length && /[0-9.]/.test(src[i])) i++;
+      consumeNumberBody();
       const raw = src.slice(start, i);
       return { type: 'number', raw, value: parseFloat(raw) };
     }
@@ -1269,6 +1313,13 @@ export async function replaceTextAt(
   // reaching here would corrupt. Refuse WITHOUT blanking → the caller's overlay
   // path renders it with an embedded Arabic font + shaping + bidi (Phase C).
   if (isArabicText(newText)) {
+    return false;
+  }
+
+  // B-3: any other non-WinAnsi text (CJK, Cyrillic, emoji, …) cannot be encoded
+  // by the WinAnsi standard-font fallback — it would paint '?' glyphs. Refuse
+  // WITHOUT blanking so the original stays; the caller renders it via overlay.
+  if (hasNonWinAnsi(newText)) {
     return false;
   }
 

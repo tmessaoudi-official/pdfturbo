@@ -101,9 +101,9 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
   fast-path, header/footer routing, mixed-bidi reorder, exact subset-font face.
 
 ### True text-edit  (`raw/trueedit.md`)
-- **REACHABLE (tested):** B-1 exponent tokenizer.
-- **REACHABLE (designed):** B-3 non-WinAnsi ligature should refuse→overlay (currently paints a wrong
-  glyph, violating the "never paint garbage" contract — *highest-ROI correctness fix, ~1 line*); B-2
+- ✅ **FIXED (2026-06-15):** B-1 exponent tokenizer (`consumeNumberBody` keeps `1e-3` one token) and
+  B-3 non-WinAnsi refusal (`hasNonWinAnsi` → overlay, never paints '?'). Guards in `trueedit.blockers.test.ts`.
+- **REACHABLE (designed):** B-2
   Path-3 Separation→black on the direct/bad-sample path (half-mitigated via handler canvas sample);
   C-1/C-7 CID/empty-segment kerning edges; C-2 `/Differences`-only fonts needlessly degrade.
 - **CEILING:** A6 cm scale/rotation in Path-3 redraw, rotated-page inline-input placement, RTL/Arabic
@@ -146,7 +146,7 @@ Detail + file:line + per-item test design in `./raw/{docx,trueedit,arabic,ocr-si
 1. ~~**CORE-P0-1** rotated-redaction geometry~~ ✅ **DONE (2026-06-15)** — re-scoped: raster path was already correct (false-positive source claim); the real DOCX/MD/TXT flow-export leak is fixed via `reconstructPage(pageRotation)` + `redactionRectToContent`.
 2. ~~**CORE-P0-2 + CORE-7** encryption~~ ✅ **DONE (2026-06-15)** — AES-256 header, explicit permissions, random owner≠user. _(original below)_
    <!-- original --> explicit permissions, AES-256 header, stop owner==user.
-3. **True-edit B-3** non-WinAnsi ligature refusal — ~1-line guard, closes the "never paint garbage" hole.
+3. ~~**True-edit B-3** non-WinAnsi refusal + B-1 exponent~~ ✅ **DONE (2026-06-15)** — `hasNonWinAnsi`→overlay, `consumeNumberBody` keeps `1e-3` one token.
 4. **OCR O1** language parity — single-source-of-truth, 5 advertised languages broken today under CSP.
 5. **MD-1/TX-1 + MD-2 + MD-3** — the most visible MD/TXT defects; all data already exists from the DOCX path.
 6. **Arabic AR-1** — route DOCX reorder through the installed `bidi-js`; biggest Arabic correctness win, zero new dep.
