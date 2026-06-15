@@ -199,8 +199,15 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   (`reconstructColumn — wrapped list-item continuation merge`).
   **Number-tokenizer exponent already DONE (B-1):** `consumeNumberBody` keeps `1e-3`/`2.5E+2` as one token in
   BOTH the main loop and `tokenizeOne` (array parser) — verified 2026-06-15.
-  **Reachable, still queued** (file:line + fix in `research-2026-06-15/02-trueedit-matrix.md`):
-  true-edit Path-3 fill-color canvas-sample (Separation/spot text redraws black — needs real-browser canvas sampling).
+  **Path-3 fill-color canvas-sample DONE (`d7879fb`, e2e-guarded 2026-06-15):** `resolveRedrawColor`
+  (precedence: style override > parsed `rg`/`g`/`k` > canvas-sampled `fallbackColor` > black) +
+  `replaceTextAt(…, fallbackColor)`; `textEditHandler` passes `sampledFallback =
+  hexToRgb01(overlayContext.textColor)` (the glyph color sampled in `_buildOverlayContext`), so
+  Separation/spot (`scn`) text no longer redraws black. Guards: `tests/utils/contentStreamColor.test.ts`
+  (pure `resolveRedrawColor`, incl. the scn-fallback case) + `tests/browser/truedit-spot-color.browser.test.ts`
+  (real pdf.js render of a Separation colorspace → forces Path-3 via Helvetica `é` edit → asserts the
+  redrawn glyph stays chromatic, and a no-fallback control redraws black). **All three `02-trueedit-matrix.md`
+  "reachable gaps" are now done** (Gap 1 TJ-kerning distribute, Gap 2 this, Gap 3 exponent).
   **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
   XY-cut, exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
   true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder; tashkeel GPOS positioning.

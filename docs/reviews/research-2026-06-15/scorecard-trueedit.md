@@ -56,10 +56,12 @@ surrogates · A-4 blank only same fontKey+size+payload · A-5 Type3/vertical/inv
   place; neighbour glyphs no longer shift on a single-word edit. New `decodeLiteralString` measures
   segment lengths. The A2 no-stale-glyph guarantee still holds (overflow segments → empty `()`/`<>`).
   Guarded by the new `replaceShowOpInPlace`/`replaceShowOpHex` cases in `contentStreamEditor.test.ts`.
-- 🟡 **Gap 2 — Path-3 fill color:** `scn`/Separation → silent black; cheapest fix = canvas-pixel-sample
-  fallback (handler already samples for overlays). S effort. Also track stroke color for `Tr 1/2`.
-- 🟡 **Gap 3 — number tokenizer exponent `1e-3`:** rare (non-conformant PDF); `.raw` round-trips so impact
-  is narrow. S, low priority.
+- ✅ **Gap 2 — Path-3 fill color:** DONE (`d7879fb`). Canvas-pixel-sample fallback via `resolveRedrawColor`
+  + `replaceTextAt(…, fallbackColor)`; handler passes the sampled glyph color. `scn`/Separation text keeps
+  its color. Guards: `contentStreamColor.test.ts` + `truedit-spot-color.browser.test.ts`. (Stroke color for
+  `Tr 1/2` text remains untracked — narrow, still open.)
+- ✅ **Gap 3 — number tokenizer exponent `1e-3`:** DONE. `consumeNumberBody` keeps the exponent as one
+  token in both tokenizers (`contentStreamEditor.ts:84-87`).
 - 🟡 **Non-WinAnsi ligature on Path-3:** currently drops glyph with no refusal — should refuse→overlay
   (consistency with A-5) rather than paint a wrong glyph.
 

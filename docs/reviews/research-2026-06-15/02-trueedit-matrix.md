@@ -52,13 +52,20 @@ the original. Routing decision = the file:line that selects the path.
 
 1. **`ﬁ` / non-WinAnsi ligature on a standard or Path-3 font** — `font.encodeText` (`:1206`)
    silently substitutes or drops the glyph. No refusal, no warning. Visible but wrong. [Verified: WinAnsi has no U+FB01; `encodeText` substitutes]
-2. **TJ kerning collapse, Path-1** (`:480-489`) — whole kerned array → one literal; same-line
-   spacing/justification changes. Visible but layout shifts. (Gap 1) [Verified: code collapses array]
+2. ~~**TJ kerning collapse, Path-1**~~ — **RESOLVED.** `decodeLiteralString` + proportional
+   per-segment split keeps kerning numbers in place (`contentStreamEditor.ts:585-592`). (Gap 1 done)
 3. **Path-3 redraw under a scaling/rotating `cm`** (`:1210` identity Tm) — wrong size/orientation.
    (Ceiling A6) [Verified: redraw Tm hardcodes `1 0 0 1`]
-4. **Path-3 fill color from `scn`/`Separation`/`cs`** — `parseFillColorToRgb` (`:421-439`) reads
-   only rg/g/k; `cs` *resets* fillColor to undefined (`:375-378`) so Separation text redraws as
-   **black**. (Gap 2 / B7-B8) [Verified: parser regex set + cs reset]
+4. ~~**Path-3 fill color from `scn`/`Separation`/`cs`**~~ — **RESOLVED (`d7879fb`).** `resolveRedrawColor`
+   adds a 4th precedence tier: style > parsed `rg`/`g`/`k` > canvas-sampled `fallbackColor` > black; the
+   handler passes the sampled glyph color, so `scn`/Separation text keeps its color. (Gap 2 done — guards:
+   `tests/utils/contentStreamColor.test.ts`, `tests/browser/truedit-spot-color.browser.test.ts`)
+
+> **UPDATE 2026-06-15 (post-d7879fb re-verification):** all THREE "Reachable Gaps" below are now DONE in
+> the code — this matrix's "Reachable Gaps" section is retained for historical/design context only. Gap 1
+> (TJ kerning) `:585-592`; Gap 2 (Path-3 fill color) `resolveRedrawColor` + `fallbackColor`; Gap 3
+> (exponent) `consumeNumberBody` `:84-87`. Line numbers in the gap write-ups below predate `d7879fb` and
+> are stale.
 
 ### Cells now correctly HANDLED (regressions from 06-14 audit closed)
 
