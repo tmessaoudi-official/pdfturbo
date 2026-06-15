@@ -219,7 +219,9 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   now fixed (guards: `tests/browser/ocr-csp.browser.test.ts` real-engine e2e, `tests/ocr/ocrCore.test.ts`):
   (1) **Assets must be 'self'-served** — the app CSP (`connect-src 'self' blob:`) blocks tesseract's CDN.
   `scripts/prepare-ocr-assets.mjs` (npm `ocr:assets`, run via predev/prebuild + a CI step before tests)
-  vendors the worker + LSTM core wasm (from node_modules) + **best** eng/fra/ara traineddata (downloaded)
+  vendors the worker + LSTM core wasm (from node_modules) + **best** traineddata (downloaded) for ALL 8
+  advertised languages (eng/fra/ara/deu/spa/ita/por/nld — O1 fix 2026-06-15; `LANGS` MUST stay in sync
+  with `OCR_LANGUAGES`, enforced by `tests/blockers/ocr.blockers.test.ts`)
   into `public/tesseract/` (gitignored). `ocrAssetPaths(import.meta.env.BASE_URL)` builds the local
   `corePath`/`workerPath`/`langPath`; NEVER reintroduce a CDN path (the `ocrAssetPaths` test guards this).
   (2) **Literal dynamic import** — `import('tesseract.js')` (NOT the old `@vite-ignore` indirect form,

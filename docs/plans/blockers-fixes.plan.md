@@ -68,7 +68,13 @@ _Original notes below._
 - Tests that flip: `tests/blockers/trueedit.blockers.test.ts` B-1 (value≈0.001 + round-trip) → passing. Add a B-3 test (needs the predicate exported).
 - Effort: B-3 ~1 line + predicate; B-1 ~2-line regex in two places. Both jsdom.
 
-### 4. OCR O1 — language parity  [reachable, cheap]
+### 4. OCR O1 — language parity  ✅ DONE (2026-06-15)
+**Outcome:** vendor ALL 8 (decision). `prepare-ocr-assets.mjs` `LANGS` += deu/spa/ita/por/nld (tessdata
+URLs verified HTTP 200). O1 test flipped → passing + repurposed as the advertised⊆vendored drift guard.
+CLAUDE.md OCR note updated. Gate: tsc 0/oxlint 0/jsdom 1029+7. (Assets are gitignored; CI `ocr:assets`
+downloads all 8 — ~+50MB dist.) _Original notes below._
+
+#### (original) OCR O1 — language parity  [reachable, cheap]
 - file:line: `src/ocr/languages.ts:24-33` (8 langs) vs `scripts/prepare-ocr-assets.mjs:41` (`LANGS=['eng','fra','ara']`).
 - Fix (pick one): (a) extend the vendor `LANGS` to all 8 advertised codes (more assets ~10MB each → dist size), OR (b) trim `OCR_LANGUAGES` to the 3 vendored (honest UI), OR (c) single source of truth + only advertise what's vendored. Recommend (c)/(b) unless the user wants the +5 languages downloaded.
 - Test that flips: `tests/blockers/ocr.blockers.test.ts` O1 `it.fails`→`it`; update the pin (vendored set) accordingly.

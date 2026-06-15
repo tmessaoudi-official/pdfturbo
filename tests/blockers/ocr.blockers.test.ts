@@ -19,21 +19,19 @@ function vendoredLangs(): string[] {
 }
 
 describe('OCR blocker O1 — advertised languages must all be vendored', () => {
-  // REACHABLE. The UI advertises 8 OCR languages (languages.ts) but the asset
-  // vendor downloads only eng/fra/ara. Under the app CSP (connect-src 'self')
-  // choosing deu/spa/ita/por/nld fetches a non-existent same-origin traineddata
-  // → the engine throws. So 5 of 8 "supported" languages are broken at runtime.
-  it.fails('every advertised OCR language has a vendored traineddata asset', () => {
+  // FIXED (decision: vendor all 8 rather than trim). This is now the drift guard:
+  // if languages.ts and prepare-ocr-assets.mjs diverge, OCR silently breaks under
+  // the app CSP (connect-src 'self'), so the test enforces advertised ⊆ vendored.
+  it('every advertised OCR language has a vendored traineddata asset', () => {
     const vendored = new Set(vendoredLangs());
     const missing = OCR_LANGUAGES.filter((l) => !vendored.has(l.code)).map((l) => l.code);
-    // DESIRED: nothing advertised is missing its asset. TODAY: deu/spa/ita/por/nld missing.
     expect(missing).toEqual([]);
   });
 
-  it('documents the current advertised-vs-vendored gap (pin)', () => {
-    const vendored = new Set(vendoredLangs());
-    const advertised = OCR_LANGUAGES.map((l) => l.code);
+  it('vendors exactly the advertised set (no orphan downloads)', () => {
+    const vendored = [...vendoredLangs()].sort();
+    const advertised = OCR_LANGUAGES.map((l) => l.code).sort();
     expect(advertised.length).toBe(8);
-    expect([...vendored].sort()).toEqual(['ara', 'eng', 'fra']);
+    expect(vendored).toEqual(advertised);
   });
 });

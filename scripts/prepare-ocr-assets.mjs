@@ -36,9 +36,11 @@ const CORE_FILES = [
   'tesseract-core-relaxedsimd-lstm.wasm.js',
 ];
 
-// "best" tier (4.0.0). The 3 UI languages.
+// "best" tier (4.0.0). MUST stay in sync with OCR_LANGUAGES in
+// src/ocr/languages.ts — the OCR O1 blocker test fails if any advertised
+// language is not vendored here (advertised ⊆ vendored invariant).
 const TESSDATA_BASE = 'https://tessdata.projectnaptha.com/4.0.0';
-const LANGS = ['eng', 'fra', 'ara'];
+const LANGS = ['eng', 'fra', 'ara', 'deu', 'spa', 'ita', 'por', 'nld'];
 
 function ensureDir(d) {
   if (!existsSync(d)) mkdirSync(d, { recursive: true });
