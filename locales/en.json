@@ -1,8 +1,18 @@
 {
+  "a11y": {
+    "skipToContent": "Skip to main content",
+    "toolbarPrimary": "Primary toolbar",
+    "toolbarSecondary": "Formatting and navigation toolbar",
+    "findBar": "Find in document"
+  },
   "app": {
     "title": "PDFturbo"
   },
   "toolbar": {
+    "ariaFontFamily": "Font family",
+    "ariaFontSize": "Font size",
+    "ariaTextColor": "Text color",
+    "ariaPageNumber": "Page number",
     "file": "📁 File ▾",
     "open": "📂 Open…",
     "close": "✕ Close Document",

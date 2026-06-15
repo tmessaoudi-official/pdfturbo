@@ -18,6 +18,23 @@
       padding: 0;
       box-sizing: border-box;
     }
+    /* Skip-nav: off-screen until focused (keyboard a11y). */
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 1000;
+      padding: 8px 14px;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 0 0 6px 0;
+      font-size: 14px;
+      text-decoration: none;
+    }
+    .skip-link:focus {
+      left: 0;
+      outline: 3px solid #1e3a8a;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #f5f5f5;
@@ -980,8 +997,9 @@
   </style>
 </head>
 <body>
+<a class="skip-link" href="#canvasContainer" data-i18n="a11y.skipToContent">Skip to main content</a>
 <div class="container">
-  <div class="header">
+  <header class="header">
     <h1 data-i18n="app.title">PDFturbo</h1>
     <div class="lang-switcher">
       <div class="lang-globe-wrap" id="langGlobeWrap">
@@ -993,8 +1011,8 @@
         </div>
       </div>
     </div>
-  </div>
-  <div class="toolbar toolbar-row1">
+  </header>
+  <div class="toolbar toolbar-row1" role="toolbar" data-i18n-aria="a11y.toolbarPrimary">
     <div class="toolbar-group" id="tbg-file">
       <div class="file-menu-wrap" id="fileMenuWrap">
         <button id="fileMenuBtn" class="btn btn-primary" data-i18n="toolbar.file">📁 File ▾</button>
@@ -1088,10 +1106,10 @@
     </div>
     <div id="modeBadge" class="mode-badge">SELECT</div>
   </div>
-  <div class="toolbar toolbar-row2">
+  <div class="toolbar toolbar-row2" role="toolbar" data-i18n-aria="a11y.toolbarSecondary">
     <div class="toolbar-group" id="formattingGroup">
       <span class="toolbar-label" data-i18n="formatting.textLabel">Text</span>
-      <select id="fontFamily" class="toolbar-select" disabled>
+      <select id="fontFamily" class="toolbar-select" data-i18n-aria="toolbar.ariaFontFamily" disabled>
         <option value="Arial">Arial</option>
         <option value="Helvetica">Helvetica</option>
         <option value="Times New Roman">Times New Roman</option>
@@ -1100,9 +1118,9 @@
       <button id="boldBtn" class="btn btn-icon" disabled data-i18n-title="formatting.boldTitle" title="Bold"><strong>B</strong></button>
       <button id="italicBtn" class="btn btn-icon btn-italic" disabled data-i18n-title="formatting.italicTitle" title="Italic"><em>I</em></button>
       <button id="fontSizeDownBtn" class="btn btn-icon" disabled data-i18n-title="formatting.fontSizeDownTitle" title="Decrease font size (A-)">A−</button>
-      <input type="number" id="fontSize" value="14" min="8" max="72" class="toolbar-number" disabled>
+      <input type="number" id="fontSize" value="14" min="8" max="72" class="toolbar-number" data-i18n-aria="toolbar.ariaFontSize" disabled>
       <button id="fontSizeUpBtn" class="btn btn-icon" disabled data-i18n-title="formatting.fontSizeUpTitle" title="Increase font size (A+)">A+</button>
-      <input type="color" id="color" value="#000000" class="toolbar-color">
+      <input type="color" id="color" value="#000000" class="toolbar-color" data-i18n-aria="toolbar.ariaTextColor">
       <button id="colorEyedropperBtn" class="btn btn-icon btn-sm" data-i18n-title="toolbar.eyedropperTitle" title="Pick color from screen (eyedropper)">🖊</button>
       <label id="fillColorLabel" style="display:none;align-items:center;gap:3px;font-size:12px;" data-i18n-title="toolbar.fillColorTitle" title="Shape fill color">
         <span data-i18n="formatting.fillLabel">Fill</span>
@@ -1121,14 +1139,14 @@
     <div class="toolbar-group" id="navGroup">
       <button id="firstPage" class="btn btn-icon" disabled data-i18n-title="formatting.firstPageTitle" title="First page">◀◀</button>
       <button id="prevPage" class="btn btn-icon" disabled data-i18n-title="formatting.prevPageTitle" title="Previous page (Ctrl+←)">◀</button>
-      <input type="number" id="pageInput" value="1" min="1" class="toolbar-number page-input" disabled>
+      <input type="number" id="pageInput" value="1" min="1" class="toolbar-number page-input" data-i18n-aria="toolbar.ariaPageNumber" disabled>
       <span id="pageTotal" class="page-total">/ —</span>
       <button id="nextPage" class="btn btn-icon" disabled data-i18n-title="formatting.nextPageTitle" title="Next page (Ctrl+→)">▶</button>
       <button id="lastPage" class="btn btn-icon" disabled data-i18n-title="formatting.lastPageTitle" title="Last page">▶▶</button>
     </div>
   </div>
   <!-- Find bar — shown via Ctrl+F or 🔍 button -->
-  <div id="findBar" class="find-bar" style="display:none">
+  <div id="findBar" class="find-bar" role="search" data-i18n-aria="a11y.findBar" style="display:none">
     <input type="text" id="findInput" data-i18n-placeholder="findbar.placeholder" data-i18n-aria="findbar.inputAriaLabel" placeholder="Search in page…" autocomplete="off" spellcheck="false" />
     <span id="findCount" class="find-count" aria-live="polite" aria-atomic="true"></span>
     <button id="findCaseSensitive" class="btn btn-icon btn-sm find-toggle" data-i18n-title="findbar.caseSensitiveTitle" title="Case sensitive">Aa</button>
@@ -1138,7 +1156,7 @@
     <button id="findHighlight" class="btn btn-secondary btn-sm" data-i18n="findbar.keepHighlight" data-i18n-title="findbar.keepHighlightTitle" title="Add as permanent highlight">🖊 Keep</button>
     <button id="findClose" class="btn btn-icon btn-sm" data-i18n-title="findbar.closeTitle" title="Close (Esc)">×</button>
   </div>
-  <div class="canvas-container" id="canvasContainer" dir="ltr">
+  <div class="canvas-container" id="canvasContainer" dir="ltr" role="main" tabindex="-1">
     <div id="emptyState" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#6c757d;font-size:18px;pointer-events:none;z-index:1;">
       <span data-i18n="canvas.emptyState">Upload a PDF to get started</span>
     </div>

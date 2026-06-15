@@ -1,8 +1,18 @@
 {
+  "a11y": {
+    "skipToContent": "Aller au contenu principal",
+    "toolbarPrimary": "Barre d'outils principale",
+    "toolbarSecondary": "Barre d'outils de mise en forme et de navigation",
+    "findBar": "Rechercher dans le document"
+  },
   "app": {
     "title": "PDFturbo"
   },
   "toolbar": {
+    "ariaFontFamily": "Police",
+    "ariaFontSize": "Taille de police",
+    "ariaTextColor": "Couleur du texte",
+    "ariaPageNumber": "Numéro de page",
     "file": "📁 Fichier ▾",
     "open": "📂 Ouvrir…",
     "close": "✕ Fermer le document",

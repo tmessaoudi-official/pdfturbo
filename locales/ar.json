@@ -1,8 +1,18 @@
 {
+  "a11y": {
+    "skipToContent": "تخطٍ إلى المحتوى الرئيسي",
+    "toolbarPrimary": "شريط الأدوات الرئيسي",
+    "toolbarSecondary": "شريط أدوات التنسيق والتنقل",
+    "findBar": "البحث في المستند"
+  },
   "app": {
     "title": "PDFturbo"
   },
   "toolbar": {
+    "ariaFontFamily": "نوع الخط",
+    "ariaFontSize": "حجم الخط",
+    "ariaTextColor": "لون النص",
+    "ariaPageNumber": "رقم الصفحة",
     "file": "📁 الملف ▾",
     "open": "📂 فتح…",
     "close": "✕ إغلاق المستند",
