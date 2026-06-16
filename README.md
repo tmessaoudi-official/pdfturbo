@@ -53,7 +53,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Barcode / QR code** — generate and place 1D/2D barcodes or QR codes with custom content, format, and error-correction level
 - **Text search** — find text in the PDF with highlighted matches and Add Highlight action
 - **Form field fill** — auto-detect and fill AcroForm text fields (Tx type)
-- **Page management** — add pages from another PDF, delete, reorder, rotate pages
+- **Page management** — add pages from another PDF (merge), delete, reorder, rotate pages, and **extract a page range** (e.g. `1-3, 5, 8-10`) to a new PDF
 - **Undo / Redo** — 50-command history (Ctrl+Z / Ctrl+Y)
 - **Session persistence** — auto-saves to IndexedDB, restores on reload
 - **Export options** — full PDF, single page PDF, page as PNG image
