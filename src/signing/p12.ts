@@ -75,6 +75,10 @@ export async function loadP12(p12: Uint8Array, passphrase: string): Promise<P12M
     // forge accepts (asn1, password) or (asn1, strict, password); use the strict form.
     p12Obj = f.pkcs12.pkcs12FromAsn1(asn1, false, passphrase);
   } catch (cause) {
+    // M3 #33: nothing key-secret has been derived yet on this path (parse failed),
+    // and the passphrase is an immutable JS string that cannot be scrubbed. The
+    // .p12 container bytes are zeroed by the caller's finally on every path,
+    // including this one — see signingHandler.sign().
     // forge throws a generic Error on both malformed DER and MAC mismatch. We map
     // the common "Invalid password" / MAC message to WRONG_PASSPHRASE, else INVALID_P12.
     const msg = cause instanceof Error ? cause.message : String(cause);
@@ -114,6 +118,37 @@ export async function loadP12(p12: Uint8Array, passphrase: string): Promise<P12M
     chain,
     commonName: extractCommonName(leaf),
   };
+}
+
+/** RSA private-key components node-forge exposes (jsbn BigIntegers). */
+const _FORGE_KEY_COMPONENTS = ['d', 'p', 'q', 'dP', 'dQ', 'qInv', 'n', 'e'] as const;
+
+/**
+ * Best-effort scrub of a node-forge RSA private key. Each component is a jsbn
+ * BigInteger whose digits live in a `.data` number[]; we overwrite those digits
+ * in place — genuinely clearing the secret from memory, not merely dropping a
+ * reference — then null the field. Best-effort because forge may have made
+ * transient copies during CMS production; this still shrinks the residency
+ * window. Safe no-op on null / non-object / partial keys.
+ */
+export function scrubForgeKey(key: unknown): void {
+  if (!key || typeof key !== 'object') return;
+  const k = key as Record<string, { data?: number[] } | null>;
+  for (const field of _FORGE_KEY_COMPONENTS) {
+    const comp = k[field];
+    if (comp && Array.isArray(comp.data)) comp.data.fill(0);
+    k[field] = null;
+  }
+}
+
+/**
+ * Scrub the signing key material after use: clear the forge private key (above)
+ * and drop the reference. The .p12 container bytes are zeroed separately by the
+ * caller; the passphrase is an immutable JS string and cannot be scrubbed.
+ */
+export function scrubP12Material(material: P12Material): void {
+  scrubForgeKey(material.privateKey);
+  material.privateKey = null;
 }
 
 function firstBagWith(bags: ForgeBag[] | undefined, pred: (b: ForgeBag) => boolean): ForgeBag | undefined {

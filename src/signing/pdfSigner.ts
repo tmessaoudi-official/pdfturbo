@@ -28,7 +28,7 @@ import {
   validateRect,
   validateSignOptionsShape,
 } from './appearance';
-import { loadP12, type P12Material } from './p12';
+import { loadP12, scrubP12Material, type P12Material } from './p12';
 import { buildDetachedCms } from './cms';
 import {
   BYTE_RANGE_SENTINEL,
@@ -81,23 +81,29 @@ export class PdfSigner {
 
     const material = await loadP12(opts.p12, opts.passphrase);
 
-    const pdfLib = await import('@cantoo/pdf-lib');
-    const doc = await this._loadDocument(pdfLib, pdfBytes);
-    const page = doc.getPage(opts.page);
+    try {
+      const pdfLib = await import('@cantoo/pdf-lib');
+      const doc = await this._loadDocument(pdfLib, pdfBytes);
+      const page = doc.getPage(opts.page);
 
-    const signerName = (opts.name ?? '').trim() || material.commonName;
-    const signDate = new Date();
+      const signerName = (opts.name ?? '').trim() || material.commonName;
+      const signDate = new Date();
 
-    this._drawAppearance(pdfLib, doc, page, opts, signerName, signDate);
-    const sigFieldRef = this._buildSignatureDict(pdfLib, doc, page, opts, signerName, signDate);
-    this._registerAcroFormField(pdfLib, doc, sigFieldRef);
+      this._drawAppearance(pdfLib, doc, page, opts, signerName, signDate);
+      const sigFieldRef = this._buildSignatureDict(pdfLib, doc, page, opts, signerName, signDate);
+      this._registerAcroFormField(pdfLib, doc, sigFieldRef);
 
-    // Serialise WITHOUT object streams so /Contents stays a plain literal we can find.
-    const draftBytes = await doc.save({ useObjectStreams: false, updateFieldAppearances: false });
+      // Serialise WITHOUT object streams so /Contents stays a plain literal we can find.
+      const draftBytes = await doc.save({ useObjectStreams: false, updateFieldAppearances: false });
 
-    const signedBytes = await this._spliceSignature(draftBytes, material);
+      const signedBytes = await this._spliceSignature(draftBytes, material);
 
-    return { bytes: signedBytes, signerCommonName: material.commonName };
+      return { bytes: signedBytes, signerCommonName: material.commonName };
+    } finally {
+      // Clear the private-key digits from memory the moment signing finishes
+      // (success OR failure), shrinking the secret's residency window.
+      scrubP12Material(material);
+    }
   }
 
   /**

@@ -15,6 +15,7 @@
  */
 
 import { SignError } from './types';
+import { scrubForgeKey } from './p12';
 
 /** X.509 subject fields collected from the UI. Only commonName is required. */
 export interface CertIdentity {
@@ -160,6 +161,9 @@ export async function generateSelfSignedP12(identity: CertIdentity, passphrase: 
     });
     const p12 = binaryStringToBytes(f.asn1.toDer(p12Asn1).getBytes());
     const pem = f.pki.certificateToPem(cert);
+    // The key is now packaged into the .p12 bytes — clear the generated private
+    // key digits from memory before returning (best-effort; mirrors the signer).
+    scrubForgeKey(keys.privateKey);
     return { p12, pem, passphrase };
   } catch (err) {
     if (err instanceof SignError) throw err;
