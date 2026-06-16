@@ -795,6 +795,32 @@ endbfrange`;
     expect(parseToUnicodeCMap('no cmap content here').size).toBe(0);
   });
 
+  // M0 #2 — file-open DoS/OOM hardening. A crafted ToUnicode CMap can declare a
+  // sequential bfrange spanning billions of code points; the unguarded loop would
+  // allocate billions of Map entries (OOM) or throw on an out-of-range code point.
+  it('clamps a maliciously huge sequential bfrange without hanging or OOM', () => {
+    const cmap = `beginbfrange
+<00000000> <FFFFFFFF> <0020>
+endbfrange`;
+    const t0 = Date.now();
+    const map = parseToUnicodeCMap(cmap);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    // Bounded: a legitimate 1–2 byte ToUnicode map has at most 65536 distinct codes.
+    expect(map.size).toBeLessThanOrEqual(0x10000);
+    // The low end is still mapped correctly (from=0 → start 0x20 = space).
+    expect(map.get(0)).toBe(' ');
+  });
+
+  it('does not throw on a bfrange whose destination exceeds the max code point', () => {
+    const cmap = `beginbfrange
+<0000> <0020> <0010FFF8>
+endbfrange`;
+    expect(() => parseToUnicodeCMap(cmap)).not.toThrow();
+    const map = parseToUnicodeCMap(cmap);
+    // In-range destinations are mapped; out-of-range (> 0x10FFFF) are skipped, not fatal.
+    expect(map.get(0)).toBe(String.fromCodePoint(0x10fff8));
+  });
+
   it('handles combined bfchar and bfrange sections', () => {
     const cmap = `beginbfchar
 <0020> <0020>

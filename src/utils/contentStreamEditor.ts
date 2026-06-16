@@ -903,24 +903,34 @@ function cmapHexToUnicodeStr(hex: string): string {
  * Parse a ToUnicode CMap text into a Map of charCode → Unicode string.
  * Handles beginbfchar/endbfchar and beginbfrange/endbfrange sections.
  */
+// Upper bound on entries from one ToUnicode CMap (M0 #2 — file-open DoS/OOM guard).
+// Legitimate ToUnicode maps use 1- or 2-byte char codes → at most 65536 distinct
+// codes. A crafted CMap can declare a sequential bfrange spanning billions of code
+// points; without this bound the parser would allocate billions of Map entries
+// (OOM) or throw a RangeError on an out-of-Unicode-range destination.
+const MAX_CMAP_ENTRIES = 0x10000;
+const MAX_CODE_POINT = 0x10ffff;
+
 export function parseToUnicodeCMap(cmap: string): Map<number, string> {
   const result = new Map<number, string>();
 
   for (const section of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
     for (const m of section[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
+      if (result.size >= MAX_CMAP_ENTRIES) break;
       result.set(hexToInt(m[1]), cmapHexToUnicodeStr(m[2]));
     }
   }
 
   for (const section of cmap.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
     const body = section[1];
-    // Array ranges: <from> <to> [<d1> <d2> ...]
+    // Array ranges: <from> <to> [<d1> <d2> ...] — already bounded by items.length.
     const processed = body.replace(
       /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[([^\]]*)\]/g,
       (_, from, to, dsts) => {
         const f = hexToInt(from), t = hexToInt(to);
         const items = [...dsts.matchAll(/<([0-9A-Fa-f]+)>/g)];
         for (let i = 0; i <= t - f && i < items.length; i++) {
+          if (result.size >= MAX_CMAP_ENTRIES) break;
           result.set(f + i, cmapHexToUnicodeStr(items[i][1]));
         }
         return '';
@@ -929,9 +939,15 @@ export function parseToUnicodeCMap(cmap: string): Map<number, string> {
     // Sequential ranges: <from> <to> <startDst>
     for (const m of processed.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
       const from = hexToInt(m[1]), to = hexToInt(m[2]), start = hexToInt(m[3]);
-      for (let i = 0; i <= to - from; i++) {
+      const span = to - from;
+      if (!Number.isFinite(span) || span < 0) continue; // inverted / NaN range — ignore
+      // Clamp the span to the remaining entry budget.
+      const limit = Math.min(span, MAX_CMAP_ENTRIES - result.size - 1);
+      for (let i = 0; i <= limit; i++) {
+        const cp = start + i;
+        if (cp > MAX_CODE_POINT) break; // destination left the Unicode range — stop
         if (!result.has(from + i)) {
-          result.set(from + i, String.fromCodePoint(start + i));
+          result.set(from + i, String.fromCodePoint(cp));
         }
       }
     }
