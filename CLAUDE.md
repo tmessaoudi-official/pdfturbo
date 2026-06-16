@@ -84,6 +84,14 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 - **Only `@cantoo/pdf-lib` is the PDF write library** (the dead `pdf-lib` and `qpdf-wasm`
   deps were removed 2026-06-11). Never add the bare `pdf-lib` back — it has been abandoned
   upstream since ~2021.
+- **PDF sanitizer (#53)**: `src/utils/pdfSanitizer.ts` `sanitizePdf(bytes)` strips `/Info`, XMP
+  `/Metadata`, `/OpenAction`, `/AA` (catalog + every page), and `/Names→/JavaScript` +
+  `/Names→/EmbeddedFiles` via pdf-lib key-deletion (no new dep; 1.31 KB lazy chunk). **Non-obvious:
+  it MUST load with `PDFDocument.load(bytes, { updateMetadata: false })`** — the default `true`
+  makes pdf-lib re-stamp `/Info` Producer + ModDate at *load time* (constructor → `updateInfoDict`),
+  silently re-injecting the metadata you're stripping. The same applies to any verification re-load.
+  Wired via `ExportService.sanitizeAndDownload()` (🧹 export-flyout button) over the **assembled**
+  export, not the raw source. Redaction-completeness check is deferred (#53b).
 - **True text editing engine**: `src/utils/contentStreamEditor.ts` can genuinely delete/
   replace existing PDF text via content-stream surgery (position-matched, not index-matched).
   Wired into the edit-text tool (2026-06-11): `textEditHandler` tries a true edit first

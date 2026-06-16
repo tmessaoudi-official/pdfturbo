@@ -46,6 +46,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **OCR** — recognise text in scanned/image PDFs (tesseract.js, 8 languages incl. Arabic); insert as editable text, or add an invisible searchable text layer
 - **Digital signature (e-Sign)** — visible PKCS#12/CMS signature (node-forge); upload a `.p12` or generate a self-signed certificate in-browser
 - **Lock PDF** — AES-256 password encryption on export
+- **Sanitize** — download a copy with metadata (`/Info`, XMP), document-level JavaScript (`/OpenAction`, `/AA`), and embedded files stripped
 - **Export to DOCX / Markdown** — reconstruct a flow document (headings, lists, columns, images, RTL) from the PDF text (beta)
 - **Watermark** — tiled repeating watermark on export with configurable text, opacity, angle, density
 - **Barcode / QR code** — generate and place 1D/2D barcodes or QR codes with custom content, format, and error-correction level
