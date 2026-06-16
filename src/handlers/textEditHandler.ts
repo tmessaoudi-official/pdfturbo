@@ -463,8 +463,9 @@ export class TextEditHandler {
         const ok = await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE);
         if (!ok) return;
         const newBytes = await opts.libDoc.save();
-        await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);
-        app.reportError.info('toast.trueTextDeleted');
+        if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
+          app.reportError.info('toast.trueTextDeleted');
+        }
         return;
       }
 
@@ -484,8 +485,9 @@ export class TextEditHandler {
         }
         if (allHandled) {
           const newBytes = await opts.libDoc.save();
-          await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);
-          app.reportError.info('toast.trueTextEdited');
+          if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
+            app.reportError.info('toast.trueTextEdited');
+          }
           return;
         }
         // Fall through: at least one in-stream op failed; use full replacement.
@@ -515,8 +517,9 @@ export class TextEditHandler {
       }
 
       const newBytes = await opts.libDoc.save();
-      await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId);
-      app.reportError.info('toast.trueTextEdited');
+      if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
+        app.reportError.info('toast.trueTextEdited');
+      }
     };
 
     input.addEventListener('keydown', ev => {

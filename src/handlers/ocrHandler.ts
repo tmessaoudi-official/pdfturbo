@@ -146,8 +146,10 @@ export class OcrHandler {
       const newBytes = await applySearchableLayerToPdf(src.bytes, page.sourcePageNum, result.words, scale);
       if (!newBytes) return 0;
       // Reuse the true-edit byte-swap: undoable (ReplaceSourcePdfBytesCmd) + persisted.
-      await app._applySourcePdfEdit(src, newBytes, page.id);
-      return placed;
+      // If the swap was discarded (source superseded / error), report no words placed
+      // so the caller doesn't falsely claim a searchable layer was added.
+      const committed = await app._applySourcePdfEdit(src, newBytes, page.id);
+      return committed ? placed : 0;
     }
 
     const cmds = result.words

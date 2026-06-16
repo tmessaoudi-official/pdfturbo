@@ -312,6 +312,7 @@
     "watermarkDisabled": "Watermark disabled",
     "highlightAdded": "Highlight added — Ctrl+Z to undo",
     "trueTextEdited": "Text edited in the PDF — Ctrl+Z to undo",
+    "trueEditFailed": "Couldn't apply the text edit — the document is unchanged",
     "trueTextDeleted": "Text deleted from the PDF — Ctrl+Z to undo",
     "ocrDone": "Text recognized — {{count}} words added (Ctrl+Z to undo)",
     "ocrSearchableDone": "Searchable layer added — {{count}} words now selectable (Ctrl+Z to undo)",

@@ -312,6 +312,7 @@
     "watermarkDisabled": "Filigrane désactivé",
     "highlightAdded": "Surlignage ajouté — Ctrl+Z pour annuler",
     "trueTextEdited": "Texte modifié dans le PDF — Ctrl+Z pour annuler",
+    "trueEditFailed": "Impossible d'appliquer la modification du texte — le document est inchangé",
     "trueTextDeleted": "Texte supprimé du PDF — Ctrl+Z pour annuler",
     "ocrDone": "Texte reconnu — {{count}} mots ajoutés (Ctrl+Z pour annuler)",
     "ocrSearchableDone": "Couche interrogeable ajoutée — {{count}} mots désormais sélectionnables (Ctrl+Z pour annuler)",

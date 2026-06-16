@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFRenderer } from '../infra/pdfRenderer';
 import { TextElement } from '../elements/textElement';
 import { HighlightElement } from '../elements/highlightElement';
@@ -60,6 +61,13 @@ import { CanvasClickRouter } from './canvasClickRouter';
 import type { ToolMode } from '../types/tools';
 
 export type { ToolMode } from '../types/tools';
+
+// Release a pdf.js document's worker transport. v6 PDFDocumentProxy has no destroy();
+// teardown goes through loadingTask.destroy() (a Promise). Best-effort, never throws.
+function _destroyDoc(doc: PDFDocumentProxy | undefined): void {
+  const task = (doc as { loadingTask?: { destroy?: () => Promise<void> } } | undefined)?.loadingTask;
+  if (task && typeof task.destroy === 'function') void task.destroy().catch(() => {});
+}
 
 export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationContext, IToolModeContext, ICodeModalContext, IWatermarkContext, IFindBarContext, IDocumentLoaderContext {
   renderer: PDFRenderer;
@@ -397,20 +405,57 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   // ── True text edit: swap a source PDF's bytes after content-stream surgery ──
   // Called by TextEditHandler. Loads the edited bytes into a fresh pdfjs doc,
   // commits an undoable command, then re-renders page + thumbnail.
-  async _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<void> {
-    // pdf.js transfers the ArrayBuffer — give it a copy, keep newBytes intact
-    const newDoc = await pdfjsLib.getDocument({ data: newBytes.slice(0) }).promise;
+  // Returns true when the edit was committed; false when it was discarded (parse
+  // failure, superseded source, or rolled back after a render error). Callers gate
+  // their success toast on the result so a discarded edit never reports success.
+  async _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<boolean> {
+    // M0 #5 — snapshot the pre-edit state BEFORE the async parse, so undo restores the
+    // exact bytes the edit was computed against rather than whatever the source mutated
+    // to while pdf.js parsed (the await gap is a TOCTOU window → silent undo-stack
+    // corruption / mismatched before/after bytes).
     const before = { bytes: src.bytes, doc: src.doc };
+    let newDoc: PDFDocumentProxy;
+    try {
+      // pdf.js transfers the ArrayBuffer — give it a copy, keep newBytes intact
+      newDoc = await pdfjsLib.getDocument({ data: newBytes.slice(0) }).promise;
+    } catch (err) {
+      this.reportError.error('toast.trueEditFailed', err);
+      return false;
+    }
+    // Identity recheck: the source must still be the same live instance, unchanged,
+    // after the await. If a newer edit/removal superseded it, discard the parsed doc
+    // (release the worker) instead of committing a stale before/after snapshot.
+    if (this.documentModel.sourcePdfs.get(src.id) !== src || src.bytes !== before.bytes) {
+      _destroyDoc(newDoc);
+      this.reportError.silent(undefined, '_applySourcePdfEdit: source superseded mid-parse');
+      return false;
+    }
     const after = { bytes: newBytes, doc: newDoc };
     const onUpdate = () => {
       this._thumbnailPanel?.invalidateThumb(pageId);
       void this._thumbnailPanel?.render();
       this._autosave();
     };
-    this.historyManager.execute(new ReplaceSourcePdfBytesCmd(src, before, after, onUpdate));
-    // Initial render (undo/redo paths re-render the page via their own wrappers)
-    await this._renderCurrentPage();
-    this.rebuildElementLayer();
+    const cmd = new ReplaceSourcePdfBytesCmd(src, before, after, onUpdate);
+    let committed = false;
+    try {
+      this.historyManager.execute(cmd); // execute() then push — throws here = not pushed
+      committed = true;
+      // Initial render (undo/redo paths re-render the page via their own wrappers)
+      await this._renderCurrentPage();
+      this.rebuildElementLayer();
+      return true;
+    } catch (err) {
+      // Keep the undo stack and document consistent: revert the just-applied edit.
+      if (committed) {
+        this.historyManager.undo(); // cmd is the top of the stack — safe
+      } else {
+        try { cmd.undo(); } catch { /* execute() partially applied — best-effort revert */ }
+        _destroyDoc(newDoc);
+      }
+      this.reportError.error('toast.trueEditFailed', err);
+      return false;
+    }
   }
 
   // ── Autosave (IndexedDB) ──────────────────────────────────────
