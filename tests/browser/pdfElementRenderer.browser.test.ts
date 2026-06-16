@@ -120,6 +120,22 @@ describe('renderElementToPdfLib — pixel-region export (M1 #13, closes the P0)'
     expect(outside.g).toBeGreaterThan(240);
   });
 
+  it('routes an Arabic text element through the shaped RTL overlay (real ink, right-aligned)', async () => {
+    // The 'text' branch sends isArabicText() lines to drawArabicLine (drawText
+    // can't place shaped glyphs RTL). Render an Arabic text element end-to-end and
+    // confirm it paints visible ink that sits in the right half of its box (RTL).
+    const bytes = await renderOne(el({
+      type: 'text', x: 20, y: 80, width: 150, height: 30, text: 'مرحبا',
+      fontFamily: 'Arial', fontSize: 24, color: '#000000', bold: false, italic: false, rotation: 0,
+    }));
+    const img = await rasterize(bytes);
+    const ink = centroid(img, (r, g, b) => r < 128 && g < 128 && b < 128);
+    expect(ink.n).toBeGreaterThan(50); // visible shaped ink, not a tofu/blank box
+    // The text box is element (20,80)..(170,?) → canvas x 40..340 at scale 2; its
+    // mid-x is 180. RTL right-alignment puts the centroid past the middle.
+    expect(ink.x).toBeGreaterThan(180);
+  });
+
   it('rotates a filled shape around its center (rotation anchor)', async () => {
     // Same 100×40 rect centered at element (100,100); render at 0° and 90°.
     const base = { type: 'shape', shapeType: 'rect', x: 50, y: 80, width: 100, height: 40, strokeColor: '#ff0000', strokeWidth: 0, fillColor: '#ff0000' };
