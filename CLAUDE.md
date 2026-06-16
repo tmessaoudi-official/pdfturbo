@@ -84,6 +84,14 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 - **Only `@cantoo/pdf-lib` is the PDF write library** (the dead `pdf-lib` and `qpdf-wasm`
   deps were removed 2026-06-11). Never add the bare `pdf-lib` back — it has been abandoned
   upstream since ~2021.
+- **File System Access save (#54)**: `src/utils/fileSystemAccess.ts` (`canUseFsSave`/`pickSaveTarget`/
+  `writeToHandle`, local types — the API is absent from some `lib.dom` versions, so no dep). `downloadPDF`
+  uses the native Save dialog on Chromium. **Non-obvious: `showSaveFilePicker` needs *transient user
+  activation*** — an `await` (e.g. PDF assembly) can outlive it, so the picker MUST be acquired BEFORE the
+  slow work (`pickSaveTarget` is called first in `downloadPDF`, then assemble, then `writeToHandle`).
+  Cancel (AbortError) → silent no-op; any non-abort failure → anchor-download fallback (progressive
+  enhancement). Only `downloadPDF` is rewired; `downloadPage`/sanitize/DOCX still plain-download.
+  Open-via-picker + recent-files deferred (#54b).
 - **PDF sanitizer (#53)**: `src/utils/pdfSanitizer.ts` `sanitizePdf(bytes)` strips `/Info`, XMP
   `/Metadata`, `/OpenAction`, `/AA` (catalog + every page), and `/Names→/JavaScript` +
   `/Names→/EmbeddedFiles` via pdf-lib key-deletion (no new dep; 1.31 KB lazy chunk). **Non-obvious:
