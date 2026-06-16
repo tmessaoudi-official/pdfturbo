@@ -101,6 +101,7 @@ export interface AppDOMRefs {
   sanitizeBtn:          HTMLButtonElement;
   extractPagesBtn:      HTMLButtonElement;
   exportTableBtn:       HTMLButtonElement;
+  flattenBtn:           HTMLButtonElement;
   exportPreviewOverlay: HTMLElement;
   exportPreviewGhost:   HTMLElement;
   exportPreviewConfirm: HTMLButtonElement;
@@ -281,6 +282,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       sanitizeBtn:          document.getElementById('sanitizeBtn')          as HTMLButtonElement,
       extractPagesBtn:      document.getElementById('extractPagesBtn')      as HTMLButtonElement,
       exportTableBtn:       document.getElementById('exportTableBtn')       as HTMLButtonElement,
+      flattenBtn:           document.getElementById('flattenBtn')           as HTMLButtonElement,
       exportPreviewOverlay: document.getElementById('exportPreviewOverlay') as HTMLElement,
       exportPreviewGhost:   document.getElementById('exportPreviewGhost')   as HTMLElement,
       exportPreviewConfirm: document.getElementById('exportPreviewConfirm') as HTMLButtonElement,
@@ -397,6 +399,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.sanitizeBtn.disabled    = false;
     r.extractPagesBtn.disabled = false;
     r.exportTableBtn.disabled = false;
+    r.flattenBtn.disabled     = false;
     r.editTextBtn.disabled    = false;
     r.ocrBtn.disabled         = false;
     r.signBtn.disabled        = false;

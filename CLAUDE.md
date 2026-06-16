@@ -98,6 +98,17 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   additive branch. buildTableGrid clusters h-rule y's → rows, v-rule x's → cols, assigns text by center.
   **Lattice/ruled tables only** (needs visible grid lines on both axes); borderless = ceiling. CSV is a plain
   download (no FS-Access picker — sidesteps the transient-activation issue after async extraction). XLSX deferred (#56b).
+- **Form flattening (#62)**: ⊞ export-flyout button → `ExportService.downloadFlattened()`. The default export
+  fills+flattens a source's AcroForm **only when the user typed values** into it; an opened PDF's untouched
+  fields therefore survive into the export as orphaned **widget annotations** (`copyPages` drops the document
+  `/AcroForm`, so `getForm().getFields()` is 0 in BOTH paths — the residue is the page `/Annots` Widget, not the
+  form catalog). `downloadFlattened` passes `_assemblePdfDoc(…, { flattenAllForms: true })` → `form.flatten()` runs
+  on **every** source unconditionally, baking each widget's appearance into the page content stream and removing
+  the annotation. The opts param defaults false → byte-identical for the other 3 `_assemblePdfDoc` callers
+  (downloadPDF / downloadPageRange / assemblePdfBytes). Gated by `VITE_FEATURE_FLATTEN` (#28 seam, default ON;
+  `main.ts` removes the button when off). The app's own overlay annotations are already baked by `buildPageOverlays`;
+  source **markup** annotations (notes/stamps authored elsewhere) = ceiling **#62b** — pdf-lib has no generic
+  markup-flatten, and the redaction-rasterize path + PNG export already cover that nuclear case.
 - **PDF sanitizer (#53)**: `src/utils/pdfSanitizer.ts` `sanitizePdf(bytes)` strips `/Info`, XMP
   `/Metadata`, `/OpenAction`, `/AA` (catalog + every page), and `/Names→/JavaScript` +
   `/Names→/EmbeddedFiles` via pdf-lib key-deletion (no new dep; 1.31 KB lazy chunk). **Non-obvious:

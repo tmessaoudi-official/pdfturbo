@@ -187,7 +187,7 @@ local-AI items are **GRDF-policy-compatible by construction** (transformers.js i
 | 59 | ✅ DONE `2a3fcbf`+`ebff3fb`+`784f4b0` — **AUDIT**: merge (addPages appends + reorder), rotate/delete/blank already shipped; the GAP was range extract/split. Built: `parsePageRange` util (6t), `_assemblePdfDoc(pagesSubset?)` + `ExportService.downloadPageRange` (3t, FS-Access/download via shared `_saveBytesTo`), ✂ export-flyout **Extract-pages modal** (`bindExtractPagesModal`, 5t) + i18n×3. Behavior-neutral refactor (default = whole doc) | S–M | ✅ audit done; range round-trip tested | roadmap G1 |
 | 60 | **Compression / optimize** (image downsample + re-embed) | M | — | roadmap G3 |
 | 61 | **Bates / page numbering** (must hit all 3 export paths) | M | — | roadmap G7 |
-| 62 | **Form/annotation flattening** | S–M | — | roadmap G4 |
+| 62 | ✅ DONE — **Form/annotation flattening**: ⊞ "Flatten & download" export-flyout button → `ExportService.downloadFlattened()` runs `form.flatten()` on EVERY source's AcroForm (not just filled ones — `_assemblePdfDoc(…, {flattenAllForms})`, default-false = byte-identical for the other 3 callers), baking widgets into static page content (verified: default export leaves 1 widget annotation, flatten leaves 0). Gated by `VITE_FEATURE_FLATTEN` (#28 seam, default ON; UI removed in main.ts when off). App's own overlay annotations already baked by `buildPageOverlays`. Source MARKUP annotations (notes/stamps authored elsewhere) = ceiling #62b (pdf-lib has no generic markup-flatten; raster/PNG export covers the nuclear case). Tests: `tests/export/flatten.test.ts` (gap+fix) + features.test.ts | S–M | ✅ form flatten round-trip | roadmap G4 |
 
 ### M7 — Ceiling-breakers  *(documented ceilings the challenge proved reachable; ROI-gated, build only on demand)*
 | # | Item | Verdict | Route | ROI |
@@ -237,3 +237,4 @@ Then **M1** (close the P0 with the right test *type* + a CI gate so it can't rec
 
 ## Verification (per item)
 TDD每项: failing test first (jsdom or `test:browser`) → implement → full gate green → update KNOWN_ISSUES/scorecards/CLAUDE.md/FEATURES as touched → thematic commit (no Co-Authored-By) → push is manual. Browser-layer behavior (canvas/pointer/rasterize/image-extract) MUST be guarded in the real-Chrome harness, not jsdom.
+- [2026-06-16] AGREED (user "Proceed autonomously"): #62 form/annotation flattening — explicit "⊞ Flatten & download" export-flyout button flattens ALL AcroForm fields (filled or not) via existing `form.flatten()`; gated by VITE_FEATURE_FLATTEN (#28 seam); app's own overlay annotations already baked flat by buildPageOverlays; source MARKUP annotations = ceiling (#62b). Then continue queue #57→#61→#60→#58→#55 autonomously (per-step gates suppressed; destructive pauses remain).

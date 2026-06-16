@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // OCR mode) are enforced at their call sites too (defence in depth).
   if (!isEnabled('eSign')) app.ui.signBtn.style.display = 'none';
   if (!isEnabled('searchableOcr')) app.ui.ocrModeSelect.querySelector('option[value="searchable"]')?.remove();
+  if (!isEnabled('flatten')) app.ui.flattenBtn.style.display = 'none';
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {

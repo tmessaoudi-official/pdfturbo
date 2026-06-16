@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_TRUE_EDIT?: string;
   readonly VITE_FEATURE_SEARCHABLE_OCR?: string;
   readonly VITE_FEATURE_E_SIGN?: string;
+  readonly VITE_FEATURE_FLATTEN?: string;
 }
 
 interface ImportMeta {

@@ -113,6 +113,44 @@ export class ExportService {
   }
 
   /**
+   * Flatten and save (#62). Like downloadPDF, but flattens EVERY source's
+   * AcroForm — not just the ones the user typed into — so all interactive form
+   * fields (and their widget annotations) are baked into static page content.
+   * The app's own overlay annotations are already baked flat by the overlay
+   * pipeline; source markup annotations (notes/stamps authored elsewhere) are a
+   * documented ceiling (#62b). Save target acquired pre-assembly (#54 activation).
+   */
+  async downloadFlattened(): Promise<void> {
+    const { documentModel, reportError, progress } = this._ctx;
+    if (!documentModel.pageCount) return;
+    const filename = this._exportBaseName() + '-flattened.pdf';
+    const target = await pickSaveTarget(filename);
+    if (target === 'cancelled') return;
+    this._ctx.cleanEmptyTextElements();
+    const _prog = progress.begin('progress.generatingPdf');
+    try {
+      const pdfDoc = await this._assemblePdfDoc(
+        (done, total) => _prog.setFraction(total ? done / total : null),
+        undefined,
+        { flattenAllForms: true },
+      );
+      _prog.setFraction(null);
+      await this._applyExportPassword(pdfDoc);
+      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      await this._saveBytesTo(target, bytes, filename);
+      if (target === 'download') reportError.info('toast.flattenDone');
+      else reportError.info('toast.pdfSaved', { name: target.name });
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.pdfExportFailed', err);
+      _prog.failed();
+    } finally {
+      await this._ctx.renderCurrentPage();
+      this._ctx.rebuildElementLayer();
+    }
+  }
+
+  /**
    * Sanitize the assembled (edits-baked-in) document and download a clean copy:
    * strips /Info metadata, XMP, /OpenAction, /AA, document-level JavaScript and
    * embedded files (see utils/pdfSanitizer). Operates on the share-ready export
@@ -218,6 +256,7 @@ export class ExportService {
   private async _assemblePdfDoc(
     onPage?: (done: number, total: number) => void,
     pagesSubset?: import('../core/documentModel').DocumentPage[],
+    opts?: { flattenAllForms?: boolean },
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     const { documentModel, elements, reportError, formValues } = this._ctx;
     const docPages = pagesSubset ?? documentModel.pages;
@@ -231,14 +270,21 @@ export class ExportService {
         srcDocs.set(id, await PDFDocument.load(src.bytes));
       }
 
-      // Fill and flatten form fields for sources with user-entered values
+      // Fill and flatten form fields. By default this only touches sources the
+      // user actually typed into (their entries are baked static); with
+      // flattenAllForms (#62 — the "Flatten & download" button) EVERY source's
+      // form is flattened regardless, so an opened PDF's untouched interactive
+      // fields are baked into static content and the export carries no widgets.
       for (const [id, srcDoc] of srcDocs) {
         const vals = formValues[id];
-        if (!vals || !Object.keys(vals).length) continue;
+        const hasVals = !!vals && Object.keys(vals).length > 0;
+        if (!hasVals && !opts?.flattenAllForms) continue;
         try {
           const form = srcDoc.getForm();
-          for (const [fieldName, value] of Object.entries(vals)) {
-            try { form.getTextField(fieldName).setText(value); } catch { /* field missing */ }
+          if (hasVals) {
+            for (const [fieldName, value] of Object.entries(vals)) {
+              try { form.getTextField(fieldName).setText(value); } catch { /* field missing */ }
+            }
           }
           form.flatten();
         } catch { /* no form fields in this source */ }
