@@ -39,22 +39,43 @@ import notoNaskhUrl from '@fontsource/noto-naskh-arabic/files/noto-naskh-arabic-
 const _fontCache = new WeakMap<PDFDocument, Promise<PDFFont>>();
 let _notoBytes: Promise<Uint8Array> | null = null;
 
+// Bound the font fetch so a hung/slow network can't wedge an export indefinitely.
+const FONT_FETCH_TIMEOUT_MS = 15_000;
+
 function loadNotoBytes(): Promise<Uint8Array> {
-  _notoBytes ??= fetch(notoNaskhUrl)
-    .then((r) => r.arrayBuffer())
-    .then((b) => new Uint8Array(b));
-  return _notoBytes;
+  if (_notoBytes) return _notoBytes;
+  const p = (async () => {
+    // M0 #10 — abort a hung fetch instead of awaiting forever.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FONT_FETCH_TIMEOUT_MS);
+    try {
+      const r = await fetch(notoNaskhUrl, { signal: controller.signal });
+      // A 404/5xx resolves with ok=false; without this check we'd embed an HTML
+      // error page as font bytes and fail opaquely downstream.
+      if (!r.ok) throw new Error(`Failed to load Arabic font: HTTP ${r.status}`);
+      return new Uint8Array(await r.arrayBuffer());
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  // M0 #10 — never cache a rejected fetch: a failed promise here would poison every
+  // future retry. Clear the slot on failure so the next call fetches afresh.
+  p.catch(() => { if (_notoBytes === p) _notoBytes = null; });
+  _notoBytes = p;
+  return p;
 }
 
 /** Embed (once per document) the bundled Arabic font, registering fontkit. */
 export function getArabicFont(pdfDoc: PDFDocument): Promise<PDFFont> {
-  let cached = _fontCache.get(pdfDoc);
-  if (cached) return cached;
-  cached = (async () => {
+  const existing = _fontCache.get(pdfDoc);
+  if (existing) return existing;
+  const cached = (async () => {
     const fontkit = (await import('@pdf-lib/fontkit')).default;
     pdfDoc.registerFontkit(fontkit);
     return pdfDoc.embedFont(await loadNotoBytes(), { subset: true });
   })();
+  // Same anti-poison rule per document: drop a failed embed so a retry can succeed.
+  cached.catch(() => { if (_fontCache.get(pdfDoc) === cached) _fontCache.delete(pdfDoc); });
   _fontCache.set(pdfDoc, cached);
   return cached;
 }
