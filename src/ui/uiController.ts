@@ -138,6 +138,17 @@ export interface AppDOMRefs {
   signProgressRow:  HTMLElement;
   runSignModal:     HTMLButtonElement;
   cancelSignModal:  HTMLButtonElement;
+  // Certificate source toggle + generate-cert fields (M2 #20).
+  signSourceUpload:   HTMLInputElement;
+  signSourceGenerate: HTMLInputElement;
+  signUploadGroup:    HTMLElement;
+  signGenGroup:       HTMLElement;
+  signGenPassword:    HTMLInputElement;
+  signGenCN:          HTMLInputElement;
+  signGenOrg:         HTMLInputElement;
+  signGenEmail:       HTMLInputElement;
+  signGenCountry:     HTMLInputElement;
+  signGenValidity:    HTMLInputElement;
   codeModal:        HTMLElement;
   codeFormatSelect: HTMLSelectElement;
   codeDataInput:    HTMLTextAreaElement;
@@ -304,6 +315,16 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       signProgressRow:  document.getElementById('signProgressRow')  as HTMLElement,
       runSignModal:     document.getElementById('runSignModal')     as HTMLButtonElement,
       cancelSignModal:  document.getElementById('cancelSignModal')  as HTMLButtonElement,
+      signSourceUpload:   document.getElementById('signSourceUpload')   as HTMLInputElement,
+      signSourceGenerate: document.getElementById('signSourceGenerate') as HTMLInputElement,
+      signUploadGroup:    document.getElementById('signUploadGroup')    as HTMLElement,
+      signGenGroup:       document.getElementById('signGenGroup')       as HTMLElement,
+      signGenPassword:    document.getElementById('signGenPassword')    as HTMLInputElement,
+      signGenCN:          document.getElementById('signGenCN')          as HTMLInputElement,
+      signGenOrg:         document.getElementById('signGenOrg')         as HTMLInputElement,
+      signGenEmail:       document.getElementById('signGenEmail')       as HTMLInputElement,
+      signGenCountry:     document.getElementById('signGenCountry')     as HTMLInputElement,
+      signGenValidity:    document.getElementById('signGenValidity')    as HTMLInputElement,
       codeModal:        document.getElementById('codeModal')        as HTMLElement,
       codeFormatSelect: document.getElementById('codeFormatSelect') as HTMLSelectElement,
       codeDataInput:    document.getElementById('codeDataInput')    as HTMLTextAreaElement,

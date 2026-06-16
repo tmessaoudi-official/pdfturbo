@@ -594,12 +594,9 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.signPage.max = String(this.documentModel.pageCount);
     this.ui.runSignModal.disabled = false;
     // Reset the certificate source to "upload" and reveal the matching fields.
-    const upRadio = document.getElementById('signSourceUpload') as HTMLInputElement | null;
-    if (upRadio) upRadio.checked = true;
-    const upGroup = document.getElementById('signUploadGroup');
-    const genGroup = document.getElementById('signGenGroup');
-    if (upGroup) upGroup.style.display = '';
-    if (genGroup) genGroup.style.display = 'none';
+    this.ui.signSourceUpload.checked = true;
+    this.ui.signUploadGroup.style.display = '';
+    this.ui.signGenGroup.style.display = 'none';
     this.ui.signModal.classList.add('active');
   }
   closeSignModal(): void {
@@ -607,16 +604,15 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     // Scrub credentials from the DOM when the modal closes.
     this.ui.signPassword.value = '';
     this.ui.signCertInput.value = '';
-    const gp = document.getElementById('signGenPassword') as HTMLInputElement | null;
-    if (gp) gp.value = '';
+    this.ui.signGenPassword.value = '';
   }
   async signPdf(): Promise<void> {
     this.ui.signError.style.display = 'none';
-    const generate = (document.getElementById('signSourceGenerate') as HTMLInputElement | null)?.checked ?? false;
+    const generate = this.ui.signSourceGenerate.checked;
 
     // Cheap source-specific required-field checks first (no work to undo).
-    const cn = (document.getElementById('signGenCN') as HTMLInputElement | null)?.value.trim() ?? '';
-    const genPw = (document.getElementById('signGenPassword') as HTMLInputElement | null)?.value ?? '';
+    const cn = this.ui.signGenCN.value.trim();
+    const genPw = this.ui.signGenPassword.value;
     const certFile = this.ui.signCertInput.files?.[0] ?? null;
     if (generate) {
       if (!cn) { this._showSignError('sign.error.NO_CERTIFICATE'); return; }
@@ -660,10 +656,10 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       try {
         const gen = await generateSelfSignedP12({
           commonName: cn,
-          organization: (document.getElementById('signGenOrg') as HTMLInputElement).value,
-          email: (document.getElementById('signGenEmail') as HTMLInputElement).value,
-          country: (document.getElementById('signGenCountry') as HTMLInputElement).value,
-          validityYears: parseInt((document.getElementById('signGenValidity') as HTMLInputElement).value, 10) || 1,
+          organization: this.ui.signGenOrg.value,
+          email: this.ui.signGenEmail.value,
+          country: this.ui.signGenCountry.value,
+          validityYears: parseInt(this.ui.signGenValidity.value, 10) || 1,
         }, genPw);
         // Download the .p12 (key + cert) and .pem (public cert) for reuse / sharing.
         const base = cn.replace(/[^\w.-]+/g, '_') || 'certificate';

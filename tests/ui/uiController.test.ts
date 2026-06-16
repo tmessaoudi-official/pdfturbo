@@ -46,6 +46,10 @@ function seedDOM(): void {
     'barcodeShowTextRow', 'barcodeShowTextChk', 'codePreviewImg', 'codePreviewStatus',
     'cancelCodeModal', 'saveCodeModal', 'fillColor', 'fillColorLabel', 'fillNoneBtn',
     'settingsBtn', 'settingsPanel', 'resetToolbarBtn', 'closeSettingsBtn',
+    // M2 #20 — generate-cert sign refs (formerly raw getElementById in signPdf)
+    'signSourceUpload', 'signSourceGenerate', 'signUploadGroup', 'signGenGroup',
+    'signGenPassword', 'signGenCN', 'signGenOrg', 'signGenEmail', 'signGenCountry',
+    'signGenValidity',
   ];
   ids.forEach(id => el('div', id));
 }
@@ -91,6 +95,17 @@ describe('UIController', () => {
     expect(document.getElementById('settingsPanel')?.classList.contains('active')).toBe(true);
     ctrl.toggleSettings();
     expect(document.getElementById('settingsPanel')?.classList.contains('active')).toBe(false);
+  });
+
+  it('registers the generate-cert sign refs (M2 #20)', () => {
+    const ids = [
+      'signSourceUpload', 'signSourceGenerate', 'signUploadGroup', 'signGenGroup',
+      'signGenPassword', 'signGenCN', 'signGenOrg', 'signGenEmail', 'signGenCountry',
+      'signGenValidity',
+    ] as const;
+    for (const id of ids) {
+      expect(ctrl.refs[id].id).toBe(id);
+    }
   });
 
   it('updateModeButtons() sets aria-pressed=true only on the matching button', () => {
