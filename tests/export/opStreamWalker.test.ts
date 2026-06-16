@@ -61,17 +61,29 @@ describe('walkPageOps', () => {
     expect(r.rules[0]).toMatchObject({ x: 10, y: 50, width: 100, height: 2 });
   });
 
-  it('rejects a non-thin / non-horizontal path (shading block, vertical bar)', () => {
+  it('emits a thin vertical rule transformed into page space (table-grid candidate, #56)', () => {
+    const r = walkPageOps(
+      opList([OPS.constructPath], [[OPS.fill, null, { 0: 30, 1: 10, 2: 32, 3: 210 }]]),
+      OPS,
+    );
+    expect(r.vRules).toHaveLength(1);
+    expect(r.vRules[0]).toMatchObject({ x: 30, y: 10, width: 2, height: 200 });
+    expect(r.rules).toHaveLength(0); // not a horizontal rule
+  });
+
+  it('rejects a shading block from both rule sets but keeps a vertical bar as a grid rule', () => {
     const r = walkPageOps(
       opList(
         [OPS.constructPath, OPS.constructPath],
         [
-          [OPS.fill, null, { 0: 0, 1: 0, 2: 100, 3: 100 }], // tall block
-          [OPS.fill, null, { 0: 0, 1: 0, 2: 1, 3: 40 }],     // vertical bar
+          [OPS.fill, null, { 0: 0, 1: 0, 2: 100, 3: 100 }], // square block → neither
+          [OPS.fill, null, { 0: 0, 1: 0, 2: 1, 3: 40 }],     // vertical bar → vRules
         ],
       ),
       OPS,
     );
     expect(r.rules).toHaveLength(0);
+    expect(r.vRules).toHaveLength(1);
+    expect(r.vRules[0]).toMatchObject({ x: 0, y: 0, width: 1, height: 40 });
   });
 });

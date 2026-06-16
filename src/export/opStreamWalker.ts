@@ -25,6 +25,8 @@ export interface PageOpsResult {
   colorMap: Map<string, string>;
   /** Thin horizontal rules in PDF user space (y-up) — underline/strike candidates. */
   rules: RuleRect[];
+  /** Thin vertical rules in PDF user space (y-up) — table-grid candidates (#56). */
+  vRules: RuleRect[];
   /** Image-XObject paint placements in document order. */
   images: ImagePlacement[];
 }
@@ -38,6 +40,7 @@ export interface OpListLike {
 export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): PageOpsResult {
   const colorMap = new Map<string, string>();
   const rules: RuleRect[] = [];
+  const vRules: RuleRect[] = [];
   const images: ImagePlacement[] = [];
 
   // Current text fill color as an uppercase 6-hex string (no '#'). pdf.js v6
@@ -110,10 +113,12 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
           if (dy < minY) minY = dy; if (dy > maxY) maxY = dy;
         }
         const rw = maxX - minX, rh = maxY - minY;
-        // Keep only thin, horizontal, line-like rules — excludes shading blocks /
-        // vector art / vertical bars.
+        // Keep only thin, line-like rules — excludes shading blocks / vector art.
+        // Horizontal → underline/strike candidates; vertical → table-grid (#56).
         if (rw > 2 && rh < 8 && rw > rh * 3) {
           rules.push({ x: minX, y: minY, width: rw, height: rh });
+        } else if (rh > 2 && rw < 8 && rh > rw * 3) {
+          vRules.push({ x: minX, y: minY, width: rw, height: rh });
         }
       }
     } else if (fn === OPS['setFillRGBColor']) {
@@ -161,5 +166,5 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
     }
   }
 
-  return { colorMap, rules, images };
+  return { colorMap, rules, vRules, images };
 }
