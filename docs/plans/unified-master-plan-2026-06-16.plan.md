@@ -145,7 +145,7 @@ every silent floating-promise rejection below into a visible toast.
 | 41 | **Structured ring-buffer logger (VC-6)** — extend the existing `errorReporter` (console.* is only 4 hits); keystone for #1 + VC-1/4/5; privacy-safe, no network | — | S–M | VC |
 | 42 | ✅ DONE `4442bac` **Remove dead `InkColorCmd`** (zero callers, grep-verified; `commands/index.ts` barrel didn't exist) | P3 | S | inspect B |
 | 43 | ✅ DONE `b8e7927` **Naming honesty** — `_autosave`→`autosave` (~60 sites, delegator merged) + `toolModeManager`→`toolModeService` (file+class+27 sites). NOTE: scope was ~60 sites not "~10"; done in full per user choice over a skip recommendation | — | S(actual M) | VF |
-| 44 | **Determinate progress indicators** for long ops (OCR, export, sign) | — | M | VC-2 |
+| 44 | ✅ DONE `efbdc85` **Determinate progress bar** — `ProgressManager.setFraction(0..1\|null)` renders a `<progress>` bar (optional 3rd ctor arg, backward-compat); export `_assemblePdfDoc(onPage?)` drives per-page progress. OCR (modal bar) + sign (single-shot, in-modal busy row) already contextual; reusable for Wave 2 page-loop ops | — | M | VC-2 |
 | 45 | ✅ DONE `e97d361` **Document CI `npm audit` + `playwright install-deps`** in CLAUDE.md + reconcile `pull_request` trigger vs single-dev reality | P2 | S | inspect G |
 
 ### M5 — Performance & scale
