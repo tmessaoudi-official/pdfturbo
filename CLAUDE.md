@@ -269,6 +269,10 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   with `OCR_LANGUAGES`, enforced by `tests/blockers/ocr.blockers.test.ts`)
   into `public/tesseract/` (gitignored). `ocrAssetPaths(import.meta.env.BASE_URL)` builds the local
   `corePath`/`workerPath`/`langPath`; NEVER reintroduce a CDN path (the `ocrAssetPaths` test guards this).
+  **PWA caching (#48, 2026-06-16):** the SW precache `globIgnores:['**/tesseract/**']` keeps the OCR worker +
+  `*.wasm.js` cores (which match the `**/*.js` glob) + traineddata OUT of the install payload (precache 16.5→5.0 MB);
+  they're served via the `ocr-assets` CacheFirst runtime route on first OCR use. Tradeoff: OCR needs one online
+  use before working offline. Guard: `tests/infra/pwaOcrCaching.test.ts`. NEVER drop `globIgnores` back (re-bloats install).
   (2) **Literal dynamic import** — `import('tesseract.js')` (NOT the old `@vite-ignore` indirect form,
   which left a bare specifier the browser couldn't resolve → "Failed to resolve module specifier").
   (3) **Word geometry needs `blocks: true`** — the engine uses `createWorker` + `worker.recognize(img, {},
