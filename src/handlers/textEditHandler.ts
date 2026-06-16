@@ -5,6 +5,7 @@ import { AddElementCmd, MacroCmd } from '../core/historyManager';
 import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName, type TextStyle } from '../utils/contentStreamEditor';
 import { extractPsName } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
+import { isEnabled } from '../config/features';
 import type { IAppContext } from '../core/appContext';
 import type { SourcePdf } from '../core/documentModel';
 
@@ -144,7 +145,8 @@ export class TextEditHandler {
         if (hit && !hit.inXObject) { target = hit; matchedOrigin = o; break; }
       }
 
-      if (target) {
+      // #28 kill-switch: with true-edit disabled, treat a hit as a miss → overlay.
+      if (target && isEnabled('trueEdit')) {
         this._openTrueEditInput(e, app, {
           libDoc,
           src,

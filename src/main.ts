@@ -6,6 +6,7 @@ import { LogBuffer } from './core/logBuffer';
 import { installGlobalErrorBoundary } from './core/globalErrorBoundary';
 import { initI18n, changeLanguage, onLanguageChanged, t } from './utils/i18n';
 import { registerSW } from 'virtual:pwa-register';
+import { isEnabled } from './config/features';
 
 // Shared diagnostic ring buffer (M0 #41). Created before anything else so the global
 // error boundary (M0 #1) can record failures that occur during i18n/app construction,
@@ -39,6 +40,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const app = new PDFTurboApp(logBuffer);
   appRef = app;
   if (import.meta.env.DEV) window.app = app;
+
+  // #28 — apply feature kill-switches to the UI. A disabled feature's entry
+  // point is removed so it can't be reached; the behavioural gates (true-edit,
+  // OCR mode) are enforced at their call sites too (defence in depth).
+  if (!isEnabled('eSign')) app.ui.signBtn.style.display = 'none';
+  if (!isEnabled('searchableOcr')) app.ui.ocrModeSelect.querySelector('option[value="searchable"]')?.remove();
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {

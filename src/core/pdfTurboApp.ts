@@ -38,6 +38,7 @@ import { ToastQueue } from '../ui/toastQueue';
 import { ErrorReporter, type IErrorReporter } from './errorReporter';
 import { LogBuffer, type ILogBuffer } from './logBuffer';
 import { ProgressManager, type IProgressManager } from '../ui/progressManager';
+import { isEnabled } from '../config/features';
 import { ToolbarCustomizer } from '../ui/toolbarCustomizer';
 import { LocalLayoutStorage } from '../ui/layoutStorage';
 import { FormattingService } from './formattingService';
@@ -554,7 +555,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   closeOcrModal(): void { this.ui.ocrModal.classList.remove('active'); }
   async runOcr(): Promise<void> {
     const lang = this.ui.ocrLangSelect.value;
-    const mode: OcrOutputMode = this.ui.ocrModeSelect.value === 'visible' ? 'visible' : 'searchable';
+    const mode: OcrOutputMode = (this.ui.ocrModeSelect.value === 'visible' || !isEnabled('searchableOcr')) ? 'visible' : 'searchable';
     this.ui.ocrProgressRow.style.display = '';
     this.ui.runOcrModal.disabled = true;
     this.ui.ocrBtn.disabled = true; // M0 #6 — reflect the single-flight gate in the UI
