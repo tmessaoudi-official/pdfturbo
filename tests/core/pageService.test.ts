@@ -253,4 +253,13 @@ describe('PageService.insertBlankPage', () => {
     svc.insertBlankPage();
     expect(ctx.documentModel.pages[1].id).toBe(originalId);
   });
+
+  // M0 #9 — a failed render must surface a toast, not an unhandled rejection.
+  it('routes a render failure to a toast instead of leaving it unhandled', async () => {
+    const ctx = makeCtx({ renderCurrentPage: vi.fn().mockRejectedValue(new Error('render boom')) });
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    svc.insertBlankPage();
+    await vi.waitFor(() => expect(ctx.reportError.error).toHaveBeenCalledWith('toast.renderFailed', expect.anything()));
+  });
 });

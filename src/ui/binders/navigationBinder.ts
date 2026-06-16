@@ -1,34 +1,43 @@
 import type { PDFTurboApp } from '../../core/pdfTurboApp';
 
 export function bindNavigationEvents(app: PDFTurboApp): void {
+  // M0 #9 — render/zoom/nav are fire-and-forget Promises. Route a rejection to a
+  // specific render-failure toast (and the diagnostic ring buffer via reportError)
+  // instead of letting it become an unhandled rejection caught only by the generic
+  // global boundary (#1). A no-op for non-Promise returns.
+  const guard = (p: unknown): void => {
+    if (p instanceof Promise) void p.catch((e: unknown) => app.reportError.error('toast.renderFailed', e));
+  };
+
   // ── File loading ───────────────────────────────────────────────
+  // (_loadDocument / _handleAddPdfUpload self-handle their errors with specific toasts.)
   app.ui.fileInput.addEventListener('change', (e) => app._loadDocument(e));
   app.ui.addPdfInput.addEventListener('change', (e) => app._handleAddPdfUpload(e));
 
   // ── Page navigation ────────────────────────────────────────────
-  app.ui.prevPageBtn.addEventListener('click', () => app.prevPage());
-  app.ui.nextPageBtn.addEventListener('click', () => app.nextPage());
-  app.ui.firstPage.addEventListener('click', () => app._goToPage(1));
-  app.ui.lastPage.addEventListener('click',  () => app._goToPage(app.documentModel.pageCount));
+  app.ui.prevPageBtn.addEventListener('click', () => guard(app.prevPage()));
+  app.ui.nextPageBtn.addEventListener('click', () => guard(app.nextPage()));
+  app.ui.firstPage.addEventListener('click', () => guard(app._goToPage(1)));
+  app.ui.lastPage.addEventListener('click',  () => guard(app._goToPage(app.documentModel.pageCount)));
   app.ui.pageInput.addEventListener('change', (e) => {
-    app._goToPage(parseInt((e.target as HTMLInputElement).value, 10) || 1);
+    guard(app._goToPage(parseInt((e.target as HTMLInputElement).value, 10) || 1));
   });
   app.ui.pageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       (e.target as HTMLInputElement).blur();
-      app._goToPage(parseInt((e.target as HTMLInputElement).value, 10) || 1);
+      guard(app._goToPage(parseInt((e.target as HTMLInputElement).value, 10) || 1));
     }
   });
 
   // ── Zoom / fit ─────────────────────────────────────────────────
-  app.ui.zoomInBtn.addEventListener('click',  () => { app._isFitMode = false; void app.applyZoom(app.zoomScale + 0.1); });
-  app.ui.zoomOutBtn.addEventListener('click', () => { app._isFitMode = false; void app.applyZoom(app.zoomScale - 0.1); });
-  app.ui.fitBtn.addEventListener('click', () => void app.fitToWidth());
+  app.ui.zoomInBtn.addEventListener('click',  () => { app._isFitMode = false; guard(app.applyZoom(app.zoomScale + 0.1)); });
+  app.ui.zoomOutBtn.addEventListener('click', () => { app._isFitMode = false; guard(app.applyZoom(app.zoomScale - 0.1)); });
+  app.ui.fitBtn.addEventListener('click', () => guard(app.fitToWidth()));
   app.ui.container.addEventListener('wheel', (e) => {
     if (!e.ctrlKey) return;
     e.preventDefault();
     app._isFitMode = false;
-    void app.applyZoom(app.zoomScale + (e.deltaY < 0 ? 0.05 : -0.05));
+    guard(app.applyZoom(app.zoomScale + (e.deltaY < 0 ? 0.05 : -0.05)));
   }, { passive: false });
 
   // ── Download ───────────────────────────────────────────────────

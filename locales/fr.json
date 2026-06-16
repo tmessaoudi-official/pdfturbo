@@ -332,6 +332,7 @@
     "filesAdded_other": "{{count}} fichiers ajoutés",
     "cannotDeleteOnlyPage": "Impossible de supprimer la seule page",
     "annotationsAdjusted": "Annotations ajustées pour la rotation de la page",
+    "renderFailed": "Impossible d'afficher la page — réessayez",
     "renderFailedUndo": "Échec du rendu après annulation — essayez de recharger",
     "renderFailedRedo": "Échec du rendu après rétablissement — essayez de recharger",
     "storageFull": "Stockage plein — exportez votre PDF pour éviter toute perte de données",

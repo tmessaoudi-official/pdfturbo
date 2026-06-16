@@ -262,10 +262,13 @@ export class PageService {
       })();
     } else {
       ctx.autosave();
-      void ctx.renderThumbnails();
+      void ctx.renderThumbnails().catch((e: unknown) => ctx.reportError.silent(e, 'insertBlankPage:thumbnails'));
       ctx.updateActiveThumbnail();
       ctx.updatePageInfo();
-      void ctx.renderCurrentPage().then(() => ctx.rebuildElementLayer());
+      // M0 #9 — surface a render failure instead of leaving an unhandled rejection.
+      void ctx.renderCurrentPage()
+        .then(() => ctx.rebuildElementLayer())
+        .catch((e: unknown) => ctx.reportError.error('toast.renderFailed', e));
       ctx.reportError.info('toast.blankPageInserted');
     }
   }

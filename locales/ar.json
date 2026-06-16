@@ -332,6 +332,7 @@
     "filesAdded_other": "تم إضافة {{count}} ملفات",
     "cannotDeleteOnlyPage": "لا يمكن حذف الصفحة الوحيدة",
     "annotationsAdjusted": "تم تعديل التعليقات لتدوير الصفحة",
+    "renderFailed": "تعذّر عرض الصفحة — حاول مرة أخرى",
     "renderFailedUndo": "فشل العرض بعد التراجع — حاول إعادة التحميل",
     "renderFailedRedo": "فشل العرض بعد الإعادة — حاول إعادة التحميل",
     "storageFull": "التخزين ممتلئ — صدِّر PDF لتجنب فقدان العمل",

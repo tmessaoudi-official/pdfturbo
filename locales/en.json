@@ -332,6 +332,7 @@
     "filesAdded_other": "Added {{count}} files",
     "cannotDeleteOnlyPage": "Cannot delete the only page",
     "annotationsAdjusted": "Annotations adjusted for page rotation",
+    "renderFailed": "Couldn't render the page — try again",
     "renderFailedUndo": "Render failed after undo — try reloading",
     "renderFailedRedo": "Render failed after redo — try reloading",
     "storageFull": "Storage full — export your PDF to avoid losing work",
