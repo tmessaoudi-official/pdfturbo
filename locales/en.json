@@ -185,6 +185,16 @@
       "restore": "Restore session",
       "fresh": "Start fresh"
     },
+    "confirm": {
+      "ok": "Confirm",
+      "cancel": "Cancel"
+    },
+    "confirmClose": {
+      "message": "Close this document? Unsaved annotations will be discarded — this can't be undone."
+    },
+    "confirmReset": {
+      "message": "Reset the session? Your saved work will be permanently cleared — this can't be undone."
+    },
     "pdfPassword": {
       "title": "This PDF is password-protected",
       "passwordLabel": "Password",
@@ -375,6 +385,7 @@
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",
+    "goToPage": "Go to page {{page}}",
     "deletePage": "Delete page",
     "rotateCcw": "Rotate CCW",
     "rotateCw": "Rotate CW",

@@ -58,6 +58,11 @@ export class PageThumbnailPanel {
       item.dataset.index = String(i);
       item.dataset.pageId = page.id;
       item.draggable = true;
+      // M0 #8 — keyboard accessibility: the nav thumbnail is operable by keyboard,
+      // not just pointer. role=button + tabindex=0 + aria-label + Enter/Space.
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.setAttribute('aria-label', t('thumbnail.goToPage', { page: i + 1 }));
 
       // Thumbnail image
       const img = document.createElement('img');
@@ -128,6 +133,15 @@ export class PageThumbnailPanel {
 
       // Navigate on click
       item.addEventListener('click', () => this.onNavigate(i));
+      // Navigate on Enter/Space (keyboard parity with click). Space is prevented
+      // from scrolling the page; both ignore events bubbling up from child buttons.
+      item.addEventListener('keydown', (e) => {
+        if (e.target !== item) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this.onNavigate(i);
+        }
+      });
 
       // Drag-and-drop reorder
       item.addEventListener('dragstart', (e) => {

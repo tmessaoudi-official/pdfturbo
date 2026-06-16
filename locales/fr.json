@@ -185,6 +185,16 @@
       "restore": "Restaurer la session",
       "fresh": "Recommencer"
     },
+    "confirm": {
+      "ok": "Confirmer",
+      "cancel": "Annuler"
+    },
+    "confirmClose": {
+      "message": "Fermer ce document ? Les annotations non enregistrées seront perdues — cette action est irréversible."
+    },
+    "confirmReset": {
+      "message": "Réinitialiser la session ? Votre travail enregistré sera définitivement effacé — cette action est irréversible."
+    },
     "pdfPassword": {
       "title": "Ce PDF est protégé par mot de passe",
       "passwordLabel": "Mot de passe",
@@ -375,6 +385,7 @@
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",
+    "goToPage": "Aller à la page {{page}}",
     "deletePage": "Supprimer la page",
     "rotateCcw": "Pivoter CCW",
     "rotateCw": "Pivoter CW",

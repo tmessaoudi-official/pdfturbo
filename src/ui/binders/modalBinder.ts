@@ -1,6 +1,7 @@
 import type { PDFTurboApp, ToolMode } from '../../core/pdfTurboApp';
 import { FlyoutManager } from '../flyoutManager';
 import { randomOwnerPassword } from '../../export/encryption';
+import { confirmDestructive } from '../confirmDialog';
 
 export function bindModalEvents(app: PDFTurboApp): void {
   // ── Signature modal ────────────────────────────────────────────
@@ -121,7 +122,11 @@ export function bindModalEvents(app: PDFTurboApp): void {
   });
   app.ui.fileMenuClose.addEventListener('click', () => {
     app.ui.fileMenuWrap.classList.remove('open');
-    app._closeDocument();
+    // Non-undoable: confirm before discarding the open document (skip when none open).
+    if (app.documentModel.pages.length === 0) { app._closeDocument(); return; }
+    confirmDestructive({ messageKey: 'modal.confirmClose.message' })
+      .then(ok => { if (ok) app._closeDocument(); })
+      .catch(() => {});
   });
   app.ui.fileMenuClearAnnotations.addEventListener('click', () => {
     app.ui.fileMenuWrap.classList.remove('open');
@@ -129,7 +134,11 @@ export function bindModalEvents(app: PDFTurboApp): void {
   });
   app.ui.fileMenuResetSession.addEventListener('click', () => {
     app.ui.fileMenuWrap.classList.remove('open');
-    app._clearSave();
+    // Non-undoable: confirm before wiping the saved session (skip when none open).
+    if (app.documentModel.pages.length === 0) { app._clearSave(); return; }
+    confirmDestructive({ messageKey: 'modal.confirmReset.message' })
+      .then(ok => { if (ok) app._clearSave(); })
+      .catch(() => {});
   });
   document.getElementById('fileMenuBlankPage')?.addEventListener('click', () => {
     app.ui.fileMenuWrap.classList.remove('open');
