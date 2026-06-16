@@ -51,6 +51,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => app.reportError.error('toast.imageLoadFailed', reader.error); // M0 #11
     reader.onload = (ev) => {
       app._setQrLogoDataUrl((ev.target?.result as string) ?? null);
       app.ui.qrLogoName.textContent = file.name;

@@ -70,10 +70,13 @@ export class PlacementManager {
       return;
     }
     const reader = new FileReader();
+    // M0 #11 — surface read/decode failures instead of silently doing nothing.
+    reader.onerror = () => this._ctx.reportError.error('toast.imageLoadFailed', reader.error);
     reader.onload = (ev) => {
       const src = ev.target?.result as string;
-      if (!src) return;
+      if (!src) { this._ctx.reportError.error('toast.imageLoadFailed'); return; }
       const img = new Image();
+      img.onerror = () => this._ctx.reportError.error('toast.imageLoadFailed');
       img.onload = () => {
         this._pendingImageNatural = { w: img.naturalWidth, h: img.naturalHeight };
         this._pendingImageSrc = src;

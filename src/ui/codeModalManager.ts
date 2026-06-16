@@ -88,9 +88,12 @@ export class CodeModalManager {
     ui.codePreviewStatus.textContent = t('modal.code.generating');
     try {
       const dataUrl = await generateCodeDataUrl(fmt, data, qrStyle, bwipOpts);
-      const nat = await new Promise<{ w: number; h: number }>((resolve) => {
+      const nat = await new Promise<{ w: number; h: number }>((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        // M0 #11 — without this the await would hang forever on a bad dataURL,
+        // leaving the Save button permanently disabled. The catch below re-enables it.
+        img.onerror = () => reject(new Error('Failed to render the code image'));
         img.src = dataUrl;
       });
       const editingId = this._editingId;

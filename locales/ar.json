@@ -325,6 +325,7 @@
     "exportNoText": "لا يوجد نص قابل للاستخراج — استخدم أداة OCR على الصفحات الممسوحة ضوئيًا أولًا",
     "exportFailed": "فشل التصدير",
     "selectImageFile": "يرجى اختيار ملف صورة (PNG أو JPEG أو GIF أو WebP)",
+    "imageLoadFailed": "تعذّر تحميل تلك الصورة — قد تكون تالفة أو غير مدعومة",
     "clickToPlaceImage": "اسحب على PDF لوضع الصورة",
     "fileLoadFailed": "فشل تحميل «{{name}}» — تخطي",
     "filesAdded_one": "تم إضافة {{count}} ملف",

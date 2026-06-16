@@ -325,6 +325,7 @@
     "exportNoText": "Aucun texte extractible — utilisez d'abord l'outil OCR sur les pages numérisées",
     "exportFailed": "Échec de l'export",
     "selectImageFile": "Veuillez sélectionner un fichier image (PNG, JPEG, GIF ou WebP)",
+    "imageLoadFailed": "Impossible de charger cette image — elle est peut-être corrompue ou non prise en charge",
     "clickToPlaceImage": "Faites glisser sur le PDF pour placer l'image",
     "fileLoadFailed": "Échec du chargement de « {{name}} » — ignoré",
     "filesAdded_one": "{{count}} fichier ajouté",
