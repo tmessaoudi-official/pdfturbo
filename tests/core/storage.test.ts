@@ -5,7 +5,11 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';   // patches globalThis.indexedDB before imports
-import { saveState, loadState, clearState, type SavedState } from '../../src/infra/storage';
+import {
+  saveState, loadState, clearState,
+  SCHEMA_VERSION, migrateOrDiscard,
+  type SavedState,
+} from '../../src/infra/storage';
 
 const makeState = (override: Partial<SavedState> = {}): SavedState => ({
   elements: [],
@@ -127,6 +131,66 @@ describe('clearState', () => {
   it('clearState is idempotent (safe to call on empty store)', async () => {
     await expect(clearState()).resolves.not.toThrow();
     await expect(clearState()).resolves.not.toThrow();
+  });
+});
+
+// ── M0 #3: schema versioning — stamp on write, migrate-or-discard on load ─────
+/** Write a raw record bypassing saveState's version stamping (simulates legacy/foreign blobs). */
+function rawPut(value: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('pdf-editor', 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('state')) db.createObjectStore('state');
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction('state', 'readwrite');
+      tx.objectStore('state').put(value, 'current');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+describe('schema versioning', () => {
+  it('saveState stamps the current SCHEMA_VERSION', async () => {
+    await saveState(makeState());
+    const loaded = await loadState();
+    expect((loaded as SavedState).schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it('loadState accepts a legacy blob with no schemaVersion (pre-versioning back-compat)', async () => {
+    const legacy = makeState({ currentPageIndex: 2 });
+    delete (legacy as Partial<SavedState>).schemaVersion;
+    await rawPut(legacy);
+    const loaded = await loadState();
+    expect(loaded).not.toBeNull();
+    expect((loaded as SavedState).currentPageIndex).toBe(2);
+  });
+
+  it('loadState discards a blob written by a newer, incompatible schema', async () => {
+    await rawPut({ ...makeState(), schemaVersion: SCHEMA_VERSION + 1 });
+    expect(await loadState()).toBeNull();
+  });
+
+  describe('migrateOrDiscard (pure)', () => {
+    it('returns the state unchanged when version matches', () => {
+      const s = { ...makeState(), schemaVersion: SCHEMA_VERSION };
+      expect(migrateOrDiscard(s)).toEqual(s);
+    });
+    it('accepts undefined version as current-shape (legacy)', () => {
+      const s = makeState();
+      expect(migrateOrDiscard(s)).not.toBeNull();
+    });
+    it('discards a future version', () => {
+      expect(migrateOrDiscard({ ...makeState(), schemaVersion: SCHEMA_VERSION + 1 })).toBeNull();
+    });
+    it('discards non-object / null input', () => {
+      expect(migrateOrDiscard(null)).toBeNull();
+      expect(migrateOrDiscard('garbage')).toBeNull();
+    });
   });
 });
 
