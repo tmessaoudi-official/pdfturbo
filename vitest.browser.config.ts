@@ -27,6 +27,20 @@ export default defineConfig({
     include: ['tests/browser/**/*.browser.test.ts'],
     // jsdom setup (fake-indexeddb etc.) is irrelevant here — real browser has real APIs.
     setupFiles: [],
+    // M1 #14 — coverage gate on the export RENDER path (the P0 surface). Only active
+    // when --coverage is passed (npm run test:coverage:export); a normal test:browser
+    // run ignores it. The export element renderer can ONLY be exercised in a real
+    // browser (canvas/pdf.js), so the gate lives here, not in the jsdom config. If a
+    // regression deletes the pixel tests, coverage drops below the floor and CI fails.
+    // Thresholds sit just below the current real values (≈51% lines / 70% functions)
+    // to catch deletion without flapping on antialiasing/minor-branch drift.
+    coverage: {
+      provider: 'v8',
+      include: ['src/export/pdfElementRenderer.ts'],
+      thresholds: {
+        'src/export/pdfElementRenderer.ts': { statements: 45, lines: 45, functions: 60, branches: 25 },
+      },
+    },
     browser: {
       enabled: true,
       // Vitest 4: provider is a factory from @vitest/browser-playwright.

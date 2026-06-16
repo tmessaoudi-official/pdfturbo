@@ -39,6 +39,9 @@ jobs:
       # install-deps pulls the shared libraries Chrome needs in CI.
       - run: npx playwright install-deps chromium
       - run: npm run test:browser
+      # M1 #14 — coverage gate on the export render path (the closed P0). Fails the
+      # build if the pdfElementRenderer pixel tests stop covering it (regression guard).
+      - run: npm run test:coverage:export
       - run: npm run build
       - if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3
