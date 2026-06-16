@@ -14,12 +14,30 @@
  * defaults are blocked by that CSP. Assets are vendored by
  * `scripts/prepare-ocr-assets.mjs`; paths are built by `ocrAssetPaths`.
  */
-import type { PDFTurboApp } from '../core/pdfTurboApp';
-import type { DocumentPage, SourcePdf } from '../core/documentModel';
+import type { DocumentModel, DocumentPage, SourcePdf } from '../core/documentModel';
 import { recognizePage, resolveLanguage } from '../ocr';
 import { TextElement } from '../elements/textElement';
-import { AddElementCmd, MacroCmd } from '../core/historyManager';
+import { AddElementCmd, MacroCmd, type HistoryManager } from '../core/historyManager';
 import { applySearchableLayerToPdf, partitionWordsByFont } from '../ocr/searchableTextLayer';
+import type { IErrorReporter } from '../contracts/errorReporter';
+import type { PDFElement } from '../elements/annotationElement';
+
+/**
+ * Narrow role-interface the OCR handler requires from the app (M2 #18). Decouples
+ * the handler from the concrete PDFTurboApp god-class — mirrors the per-component
+ * context convention already used by SignatureManager (`ISignatureContext`).
+ */
+export interface IOcrContext {
+  readonly reportError: IErrorReporter;
+  readonly documentModel: DocumentModel;
+  readonly historyManager: HistoryManager;
+  /** Live element array for the current page — AddElementCmd mutates it in place. */
+  readonly elements: PDFElement[];
+  rebuildElementLayer(): void;
+  autosave(): void;
+  /** Swap a source PDF's bytes (undoable + persisted); resolves false if discarded. */
+  _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<boolean>;
+}
 
 /**
  * OCR output mode:
@@ -102,7 +120,7 @@ export class OcrHandler {
   // backstop for any other / programmatic entry point.
   private _running = false;
 
-  constructor(private readonly app: PDFTurboApp) {}
+  constructor(private readonly app: IOcrContext) {}
 
   /**
    * Recognize text on the current page and emit it in the requested {@link OcrOutputMode}.
@@ -138,7 +156,7 @@ export class OcrHandler {
   }
 
   private async _run(
-    app: PDFTurboApp,
+    app: IOcrContext,
     page: DocumentPage,
     src: SourcePdf,
     language: string,

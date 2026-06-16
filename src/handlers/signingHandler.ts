@@ -11,8 +11,19 @@
  * 100% client-side: the .p12 bytes + passphrase only ever reach forge in memory;
  * nothing is uploaded. The cert bytes are zeroed in a finally block.
  */
-import type { PDFTurboApp } from '../core/pdfTurboApp';
 import { PdfSigner, type SignOptions } from '../signing';
+
+/**
+ * Narrow role-interface the signing handler requires from the app (M2 #18).
+ * Decouples it from the concrete PDFTurboApp — it only needs the assembled-bytes
+ * source and the current filename. Mirrors the per-component context convention.
+ */
+export interface ISigningContext {
+  /** Current document filename (drives the `<base>-signed.pdf` output name). */
+  readonly currentFilename: string | null;
+  /** Assemble the EDITED document (annotations/redactions/form-fills baked in). */
+  assemblePdfBytes(): Promise<Uint8Array>;
+}
 
 /** Raw values read from the sign modal. `page` is 1-based as shown in the UI. */
 export interface SignFormInput {
@@ -54,7 +65,7 @@ export function buildSignOptions(form: SignFormInput): SignOptions {
 }
 
 export class SigningHandler {
-  constructor(private readonly app: PDFTurboApp) {}
+  constructor(private readonly app: ISigningContext) {}
 
   /**
    * Assemble the edited document, sign it with the supplied PKCS#12 material,
