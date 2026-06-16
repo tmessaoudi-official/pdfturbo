@@ -262,6 +262,13 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.sanitizeBtn.addEventListener('click', () => void app.sanitizeAndDownload());
   app.ui.exportTableBtn.addEventListener('click', () => void app.exportTableCsv());
   app.ui.flattenBtn.addEventListener('click', () => void app.downloadFlattened());
+  app.ui.exportXfdfBtn.addEventListener('click', () => void app.exportXfdf());
+  app.ui.importXfdfBtn.addEventListener('click', () => app.ui.xfdfInput.click());
+  app.ui.xfdfInput.addEventListener('change', () => {
+    const f = app.ui.xfdfInput.files?.[0];
+    if (f) void app.importXfdf(f);
+    app.ui.xfdfInput.value = ''; // allow re-importing the same file
+  });
   bindExtractPagesModal(app);
   app.ui.exportPreviewClose.addEventListener('click', () => app._hideExportPreview());
   app.ui.exportPreviewConfirm.addEventListener('click', () => {

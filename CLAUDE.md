@@ -109,6 +109,21 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `main.ts` removes the button when off). The app's own overlay annotations are already baked by `buildPageOverlays`;
   source **markup** annotations (notes/stamps authored elsewhere) = ceiling **#62b** — pdf-lib has no generic
   markup-flatten, and the redaction-rasterize path + PNG export already cover that nuclear case.
+- **XFDF import/export (#57)**: `src/utils/xfdf.ts` is a **pure** codec (`buildXfdf`/`parseXfdf` via the platform
+  `DOMParser`, no dep) over a normalized `XfdfAnnot` record in **PDF user space** (points, y-UP, bottom-left,
+  0-based page). `src/export/xfdfMapping.ts` does the editor-display(top-left,y-DOWN)↔user-space flip
+  (`elementToXfdfAnnot`/`xfdfAnnotToElement`) + `pageHeightPt` (blank→blankHeight, source→pdf.js viewport).
+  Maps **highlight↔`<highlight>`, comment↔`<text>` (sticky note), text↔`<freetext>`** both ways; other subtypes
+  return null (skipped, never mis-mapped). Export = `ExportService.exportXfdf` (XFDF↓ flyout button, plain
+  download); import = `PDFTurboApp.importXfdf(file)` (XFDF↑ button → hidden `xfdfInput`; builds elements with the
+  target page's id and adds them in ONE undoable `MacroCmd` — `app.elements` is a flat all-pages array filtered by
+  `pageId` at render, so multi-page import just sets the right pageId). Gated by `VITE_FEATURE_XFDF` (#28 seam).
+  **Non-obvious:** import constructs elements **directly** (not via `ElementFactory.fromJSON`, whose `applyBase`
+  overrides `el.id` with `data.id` → `undefined` when absent); the element constructor auto-assigns `id` via
+  `_nextId`. Ceiling **#57b**: ink/stamp/square/circle/line subtypes, multi-line highlight QuadPoints, freetext DA
+  font appearance (fontSize rides a non-standard attr for app round-trip; Acrobat ignores it), form `<fields>`
+  data, rotated-page coordinate transform. Acrobat byte-exactness is unverifiable in-repo (no Acrobat) — the
+  internal export→import round-trip (tests) is the correctness guarantee.
 - **PDF sanitizer (#53)**: `src/utils/pdfSanitizer.ts` `sanitizePdf(bytes)` strips `/Info`, XMP
   `/Metadata`, `/OpenAction`, `/AA` (catalog + every page), and `/Names→/JavaScript` +
   `/Names→/EmbeddedFiles` via pdf-lib key-deletion (no new dep; 1.31 KB lazy chunk). **Non-obvious:

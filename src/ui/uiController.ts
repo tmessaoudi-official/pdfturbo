@@ -102,6 +102,9 @@ export interface AppDOMRefs {
   extractPagesBtn:      HTMLButtonElement;
   exportTableBtn:       HTMLButtonElement;
   flattenBtn:           HTMLButtonElement;
+  exportXfdfBtn:        HTMLButtonElement;
+  importXfdfBtn:        HTMLButtonElement;
+  xfdfInput:            HTMLInputElement;
   exportPreviewOverlay: HTMLElement;
   exportPreviewGhost:   HTMLElement;
   exportPreviewConfirm: HTMLButtonElement;
@@ -283,6 +286,9 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       extractPagesBtn:      document.getElementById('extractPagesBtn')      as HTMLButtonElement,
       exportTableBtn:       document.getElementById('exportTableBtn')       as HTMLButtonElement,
       flattenBtn:           document.getElementById('flattenBtn')           as HTMLButtonElement,
+      exportXfdfBtn:        document.getElementById('exportXfdfBtn')        as HTMLButtonElement,
+      importXfdfBtn:        document.getElementById('importXfdfBtn')        as HTMLButtonElement,
+      xfdfInput:            document.getElementById('xfdfInput')            as HTMLInputElement,
       exportPreviewOverlay: document.getElementById('exportPreviewOverlay') as HTMLElement,
       exportPreviewGhost:   document.getElementById('exportPreviewGhost')   as HTMLElement,
       exportPreviewConfirm: document.getElementById('exportPreviewConfirm') as HTMLButtonElement,
@@ -400,6 +406,8 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.extractPagesBtn.disabled = false;
     r.exportTableBtn.disabled = false;
     r.flattenBtn.disabled     = false;
+    r.exportXfdfBtn.disabled  = false;
+    r.importXfdfBtn.disabled  = false;
     r.editTextBtn.disabled    = false;
     r.ocrBtn.disabled         = false;
     r.signBtn.disabled        = false;

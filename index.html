@@ -120,11 +120,14 @@
           <button id="extractPagesBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.extractPagesTitle" title="Extract pages to a new PDF">✂</button>
           <button id="exportTableBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportTableTitle" title="Extract a ruled table to CSV">▦</button>
           <button id="flattenBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.flattenTitle" title="Flatten form fields & download a static copy">⊞</button>
+          <button id="exportXfdfBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportXfdfTitle" title="Export annotations as XFDF">XFDF↓</button>
+          <button id="importXfdfBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.importXfdfTitle" title="Import annotations from XFDF">XFDF↑</button>
         </div>
       </div>
       <button id="helpBtn" class="btn btn-icon" data-i18n-title="toolbar.helpTitle" title="Keyboard shortcuts (?)">?</button>
       <button id="settingsBtn" class="btn btn-icon" aria-haspopup="dialog" aria-expanded="false" data-i18n-title="toolbar.settingsTitle" title="Settings">⚙</button>
       <input type="file" id="addPdfInput" accept="application/pdf,image/*" multiple>
+      <input type="file" id="xfdfInput" accept=".xfdf,application/vnd.adobe.xfdf">
     </div>
     <div id="modeBadge" class="mode-badge">SELECT</div>
   </div>

@@ -12,6 +12,8 @@ import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableTextItem } from '../utils/tableExtract';
+import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
+import { elementToXfdfAnnot, pageHeightPt } from './xfdfMapping';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -174,6 +176,38 @@ export class ExportService {
     } catch (err) {
       reportError.error('toast.sanitizeFailed', err);
       _prog.failed();
+    }
+  }
+
+  /**
+   * Export the document's annotations as an Adobe XFDF file (#57) — shareable
+   * markup without the PDF, round-trippable with Acrobat. Walks every page,
+   * converts each supported element (highlight / comment / text) from editor
+   * display space to PDF user space (per-page y-flip), and downloads a plain
+   * `.xfdf`. Unsupported element types are skipped; a document with no
+   * exportable annotation warns rather than emitting an empty file.
+   */
+  async exportXfdf(): Promise<void> {
+    const { documentModel, elements, reportError } = this._ctx;
+    if (!documentModel.pageCount) return;
+    try {
+      const annots: XfdfAnnot[] = [];
+      for (let i = 0; i < documentModel.pages.length; i++) {
+        const docPage = documentModel.pages[i];
+        const pageEls = elements.filter(el => el.pageId === docPage.id);
+        if (!pageEls.length) continue;
+        const h = await pageHeightPt(docPage, documentModel.sourcePdfs);
+        for (const el of pageEls) {
+          const a = elementToXfdfAnnot(el.toJSON(), i, h);
+          if (a) annots.push(a);
+        }
+      }
+      if (!annots.length) { reportError.warn('toast.xfdfNoAnnots'); return; }
+      const xml = buildXfdf(annots);
+      this._downloadBlob(new Blob([xml], { type: 'application/vnd.adobe.xfdf' }), this._exportBaseName() + '.xfdf');
+      reportError.info('toast.xfdfExported', { count: annots.length });
+    } catch (err) {
+      reportError.error('toast.exportFailed', err);
     }
   }
 

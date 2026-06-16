@@ -11,9 +11,11 @@ import { UIController, type AppDOMRefs } from '../ui/uiController';
 import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
-  HistoryManager, AddElementCmd,
+  HistoryManager, AddElementCmd, MacroCmd,
   ReplaceSourcePdfBytesCmd,
 } from './historyManager';
+import { parseXfdf } from '../utils/xfdf';
+import { xfdfAnnotToElement, pageHeightPt } from '../export/xfdfMapping';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
 import { DocumentModel, type SourcePdf } from './documentModel';
@@ -696,6 +698,36 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }
   sanitizeAndDownload(): Promise<void> { return this._exportService.sanitizeAndDownload(); }
   downloadFlattened(): Promise<void> { return this._exportService.downloadFlattened(); }
+  exportXfdf(): Promise<void> { return this._exportService.exportXfdf(); }
+
+  /**
+   * Import annotations from an Adobe XFDF file (#57): parse it, convert each
+   * supported markup (highlight / text-note / freetext) from PDF user space back
+   * to editor display space (per-page y-flip), and add them as real annotation
+   * elements in one undoable MacroCmd. Unknown subtypes are ignored; an empty or
+   * unmappable file warns rather than failing silently.
+   */
+  async importXfdf(file: File): Promise<void> {
+    try {
+      const annots = parseXfdf(await file.text());
+      if (!annots.length) { this.reportError.warn('toast.xfdfImportEmpty'); return; }
+      const cmds: AddElementCmd[] = [];
+      for (const a of annots) {
+        const docPage = this.documentModel.pages[a.page];
+        if (!docPage) continue;
+        const h = await pageHeightPt(docPage, this.documentModel.sourcePdfs);
+        const el = xfdfAnnotToElement(a, docPage.id, h);
+        if (el) cmds.push(new AddElementCmd(this.elements, el));
+      }
+      if (!cmds.length) { this.reportError.warn('toast.xfdfImportEmpty'); return; }
+      this.historyManager.execute(new MacroCmd(cmds));
+      this.rebuildElementLayer();
+      this.autosave();
+      this.reportError.info('toast.xfdfImported', { count: cmds.length });
+    } catch (err) {
+      this.reportError.error('toast.xfdfImportFailed', err);
+    }
+  }
   /** Assembled (edited) document bytes — used by the e-signing flow. */
   assemblePdfBytes(): Promise<Uint8Array> { return this._exportService.assemblePdfBytes(); }
 

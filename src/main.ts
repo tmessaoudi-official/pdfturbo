@@ -47,6 +47,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!isEnabled('eSign')) app.ui.signBtn.style.display = 'none';
   if (!isEnabled('searchableOcr')) app.ui.ocrModeSelect.querySelector('option[value="searchable"]')?.remove();
   if (!isEnabled('flatten')) app.ui.flattenBtn.style.display = 'none';
+  if (!isEnabled('xfdf')) {
+    app.ui.exportXfdfBtn.style.display = 'none';
+    app.ui.importXfdfBtn.style.display = 'none';
+  }
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {
