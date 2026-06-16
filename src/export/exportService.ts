@@ -10,6 +10,7 @@ import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } fro
 import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
+import { pickSaveTarget, writeToHandle } from '../utils/fileSystemAccess';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -43,6 +44,13 @@ export class ExportService {
   async downloadPDF(): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
     if (!documentModel.pageCount) return;
+    const filename = this._exportBaseName() + '-edited.pdf';
+    // #54: acquire the save target within the click's activation window, BEFORE
+    // the slow assembly — showSaveFilePicker requires transient user activation.
+    // 'cancelled' (user dismissed the dialog) is a silent no-op; 'download' is
+    // the fallback for browsers without the File System Access API.
+    const target = await pickSaveTarget(filename);
+    if (target === 'cancelled') return;
     this._ctx.cleanEmptyTextElements();
     const _prog = progress.begin('progress.generatingPdf');
     try {
@@ -51,8 +59,15 @@ export class ExportService {
       );
       // Pages assembled; the final save/encrypt step has no page granularity.
       _prog.setFraction(null);
-      await this._savePdfDocAndDownload(pdfDoc, this._exportBaseName() + '-edited.pdf');
-      reportError.info('toast.pdfDownloaded');
+      await this._applyExportPassword(pdfDoc);
+      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      if (target === 'download') {
+        this._downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }), filename);
+        reportError.info('toast.pdfDownloaded');
+      } else {
+        await writeToHandle(target, bytes);
+        reportError.info('toast.pdfSaved', { name: target.name });
+      }
       _prog.done();
     } catch (err) {
       reportError.error('toast.pdfExportFailed', err);

@@ -378,6 +378,7 @@
     "pastedUndo": "Pasted — Ctrl+Z to undo",
     "elementRenderFailed": "{{count}} element(s) could not be rendered",
     "pdfDownloaded": "PDF downloaded!",
+    "pdfSaved": "Saved to {{name}}",
     "pdfExportFailed": "PDF export failed",
     "sanitized": "Sanitized copy downloaded — {{count}} artifact type(s) removed",
     "sanitizeNothing": "Nothing to strip — downloaded a clean copy",

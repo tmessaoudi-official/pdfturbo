@@ -378,6 +378,7 @@
     "pastedUndo": "تم اللصق — Ctrl+Z للتراجع",
     "elementRenderFailed": "تعذّر عرض {{count}} عنصر(عناصر)",
     "pdfDownloaded": "تم تنزيل ملف PDF!",
+    "pdfSaved": "تم الحفظ في {{name}}",
     "pdfExportFailed": "فشل تصدير PDF",
     "sanitized": "تم تنزيل نسخة منظَّفة — تمت إزالة {{count}} نوعًا من العناصر",
     "sanitizeNothing": "لا شيء لإزالته — تم تنزيل نسخة نظيفة",

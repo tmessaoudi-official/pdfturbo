@@ -378,6 +378,7 @@
     "pastedUndo": "Collé — Ctrl+Z pour annuler",
     "elementRenderFailed": "{{count}} élément(s) n'ont pas pu être rendus",
     "pdfDownloaded": "PDF téléchargé !",
+    "pdfSaved": "Enregistré dans {{name}}",
     "pdfExportFailed": "Échec de l'export PDF",
     "sanitized": "Copie nettoyée téléchargée — {{count}} type(s) d'élément supprimé(s)",
     "sanitizeNothing": "Rien à supprimer — copie propre téléchargée",
