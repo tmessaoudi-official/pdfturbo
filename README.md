@@ -49,6 +49,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Sanitize** — download a copy with metadata (`/Info`, XMP), document-level JavaScript (`/OpenAction`, `/AA`), and embedded files stripped
 - **Native save dialog** — on Chromium, Download opens the OS "Save As" picker and writes the file directly (File System Access API); other browsers download as usual
 - **Export to DOCX / Markdown** — reconstruct a flow document (headings, lists, columns, images, RTL) from the PDF text (beta)
+- **Table → CSV** — extract a ruled (visible-grid) table from a page to a CSV file
 - **Watermark** — tiled repeating watermark on export with configurable text, opacity, angle, density
 - **Barcode / QR code** — generate and place 1D/2D barcodes or QR codes with custom content, format, and error-correction level
 - **Text search** — find text in the PDF with highlighted matches and Add Highlight action

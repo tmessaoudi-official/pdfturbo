@@ -92,6 +92,12 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   Cancel (AbortError) → silent no-op; any non-abort failure → anchor-download fallback (progressive
   enhancement). Only `downloadPDF` is rewired; `downloadPage`/sanitize/DOCX still plain-download.
   Open-via-picker + recent-files deferred (#54b).
+- **Table → CSV (#56)**: `src/utils/tableExtract.ts` (`clusterPositions`/`buildTableGrid`/`gridToCsv`, pure) +
+  `ExportService.exportTableCsv`. `walkPageOps` now emits **`vRules`** (thin *vertical* line-like rects) alongside
+  the horizontal `rules` — the horizontal filter (underline/strike) is byte-unchanged; vertical is a new
+  additive branch. buildTableGrid clusters h-rule y's → rows, v-rule x's → cols, assigns text by center.
+  **Lattice/ruled tables only** (needs visible grid lines on both axes); borderless = ceiling. CSV is a plain
+  download (no FS-Access picker — sidesteps the transient-activation issue after async extraction). XLSX deferred (#56b).
 - **PDF sanitizer (#53)**: `src/utils/pdfSanitizer.ts` `sanitizePdf(bytes)` strips `/Info`, XMP
   `/Metadata`, `/OpenAction`, `/AA` (catalog + every page), and `/Names→/JavaScript` +
   `/Names→/EmbeddedFiles` via pdf-lib key-deletion (no new dep; 1.31 KB lazy chunk). **Non-obvious:
