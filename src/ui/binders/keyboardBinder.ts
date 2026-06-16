@@ -8,6 +8,7 @@ export function bindKeyboardEvents(app: PDFTurboApp): void {
       if (app.ui.helpModal.classList.contains('active')) { app._toggleHelp(false); return; }
       if (app.ui.signatureModal.classList.contains('active')) { app.closeSignatureModal(); return; }
       if (app.ui.watermarkModal.classList.contains('active')) { app._closeWatermarkModal(); return; }
+      if (app.ui.batesModal.classList.contains('active')) { app._closeBatesModal(); return; }
       if (app.ui.codeModal.classList.contains('active')) { app.closeCodeModal(); return; }
       if (app.ui.findBar.style.display !== 'none') { app._closeFindBar(); return; }
       app.setMode('select');

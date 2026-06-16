@@ -143,6 +143,7 @@ export class DocumentModel {
     return {
       pages: this.pages,
       watermark: this.watermark,
+      bates: this.bates,
       currentPageIndex: this.currentPageIndex,
     };
   }

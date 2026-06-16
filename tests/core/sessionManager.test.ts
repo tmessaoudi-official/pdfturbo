@@ -12,6 +12,7 @@ function makeSnapshot(errors: SessionSnapshot['errors']): SessionSnapshot {
       sourcePdfs: new Map([['s', { id: 's', name: 'a.pdf', bytes: new Uint8Array([1]) }]]),
       pages: [{ id: 'p1' }],
       watermark: {},
+      bates: { enabled: true, mode: 'bates', prefix: 'X-', startNumber: 1, digits: 6, position: 'br', fontSize: 10, color: '#555555' },
       currentPageIndex: 0,
     },
     elements: [],
@@ -45,6 +46,16 @@ describe('SessionManager autosave error handling (M0 #12)', () => {
     await vi.runAllTimersAsync();
     expect(errors.silent).toHaveBeenCalled();
     expect(errors.error).not.toHaveBeenCalled();
+  });
+
+  it('persists the Bates settings in the saved state (#61b)', async () => {
+    (saveState as Mock).mockResolvedValue(undefined);
+    const errors = makeErrors();
+    new SessionManager().schedule(() => makeSnapshot(errors));
+    await vi.runAllTimersAsync();
+    expect(saveState).toHaveBeenCalledWith(expect.objectContaining({
+      bates: expect.objectContaining({ enabled: true, mode: 'bates', prefix: 'X-' }),
+    }));
   });
 
   it('debounces rapid schedules into a single save', async () => {

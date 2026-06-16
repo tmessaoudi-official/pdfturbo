@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     app.ui.exportXfdfBtn.style.display = 'none';
     app.ui.importXfdfBtn.style.display = 'none';
   }
+  if (!isEnabled('bates')) app.ui.batesBtn.style.display = 'none';
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {

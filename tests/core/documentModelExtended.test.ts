@@ -189,19 +189,26 @@ describe('watermark defaults', () => {
 
 // ── toJSON ─────────────────────────────────────────────────────────────────────
 describe('toJSON', () => {
-  it('serialises pages, watermark, and currentPageIndex', () => {
+  it('serialises pages, watermark, bates, and currentPageIndex', () => {
     const model = new DocumentModel();
     const src = model.addSourcePdf(makeDoc(2), new Uint8Array(), 'test.pdf');
     model.addPagesFrom(src.id);
     model.currentPageIndex = 1;
     model.watermark.enabled = true;
     model.watermark.text = 'DRAFT';
+    model.bates.enabled = true;
+    model.bates.mode = 'bates';
 
     const json = model.toJSON() as Record<string, unknown>;
     expect(json['currentPageIndex']).toBe(1);
     const wm = json['watermark'] as Record<string, unknown>;
     expect(wm['enabled']).toBe(true);
     expect(wm['text']).toBe('DRAFT');
+    // bates must be serialised too — a future autosave refactor that calls toJSON()
+    // must not silently drop it (#61b drift guard).
+    const bates = json['bates'] as Record<string, unknown>;
+    expect(bates['enabled']).toBe(true);
+    expect(bates['mode']).toBe('bates');
     const pages = json['pages'] as unknown[];
     expect(pages).toHaveLength(2);
   });

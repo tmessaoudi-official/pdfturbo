@@ -252,6 +252,18 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.wmApply.addEventListener('click', () => app._applyWatermark());
   app._setupWatermarkPreviewListeners();
 
+  // ── Bates / page-numbering modal (#61b) ────────────────────────
+  app.ui.batesBtn.addEventListener('click', () => app._openBatesModal());
+  app.ui.batesCancel.addEventListener('click', () => app._closeBatesModal());
+  let _batesBackdropDown = false;
+  app.ui.batesModal.addEventListener('mousedown', (e) => { _batesBackdropDown = e.target === app.ui.batesModal; });
+  app.ui.batesModal.addEventListener('mouseup', (e) => {
+    if (_batesBackdropDown && e.target === app.ui.batesModal) app._closeBatesModal();
+    _batesBackdropDown = false;
+  });
+  app.ui.batesApply.addEventListener('click', () => app._applyBates());
+  app._setupBatesListeners();
+
   // ── Export preview ─────────────────────────────────────────────
   app.ui.previewExportBtn.addEventListener('click', () => {
     if (app._exportPreviewOpen) app._hideExportPreview();

@@ -90,6 +90,7 @@ function makeCtx(overrides: Partial<IDocumentLoaderContext> = {}): IDocumentLoad
     applyZoom: vi.fn().mockResolvedValue(undefined),
     renderCurrentPage: vi.fn().mockResolvedValue(undefined),
     syncWatermarkBtn: vi.fn(),
+    syncBatesBtn: vi.fn(),
     enableUI: vi.fn(),
     enableFileMenuDocItems: vi.fn(),
     disableFileMenuDocItems: vi.fn(),

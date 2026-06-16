@@ -104,6 +104,19 @@ export interface AppDOMRefs {
   flattenBtn:           HTMLButtonElement;
   exportXfdfBtn:        HTMLButtonElement;
   importXfdfBtn:        HTMLButtonElement;
+  batesBtn:             HTMLButtonElement;
+  batesModal:           HTMLElement;
+  batesEnabled:         HTMLInputElement;
+  batesMode:            HTMLSelectElement;
+  batesNumberingGroup:  HTMLElement;
+  batesPrefix:          HTMLInputElement;
+  batesStart:           HTMLInputElement;
+  batesDigits:          HTMLInputElement;
+  batesPosition:        HTMLSelectElement;
+  batesFontSize:        HTMLInputElement;
+  batesColor:           HTMLInputElement;
+  batesApply:           HTMLButtonElement;
+  batesCancel:          HTMLButtonElement;
   xfdfInput:            HTMLInputElement;
   exportPreviewOverlay: HTMLElement;
   exportPreviewGhost:   HTMLElement;
@@ -289,6 +302,19 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       exportXfdfBtn:        document.getElementById('exportXfdfBtn')        as HTMLButtonElement,
       importXfdfBtn:        document.getElementById('importXfdfBtn')        as HTMLButtonElement,
       xfdfInput:            document.getElementById('xfdfInput')            as HTMLInputElement,
+      batesBtn:             document.getElementById('batesBtn')             as HTMLButtonElement,
+      batesModal:           document.getElementById('batesModal')           as HTMLElement,
+      batesEnabled:         document.getElementById('batesEnabled')         as HTMLInputElement,
+      batesMode:            document.getElementById('batesMode')            as HTMLSelectElement,
+      batesNumberingGroup:  document.getElementById('batesNumberingGroup')  as HTMLElement,
+      batesPrefix:          document.getElementById('batesPrefix')          as HTMLInputElement,
+      batesStart:           document.getElementById('batesStart')           as HTMLInputElement,
+      batesDigits:          document.getElementById('batesDigits')          as HTMLInputElement,
+      batesPosition:        document.getElementById('batesPosition')        as HTMLSelectElement,
+      batesFontSize:        document.getElementById('batesFontSize')        as HTMLInputElement,
+      batesColor:           document.getElementById('batesColor')           as HTMLInputElement,
+      batesApply:           document.getElementById('batesApply')           as HTMLButtonElement,
+      batesCancel:          document.getElementById('batesCancel')          as HTMLButtonElement,
       exportPreviewOverlay: document.getElementById('exportPreviewOverlay') as HTMLElement,
       exportPreviewGhost:   document.getElementById('exportPreviewGhost')   as HTMLElement,
       exportPreviewConfirm: document.getElementById('exportPreviewConfirm') as HTMLButtonElement,
@@ -408,6 +434,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.flattenBtn.disabled     = false;
     r.exportXfdfBtn.disabled  = false;
     r.importXfdfBtn.disabled  = false;
+    r.batesBtn.disabled       = false;
     r.editTextBtn.disabled    = false;
     r.ocrBtn.disabled         = false;
     r.signBtn.disabled        = false;

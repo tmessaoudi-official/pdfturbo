@@ -122,6 +122,7 @@
           <button id="flattenBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.flattenTitle" title="Flatten form fields & download a static copy">⊞</button>
           <button id="exportXfdfBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportXfdfTitle" title="Export annotations as XFDF">XFDF↓</button>
           <button id="importXfdfBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.importXfdfTitle" title="Import annotations from XFDF">XFDF↑</button>
+          <button id="batesBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.batesTitle" title="Bates / page numbering">#</button>
         </div>
       </div>
       <button id="helpBtn" class="btn btn-icon" data-i18n-title="toolbar.helpTitle" title="Keyboard shortcuts (?)">?</button>
@@ -324,6 +325,57 @@
     <div class="wm-actions">
       <button id="wmCancel" class="btn btn-secondary" data-i18n="modal.watermark.cancel">Cancel</button>
       <button id="wmApply" class="btn btn-success" data-i18n="modal.watermark.apply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="watermark-modal" id="batesModal" role="dialog" aria-modal="true" aria-labelledby="batesModalTitle">
+  <div class="watermark-content">
+    <h2 id="batesModalTitle" data-i18n="modal.bates.title">Bates / Page Numbering</h2>
+    <div class="wm-field">
+      <label><input type="checkbox" id="batesEnabled"> <span data-i18n="modal.bates.enable">Stamp every page on export</span></label>
+    </div>
+    <div class="wm-field">
+      <label data-i18n="modal.bates.modeLabel">Mode</label>
+      <select id="batesMode" class="wm-input">
+        <option value="page" data-i18n="modal.bates.modePage">Page numbers (N / total)</option>
+        <option value="bates" data-i18n="modal.bates.modeBates">Bates (prefix + sequence)</option>
+      </select>
+    </div>
+    <div id="batesNumberingGroup">
+      <div class="wm-field">
+        <label data-i18n="modal.bates.prefixLabel">Prefix</label>
+        <input type="text" id="batesPrefix" class="wm-input" data-i18n-placeholder="modal.bates.prefixPlaceholder" placeholder="ACME-">
+      </div>
+      <div class="wm-field">
+        <label data-i18n="modal.bates.startLabel">Start number</label>
+        <input type="number" id="batesStart" class="wm-input" min="0" value="1">
+      </div>
+      <div class="wm-field">
+        <label data-i18n="modal.bates.digitsLabel">Digits (zero-padded)</label>
+        <input type="number" id="batesDigits" class="wm-input" min="1" max="12" value="6">
+      </div>
+    </div>
+    <div class="wm-field">
+      <label data-i18n="modal.bates.positionLabel">Position</label>
+      <select id="batesPosition" class="wm-input">
+        <option value="tl" data-i18n="modal.bates.posTL">Top left</option>
+        <option value="tc" data-i18n="modal.bates.posTC">Top center</option>
+        <option value="tr" data-i18n="modal.bates.posTR">Top right</option>
+        <option value="bl" data-i18n="modal.bates.posBL">Bottom left</option>
+        <option value="bc" data-i18n="modal.bates.posBC">Bottom center</option>
+        <option value="br" data-i18n="modal.bates.posBR">Bottom right</option>
+      </select>
+    </div>
+    <div class="wm-field">
+      <label><span data-i18n="modal.bates.fontSizeLabel">Font size</span> <input type="number" id="batesFontSize" class="wm-input" min="6" max="72" value="10" style="width:5em"></label>
+    </div>
+    <div class="wm-field">
+      <label><span data-i18n="modal.bates.colorLabel">Color</span> <input type="color" id="batesColor" value="#555555"></label>
+    </div>
+    <div class="wm-actions">
+      <button id="batesCancel" class="btn btn-secondary" data-i18n="modal.bates.cancel">Cancel</button>
+      <button id="batesApply" class="btn btn-success" data-i18n="modal.bates.apply">Apply</button>
     </div>
   </div>
 </div>

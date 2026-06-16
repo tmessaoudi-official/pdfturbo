@@ -58,6 +58,7 @@ export interface IDocumentLoaderContext {
   // Coordinated actions
   renderCurrentPage(): Promise<void>;
   syncWatermarkBtn(): void;
+  syncBatesBtn(): void;
   enableUI(): void;
   enableFileMenuDocItems(): void;
   disableFileMenuDocItems(): void;
@@ -111,7 +112,9 @@ export class DocumentLoader {
       }
       this._ctx.documentModel.pages = state.pages ?? [];
       this._ctx.documentModel.watermark = state.watermark ?? this._ctx.documentModel.watermark;
+      this._ctx.documentModel.bates = state.bates ?? this._ctx.documentModel.bates;
       this._ctx.syncWatermarkBtn();
+      this._ctx.syncBatesBtn();
       this._ctx.documentModel.currentPageIndex = Math.max(0, Math.min(
         state.currentPageIndex ?? 0, this._ctx.documentModel.pages.length - 1
       ));

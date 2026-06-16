@@ -50,6 +50,7 @@ import { CleanupService } from './cleanupService';
 import { PanelFocusTrapService } from './panelFocusTrapService';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
+import { BatesPanel } from '../ui/batesPanel';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
 import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
@@ -117,6 +118,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _ocrHandler!: OcrHandler;
   private _signingHandler!: SigningHandler;
   private _watermarkPanel!: WatermarkPanel;
+  private _batesPanel!: BatesPanel;
   private _findBarController!: FindBarController;
   private _documentLoader!: DocumentLoader;
   private _elementLayerRenderer!: ElementLayerRenderer;
@@ -221,6 +223,10 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   // ── IWatermarkContext accessors ──────────────────────────────────────────
   get watermark() { return this.documentModel.watermark; }
   setWatermark(wm: import('./documentModel').WatermarkSettings): void { this.documentModel.watermark = wm; }
+
+  // ── IBatesContext accessors (#61b) ────────────────────────────────────────
+  get bates() { return this.documentModel.bates; }
+  setBates(b: import('../export/batesStamp').BatesSettings): void { this.documentModel.bates = b; }
   get exportPreviewOpen(): boolean { return this._exportPreviewPanel.isOpen; }
   showExportPreview(): void { this._exportPreviewPanel.show(); }
 
@@ -252,6 +258,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.zoomDisplay.textContent = Math.round(scale * 100) + '%';
   }
   syncWatermarkBtn(): void { this._syncWatermarkBtn(); }
+  syncBatesBtn(): void { this._batesPanel.syncBtn(); }
   disableFileMenuDocItems(): void { this._disableFileMenuDocItems(); }
   closeFindBar(): void { this._findBarController.close(); }
   clearCanvases(): void {
@@ -313,6 +320,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._ocrHandler = new OcrHandler(this);
     this._signingHandler = new SigningHandler(this);
     this._watermarkPanel = new WatermarkPanel(this);
+    this._batesPanel = new BatesPanel(this);
     this._findBarController = new FindBarController(this);
     this._documentLoader = new DocumentLoader(this);
     this._elementLayerRenderer = new ElementLayerRenderer(this);
@@ -372,6 +380,12 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _closeWatermarkModal(): void { this._watermarkPanel.close(); }
   _applyWatermark(): void { this._watermarkPanel.apply(); }
   private _syncWatermarkBtn(): void { this._watermarkPanel.syncBtn(); }
+
+  // ── Bates / page numbering (delegated to BatesPanel, #61b) ────────────────
+  _setupBatesListeners(): void { this._batesPanel.setupListeners(); }
+  _openBatesModal(): void { this._batesPanel.open(); }
+  _closeBatesModal(): void { this._batesPanel.close(); }
+  _applyBates(): void { this._batesPanel.apply(); }
 
   // ── Find bar (delegated to FindBarController) ───────────────────────────
   _openFindBar(): void { this._findBarController.open(); }

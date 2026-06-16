@@ -1,4 +1,5 @@
 import type { DocumentPage, WatermarkSettings } from '../core/documentModel';
+import type { BatesSettings } from '../export/batesStamp';
 import type { ElementJSON } from '../elements/annotationElement';
 import type { InkStroke } from './inkLayer';
 
@@ -6,6 +7,9 @@ export interface SavedState {
   elements: ElementJSON[];
   pages: DocumentPage[];
   watermark: WatermarkSettings;
+  /** #61b — Bates / page-numbering. Optional: blobs written before #61b lack it
+   * and fall back to the model default on restore (no SCHEMA_VERSION bump needed). */
+  bates?: BatesSettings;
   currentPageIndex: number;
   // Source PDF bytes keyed by sourcePdfId
   sourcePdfs: Array<{ id: string; name: string; bytes: Uint8Array }>;

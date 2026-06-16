@@ -31,6 +31,7 @@ export class SessionManager {
         elements: snap.elements.map(el => el.toJSON()),
         pages: [...snap.documentModel.pages],
         watermark: { ...snap.documentModel.watermark },
+        bates: { ...snap.documentModel.bates },
         currentPageIndex: snap.documentModel.currentPageIndex,
         sourcePdfs,
         formValues: { ...snap.formValues },

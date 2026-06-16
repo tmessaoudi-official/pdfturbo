@@ -124,6 +124,22 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   font appearance (fontSize rides a non-standard attr for app round-trip; Acrobat ignores it), form `<fields>`
   data, rotated-page coordinate transform. Acrobat byte-exactness is unverifiable in-repo (no Acrobat) — the
   internal export→import round-trip (tests) is the correctness guarantee.
+- **Bates / page-numbering (#61 engine + #61b UI)**: `src/export/batesStamp.ts` is a **pure** engine
+  (`batesStampText` page-mode `N / total` vs bates-mode `prefix+padStart(digits)`; `batesPosition` 6 anchors,
+  bottom-left origin) + `drawBatesOnPage` in `exportPipeline.ts`, threaded through **all** export paths
+  (`exportService.ts` passes `documentModel.bates` + the page's **full-document** `pageNumber`/`pageCount` into
+  `_applyOverlaysToPage`/`rasterizePageWithRedactions`/blank branch — so a single-page or range export still reads
+  "5 / 10"). UI = `src/ui/batesPanel.ts` (mirrors `watermarkPanel.ts` but **no preview canvas** — Bates is
+  export-only by design; reuses the `.watermark-modal`/`.wm-*` CSS, so no new layout). `documentModel.bates`
+  defaults **disabled** → export byte-identical (the engine `ctx.bates?.enabled` guard no-ops). **Non-obvious:**
+  (1) `SavedState.bates` is **optional with NO `SCHEMA_VERSION` bump** — a pre-#61b blob lacks it and restores via
+  the model-default fallback (`documentLoader.ts`: `state.bates ?? documentModel.bates`), so legacy sessions are
+  NOT discarded; (2) input coercion uses a NaN-safe `intOr` (NOT `parseInt(...) || fallback`) so a deliberately
+  typed `startNumber=0` is preserved (the engine emits `ACME-000000`) — the `|| fallback` idiom silently rewrote 0;
+  (3) Esc-to-close lives in `keyboardBinder.ts` (every modal needs its own branch there — `trapFocus` only handles
+  Tab); (4) `documentModel.toJSON()` now includes `bates` (it's dead code today but a future autosave refactor
+  calling it must not silently drop Bates). Gated `VITE_FEATURE_BATES` (#28 seam). **#61c deferred**: full
+  restore-path integration test, malformed-blob restore hardening, off-page huge-startNumber cap.
 - **PDF sanitizer (#53)**: `src/utils/pdfSanitizer.ts` `sanitizePdf(bytes)` strips `/Info`, XMP
   `/Metadata`, `/OpenAction`, `/AA` (catalog + every page), and `/Names→/JavaScript` +
   `/Names→/EmbeddedFiles` via pdf-lib key-deletion (no new dep; 1.31 KB lazy chunk). **Non-obvious:
