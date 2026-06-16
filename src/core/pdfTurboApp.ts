@@ -560,6 +560,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     const mode: OcrOutputMode = this.ui.ocrModeSelect.value === 'visible' ? 'visible' : 'searchable';
     this.ui.ocrProgressRow.style.display = '';
     this.ui.runOcrModal.disabled = true;
+    this.ui.ocrBtn.disabled = true; // M0 #6 — reflect the single-flight gate in the UI
     try {
       const n = await this._ocrHandler.run(lang, mode, ({ progress }) => {
         this.ui.ocrProgress.value = Math.round(progress * 100);
@@ -579,6 +580,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       }
     } finally {
       this.ui.runOcrModal.disabled = false;
+      this.ui.ocrBtn.disabled = false;
       this.ui.ocrProgressRow.style.display = 'none';
     }
   }

@@ -15,6 +15,7 @@
  * `scripts/prepare-ocr-assets.mjs`; paths are built by `ocrAssetPaths`.
  */
 import type { PDFTurboApp } from '../core/pdfTurboApp';
+import type { DocumentPage, SourcePdf } from '../core/documentModel';
 import { recognizePage, resolveLanguage } from '../ocr';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
@@ -95,6 +96,12 @@ export class OcrHandler {
   // Higher render scale → more pixels for the recognizer → better accuracy.
   private static readonly RENDER_SCALE = 2;
 
+  // M0 #6 — single-flight gate. A second concurrent run() would spin up another
+  // tesseract WASM worker (unbounded) and could double-commit the searchable
+  // byte-swap. The run button is also disabled in the UI; this is the authoritative
+  // backstop for any other / programmatic entry point.
+  private _running = false;
+
   constructor(private readonly app: PDFTurboApp) {}
 
   /**
@@ -110,12 +117,34 @@ export class OcrHandler {
     onProgress?: (p: OcrRunProgress) => void,
   ): Promise<number> {
     const app = this.app;
+    if (this._running) {
+      // A recognition is already in flight — ignore the re-entry (no 2nd WASM worker,
+      // no double commit). Reaching here requires bypassing the disabled run button.
+      app.reportError.silent(undefined, 'OcrHandler.run: ignored — already running');
+      return 0;
+    }
     const page = app.documentModel.currentPage;
     if (!page) return 0;
     // Blank pages (sourcePageNum 0) carry no rasterizable source.
     const src = app.documentModel.sourcePdfs.get(page.sourcePdfId);
     if (!src?.doc || page.sourcePageNum < 1) return 0;
 
+    this._running = true;
+    try {
+      return await this._run(app, page, src, language, mode, onProgress);
+    } finally {
+      this._running = false;
+    }
+  }
+
+  private async _run(
+    app: PDFTurboApp,
+    page: DocumentPage,
+    src: SourcePdf,
+    language: string,
+    mode: OcrOutputMode,
+    onProgress?: (p: OcrRunProgress) => void,
+  ): Promise<number> {
     const scale = OcrHandler.RENDER_SCALE;
     const pdfPage = await src.doc.getPage(page.sourcePageNum);
     const viewport = pdfPage.getViewport({ scale });
