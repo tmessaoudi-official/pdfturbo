@@ -34,7 +34,7 @@ ISSUE-1..5 (see `KNOWN_ISSUES.md`).
 src/
 ├── main.ts                 # entry point — instantiates PDFTurboApp
 ├── core/                   # app orchestration + domain
-│   ├── pdfTurboApp.ts      # app orchestration hub (~580 lines after Wave 0–10 refactor)
+│   ├── pdfTurboApp.ts      # app orchestration hub (thin delegators over extracted services)
 │   ├── documentModel.ts    # page/element data model
 │   ├── historyManager.ts   # command-pattern undo/redo (50-command stack)
 │   ├── pdfRenderer.ts      # pdfjs page rendering
@@ -60,7 +60,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 ## Gotchas (verified by the 2026-06-11 craftsmanship review, refreshed 2026-06-14 — docs/reviews/)
 
 - **Export paths are consolidated** (the historic triplication is RESOLVED): `downloadPDF`,
-  `downloadPage`, `downloadPageAsImage` on `pdfTurboApp.ts` (lines ~570-572) are now thin
+  `downloadPage`, `downloadPageAsImage` on `pdfTurboApp.ts` are now thin
   one-line delegators to `_exportService`; the shared rotation/cropbox/watermark/ink logic
   lives once in `src/export/exportPipeline.ts` (`buildPageOverlays`) + `exportService.ts`
   helpers (`_applyOverlaysToPage`, `_savePdfDocAndDownload`). Apply export fixes in
@@ -222,7 +222,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     complex-script attrs (`font.cs=Arial`, `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
   - **True-edit**: `replaceTextAt` REFUSES Arabic new-text before the Latin Path-3 redraw (it would emit '?')
     → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still
-    runs first for in-subset edits. Guard: `isArabicText()` (`contentStreamEditor.ts`).
+    runs first for in-subset edits. Guard: `isArabicText()` (defined in `flowDoc.ts`, imported by `contentStreamEditor.ts`).
   - **Overlay rendering** (`src/export/arabicOverlay.ts`): pdf-lib `drawText` CANNOT place shaped glyphs RTL
     (fontkit shapes logical-only; drawText paints LTR → mirrored). Fix: `font.encodeText(logical)` shapes +
     emits 2-byte subset CIDs → `reverseCidHex` reverses the CID PAIRS for visual RTL → raw `Tj` via
@@ -312,7 +312,18 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 ## Git & CI
 
 - Single branch `master`; pushing to it triggers `.github/workflows/deploy.yml`:
-  type-check → lint → test → build → GitHub Pages deploy. There is no PR gate.
+  `npm audit --audit-level=high` → type-check → lint → test (jsdom) → `ocr:assets` +
+  `playwright install-deps chromium` → test:browser (real Chrome) → build → GitHub Pages
+  deploy. The workflow also declares a `pull_request: [master]` trigger, but the project
+  is single-dev/single-branch so in practice every run is a push to `master` — there is
+  **no human PR review gate** (the local pre-push hook is the safety net; see below).
+- **Supply chain (#37)**: `npm audit --audit-level=high` runs first and is **deploy-blocking**
+  (a high/critical advisory fails the build before anything deploys). OCR traineddata is
+  SHA-256-pinned (`scripts/prepare-ocr-assets.mjs`); no other remote assets are fetched at
+  build. Periodically review `npm audit` output for advisories below the `high` threshold.
+- **Pre-push gate**: `.githooks/pre-push` (auto-installed via the `prepare` script →
+  `core.hooksPath`) runs type-check + lint + test locally before any push reaches the
+  auto-deploy. Bypass in emergencies with `git push --no-verify`.
 - Commit style: `feat:` / `fix:` / `refactor:` / `docs:` prefixes, imperative subject.
   No Co-Authored-By trailers.
 - `git push` is always manual (run it yourself when asked).
