@@ -1,0 +1,201 @@
+# PDFturbo — Unified Master Plan (2026-06-16)
+
+**Supersedes as the single forward plan**: `mega-roadmap-2026-06-14.plan.md` (Sprints 0–4 + Arabic
+DONE — kept as history), `blockers-fixes.plan.md` + `blockers-to-100.plan.md` (batch DONE — history).
+This file merges **everything still open** from: `/forge` report `2026-06-16-0103.md` (18 design
+findings), `/inspect --vision` report `2026-06-16-0129.md` (1 P0 / 13 P1 / 40 P2 / 28 P3 + 83 vision
+proposals), the two fidelity scorecards, `2026-06-15-ceiling-challenge.md`, `2026-06-15-new-ideas.md`,
+and `research-2026-06-15-blockers/CONSOLIDATED.md`.
+
+**Honest headline** *(both fresh analyses agree)*: there is **no active data-loss or exploit bug**. The
+codebase is disciplined — no secrets, real CSP, i18n escaping on, sound signing crypto, 0 TODO debt,
+locales key-identical, `tsc --noUnusedLocals` clean. The lone P0 is a **coverage gap** (the export-render
+path has zero direct tests), not a defect. The real work is **reliability hardening + architecture-debt
+paydown + the queued feature/ceiling backlog**. Nothing below is an emergency; M0 is the highest leverage.
+
+**Run constraints** (carried from the prior plans — do not relitigate):
+- Local binaries only: `./node_modules/.bin/{tsc,oxlint,vitest}`. Browser: `vitest run --config vitest.browser.config.ts`. (PATH versions are rtk-proxied → bogus output.)
+- Full gate before every commit: `tsc --noEmit` · `oxlint .` (0/0) · `npm run test` (jsdom) · `test:browser` (real Chrome). CI runs all of them; push-to-master auto-deploys with **no PR gate**.
+- `git push` is **MANUAL**. Commits = thematic `feat:`/`fix:`/`refactor:`/`docs:`. **NO Co-Authored-By** (history is published).
+- **NEVER** read/print/commit the private PDFs in `tests/fixtures/private/*` — structural metrics only. `test-document.pdf` + `tests/fixtures/qa-*.pdf` are the safe fixtures.
+- Every behavior change is **TDD**: failing test first (jsdom or browser harness), then implement. Browser-layer behavior (canvas/pointer/rasterize) is NOT covered by jsdom — use the browser harness.
+
+---
+
+## Decisions Log
+- [2026-06-16] AGREED: Synthesize ONE unified plan from forge + inspect/vision + roadmap/ceiling/scorecards/blockers/new-ideas; present ALL findings de-duplicated; recommend a start; drop nothing without a stated reason. (user) Run mode = **fully autonomous** (3C suppressed; risky/destructive actions still pause). (AskUserQuestion)
+- [2026-06-16] DECISION: Collapse items flagged by BOTH forge and inspect into single tracked items (error boundary, SavedState versioning, ocr/signing↔IAppContext, the giant-function decompositions, signPdf orchestration) — see the cross-reference column in each milestone.
+- [2026-06-16] AGREED: Implementation order = **all of M0 (reliability, 12 items) then M1 (close the P0, 5 items)**, run **autonomously** (no per-item gate), TDD each, thematic commit per item/theme, full gate green before each commit, push MANUAL. Start = M0 #1 (global error boundary + #41 ring-buffer logger). User compacts first, then I begin. (AskUserQuestion)
+
+---
+
+## How the ~140 raw findings collapse to ~65 tracked items
+
+| Source | Raw count | Notes |
+|--------|-----------|-------|
+| inspect health | 1 P0 / 13 P1 / 40 P2 / 28 P3 = 82 | many P3 are stylistic; folded |
+| inspect vision | 83 proposals | grouped by track |
+| forge | 18 (6 Unjustified / 12 Questionable) | 5 collapse into inspect items |
+| roadmap (open) | new-feature tiers G1–G10 | most prior workstreams DONE |
+| ceiling-challenge | 6 "breakable" reframes | → M7 |
+| new-ideas | 10 proposals | → M6/M5 |
+| blockers consolidated | reachable residue + ceiling | most DONE; residue folded |
+
+**De-dup map (the 5 cross-source collapses):**
+1. **Global error boundary** = inspect D-P1 + forge [G] + vision VC-1 + VJ-7.
+2. **SavedState schema versioning** = inspect VJ-1/F-P1 + forge [F] (+ forge [G] evolution lens).
+3. **ocr/signing on concrete `PDFTurboApp` not `IAppContext`** = inspect H-P2 + forge [A] + forge [H] (testability consequence).
+4. **`signPdf` 107-line orchestration + raw getElementById** = inspect H-P1 + forge [B]×2.
+5. **Giant-function decompose** (`reconstructColumn`, `_extractFlowDoc`) = inspect H-P1×2 + forge [D]×2.
+
+---
+
+## Milestones (priority order)
+
+Effort key: **S** ≤1h · **M** 1–4h · **L** >4h. Severity from the source reports. ✦ = flagged by ≥2 analyses.
+
+### M0 — Reliability & Safety Net  *(START HERE; mostly S/M, highest leverage)*
+The cluster both fresh analyses converged on. No active bug today, but each is a real failure mode under
+the single-dev / no-PR-gate / push-auto-deploy model. The error boundary is the keystone — it converts
+every silent floating-promise rejection below into a visible toast.
+
+| # | Item | Sev | Eff | File:line | Sources |
+|---|------|-----|-----|-----------|---------|
+| 1 | ✦ **Global error boundary** — `window.onerror` + `unhandledrejection` → toast + ring buffer; never swallow (autosave already protects data) | P1 | S | `main.ts` (absent) | inspect D-P1, forge [G], VC-1/VJ-7 |
+| 2 | **Clamp ToUnicode CMap `bfrange` loop** + bound section-scan length — only file-open DoS/OOM surface | P1 | S | `contentStreamEditor.ts:930-937` | inspect A-P1, VG-8 |
+| 3 | ✦ **`SavedState.schemaVersion`** + stamp on write + migrate-or-discard on load; switch `onupgradeneeded` on `event.oldVersion` | P1 | S→(L later) | `storage.ts:16-33,52-64`, `sessionManager.ts:30-38`, `documentLoader.ts:94-122` | inspect VJ-1/F-P1, forge [F] |
+| 4 | **Render-pipeline per-run epoch guard** — promote the form-field generation token to wrap canvas+text phases; re-check after each await, bail if superseded (stale text-layer cross-contamination on rapid nav/zoom) | P1 | S–M | `pageRenderPipeline.ts:35-54`, `pdfRenderer.ts:79-90`, `pdfTurboApp.ts:134-135` | forge [E], inspect D-P1 |
+| 5 | **True-edit commit: edit epoch + `sourcePdfs.get(src.id)===src` identity recheck + try/catch → toast + auto-undo**; `loadingTask.destroy()` on stale (await-gap TOCTOU can snapshot mismatched before/after bytes → silent undo-stack corruption) | P1 | M | `pdfTurboApp.ts:396-410`, `textEditHandler.ts:118,507-518`, `historyManager.ts:21-24` | forge [E], inspect D-P1 |
+| 6 | **OCR single-flight guard** (`_running` flag) + same source-identity recheck before the searchable byte-swap; optionally disable `ocrBtn` while running (unbounded WASM workers + double-commit + stale-source swap) | P1 | S–M | `ocrHandler.ts:107-162`, `ocrEngine.ts:156-179` | forge [E], inspect D-P1 |
+| 7 | **Confirm-gate `closeDocument`/`clearSave`** behind a reusable `confirmDestructive()` modal (skip when `pageCount===0`) — the only two non-undoable actions in an everything-undoable app | P1 | S | `documentLoader.ts:161-163,185-209`, `modalBinder.ts:122-133` | forge [I] |
+| 8 | **Thumbnail nav keyboard a11y** — `role="button"`+`tabindex=0`+`aria-label`+Enter/Space keydown on the nav `<div>` | P1 | S | `pageThumbnailPanel.ts:56-58,130` | forge [I], inspect (a11y blind spot) |
+| 9 | **Floating-promise try/catch sweep** (render/zoom/nav) → toast; relieved by #1 | P1 | M | `pageRenderPipeline.ts:35`, `pageService.ts:273,297`, `navigationBinder.ts:24-31` | inspect D-P1 |
+| 10 | **Asset-fetch `r.ok`+timeout + fix cached rejection** (a failed Arabic-font/OCR-asset promise is cached → poisons retries) | P2 | S–M | Arabic font + OCR asset fetch sites | inspect D-P2 |
+| 11 | **`FileReader`/`Image` upload `onerror`** handlers (image/QR) | P2 | S | image/QR upload paths | inspect D-P2 |
+| 12 | **autosave `QuotaExceededError` → toast** (currently dropped → silent stop persisting) | P2 | S | `_autosave` quota path | inspect D-P2 |
+
+### M1 — Test the highest-consequence surface  *(closes the P0)*
+| # | Item | Sev | Eff | Sources |
+|---|------|-----|-----|---------|
+| 13 | **Pixel-region browser tests for `pdfElementRenderer`** (per element type: opaque redaction rect, highlight hue, image bbox, rotation anchor) + `downloadPageAsImage` + overlay/rotation/cropbox/watermark | P0/P1 | M | inspect F-P0/P1, VD-4 |
+| 14 | **CI coverage gate** on the export/render path so regressions can't merge | — | S–M | VD-1 |
+| 15 | **Signing error-path unit tests** — feed malformed p12 / wrong passphrase / already-signed, assert each `SignErrorCode` | P1 | S–M | inspect F-P1 |
+| 16 | **Core-cluster tests** — `sessionManager`/`searchManager`/`pageRenderPipeline`/`canvasClickRouter`/`signatureManager`, `hitTest.ts`, `formFieldOverlay.ts`, ink/fill color commands | P2 | M | inspect F-P2, roadmap D2 |
+| 17 | **Do #23 (renderToPdf) WITH #13** — polymorphic dispatch de-risks the P0 surface as it's tested | — | — | forge [G] (sequencing) |
+
+### M2 — Architecture-debt paydown  *(incremental, no big-bang; behavior-neutral)*
+| # | Item | Sev | Eff | File | Sources |
+|---|------|-----|-----|------|---------|
+| 18 | ✦ **`IAppContext` for `ocrHandler`+`signingHandler`** — add `assemblePdfBytes()`, `currentFilename`, `autosave()` to the seam; swap ctor types (restores 8/8 handler decoupling + jsdom-testability of the p12-scrub/byte-swap) | P2 | S | `ocrHandler.ts:17,98`, `signingHandler.ts:14,57`, `appContext.ts` | forge [A], inspect H |
+| 19 | ✦ **`signPdf` → `SigningHandler.runSignFlow()`** (one-line delegator on the app); re-point the 9 preflight tests at the handler | — | M | `pdfTurboApp.ts:562-668` | forge [B], inspect H-P1 |
+| 20 | ✦ **Register 10 generate-cert IDs in `AppDOMRefs`**; replace 11 raw `document.getElementById` casts in sign flow | — | S | `pdfTurboApp.ts` sign block, `uiController.ts` | forge [B], inspect H-P1 |
+| 21 | ✦ **Decompose `reconstructColumn`** (~292L) along its numbered-comment stages → `clusterLinesByBaseline`/`groupLinesToParagraphs`/`buildParagraph` pure fns (unlocks property-based fidelity tests) | P2 | M | `flowDoc.ts:491-783` | inspect H-P1, forge [D] |
+| 22 | ✦ **Extract `_extractFlowDoc` op-walk** → pure `src/export/opStreamWalker.ts` `walkPageOps()`; function shrinks to ~40L (kills the exportService serialization hotspot) | P2 | M | `exportService.ts:334-592` | inspect H-P1, forge [D] |
+| 23 | **`renderToPdf(page,ctx)` polymorphic on `PDFElement`** — move each export `if(element.type===…)` branch into its element class; collapse `pdfElementRenderer` (kills export-dispatch triplication; do with #13) | — | M | `pdfElementRenderer.ts:98-216`, `exportPipeline.ts:225,236` | forge [G] |
+| 24 | **Element commands store `toJSON()` mementos** (Add/Remove/Bulk/ClearAll) reconstructed via `ElementFactory.fromJSON` — severs live-instance sharing; lets history `dispose()` drop multi-MB data-URIs | — | M | `commands/elementCmds.ts:5-50` | forge [F] |
+| 25 | **Typed `EditOutcome`** for `replaceTextAt` (`{ok,fidelity}`/`{ok:false,reason}`) — toast "font substituted" on Path-3 redraw instead of unqualified success | — | S | `contentStreamEditor.ts:1238` + caller | forge [C] |
+| 26 | **`onTrace?(reason,ctx)` diagnostic sink** on `replaceTextAt`/`deleteTextAt` → `app.reportError.silent` (~31 silent refusal/catch sites become field-diagnosable) | — | M | `contentStreamEditor.ts` | forge [H] |
+| 27 | **Role-interfaces vs 136-method god-object** — extract 5–8 narrow `*Host` interfaces handlers depend on; `PDFTurboApp implements` them (runtime unchanged) | — | M | `pdfTurboApp.ts` delegator block, all `handlers/*` | forge [C], VA-1/3 |
+| 28 | **Feature-flag / kill-switch seam** — `src/config/features.ts` `isEnabled()` from `import.meta.env.VITE_FEATURE_*` (+localStorage dev override); gate true-edit / searchable-OCR / e-sign so a bad deploy is one env change away from off | — | S–M | absent | forge [G] |
+| 29 | **De-dup shared utils** — `utils/fontName.ts` (`extractPsName`), `triggerDownload()`, `EXPORT_RASTER_SCALE` const (`SCALE=2` ×4) | P2 | S | `flowDoc.ts:310`+`contentStreamEditor.ts:459`; 3 blob-download sites | inspect H-P2, VA-5 |
+| 30 | **Error-signalling rule in CLAUDE.md** (typed `*Error` for UI-branched ops; sentinel only for trivial helpers) + make `applySearchableLayerToPdf` null/throw channels consistent | — | S | docs + `searchableTextLayer.ts:148-188` | forge [C] |
+
+### M3 — Security hardening, supply chain & accessibility
+| # | Item | Sev | Eff | Sources |
+|---|------|-----|-----|---------|
+| 31 | **Pin OCR traineddata by SHA-256** — only unguarded supply-chain ingress | P2 | S | VG-1 |
+| 32 | **CSP `base-uri 'none'` + `form-action 'none'`** — one meta line | — | S | VG-3 |
+| 33 | **Zero the `.p12` forge key object** (not just container bytes) + scrub passphrase on the parse-error path | P2 | S | inspect A-P2 |
+| 34 | **Untrusted-PDF input caps** — max-file-size / max-page guard + explicit `isEvalSupported:false` | P1-adjacent | S–M | VG-2, inspect Top-5 |
+| 35 | **Accessibility sweep (new dimension — no agent owns it today)** — ARIA roles/labels on interactive elements, modal focus traps, keyboard operability of toolbar+canvas tools, contrast, RTL/`dir` correctness; toasts `role/aria-live`; canvas annotations role/tabindex/aria-label | P1/P2 | M–L | inspect self-reflection, roadmap E1/E2/E4 |
+| 36 | **Trusted Types adoption** | — | L | VG-6 |
+| 37 | **Own dependency CVE / supply-chain** (CI runs deploy-blocking `npm audit` but no agent owns advisory cross-check) — document + a periodic check | — | S | inspect self-reflection |
+
+### M4 — DX, docs, tooling & observability
+| # | Item | Sev | Eff | Sources |
+|---|------|-----|-----|---------|
+| 38 | **Fix CLAUDE.md stale line anchors** → link to symbols not line numbers (`pdfTurboApp.ts` claimed ~580L, actual 774; `isArabicText` mis-attributed; download delegators moved) | P2 | S | inspect E-P2 |
+| 39 | **README + CONTRIBUTING** — add OCR/DOCX/e-signing; CONTRIBUTING still says ESLint (now oxlint), wrong Node, omits browser tests + `ocr:assets` | P2 | S | inspect E, VE, VI |
+| 40 | **Pre-push hook + `.nvmrc`/`engines`** running `type-check && lint && test` (push-to-master auto-deploys with no PR gate) | — | S | VB |
+| 41 | **Structured ring-buffer logger (VC-6)** — extend the existing `errorReporter` (console.* is only 4 hits); keystone for #1 + VC-1/4/5; privacy-safe, no network | — | S–M | VC |
+| 42 | **Remove dead `InkColorCmd` + redundant `commands/index.ts` barrel** (verified dead) | P3 | S | inspect B |
+| 43 | **Naming honesty** — `_autosave`→`autosave` (de-facto public, ~10 callers), `toolModeManager`→`toolModeService` | — | S | VF |
+| 44 | **Determinate progress indicators** for long ops (OCR, export, sign) | — | M | VC-2 |
+| 45 | **Document CI `npm audit` + `playwright install-deps`** in CLAUDE.md; reconcile the `pull_request` trigger vs "push-only" doc (harmless) | P2 | S | inspect G |
+
+### M5 — Performance & scale
+| # | Item | Sev | Eff | Sources |
+|---|------|-----|-----|---------|
+| 46 | **Virtualized thumbnails** — makes 100+ page docs usable | P1-perf | M | VH-1 |
+| 47 | **Render-on-demand** pages | — | M | VH-2 |
+| 48 | **OCR assets via `runtimeCaching` not precache** — cuts the ~6 MB install payload for non-OCR users | P1-perf | M | VH-6 |
+| 49 | **Web Worker offload** (comlink) for flowDoc reconstruction + content-stream parse + export (OCR already worker-based) | — | L | VH-3, new-ideas T3 |
+| 50 | **Keyed element-layer diff** — stop destroy/recreate-all in `renderElements()` | — | L | VH-8 |
+| 51 | **Incremental save (history deltas)** | — | L | VH-9 |
+| 52 | **OPFS for large-doc persistence** (keep IndexedDB fallback) — *optional; IndexedDB works today* | — | S–M | new-ideas T3 |
+
+### M6 — New features  *(each starts with a named spike; research-before-commit)*
+Ordered by ROI-per-effort (new-ideas recommendation + roadmap tiers). All 100% client-side, no upload;
+local-AI items are **GRDF-policy-compatible by construction** (transformers.js inference never leaves the device).
+
+| # | Feature | Eff | Spike to validate first | Sources |
+|---|---------|-----|-------------------------|---------|
+| 53 | **Sanitize / metadata-scrub** — strip XMP+`/Info`, embedded JS (`/OpenAction`/`/AA`), `/EmbeddedFiles`; redaction-completeness check. No new dep; pure ethos fit | S–M | load PDF w/ `/Info`+`/OpenAction`, scrub, assert gone | new-ideas #2 |
+| 54 | **File System Access API** — open + save-in-place + recent files (Chromium-only; feature-detect, fall back to download) | S | `if('showSaveFilePicker' in window)` round-trip | new-ideas #3 |
+| 55 | **Local PII detector** — regex/dictionary MVP (IBAN/email/phone) → optional **transformers.js** NER for one-click smart redaction; policy-safe | M→L | measure NER model size + per-page latency WASM vs WebGPU; ship regex MVP first | new-ideas #4 |
+| 56 | **Table → CSV / XLSX** — cluster the vector rules already extracted (underline/strike infra) into a cell grid → CSV (trivial) / XLSX (SheetJS lazy) | M | rule-cluster → grid on a ruled-table fixture | new-ideas #5 |
+| 57 | **XFDF annotation import/export** — share markups without the PDF; round-trip with Acrobat. Plain XML, no dep | M | map element model ↔ XFDF round-trip | new-ideas #6 |
+| 58 | **PDF compare / diff** — pixel (pixelmatch-style) + text diff via pdf.js | M | — | new-ideas #7, roadmap G6 |
+| 59 | **Merge / split / extract pages** — *verify what PageService already ships before building* (reorder/rotate/delete already done) | S–M | audit PageService gaps | roadmap G1 |
+| 60 | **Compression / optimize** (image downsample + re-embed) | M | — | roadmap G3 |
+| 61 | **Bates / page numbering** (must hit all 3 export paths) | M | — | roadmap G7 |
+| 62 | **Form/annotation flattening** | S–M | — | roadmap G4 |
+
+### M7 — Ceiling-breakers  *(documented ceilings the challenge proved reachable; ROI-gated, build only on demand)*
+| # | Item | Verdict | Route | ROI |
+|---|------|---------|-------|-----|
+| 63 | **PAdES-BES** (`ETSI.CAdES.detached`) | BREAKABLE-NOW | swap node-forge → **PKI.js** on the CMS path; same ByteRange plumbing; ESS signing-certificate-v2 attr | **High** *if* compliance names PAdES |
+| 64 | **Lattice (ruled) tables → DOCX + CSV** | BREAKABLE-CUSTOM | reuse vector-rule extraction → x/y grid clustering → docx `Table` (pairs with #56) | **High** |
+| 65 | **R6 AES-256** (PDF-2.0 hardened) | BREAKABLE-CUSTOM | patch vendored `PDFSecurity`: Algorithm 2.B KDF + `/Perms` (~60–100 LOC WebCrypto) | Med — only if R6 mandated |
+| 66 | **TSA timestamp (PAdES-T) + LTV/DSS** | BREAKABLE-NOW* | PKI.js TSP — *requires a network call → breaks the "100% client-side" guarantee; must be explicit opt-in* | Med, opt-in only |
+
+---
+
+## REAL CEILING — documented, NOT promised  *(stated so nothing here looks "forgotten")*
+These are structural limits of a 100%-client-side, no-backend PWA, or low-ROI moonshots. Each is a
+deliberate non-goal with a reason — re-open only with explicit justification.
+
+| Item | Why it stays a ceiling |
+|------|------------------------|
+| In-place Arabic **true-edit** (preserving original subset font) | Subset CID fonts lack the new glyphs; re-embedding Noto gives the same visual result as the overlay we already ship — overlay IS the answer |
+| Mixed LTR+RTL single-line bidi reorder; tashkeel GPOS | Needs full UAX#9 char-level bidi + HarfBuzz-class shaping; word-level reorder ships, char-level is large/fragile |
+| Vector graphics → DrawingML/raster | Effectively a vector translator; huge, low ROI |
+| Borderless / inferred-structure tables | No lines to detect → needs layout ML |
+| Recursive 3+ column XY-cut | One V-cut ships; recursive degrades on magazine layouts, niche |
+| Exact subset-font face match | `ABCDEF+` subset carries no recoverable family — impossible without the embedded program |
+| Type3 true-edit; cm-scale/rotation in Path-3 redraw; rotated-page inline-input placement | Rare; overlay/refuse already handles them correctly; low ROI |
+| Tagged-PDF `getStructTree` fast path; header/footer routing | ~15% of PDFs / noisy band-detection; separate multi-day paths, deferred |
+| CA-issued / **trusted** certs | "Trusted" means a CA vouches — inherently external to a client-only tool. Not a code problem |
+| **PDF/A** | Only via Ghostscript-WASM = **AGPL + 18 MB** → license + size incompatible. **Dropped.** |
+| Accessibility **PDF tagging** (authoring struct tree) | No mature in-browser lib (pdf-lib can't author struct tree) → defer |
+
+---
+
+## Recommended starting sequence
+
+**Start with M0, in this order** (security/leverage-first, matches both reports' own Top-5 ordering):
+
+1. **#1 Global error boundary** (S) — the keystone; turns every silent floating-promise rejection into a visible toast and relieves #4/#5/#6/#9. Do **#41 ring-buffer logger** alongside it (its sink).
+2. **#2 Clamp the CMap loop** (S) — kills the only file-open DoS/OOM; pure untrusted-input hardening.
+3. **#3 SavedState `schemaVersion`** (S) — cheap *now*, expensive forever if a shape change ships first; seed the seam before it's needed.
+4. **#7 Confirm-gate Close/Reset** (S) + **#8 thumbnail keyboard a11y** (S) — two small honesty fixes (everything-undoable contract; a11y-sprint completion).
+5. **#4–#6 the epoch/identity/single-flight guards + try/catch** (S–M) — the TOCTOU cluster; do after #1 so failures are already visible.
+
+Then **M1** (close the P0 with the right test *type* + a CI gate so it can't recur), then **M2** in dependency order (#18 IAppContext → #19/#20 sign refactor → #21/#22 decompositions → #23 renderToPdf with M1 → the rest). M3–M7 are scheduled by appetite; **M6/M7 are spike-gated and build-on-demand** (don't pre-build features).
+
+**One-week quick-win batch** (all S, can land together): #1, #2, #3, #7, #8, #12, #29, #31, #32, #38, #39, #40, #42, #43.
+
+---
+
+## Verification (per item)
+TDD每项: failing test first (jsdom or `test:browser`) → implement → full gate green → update KNOWN_ISSUES/scorecards/CLAUDE.md/FEATURES as touched → thematic commit (no Co-Authored-By) → push is manual. Browser-layer behavior (canvas/pointer/rasterize/image-extract) MUST be guarded in the real-Chrome harness, not jsdom.
