@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Pre-push gate — pushing to master auto-deploys to GitHub Pages with NO PR gate,
+# and the test suite otherwise runs only in CI AFTER the push that already
+# deployed. This hook runs the exact CI gate locally first so a broken commit
+# never reaches production. Installed via the package.json "prepare" script
+# (git config core.hooksPath .githooks); bypass in an emergency with
+# `git push --no-verify`.
+set -euo pipefail
+
+echo "pre-push: running type-check + lint + test (CI gate)…"
+npm run type-check
+npm run lint
+npm run test
+
+echo "pre-push: gate passed."
