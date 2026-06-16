@@ -6,11 +6,13 @@ export type { ProgressHandle, IProgressManager } from '../contracts/progressMana
 export class ProgressManager implements IProgressManager {
   private _overlay: HTMLElement;
   private _label: HTMLElement;
+  private _bar?: HTMLProgressElement;
   private _active = 0;
 
-  constructor(overlay: HTMLElement, label: HTMLElement) {
+  constructor(overlay: HTMLElement, label: HTMLElement, bar?: HTMLProgressElement) {
     this._overlay = overlay;
     this._label = label;
+    this._bar = bar;
   }
 
   begin(labelKey: string, params?: Record<string, unknown>): ProgressHandle {
@@ -27,9 +29,21 @@ export class ProgressManager implements IProgressManager {
 
     return {
       update: (key, p) => { if (!done) this._show(key, p); },
+      setFraction: (f) => { if (!done) this._setFraction(f); },
       done: finish,
       failed: finish,
     };
+  }
+
+  /** Render determinate progress (0..1) or revert to indeterminate when null. */
+  private _setFraction(fraction: number | null): void {
+    if (fraction === null) {
+      this._overlay.classList.remove('determinate');
+      return;
+    }
+    const clamped = Math.min(1, Math.max(0, fraction));
+    if (this._bar) this._bar.value = clamped;
+    this._overlay.classList.add('determinate');
   }
 
   private _show(labelKey: string, params?: Record<string, unknown>): void {
@@ -41,6 +55,8 @@ export class ProgressManager implements IProgressManager {
 
   private _hide(): void {
     this._overlay.classList.remove('active');
+    this._overlay.classList.remove('determinate');
+    if (this._bar) this._bar.value = 0;
     this._label.textContent = '';
     this._overlay.setAttribute('aria-label', '');
   }

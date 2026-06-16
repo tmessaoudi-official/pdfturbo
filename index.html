@@ -297,6 +297,10 @@
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
+    /* Determinate mode: swap the spinner for a filling bar. */
+    #progress-bar { display: none; width: min(280px, 70vw); height: 10px; }
+    #progress-overlay.determinate .progress-spinner { display: none; }
+    #progress-overlay.determinate #progress-bar { display: block; }
     #progress-label {
       color: #fff;
       font-size: 14px;
@@ -1530,6 +1534,7 @@
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="progress-overlay" role="status" aria-live="polite" aria-label="">
   <div class="progress-spinner"></div>
+  <progress id="progress-bar" max="1" value="0"></progress>
   <span id="progress-label"></span>
 </div>
 

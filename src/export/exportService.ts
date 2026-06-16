@@ -46,7 +46,11 @@ export class ExportService {
     this._ctx.cleanEmptyTextElements();
     const _prog = progress.begin('progress.generatingPdf');
     try {
-      const pdfDoc = await this._assemblePdfDoc();
+      const pdfDoc = await this._assemblePdfDoc(
+        (done, total) => _prog.setFraction(total ? done / total : null),
+      );
+      // Pages assembled; the final save/encrypt step has no page granularity.
+      _prog.setFraction(null);
       await this._savePdfDocAndDownload(pdfDoc, this._exportBaseName() + '-edited.pdf');
       reportError.info('toast.pdfDownloaded');
       _prog.done();
@@ -79,8 +83,14 @@ export class ExportService {
     return pdfDoc.save({ useObjectStreams: false });
   }
 
-  /** Build the flattened, edits-baked-in pdf-lib document (no save, no encrypt). */
-  private async _assemblePdfDoc(): Promise<import('@cantoo/pdf-lib').PDFDocument> {
+  /**
+   * Build the flattened, edits-baked-in pdf-lib document (no save, no encrypt).
+   * @param onPage optional per-page progress callback (done, total) — used by
+   *   downloadPDF to drive the determinate overlay bar; the sign path omits it.
+   */
+  private async _assemblePdfDoc(
+    onPage?: (done: number, total: number) => void,
+  ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     const { documentModel, elements, reportError, formValues } = this._ctx;
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     {
@@ -116,6 +126,8 @@ export class ExportService {
       }
 
       // Add pages in document order and draw overlays
+      const totalPages = documentModel.pages.length;
+      let pagesDone = 0;
       for (const docPage of documentModel.pages) {
         const pageElements = elements.filter(el => el.pageId === docPage.id);
         const hasRedaction = pageElements.some(el => el.type === 'redaction');
@@ -135,23 +147,20 @@ export class ExportService {
             inkLayer: this._ctx.inkLayer,
             reportError,
           });
-          continue;
-        }
-
-        if (hasRedaction) {
+        } else if (hasRedaction) {
           const srcDoc = srcDocs.get(docPage.sourcePdfId);
           if (srcDoc) {
             await rasterizePageWithRedactions(srcDoc, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError);
           }
-          continue;
+        } else {
+          const key = `${docPage.sourcePdfId}:${docPage.sourcePageNum - 1}`;
+          const page = copiedPages.get(key);
+          if (page) {
+            pdfDoc.addPage(page);
+            await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
+          }
         }
-
-        const key = `${docPage.sourcePdfId}:${docPage.sourcePageNum - 1}`;
-        const page = copiedPages.get(key);
-        if (!page) continue;
-        pdfDoc.addPage(page);
-
-        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
+        onPage?.(++pagesDone, totalPages);
       }
 
       return pdfDoc;

@@ -281,6 +281,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._progressManager = new ProgressManager(
       document.getElementById('progress-overlay') as HTMLElement,
       document.getElementById('progress-label') as HTMLElement,
+      document.getElementById('progress-bar') as HTMLProgressElement,
     );
     this.interactionHandler = new InteractionHandler(this);
     this.drawingHandler = new DrawingHandler(this);
