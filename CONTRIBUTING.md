@@ -17,7 +17,7 @@ npm run dev
 # Open http://localhost:5173/pdfturbo/
 ```
 
-**Requirements:** Node.js 20+ and npm.
+**Requirements:** Node.js 24+ (see `.nvmrc` / `engines`) and npm.
 
 ## Build
 
@@ -32,19 +32,25 @@ All of these must pass before merging:
 
 ```bash
 npm run type-check   # TypeScript type checking (tsc --noEmit)
-npm run lint         # ESLint
-npm run test         # Vitest unit + integration tests
+npm run lint         # oxlint (the sole linter — ESLint was removed)
+npm run test         # Vitest unit + integration tests (jsdom)
+npm run test:browser # Vitest in real Chrome (Playwright) — canvas/pdf.js/pointer tests
 ```
 
-These run automatically in CI (GitHub Actions) on every push to `master`.
+These run automatically in CI (GitHub Actions) on every push to `master`, which also
+runs `npm audit --audit-level=high` (deploy-blocking) and `npm run ocr:assets`. A local
+`pre-push` hook (auto-installed via `npm install`) runs the same gate before you push.
 
 ## Tech Stack
 
 - **TypeScript 6** — all source in `src/`
 - **Vite 8** — bundler and dev server; `vite.config.ts` controls PWA, base path, build
+- **oxlint** — the sole linter (ESLint removed)
 - **pdfjs-dist** — PDF rendering (npm package, not CDN)
 - **@cantoo/pdf-lib** — PDF generation for export (dynamic import at export time)
-- **Vitest** — unit tests in `tests/`
+- **tesseract.js** — OCR (lazy); **docx** — DOCX export (lazy); **node-forge** — PKCS#12/CMS e-signing (lazy)
+- **i18next** — EN/FR/AR localisation with RTL
+- **Vitest** — unit tests (jsdom) in `tests/`; real-Chrome browser harness in `tests/browser/` (Playwright)
 - **VitePWA** — service worker + manifest generation
 
 ## Making Changes
@@ -52,7 +58,7 @@ These run automatically in CI (GitHub Actions) on every push to `master`.
 1. Fork and create a feature branch: `git checkout -b fix/issue-description`
 2. Write tests first for any bug fix or behaviour change (`tests/*.test.ts`)
 3. Implement the fix
-4. Run `npm run type-check && npm run lint && npm run test`
+4. Run `npm run type-check && npm run lint && npm run test` (and `npm run test:browser` for any editor/export/canvas change)
 5. Test manually: upload a PDF, try every tool, zoom in/out, download
 6. Test on a mobile viewport (Chrome DevTools device emulation ≥ 390px)
 7. Commit with conventional prefix: `fix:`, `feat:`, `chore:`, `docs:`

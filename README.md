@@ -24,7 +24,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 
 1. **Fork or push** to a repo named `pdfturbo` on your GitHub account.
 2. **Enable Pages:** repo Settings → Pages → Source: `GitHub Actions`.
-3. Push to the `master` branch — the workflow runs `type-check → lint → test → build` and deploys the `dist/` folder to Pages.
+3. Push to the `master` branch — the workflow runs `npm audit → type-check → lint → test → test:browser → build` and deploys the `dist/` folder to Pages.
 4. Your app is live at `https://YOUR_USERNAME.github.io/pdfturbo/`
 
 > **Install on Android:** visit the URL in Chrome → three-dot menu → "Add to Home screen"
@@ -43,6 +43,10 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Image overlay** — insert PNG/JPEG/WebP images
 - **Comment / sticky note** — place resizable sticky notes
 - **Redaction** — permanent black-box redaction via full page rasterization (text unextractable)
+- **OCR** — recognise text in scanned/image PDFs (tesseract.js, 8 languages incl. Arabic); insert as editable text, or add an invisible searchable text layer
+- **Digital signature (e-Sign)** — visible PKCS#12/CMS signature (node-forge); upload a `.p12` or generate a self-signed certificate in-browser
+- **Lock PDF** — AES-256 password encryption on export
+- **Export to DOCX / Markdown** — reconstruct a flow document (headings, lists, columns, images, RTL) from the PDF text (beta)
 - **Watermark** — tiled repeating watermark on export with configurable text, opacity, angle, density
 - **Barcode / QR code** — generate and place 1D/2D barcodes or QR codes with custom content, format, and error-correction level
 - **Text search** — find text in the PDF with highlighted matches and Add Highlight action
