@@ -11,6 +11,7 @@ import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, type
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget } from '../utils/fileSystemAccess';
+import { buildTableGrid, gridToCsv, type TableTextItem } from '../utils/tableExtract';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -136,6 +137,55 @@ export class ExportService {
       reportError.error('toast.sanitizeFailed', err);
       _prog.failed();
     }
+  }
+
+  /**
+   * Extract a ruled (lattice) table from a page into CSV and download it (#56).
+   * Clusters the page's horizontal + vertical grid rules into cells and assigns
+   * the page text to them. Warns when no grid is detected. Source-PDF text only;
+   * borderless tables are not detected (ceiling). Plain download (CSV is small).
+   */
+  async exportTableCsv(pageIdx?: number): Promise<void> {
+    const { documentModel, reportError, progress } = this._ctx;
+    const idx = pageIdx ?? documentModel.currentPageIndex;
+    const docPage = documentModel.pages[idx];
+    if (!docPage || docPage.sourcePdfId === 'blank') { reportError.warn('toast.noTableFound'); return; }
+    const _prog = progress.begin('progress.extractingTable');
+    try {
+      const data = await this._extractPageTableData(docPage);
+      const grid = data ? buildTableGrid(data.hRules, data.vRules, data.items) : null;
+      if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
+      const blob = new Blob([gridToCsv(grid)], { type: 'text/csv;charset=utf-8' });
+      this._downloadBlob(blob, `${this._exportBaseName()}-table.csv`);
+      reportError.info('toast.tableExtracted', { rows: grid.rows, cols: grid.cols });
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.tableExtractFailed', err);
+      _prog.failed();
+    }
+  }
+
+  /**
+   * Pull a page's table inputs from pdf.js: horizontal + vertical grid rules (the
+   * op-walk) and positioned text items (text content, baseline origin in PDF
+   * user space, y-up). Returns null when the source/op-list is unavailable.
+   */
+  private async _extractPageTableData(
+    docPage: import('../core/documentModel').DocumentPage,
+  ): Promise<{ hRules: RuleRect[]; vRules: RuleRect[]; items: TableTextItem[] } | null> {
+    const src = this._ctx.documentModel.sourcePdfs.get(docPage.sourcePdfId);
+    if (!src) return null;
+    const page = await src.doc.getPage(docPage.sourcePageNum);
+    const [content, opList] = await Promise.all([
+      page.getTextContent(),
+      page.getOperatorList().catch(() => null),
+    ]);
+    if (!opList) return null;
+    const ops = walkPageOps(opList, pdfjsLib.OPS as unknown as Record<string, number>);
+    const items: TableTextItem[] = (content.items as RawTextItem[])
+      .filter(it => typeof it.str === 'string' && it.str.trim().length > 0 && Array.isArray(it.transform))
+      .map(it => ({ x: it.transform[4], y: it.transform[5], text: it.str }));
+    return { hRules: ops.rules, vRules: ops.vRules, items };
   }
 
   /**
