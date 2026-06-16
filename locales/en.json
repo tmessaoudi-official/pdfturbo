@@ -47,6 +47,7 @@
     "exportDocxTitle": "Export as Word document (beta)",
     "exportMdTitle": "Export as Markdown (beta)",
     "sanitizeTitle": "Sanitize — download a copy with metadata, JavaScript & embedded files removed",
+    "extractPagesTitle": "Extract pages to a new PDF",
     "helpTitle": "Keyboard shortcuts (?)",
     "settingsTitle": "Settings (⚙)",
     "editTextLabel": "Edit Text",
@@ -216,6 +217,14 @@
       "apply": "Apply Lock",
       "userPasswordPlaceholder": "User password…",
       "ownerPasswordPlaceholder": "Owner password (leave empty to auto-generate a random one)…"
+    },
+    "extractPages": {
+      "title": "Extract Pages",
+      "label": "Pages to extract",
+      "placeholder": "e.g. 1-3, 5, 8-10",
+      "hint": "Comma-separated pages or ranges (1-based).",
+      "cancel": "Cancel",
+      "confirm": "Extract"
     },
     "blankPage": {
       "title": "Insert Blank Page",

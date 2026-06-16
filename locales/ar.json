@@ -57,6 +57,7 @@
     "exportDocxTitle": "تصدير كمستند Word (تجريبي)",
     "exportMdTitle": "تصدير كـ Markdown (تجريبي)",
     "sanitizeTitle": "تنظيف — تنزيل نسخة بدون بيانات وصفية أو JavaScript أو ملفات مضمَّنة",
+    "extractPagesTitle": "استخراج صفحات إلى ملف PDF جديد",
     "helpTitle": "اختصارات لوحة المفاتيح (?)",
     "settingsTitle": "الإعدادات (⚙)",
     "langTitle": "تغيير اللغة",
@@ -216,6 +217,14 @@
       "apply": "تطبيق القفل",
       "userPasswordPlaceholder": "كلمة مرور المستخدم…",
       "ownerPasswordPlaceholder": "كلمة مرور المالك (اتركها فارغة لتوليد واحدة عشوائية)…"
+    },
+    "extractPages": {
+      "title": "استخراج الصفحات",
+      "label": "الصفحات المراد استخراجها",
+      "placeholder": "مثال: 1-3، 5، 8-10",
+      "hint": "صفحات أو نطاقات مفصولة بفواصل (تبدأ من 1).",
+      "cancel": "إلغاء",
+      "confirm": "استخراج"
     },
     "blankPage": {
       "title": "إدراج صفحة فارغة",

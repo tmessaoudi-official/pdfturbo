@@ -47,6 +47,7 @@
     "exportDocxTitle": "Exporter en document Word (bêta)",
     "exportMdTitle": "Exporter en Markdown (bêta)",
     "sanitizeTitle": "Nettoyer — télécharger une copie sans métadonnées, JavaScript ni fichiers intégrés",
+    "extractPagesTitle": "Extraire des pages vers un nouveau PDF",
     "helpTitle": "Raccourcis clavier (?)",
     "settingsTitle": "Paramètres (⚙)",
     "editTextLabel": "Éditer texte",
@@ -216,6 +217,14 @@
       "apply": "Appliquer le verrou",
       "userPasswordPlaceholder": "Mot de passe utilisateur…",
       "ownerPasswordPlaceholder": "Mot de passe propriétaire (laisser vide pour en générer un aléatoire)…"
+    },
+    "extractPages": {
+      "title": "Extraire des pages",
+      "label": "Pages à extraire",
+      "placeholder": "ex. 1-3, 5, 8-10",
+      "hint": "Pages ou plages séparées par des virgules (à partir de 1).",
+      "cancel": "Annuler",
+      "confirm": "Extraire"
     },
     "blankPage": {
       "title": "Insérer une page vierge",

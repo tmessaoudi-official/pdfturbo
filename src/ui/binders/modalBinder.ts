@@ -2,6 +2,7 @@ import type { PDFTurboApp, ToolMode } from '../../core/pdfTurboApp';
 import { FlyoutManager } from '../flyoutManager';
 import { randomOwnerPassword } from '../../export/encryption';
 import { confirmDestructive } from '../confirmDialog';
+import { bindExtractPagesModal } from './extractPagesBinder';
 
 export function bindModalEvents(app: PDFTurboApp): void {
   // ── Signature modal ────────────────────────────────────────────
@@ -259,6 +260,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.exportDocxBtn.addEventListener('click', () => void app.exportAsDocx());
   app.ui.exportMdBtn.addEventListener('click', () => void app.exportAsMarkdown());
   app.ui.sanitizeBtn.addEventListener('click', () => void app.sanitizeAndDownload());
+  bindExtractPagesModal(app);
   app.ui.exportPreviewClose.addEventListener('click', () => app._hideExportPreview());
   app.ui.exportPreviewConfirm.addEventListener('click', () => {
     app._hideExportPreview();
