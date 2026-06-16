@@ -33,28 +33,37 @@ export class PageRenderPipeline {
   constructor(private readonly _ctx: IPageRenderContext) {}
 
   async renderCurrentPage(): Promise<void> {
+    // M0 #4 — one render epoch wraps the whole run (canvas → form → text → ink).
+    // Each await is a yield point where a newer renderCurrentPage (rapid nav/zoom)
+    // can start and advance the shared epoch; if that happens this run bails so it
+    // never paints a stale text layer / form overlay over the newer page's canvas.
+    const myGen = this._ctx.advanceFormFieldGen();
     await this._ctx.renderer.renderPageAtIndex(this._ctx.documentModel.currentPageIndex);
-    await this._renderFormFields();
-    await this._renderTextLayer();
+    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
+    await this._renderFormFields(myGen);
+    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
+    await this._renderTextLayer(myGen);
+    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
     this._ctx.renderInkLayer();
   }
 
-  private async _renderTextLayer(): Promise<void> {
+  private async _renderTextLayer(myGen: number): Promise<void> {
     const docPage = this._ctx.documentModel.currentPage;
     if (!docPage) { this._ctx.textLayerManager.clear(); return; }
     if (docPage.sourcePdfId === 'blank') { this._ctx.textLayerManager.clear(); return; }
     const src = this._ctx.documentModel.sourcePdfs.get(docPage.sourcePdfId);
     if (!src) return;
     const page = await src.doc.getPage(docPage.sourcePageNum);
+    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
     const effectiveRotation = ((page.rotate + (docPage.rotation ?? 0)) % 360 + 360) % 360;
     const viewport = page.getViewport({ scale: this._ctx.zoomScale, rotation: effectiveRotation });
     const canvasOffset = { left: this._ctx.ui.canvas.offsetLeft, top: this._ctx.ui.canvas.offsetTop };
     await this._ctx.textLayerManager.render(page, viewport, canvasOffset);
+    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
     this._ctx.textLayerManager.setPointerEvents(this._ctx.mode === 'select');
   }
 
-  private async _renderFormFields(): Promise<void> {
-    const myGen = this._ctx.advanceFormFieldGen();
+  private async _renderFormFields(myGen: number): Promise<void> {
     const docPage = this._ctx.documentModel.currentPage;
     if (!docPage) { this._ctx.formFieldOverlay.clear(); return; }
     if (docPage.sourcePdfId === 'blank') { this._ctx.formFieldOverlay.clear(); return; }
