@@ -11,9 +11,15 @@
  *   raw Tj via pushOperators  →  the embedded Type0/CID font's W-array advances
  *                                each glyph; setTextMatrix anchors the run
  *
- * The Noto Naskh Arabic face is bundled (OFL) as a .woff and lazy-fetched, so it
+ * The Noto Naskh Arabic face is bundled (OFL) as a .ttf and lazy-fetched, so it
  * is a browser-only path (jsdom can't fetch the asset); guard callers with
  * isArabicText() and only invoke in the real export/browser environment.
+ *
+ * IMPORTANT — must be a TTF/OTF (SFNT), NOT a WOFF. fontkit/@cantoo-pdf-lib
+ * mis-embeds the WOFF1 of this font: only the `ا` glyph outline survives the
+ * subset and every other glyph renders blank (verified 2026-06-17 — pdf-lib's
+ * own drawText fails identically, so this is the font container, not RTL code).
+ * The equivalent TTF embeds cleanly. Do NOT switch this back to a .woff/.woff2.
  *
  * Known limits (documented ceiling): mixed LTR+RTL within one line is treated as
  * a single RTL run; tashkeel/diacritic GPOS positioning is fontkit's weak spot;
@@ -33,8 +39,9 @@ import {
   type PDFFont,
   type PDFPage,
 } from '@cantoo/pdf-lib';
-// Vite resolves ?url to the bundled asset URL (arabic subset, ~small woff).
-import notoNaskhUrl from '@fontsource/noto-naskh-arabic/files/noto-naskh-arabic-arabic-400-normal.woff?url';
+// Vite resolves ?url to the bundled asset URL. MUST be a TTF/OTF (see header note):
+// the WOFF of this font is mis-embedded by fontkit/pdf-lib (glyphs render blank).
+import notoNaskhUrl from '../assets/fonts/NotoNaskhArabic-Regular.ttf?url';
 
 const _fontCache = new WeakMap<PDFDocument, Promise<PDFFont>>();
 let _notoBytes: Promise<Uint8Array> | null = null;

@@ -197,7 +197,7 @@ export async function applySearchableLayerToPdf(
   }
 
   if (arabic.length > 0) {
-    // Browser-only: getArabicFont fetches the bundled Noto Naskh .woff. Lazy so the
+    // Browser-only: getArabicFont fetches the bundled Noto Naskh .ttf. Lazy so the
     // Latin/jsdom path never pulls the asset.
     const { getArabicFont } = await import('../export/arabicOverlay');
     const arFont = await getArabicFont(doc);

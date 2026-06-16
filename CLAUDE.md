@@ -290,13 +290,19 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   - **Overlay rendering** (`src/export/arabicOverlay.ts`): pdf-lib `drawText` CANNOT place shaped glyphs RTL
     (fontkit shapes logical-only; drawText paints LTR → mirrored). Fix: `font.encodeText(logical)` shapes +
     emits 2-byte subset CIDs → `reverseCidHex` reverses the CID PAIRS for visual RTL → raw `Tj` via
-    `page.pushOperators` against **Noto Naskh Arabic** (`@fontsource/noto-naskh-arabic` .woff, OFL, lazy
-    `?url`-fetched, embedded Type0/CID via `@pdf-lib/fontkit`; the embedded W-array advances glyphs). Deps:
-    `@pdf-lib/fontkit`, `@fontsource/noto-naskh-arabic` (0 vulns; single-RTL-run uses CID-pair reversal — no
-    bidi lib needed; mixed LTR+RTL line reorder is a documented ceiling). Browser-only (font fetch);
-    wired in `pdfElementRenderer.ts` text branch, guarded by `isArabicText`, right-aligned. Guards:
-    `tests/utils/flowDocArabic.test.ts`, `tests/export/arabicOverlay.test.ts`,
-    `tests/browser/arabic-overlay.browser.test.ts` (rasterized: visible ink + RTL right-aligned centroid).
+    `page.pushOperators` against **Noto Naskh Arabic** (vendored **`src/assets/fonts/NotoNaskhArabic-Regular.ttf`**,
+    OFL — `src/assets/fonts/OFL.txt`, lazy `?url`-fetched, embedded Type0/CID via `@pdf-lib/fontkit`; the embedded
+    W-array advances glyphs). **MUST be a TTF/OTF, NEVER a `.woff`/`.woff2`** — fontkit/@cantoo-pdf-lib mis-embeds
+    the WOFF1 of this font: the subset keeps only the `ا` glyph outline, every other glyph renders blank + a
+    spurious 6th glyph + broken ToUnicode (`U+0002`). Root-caused live 2026-06-17 (pdf-lib's own `drawText` fails
+    identically → font container, not RTL code); the prior `@fontsource/noto-naskh-arabic` woff dep is REMOVED.
+    The TTF embeds cleanly (5 glyphs, full word renders, correct logical ToUnicode). Deps: `@pdf-lib/fontkit`
+    (0 vulns; single-RTL-run uses CID-pair reversal — no bidi lib needed; mixed LTR+RTL line reorder is a
+    documented ceiling). `getArabicFont` is shared by the searchable-OCR Arabic layer, so this fix covers both.
+    Browser-only (font fetch); wired in `pdfElementRenderer.ts` text branch, guarded by `isArabicText`,
+    right-aligned. Guards: `tests/utils/flowDocArabic.test.ts`, `tests/export/arabicOverlay.test.ts`,
+    `tests/browser/arabic-overlay.browser.test.ts` (rasterized: now asserts multi-glyph ink **width**, not just
+    presence — catches the single-alef WOFF regression).
 - **OCR (Sprint 4, 2026-06-15; CSP/engine fix 2026-06-15)**: `src/ocr/*` wraps **tesseract.js@7**
   (lazily loaded). `src/handlers/ocrHandler.ts` renders the current source page to a canvas at scale 2,
   recognizes words, and inserts them as real `TextElement`s via ONE `MacroCmd` (undoable, selectable,
