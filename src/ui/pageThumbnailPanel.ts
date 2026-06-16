@@ -16,6 +16,9 @@ export class PageThumbnailPanel {
   private onDownloadImage: (index: number) => void;
   private _dragSrcIndex: number | null = null;
   private _thumbCache: Map<string, string> = new Map(); // pageId → dataURL
+  // #46 — lazy rasterization: only generate a thumbnail when its item nears the
+  // viewport. One shared observer; recreated/disconnected per render.
+  private _io: IntersectionObserver | null = null;
 
   constructor(opts: {
     container: HTMLElement;
@@ -45,8 +48,37 @@ export class PageThumbnailPanel {
     this.container.appendChild(this.strip);
   }
 
+  /**
+   * Lazily create the shared IntersectionObserver that rasterizes a thumbnail
+   * the first time its item nears the viewport. Returns null when the API is
+   * unavailable (e.g. jsdom) — callers then fall back to eager generation.
+   */
+  private _ensureObserver(): IntersectionObserver | null {
+    if (this._io) return this._io;
+    if (typeof IntersectionObserver === 'undefined') return null;
+    this._io = new IntersectionObserver((entries, obs) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const item = entry.target as HTMLElement;
+        obs.unobserve(item);
+        const img = item.querySelector('img.thumb-img') as HTMLImageElement | null;
+        if (img) void this._loadThumb(Number(item.dataset.index), item.dataset.pageId ?? '', img);
+      }
+    }, { root: this.container, rootMargin: '300px' });
+    return this._io;
+  }
+
+  /** Rasterize (or reuse the cached) thumbnail for one page into `img`. */
+  private async _loadThumb(index: number, pageId: string, img: HTMLImageElement): Promise<void> {
+    const cached = this._thumbCache.get(pageId);
+    if (cached) { img.src = cached; return; }
+    const url = await this.renderer.generateThumbnail(index);
+    if (url) { this._thumbCache.set(pageId, url); img.src = url; }
+  }
+
   // oxlint-disable-next-line eslint/require-await -- Promise contract: callers (renderThumbnails, tests) await the returned Promise<void>
   async render(): Promise<void> {
+    this._io?.disconnect();
     this.strip.innerHTML = '';
     const pages = this.model.pages;
     const current = this.model.currentPageIndex;
@@ -69,17 +101,12 @@ export class PageThumbnailPanel {
       img.className = 'thumb-img';
       img.alt = t('thumbnail.pageAlt', { page: i + 1 });
 
+      let needsThumb = false;
       if (this._thumbCache.has(page.id)) {
         img.src = this._thumbCache.get(page.id) ?? '';
       } else {
         img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // blank placeholder
-        // Lazy-generate
-        this.renderer.generateThumbnail(i).then(url => {
-          if (url) {
-            this._thumbCache.set(page.id, url);
-            img.src = url;
-          }
-        });
+        needsThumb = true; // generated lazily (on intersect) after the item is appended
       }
 
       // Page number label
@@ -172,6 +199,13 @@ export class PageThumbnailPanel {
       });
 
       this.strip.appendChild(item);
+
+      if (needsThumb) {
+        // Observe for lazy rasterization; eagerly generate if there's no observer.
+        const io = this._ensureObserver();
+        if (io) io.observe(item);
+        else void this._loadThumb(i, page.id, img);
+      }
     }
 
     // "Add PDF" button at the end

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PageThumbnailPanel } from '../../src/ui/pageThumbnailPanel';
 import { DocumentModel } from '../../src/core/documentModel';
 import type { PDFRenderer } from '../../src/infra/pdfRenderer';
@@ -122,5 +122,76 @@ describe('PageThumbnailPanel', () => {
     const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
     item.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
+  });
+});
+
+// #46 — lazy thumbnail rasterization via IntersectionObserver (jsdom has none,
+// so we install a controllable fake). The expensive part is generateThumbnail.
+describe('PageThumbnailPanel — lazy rasterization (#46)', () => {
+  let container: HTMLElement;
+  let ioInstances: FakeIO[];
+
+  class FakeIO {
+    cb: IntersectionObserverCallback;
+    observed: Element[] = [];
+    constructor(cb: IntersectionObserverCallback) { this.cb = cb; ioInstances.push(this); }
+    observe(el: Element) { this.observed.push(el); }
+    unobserve(el: Element) { this.observed = this.observed.filter(e => e !== el); }
+    disconnect() { this.observed = []; }
+    /** test helper: fire an intersection for one observed element */
+    fire(el: Element) { this.cb([{ target: el, isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+  }
+
+  function panelWith(renderer: PDFRenderer, model: DocumentModel): PageThumbnailPanel {
+    return new PageThumbnailPanel({
+      container, renderer, model,
+      onNavigate: vi.fn(), onDelete: vi.fn(), onReorder: vi.fn(), onRotate: vi.fn(),
+      onAddPdf: vi.fn(), onDownload: vi.fn(), onDownloadImage: vi.fn(),
+    });
+  }
+
+  beforeEach(() => {
+    ioInstances = [];
+    (globalThis as unknown as { IntersectionObserver: typeof FakeIO }).IntersectionObserver = FakeIO;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+  afterEach(() => {
+    delete (globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
+  });
+
+  it('does not rasterize any thumbnail on render — only observes them', async () => {
+    const renderer = { generateThumbnail: vi.fn().mockResolvedValue('data:image/png;base64,AAAA') } as unknown as PDFRenderer;
+    const panel = panelWith(renderer, makeModel(50));
+    await panel.render();
+    expect(renderer.generateThumbnail).not.toHaveBeenCalled();
+    expect(ioInstances).toHaveLength(1);
+    expect(ioInstances[0].observed).toHaveLength(50);
+  });
+
+  it('rasterizes a thumbnail only when its item intersects, then unobserves it', async () => {
+    const renderer = { generateThumbnail: vi.fn().mockResolvedValue('data:image/png;base64,AAAA') } as unknown as PDFRenderer;
+    const panel = panelWith(renderer, makeModel(20));
+    await panel.render();
+    const item = container.querySelectorAll('.thumb-item')[7];
+    ioInstances[0].fire(item);
+    expect(renderer.generateThumbnail).toHaveBeenCalledTimes(1);
+    expect(renderer.generateThumbnail).toHaveBeenCalledWith(7);
+    expect(ioInstances[0].observed).not.toContain(item);
+  });
+
+  it('serves a cached thumbnail immediately and does not observe it', async () => {
+    const renderer = { generateThumbnail: vi.fn().mockResolvedValue('data:image/png;base64,AAAA') } as unknown as PDFRenderer;
+    const panel = panelWith(renderer, makeModel(10));
+    await panel.render();
+    ioInstances[0].fire(container.querySelectorAll('.thumb-item')[0]); // load page-0
+    await new Promise(r => { setTimeout(r, 0); }); // let _loadThumb populate the cache
+    await panel.render(); // re-render: page-0 is now cached
+    // One observer is reused across renders (disconnect + re-observe); page-0 is
+    // served from cache so only the other 9 are observed.
+    expect(ioInstances).toHaveLength(1);
+    expect(ioInstances[0].observed).toHaveLength(9);
+    const img0 = container.querySelectorAll('.thumb-item')[0].querySelector('img');
+    expect(img0?.getAttribute('src')).toBe('data:image/png;base64,AAAA');
   });
 });
