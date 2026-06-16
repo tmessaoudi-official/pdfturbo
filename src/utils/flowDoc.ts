@@ -256,7 +256,7 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageHeight
 
 // ── Internal working shapes ─────────────────────────────────────────────
 
-interface Word {
+export interface Word {
   text: string;
   x: number;
   y: number;
@@ -270,7 +270,7 @@ interface Word {
   strikethrough?: boolean;
 }
 
-interface Line {
+export interface Line {
   words: Word[];
   y: number;
   size: number; // dominant font size on the line
@@ -487,13 +487,20 @@ export function orderLineWords<T extends { x: number; width: number; rtl: boolea
   return { words: out, rtl: true };
 }
 
-/** Build FlowParagraph[] from a pre-sorted, pre-filtered array of words. */
-function reconstructColumn(
-  words: Word[],
-  fonts: FontInfoMap,
-  pageWidth: number,
-): FlowParagraph[] {
-  // 1. Group words into lines by baseline clustering (top of page first: y descending).
+/** Geometry kept alongside each built paragraph for the continuation-merge pass. */
+interface ParaGeom { x0: number; lines: number; size: number }
+
+/** Indent tolerance for a given font size: half a font size, but ≥ 2pt. */
+function indentTolerance(size: number): number {
+  return Math.max(2, size * 0.5);
+}
+
+/**
+ * Stage 1 — cluster words into lines by baseline (top of page first: y desc),
+ * then order each line for reading (restoring logical char order on RTL lines)
+ * and finalize its x0/x1/dominant size. Mutates `words` order (sorts in place).
+ */
+export function clusterWordsIntoLines(words: Word[]): Line[] {
   words.sort((a, b) => b.y - a.y || a.x - b.x);
   const lines: Line[] = [];
   for (const w of words) {
@@ -531,8 +538,11 @@ function reconstructColumn(
     line.x1 = Math.max(...line.words.map(w => w.x + w.width));
     line.size = line.words.reduce((m, w) => (w.text.length > m.text.length ? w : m), line.words[0]).size;
   }
+  return lines;
+}
 
-  // 2. Group lines into paragraphs on baseline-gap or font-size jumps.
+/** Stage 2 — group lines into paragraphs on baseline-gap or font-size jumps. */
+export function groupLinesIntoParagraphs(lines: Line[]): Line[][] {
   const paraLines: Line[][] = [];
   for (const line of lines) {
     const current = paraLines[paraLines.length - 1];
@@ -545,202 +555,205 @@ function reconstructColumn(
       paraLines.push([line]);
     }
   }
+  return paraLines;
+}
 
-  // Column reference edges: the robust left/right of the body block. Using a
-  // 5th/95th percentile of line edges (not the raw min/max) ignores a single
-  // stray-left or stray-right line — a margin glyph, a hanging marker — while
-  // still tracking the leftmost real body text (so indented blocks measure as
-  // insets FROM it, not vs. the indented majority).
-  // Failure mode prevented: one outlier line dragging the column edge, which
-  // would either hide a real indent or invent a false one.
-  const colLeft = lines.length ? percentile(lines.map(l => l.x0), 0.05, 0) : 0;
-  const colRight = lines.length ? percentile(lines.map(l => l.x1), 0.95, pageWidth) : pageWidth;
-  const indentTol = (s: number) => Math.max(2, s * 0.5); // half a font size, ≥2pt
-
-  // 3. Build paragraphs: merge same-style words into runs, infer alignment, bidi, and list type.
-  // Per-paragraph geometry kept alongside for the continuation-merge pass below.
-  const paraGeom: { x0: number; lines: number; size: number }[] = [];
-  const paras: FlowParagraph[] = paraLines.map((group, gi) => {
-    const runs: FlowRun[] = [];
-    for (let li = 0; li < group.length; li++) {
-      const line = group[li];
-      // Per-line reference (the body text): the largest glyph size and its
-      // baseline. A word that is BOTH notably smaller AND baseline-offset from
-      // this reference is a super/subscript.
-      const lineRefSize = Math.max(...line.words.map(w => w.size));
-      const lineRefBaseline = (line.words.find(w => w.size === lineRefSize) ?? line.words[0]).y;
-      let prevWord: Word | null = null;
-      for (const w of line.words) {
-        const info = fonts[w.fontName];
-        const psName = extractPsName(info?.name ?? w.fontName);
-        const sizeRatio = lineRefSize > 0 ? w.size / lineRefSize : 1;
-        const dy = w.y - lineRefBaseline;
-        const vertAlign: 'super' | 'sub' | undefined =
-          sizeRatio < 0.85 && Math.abs(dy) > 0.12 * lineRefSize
-            ? (dy > 0 ? 'super' : 'sub')
-            : undefined;
-        const style: Omit<FlowRun, 'text'> = {
-          bold: isBoldName(psName),
-          italic: isItalicName(psName),
-          fontSize: Math.round(w.size * 2) / 2,
-          fontFamily: familyOf(info),
-          rtl: w.rtl,
-          psName,
-          color: w.color,
-          linkUrl: w.linkUrl,
-          vertAlign,
-          underline: w.underline,
-          strikethrough: w.strikethrough,
-        };
-        let text = w.text;
-        if (prevWord) {
-          // Reading-order gap: on an RTL line the previous word sits to the RIGHT
-          // of the current one, so measure leftward (prev.x − current right edge).
-          const gap = line.rtl
-            ? prevWord.x - (w.x + w.width)
-            : w.x - (prevWord.x + prevWord.width);
-          const needsSpace =
-            gap > SPACE_GAP * Math.min(prevWord.size, w.size) &&
-            !/\s$/.test(prevWord.text) &&
-            !/^\s/.test(w.text);
-          if (needsSpace) text = ' ' + text;
-        }
-        const last = runs[runs.length - 1];
-        if (
-          last &&
-          last.bold === style.bold &&
-          last.italic === style.italic &&
-          last.fontFamily === style.fontFamily &&
-          last.rtl === style.rtl &&
-          last.psName === style.psName &&
-          last.color === style.color &&
-          last.linkUrl === style.linkUrl &&
-          last.vertAlign === style.vertAlign &&
-          last.underline === style.underline &&
-          last.strikethrough === style.strikethrough &&
-          Math.abs(last.fontSize - style.fontSize) < 0.6
-        ) {
-          last.text += text;
-        } else {
-          runs.push({ text, ...style });
-        }
-        prevWord = w;
+/**
+ * Stage 3 — build one FlowParagraph from a line-group: merge same-style words
+ * into runs, infer alignment/bidi/list type, and measure indent + spacing
+ * relative to the column edges. Returns the paragraph plus its geometry.
+ */
+function buildParagraph(
+  group: Line[],
+  gi: number,
+  paraLines: Line[][],
+  fonts: FontInfoMap,
+  pageWidth: number,
+  colLeft: number,
+  colRight: number,
+): { para: FlowParagraph; geom: ParaGeom } {
+  const runs: FlowRun[] = [];
+  for (let li = 0; li < group.length; li++) {
+    const line = group[li];
+    // Per-line reference (the body text): the largest glyph size and its
+    // baseline. A word that is BOTH notably smaller AND baseline-offset from
+    // this reference is a super/subscript.
+    const lineRefSize = Math.max(...line.words.map(w => w.size));
+    const lineRefBaseline = (line.words.find(w => w.size === lineRefSize) ?? line.words[0]).y;
+    let prevWord: Word | null = null;
+    for (const w of line.words) {
+      const info = fonts[w.fontName];
+      const psName = extractPsName(info?.name ?? w.fontName);
+      const sizeRatio = lineRefSize > 0 ? w.size / lineRefSize : 1;
+      const dy = w.y - lineRefBaseline;
+      const vertAlign: 'super' | 'sub' | undefined =
+        sizeRatio < 0.85 && Math.abs(dy) > 0.12 * lineRefSize
+          ? (dy > 0 ? 'super' : 'sub')
+          : undefined;
+      const style: Omit<FlowRun, 'text'> = {
+        bold: isBoldName(psName),
+        italic: isItalicName(psName),
+        fontSize: Math.round(w.size * 2) / 2,
+        fontFamily: familyOf(info),
+        rtl: w.rtl,
+        psName,
+        color: w.color,
+        linkUrl: w.linkUrl,
+        vertAlign,
+        underline: w.underline,
+        strikethrough: w.strikethrough,
+      };
+      let text = w.text;
+      if (prevWord) {
+        // Reading-order gap: on an RTL line the previous word sits to the RIGHT
+        // of the current one, so measure leftward (prev.x − current right edge).
+        const gap = line.rtl
+          ? prevWord.x - (w.x + w.width)
+          : w.x - (prevWord.x + prevWord.width);
+        const needsSpace =
+          gap > SPACE_GAP * Math.min(prevWord.size, w.size) &&
+          !/\s$/.test(prevWord.text) &&
+          !/^\s/.test(w.text);
+        if (needsSpace) text = ' ' + text;
       }
-      if (li < group.length - 1) {
-        const last = runs[runs.length - 1];
-        if (last && !/\s$/.test(last.text)) last.text += ' ';
+      const last = runs[runs.length - 1];
+      if (
+        last &&
+        last.bold === style.bold &&
+        last.italic === style.italic &&
+        last.fontFamily === style.fontFamily &&
+        last.rtl === style.rtl &&
+        last.psName === style.psName &&
+        last.color === style.color &&
+        last.linkUrl === style.linkUrl &&
+        last.vertAlign === style.vertAlign &&
+        last.underline === style.underline &&
+        last.strikethrough === style.strikethrough &&
+        Math.abs(last.fontSize - style.fontSize) < 0.6
+      ) {
+        last.text += text;
+      } else {
+        runs.push({ text, ...style });
+      }
+      prevWord = w;
+    }
+    if (li < group.length - 1) {
+      const last = runs[runs.length - 1];
+      if (last && !/\s$/.test(last.text)) last.text += ' ';
+    }
+  }
+
+  const pageCenter = pageWidth / 2;
+  const centerTol = pageWidth * 0.05;
+  // A genuinely centered block is also NARROW: full-width content whose center
+  // merely happens to sit near the page center is justified/left, not centered.
+  // Without the width cap, a flush-both-edges (justified) paragraph would be
+  // misread as centered because its midpoint is, by construction, near center.
+  const isCentered =
+    group.every(l => Math.abs((l.x0 + l.x1) / 2 - pageCenter) < centerTol) &&
+    group.every(l => l.x0 > pageWidth * 0.15) &&
+    group.every(l => l.x1 - l.x0 < pageWidth * 0.6);
+  const isRight =
+    !isCentered &&
+    group.every(l => l.x0 > pageWidth * 0.5) &&
+    group.every(l => Math.abs(l.x1 - group[0].x1) < pageWidth * 0.02);
+
+  // Justify: a multi-line block whose lines are flush at BOTH the column-left
+  // and the column-right (except, conventionally, the last line which may be
+  // short). Single-line blocks can't be distinguished from plain left-aligned.
+  const domSize = group.reduce((m, l) => Math.max(m, l.size), 0) || 12;
+  const edgeTol = indentTolerance(domSize);
+  const bodyLines = group.length > 1 ? group.slice(0, -1) : group;
+  const isJustified =
+    !isCentered && !isRight && group.length >= 2 &&
+    bodyLines.every(l => Math.abs(l.x0 - colLeft) <= edgeTol) &&
+    bodyLines.every(l => Math.abs(l.x1 - colRight) <= edgeTol);
+
+  const rtlChars = runs.reduce((n, r) => n + (r.rtl ? r.text.length : 0), 0);
+  const totalChars = runs.reduce((n, r) => n + r.text.length, 0);
+
+  const alignment: FlowParagraph['alignment'] =
+    isCentered ? 'center' : isRight ? 'right' : isJustified ? 'justify' : 'left';
+
+  const para: FlowParagraph = {
+    runs,
+    heading: 0 as const,
+    alignment,
+    rtl: totalChars > 0 && rtlChars / totalChars > 0.5,
+  };
+
+  // Indentation (only meaningful for left/justify blocks). blockLeft is the
+  // common left edge of the continuation lines; the first line may be further
+  // inset (first-line indent) or the whole block may be inset (left indent).
+  if (!isCentered && !isRight) {
+    const firstLineX = group[0].x0;
+    const restLines = group.length > 1 ? group.slice(1) : group;
+    const blockLeft = Math.min(...restLines.map(l => l.x0));
+    const left = blockLeft - colLeft;
+    const firstLine = firstLineX - blockLeft;
+    if (left > edgeTol) para.indentLeft = Math.round(left);
+    if (firstLine > edgeTol) para.indentFirstLine = Math.round(firstLine);
+  }
+
+  // Line spacing: average baseline gap between consecutive lines in this block.
+  if (group.length >= 2) {
+    let sum = 0;
+    for (let k = 1; k < group.length; k++) sum += group[k - 1].y - group[k].y;
+    const avg = sum / (group.length - 1);
+    if (avg > 0 && avg < domSize * 4) para.lineHeight = Math.round(avg * 10) / 10;
+  }
+
+  // Paragraph spacing: gap to the previous / next paragraph block, clamped to a
+  // sane range so an absurd page-spanning gap doesn't emit a giant spacing value.
+  const prevGroup = gi > 0 ? paraLines[gi - 1] : null;
+  const nextGroup = gi < paraLines.length - 1 ? paraLines[gi + 1] : null;
+  if (prevGroup) {
+    const prevBottom = prevGroup[prevGroup.length - 1].y;
+    const gap = prevBottom - group[0].y - domSize;
+    if (gap > 0) para.spaceBefore = Math.round(Math.min(gap, domSize * 6));
+  }
+  if (nextGroup) {
+    const gap = group[group.length - 1].y - nextGroup[0].y - domSize;
+    if (gap > 0) para.spaceAfter = Math.round(Math.min(gap, domSize * 6));
+  }
+
+  // List detection: check first run for a leading bullet or ordered marker.
+  if (runs.length > 0) {
+    const firstText = runs[0].text;
+    const trimmed = firstText.trimStart();
+    const match = detectListPrefix(trimmed);
+    if (match) {
+      const leading = firstText.length - trimmed.length;
+      runs[0].text = firstText.slice(0, leading) + match.stripped;
+      para.listType = match.type;
+      // Nesting depth from the item's left indent relative to the column edge,
+      // in whole font-size units (Gap 4). A top-level item sits at colLeft →
+      // depth 0; each ~1 font-size of extra indent advances one level. Clamped
+      // to a sane max so a stray far-right item can't invent depth 50.
+      para.listDepth = Math.max(0, Math.min(8, Math.round((group[0].x0 - colLeft) / Math.max(domSize, 1))));
+      if (match.format) {
+        para.listFormat = match.format;
+        para.listOrdinalText = match.ordinalText;
       }
     }
+  }
 
-    const pageCenter = pageWidth / 2;
-    const centerTol = pageWidth * 0.05;
-    // A genuinely centered block is also NARROW: full-width content whose center
-    // merely happens to sit near the page center is justified/left, not centered.
-    // Without the width cap, a flush-both-edges (justified) paragraph would be
-    // misread as centered because its midpoint is, by construction, near center.
-    const isCentered =
-      group.every(l => Math.abs((l.x0 + l.x1) / 2 - pageCenter) < centerTol) &&
-      group.every(l => l.x0 > pageWidth * 0.15) &&
-      group.every(l => l.x1 - l.x0 < pageWidth * 0.6);
-    const isRight =
-      !isCentered &&
-      group.every(l => l.x0 > pageWidth * 0.5) &&
-      group.every(l => Math.abs(l.x1 - group[0].x1) < pageWidth * 0.02);
+  return { para, geom: { x0: group[0].x0, lines: group.length, size: domSize } };
+}
 
-    // Justify: a multi-line block whose lines are flush at BOTH the column-left
-    // and the column-right (except, conventionally, the last line which may be
-    // short). Single-line blocks can't be distinguished from plain left-aligned.
-    const domSize = group.reduce((m, l) => Math.max(m, l.size), 0) || 12;
-    const edgeTol = indentTol(domSize);
-    const bodyLines = group.length > 1 ? group.slice(0, -1) : group;
-    const isJustified =
-      !isCentered && !isRight && group.length >= 2 &&
-      bodyLines.every(l => Math.abs(l.x0 - colLeft) <= edgeTol) &&
-      bodyLines.every(l => Math.abs(l.x1 - colRight) <= edgeTol);
-
-    const rtlChars = runs.reduce((n, r) => n + (r.rtl ? r.text.length : 0), 0);
-    const totalChars = runs.reduce((n, r) => n + r.text.length, 0);
-
-    const alignment: FlowParagraph['alignment'] =
-      isCentered ? 'center' : isRight ? 'right' : isJustified ? 'justify' : 'left';
-
-    const para: FlowParagraph = {
-      runs,
-      heading: 0 as const,
-      alignment,
-      rtl: totalChars > 0 && rtlChars / totalChars > 0.5,
-    };
-
-    // Indentation (only meaningful for left/justify blocks). blockLeft is the
-    // common left edge of the continuation lines; the first line may be further
-    // inset (first-line indent) or the whole block may be inset (left indent).
-    if (!isCentered && !isRight) {
-      const firstLineX = group[0].x0;
-      const restLines = group.length > 1 ? group.slice(1) : group;
-      const blockLeft = Math.min(...restLines.map(l => l.x0));
-      const left = blockLeft - colLeft;
-      const firstLine = firstLineX - blockLeft;
-      if (left > edgeTol) para.indentLeft = Math.round(left);
-      if (firstLine > edgeTol) para.indentFirstLine = Math.round(firstLine);
-    }
-
-    // Line spacing: average baseline gap between consecutive lines in this block.
-    if (group.length >= 2) {
-      let sum = 0;
-      for (let k = 1; k < group.length; k++) sum += group[k - 1].y - group[k].y;
-      const avg = sum / (group.length - 1);
-      if (avg > 0 && avg < domSize * 4) para.lineHeight = Math.round(avg * 10) / 10;
-    }
-
-    // Paragraph spacing: gap to the previous / next paragraph block, clamped to a
-    // sane range so an absurd page-spanning gap doesn't emit a giant spacing value.
-    const prevGroup = gi > 0 ? paraLines[gi - 1] : null;
-    const nextGroup = gi < paraLines.length - 1 ? paraLines[gi + 1] : null;
-    if (prevGroup) {
-      const prevBottom = prevGroup[prevGroup.length - 1].y;
-      const gap = prevBottom - group[0].y - domSize;
-      if (gap > 0) para.spaceBefore = Math.round(Math.min(gap, domSize * 6));
-    }
-    if (nextGroup) {
-      const gap = group[group.length - 1].y - nextGroup[0].y - domSize;
-      if (gap > 0) para.spaceAfter = Math.round(Math.min(gap, domSize * 6));
-    }
-
-    // List detection: check first run for a leading bullet or ordered marker.
-    if (runs.length > 0) {
-      const firstText = runs[0].text;
-      const trimmed = firstText.trimStart();
-      const match = detectListPrefix(trimmed);
-      if (match) {
-        const leading = firstText.length - trimmed.length;
-        runs[0].text = firstText.slice(0, leading) + match.stripped;
-        para.listType = match.type;
-        // Nesting depth from the item's left indent relative to the column edge,
-        // in whole font-size units (Gap 4). A top-level item sits at colLeft →
-        // depth 0; each ~1 font-size of extra indent advances one level. Clamped
-        // to a sane max so a stray far-right item can't invent depth 50.
-        para.listDepth = Math.max(0, Math.min(8, Math.round((group[0].x0 - colLeft) / Math.max(domSize, 1))));
-        if (match.format) {
-          para.listFormat = match.format;
-          para.listOrdinalText = match.ordinalText;
-        }
-      }
-    }
-
-    paraGeom[gi] = { x0: group[0].x0, lines: group.length, size: domSize };
-    return para;
-  });
-
-  // Wrapped list-item continuation merge (Gap 4): step-2 splits a list item whose
-  // wrap exceeds the paragraph gap/size band into a separate, marker-less
-  // paragraph. Left as-is, that orphan paragraph resets the writer's numbering
-  // instance (the next item restarts at 1). Re-absorb a continuation — a
-  // single-line, body-sized, hanging-INDENTED (starts right of the marker), non-
-  // marker paragraph directly after a list item — back into that item. The
-  // hanging-indent guard keeps genuine following body paragraphs (which start at
-  // the column-left edge) and real list items (which carry a marker) separate.
+/**
+ * Stage 4 — wrapped list-item continuation merge (Gap 4): step-2 splits a list
+ * item whose wrap exceeds the paragraph gap/size band into a separate, marker-
+ * less paragraph. Left as-is, that orphan resets the writer's numbering instance
+ * (the next item restarts at 1). Re-absorb a continuation — a single-line, body-
+ * sized, hanging-INDENTED (starts right of the marker), non-marker paragraph
+ * directly after a list item — back into that item. The hanging-indent guard
+ * keeps genuine following body paragraphs (which start at the column-left edge)
+ * and real list items (which carry a marker) separate.
+ */
+function mergeListContinuations(paras: FlowParagraph[], paraGeom: ParaGeom[]): FlowParagraph[] {
   const result: FlowParagraph[] = [];
-  const resultGeom: typeof paraGeom = [];
+  const resultGeom: ParaGeom[] = [];
   for (let gi = 0; gi < paras.length; gi++) {
     const p = paras[gi];
     const g = paraGeom[gi];
@@ -749,7 +762,7 @@ function reconstructColumn(
     const isContinuation =
       !!prev && !!prev.listType && !p.listType && p.heading === 0 &&
       g.lines === 1 && Math.abs(g.size - prevG.size) < 1 &&
-      g.x0 > prevG.x0 + indentTol(prevG.size) &&
+      g.x0 > prevG.x0 + indentTolerance(prevG.size) &&
       p.alignment !== 'center' && p.alignment !== 'right';
     if (isContinuation && prev) {
       const lastRun = prev.runs[prev.runs.length - 1];
@@ -764,6 +777,33 @@ function reconstructColumn(
     }
   }
   return result;
+}
+
+/** Build FlowParagraph[] from a pre-sorted, pre-filtered array of words. */
+function reconstructColumn(
+  words: Word[],
+  fonts: FontInfoMap,
+  pageWidth: number,
+): FlowParagraph[] {
+  const lines = clusterWordsIntoLines(words);
+  const paraLines = groupLinesIntoParagraphs(lines);
+
+  // Column reference edges: the robust left/right of the body block. Using a
+  // 5th/95th percentile of line edges (not the raw min/max) ignores a single
+  // stray-left or stray-right line — a margin glyph, a hanging marker — while
+  // still tracking the leftmost real body text (so indented blocks measure as
+  // insets FROM it, not vs. the indented majority).
+  const colLeft = lines.length ? percentile(lines.map(l => l.x0), 0.05, 0) : 0;
+  const colRight = lines.length ? percentile(lines.map(l => l.x1), 0.95, pageWidth) : pageWidth;
+
+  const paraGeom: ParaGeom[] = [];
+  const paras = paraLines.map((group, gi) => {
+    const { para, geom } = buildParagraph(group, gi, paraLines, fonts, pageWidth, colLeft, colRight);
+    paraGeom[gi] = geom;
+    return para;
+  });
+
+  return mergeListContinuations(paras, paraGeom);
 }
 
 /**
