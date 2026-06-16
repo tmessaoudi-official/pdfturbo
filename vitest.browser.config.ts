@@ -27,6 +27,13 @@ export default defineConfig({
     include: ['tests/browser/**/*.browser.test.ts'],
     // jsdom setup (fake-indexeddb etc.) is irrelevant here — real browser has real APIs.
     setupFiles: [],
+    // The heaviest true-edit tests (truedit-spot-color, issue2-true-edit) do a full
+    // PDF build → pdf.js render → content-stream surgery → re-render → pixel sample.
+    // They finish in ~3.5s in isolation but exceed the 15s default under full-suite
+    // browser/CPU contention (intermittent CI deploy-blocking flake — they COMPLETE,
+    // they're just slow under load, not hung). 30s gives headroom for contention while
+    // still failing fast on a genuine hang.
+    testTimeout: 30_000,
     // M1 #14 — coverage gate on the export RENDER path (the P0 surface). Only active
     // when --coverage is passed (npm run test:coverage:export); a normal test:browser
     // run ignores it. The export element renderer can ONLY be exercised in a real
