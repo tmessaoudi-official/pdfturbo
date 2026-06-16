@@ -40,6 +40,14 @@ paydown + the queued feature/ceiling backlog**. Nothing below is an emergency; M
 
 ---
 
+- [2026-06-16] AGREED: After surveying M3–M7, next milestone = **M3 security batch (#31–#34)** — four S-effort items landed as one TDD effort, one thematic commit per item, full gate green per commit, push MANUAL. Order: #31 SHA-pin OCR traineddata → #32 CSP base-uri/form-action → #33 zero p12 key object + scrub passphrase on parse-error → #34 untrusted-PDF input caps + isEvalSupported:false. #35 accessibility deferred to its own effort. (AskUserQuestion) Note: M4 #41 ring-buffer logger already shipped in M0 (`2cb4122`) — table row is stale.
+- [2026-06-16] DONE: **M3 security batch #31–#34 SHIPPED** (4 unpushed thematic commits; each TDD'd, full gate green tsc·oxlint 0/0·jsdom·browser per commit, push MANUAL):
+  - **#32 `a68c6c8`** — CSP `base-uri 'none'` + `form-action 'none'` in index.html. Guard: `tests/security/csp.test.ts`.
+  - **#31 `062acf6`** — SHA-256-pin all 8 OCR traineddata downloads (`prepare-ocr-assets.mjs`): committed digest map, verify each download before persist + re-verify cached copies each run, `main()` guarded behind is-main so importing pulls no network. Hashes computed authoritatively (3 local copies matched CDN byte-for-byte; 5 downloaded+verified end-to-end). Guard: `tests/ocr/ocrAssets.test.ts`.
+  - **#34 `092bb20`** — untrusted-PDF input caps in `documentLoader.load`: `MAX_PDF_BYTES`=500 MB (refuse before read), `MAX_PDF_PAGES`=10000 (refuse before per-page alloc; `loadingTask.destroy()`), toasts fileTooLarge/tooManyPages (EN/FR/AR). Guard: `tests/ui/documentLoaderCaps.test.ts`. **FINDING (verified, non-obvious): `isEvalSupported:false` is OBSOLETE on pdf.js v6.0.227** — the option AND the eval-based font/PostScript compiler it gated were removed (no `new Function`/eval surface; the only `new Function` grep hit is the substring `FunctionBasedShading`; CSP omits 'unsafe-eval' regardless). It also doesn't type-check against v6 `DocumentInitParameters`. So NOT shipped — documented in `load()` instead of an ineffective no-op.
+  - **#33 `cc7491f`** — `scrubForgeKey`/`scrubP12Material` (`p12.ts`): overwrite each jsbn BigInteger `.data` digit array in place + null fields. Signer scrubs in a `finally`; `generateSelfSignedP12` scrubs once packaged. Passphrase (immutable JS string) can't be scrubbed → documented; container bytes already zeroed on every path incl. parse-error by the handler. Guard: `tests/signing/scrubP12.test.ts` + existing sign/cert round-trips prove signing still works.
+  - **NEXT: M3 #35 accessibility** (its own M–L effort), or pick another milestone. M0/M1-P0/M2/M3-batch all DONE.
+
 ## How the ~140 raw findings collapse to ~65 tracked items
 
 | Source | Raw count | Notes |
@@ -114,10 +122,10 @@ every silent floating-promise rejection below into a visible toast.
 ### M3 — Security hardening, supply chain & accessibility
 | # | Item | Sev | Eff | Sources |
 |---|------|-----|-----|---------|
-| 31 | **Pin OCR traineddata by SHA-256** — only unguarded supply-chain ingress | P2 | S | VG-1 |
-| 32 | **CSP `base-uri 'none'` + `form-action 'none'`** — one meta line | — | S | VG-3 |
-| 33 | **Zero the `.p12` forge key object** (not just container bytes) + scrub passphrase on the parse-error path | P2 | S | inspect A-P2 |
-| 34 | **Untrusted-PDF input caps** — max-file-size / max-page guard + explicit `isEvalSupported:false` | P1-adjacent | S–M | VG-2, inspect Top-5 |
+| 31 | ✅ DONE `062acf6` **Pin OCR traineddata by SHA-256** — only unguarded supply-chain ingress | P2 | S | VG-1 |
+| 32 | ✅ DONE `a68c6c8` **CSP `base-uri 'none'` + `form-action 'none'`** — one meta line | — | S | VG-3 |
+| 33 | ✅ DONE `cc7491f` **Zero the `.p12` forge key object** (not just container bytes); passphrase scrub infeasible (immutable JS string) — documented | P2 | S | inspect A-P2 |
+| 34 | ✅ DONE `092bb20` **Untrusted-PDF input caps** — max-file-size / max-page guard. (`isEvalSupported:false` is OBSOLETE on pdf.js v6 — option + eval path removed; documented, not shipped) | P1-adjacent | S–M | VG-2, inspect Top-5 |
 | 35 | **Accessibility sweep (new dimension — no agent owns it today)** — ARIA roles/labels on interactive elements, modal focus traps, keyboard operability of toolbar+canvas tools, contrast, RTL/`dir` correctness; toasts `role/aria-live`; canvas annotations role/tabindex/aria-label | P1/P2 | M–L | inspect self-reflection, roadmap E1/E2/E4 |
 | 36 | **Trusted Types adoption** | — | L | VG-6 |
 | 37 | **Own dependency CVE / supply-chain** (CI runs deploy-blocking `npm audit` but no agent owns advisory cross-check) — document + a periodic check | — | S | inspect self-reflection |
