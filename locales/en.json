@@ -379,6 +379,8 @@
     "elementRenderFailed": "{{count}} element(s) could not be rendered",
     "pdfDownloaded": "PDF downloaded!",
     "pdfSaved": "Saved to {{name}}",
+    "extractDone": "Extracted {{count}} page(s)",
+    "extractNoPages": "No valid pages in that range",
     "pdfExportFailed": "PDF export failed",
     "sanitized": "Sanitized copy downloaded — {{count}} artifact type(s) removed",
     "sanitizeNothing": "Nothing to strip — downloaded a clean copy",

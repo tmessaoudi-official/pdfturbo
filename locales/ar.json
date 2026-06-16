@@ -379,6 +379,8 @@
     "elementRenderFailed": "تعذّر عرض {{count}} عنصر(عناصر)",
     "pdfDownloaded": "تم تنزيل ملف PDF!",
     "pdfSaved": "تم الحفظ في {{name}}",
+    "extractDone": "تم استخراج {{count}} صفحة",
+    "extractNoPages": "لا توجد صفحات صالحة في هذا النطاق",
     "pdfExportFailed": "فشل تصدير PDF",
     "sanitized": "تم تنزيل نسخة منظَّفة — تمت إزالة {{count}} نوعًا من العناصر",
     "sanitizeNothing": "لا شيء لإزالته — تم تنزيل نسخة نظيفة",

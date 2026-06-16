@@ -10,7 +10,7 @@ import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } fro
 import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
-import { pickSaveTarget, writeToHandle } from '../utils/fileSystemAccess';
+import { pickSaveTarget, writeToHandle, type SaveTarget } from '../utils/fileSystemAccess';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -61,13 +61,46 @@ export class ExportService {
       _prog.setFraction(null);
       await this._applyExportPassword(pdfDoc);
       const bytes = await pdfDoc.save({ useObjectStreams: false });
-      if (target === 'download') {
-        this._downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }), filename);
-        reportError.info('toast.pdfDownloaded');
-      } else {
-        await writeToHandle(target, bytes);
-        reportError.info('toast.pdfSaved', { name: target.name });
-      }
+      await this._saveBytesTo(target, bytes, filename);
+      if (target === 'download') reportError.info('toast.pdfDownloaded');
+      else reportError.info('toast.pdfSaved', { name: target.name });
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.pdfExportFailed', err);
+      _prog.failed();
+    } finally {
+      await this._ctx.renderCurrentPage();
+      this._ctx.rebuildElementLayer();
+    }
+  }
+
+  /**
+   * Extract the given pages (0-based document indices, in the supplied order)
+   * into a new PDF with all edits/overlays baked in, then save it (native picker
+   * or download). Out-of-range indices are dropped; empty selection warns. #59.
+   */
+  async downloadPageRange(indices: number[]): Promise<void> {
+    const { documentModel, reportError, progress } = this._ctx;
+    const pages = indices
+      .map(i => documentModel.pages[i])
+      .filter((p): p is NonNullable<typeof p> => !!p);
+    if (!pages.length) { reportError.warn('toast.extractNoPages'); return; }
+    const filename = `${this._exportBaseName()}-extract.pdf`;
+    const target = await pickSaveTarget(filename);
+    if (target === 'cancelled') return;
+    this._ctx.cleanEmptyTextElements();
+    const _prog = progress.begin('progress.generatingPdf');
+    try {
+      const pdfDoc = await this._assemblePdfDoc(
+        (done, total) => _prog.setFraction(total ? done / total : null),
+        pages,
+      );
+      _prog.setFraction(null);
+      await this._applyExportPassword(pdfDoc);
+      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      await this._saveBytesTo(target, bytes, filename);
+      if (target === 'download') reportError.info('toast.extractDone', { count: pages.length });
+      else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
       reportError.error('toast.pdfExportFailed', err);
@@ -129,11 +162,15 @@ export class ExportService {
    * Build the flattened, edits-baked-in pdf-lib document (no save, no encrypt).
    * @param onPage optional per-page progress callback (done, total) — used by
    *   downloadPDF to drive the determinate overlay bar; the sign path omits it.
+   * @param pagesSubset optional explicit list of pages to include, in output
+   *   order (defaults to the whole document). Used by the Extract-pages feature.
    */
   private async _assemblePdfDoc(
     onPage?: (done: number, total: number) => void,
+    pagesSubset?: import('../core/documentModel').DocumentPage[],
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     const { documentModel, elements, reportError, formValues } = this._ctx;
+    const docPages = pagesSubset ?? documentModel.pages;
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     {
       const pdfDoc = await PDFDocument.create();
@@ -161,16 +198,16 @@ export class ExportService {
       const copiedPages = new Map<string, import('@cantoo/pdf-lib').PDFPage>();
       for (const [id, srcDoc] of srcDocs) {
         const indices = [...new Set(
-          documentModel.pages.filter(p => p.sourcePdfId === id).map(p => p.sourcePageNum - 1)
+          docPages.filter(p => p.sourcePdfId === id).map(p => p.sourcePageNum - 1)
         )].sort((a, b) => a - b);
         const pages = await pdfDoc.copyPages(srcDoc, indices);
         indices.forEach((idx: number, i: number) => copiedPages.set(`${id}:${idx}`, pages[i]));
       }
 
       // Add pages in document order and draw overlays
-      const totalPages = documentModel.pages.length;
+      const totalPages = docPages.length;
       let pagesDone = 0;
-      for (const docPage of documentModel.pages) {
+      for (const docPage of docPages) {
         const pageElements = elements.filter(el => el.pageId === docPage.id);
         const hasRedaction = pageElements.some(el => el.type === 'redaction');
 
@@ -336,6 +373,20 @@ export class ExportService {
 
   private _exportBaseName(): string {
     return (this._ctx.currentFilename || 'document').replace(/\.pdf$/i, '');
+  }
+
+  /**
+   * Write already-serialized PDF bytes to a resolved save target (#54): a file
+   * handle (native save) or the anchor download. `target` must not be 'cancelled'
+   * (callers handle that earlier). Returns which path was taken so the caller can
+   * pick the right toast by branching on `target` themselves (which narrows it).
+   */
+  private async _saveBytesTo(target: Exclude<SaveTarget, 'cancelled'>, bytes: Uint8Array, filename: string): Promise<void> {
+    if (target === 'download') {
+      this._downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }), filename);
+    } else {
+      await writeToHandle(target, bytes);
+    }
   }
 
   private _downloadBlob(blob: Blob, filename: string): void {
