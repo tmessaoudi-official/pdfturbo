@@ -436,13 +436,22 @@ export function isArabicText(s: string): boolean {
 }
 
 /**
- * Reverse a string by codepoint (surrogate-pair-safe). pdf.js returns RTL runs
- * already visually reversed; reversing again restores logical character order so
- * Word's bidi engine can lay it out correctly. (Combining-mark reordering is an
- * accepted edge-case limitation — see the Arabic-export ceiling notes.)
+ * Reverse a string by codepoint (surrogate-pair-safe) and NFKC-normalize the
+ * result. pdf.js returns RTL runs already visually reversed; reversing again
+ * restores logical character order so Word's bidi engine can lay it out
+ * correctly. (Combining-mark reordering is an accepted edge-case limitation —
+ * see the Arabic-export ceiling notes.)
+ *
+ * NFKC runs AFTER the reversal (not before): many PDFs encode Arabic as Unicode
+ * PRESENTATION FORMS (U+FB50–FDFF / U+FE70–FEFF — pre-shaped isolated/initial/
+ * medial/final glyphs). Emitted verbatim into DOCX/MD they render disconnected
+ * because Word shapes base letters, not pre-shaped forms. NFKC folds each
+ * presentation form to its base letter (and expands ligatures like U+FEFB
+ * lam-alef → ل + ا). Doing it after the per-codepoint reversal keeps a ligature's
+ * internal logical order correct (one visual unit → expands in place).
  */
 export function reverseRtlText(s: string): string {
-  return [...s].reverse().join('');
+  return [...s].reverse().join('').normalize('NFKC');
 }
 
 /**

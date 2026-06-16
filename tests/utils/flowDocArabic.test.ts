@@ -26,6 +26,24 @@ describe('reverseRtlText', () => {
   it('empty string → empty', () => {
     expect(reverseRtlText('')).toBe('');
   });
+
+  // P2 (2026-06-17): pdf.js delivers Arabic from many PDFs as Unicode PRESENTATION
+  // FORMS (isolated/initial/medial/final glyph codepoints, U+FB50–FDFF / U+FE70–FEFF).
+  // Carried verbatim into DOCX/MD they render disconnected/garbled (Word re-shapes
+  // base letters, not pre-shaped forms). NFKC maps each presentation form back to its
+  // base letter so Word's own bidi+shaping lays it out correctly.
+  it('NFKC-normalizes a presentation form to its base letter', () => {
+    // U+FE8E ARABIC LETTER ALEF FINAL FORM → U+0627 ARABIC LETTER ALEF
+    expect(reverseRtlText('ﺎ')).toBe('ا');
+  });
+  it('expands a presentation ligature to logical base order (length change)', () => {
+    // U+FEFB LAM-ALEF ISOLATED FORM → U+0644 U+0627 (lam, alef) in logical order
+    expect(reverseRtlText('ﻻ')).toBe('لا');
+  });
+  it('leaves no presentation-form codepoints in the output', () => {
+    const visual = 'ﺎﺒﺭﻤ'; // mixed forms, pdf.js visual order
+    expect(/[ﭐ-﷿ﹰ-﻿]/.test(reverseRtlText(visual))).toBe(false);
+  });
 });
 
 describe('orderLineWords', () => {

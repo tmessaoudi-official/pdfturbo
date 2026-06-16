@@ -277,7 +277,11 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder; tashkeel GPOS positioning.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
-    Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order;
+    Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order
+    **and NFKC-normalizes** (P2, 2026-06-17) — many PDFs encode Arabic as Unicode PRESENTATION FORMS
+    (U+FB50–FDFF / U+FE70–FEFF, pre-shaped glyphs); emitted verbatim they render disconnected in Word, so
+    NFKC folds them to base letters (and expands ligatures, e.g. U+FEFB lam-alef → ل+ا) AFTER the reversal so
+    a ligature's logical order stays correct. Guard: `tests/utils/flowDocArabic.test.ts`;
     `orderLineWords` orders an rtl line right-to-left (logical); **AR-1 (2026-06-15)** it now applies the
     UAX#9 L2 run-reversal at WORD level — an RTL line is segmented into same-direction runs and emitted
     right→left, but an embedded LTR run (Latin word / number) keeps forward order (the old blanket
