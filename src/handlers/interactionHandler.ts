@@ -233,7 +233,7 @@ export class InteractionHandler {
       const beforeRot = before['rotation'] as number;
       if (movedEl.rotation !== beforeRot) {
         this.app.historyManager.record(new RotateElementCmd(this.app.elements, movedEl, beforeRot, movedEl.rotation));
-        this.app._autosave();
+        this.app.autosave();
       }
       return;
     }
@@ -244,7 +244,7 @@ export class InteractionHandler {
       const resized = wasResizing && ((after['width'] !== before['width']) || (after['height'] !== before['height']));
       if (moved || resized) {
         this.app.historyManager.record(new MoveResizeCmd(this.app.elements, movedEl, before, after));
-        this.app._autosave();
+        this.app.autosave();
       }
     }
   }

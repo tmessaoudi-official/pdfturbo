@@ -303,7 +303,7 @@ export class TextEditHandler {
       new AddElementCmd(app.elements, cover),
       new AddElementCmd(app.elements, textEl),
     ]));
-    app._autosave();
+    app.autosave();
     app.setMode('select');
     app.selectElement(textEl);
 

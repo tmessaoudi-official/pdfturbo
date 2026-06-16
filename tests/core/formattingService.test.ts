@@ -43,7 +43,7 @@ function makeCtx(selectedElement: PDFElement | null = null): IFormattingContext 
     mode: 'select' as const,
     selectedElement,
     rebuildElementLayer: vi.fn(),
-    _autosave: vi.fn(),
+    autosave: vi.fn(),
     syncFormattingUIDisplay: vi.fn(),
   } satisfies IFormattingContext;
   return Object.assign(ctx, { elements, historyManager, ui });
@@ -75,12 +75,12 @@ describe('FormattingService.toggleBold', () => {
     expect(ctx.historyManager.canUndo()).toBe(true);
   });
 
-  it('calls rebuildElementLayer and _autosave', () => {
+  it('calls rebuildElementLayer and autosave', () => {
     const te = new TextElement(0, 0, 'p1');
     const ctx = makeCtx(te);
     new FormattingService(ctx).toggleBold();
     expect(ctx.rebuildElementLayer).toHaveBeenCalledOnce();
-    expect(ctx._autosave).toHaveBeenCalledOnce();
+    expect(ctx.autosave).toHaveBeenCalledOnce();
   });
 
   it('is a no-op when no element is selected', () => {

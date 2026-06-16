@@ -113,6 +113,6 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
     app._updateFormattingToolbar();
   });
   app.ui.container.addEventListener('element:autosave', () => {
-    app._autosave();
+    app.autosave();
   });
 }

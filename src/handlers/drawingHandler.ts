@@ -204,7 +204,7 @@ export class DrawingHandler {
       this._drawStart = null;
       this._drawPoints = [];
       this.app.historyManager.execute(new AddElementCmd(this.app.elements, hlEl));
-      this.app._autosave();
+      this.app.autosave();
       this.app.setMode('select');
       this.app.selectElement(hlEl);
       return;
@@ -231,7 +231,7 @@ export class DrawingHandler {
       this._drawStart = null;
       this._drawPoints = [];
       this.app.historyManager.execute(new AddElementCmd(this.app.elements, redEl));
-      this.app._autosave();
+      this.app.autosave();
       this.app.setMode('select');
       this.app.selectElement(redEl);
       return;
@@ -252,7 +252,7 @@ export class DrawingHandler {
 
     if (shape) {
       this.app.historyManager.execute(new AddElementCmd(this.app.elements, shape));
-      this.app._autosave();
+      this.app.autosave();
       if (this.app.mode === 'drawFreehand') {
         this.app.selectedElement = null;
         this.app.rebuildElementLayer();

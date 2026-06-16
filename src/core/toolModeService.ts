@@ -33,7 +33,7 @@ const MODE_HINT_KEYS: Partial<Record<ToolMode, string>> = {
 
 const PLACEMENT_MODES: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature', 'addCode'];
 
-export class ToolModeManager {
+export class ToolModeService {
   constructor(private readonly _ctx: IToolModeContext) {}
 
   setMode(mode: ToolMode): void {

@@ -7,7 +7,7 @@ export interface IPageNavigationContext {
   selectElement(el: PDFElement | null): void;
   updatePageInfo(): void;
   rebuildElementLayer(): void;
-  _autosave(): void;
+  autosave(): void;
 }
 
 export class PageNavigationController {
@@ -25,7 +25,7 @@ export class PageNavigationController {
       this._ctx.selectElement(null);
       this._ctx.updatePageInfo();
       this._ctx.rebuildElementLayer();
-      this._ctx._autosave();
+      this._ctx.autosave();
     } finally {
       this._pageUpdatePending = false;
     }

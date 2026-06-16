@@ -51,7 +51,7 @@ export interface IAppContext {
   renderInkLayer(): void;
   renderInkLayerWithLive(points: Array<{ x: number; y: number }>, type: 'ink' | 'erase'): void;
   applyZoom(newScale: number): Promise<void>;
-  _autosave(): void;
+  autosave(): void;
   _commitPlacement(mode: 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x: number, y: number, w: number, h: number): void;
   /** Create a new editable text box centered at the click point (unified text mode). */
   addTextAtPosition(e: MouseEvent): void;

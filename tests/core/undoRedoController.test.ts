@@ -27,7 +27,7 @@ function makeCtx(): IUndoRedoContext & {
     updateActiveThumbnail: vi.fn(),
     updatePageInfo: vi.fn(),
     updateFormattingToolbar: vi.fn(),
-    _autosave: vi.fn(),
+    autosave: vi.fn(),
   } satisfies IUndoRedoContext;
   return Object.assign(ctx, { elements, historyManager });
 }
@@ -72,7 +72,7 @@ describe('UndoRedoController.handleTextInput', () => {
     vi.useRealTimers();
   });
 
-  it('calls _autosave after the debounce fires', () => {
+  it('calls autosave after the debounce fires', () => {
     vi.useFakeTimers();
     const te = new TextElement(0, 0, 'p1');
     te.text = 'a';
@@ -81,7 +81,7 @@ describe('UndoRedoController.handleTextInput', () => {
     const ctrl = new UndoRedoController(ctx);
     ctrl.handleTextInput(te, { value: 'b' } as HTMLInputElement);
     vi.advanceTimersByTime(500);
-    expect(ctx._autosave).toHaveBeenCalledOnce();
+    expect(ctx.autosave).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
 
@@ -156,13 +156,13 @@ describe('UndoRedoController.undo', () => {
     expect(ctx.updateFormattingToolbar).toHaveBeenCalled();
   });
 
-  it('calls _autosave after undo', () => {
+  it('calls autosave after undo', () => {
     const ctx = makeCtx();
     const te = new TextElement(0, 0, 'p1');
     ctx.elements.push(te);
     ctx.historyManager.record(new TextEditCmd(ctx.elements, te.id, 'a', 'b'));
     new UndoRedoController(ctx).undo();
-    expect(ctx._autosave).toHaveBeenCalled();
+    expect(ctx.autosave).toHaveBeenCalled();
   });
 
   it('cancels a pending text-edit debounce before executing undo', () => {
@@ -175,10 +175,10 @@ describe('UndoRedoController.undo', () => {
     const ctrl = new UndoRedoController(ctx);
     ctrl.handleTextInput(te, { value: 'typed' } as HTMLInputElement);
     ctrl.undo(); // must cancel the pending timer
-    const autosaveCalls = (ctx._autosave as ReturnType<typeof vi.fn>).mock.calls.length;
+    const autosaveCalls = (ctx.autosave as ReturnType<typeof vi.fn>).mock.calls.length;
     vi.advanceTimersByTime(500);
-    // No additional _autosave call from the cancelled debounce
-    expect(ctx._autosave).toHaveBeenCalledTimes(autosaveCalls);
+    // No additional autosave call from the cancelled debounce
+    expect(ctx.autosave).toHaveBeenCalledTimes(autosaveCalls);
     vi.useRealTimers();
   });
 });
@@ -203,7 +203,7 @@ describe('UndoRedoController.redo', () => {
     expect(ctx.setSelectedElement).toHaveBeenCalledWith(null);
   });
 
-  it('calls updateFormattingToolbar and _autosave after redo', () => {
+  it('calls updateFormattingToolbar and autosave after redo', () => {
     const ctx = makeCtx();
     const te = new TextElement(0, 0, 'p1');
     ctx.elements.push(te);
@@ -211,7 +211,7 @@ describe('UndoRedoController.redo', () => {
     ctx.historyManager.undo();
     new UndoRedoController(ctx).redo();
     expect(ctx.updateFormattingToolbar).toHaveBeenCalled();
-    expect(ctx._autosave).toHaveBeenCalled();
+    expect(ctx.autosave).toHaveBeenCalled();
   });
 
   it('cancels a pending text-edit debounce before executing redo', () => {
@@ -225,9 +225,9 @@ describe('UndoRedoController.redo', () => {
     const ctrl = new UndoRedoController(ctx);
     ctrl.handleTextInput(te, { value: 'typed' } as HTMLInputElement);
     ctrl.redo();
-    const autosaveCalls = (ctx._autosave as ReturnType<typeof vi.fn>).mock.calls.length;
+    const autosaveCalls = (ctx.autosave as ReturnType<typeof vi.fn>).mock.calls.length;
     vi.advanceTimersByTime(500);
-    expect(ctx._autosave).toHaveBeenCalledTimes(autosaveCalls);
+    expect(ctx.autosave).toHaveBeenCalledTimes(autosaveCalls);
     vi.useRealTimers();
   });
 });

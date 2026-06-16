@@ -21,7 +21,7 @@ type FakeApp = {
   historyManager: HistoryManager;
   _thumbnailPanel: undefined;
   reportError: { info: Mock; warn: Mock; error: Mock; silent: Mock };
-  _autosave: Mock;
+  autosave: Mock;
   _renderCurrentPage: Mock;
   rebuildElementLayer: Mock;
 };
@@ -35,7 +35,7 @@ function makeApp(): { app: FakeApp; src: SourcePdf } {
     historyManager: new HistoryManager(50, () => {}),
     _thumbnailPanel: undefined,
     reportError: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), silent: vi.fn() },
-    _autosave: vi.fn(),
+    autosave: vi.fn(),
     _renderCurrentPage: vi.fn().mockResolvedValue(undefined),
     rebuildElementLayer: vi.fn(),
   };

@@ -27,7 +27,7 @@ describe('highlight auto-select after draw', () => {
       ui: { redactColorInput: { value: '#000000' } },
       setMode: (m: string) => { modeLog.push(m); fakeApp.mode = m; },
       selectElement: (el: PDFElement | null) => { selectedLog.push(el); },
-      _autosave: vi.fn(),
+      autosave: vi.fn(),
       rebuildElementLayer: vi.fn(),
     };
 
@@ -42,7 +42,7 @@ describe('highlight auto-select after draw', () => {
     const hlEl = new HighlightElement(x, y, w, h, 'p1');
     // THE FIX: both setMode AND selectElement must be called
     mgr.execute(new AddElementCmd(elements, hlEl));
-    fakeApp._autosave();
+    fakeApp.autosave();
     fakeApp.setMode('select');      // must be called
     fakeApp.selectElement(hlEl);   // must be called
 
@@ -88,12 +88,12 @@ describe('redaction auto-select after draw', () => {
       selectElement: (el: PDFElement | null) => { selectedLog.push(el); },
       historyManager: mgr,
       elements,
-      _autosave: vi.fn(),
+      autosave: vi.fn(),
     };
 
     const redEl = new RedactionElement(10, 20, 100, 50, 'p1', '#000000');
     mgr.execute(new AddElementCmd(elements, redEl));
-    fakeApp._autosave();
+    fakeApp.autosave();
     fakeApp.setMode('select');
     fakeApp.selectElement(redEl);
 

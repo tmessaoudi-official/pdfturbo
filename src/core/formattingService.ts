@@ -13,7 +13,7 @@ export interface IFormattingContext {
   readonly ui: AppDOMRefs;
   readonly mode: ToolMode;
   rebuildElementLayer(): void;
-  _autosave(): void;
+  autosave(): void;
   /** Delegates to uiController.updateFormattingToolbar(selectedElement, mode). */
   syncFormattingUIDisplay(el: PDFElement | null, mode: ToolMode): void;
 }
@@ -51,7 +51,7 @@ export class FormattingService {
     te.fontFamily = value;
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { fontFamily: value }));
     this._ctx.rebuildElementLayer();
-    this._ctx._autosave();
+    this._ctx.autosave();
   }
 
   toggleBold(): void {
@@ -62,7 +62,7 @@ export class FormattingService {
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { bold: te.bold }));
     this._ctx.ui.boldBtn.classList.toggle('btn-active-fmt', te.bold);
     this._ctx.rebuildElementLayer();
-    this._ctx._autosave();
+    this._ctx.autosave();
   }
 
   toggleItalic(): void {
@@ -73,7 +73,7 @@ export class FormattingService {
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { italic: te.italic }));
     this._ctx.ui.italicBtn.classList.toggle('btn-active-fmt', te.italic);
     this._ctx.rebuildElementLayer();
-    this._ctx._autosave();
+    this._ctx.autosave();
   }
 
   setFontSize(size: number): void {
@@ -83,7 +83,7 @@ export class FormattingService {
     te.fontSize = size;
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { fontSize: size }));
     this._ctx.rebuildElementLayer();
-    this._ctx._autosave();
+    this._ctx.autosave();
   }
 
   adjustFontSize(delta: number): void {
@@ -95,7 +95,7 @@ export class FormattingService {
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { fontSize: newSize }));
     this._ctx.ui.fontSizeInput.value = String(newSize);
     this._ctx.rebuildElementLayer();
-    this._ctx._autosave();
+    this._ctx.autosave();
   }
 
   setElementColor(value: string): void {
@@ -105,11 +105,11 @@ export class FormattingService {
       te.color = value;
       this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { color: value }));
       this._ctx.rebuildElementLayer();
-      this._ctx._autosave();
+      this._ctx.autosave();
     } else if (this._ctx.selectedElement?.type === 'shape') {
       (this._ctx.selectedElement as ShapeElement).strokeColor = value;
       this._ctx.rebuildElementLayer();
-      this._ctx._autosave();
+      this._ctx.autosave();
     } else if (this._ctx.selectedElement?.type === 'redaction') {
       const re = this._ctx.selectedElement as RedactionElement;
       const before = { color: re.color };
@@ -117,7 +117,7 @@ export class FormattingService {
       this._ctx.ui.redactColorInput.value = value;
       this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, re, before, { color: value }));
       this._ctx.rebuildElementLayer();
-      this._ctx._autosave();
+      this._ctx.autosave();
     }
   }
 
@@ -130,7 +130,7 @@ export class FormattingService {
       she.fillColor = undefined;
       this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, she, before, { fillColor: undefined }));
       this._ctx.rebuildElementLayer();
-      this._ctx._autosave();
+      this._ctx.autosave();
     }
   }
 
@@ -148,7 +148,7 @@ export class FormattingService {
       she.fillColor = value;
       this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, she, before, { fillColor: value }));
       this._ctx.rebuildElementLayer();
-      this._ctx._autosave();
+      this._ctx.autosave();
     }
   }
 
@@ -159,13 +159,13 @@ export class FormattingService {
     re.color = value;
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, re, before, { color: value }));
     this._ctx.rebuildElementLayer();
-    this._ctx._autosave();
+    this._ctx.autosave();
   }
 
   setShapeStrokeWidth(value: number): void {
     if (this._ctx.selectedElement?.type !== 'shape') return;
     (this._ctx.selectedElement as ShapeElement).strokeWidth = value;
     this._ctx.rebuildElementLayer();
-    this._ctx._autosave();
+    this._ctx.autosave();
   }
 }

@@ -122,7 +122,7 @@ export class EraserHandler {
     }
     this.app.historyManager.execute(new MacroCmd(cmds));
 
-    this.app._autosave();
+    this.app.autosave();
     this.app.rebuildElementLayer();
   }
 

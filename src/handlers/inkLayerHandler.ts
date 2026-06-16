@@ -74,7 +74,7 @@ export class InkLayerHandler {
     this.app.historyManager.execute(
       new InkStrokeCmd(this.app.inkLayer, pageId, stroke, () => this.app.renderInkLayer())
     );
-    this.app._autosave();
+    this.app.autosave();
   }
 
   handlePointerCancel(e: PointerEvent): void {

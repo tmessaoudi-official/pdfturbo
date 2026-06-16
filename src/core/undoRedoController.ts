@@ -12,7 +12,7 @@ export interface IUndoRedoContext {
   updateActiveThumbnail(): void;
   updatePageInfo(): void;
   updateFormattingToolbar(): void;
-  _autosave(): void;
+  autosave(): void;
   readonly reportError: IErrorReporter;
 }
 
@@ -39,7 +39,7 @@ export class UndoRedoController {
       if (id !== null && before !== null && before !== element.text) {
         this._ctx.historyManager.record(new TextEditCmd(this._ctx.elements, id, before, element.text));
       }
-      this._ctx._autosave();
+      this._ctx.autosave();
     }, 500);
   }
 
@@ -64,7 +64,7 @@ export class UndoRedoController {
         this._ctx.reportError.error('toast.renderFailedUndo', err);
       });
       this._ctx.updateFormattingToolbar();
-      this._ctx._autosave();
+      this._ctx.autosave();
     }
   }
 
@@ -80,7 +80,7 @@ export class UndoRedoController {
         this._ctx.reportError.error('toast.renderFailedRedo', err);
       });
       this._ctx.updateFormattingToolbar();
-      this._ctx._autosave();
+      this._ctx.autosave();
     }
   }
 }

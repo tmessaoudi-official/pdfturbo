@@ -11,7 +11,7 @@ function makeCtx(): IPageNavigationContext {
     selectElement: vi.fn(),
     updatePageInfo: vi.fn(),
     rebuildElementLayer: vi.fn(),
-    _autosave: vi.fn(),
+    autosave: vi.fn(),
   };
 }
 
@@ -52,10 +52,10 @@ describe('PageNavigationController.onPageStructureChange', () => {
     expect(ctx.rebuildElementLayer).toHaveBeenCalledOnce();
   });
 
-  it('calls _autosave', async () => {
+  it('calls autosave', async () => {
     const ctx = makeCtx();
     await new PageNavigationController(ctx).onPageStructureChange();
-    expect(ctx._autosave).toHaveBeenCalledOnce();
+    expect(ctx.autosave).toHaveBeenCalledOnce();
   });
 
   it('is a no-op when a call is already in progress', async () => {

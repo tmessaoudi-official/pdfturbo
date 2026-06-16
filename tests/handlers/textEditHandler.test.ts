@@ -92,7 +92,7 @@ function makeApp(canvas: HTMLCanvasElement, fakePage: ReturnType<typeof makeFake
     ui,
     zoomScale: 1,
     historyManager: { execute: vi.fn() },
-    _autosave: vi.fn(),
+    autosave: vi.fn(),
     setMode: vi.fn(),
     selectElement: vi.fn(),
     addTextAtPosition: vi.fn(),

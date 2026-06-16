@@ -31,7 +31,7 @@ import { bindEvents } from '../ui/eventBinder';
 import { ExportService, type IExportContext } from '../export/exportService';
 import { PageService, type IPageContext } from './pageService';
 import { AnnotationService, type IAnnotationContext } from './annotationService';
-import { ToolModeManager, type IToolModeContext } from './toolModeManager';
+import { ToolModeService, type IToolModeContext } from './toolModeService';
 import { SearchManager } from './searchManager';
 import { SessionManager } from './sessionManager';
 import { ToastQueue } from '../ui/toastQueue';
@@ -109,7 +109,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _toolbarCustomizer!: ToolbarCustomizer;
   private _pageService!: PageService;
   private _annotationService!: AnnotationService;
-  private _toolModeManager!: ToolModeManager;
+  private _toolModeService!: ToolModeService;
   private _codeModalManager!: CodeModalManager;
   private _ocrHandler!: OcrHandler;
   private _signingHandler!: SigningHandler;
@@ -185,7 +185,6 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   refreshExportPreviewIfOpen(): void { if (this._exportPreviewPanel.isOpen) this._exportPreviewPanel.show(); }
   hideEmptyState(): void { (document.getElementById('emptyState') as HTMLElement).style.display = 'none'; }
   enableFileMenuDocItems(): void { this._enableFileMenuDocItems(); }
-  autosave(): void { this._autosave(); }
   onPageStructureChange(): Promise<void> { return this._onPageStructureChange(); }
   invalidateThumbnail(pageId: string): void { this._thumbnailPanel?.invalidateThumb(pageId); }
   invalidateAllThumbnails(): void { this._thumbnailPanel?.invalidateAll(); }
@@ -305,7 +304,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._exportService = new ExportService(this);
     this._pageService = new PageService(this);
     this._annotationService = new AnnotationService(this);
-    this._toolModeManager = new ToolModeManager(this);
+    this._toolModeService = new ToolModeService(this);
     this._codeModalManager = new CodeModalManager(this);
     this._ocrHandler = new OcrHandler(this);
     this._signingHandler = new SigningHandler(this);
@@ -431,7 +430,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     const onUpdate = () => {
       this._thumbnailPanel?.invalidateThumb(pageId);
       void this._thumbnailPanel?.render();
-      this._autosave();
+      this.autosave();
     };
     const cmd = new ReplaceSourcePdfBytesCmd(src, before, after, onUpdate);
     let committed = false;
@@ -456,7 +455,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   }
 
   // ── Autosave (IndexedDB) ──────────────────────────────────────
-  _autosave() {
+  autosave() {
     this._sessionManager.schedule(() => ({
       documentModel: this.documentModel,
       elements: this.elements,
@@ -525,9 +524,9 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
 
   _cleanEmptyTextElements(): void { this._cleanupService.cleanEmptyTextElements(); }
 
-  setMode(mode: ToolMode): void { this._toolModeManager.setMode(mode); }
-  _isShapeMode(): boolean { return this._toolModeManager.isShapeMode(); }
-  isShapeMode(): boolean { return this._toolModeManager.isShapeMode(); }
+  setMode(mode: ToolMode): void { this._toolModeService.setMode(mode); }
+  _isShapeMode(): boolean { return this._toolModeService.isShapeMode(); }
+  isShapeMode(): boolean { return this._toolModeService.isShapeMode(); }
   handleTextEditClick(e: MouseEvent): void { void this._textEditHandler.handleCanvasClick(e, this); }
   consumeSkipNextClick(): boolean { return this._placementManager.consumeSkipNextClick(); }
   hasPendingImageSrc(): boolean { return this._placementManager.hasPendingImageSrc(); }
