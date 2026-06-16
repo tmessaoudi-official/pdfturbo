@@ -258,6 +258,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
   });
   app.ui.exportDocxBtn.addEventListener('click', () => void app.exportAsDocx());
   app.ui.exportMdBtn.addEventListener('click', () => void app.exportAsMarkdown());
+  app.ui.sanitizeBtn.addEventListener('click', () => void app.sanitizeAndDownload());
   app.ui.exportPreviewClose.addEventListener('click', () => app._hideExportPreview());
   app.ui.exportPreviewConfirm.addEventListener('click', () => {
     app._hideExportPreview();

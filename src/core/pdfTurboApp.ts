@@ -691,6 +691,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   downloadPageAsImage(pageIdx?: number): Promise<void> { return this._exportService.downloadPageAsImage(pageIdx); }
   exportAsDocx(): Promise<void> { return this._exportService.exportAsDocx(); }
   exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }
+  sanitizeAndDownload(): Promise<void> { return this._exportService.sanitizeAndDownload(); }
   /** Assembled (edited) document bytes — used by the e-signing flow. */
   assemblePdfBytes(): Promise<Uint8Array> { return this._exportService.assemblePdfBytes(); }
 

@@ -64,6 +64,33 @@ export class ExportService {
   }
 
   /**
+   * Sanitize the assembled (edits-baked-in) document and download a clean copy:
+   * strips /Info metadata, XMP, /OpenAction, /AA, document-level JavaScript and
+   * embedded files (see utils/pdfSanitizer). Operates on the share-ready export
+   * rather than the raw source, so the downloaded copy carries the user's edits.
+   */
+  async sanitizeAndDownload(): Promise<void> {
+    const { documentModel, reportError, progress } = this._ctx;
+    if (!documentModel.pageCount) return;
+    const _prog = progress.begin('progress.sanitizing');
+    try {
+      const assembled = await this.assemblePdfBytes();
+      const { sanitizePdf, anyRemoved } = await import('../utils/pdfSanitizer');
+      const { bytes, report } = await sanitizePdf(assembled);
+      this._downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }), this._exportBaseName() + '-sanitized.pdf');
+      if (anyRemoved(report)) {
+        reportError.info('toast.sanitized', { count: Object.values(report).filter(Boolean).length });
+      } else {
+        reportError.info('toast.sanitizeNothing');
+      }
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.sanitizeFailed', err);
+      _prog.failed();
+    }
+  }
+
+  /**
    * Return the current document — every edit, annotation, overlay, redaction,
    * form-fill and watermark baked in — as PDF bytes. Shares downloadPDF()'s
    * assembly pipeline so callers operate on the user's EDITED document, not the
