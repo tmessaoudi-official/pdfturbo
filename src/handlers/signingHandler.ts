@@ -11,18 +11,29 @@
  * 100% client-side: the .p12 bytes + passphrase only ever reach forge in memory;
  * nothing is uploaded. The cert bytes are zeroed in a finally block.
  */
-import { PdfSigner, type SignOptions } from '../signing';
+import { PdfSigner, SignError, type SignOptions } from '../signing';
+import { generateSelfSignedP12 } from '../signing/certGen';
+import { t } from '../utils/i18n';
+import type { AppDOMRefs } from '../ui/uiController';
+import type { IErrorReporter } from '../contracts/errorReporter';
 
 /**
- * Narrow role-interface the signing handler requires from the app (M2 #18).
- * Decouples it from the concrete PDFTurboApp — it only needs the assembled-bytes
- * source and the current filename. Mirrors the per-component context convention.
+ * Role-interface the signing handler requires from the app (M2 #18/#19). Decouples
+ * it from the concrete PDFTurboApp god-class — it owns the whole sign-modal flow
+ * and reaches the app only through this seam. Mirrors the per-component context
+ * convention (`ISignatureContext`).
  */
 export interface ISigningContext {
   /** Current document filename (drives the `<base>-signed.pdf` output name). */
   readonly currentFilename: string | null;
+  /** Read-only DOM handles (sign-modal fields live here). */
+  readonly ui: AppDOMRefs;
+  /** Structured error reporter (toasts). */
+  readonly reportError: IErrorReporter;
   /** Assemble the EDITED document (annotations/redactions/form-fills baked in). */
   assemblePdfBytes(): Promise<Uint8Array>;
+  /** Close the sign modal + scrub credential fields. */
+  closeSignModal(): void;
 }
 
 /** Raw values read from the sign modal. `page` is 1-based as shown in the UI. */
@@ -50,8 +61,8 @@ export interface SignFormInput {
  */
 export function buildSignOptions(form: SignFormInput): SignOptions {
   const clean = (s?: string): string | undefined => {
-    const t = (s ?? '').trim();
-    return t.length ? t : undefined;
+    const trimmed = (s ?? '').trim();
+    return trimmed.length ? trimmed : undefined;
   };
   return {
     p12: form.p12,
@@ -66,6 +77,134 @@ export function buildSignOptions(form: SignFormInput): SignOptions {
 
 export class SigningHandler {
   constructor(private readonly app: ISigningContext) {}
+
+  /**
+   * Drive the whole sign-modal flow (moved out of PDFTurboApp.signPdf — M2 #19):
+   * read the form, run cheap required-field guards, assemble the edited document
+   * ONCE and run the cert-free preflight BEFORE any certificate work (S-FLOW: a
+   * placement / already-signed failure must NOT generate a key or download an
+   * orphan .p12), resolve the PKCS#12 material from the chosen source (upload or
+   * generate-on-the-spot, downloading the generated .p12/.pem), then sign + close.
+   */
+  async runSignFlow(): Promise<void> {
+    const ui = this.app.ui;
+    ui.signError.style.display = 'none';
+    const generate = ui.signSourceGenerate.checked;
+
+    // Cheap source-specific required-field checks first (no work to undo).
+    const cn = ui.signGenCN.value.trim();
+    const genPw = ui.signGenPassword.value;
+    const certFile = ui.signCertInput.files?.[0] ?? null;
+    if (generate) {
+      if (!cn) { this._showSignError('sign.error.NO_CERTIFICATE'); return; }
+      if (!genPw) { this.app.reportError.warn('toast.passwordRequired'); return; }
+    } else if (!certFile) {
+      this._showSignError('sign.error.INVALID_P12');
+      return;
+    }
+
+    // Parse placement ONCE; reused for both the preflight and the signer form.
+    const page1 = parseInt(ui.signPage.value, 10) || 1;
+    const rect = {
+      x: parseFloat(ui.signX.value) || 0,
+      y: parseFloat(ui.signY.value) || 0,
+      width: parseFloat(ui.signW.value) || 0,
+      height: parseFloat(ui.signH.value) || 0,
+    };
+
+    // Assemble + cert-free preflight BEFORE any certificate work (S-FLOW). On a
+    // placement / already-signed (or assembly) failure: show the error and bail
+    // with the typed passwords still intact for an immediate retry.
+    let assembled: Uint8Array;
+    try {
+      assembled = await this.app.assemblePdfBytes();
+      await new PdfSigner().preflight(assembled, Math.max(0, page1 - 1), rect);
+    } catch (err) {
+      this._showSignError(`sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`);
+      return;
+    }
+
+    // Placement is valid — now resolve PKCS#12 material from the chosen source.
+    let p12: Uint8Array;
+    let passphrase: string;
+    let genName: string | undefined;
+    ui.runSignModal.disabled = true;
+    ui.signProgressRow.style.display = '';
+
+    if (generate) {
+      try {
+        const gen = await generateSelfSignedP12({
+          commonName: cn,
+          organization: ui.signGenOrg.value,
+          email: ui.signGenEmail.value,
+          country: ui.signGenCountry.value,
+          validityYears: parseInt(ui.signGenValidity.value, 10) || 1,
+        }, genPw);
+        // Download the .p12 (key + cert) and .pem (public cert) for reuse / sharing.
+        const base = cn.replace(/[^\w.-]+/g, '_') || 'certificate';
+        this._downloadBytes(gen.p12, `${base}.p12`, 'application/x-pkcs12');
+        this._downloadBytes(new TextEncoder().encode(gen.pem), `${base}.pem`, 'application/x-pem-file');
+        p12 = gen.p12; passphrase = genPw; genName = cn;
+      } catch (err) {
+        this._showSignError(`sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`);
+        ui.runSignModal.disabled = false;
+        ui.signProgressRow.style.display = 'none';
+        return;
+      }
+    } else if (certFile) {
+      p12 = new Uint8Array(await certFile.arrayBuffer());
+      passphrase = ui.signPassword.value;
+    } else {
+      // Unreachable: a missing file already returned in the early guard above.
+      ui.runSignModal.disabled = false;
+      ui.signProgressRow.style.display = 'none';
+      this._showSignError('sign.error.INVALID_P12');
+      return;
+    }
+
+    try {
+      const signedCn = await this.sign({
+        p12,
+        passphrase,
+        page: page1,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        reason: ui.signReason.value,
+        location: ui.signLocation.value,
+        name: genName ?? ui.signName.value,
+      }, assembled);
+      this.app.closeSignModal();
+      this.app.reportError.info('toast.signed', { name: signedCn ?? '' });
+    } catch (err) {
+      this._showSignError(`sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`);
+    } finally {
+      ui.runSignModal.disabled = false;
+      ui.signProgressRow.style.display = 'none';
+      // Clear only the uploaded-cert passphrase here. The generate-mode password is
+      // NOT wiped on a failed attempt (S-FLOW): wiping it made a naive retry bail at
+      // the `if (!genPw)` guard above while the stale error stayed on screen. It is
+      // scrubbed in closeSignModal() on success / modal close instead.
+      ui.signPassword.value = '';
+    }
+  }
+
+  private _showSignError(key: string): void {
+    this.app.ui.signError.textContent = t(key);
+    this.app.ui.signError.style.display = '';
+  }
+
+  /** Trigger a browser download of in-memory bytes (used for generated .p12 / .pem). */
+  private _downloadBytes(bytes: Uint8Array, filename: string, mime: string): void {
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   /**
    * Assemble the edited document, sign it with the supplied PKCS#12 material,
@@ -99,12 +238,6 @@ export class SigningHandler {
   }
 
   private _download(bytes: Uint8Array, filename: string): void {
-    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
+    this._downloadBytes(bytes, filename, 'application/pdf');
   }
 }

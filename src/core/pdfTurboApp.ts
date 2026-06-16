@@ -23,10 +23,7 @@ import { TextLayerManager } from '../utils/textLayer';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { OcrHandler, type OcrOutputMode } from '../handlers/ocrHandler';
 import { SearchableLayerError } from '../ocr/searchableTextLayer';
-import { SigningHandler, type SignFormInput } from '../handlers/signingHandler';
-import { generateSelfSignedP12 } from '../signing/certGen';
-import { SignError, PdfSigner } from '../signing';
-import { t } from '../utils/i18n';
+import { SigningHandler } from '../handlers/signingHandler';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
 
@@ -606,128 +603,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.signCertInput.value = '';
     this.ui.signGenPassword.value = '';
   }
-  async signPdf(): Promise<void> {
-    this.ui.signError.style.display = 'none';
-    const generate = this.ui.signSourceGenerate.checked;
-
-    // Cheap source-specific required-field checks first (no work to undo).
-    const cn = this.ui.signGenCN.value.trim();
-    const genPw = this.ui.signGenPassword.value;
-    const certFile = this.ui.signCertInput.files?.[0] ?? null;
-    if (generate) {
-      if (!cn) { this._showSignError('sign.error.NO_CERTIFICATE'); return; }
-      if (!genPw) { this.reportError.warn('toast.passwordRequired'); return; }
-    } else if (!certFile) {
-      this._showSignError('sign.error.INVALID_P12');
-      return;
-    }
-
-    // Parse placement ONCE; reused for both the preflight and the signer form.
-    const page1 = parseInt(this.ui.signPage.value, 10) || 1;
-    const rect = {
-      x: parseFloat(this.ui.signX.value) || 0,
-      y: parseFloat(this.ui.signY.value) || 0,
-      width: parseFloat(this.ui.signW.value) || 0,
-      height: parseFloat(this.ui.signH.value) || 0,
-    };
-
-    // Assemble the edited document ONCE, then run the cert-free preflight BEFORE
-    // any certificate work. A placement / already-signed (or assembly) failure here
-    // must NOT generate a key or download an orphan .p12 (S-FLOW) — show the error
-    // and bail with the typed passwords still intact for an immediate retry.
-    let assembled: Uint8Array;
-    try {
-      assembled = await this.assemblePdfBytes();
-      await new PdfSigner().preflight(assembled, Math.max(0, page1 - 1), rect);
-    } catch (err) {
-      const code = err instanceof SignError ? err.code : 'SIGN_FAILED';
-      this._showSignError(`sign.error.${code}`);
-      return;
-    }
-
-    // Placement is valid — now resolve PKCS#12 material from the chosen source.
-    let p12: Uint8Array;
-    let passphrase: string;
-    let genName: string | undefined;
-    this.ui.runSignModal.disabled = true;
-    this.ui.signProgressRow.style.display = '';
-
-    if (generate) {
-      try {
-        const gen = await generateSelfSignedP12({
-          commonName: cn,
-          organization: this.ui.signGenOrg.value,
-          email: this.ui.signGenEmail.value,
-          country: this.ui.signGenCountry.value,
-          validityYears: parseInt(this.ui.signGenValidity.value, 10) || 1,
-        }, genPw);
-        // Download the .p12 (key + cert) and .pem (public cert) for reuse / sharing.
-        const base = cn.replace(/[^\w.-]+/g, '_') || 'certificate';
-        this._downloadBytes(gen.p12, `${base}.p12`, 'application/x-pkcs12');
-        this._downloadBytes(new TextEncoder().encode(gen.pem), `${base}.pem`, 'application/x-pem-file');
-        p12 = gen.p12; passphrase = genPw; genName = cn;
-      } catch (err) {
-        const code = err instanceof SignError ? err.code : 'SIGN_FAILED';
-        this._showSignError(`sign.error.${code}`);
-        this.ui.runSignModal.disabled = false;
-        this.ui.signProgressRow.style.display = 'none';
-        return;
-      }
-    } else if (certFile) {
-      p12 = new Uint8Array(await certFile.arrayBuffer());
-      passphrase = this.ui.signPassword.value;
-    } else {
-      // Unreachable: a missing file already returned in the early guard above.
-      this.ui.runSignModal.disabled = false;
-      this.ui.signProgressRow.style.display = 'none';
-      this._showSignError('sign.error.INVALID_P12');
-      return;
-    }
-
-    try {
-      const form: SignFormInput = {
-        p12,
-        passphrase,
-        page: page1,
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        reason: this.ui.signReason.value,
-        location: this.ui.signLocation.value,
-        name: genName ?? this.ui.signName.value,
-      };
-      const signedCn = await this._signingHandler.sign(form, assembled);
-      this.closeSignModal();
-      this.reportError.info('toast.signed', { name: signedCn ?? '' });
-    } catch (err) {
-      const code = err instanceof SignError ? err.code : 'SIGN_FAILED';
-      this._showSignError(`sign.error.${code}`);
-    } finally {
-      this.ui.runSignModal.disabled = false;
-      this.ui.signProgressRow.style.display = 'none';
-      // Clear only the uploaded-cert passphrase here. The generate-mode password is
-      // NOT wiped on a failed attempt (S-FLOW): wiping it made a naive retry bail at
-      // the `if (!genPw)` guard above while the stale error stayed on screen. It is
-      // scrubbed in closeSignModal() on success / modal close instead.
-      this.ui.signPassword.value = '';
-    }
-  }
-
-  /** Trigger a browser download of in-memory bytes (used for generated .p12 / .pem). */
-  private _downloadBytes(bytes: Uint8Array, filename: string, mime: string): void {
-    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-  private _showSignError(key: string): void {
-    this.ui.signError.textContent = t(key);
-    this.ui.signError.style.display = '';
-  }
+  /** Delegates the entire sign-modal flow to the handler (M2 #19). */
+  signPdf(): Promise<void> { return this._signingHandler.runSignFlow(); }
 
   selectElement(element: PDFElement | null) {
     if (this.selectedElement === element) { this._updateFormattingToolbar(); return; }
