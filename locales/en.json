@@ -352,6 +352,8 @@
     "pdfLoadFailed": "Failed to load PDF — {{error}}",
     "drawSignatureFirst": "Please draw a signature first",
     "imageMixedError": "Please select a PDF file or one or more images (not both)",
+    "fileTooLarge": "This file is too large to open safely",
+    "tooManyPages": "This PDF has too many pages to open safely",
     "unsupportedFields_one": "This PDF has {{count}} checkbox/dropdown field — only text fields are supported",
     "unsupportedFields_other": "This PDF has {{count}} checkbox/dropdown fields — only text fields are supported",
     "modeHint": {

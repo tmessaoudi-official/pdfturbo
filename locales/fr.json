@@ -352,6 +352,8 @@
     "pdfLoadFailed": "Échec du chargement du PDF — {{error}}",
     "drawSignatureFirst": "Veuillez d'abord dessiner une signature",
     "imageMixedError": "Veuillez sélectionner un fichier PDF ou des images (pas les deux)",
+    "fileTooLarge": "Ce fichier est trop volumineux pour être ouvert en toute sécurité",
+    "tooManyPages": "Ce PDF comporte trop de pages pour être ouvert en toute sécurité",
     "unsupportedFields_one": "Ce PDF contient {{count}} champ case/liste déroulante — seuls les champs texte sont pris en charge",
     "unsupportedFields_other": "Ce PDF contient {{count}} champs cases/listes déroulantes — seuls les champs texte sont pris en charge",
     "modeHint": {

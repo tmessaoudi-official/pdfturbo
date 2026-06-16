@@ -352,6 +352,8 @@
     "pdfLoadFailed": "فشل تحميل PDF — {{error}}",
     "drawSignatureFirst": "يرجى رسم توقيع أولاً",
     "imageMixedError": "يرجى اختيار ملف PDF أو صورة أو أكثر (ليس كليهما)",
+    "fileTooLarge": "هذا الملف كبير جدًا بحيث لا يمكن فتحه بأمان",
+    "tooManyPages": "يحتوي هذا الملف على عدد كبير جدًا من الصفحات بحيث لا يمكن فتحه بأمان",
     "unsupportedFields_one": "يحتوي هذا PDF على {{count}} حقل تحديد/قائمة — تدعم الأداة حقول النص فقط",
     "unsupportedFields_other": "يحتوي هذا PDF على {{count}} حقول تحديد/قوائم — تدعم الأداة حقول النص فقط",
     "modeHint": {

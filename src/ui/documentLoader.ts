@@ -13,6 +13,14 @@ import type { IProgressManager } from './progressManager';
 import { ElementFactory } from '../utils/elementFactory';
 import { loadState, clearState } from '../infra/storage';
 
+// Untrusted-PDF input caps — defence-in-depth against OOM/DoS from a malicious
+// or pathological file. Deliberately generous: a real document never approaches
+// these, only an abusive one does. Tunable in one place.
+/** Hard ceiling on the uploaded file size (bytes). 500 MB. */
+export const MAX_PDF_BYTES = 500 * 1024 * 1024;
+/** Hard ceiling on the page count of an opened document. */
+export const MAX_PDF_PAGES = 10_000;
+
 export interface IDocumentLoaderContext {
   // Loading state
   readonly isLoading: boolean;
@@ -280,6 +288,13 @@ export class DocumentLoader {
       return;
     }
 
+    // Untrusted-input cap #1: refuse an over-size file before reading it into memory.
+    if (file.size > MAX_PDF_BYTES) {
+      this._ctx.reportError.error('toast.fileTooLarge');
+      this._ctx.setIsLoading(false);
+      return;
+    }
+
     const loadProg = this._ctx.progress.begin('progress.loadingDocument');
     try {
       const rawBytes = new Uint8Array(await file.arrayBuffer());
@@ -291,6 +306,10 @@ export class DocumentLoader {
       let isRetry = false;
       for (;;) {
         try {
+          // NOTE (M3 #34): pdf.js v6 removed the `isEvalSupported` option and the
+          // eval-based font/PostScript-function compiler it gated — there is no
+          // `new Function()`/eval surface left to disable, and the app CSP omits
+          // 'unsafe-eval' regardless. So no eval flag is set here by design.
           const loadOpts: Record<string, unknown> = { data: rawBytes.slice(0) };
           if (openPassword) loadOpts['password'] = openPassword;
           doc = await pdfjsLib.getDocument(loadOpts).promise;
@@ -307,6 +326,16 @@ export class DocumentLoader {
           openPassword = pw;
           isRetry = true;
         }
+      }
+
+      // Untrusted-input cap #2: refuse a document claiming a pathological page
+      // count before allocating per-page model/thumbnail state. Release the worker.
+      if (doc.numPages > MAX_PDF_PAGES) {
+        (doc as { loadingTask?: { destroy?: () => void } }).loadingTask?.destroy?.();
+        loadProg.failed();
+        this._ctx.reportError.error('toast.tooManyPages');
+        this._ctx.setIsLoading(false);
+        return;
       }
 
       // Reset state for new document
