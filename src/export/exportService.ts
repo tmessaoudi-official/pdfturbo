@@ -337,9 +337,13 @@ export class ExportService {
       // Add pages in document order and draw overlays
       const totalPages = docPages.length;
       let pagesDone = 0;
+      // Bates / page numbers reflect the page's FULL-document position (not its
+      // index within a subset), so a range export still reads "page 5 of 10".
+      const docTotal = documentModel.pages.length;
       for (const docPage of docPages) {
         const pageElements = elements.filter(el => el.pageId === docPage.id);
         const hasRedaction = pageElements.some(el => el.type === 'redaction');
+        const pageNumber = documentModel.pages.indexOf(docPage) + 1;
 
         // Blank page: create fresh page at specified dimensions
         if (docPage.sourcePdfId === 'blank') {
@@ -355,18 +359,19 @@ export class ExportService {
             watermark: documentModel.watermark,
             inkLayer: this._ctx.inkLayer,
             reportError,
+            bates: documentModel.bates, pageNumber, pageCount: docTotal,
           });
         } else if (hasRedaction) {
           const srcDoc = srcDocs.get(docPage.sourcePdfId);
           if (srcDoc) {
-            await rasterizePageWithRedactions(srcDoc, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError);
+            await rasterizePageWithRedactions(srcDoc, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageNumber, docTotal);
           }
         } else {
           const key = `${docPage.sourcePdfId}:${docPage.sourcePageNum - 1}`;
           const page = copiedPages.get(key);
           if (page) {
             pdfDoc.addPage(page);
-            await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
+            await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageNumber, docTotal);
           }
         }
         onPage?.(++pagesDone, totalPages);
@@ -391,11 +396,11 @@ export class ExportService {
       const hasRedaction = pageElements.some(el => el.type === 'redaction');
 
       if (hasRedaction) {
-        await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError);
+        await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageIdx + 1, documentModel.pageCount);
       } else {
         const [page] = await pdfDoc.copyPages(srcDocLib, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
-        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
+        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageIdx + 1, documentModel.pageCount);
       }
 
       await this._savePdfDocAndDownload(pdfDoc, `${this._exportBaseName()}-page${pageIdx + 1}.pdf`);
@@ -427,7 +432,7 @@ export class ExportService {
       pdfDoc.addPage(page);
 
       const pageElements = elements.filter(el => el.pageId === docPage.id);
-      await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts });
+      await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, idx + 1, documentModel.pageCount);
 
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
       const renderDoc  = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
@@ -541,6 +546,8 @@ export class ExportService {
     docPage: BuildPageCtx['docPage'],
     pageElements: BuildPageCtx['elements'],
     pdfLib: BuildPageCtx['pdfLib'],
+    pageNumber?: number,
+    pageCount?: number,
   ): Promise<void> {
     await buildPageOverlays({
       pdfDoc, page, docPage,
@@ -551,6 +558,7 @@ export class ExportService {
       watermark: this._ctx.documentModel.watermark,
       inkLayer: this._ctx.inkLayer,
       reportError: this._ctx.reportError,
+      bates: this._ctx.documentModel.bates, pageNumber, pageCount,
     });
   }
 

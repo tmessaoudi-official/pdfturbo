@@ -15,6 +15,7 @@ import type { DocumentPage, WatermarkSettings } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
 import type { PdfLibOps, PdfLibDrawOps } from '../utils/pdfLibTypes';
+import { batesStampText, batesPosition, type BatesSettings } from './batesStamp';
 
 // ── Shared context for page overlay assembly ─────────────────────────────────
 
@@ -29,6 +30,12 @@ export interface BuildPageCtx {
   watermark: WatermarkSettings;
   inkLayer: InkLayer;
   reportError: IErrorReporter;
+  /** #61 Bates / page-number stamp; omitted or disabled = no stamp. */
+  bates?: BatesSettings;
+  /** 1-based full-document position of this page (for the stamp number). */
+  pageNumber?: number;
+  /** Full-document page count (for "N / total"). */
+  pageCount?: number;
 }
 
 // ── Pure geometry helper ─────────────────────────────────────────────────────
@@ -128,6 +135,36 @@ export async function drawWatermarkOnPage(
   }
 }
 
+// ── Bates / page-number helper ───────────────────────────────────────────────
+
+export async function drawBatesOnPage(
+  page: import('@cantoo/pdf-lib').PDFPage,
+  W_orig: number,
+  H_orig: number,
+  cropOriginX: number,
+  cropOriginY: number,
+  bates: BatesSettings,
+  pageNumber: number,
+  pageCount: number,
+  libs: PdfLibDrawOps,
+): Promise<void> {
+  const { rgb, pdfDoc, StandardFonts } = libs;
+  const text = batesStampText(bates, pageNumber, pageCount);
+  if (!text) return;
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const textWidth = font.widthOfTextAtSize(text, bates.fontSize);
+  const MARGIN = 24;
+  const { x, y } = batesPosition(bates.position, W_orig, H_orig, textWidth, bates.fontSize, MARGIN);
+  const col = hexToRgbValues(bates.color);
+  page.drawText(text, {
+    x: cropOriginX + x,
+    y: cropOriginY + y,
+    size: bates.fontSize,
+    font,
+    color: rgb(col.r, col.g, col.b),
+  });
+}
+
 // ── Core pipeline: apply overlays to a pdf-lib page ─────────────────────────
 
 export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
@@ -164,6 +201,12 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
     const inkImg = await pdfDoc.embedPng(dataUrlToUint8Array(inkDataUrl));
     page.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });
   }
+
+  // #61 Bates / page number — drawn last so it sits above content; uses the
+  // page's full-document position so single-page / range exports stay correct.
+  if (ctx.bates?.enabled && ctx.pageNumber !== undefined && ctx.pageCount !== undefined) {
+    await drawBatesOnPage(page, W_orig, H_orig, cropOriginX, cropOriginY, ctx.bates, ctx.pageNumber, ctx.pageCount, { rgb, degrees, pdfDoc, StandardFonts });
+  }
 }
 
 // ── Redaction rasterizer ─────────────────────────────────────────────────────
@@ -177,6 +220,9 @@ export async function rasterizePageWithRedactions(
   watermark: WatermarkSettings,
   inkLayer: InkLayer,
   reportError: IErrorReporter,
+  bates?: BatesSettings,
+  pageNumber?: number,
+  pageCount?: number,
 ): Promise<void> {
   const { PDFDocument, rgb, StandardFonts } = await import('@cantoo/pdf-lib');
   void rgb; void StandardFonts;
@@ -190,6 +236,7 @@ export async function rasterizePageWithRedactions(
 
   // Exclude TextElement overlays from the pdf-lib pass — they are drawn on canvas AFTER
   // redaction fillRects so they appear on top of redactions in the final raster image.
+  // The Bates stamp rides this same pre-raster pass, so it's baked into the flattened image.
   const nonRedactionNonText = elements.filter(e => e.type !== 'redaction' && e.type !== 'text');
   await buildPageOverlays({
     pdfDoc: tempDoc,
@@ -202,6 +249,7 @@ export async function rasterizePageWithRedactions(
     watermark,
     inkLayer,
     reportError,
+    bates, pageNumber, pageCount,
   });
 
   const totalRot = ((srcRot + userRot) % 360 + 360) % 360;

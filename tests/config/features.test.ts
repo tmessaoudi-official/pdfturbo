@@ -22,6 +22,7 @@ describe('feature flags (#28)', () => {
     expect(isEnabled('eSign')).toBe(true);
     expect(isEnabled('flatten')).toBe(true);
     expect(isEnabled('xfdf')).toBe(true);
+    expect(isEnabled('bates')).toBe(true);
   });
 
   it('an env var of false/0/off disables the feature (the deploy kill-switch)', () => {
@@ -35,6 +36,8 @@ describe('feature flags (#28)', () => {
     expect(isEnabled('flatten')).toBe(false);
     vi.stubEnv('VITE_FEATURE_XFDF', 'false');
     expect(isEnabled('xfdf')).toBe(false);
+    vi.stubEnv('VITE_FEATURE_BATES', 'off');
+    expect(isEnabled('bates')).toBe(false);
   });
 
   it('a non-disabling env value leaves the feature ON', () => {

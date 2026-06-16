@@ -1,4 +1,5 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { BatesSettings } from '../export/batesStamp';
 
 export interface SourcePdf {
   id: string;
@@ -45,6 +46,17 @@ export class DocumentModel {
     angle: -45,
     color: '#888888',
     fontSize: 60,
+  };
+  // #61 — Bates / page numbering. Disabled by default so export stays byte-identical.
+  bates: BatesSettings = {
+    enabled: false,
+    mode: 'page',
+    prefix: '',
+    startNumber: 1,
+    digits: 6,
+    position: 'br',
+    fontSize: 10,
+    color: '#555555',
   };
 
   get currentPage(): DocumentPage | null {

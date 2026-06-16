@@ -10,7 +10,7 @@
  * replaces each literal `import.meta.env.VITE_FEATURE_*` at build.
  */
 
-export type FeatureKey = 'trueEdit' | 'searchableOcr' | 'eSign' | 'flatten' | 'xfdf';
+export type FeatureKey = 'trueEdit' | 'searchableOcr' | 'eSign' | 'flatten' | 'xfdf' | 'bates';
 
 const OFF = new Set(['false', '0', 'off', 'no']);
 const ON = new Set(['true', '1', 'on', 'yes']);
@@ -22,6 +22,7 @@ function envFlag(feature: FeatureKey): string | undefined {
     case 'eSign': return import.meta.env.VITE_FEATURE_E_SIGN;
     case 'flatten': return import.meta.env.VITE_FEATURE_FLATTEN;
     case 'xfdf': return import.meta.env.VITE_FEATURE_XFDF;
+    case 'bates': return import.meta.env.VITE_FEATURE_BATES;
   }
 }
 
