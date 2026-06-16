@@ -1,0 +1,13 @@
+/*
+ * App styles — extracted from the former inline <style> block in index.html.
+ * Split into contiguous source-order ranges; @import order below MUST match the
+ * original top-to-bottom order so the cascade (esp. the responsive @media
+ * overrides) is byte-for-byte identical. Names are approximate to each range's
+ * dominant content.
+ */
+@import './base.css';        /* reset, body, skip-nav, language switcher, toolbar, buttons */
+@import './overlay.css';     /* progress overlay + spinner + determinate bar, on-canvas element controls, signature canvas */
+@import './responsive.css';  /* mobile @media block (overrides above — keep after base) */
+@import './editor.css';      /* canvas cursors, element/selection layer, image element */
+@import './pdf-layers.css';  /* find bar, pdf text layer, annotation links, thumbnail panel */
+@import './modals.css';      /* watermark modal, code/barcode modal, footer, cookie banner */

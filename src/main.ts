@@ -1,4 +1,5 @@
 // Main entry point
+import './styles/index.css'; // app styles (extracted from index.html's inline <style>)
 import './utils/polyfills';
 import { PDFTurboApp } from './core/pdfTurboApp';
 import { LogBuffer } from './core/logBuffer';

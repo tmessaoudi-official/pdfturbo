@@ -1,0 +1,197 @@
+/* ── Find bar ────────────────────────────────────────── */
+.find-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; flex-shrink: 0;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+.find-bar input {
+  flex: 1; max-width: 200px; height: 28px;
+  padding: 0 8px; border: 1px solid #cbd5e1;
+  border-radius: 4px; font-size: 13px; outline: none;
+}
+.find-bar input:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+.find-count { font-size: 12px; color: #64748b; min-width: 44px; text-align: center; }
+.find-hint { font-size: 10px; color: #94a3b8; margin-left: 4px; }
+.find-toggle { font-family: monospace; font-weight: 700; }
+.find-toggle.active { background: #dbeafe; border-color: #2563eb; color: #1d4ed8; }
+.search-match {
+  position: absolute;
+  background: rgba(255,220,0,0.4);
+  border: 1px solid #e5a000;
+  pointer-events: none; z-index: 3;
+}
+.search-match.search-match-active {
+  background: rgba(255,140,0,0.6);
+  border-color: #c05000;
+}
+.highlight-element { mix-blend-mode: multiply; }
+.form-field-overlay {
+  position: absolute;
+  background: rgba(255,255,255,0.75);
+  border: 1.5px solid #4a90e2;
+  border-radius: 2px;
+  font-size: 12px;
+  padding: 1px 3px;
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+  color: #1a1a1a;
+  outline: none;
+  z-index: 2;
+}
+.form-field-overlay:focus {
+  background: rgba(255,255,255,0.95);
+  border-color: #2060d0;
+  box-shadow: 0 0 0 2px rgba(66,133,244,0.3);
+  z-index: 5;
+}
+/* ── PDF text layer ─────────────────────────────────── */
+.textLayer {
+  overflow: hidden;
+  line-height: 1;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+  pointer-events: none; /* enabled in select mode via JS */
+  user-select: text;
+  -webkit-user-select: text;
+  /* pdfjs-dist v6 scale vars (pdf_viewer.css is not imported; we inline what we need) */
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  /* pdfjs-dist v6: font-size and transform driven by CSS vars set inline per-span */
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.textLayer :is(span, br)::selection {
+  background-color: rgba(0, 0, 255, 0.25);
+  color: transparent;
+}
+/* ── PDF annotation link overlay ────────────────────── */
+.annotationLayer {
+  z-index: 1;
+  pointer-events: none; /* individual links controlled by JS */
+}
+.annotationLayer .linkAnnotation {
+  pointer-events: none; /* default; enabled in select mode */
+}
+/* ── Page thumbnail panel ────────────────────────────── */
+.page-thumb-container {
+  border-top: 2px solid #dee2e6;
+  background: #f0f4f8;
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+.page-thumb-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  align-items: center;
+  padding-bottom: 2px;
+  min-height: 90px;
+}
+.page-thumb-strip::-webkit-scrollbar { height: 5px; }
+.page-thumb-strip::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 3px; }
+.page-thumb-strip::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+.thumb-item {
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 2px solid #cbd5e1;
+  border-radius: 4px;
+  background: white;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 64px;
+  height: 80px;
+}
+.thumb-item:hover { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+.thumb-item.thumb-active { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.3); }
+.thumb-item.thumb-dragging { opacity: 0.45; }
+.thumb-item.thumb-over { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.3); }
+.thumb-img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+.thumb-label {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  text-align: center; font-size: 9px; font-weight: 700;
+  color: white; background: rgba(0,0,0,0.45);
+  padding: 1px 0; pointer-events: none;
+}
+.thumb-delete {
+  position: absolute; inset-block-start: 1px; inset-inline-end: 1px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #ef4444; color: white;
+  border: none; cursor: pointer;
+  font-size: 11px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s; padding: 0;
+}
+.thumb-item:hover .thumb-delete { opacity: 1; }
+.thumb-rotate {
+  position: absolute; bottom: 14px;
+  width: 14px; height: 14px; border-radius: 3px;
+  background: rgba(0,0,0,0.55); color: white;
+  border: none; cursor: pointer;
+  font-size: 9px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s; padding: 0;
+}
+.thumb-rotate-ccw { inset-inline-start: 1px; }
+.thumb-rotate-cw  { inset-inline-start: 17px; }
+.thumb-item:hover .thumb-rotate { opacity: 1; }
+.thumb-dl {
+  position: absolute; top: 1px;
+  width: 14px; height: 14px; border-radius: 3px;
+  background: rgba(0,0,0,0.55); color: white;
+  border: none; cursor: pointer;
+  font-size: 9px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s; padding: 0;
+}
+.thumb-dl-pdf { inset-inline-start: 1px; }
+.thumb-dl-img { inset-inline-start: 17px; }
+.thumb-item:hover .thumb-dl { opacity: 1; }
+.thumb-add-btn {
+  flex-shrink: 0;
+  width: 64px; min-height: 80px;
+  border: 2px dashed #94a3b8;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-size: 11px; color: #64748b;
+  gap: 3px; transition: border-color 0.15s, color 0.15s;
+}
+.thumb-add-btn:hover { border-color: #2563eb; color: #2563eb; }
+.thumb-add-btn span:first-child { font-size: 22px; line-height: 1; }
+.thumb-add-label { font-size: 10px; font-weight: 600; }
+@media (max-width: 640px) {
+  .page-thumb-container { padding: 4px 6px; }
+  /* Extra height (64→74px) lets stacked downloads + rotate fit without collision */
+  .thumb-item { width: 50px; height: 74px; }
+  .thumb-add-btn { width: 50px; min-height: 74px; }
+  /* Rotate + delete: always visible on touch (hover never fires), larger tap area */
+  .thumb-rotate { width: 18px; height: 18px; opacity: 1; font-size: 10px; }
+  .thumb-rotate-cw { inset-inline-start: 21px; }
+  .thumb-delete { width: 20px; height: 20px; font-size: 12px; opacity: 1; }
+  /* Downloads stacked vertically at top-left — side-by-side + delete won't fit in 50px */
+  .thumb-dl { width: 18px; height: 18px; opacity: 1; font-size: 10px; }
+  .thumb-dl-pdf { inset-block-start: 1px;  inset-inline-start: 1px; }
+  .thumb-dl-img { inset-block-start: 21px; inset-inline-start: 1px; }
+}
+

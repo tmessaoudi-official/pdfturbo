@@ -1,0 +1,92 @@
+/* ── Mobile responsive ─────────────────────────────────── */
+@media (max-width: 640px) {
+  body { padding: 0; }
+  .container {
+    border-radius: 0;
+    box-shadow: none;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  .header { padding: 10px 16px; }
+  .header h1 { font-size: 16px; }
+  .toolbar { padding: 6px 8px; gap: 5px; }
+  /* 44px touch targets for all interactive toolbar elements (A2: iOS HIG /
+     WCAG 2.5.5 AAA comfortable-tap size; the toolbar scrolls so the extra
+     width is absorbed). */
+  .btn-icon {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 6px;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn { min-height: 44px; padding: 8px 10px; font-size: 13px; }
+  .btn-sm { min-height: 44px; }
+  .toolbar-color { width: 36px; height: 36px; }
+  .toolbar-number { width: 40px; padding: 4px 2px; }
+  .page-input { width: 36px; }
+  .page-total { display: none; }
+  .zoom-display { min-width: 28px; }
+  .mode-badge { font-size: 10px; padding: 3px 7px; }
+  /* Canvas container fills remaining space */
+  .canvas-container {
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
+    max-height: none;
+  }
+  /* ── Mobile toolbar reorganization ──────────────────────── */
+  /* Wrap row 1 into 2 lines so all tools are always visible   */
+  .toolbar-row1 { flex-wrap: wrap; gap: 4px 5px; overflow-x: visible; }
+  #tbg-file    { order: 1; }
+  #tbg-history { order: 2; }
+  #tbg-actions { order: 3; }
+  #modeBadge   { order: 4; }
+  /* Line-break separator forces tools to a second line */
+  #tbsep-break { order: 9; flex-basis: 100%; height: 1px; margin: 1px 0; }
+  /* Hide internal separators on mobile */
+  #tbsep-1, #tbsep-2, #tbsep-3 { display: none; }
+  /* Tools row: text/sign + all shape buttons — evenly spread */
+  #tbg-edit   { order: 10; flex: 1; justify-content: space-evenly; }
+  #tbg-shapes { order: 11; flex: 0; }
+  /* Hide first/last page on mobile to save space */
+  #firstPage, #lastPage { display: none; }
+  /* Nav group: no auto-margin on mobile (it's in the scroll row) */
+  #navGroup { margin-left: 0; }
+  /* Suppress label text on mobile — icons are enough context */
+  .toolbar-label { display: none; }
+  /* Icon-only Upload/Download on mobile so line 1 fits in one row */
+  .btn-label { display: none; }
+  /* Larger resize handle for fat-finger accuracy */
+  .resize-handle { width: 22px; height: 22px; bottom: -8px; right: -8px; }
+  /* Larger delete button */
+  .control-btn { width: 36px; height: 36px; font-size: 16px; }
+  .element-controls { top: -42px; gap: 6px; }
+  /* Toast at top — bottom is hidden by soft keyboard */
+  #toast {
+    bottom: auto;
+    top: 16px;
+    inset-inline-end: auto;
+    inset-inline-start: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  /* RTL toast centering: translateX(-50%) assumes inset-inline-start:50% — correct for both dirs */
+  /* Compact signature modal */
+  .signature-content { padding: 14px; }
+  /* Compact watermark modal */
+  .watermark-content { max-width: 100%; width: 96%; padding: 14px; }
+  /* Find bar: hide hint text, ensure input fills available space */
+  .find-bar { padding: 4px 8px; gap: 4px; }
+  .find-bar input { max-width: none; height: 32px; }
+  .find-hint { display: none; }
+  .find-count { min-width: 36px; font-size: 11px; }
+  /* Form field overlay: larger text + padding for touch */
+  .form-field-overlay { font-size: 14px; padding: 2px 4px; }
+}
+/* ── End mobile ─────────────────────────────────────────── */
+
