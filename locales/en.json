@@ -297,6 +297,7 @@
     }
   },
   "toast": {
+    "unexpectedError": "Something went wrong — your work is auto-saved. Try again or reload.",
     "watermarkEnabled": "Watermark enabled",
     "watermarkDisabled": "Watermark disabled",
     "highlightAdded": "Highlight added — Ctrl+Z to undo",

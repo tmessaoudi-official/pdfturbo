@@ -69,3 +69,32 @@ describe('ErrorReporter', () => {
     expect(typeof queue.calls[0]?.msg).toBe('string');
   });
 });
+
+describe('ErrorReporter — LogBuffer sink (#41)', () => {
+  it('records every level into the supplied log buffer (key + level, not interpolated text)', async () => {
+    const { LogBuffer } = await import('../../src/core/logBuffer');
+    const log = new LogBuffer(50);
+    const queue = makeQueue();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const reporter = new ErrorReporter(queue, log);
+
+    reporter.info('toast.copied');
+    reporter.warn('toast.ocrNoText');
+    reporter.error('toast.exportFailed', new Error('boom'));
+    reporter.silent(new Error('internal'), 'session-restore');
+
+    const e = log.entries();
+    expect(e.map(x => x.level)).toEqual(['info', 'warn', 'error', 'silent']);
+    expect(e[0]?.message).toBe('toast.copied');
+    expect(e[2]?.detail).toBe('Error: boom');
+    expect(e[3]?.message).toBe('session-restore');
+  });
+
+  it('works without a log buffer (back-compat — single-arg constructor)', () => {
+    const queue = makeQueue();
+    const reporter = new ErrorReporter(queue);
+    expect(() => reporter.info('toast.copied')).not.toThrow();
+    expect(queue.calls).toHaveLength(1);
+  });
+});

@@ -38,6 +38,7 @@ import { SearchManager } from './searchManager';
 import { SessionManager } from './sessionManager';
 import { ToastQueue } from '../ui/toastQueue';
 import { ErrorReporter, type IErrorReporter } from './errorReporter';
+import { LogBuffer, type ILogBuffer } from './logBuffer';
 import { ProgressManager, type IProgressManager } from '../ui/progressManager';
 import { ToolbarCustomizer } from '../ui/toolbarCustomizer';
 import { LocalLayoutStorage } from '../ui/layoutStorage';
@@ -97,6 +98,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _textEditHandler = new TextEditHandler();
   private _toastQueue!: ToastQueue;
   private _errorReporter!: IErrorReporter;
+  private readonly _logBuffer: ILogBuffer;
   private _progressManager!: IProgressManager;
   private _exportService!: ExportService;
   private _toolbarCustomizer!: ToolbarCustomizer;
@@ -157,6 +159,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
 
   get ui(): AppDOMRefs { return this.uiController.refs; }
   get reportError(): IErrorReporter { return this._errorReporter; }
+  get logBuffer(): ILogBuffer { return this._logBuffer; }
   get progress(): IProgressManager { return this._progressManager; }
 
   // ── IPageContext accessors ────────────────────────────────────────────────
@@ -262,14 +265,15 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.uiController.updateFormattingToolbar(el, mode);
   }
 
-  constructor() {
+  constructor(logBuffer?: ILogBuffer) {
+    this._logBuffer = logBuffer ?? new LogBuffer();
     this.documentModel = new DocumentModel();
     this.renderer = new PDFRenderer(document.getElementById('pdfCanvas') as HTMLCanvasElement);
     this.renderer.setModel(this.documentModel);
     this.elements = [];
     this.uiController = new UIController();
     this._toastQueue = new ToastQueue(document.getElementById('toast') as HTMLElement);
-    this._errorReporter = new ErrorReporter(this._toastQueue);
+    this._errorReporter = new ErrorReporter(this._toastQueue, this._logBuffer);
     this._progressManager = new ProgressManager(
       document.getElementById('progress-overlay') as HTMLElement,
       document.getElementById('progress-label') as HTMLElement,

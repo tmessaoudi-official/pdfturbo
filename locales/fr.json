@@ -297,6 +297,7 @@
     }
   },
   "toast": {
+    "unexpectedError": "Une erreur s'est produite — votre travail est enregistré automatiquement. Réessayez ou rechargez.",
     "watermarkEnabled": "Filigrane activé",
     "watermarkDisabled": "Filigrane désactivé",
     "highlightAdded": "Surlignage ajouté — Ctrl+Z pour annuler",

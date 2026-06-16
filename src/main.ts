@@ -1,8 +1,18 @@
 // Main entry point
 import './utils/polyfills';
 import { PDFTurboApp } from './core/pdfTurboApp';
+import { LogBuffer } from './core/logBuffer';
+import { installGlobalErrorBoundary } from './core/globalErrorBoundary';
 import { initI18n, changeLanguage, onLanguageChanged, t } from './utils/i18n';
 import { registerSW } from 'virtual:pwa-register';
+
+// Shared diagnostic ring buffer (M0 #41). Created before anything else so the global
+// error boundary (M0 #1) can record failures that occur during i18n/app construction,
+// before the app — and its ErrorReporter — exist. The same buffer is handed to the app
+// so reporter calls and boundary catches share one rolling history.
+const logBuffer = new LogBuffer();
+let appRef: PDFTurboApp | undefined;
+installGlobalErrorBoundary({ getReporter: () => appRef?.reportError, log: logBuffer });
 
 registerSW({
   onNeedRefresh() {
@@ -25,7 +35,8 @@ declare global {
 document.addEventListener('DOMContentLoaded', async () => {
   await initI18n();
 
-  const app = new PDFTurboApp();
+  const app = new PDFTurboApp(logBuffer);
+  appRef = app;
   if (import.meta.env.DEV) window.app = app;
 
   // Language switcher — re-render dynamic DOM on change
