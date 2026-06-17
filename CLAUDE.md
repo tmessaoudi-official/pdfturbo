@@ -300,21 +300,46 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still
     runs first for in-subset edits. Guard: `isArabicText()` (defined in `flowDoc.ts`, imported by `contentStreamEditor.ts`).
   - **Overlay rendering** (`src/export/arabicOverlay.ts`): pdf-lib `drawText` CANNOT place shaped glyphs RTL
-    (fontkit shapes logical-only; drawText paints LTR → mirrored). Fix: `font.encodeText(logical)` shapes +
-    emits 2-byte subset CIDs → `reverseCidHex` reverses the CID PAIRS for visual RTL → raw `Tj` via
-    `page.pushOperators` against **Noto Naskh Arabic** (vendored **`src/assets/fonts/NotoNaskhArabic-Regular.ttf`**,
+    (fontkit shapes logical-only; drawText paints LTR → mirrored). Fix: `font.encodeText(logical)` shapes
+    (fontkit GSUB) + emits 2-byte subset CIDs **already in VISUAL order → do NOT reverse the CID pairs** →
+    raw `Tj` via `page.pushOperators` against **Noto Naskh Arabic** (vendored **`src/assets/fonts/NotoNaskhArabic-Regular.ttf`**,
     OFL — `src/assets/fonts/OFL.txt`, lazy `?url`-fetched, embedded Type0/CID via `@pdf-lib/fontkit`; the embedded
     W-array advances glyphs). **MUST be a TTF/OTF, NEVER a `.woff`/`.woff2`** — fontkit/@cantoo-pdf-lib mis-embeds
     the WOFF1 of this font: the subset keeps only the `ا` glyph outline, every other glyph renders blank + a
     spurious 6th glyph + broken ToUnicode (`U+0002`). Root-caused live 2026-06-17 (pdf-lib's own `drawText` fails
     identically → font container, not RTL code); the prior `@fontsource/noto-naskh-arabic` woff dep is REMOVED.
     The TTF embeds cleanly (5 glyphs, full word renders, correct logical ToUnicode). Deps: `@pdf-lib/fontkit`
-    (0 vulns; single-RTL-run uses CID-pair reversal — no bidi lib needed; mixed LTR+RTL line reorder is a
-    documented ceiling). `getArabicFont` is shared by the searchable-OCR Arabic layer, so this fix covers both.
+    (0 vulns; a single RTL run needs no bidi lib — `encodeText` is already visual; mixed LTR+RTL line reorder
+    is a documented ceiling). `getArabicFont` is shared by the searchable-OCR Arabic layer, so this fix covers both.
     Browser-only (font fetch); wired in `pdfElementRenderer.ts` text branch, guarded by `isArabicText`,
     right-aligned. Guards: `tests/utils/flowDocArabic.test.ts`, `tests/export/arabicOverlay.test.ts`,
     `tests/browser/arabic-overlay.browser.test.ts` (rasterized: now asserts multi-glyph ink **width**, not just
     presence — catches the single-alef WOFF regression).
+- **Cornerstone QA 2026-06-17 — RTL text-layer selection/copy/search + multi-language DOCX**:
+  - **Text-layer selection / copy / search (RTL)**: pdf.js v6 builds the selection layer as one PER-GLYPH
+    span, visual order, PRESENTATION FORMS, no spaces. (#6 `a293639`) a `copy` listener (`textLayer.ts._onCopy`)
+    rebuilds logical, spaced, base-letter text from selected-span geometry via `reconstructLogicalText`
+    (`rtlClipboard.ts`). (#6b `6e35874`) `TextSearchHandler.search` adds a normalized fallback — on a raw miss
+    it matches the NFKC'd query against `reverseRtlText(str)` (visual→logical) + a plain NFKC fold (single
+    glyphs / Latin ligatures like ﬁ), with an item-box highlight; LTR matching is byte-unchanged. (#6c
+    `df21a26`) `alignSpanOrderToVisual` (in `textLayer.ts`, called at the end of `render`) re-appends spans in
+    visual (top, then left) order so an Arabic drag-selection highlights without holes — DOM order was
+    non-monotonic in x (measured 17/72 backward on one real-PDF line → ~45% of the band was gaps); after,
+    72/0 monotonic, gaps 114px→21px. Spans are absolutely positioned (reorder is visually invisible); copy
+    re-sorts by geometry (unaffected); the app's own search/highlight don't use pdf.js's findController. Gated
+    to RTL/Arabic-DOMINANT pages (LTR multi-column reading order preserved). Ceilings: sub-character RTL
+    highlight position is item-level; mixed LTR+RTL single-line bidi; SR reading order becomes visual L→R.
+    Guards: `tests/utils/rtlClipboard.test.ts`, `tests/handlers/textSearchHandler.test.ts` (Arabic #6b),
+    `tests/browser/arabic-selection.browser.test.ts` (#6c, real layout — jsdom can't lay out spans).
+  - **Multi-language DOCX (#2 `9cfc38a`)**: Cyrillic + CJK source text is preserved verbatim through
+    PDF→DOCX/MD/TXT — they're LTR like Latin, so they take the same reconstructPage + writer path and the only
+    script branch (`isArabicText` RTL reorder) must not fire. CONTENT is intact (verified, no prod change).
+    CJK font-FACE (a `w:eastAsia` font) is a documented ceiling: no universal CJK font name (forcing one risks
+    Han-unification mis-render), and Word's fallback renders the codepoints. Guards:
+    `tests/utils/flowDocCjkCyrillic.test.ts` (jsdom writer/reconstruct), `tests/browser/cyrillic-docx.browser.test.ts`
+    (real pdf.js extract embedded-font Cyrillic → DOCX).
+  - **Test-infra**: jsdom `testTimeout` 5s→30s (`a214076`) — node-forge RSA-2048 keygen tests flaked under
+    full-suite CPU contention; mirrors the browser config (`87180d1`).
 - **OCR (Sprint 4, 2026-06-15; CSP/engine fix 2026-06-15)**: `src/ocr/*` wraps **tesseract.js@7**
   (lazily loaded). `src/handlers/ocrHandler.ts` renders the current source page to a canvas at scale 2,
   recognizes words, and inserts them as real `TextElement`s via ONE `MacroCmd` (undoable, selectable,
