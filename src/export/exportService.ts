@@ -654,6 +654,7 @@ export class ExportService {
       const vp = page.getViewport({ scale: 1 });
       let colorMap = new Map<string, string>();
       let pageRules: RuleRect[] = [];
+      let pageVRules: RuleRect[] = [];
       const pageImages: FlowImage[] = [];
 
       if (opList) {
@@ -662,6 +663,7 @@ export class ExportService {
         const ops = walkPageOps(opList, OPS);
         colorMap = ops.colorMap;
         pageRules = ops.rules;
+        pageVRules = ops.vRules;
         if (ops.images.length > 0) {
           // Render off-screen so pdfjs-dist v6 commits all image XObjects to
           // page.objs before we read them. Without this, page.objs is empty on
@@ -681,7 +683,7 @@ export class ExportService {
         }
       }
 
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot);
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined);
       if (pageImages.length > 0) flowPage.images = pageImages;
       // Append typed overlay text after the reconstructed source text (#4).
       if (overlayParas.length > 0) flowPage.paragraphs.push(...overlayParas);

@@ -4,7 +4,7 @@
  * dynamic import so the writer chunk never bloats the initial bundle.
  */
 
-import type { FlowDoc, FlowParagraph, FlowRun, FlowImage, ListFormat } from './flowDoc';
+import type { FlowDoc, FlowParagraph, FlowRun, FlowImage, FlowTable, ListFormat } from './flowDoc';
 
 // Word-safe font mapping — when a run's real face is unknown we fall back to the
 // closest universally-available family by serif/sans/mono classification.
@@ -83,6 +83,28 @@ function resolveWordFont(run: FlowRun): string {
 
 function paragraphText(p: FlowParagraph): string {
   return p.runs.map(r => r.text).join('');
+}
+
+/**
+ * Render a detected lattice table as a GitHub-flavoured Markdown pipe table (G9).
+ * The first row is treated as the header (followed by the `--- | ---` divider);
+ * header detection proper is out of scope, so this just gives a valid GFM table.
+ * Pipes inside cell text are escaped so they don't break the column structure.
+ */
+function gridToPipeTable(grid: FlowTable['grid']): string {
+  if (!grid.rows || !grid.cols) return '';
+  const esc = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ').trim();
+  const row = (cells: string[]) => `| ${cells.map(esc).join(' | ')} |`;
+  const lines: string[] = [];
+  lines.push(row(grid.cells[0]));
+  lines.push(`| ${grid.cells[0].map(() => '---').join(' | ')} |`);
+  for (let r = 1; r < grid.cells.length; r++) lines.push(row(grid.cells[r]));
+  return lines.join('\n');
+}
+
+/** Render a detected lattice table as tab-joined rows for plain text (G9). */
+function gridToTabRows(grid: FlowTable['grid']): string {
+  return grid.cells.map(r => r.map(c => c.replace(/\s+/g, ' ').trim()).join('\t')).join('\n');
 }
 
 /** docx LineRuleType shape (subset). Avoids importing the value at module load. */
@@ -190,6 +212,9 @@ export function flowDocToText(doc: FlowDoc): string {
       else if (p.listType === 'ordered') blocks.push(`${indent}${orderedMarker(p, ordinals.get(p) ?? 1)} ${text}`);
       else blocks.push(text);
     }
+    // G9: tables append after this page's paragraphs (tab-joined rows). Interleave
+    // by reading order is DOCX-only for v1; TXT keeps it simple.
+    for (const t of page.tables ?? []) blocks.push(gridToTabRows(t.grid));
     for (const _img of page.images ?? []) blocks.push('[image]');
   }
   return blocks.filter(t => t.trim().length > 0).join('\n\n');
@@ -226,6 +251,12 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
       if (p.listType === 'ordered') { blocks.push(`${indent}${orderedMarker(p, ordinals.get(p) ?? 1)} ${body.trim()}`); continue; }
       blocks.push(p.heading > 0 ? `${'#'.repeat(p.heading)} ${body.trim()}` : body);
     }
+    // G9: detected lattice tables render as GitHub pipe tables. Appended after the
+    // page's paragraphs (DOCX gets true reading-order interleave; MD keeps simple).
+    for (const t of page.tables ?? []) {
+      const tbl = gridToPipeTable(t.grid);
+      if (tbl) blocks.push(tbl);
+    }
     // Images the DOCX path embeds — emit a data-URI image reference so an
     // image-only page isn't silently empty (MD-3).
     for (const img of page.images ?? []) {
@@ -242,7 +273,34 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun, HeadingLevel, AlignmentType,
     LevelFormat, LineRuleType, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom,
     TextWrappingType, UnderlineType,
+    Table, TableRow, TableCell, WidthType, BorderStyle,
   } = docx;
+
+  // Visible single-line border for ruled tables (G9). 4 = quarter-point units →
+  // ~0.5pt hairline; SINGLE style auto on all sides + insideH/insideV.
+  const TABLE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '000000' } as const;
+  const TABLE_BORDERS = {
+    top: TABLE_BORDER, bottom: TABLE_BORDER, left: TABLE_BORDER, right: TABLE_BORDER,
+    insideHorizontal: TABLE_BORDER, insideVertical: TABLE_BORDER,
+  };
+
+  /** Build a docx Table from a FlowTable's grid — one TableCell per cell, the
+   * cell text as a single plain Paragraph. Header detection is out of scope (G9):
+   * the first row is a normal row. Borders are visible (it's a ruled table). */
+  const mkTable = (t: FlowTable) =>
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: TABLE_BORDERS,
+      rows: t.grid.cells.map(row =>
+        new TableRow({
+          children: row.map(cell =>
+            new TableCell({
+              children: [new Paragraph({ children: [new TextRun({ text: cell })] })],
+            }),
+          ),
+        }),
+      ),
+    });
 
   // Unit conversions: 1pt = 20 twips; 1pt = 12700 EMU (914400 EMU/inch ÷ 72).
   const PT_TO_TWIP = 20;
@@ -285,8 +343,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
   }
 
   const sections = doc.pages.map(page => {
-    const textChildren = page.paragraphs
-      .filter(p => paragraphText(p).trim().length > 0)
+    const bodyParas = page.paragraphs.filter(p => paragraphText(p).trim().length > 0);
+    const textChildren = bodyParas
       .map(p => {
         const mkTextRun = (r: FlowRun) => {
           const ascii = resolveWordFont(r);
@@ -408,6 +466,25 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
         }
       : undefined;
 
+    // G9: interleave detected tables with paragraphs in reading order (top of
+    // page first → descending PDF y-up). Only when the page actually has tables;
+    // otherwise the body is exactly the paragraph list (byte-identical pre-G9).
+    // Each body paragraph carries its top-line y (bodyParas[i].y); a table carries
+    // its region-top y. Images stay last (floating-anchored by absolute position,
+    // so their order among children doesn't affect placement). A stable sort keeps
+    // adjacent equal-y items (a table flush against a paragraph) in source order.
+    let bodyChildren: (typeof textChildren[number] | ReturnType<typeof mkTable>)[];
+    if (page.tables?.length) {
+      const yOf = (p: FlowParagraph) => p.y ?? -Infinity; // y-less paragraphs sink to the end
+      const items: { y: number; order: number; node: typeof textChildren[number] | ReturnType<typeof mkTable> }[] = [];
+      textChildren.forEach((node, i) => items.push({ y: yOf(bodyParas[i]), order: i, node }));
+      page.tables.forEach((t, i) => items.push({ y: t.y, order: textChildren.length + i, node: mkTable(t) }));
+      items.sort((a, b) => (b.y - a.y) || (a.order - b.order));
+      bodyChildren = items.map(it => it.node);
+    } else {
+      bodyChildren = textChildren;
+    }
+
     return {
       properties: {
         page: {
@@ -416,7 +493,7 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
           margin,
         },
       },
-      children: [...textChildren, ...imageChildren],
+      children: [...bodyChildren, ...imageChildren],
     };
   });
 

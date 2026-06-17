@@ -13,6 +13,7 @@
  */
 
 import { redactionRectToContent } from './geometry';
+import { buildTableGrid, clusterPositions, type TableGrid, type TableTextItem } from './tableExtract';
 
 /** Shape of a pdf.js TextItem (subset we consume). */
 export interface RawTextItem {
@@ -128,6 +129,25 @@ export interface FlowParagraph {
   spaceBefore?: number;
   /** Vertical gap after this paragraph (to the next one), in PDF points. */
   spaceAfter?: number;
+  /**
+   * Top y of the paragraph's first line in PDF user space (y-up), recorded so the
+   * DOCX writer can interleave paragraphs with detected tables in reading order
+   * (top-of-page first). Optional: undefined on paragraphs built outside the
+   * page-reconstruction path (overlay text), where order falls back to insertion.
+   */
+  y?: number;
+}
+
+/**
+ * A lattice (ruled) table detected on a page: a grid bounded by visible grid
+ * lines on BOTH axes (≥2 horizontal + ≥2 vertical rules). `y` is the top edge in
+ * PDF user space (y-up) — used to interleave the table with paragraphs in reading
+ * order. Borderless tables are NOT detected (documented structural ceiling).
+ */
+export interface FlowTable {
+  grid: TableGrid;
+  /** Top edge of the table region in PDF user space (y-up). */
+  y: number;
 }
 
 export interface FlowImage {
@@ -208,6 +228,13 @@ export interface FlowPage {
   images?: FlowImage[];
   /** Text-block bounding-box margins (PDF points), derived from the main body block. */
   margins?: PageMargins;
+  /**
+   * Lattice (ruled) tables detected on this page, top-to-bottom. Present only when
+   * the page has at least one both-axes-ruled grid; absent pages keep the existing
+   * paragraph-only output byte-identical. The text consumed by these tables is
+   * excluded from {@link paragraphs} (dedup).
+   */
+  tables?: FlowTable[];
 }
 
 export interface FlowDoc {
@@ -689,6 +716,9 @@ function buildParagraph(
     heading: 0 as const,
     alignment,
     rtl: totalChars > 0 && rtlChars / totalChars > 0.5,
+    // Top line's baseline y (PDF y-up) — lets the DOCX writer interleave this
+    // paragraph with detected tables in reading order (G9).
+    y: group[0].y,
   };
 
   // Indentation (only meaningful for left/justify blocks). blockLeft is the
@@ -815,6 +845,87 @@ function reconstructColumn(
   return mergeListContinuations(paras, paraGeom);
 }
 
+// Same clustering tolerance buildTableGrid uses for row/col bounds (sub-point
+// jitter + multi-segment grid lines collapse into one boundary).
+const TABLE_TOL = 3;
+
+/** A table's axis-aligned region bbox in PDF user space (y-up). */
+interface TableRegion {
+  left: number;
+  right: number;
+  bottom: number;
+  top: number;
+}
+
+/**
+ * Detect lattice tables and return each with its region bbox (internal — the
+ * bbox drives dedup in reconstructPage). See {@link detectLatticeTables} for the
+ * detection contract.
+ */
+function _detectLatticeRegions(
+  items: TableTextItem[],
+  hRules: RuleRect[],
+  vRules: RuleRect[],
+): { table: FlowTable; region: TableRegion }[] {
+  const rowBounds = clusterPositions(hRules.map(r => r.y + r.height / 2), TABLE_TOL);
+  const colBounds = clusterPositions(vRules.map(r => r.x + r.width / 2), TABLE_TOL);
+  if (rowBounds.length < 2 || colBounds.length < 2) return [];
+
+  // Region bbox from the clustered boundary extents (PDF y-up).
+  const region: TableRegion = {
+    top: rowBounds[rowBounds.length - 1],
+    bottom: rowBounds[0],
+    left: colBounds[0],
+    right: colBounds[colBounds.length - 1],
+  };
+
+  // Feed only the in-region text items so cell assignment ignores body text that
+  // happens to share a band but sits outside the table's horizontal extent.
+  const inRegion = items.filter(it => _itemInRegion(it, region));
+  const grid = buildTableGrid(hRules, vRules, inRegion, TABLE_TOL);
+  if (!grid) return [];
+  // Reject a phantom grid drawn over empty space (no cell carries any text).
+  const hasText = grid.cells.some(row => row.some(c => c.trim().length > 0));
+  if (!hasText) return [];
+
+  return [{ table: { grid, y: region.top }, region }];
+}
+
+/**
+ * Detect lattice (ruled) tables on a page from its horizontal + vertical grid
+ * rules and the positioned text items, all in PDF user space (y-up). Pure →
+ * jsdom-testable.
+ *
+ * A table needs visible grid lines on BOTH axes: at least 2 clustered horizontal
+ * rule positions (→ ≥1 row band) AND 2 clustered vertical rule positions (→ ≥1
+ * column band). The region bbox is the extent of those clustered boundaries; the
+ * grid is built by {@link buildTableGrid} from the rules + the text items whose
+ * baseline origin falls inside the bbox.
+ *
+ * v1 scope is ONE table region per page — the global rule extent (matching
+ * buildTableGrid's single-grid contract and the CSV path). Multiple disjoint
+ * lattice tables on one page collapse into one grid (a documented partial, still
+ * strictly better than today's zero-table output). Borderless tables are NOT
+ * detected (no vertical rules → []). Returns [] when no both-axes grid is found
+ * or the grid has no non-empty cell (a stray rule pair over empty space).
+ *
+ * `_pageHeight` is accepted for caller symmetry / future multi-region work but is
+ * not needed by the current single-region detection (all inputs are y-up).
+ */
+export function detectLatticeTables(
+  items: TableTextItem[],
+  hRules: RuleRect[],
+  vRules: RuleRect[],
+  _pageHeight: number,
+): FlowTable[] {
+  return _detectLatticeRegions(items, hRules, vRules).map(r => r.table);
+}
+
+/** True when a text item's baseline origin falls inside a table region (y-up). */
+function _itemInRegion(it: { x: number; y: number }, r: TableRegion): boolean {
+  return it.x >= r.left && it.x <= r.right && it.y >= r.bottom && it.y <= r.top;
+}
+
 /**
  * Normalize a pdf.js fill-color operator's args to an uppercase 6-hex color
  * string (no leading '#'), or `null` if it can't be resolved (e.g. a pattern
@@ -884,6 +995,11 @@ export function fillOpToHex(
  * @param redactions  Optional redaction rectangles (editor space, top-left origin).
  *                  Any source text item intersecting a rectangle is dropped so redacted
  *                  text never leaks into the DOCX/MD/TXT flow export.
+ * @param vRules    Optional thin VERTICAL grid rules (PDF user space, y-up). When
+ *                  present alongside `rules` (horizontal), a both-axes-ruled region
+ *                  is detected as a lattice table (G9) — its text is removed from the
+ *                  reconstructed paragraphs (dedup) and emitted on `page.tables`.
+ *                  Omitted (the default) → no table detection, output unchanged.
  */
 export function reconstructPage(
   items: RawTextItem[],
@@ -894,7 +1010,8 @@ export function reconstructPage(
   redactions?: RedactionRect[],
   links?: FlowLinkRect[],
   rules?: RuleRect[],
-  pageRotation = 0
+  pageRotation = 0,
+  vRules?: RuleRect[]
 ): FlowPage {
   // Redaction rects arrive in editor DISPLAYED space; text items are reported in
   // UNROTATED content space. Un-rotate the rects once so the intersection test in
@@ -936,23 +1053,36 @@ export function reconstructPage(
     words.push({ text: it.str, x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl, underline, strikethrough });
   }
 
-  const split = detectColumnSplit(words, pageWidth);
+  // G9: lattice-table detection. Only when BOTH axes carry grid rules. The text
+  // consumed by a detected table is removed from the words fed to paragraph
+  // reconstruction (dedup), so it appears once — inside the table — never also as
+  // a stray paragraph. No vRules (or no both-axes grid) → regions is empty and
+  // every downstream step is byte-identical to the pre-G9 path.
+  const tableInput: TableTextItem[] = words.map(w => ({ x: w.x, y: w.y, text: w.text }));
+  const detected = rules?.length && vRules?.length
+    ? _detectLatticeRegions(tableInput, rules, vRules)
+    : [];
+  const regions = detected.map(d => d.region);
+  const flowWords = regions.length ? words.filter(w => !regions.some(r => _itemInRegion(w, r))) : words;
+
+  const split = detectColumnSplit(flowWords, pageWidth);
   let paragraphs: FlowParagraph[];
   if (split !== null) {
     const mid = split;
-    const leftWords  = words.filter(w => w.x + w.width / 2 < mid);
-    const rightWords = words.filter(w => w.x + w.width / 2 >= mid);
+    const leftWords  = flowWords.filter(w => w.x + w.width / 2 < mid);
+    const rightWords = flowWords.filter(w => w.x + w.width / 2 >= mid);
     paragraphs = [
       ...reconstructColumn(leftWords, fonts, pageWidth),
       ...reconstructColumn(rightWords, fonts, pageWidth),
     ];
   } else {
-    paragraphs = reconstructColumn(words, fonts, pageWidth);
+    paragraphs = reconstructColumn(flowWords, fonts, pageWidth);
   }
 
-  const margins = computeMargins(words, pageWidth, pageHeight);
+  const margins = computeMargins(flowWords, pageWidth, pageHeight);
   const page: FlowPage = { width: pageWidth, height: pageHeight, paragraphs };
   if (margins) page.margins = margins;
+  if (detected.length) page.tables = detected.map(d => d.table);
   return page;
 }
 
