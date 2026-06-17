@@ -1,5 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFPageProxy, PageViewport } from 'pdfjs-dist';
+import { isArabicText } from './flowDoc';
+import { reconstructLogicalText, type SpanGeom } from './rtlClipboard';
 
 type AnnRecord = { subtype: string; url?: string; rect: [number, number, number, number] };
 
@@ -34,6 +36,10 @@ export class TextLayerManager {
     textDiv.style.setProperty('--scale-round-y', '1px');
     this._container.appendChild(textDiv);
     this._textDiv = textDiv;
+    // #6: rewrite Arabic copies to logical, spaced, base-letter text. pdf.js builds
+    // the layer as per-glyph, visual-order, presentation-form spans with no spaces,
+    // so a native copy yields un-pasteable garbage; reconstruct from span geometry.
+    textDiv.addEventListener('copy', (e) => this._onCopy(e));
 
     const textLayer = new pdfjsLib.TextLayer({
       textContentSource: page.streamTextContent(),
@@ -51,6 +57,31 @@ export class TextLayerManager {
     if (myGen !== this._gen) return;
 
     await this._renderLinks(page, viewport, canvasOffset, myGen);
+  }
+
+  /**
+   * Copy handler (#6): for an Arabic selection, replace the clipboard with logical,
+   * spaced, base-letter text reconstructed from the selected glyph spans' geometry.
+   * Non-Arabic selections fall through to the browser's native copy (our space-from-
+   * gap heuristic must not touch correct LTR text).
+   */
+  private _onCopy(e: ClipboardEvent): void {
+    const sel = window.getSelection();
+    const raw = sel?.toString() ?? '';
+    if (!raw || !isArabicText(raw) || !this._textDiv || !sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const spans: SpanGeom[] = [];
+    this._textDiv.querySelectorAll('span').forEach((el) => {
+      const text = el.textContent ?? '';
+      if (!text || !range.intersectsNode(el)) return;
+      const r = el.getBoundingClientRect();
+      spans.push({ text, left: r.left, right: r.right, top: r.top, height: r.height });
+    });
+    const logical = reconstructLogicalText(spans);
+    if (logical && e.clipboardData) {
+      e.clipboardData.setData('text/plain', logical);
+      e.preventDefault();
+    }
   }
 
   private async _renderLinks(
