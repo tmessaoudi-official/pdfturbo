@@ -3,6 +3,7 @@ import { FlyoutManager } from '../flyoutManager';
 import { randomOwnerPassword, validateUserPassword, MIN_PASSWORD_LENGTH } from '../../export/encryption';
 import { confirmDestructive } from '../confirmDialog';
 import { bindExtractPagesModal } from './extractPagesBinder';
+import { attachDisplayModalFocusTrap } from '../../utils/displayModalFocusTrap';
 
 export function bindModalEvents(app: PDFTurboApp): void {
   // ── Signature modal ────────────────────────────────────────────
@@ -162,6 +163,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
     app._insertBlankPage();
     blankModal.style.display = 'none';
   });
+  attachDisplayModalFocusTrap(blankModal, ':scope > div');
 
   // ── Password modal ─────────────────────────────────────────────
   const pdfPwdModal = document.getElementById('pdfPasswordModal') as HTMLElement;
@@ -194,6 +196,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
       app._pendingPasswordResolve = null;
     }
   });
+  attachDisplayModalFocusTrap(pdfPwdModal, ':scope > div');
 
   // ── Lock PDF modal ─────────────────────────────────────────────
   const lockModal = document.getElementById('lockPdfModal') as HTMLElement;
@@ -228,6 +231,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
   });
   document.getElementById('lockPdfCancelBtn')?.addEventListener('click', () => { lockModal.style.display = 'none'; });
   lockModal?.addEventListener('click', (e) => { if (e.target === lockModal) lockModal.style.display = 'none'; });
+  attachDisplayModalFocusTrap(lockModal, ':scope > div');
 
   // ── Help / Settings ────────────────────────────────────────────
   app.ui.helpBtn.addEventListener('click', () => app._toggleHelp());

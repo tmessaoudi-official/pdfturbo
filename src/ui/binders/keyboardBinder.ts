@@ -1,5 +1,6 @@
 import type { PDFTurboApp } from '../../core/pdfTurboApp';
 import { ShapeElement } from '../../elements/shapeElement';
+import { isEnabled } from '../../config/features';
 
 /**
  * Esc-dismiss a `style.display`-toggled modal by clicking its Cancel button (so any
@@ -105,6 +106,13 @@ export function bindKeyboardEvents(app: PDFTurboApp): void {
         break;
       case 'w': case 'W':
         if (app.documentModel.pageCount) app._openWatermarkModal();
+        break;
+      case 'p': case 'P':
+        // Mirror the crop toolbar button (toolBinder); inert when the feature is off
+        // (main.ts removes the button) so the advertised `title="Crop page (P)"` works.
+        if (app.documentModel.pageCount && isEnabled('crop')) {
+          app.setMode(app.mode === 'crop' ? 'select' : 'crop');
+        }
         break;
       case '?': app._toggleHelp(); break;
       case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight':

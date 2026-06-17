@@ -141,3 +141,39 @@ describe('keyboardBinder Escape-to-close — sign/ocr + display modals (QA 2026-
     expect(app.setMode).toHaveBeenCalledWith('select'); // falls through to the default
   });
 });
+
+describe('keyboardBinder crop shortcut (P) — QA 2026-06-18 A2', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  /** Minimal host for the single-key branch (Escape path is untouched by 'p'). */
+  function cropApp(pageCount: number, mode: string) {
+    return {
+      documentModel: { pageCount },
+      mode,
+      setMode: vi.fn(),
+    } as unknown as PDFTurboApp & { setMode: ReturnType<typeof vi.fn> };
+  }
+  const pressKey = (key: string) =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+
+  it('enters crop mode on P when a page is loaded', () => {
+    const app = cropApp(1, 'select');
+    bindKeyboardEvents(app);
+    pressKey('p');
+    expect(app.setMode).toHaveBeenCalledWith('crop');
+  });
+
+  it('toggles back to select on P when already cropping', () => {
+    const app = cropApp(1, 'crop');
+    bindKeyboardEvents(app);
+    pressKey('P');
+    expect(app.setMode).toHaveBeenCalledWith('select');
+  });
+
+  it('does nothing on P when no page is loaded', () => {
+    const app = cropApp(0, 'select');
+    bindKeyboardEvents(app);
+    pressKey('p');
+    expect(app.setMode).not.toHaveBeenCalled();
+  });
+});

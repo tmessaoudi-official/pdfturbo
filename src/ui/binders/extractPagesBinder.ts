@@ -1,4 +1,5 @@
 import { parsePageRange } from '../../utils/pageRange';
+import { attachDisplayModalFocusTrap } from '../../utils/displayModalFocusTrap';
 
 /** Minimal host surface the Extract-pages modal needs (PDFTurboApp satisfies it). */
 export interface ExtractPagesHost {
@@ -34,4 +35,5 @@ export function bindExtractPagesModal(app: ExtractPagesHost): void {
   document.getElementById('extractPagesCancelBtn')?.addEventListener('click', close);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+  attachDisplayModalFocusTrap(modal, ':scope > div', app.ui.extractPagesBtn);
 }

@@ -211,7 +211,8 @@
         "CtrlF": "Rechercher dans la page",
         "CtrlNav": "Page précédente / suivante",
         "Question": "Afficher ce panneau",
-        "Q": "QR / code-barres"
+        "Q": "QR / code-barres",
+        "P": "Rogner la page"
       },
       "closeTitle": "Fermer",
       "ctrlCNote": "* Ctrl+C copie l'élément d'annotation sélectionné. Si du texte PDF est sélectionné, la copie native du navigateur prend la priorité."

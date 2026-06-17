@@ -1,6 +1,10 @@
 const FOCUSABLE = 'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export function trapFocus(container: HTMLElement, returnFocusTo?: HTMLElement): () => void {
+export function trapFocus(
+  container: HTMLElement,
+  returnFocusTo?: HTMLElement,
+  focusFirst = true,
+): () => void {
   function focusables(): HTMLElement[] {
     return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(el => {
       const s = window.getComputedStyle(el);
@@ -23,8 +27,10 @@ export function trapFocus(container: HTMLElement, returnFocusTo?: HTMLElement): 
   }
 
   container.addEventListener('keydown', onKeydown);
-  const first = focusables()[0];
-  if (first) first.focus();
+  if (focusFirst) {
+    const first = focusables()[0];
+    if (first) first.focus();
+  }
 
   return () => {
     container.removeEventListener('keydown', onKeydown);

@@ -211,7 +211,8 @@
         "CtrlF": "Find in page",
         "CtrlNav": "Previous / next page",
         "Question": "Show this panel",
-        "Q": "QR / barcode"
+        "Q": "QR / barcode",
+        "P": "Crop page"
       },
       "closeTitle": "Close",
       "ctrlCNote": "* Ctrl+C copies the selected annotation element. If PDF text is selected, the browser's native copy takes precedence instead."
