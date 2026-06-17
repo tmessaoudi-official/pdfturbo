@@ -15,6 +15,7 @@ import { buildTableGrid, gridToCsv, type TableTextItem } from '../utils/tableExt
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
 import { elementToXfdfAnnot, pageHeightPt } from './xfdfMapping';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
+import { PDFCheckBox, PDFRadioGroup, PDFDropdown, PDFOptionList, PDFTextField, type PDFForm } from '@cantoo/pdf-lib';
 import type { PDFElement } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
 import type { DocumentModel } from '../core/documentModel';
@@ -36,6 +37,54 @@ export interface IExportContext {
   cleanEmptyTextElements(): void;
   renderCurrentPage(): Promise<void>;
   rebuildElementLayer(): void;
+}
+
+// ── Form-field fill (G14) ──────────────────────────────────────────────────
+
+/**
+ * Apply one persisted form value to its AcroForm field, dispatching on the
+ * field's actual pdf-lib type (the value store is type-blind: a flat
+ * `fieldName → string` map, no schema). String encoding per type:
+ *   - text     : the raw string                               → setText
+ *   - checkbox : the field's on-value when ticked, "" untick   → check / uncheck
+ *   - radio    : the selected option's export (button) value   → select
+ *   - dropdown : the selected export value                      → select
+ *   - listbox  : selected export values joined by "\n" (multi)  → select([...])
+ *
+ * A name that does not resolve to a field (getField throws), or a field type
+ * the lib cannot fill, is a silent no-op — never throws, never drops a value
+ * onto the wrong field. Push-buttons and signatures carry no fillable value, so
+ * they fall through here (and are excluded from the interactive overlay too).
+ */
+export function applyFormFieldValue(form: PDFForm, fieldName: string, value: string): void {
+  let field;
+  try {
+    field = form.getField(fieldName);
+  } catch {
+    return; // field missing in this source
+  }
+  try {
+    if (field instanceof PDFTextField) {
+      field.setText(value);
+    } else if (field instanceof PDFCheckBox) {
+      if (value) field.check();
+      else field.uncheck();
+    } else if (field instanceof PDFRadioGroup) {
+      if (value) field.select(value);
+      else field.clear();
+    } else if (field instanceof PDFDropdown) {
+      if (value) field.select(value);
+      else field.clear();
+    } else if (field instanceof PDFOptionList) {
+      const opts = value === '' ? [] : value.split('\n');
+      if (opts.length > 0) field.select(opts);
+      else field.clear();
+    }
+    // else: push-button / signature / unknown — no fillable value.
+  } catch {
+    // A value that doesn't match the field's options (stale option, type
+    // mismatch) must not abort the whole export — skip just this field.
+  }
 }
 
 // ── ExportService ────────────────────────────────────────────────────────────
@@ -317,8 +366,10 @@ export class ExportService {
         try {
           const form = srcDoc.getForm();
           if (hasVals) {
+            // G14: dispatch on the field's real type (text / checkbox / radio /
+            // dropdown / listbox) so every persisted choice bakes in, not just text.
             for (const [fieldName, value] of Object.entries(vals)) {
-              try { form.getTextField(fieldName).setText(value); } catch { /* field missing */ }
+              applyFormFieldValue(form, fieldName, value);
             }
           }
           form.flatten();
