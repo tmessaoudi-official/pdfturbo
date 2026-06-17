@@ -93,7 +93,28 @@ export function applyFormFieldValue(form: PDFForm, fieldName: string, value: str
 // extension whichever save route the browser takes.
 const SAVE_PDF: SaveFileType = { description: 'PDF document', mime: 'application/pdf', ext: '.pdf' };
 const SAVE_PNG: SaveFileType = { description: 'PNG image', mime: 'image/png', ext: '.png' };
+const SAVE_JPG: SaveFileType = { description: 'JPEG image', mime: 'image/jpeg', ext: '.jpg' };
 const SAVE_CSV: SaveFileType = { description: 'CSV spreadsheet', mime: 'text/csv', ext: '.csv' };
+
+// ── Page-image export options (G20) ────────────────────────────────────────
+export type ImageExportFormat = 'png' | 'jpeg';
+export interface ImageExportOptions {
+  /** Render scale → resolution. 2 ≈ 144 DPI (the historic default). Clamped to [1, 6] (~72–432 DPI). */
+  scale?: number;
+  /** Output encoding. 'png' (lossless, default) or 'jpeg' (smaller). */
+  format?: ImageExportFormat;
+  /** JPEG quality, ignored for PNG. Clamped to [0.5, 1]. Default 0.92. */
+  quality?: number;
+}
+const IMG_SCALE_MIN = 1;
+const IMG_SCALE_MAX = 6;
+const IMG_QUALITY_MIN = 0.5;
+const IMG_QUALITY_MAX = 1;
+const IMG_DEFAULTS: Required<ImageExportOptions> = { scale: 2, format: 'png', quality: 0.92 };
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
 const SAVE_DOCX: SaveFileType = {
   description: 'Word document',
   mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -499,15 +520,31 @@ export class ExportService {
     }
   }
 
-  async downloadPageAsImage(pageIdx?: number): Promise<void> {
+  /**
+   * Render a page to a raster image and save it. G20: resolution + format are
+   * caller-controlled via `opts` — `scale` drives the pdf.js viewport (clamped to
+   * [1,6], ~72–432 DPI), `format` picks PNG (lossless) vs JPEG, `quality` is the
+   * JPEG encoder quality (clamped [0.5,1], ignored for PNG). A no-arg / no-opts
+   * call is byte-identical to the historic export: scale 2, PNG, `.png` name.
+   * Overlays still composite via the shared buildPageOverlays path; the save
+   * target is acquired BEFORE the async raster (#54 transient-activation).
+   */
+  async downloadPageAsImage(pageIdx?: number, opts?: ImageExportOptions): Promise<void> {
     const { documentModel, elements, reportError, progress } = this._ctx;
     const idx = pageIdx ?? documentModel.currentPageIndex;
     const docPage = documentModel.pages[idx];
     if (!docPage) return;
-    const filename = `${this._exportBaseName()}-page${idx + 1}.png`;
+    const scale  = clamp(opts?.scale ?? IMG_DEFAULTS.scale, IMG_SCALE_MIN, IMG_SCALE_MAX);
+    const format: ImageExportFormat = opts?.format ?? IMG_DEFAULTS.format;
+    const quality = clamp(opts?.quality ?? IMG_DEFAULTS.quality, IMG_QUALITY_MIN, IMG_QUALITY_MAX);
+    const type = format === 'jpeg' ? SAVE_JPG : SAVE_PNG;
+    // PNG ignores the quality arg; pass undefined so the call matches the historic
+    // single-arg toBlob (and the lossless encoder isn't handed a no-op number).
+    const blobQuality = format === 'jpeg' ? quality : undefined;
+    const filename = `${this._exportBaseName()}-page${idx + 1}${type.ext}`;
     // #54: pick the save target BEFORE the pdf-lib assembly + pdf.js raster +
     // toBlob — all async, each would outlive the click's transient activation.
-    const target = await pickSaveTarget(filename, SAVE_PNG);
+    const target = await pickSaveTarget(filename, type);
     if (target === 'cancelled') return;
     const _prog = progress.begin('progress.exportingImage');
     try {
@@ -529,8 +566,7 @@ export class ExportService {
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
       const renderDoc  = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
       const renderPage = await renderDoc.getPage(1);
-      const SCALE = 2;
-      const vp = renderPage.getViewport({ scale: SCALE });
+      const vp = renderPage.getViewport({ scale });
       const offscreen = document.createElement('canvas');
       offscreen.width  = Math.round(vp.width);
       offscreen.height = Math.round(vp.height);
@@ -542,14 +578,14 @@ export class ExportService {
         if (!blob) { reportError.error('toast.imageExportFailed'); _prog.failed(); return; }
         // Target was acquired pre-raster; write/anchor it now. Save errors must
         // settle the progress bar, so route the async save through .then/.catch.
-        this._saveOrDownload(target, blob, filename, 'image/png')
+        this._saveOrDownload(target, blob, filename, type.mime)
           .then(() => {
             if (target === 'download') reportError.info('toast.imageExported', { page: idx + 1 });
             else reportError.info('toast.pdfSaved', { name: target.name });
             _prog.done();
           })
           .catch((err) => { reportError.error('toast.imageExportFailed', err); _prog.failed(); });
-      }, 'image/png');
+      }, type.mime, blobQuality);
     } catch (err) {
       reportError.error('toast.imageExportFailed', err);
       _prog.failed();

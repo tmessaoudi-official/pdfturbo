@@ -1,6 +1,20 @@
 import type { PDFRenderer } from '../infra/pdfRenderer';
 import type { DocumentModel } from '../core/documentModel';
+import type { ImageExportOptions } from '../export/exportService';
 import { t } from '../utils/i18n';
+
+/**
+ * Image-export presets offered by the per-thumbnail 🖼 menu (G20). Each maps to
+ * the `downloadPageAsImage` options: the default PNG (scale 2 — byte-identical to
+ * the historic one-click export), a JPEG, and a high-resolution 300-DPI PNG
+ * (scale ≈ 4.17 → clamped under the engine's [1,6] ceiling). `labelKey` is an
+ * i18n key under `thumbnail.*`.
+ */
+const IMAGE_EXPORT_PRESETS: { labelKey: string; opts?: ImageExportOptions }[] = [
+  { labelKey: 'thumbnail.imgPng' },
+  { labelKey: 'thumbnail.imgJpeg', opts: { format: 'jpeg', quality: 0.92 } },
+  { labelKey: 'thumbnail.imgPngHi', opts: { format: 'png', scale: 300 / 72 } },
+];
 
 export class PageThumbnailPanel {
   private container: HTMLElement;
@@ -13,8 +27,11 @@ export class PageThumbnailPanel {
   private onRotate: (pageId: string, delta: number) => void;
   private onAddPdf: () => void;
   private onDownload: (index: number) => void;
-  private onDownloadImage: (index: number) => void;
+  private onDownloadImage: (index: number, opts?: ImageExportOptions) => void;
   private _dragSrcIndex: number | null = null;
+  // G20 — the open image-export preset menu (one at a time), so a second open or
+  // an outside click can dismiss it.
+  private _imgMenu: HTMLElement | null = null;
   private _thumbCache: Map<string, string> = new Map(); // pageId → dataURL
   // #46 — lazy rasterization: only generate a thumbnail when its item nears the
   // viewport. One shared observer; recreated/disconnected per render.
@@ -36,7 +53,7 @@ export class PageThumbnailPanel {
     onRotate: (pageId: string, delta: number) => void;
     onAddPdf: () => void;
     onDownload: (index: number) => void;
-    onDownloadImage: (index: number) => void;
+    onDownloadImage: (index: number, opts?: ImageExportOptions) => void;
   }) {
     this.container = opts.container;
     this.renderer = opts.renderer;
@@ -82,6 +99,73 @@ export class PageThumbnailPanel {
   setOverlayCompositor(fn: (index: number) => Promise<string | null>): void {
     this._overlayCompositor = fn;
   }
+
+  /**
+   * G20 — open the per-page image-export preset menu next to its 🖼 button. A
+   * lightweight inline popup (no modal): one button per IMAGE_EXPORT_PRESET, each
+   * invoking onDownloadImage with the preset's options. Reopening it on the same
+   * (or another) button first closes the previous instance; an outside click or
+   * Escape dismisses it. The menu lives on `document.body` and is positioned at
+   * the button so the narrow thumbnail strip never clips it.
+   */
+  private _openImageMenu(anchor: HTMLElement, index: number): void {
+    // Toggle: a second click on the same trigger closes the open menu.
+    if (this._imgMenu) { this._closeImageMenu(); return; }
+    const menu = document.createElement('div');
+    menu.className = 'thumb-img-menu';
+    menu.setAttribute('role', 'menu');
+    for (const preset of IMAGE_EXPORT_PRESETS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('role', 'menuitem');
+      btn.className = 'thumb-img-menu-item';
+      btn.textContent = t(preset.labelKey);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._closeImageMenu();
+        this.onDownloadImage(index, preset.opts);
+      });
+      menu.appendChild(btn);
+    }
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    // Inline-styled (no CSS-file dependency): a compact light popup at the button.
+    Object.assign(menu.style, {
+      position: 'fixed',
+      top: `${rect.bottom + 2}px`,
+      left: `${rect.left}px`,
+      zIndex: '1000',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#fff',
+      border: '1px solid #cbd5e1',
+      borderRadius: '6px',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+      padding: '4px',
+      gap: '2px',
+    } as Partial<CSSStyleDeclaration>);
+    this._imgMenu = menu;
+    // Dismiss on outside click / Escape. Registered next tick so the click that
+    // opened the menu doesn't immediately close it.
+    setTimeout(() => {
+      document.addEventListener('click', this._onImgMenuOutside, { once: true });
+      document.addEventListener('keydown', this._onImgMenuKey);
+    }, 0);
+  }
+
+  private _closeImageMenu(): void {
+    if (!this._imgMenu) return;
+    this._imgMenu.remove();
+    this._imgMenu = null;
+    document.removeEventListener('click', this._onImgMenuOutside);
+    document.removeEventListener('keydown', this._onImgMenuKey);
+  }
+
+  // Arrow-bound so they keep `this` and can be removed by reference.
+  private _onImgMenuOutside = (): void => { this._closeImageMenu(); };
+  private _onImgMenuKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this._closeImageMenu();
+  };
 
   /** Rasterize (or reuse the cached) thumbnail for one page into `img`. */
   private async _loadThumb(index: number, pageId: string, img: HTMLImageElement): Promise<void> {
@@ -169,7 +253,10 @@ export class PageThumbnailPanel {
       dlImgBtn.className = 'thumb-dl thumb-dl-img';
       dlImgBtn.textContent = '🖼';
       dlImgBtn.title = t('thumbnail.exportPageImg', { page: i + 1 });
-      dlImgBtn.addEventListener('click', (e) => { e.stopPropagation(); this.onDownloadImage(i); });
+      // G20 — open a small format/resolution preset menu instead of exporting the
+      // one fixed PNG. Picking a preset calls onDownloadImage with its options;
+      // the bare-default preset (no opts) reproduces the historic export exactly.
+      dlImgBtn.addEventListener('click', (e) => { e.stopPropagation(); this._openImageMenu(dlImgBtn, i); });
 
       item.appendChild(img);
       item.appendChild(label);

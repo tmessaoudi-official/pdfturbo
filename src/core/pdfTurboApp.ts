@@ -31,7 +31,7 @@ import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
 
 import { bindEvents } from '../ui/eventBinder';
-import { ExportService, type IExportContext } from '../export/exportService';
+import { ExportService, type IExportContext, type ImageExportOptions } from '../export/exportService';
 import { PageService, type IPageContext } from './pageService';
 import { AnnotationService, type IAnnotationContext } from './annotationService';
 import { ToolModeService, type IToolModeContext } from './toolModeService';
@@ -357,7 +357,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       onRotate: (pageId, delta) => void this._pageService.rotatePage(pageId, delta),
       onAddPdf: () => this.ui.addPdfInput.click(),
       onDownload: (index) => this.downloadPage(index),
-      onDownloadImage: (index) => this.downloadPageAsImage(index),
+      onDownloadImage: (index, opts) => this.downloadPageAsImage(index, opts),
     });
     // G17: composite overlay annotations + ink into thumbnails (returns null for
     // pages with no elements/ink → panel falls back to the source-only raster).
@@ -733,7 +733,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   downloadPage(pageIdx: number): Promise<void> { return this._exportService.downloadPage(pageIdx); }
   downloadPageRange(indices: number[]): Promise<void> { return this._exportService.downloadPageRange(indices); }
   exportTableCsv(pageIdx?: number): Promise<void> { return this._exportService.exportTableCsv(pageIdx); }
-  downloadPageAsImage(pageIdx?: number): Promise<void> { return this._exportService.downloadPageAsImage(pageIdx); }
+  downloadPageAsImage(pageIdx?: number, opts?: ImageExportOptions): Promise<void> { return this._exportService.downloadPageAsImage(pageIdx, opts); }
   exportAsDocx(): Promise<void> { return this._exportService.exportAsDocx(); }
   exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }
   sanitizeAndDownload(): Promise<void> { return this._exportService.sanitizeAndDownload(); }

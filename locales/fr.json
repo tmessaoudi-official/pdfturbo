@@ -454,7 +454,10 @@
     "rotateCcw": "Pivoter CCW",
     "rotateCw": "Pivoter CW",
     "exportPagePdf": "Exporter la page {{page}} en PDF",
-    "exportPageImg": "Exporter la page {{page}} en PNG",
+    "exportPageImg": "Exporter la page {{page}} en image",
+    "imgPng": "PNG",
+    "imgJpeg": "JPEG",
+    "imgPngHi": "PNG (300 ppp)",
     "addPages": "Ajouter PDF/Image",
     "addPagesTitle": "Ajouter des pages depuis un PDF ou une image"
   },
