@@ -34,10 +34,20 @@ const MODE_HINT_KEYS: Partial<Record<ToolMode, string>> = {
 
 const PLACEMENT_MODES: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature', 'addCode'];
 
+export interface SetModeOptions {
+  /**
+   * When true, entering `addSignature` mode does NOT (re)open the signature modal.
+   * The signature modal's own Save uses this to ARM placement mode after the pad has
+   * already been captured — re-opening the modal would clear the just-drawn pad, which
+   * was the "drawn signature resets on Save" bug (QA 2026-06-17).
+   */
+  suppressSignatureModal?: boolean;
+}
+
 export class ToolModeService {
   constructor(private readonly _ctx: IToolModeContext) {}
 
-  setMode(mode: ToolMode): void {
+  setMode(mode: ToolMode, opts?: SetModeOptions): void {
     const ctx = this._ctx;
     ctx.cancelHandlers();
     ctx.mode = mode;
@@ -45,7 +55,7 @@ export class ToolModeService {
     ctx.updateModeButtons(mode);
     ctx.updateFormattingToolbar();
     ctx.setOverlayPointerEvents(mode === 'select');
-    if (mode === 'addSignature') ctx.openSignatureModal();
+    if (mode === 'addSignature' && !opts?.suppressSignatureModal) ctx.openSignatureModal();
     if (!PLACEMENT_MODES.includes(mode)) ctx.hidePlacementGhost();
     const hintKey = MODE_HINT_KEYS[mode];
     if (hintKey) ctx.reportError.info(hintKey);

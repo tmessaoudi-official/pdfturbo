@@ -2,6 +2,7 @@ import type { AppDOMRefs } from '../ui/uiController';
 import type { SignaturePad } from '../utils/signaturePad';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import type { ToolMode } from '../types/tools';
+import type { SetModeOptions } from './toolModeService';
 import { trapFocus } from '../utils/focusTrap';
 
 export interface ISignatureContext {
@@ -10,7 +11,7 @@ export interface ISignatureContext {
   readonly reportError: IErrorReporter;
   getTrapCleanup(): (() => void) | null;
   setTrapCleanup(fn: (() => void) | null): void;
-  setMode(mode: ToolMode): void;
+  setMode(mode: ToolMode, opts?: SetModeOptions): void;
 }
 
 export class SignatureManager {
@@ -53,7 +54,9 @@ export class SignatureManager {
     this._ctx.ui.signatureModal.classList.remove('active');
     this._ctx.getTrapCleanup()?.();
     this._ctx.setTrapCleanup(null);
-    this._ctx.setMode('addSignature');
+    // Arm placement mode WITHOUT re-opening the modal — re-opening would clear the
+    // just-captured pad and make the signature appear to "reset on Save" (QA 2026-06-17).
+    this._ctx.setMode('addSignature', { suppressSignatureModal: true });
     this._ctx.ui.addSignatureBtn.classList.add('active');
   }
 }

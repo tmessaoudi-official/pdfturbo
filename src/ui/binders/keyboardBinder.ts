@@ -1,6 +1,20 @@
 import type { PDFTurboApp } from '../../core/pdfTurboApp';
 import { ShapeElement } from '../../elements/shapeElement';
 
+/**
+ * Esc-dismiss a `style.display`-toggled modal by clicking its Cancel button (so any
+ * close-time side effects — e.g. resolving the pending-password promise — run exactly
+ * as they do on a mouse click). Returns true when a visible modal was dismissed.
+ */
+function dismissDisplayModal(modalId: string, cancelBtnId: string): boolean {
+  const m = document.getElementById(modalId);
+  if (m && (m as HTMLElement).style.display !== 'none') {
+    document.getElementById(cancelBtnId)?.click();
+    return true;
+  }
+  return false;
+}
+
 export function bindKeyboardEvents(app: PDFTurboApp): void {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -11,6 +25,15 @@ export function bindKeyboardEvents(app: PDFTurboApp): void {
       if (app.ui.batesModal.classList.contains('active')) { app._closeBatesModal(); return; }
       if (app.ui.compressModal.classList.contains('active')) { app._closeCompressModal(); return; }
       if (app.ui.codeModal.classList.contains('active')) { app.closeCodeModal(); return; }
+      if (app.ui.signModal.classList.contains('active')) { app.closeSignModal(); return; }
+      if (app.ui.ocrModal.classList.contains('active')) { app.closeOcrModal(); return; }
+      // The page-op modals toggle `style.display` (not `.active`) and some carry close-time
+      // side effects (pdfPasswordModal resolves a pending-load promise with null). Reuse their
+      // existing Cancel-button logic rather than duplicating it, so Esc == clicking Cancel.
+      if (dismissDisplayModal('blankPageModal', 'blankPageCancelBtn')) return;
+      if (dismissDisplayModal('pdfPasswordModal', 'pdfPasswordCancelBtn')) return;
+      if (dismissDisplayModal('lockPdfModal', 'lockPdfCancelBtn')) return;
+      if (dismissDisplayModal('extractPagesModal', 'extractPagesCancelBtn')) return;
       if (app.ui.findBar.style.display !== 'none') { app._closeFindBar(); return; }
       app.setMode('select');
       app.selectElement(null);

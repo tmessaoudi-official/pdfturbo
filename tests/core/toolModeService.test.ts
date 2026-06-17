@@ -91,6 +91,14 @@ describe('ToolModeService.setMode', () => {
     expect(ctx.openSignatureModal).not.toHaveBeenCalled();
   });
 
+  it('does NOT open signature modal in addSignature when suppressSignatureModal is set', () => {
+    const ctx = makeCtx();
+    const mgr = new ToolModeService(ctx);
+    mgr.setMode('addSignature', { suppressSignatureModal: true });
+    expect(ctx.mode).toBe('addSignature');                 // still enters the mode
+    expect(ctx.openSignatureModal).not.toHaveBeenCalled();  // but the modal stays closed
+  });
+
   it('hides placement ghost for non-placement modes', () => {
     const ctx = makeCtx();
     const mgr = new ToolModeService(ctx);

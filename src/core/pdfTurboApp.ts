@@ -34,7 +34,7 @@ import { bindEvents } from '../ui/eventBinder';
 import { ExportService, type IExportContext, type ImageExportOptions } from '../export/exportService';
 import { PageService, type IPageContext } from './pageService';
 import { AnnotationService, type IAnnotationContext } from './annotationService';
-import { ToolModeService, type IToolModeContext } from './toolModeService';
+import { ToolModeService, type IToolModeContext, type SetModeOptions } from './toolModeService';
 import { SearchManager } from './searchManager';
 import { SessionManager } from './sessionManager';
 import { ToastQueue } from '../ui/toastQueue';
@@ -49,6 +49,7 @@ import { UndoRedoController } from './undoRedoController';
 import { PageNavigationController } from './pageNavigationController';
 import { CleanupService } from './cleanupService';
 import { PanelFocusTrapService } from './panelFocusTrapService';
+import { trapFocus } from '../utils/focusTrap';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { BatesPanel } from '../ui/batesPanel';
@@ -581,7 +582,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
 
   _cleanEmptyTextElements(): void { this._cleanupService.cleanEmptyTextElements(); }
 
-  setMode(mode: ToolMode): void { this._toolModeService.setMode(mode); }
+  setMode(mode: ToolMode, opts?: SetModeOptions): void { this._toolModeService.setMode(mode, opts); }
   _isShapeMode(): boolean { return this._toolModeService.isShapeMode(); }
   isShapeMode(): boolean { return this._toolModeService.isShapeMode(); }
   handleTextEditClick(e: MouseEvent): void { void this._textEditHandler.handleCanvasClick(e, this); }
@@ -606,8 +607,17 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.ocrProgress.value = 0;
     this.ui.runOcrModal.disabled = false;
     this.ui.ocrModal.classList.add('active');
+    this._focusTrapService.getCleanup()?.();
+    this._focusTrapService.setCleanup(trapFocus(
+      this.ui.ocrModal.querySelector('.code-modal-content') as HTMLElement,
+      this.ui.ocrBtn,
+    ));
   }
-  closeOcrModal(): void { this.ui.ocrModal.classList.remove('active'); }
+  closeOcrModal(): void {
+    this._focusTrapService.getCleanup()?.();
+    this._focusTrapService.setCleanup(null);
+    this.ui.ocrModal.classList.remove('active');
+  }
   async runOcr(): Promise<void> {
     const lang = this.ui.ocrLangSelect.value;
     const mode: OcrOutputMode = (this.ui.ocrModeSelect.value === 'visible' || !isEnabled('searchableOcr')) ? 'visible' : 'searchable';
@@ -651,8 +661,15 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.signUploadGroup.style.display = '';
     this.ui.signGenGroup.style.display = 'none';
     this.ui.signModal.classList.add('active');
+    this._focusTrapService.getCleanup()?.();
+    this._focusTrapService.setCleanup(trapFocus(
+      this.ui.signModal.querySelector('.code-modal-content') as HTMLElement,
+      this.ui.signBtn,
+    ));
   }
   closeSignModal(): void {
+    this._focusTrapService.getCleanup()?.();
+    this._focusTrapService.setCleanup(null);
     this.ui.signModal.classList.remove('active');
     // Scrub credentials from the DOM when the modal closes.
     this.ui.signPassword.value = '';

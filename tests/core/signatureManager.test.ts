@@ -45,7 +45,7 @@ describe('SignatureManager', () => {
     mgr.save();
     expect(mgr.currentSignature).toBe('data:image/png;base64,SIG');
     expect(mgr.signatureNatural).toEqual({ w: 480, h: 192 });
-    expect(ctx.setMode).toHaveBeenCalledWith('addSignature');
+    expect(ctx.setMode).toHaveBeenCalledWith('addSignature', { suppressSignatureModal: true });
     expect(addSignatureBtn.classList.contains('active')).toBe(true);
   });
 

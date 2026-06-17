@@ -8,7 +8,7 @@ function modal(active: boolean): HTMLElement {
   return d;
 }
 
-function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'watermark' | 'code' | 'bates', boolean>> = {}) {
+function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'watermark' | 'code' | 'bates' | 'sign' | 'ocr' | 'compress', boolean>> = {}) {
   const findBar = document.createElement('div');
   findBar.style.display = 'none';
   const app = {
@@ -17,23 +17,43 @@ function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'wat
       helpModal: modal(!!active.help),
       signatureModal: modal(!!active.signature),
       watermarkModal: modal(!!active.watermark),
+      compressModal: modal(!!active.compress),
       codeModal: modal(!!active.code),
       batesModal: modal(!!active.bates),
+      signModal: modal(!!active.sign),
+      ocrModal: modal(!!active.ocr),
       findBar,
     },
     _toggleSettings: vi.fn(),
     _toggleHelp: vi.fn(),
     closeSignatureModal: vi.fn(),
     _closeWatermarkModal: vi.fn(),
+    _closeCompressModal: vi.fn(),
     closeCodeModal: vi.fn(),
     _closeBatesModal: vi.fn(),
+    closeSignModal: vi.fn(),
+    closeOcrModal: vi.fn(),
     _closeFindBar: vi.fn(),
     setMode: vi.fn(),
     selectElement: vi.fn(),
     documentModel: { pageCount: 0 },
     selectedElement: null,
   };
-  return app as unknown as PDFTurboApp & { _closeBatesModal: ReturnType<typeof vi.fn>; _closeWatermarkModal: ReturnType<typeof vi.fn>; setMode: ReturnType<typeof vi.fn> };
+  return app as unknown as PDFTurboApp & Record<string, ReturnType<typeof vi.fn>>;
+}
+
+/** Build a display:flex modal with a cancel button wired to a spy + hide-on-click. */
+function displayModal(id: string, cancelId: string, open: boolean): ReturnType<typeof vi.fn> {
+  const m = document.createElement('div');
+  m.id = id;
+  m.style.display = open ? 'flex' : 'none';
+  const cancel = document.createElement('button');
+  cancel.id = cancelId;
+  const spy = vi.fn(() => { m.style.display = 'none'; });
+  cancel.addEventListener('click', spy);
+  m.appendChild(cancel);
+  document.body.appendChild(m);
+  return spy;
 }
 
 function pressEscape(): void {
@@ -57,5 +77,67 @@ describe('keyboardBinder Escape-to-close (#61b a11y)', () => {
     pressEscape();
     expect(app._closeWatermarkModal).toHaveBeenCalled();
     expect(app._closeBatesModal).not.toHaveBeenCalled();
+  });
+});
+
+describe('keyboardBinder Escape-to-close — sign/ocr + display modals (QA 2026-06-17 a11y)', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('closes the sign modal on Escape when active', () => {
+    const app = makeApp({ sign: true });
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(app.closeSignModal).toHaveBeenCalled();
+    expect(app.setMode).not.toHaveBeenCalled();
+  });
+
+  it('closes the OCR modal on Escape when active', () => {
+    const app = makeApp({ ocr: true });
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(app.closeOcrModal).toHaveBeenCalled();
+    expect(app.setMode).not.toHaveBeenCalled();
+  });
+
+  it('dismisses the blank-page modal via its Cancel button on Escape', () => {
+    const cancel = displayModal('blankPageModal', 'blankPageCancelBtn', true);
+    const app = makeApp();
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(cancel).toHaveBeenCalled();
+    expect(app.setMode).not.toHaveBeenCalled();
+  });
+
+  it('dismisses the password modal via Cancel on Escape (resolves the pending promise)', () => {
+    const cancel = displayModal('pdfPasswordModal', 'pdfPasswordCancelBtn', true);
+    const app = makeApp();
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('dismisses the lock-PDF modal via Cancel on Escape', () => {
+    const cancel = displayModal('lockPdfModal', 'lockPdfCancelBtn', true);
+    const app = makeApp();
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('dismisses the extract-pages modal via Cancel on Escape', () => {
+    const cancel = displayModal('extractPagesModal', 'extractPagesCancelBtn', true);
+    const app = makeApp();
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('does NOT dismiss a display modal that is hidden', () => {
+    const cancel = displayModal('lockPdfModal', 'lockPdfCancelBtn', false);
+    const app = makeApp();
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(app.setMode).toHaveBeenCalledWith('select'); // falls through to the default
   });
 });
