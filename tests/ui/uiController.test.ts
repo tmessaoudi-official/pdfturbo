@@ -33,7 +33,7 @@ function seedDOM(): void {
     'wmFontSize', 'wmFontSizeDisplay', 'wmOpacity', 'wmOpacityDisplay',
     'wmAngle', 'wmAngleDisplay', 'wmDensity', 'wmDensityDisplay',
     'wmPreviewCanvas', 'wmApply', 'wmCancel',
-    'pageThumbnailContainer', 'addPdfInput', 'commentBtn', 'redactBtn',
+    'pageThumbnailContainer', 'addPdfInput', 'commentBtn', 'redactBtn', 'cropBtn',
     'copyBtn', 'pasteBtn', 'donePill', 'eraserBtn',
     'previewExportBtn', 'exportDocxBtn', 'exportMdBtn',
     'exportPreviewOverlay', 'exportPreviewGhost', 'exportPreviewConfirm', 'exportPreviewClose',

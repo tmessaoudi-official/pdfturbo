@@ -8,7 +8,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
-import { transformPoint, hexToRgbValues } from '../utils/geometry';
+import { transformPoint, hexToRgbValues, contentCropToPdfCropBox } from '../utils/geometry';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentPage, WatermarkSettings } from '../core/documentModel';
@@ -179,6 +179,12 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
   const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
 
+  // #G23 crop: a user crop narrows the visible page to a sub-box. Elements + ink keep their
+  // SOURCE-box coordinates (the CropBox clips them); the watermark + Bates use the cropped
+  // "effective box" so they tile/anchor inside the crop. No crop → effBox === cropBox, so the
+  // export is byte-identical to the pre-crop path.
+  const effBox = docPage.crop ? contentCropToPdfCropBox(docPage.crop, cropBox) : cropBox;
+
   const exportErrors: string[] = [];
   for (const element of elements) {
     try {
@@ -193,7 +199,7 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   }
 
   if (watermark.enabled) {
-    await drawWatermarkOnPage(page, W_orig, H_orig, cropOriginX, cropOriginY, watermark, { rgb, degrees, pdfDoc, StandardFonts });
+    await drawWatermarkOnPage(page, effBox.width, effBox.height, effBox.x, effBox.y, watermark, { rgb, degrees, pdfDoc, StandardFonts });
   }
 
   const inkDataUrl = renderInkForExport(inkLayer, docPage.id, W_orig, H_orig, totalRot);
@@ -205,7 +211,14 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   // #61 Bates / page number — drawn last so it sits above content; uses the
   // page's full-document position so single-page / range exports stay correct.
   if (ctx.bates?.enabled && ctx.pageNumber !== undefined && ctx.pageCount !== undefined) {
-    await drawBatesOnPage(page, W_orig, H_orig, cropOriginX, cropOriginY, ctx.bates, ctx.pageNumber, ctx.pageCount, { rgb, degrees, pdfDoc, StandardFonts });
+    await drawBatesOnPage(page, effBox.width, effBox.height, effBox.x, effBox.y, ctx.bates, ctx.pageNumber, ctx.pageCount, { rgb, degrees, pdfDoc, StandardFonts });
+  }
+
+  // #G23 crop: clip the page to the user crop. Applied LAST — after overlays draw in
+  // source-box space — so element/ink positions are unaffected; the viewer (and the
+  // redaction rasterizer, which re-reads getPageCropBox) then shows only the crop window.
+  if (docPage.crop) {
+    page.setCropBox(effBox.x, effBox.y, effBox.width, effBox.height);
   }
 }
 

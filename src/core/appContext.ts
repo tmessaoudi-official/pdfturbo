@@ -7,7 +7,7 @@
  */
 
 import type { PDFElement } from '../elements/annotationElement';
-import type { DocumentModel, SourcePdf } from './documentModel';
+import type { DocumentModel, SourcePdf, PageCrop } from './documentModel';
 import type { HistoryManager } from './historyManager';
 import type { InkLayer } from '../infra/inkLayer';
 import type { PDFRenderer } from '../infra/pdfRenderer';
@@ -56,4 +56,6 @@ export interface IAppContext {
   /** Create a new editable text box centered at the click point (unified text mode). */
   addTextAtPosition(e: MouseEvent): void;
   _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<boolean>;
+  /** Crop a page (or every page with applyToAll) from a drawn display-space rect; null clears. Undoable. */
+  cropPage(pageId: string, displayRect: PageCrop | null, applyToAll: boolean): Promise<void>;
 }

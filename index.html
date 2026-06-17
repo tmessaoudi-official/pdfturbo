@@ -71,6 +71,11 @@
         </div>
       </div>
       <button id="redactBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.redactTitle" title="Redact (K)">⬛</button>
+      <button id="cropBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.cropTitle" title="Crop page (P)">⛶</button>
+      <span id="cropControls" style="display:none">
+        <label class="crop-applyall"><input type="checkbox" id="cropApplyAll"> <span data-i18n="toolbar.cropApplyAll">All pages</span></label>
+        <button id="cropRemoveBtn" class="btn btn-icon btn-sm" data-i18n-title="toolbar.cropRemoveTitle" title="Remove crop">⤺</button>
+      </span>
       <button id="highlightBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.highlightTitle" title="Highlight (H)">🖊</button>
       <button id="commentBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.commentTitle" title="Comment (N)">💬</button>
       <div class="toolbar-sep" style="height:18px"></div>

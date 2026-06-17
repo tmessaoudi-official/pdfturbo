@@ -19,7 +19,7 @@ import { parseXfdf } from '../utils/xfdf';
 import { xfdfAnnotToElement, pageHeightPt } from '../export/xfdfMapping';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
-import { DocumentModel, type SourcePdf } from './documentModel';
+import { DocumentModel, type SourcePdf, type PageCrop } from './documentModel';
 import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
@@ -434,6 +434,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _deletePage(pageId: string): void { this._pageService.deletePage(pageId); }
   _reorderPages(newOrder: string[]): void { this._pageService.reorderPages(newOrder); }
   _rotatePage(pageId: string, delta: number): Promise<void> { return this._pageService.rotatePage(pageId, delta); }
+  cropPage(pageId: string, displayRect: PageCrop | null, applyToAll: boolean): Promise<void> { return this._pageService.cropPage(pageId, displayRect, applyToAll); }
 
 
   _onPageStructureChange(): Promise<void> { return this._pageNavController.onPageStructureChange(); }

@@ -75,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     app.ui.importXfdfBtn.style.display = 'none';
   }
   if (!isEnabled('bates')) app.ui.batesBtn.style.display = 'none';
+  if (!isEnabled('crop')) { app.ui.cropBtn.style.display = 'none'; document.getElementById('cropControls')?.remove(); }
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {

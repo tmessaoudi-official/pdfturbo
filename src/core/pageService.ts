@@ -4,14 +4,14 @@ import type { PDFElement } from '../elements/annotationElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import {
   HistoryManager, AddPagesCmd, DeletePageCmd, ReorderPagesCmd, RotatePageCmd,
-  InsertBlankPageCmd, MacroCmd, TransformAnnotationsCmd,
+  SetPageCropCmd, InsertBlankPageCmd, MacroCmd, TransformAnnotationsCmd,
   type Command, type ElementTransformSnapshot,
 } from './historyManager';
 import type { InkLayer } from '../infra/inkLayer';
-import { DocumentModel, PAGE_SIZES } from './documentModel';
+import { DocumentModel, PAGE_SIZES, type DocumentPage, type PageCrop } from './documentModel';
 import type { IErrorReporter } from './errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
-import { transformCanvasPoint } from '../utils/geometry';
+import { transformCanvasPoint, redactionRectToContent, clampContentRect } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
 
 export interface IPageContext {
@@ -133,6 +133,73 @@ export class PageService {
 
     ctx.historyManager.execute(cmds.length === 1 ? cmds[0] : new MacroCmd(cmds));
     ctx.reportError.info('toast.annotationsAdjusted');
+  }
+
+  /**
+   * Crop a page (or every page with `applyToAll`). `displayRect` is the rectangle the
+   * user drew in editor DISPLAY space (rotated, y-down, top-left); it is mapped into the
+   * page's unrotated content space (rotation-correct via redactionRectToContent), clamped
+   * to the page box, and stored as `page.crop`. `null` clears the crop. Undoable.
+   */
+  async cropPage(pageId: string, displayRect: PageCrop | null, applyToAll = false): Promise<void> {
+    const ctx = this._ctx;
+    const target = ctx.documentModel.pages.find(p => p.id === pageId);
+    if (!target) return;
+
+    // Map the drawn display-space rect → the target page's unrotated content space.
+    let contentCrop: PageCrop | null = null;
+    if (displayRect) {
+      const g = await this._pageGeom(target);
+      if (!g) return;
+      const totalRot = ((g.srcRot + (target.rotation ?? 0)) % 360 + 360) % 360;
+      const clamped = clampContentRect(redactionRectToContent(displayRect, g.W, g.H, totalRot), g.W, g.H);
+      if (clamped.width < 1 || clamped.height < 1) return; // degenerate drag → ignore
+      contentCrop = clamped;
+    }
+
+    if (!applyToAll) {
+      const cmd = new SetPageCropCmd(ctx.documentModel, pageId, contentCrop, () => {
+        ctx.invalidateThumbnail(pageId);
+        void ctx.onPageStructureChange();
+      });
+      ctx.historyManager.execute(cmd);
+      ctx.reportError.info(contentCrop ? 'toast.cropApplied' : 'toast.cropRemoved');
+      return;
+    }
+
+    // Apply the SAME content-space crop to every page, clamped to each page's own box.
+    // The canvas re-render rides the current page's command (fires on execute AND undo);
+    // every page's command invalidates its own thumbnail.
+    const currentId = ctx.documentModel.currentPage?.id;
+    const cmds: Command[] = [];
+    for (const p of ctx.documentModel.pages) {
+      let perPage: PageCrop | null = contentCrop;
+      if (contentCrop) {
+        const g = await this._pageGeom(p);
+        if (!g) continue;
+        const c = clampContentRect(contentCrop, g.W, g.H);
+        if (c.width < 1 || c.height < 1) continue;
+        perPage = c;
+      }
+      const pid = p.id;
+      const onUpd = pid === currentId
+        ? () => { ctx.invalidateThumbnail(pid); void ctx.onPageStructureChange(); }
+        : () => { ctx.invalidateThumbnail(pid); };
+      cmds.push(new SetPageCropCmd(ctx.documentModel, pid, perPage, onUpd));
+    }
+    if (!cmds.length) return;
+    ctx.historyManager.execute(cmds.length === 1 ? cmds[0] : new MacroCmd(cmds));
+    ctx.reportError.info(contentCrop ? 'toast.cropAppliedAll' : 'toast.cropRemoved');
+  }
+
+  /** Unrotated content dimensions + source rotation for a page (source viewport or blank dims). */
+  private async _pageGeom(p: DocumentPage): Promise<{ W: number; H: number; srcRot: number } | null> {
+    if (p.sourcePdfId === 'blank') return { W: p.blankWidth ?? 595, H: p.blankHeight ?? 842, srcRot: 0 };
+    const src = this._ctx.documentModel.sourcePdfs.get(p.sourcePdfId);
+    if (!src) return null;
+    const pg = await src.doc.getPage(p.sourcePageNum);
+    const vp = pg.getViewport({ scale: 1, rotation: 0 });
+    return { W: vp.width, H: vp.height, srcRot: (pg.rotate as number) ?? 0 };
   }
 
   deletePage(pageId: string): void {

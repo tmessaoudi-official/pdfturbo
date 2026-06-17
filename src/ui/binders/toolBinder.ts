@@ -41,6 +41,14 @@ export function bindToolEvents(app: PDFTurboApp): void {
     if (!app.documentModel.pageCount) return;
     app.setMode(app.mode === 'drawRedaction' ? 'select' : 'drawRedaction');
   });
+  app.ui.cropBtn.addEventListener('click', () => {
+    if (!app.documentModel.pageCount) return;
+    app.setMode(app.mode === 'crop' ? 'select' : 'crop');
+  });
+  document.getElementById('cropRemoveBtn')?.addEventListener('click', () => {
+    const id = app.documentModel.currentPage?.id;
+    if (id) void app.cropPage(id, null, false);
+  });
   app.ui.editTextBtn.addEventListener('click', () => {
     if (!app.documentModel.pageCount) return;
     app.setMode(app.mode === 'editText' ? 'select' : 'editText');

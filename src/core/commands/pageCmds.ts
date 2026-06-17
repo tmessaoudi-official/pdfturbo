@@ -1,5 +1,5 @@
 import type { PDFElement } from '../../elements/annotationElement';
-import type { DocumentModel, DocumentPage, SourcePdf } from '../documentModel';
+import type { DocumentModel, DocumentPage, SourcePdf, PageCrop } from '../documentModel';
 import type { Command } from './command';
 
 // Snapshot before/after page order for reorder undo
@@ -126,6 +126,39 @@ export class InsertBlankPageCmd implements Command {
     this.model.deletePage(this.page.id);
     const len = this.model.pages.length;
     this.model.currentPageIndex = len === 0 ? 0 : Math.max(0, Math.min(this._prevIndex, len - 1));
+    this.onUpdate();
+  }
+}
+
+// Set (or clear, when newCrop is null) a page's user crop. Undo restores the prior
+// crop exactly (including "no crop"). Mirrors RotatePageCmd — the crop rides on the
+// page object, so it moves/persists with the page automatically.
+export class SetPageCropCmd implements Command {
+  private prevCrop: PageCrop | undefined;
+  private _captured = false;
+
+  constructor(
+    private model: DocumentModel,
+    private pageId: string,
+    private newCrop: PageCrop | null,
+    private onUpdate: () => void,
+  ) {}
+
+  execute() {
+    const page = this.model.pages.find(p => p.id === this.pageId);
+    if (!page) return;
+    this.prevCrop = page.crop;
+    this._captured = true;
+    if (this.newCrop) page.crop = { ...this.newCrop };
+    else delete page.crop;
+    this.onUpdate();
+  }
+
+  undo() {
+    const page = this.model.pages.find(p => p.id === this.pageId);
+    if (!page || !this._captured) return;
+    if (this.prevCrop) page.crop = { ...this.prevCrop };
+    else delete page.crop;
     this.onUpdate();
   }
 }

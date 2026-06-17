@@ -9,11 +9,19 @@ export interface SourcePdf {
   pageCount: number;
 }
 
+/**
+ * A user page crop in UNROTATED content space (y-down, top-left, PDF points,
+ * relative to the source content/CropBox). Rotation-invariant — applied at export
+ * via `page.setCropBox`. Absent = no crop (export stays byte-identical).
+ */
+export interface PageCrop { x: number; y: number; width: number; height: number }
+
 export interface DocumentPage {
   id: string;
   sourcePdfId: string;
   sourcePageNum: number; // 1-indexed within source PDF; 0 for blank pages
   rotation?: number;     // CCW degrees applied by user (0/90/180/270); defaults to 0
+  crop?: PageCrop;       // user crop region; see PageCrop. Persists via toJSON's `pages`.
   blankWidth?: number;   // PDF points; only set when sourcePdfId === 'blank'
   blankHeight?: number;  // PDF points; only set when sourcePdfId === 'blank'
 }

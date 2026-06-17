@@ -63,6 +63,65 @@ export function redactionRectToContent(
 }
 
 /**
+ * Inverse of {@link redactionRectToContent}: map a rect from UNROTATED content
+ * space (y-down, top-left, W×H = unrotated dims) back into editor DISPLAYED space
+ * (the on-screen rotated orientation, y-down, top-left). Used to draw a persisted
+ * page crop's dimmed frame at the page's current rotation. Identity at rotation 0.
+ * `W`/`H` are the UNROTATED content dimensions; `totalRot` is `(page.rotate + userRotation) % 360`.
+ */
+export function contentRectToDisplay(
+  rect: { x: number; y: number; width: number; height: number },
+  W: number, H: number, totalRot: number,
+): { x: number; y: number; width: number; height: number } {
+  const corners: Array<[number, number]> = [
+    [rect.x, rect.y],
+    [rect.x + rect.width, rect.y],
+    [rect.x, rect.y + rect.height],
+    [rect.x + rect.width, rect.y + rect.height],
+  ];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [cx, cyDown] of corners) {
+    const cyUp = H - cyDown;                                  // content y-down → y-up
+    const d = inverseTransformPoint(cx, cyUp, W, H, totalRot); // content y-up → displayed (y-down)
+    if (d.x < minX) minX = d.x;
+    if (d.x > maxX) maxX = d.x;
+    if (d.y < minY) minY = d.y;
+    if (d.y > maxY) maxY = d.y;
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * Convert a page crop stored in UNROTATED content space (y-down, top-left,
+ * relative to the source content/CropBox) into a pdf-lib `/CropBox` in user space
+ * (y-up, bottom-left). The crop is rotation-invariant — the page's `/Rotate`
+ * rotates the view around this box — so no rotation term is needed here.
+ */
+export function contentCropToPdfCropBox(
+  crop: { x: number; y: number; width: number; height: number },
+  srcCropBox: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  return {
+    x: srcCropBox.x + crop.x,
+    y: srcCropBox.y + (srcCropBox.height - (crop.y + crop.height)),
+    width: crop.width,
+    height: crop.height,
+  };
+}
+
+/** Clamp a content-space rect into the `[0,0,W,H]` content box (keeps width/height ≥ 0). */
+export function clampContentRect(
+  rect: { x: number; y: number; width: number; height: number },
+  W: number, H: number,
+): { x: number; y: number; width: number; height: number } {
+  const x = Math.max(0, Math.min(rect.x, W));
+  const y = Math.max(0, Math.min(rect.y, H));
+  const width = Math.max(0, Math.min(rect.width, W - x));
+  const height = Math.max(0, Math.min(rect.height, H - y));
+  return { x, y, width, height };
+}
+
+/**
  * Parse a CSS hex color string (#RRGGBB or RRGGBB) into normalized [0, 1] RGB components
  * suitable for pdf-lib color APIs.
  */

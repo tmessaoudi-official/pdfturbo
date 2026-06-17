@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_FLATTEN?: string;
   readonly VITE_FEATURE_XFDF?: string;
   readonly VITE_FEATURE_BATES?: string;
+  readonly VITE_FEATURE_CROP?: string;
 }
 
 interface ImportMeta {

@@ -13,4 +13,5 @@ export type ToolMode =
   | 'drawRedaction'
   | 'drawErase'
   | 'editText'
-  | 'fillBucket';
+  | 'fillBucket'
+  | 'crop';

@@ -419,6 +419,21 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   **PAdES (ETSI.CAdES.detached) is a ceiling** with node-forge: its pkcs7 `_attributeToAsn1` can't add the
   ESS signing-certificate-v2 signed attribute PAdES-BES requires, so we keep the valid ISO 32000-1
   `adbe.pkcs7.detached` rather than emit a malformed PAdES. A real PAdES needs hand-rolled CAdES ASN.1.
+- **Per-page crop (#G23)**: `DocumentPage.crop?` is a rect in **unrotated content space** (y-down, top-left,
+  relative to the source `getPageCropBox()` box) — rotation-invariant, so `rotatePage` is untouched and it
+  persists via `toJSON`'s `pages` with **no SCHEMA_VERSION bump** (`documentLoader` assigns `pages` wholesale).
+  The drawn rect arrives in editor DISPLAY space; `PageService.cropPage` maps it via `redactionRectToContent`
+  (the SAME tested helper redactions use) + `clampContentRect`. Export: `buildPageOverlays` draws every overlay
+  in source-box space FIRST, then `page.setCropBox(effBox)` **last** (via `contentCropToPdfCropBox`) — so
+  element/ink coords are unaffected and the redaction rasterizer + thumbnail + export-preview all inherit the
+  crop (they re-read `getPageCropBox`). Bates/watermark switch to the crop's **effective box** (else they'd
+  anchor in the now-clipped original corner); `effBox === cropBox` when no crop → **byte-identical export**.
+  Undoable via `SetPageCropCmd` (clone of `RotatePageCmd`); apply-to-all = a `MacroCmd` whose canvas re-render
+  rides the CURRENT page's command (fires on execute AND undo). Live editor preview is a **dimmed-margin SVG
+  frame** (`pageRenderPipeline._renderCropFrame`, mapped via `contentRectToDisplay`), NOT a pdf.js sub-region
+  render (Design β). Tool mode `'crop'` rides `DrawingHandler` (pointerdown gate + `_updatePreview` + pointer-up
+  branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off).
+  **Ceiling (v1b):** resizable crop handles / numeric margins; aspect-aware apply-to-all.
 
 ## Git & CI
 

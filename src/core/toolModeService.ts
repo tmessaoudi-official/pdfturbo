@@ -29,6 +29,7 @@ const MODE_HINT_KEYS: Partial<Record<ToolMode, string>> = {
   drawErase:     'toast.modeHint.drawErase',
   editText:      'toast.modeHint.editText',
   fillBucket:    'toast.modeHint.fillBucket',
+  crop:          'toast.modeHint.crop',
 };
 
 const PLACEMENT_MODES: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature', 'addCode'];

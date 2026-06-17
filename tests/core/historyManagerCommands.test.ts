@@ -21,6 +21,7 @@ import {
   DeletePageCmd,
   AddPagesCmd,
   RotatePageCmd,
+  SetPageCropCmd,
   type ElementTransformSnapshot,
 } from '../../src/core/historyManager';
 import { TextElement } from '../../src/elements/textElement';
@@ -635,5 +636,69 @@ describe('RotatePageCmd', () => {
     const cmd = new RotatePageCmd(model, pageId, 90, vi.fn());
     cmd.execute();
     expect(model.pages[0].rotation).toBe(0); // 270+90=360→0
+  });
+});
+
+// ── SetPageCropCmd ─────────────────────────────────────────────────────────────
+describe('SetPageCropCmd', () => {
+  function makeModelWithPage() {
+    const model = new DocumentModel();
+    const src = model.addSourcePdf(
+      { numPages: 1, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy,
+      new Uint8Array(), 'test.pdf'
+    );
+    model.addPagesFrom(src.id);
+    return model;
+  }
+
+  it('execute sets the page crop', () => {
+    const model = makeModelWithPage();
+    const crop = { x: 10, y: 20, width: 100, height: 200 };
+    new SetPageCropCmd(model, model.pages[0].id, crop, vi.fn()).execute();
+    expect(model.pages[0].crop).toEqual(crop);
+  });
+
+  it('stores a copy, not the caller reference', () => {
+    const model = makeModelWithPage();
+    const crop = { x: 1, y: 2, width: 3, height: 4 };
+    new SetPageCropCmd(model, model.pages[0].id, crop, vi.fn()).execute();
+    crop.x = 999;
+    expect(model.pages[0].crop?.x).toBe(1);
+  });
+
+  it('undo restores no-crop when there was none', () => {
+    const model = makeModelWithPage();
+    const cmd = new SetPageCropCmd(model, model.pages[0].id, { x: 0, y: 0, width: 50, height: 50 }, vi.fn());
+    cmd.execute();
+    expect(model.pages[0].crop).toBeDefined();
+    cmd.undo();
+    expect(model.pages[0].crop).toBeUndefined();
+  });
+
+  it('undo restores a prior crop exactly', () => {
+    const model = makeModelWithPage();
+    model.pages[0].crop = { x: 5, y: 5, width: 60, height: 60 };
+    const cmd = new SetPageCropCmd(model, model.pages[0].id, { x: 10, y: 10, width: 30, height: 30 }, vi.fn());
+    cmd.execute();
+    expect(model.pages[0].crop).toEqual({ x: 10, y: 10, width: 30, height: 30 });
+    cmd.undo();
+    expect(model.pages[0].crop).toEqual({ x: 5, y: 5, width: 60, height: 60 });
+  });
+
+  it('clears a crop when newCrop is null and undo restores it', () => {
+    const model = makeModelWithPage();
+    model.pages[0].crop = { x: 5, y: 5, width: 60, height: 60 };
+    const cmd = new SetPageCropCmd(model, model.pages[0].id, null, vi.fn());
+    cmd.execute();
+    expect(model.pages[0].crop).toBeUndefined();
+    cmd.undo();
+    expect(model.pages[0].crop).toEqual({ x: 5, y: 5, width: 60, height: 60 });
+  });
+
+  it('is a no-op when pageId does not exist', () => {
+    const model = makeModelWithPage();
+    const cmd = new SetPageCropCmd(model, 'nonexistent', { x: 0, y: 0, width: 1, height: 1 }, vi.fn());
+    expect(() => cmd.execute()).not.toThrow();
+    expect(() => cmd.undo()).not.toThrow();
   });
 });

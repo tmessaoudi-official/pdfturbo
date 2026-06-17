@@ -91,6 +91,7 @@ export interface AppDOMRefs {
   addPdfInput: HTMLInputElement;
   commentBtn: HTMLButtonElement;
   redactBtn: HTMLButtonElement;
+  cropBtn: HTMLButtonElement;
   copyBtn: HTMLButtonElement;
   pasteBtn: HTMLButtonElement;
   donePill: HTMLButtonElement;
@@ -288,6 +289,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       addPdfInput:      document.getElementById('addPdfInput')      as HTMLInputElement,
       commentBtn:       document.getElementById('commentBtn')       as HTMLButtonElement,
       redactBtn:        document.getElementById('redactBtn')        as HTMLButtonElement,
+      cropBtn:          document.getElementById('cropBtn')          as HTMLButtonElement,
       copyBtn:          document.getElementById('copyBtn')          as HTMLButtonElement,
       pasteBtn:         document.getElementById('pasteBtn')         as HTMLButtonElement,
       donePill:         document.getElementById('donePill')         as HTMLButtonElement,
@@ -424,6 +426,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.watermarkBtn.disabled   = false;
     r.commentBtn.disabled     = false;
     r.redactBtn.disabled      = false;
+    r.cropBtn.disabled        = false;
     r.eraserBtn.disabled      = false;
     r.previewExportBtn.disabled = false;
     r.exportDocxBtn.disabled  = false;
@@ -459,6 +462,9 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.freehandBtn.classList.toggle('active',     mode === 'drawFreehand');
     r.commentBtn.classList.toggle('active',      mode === 'addComment');
     r.redactBtn.classList.toggle('active',       mode === 'drawRedaction');
+    r.cropBtn.classList.toggle('active',         mode === 'crop');
+    const cropControls = document.getElementById('cropControls');
+    if (cropControls) cropControls.style.display = mode === 'crop' ? '' : 'none';
     r.eraserBtn.classList.toggle('active',       mode === 'drawErase');
     r.editTextBtn.classList.toggle('active',     mode === 'editText');
     r.fillBucketBtn.classList.toggle('active',   mode === 'fillBucket');
@@ -486,7 +492,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       [r.addCodeBtn, 'addCode'],
       [r.highlightBtn, 'drawHighlight'], [r.arrowBtn, 'drawArrow'], [r.rectBtn, 'drawRect'],
       [r.circleBtn, 'drawEllipse'], [r.freehandBtn, 'drawFreehand'], [r.commentBtn, 'addComment'],
-      [r.redactBtn, 'drawRedaction'], [r.eraserBtn, 'drawErase'], [r.editTextBtn, 'editText'],
+      [r.redactBtn, 'drawRedaction'], [r.cropBtn, 'crop'], [r.eraserBtn, 'drawErase'], [r.editTextBtn, 'editText'],
       [r.fillBucketBtn, 'fillBucket'],
     ];
     toggles.forEach(([btn, m]) => btn.setAttribute('aria-pressed', String(mode === m)));
@@ -498,7 +504,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       drawEllipse: 'badge.drawEllipse', drawFreehand: 'badge.drawFreehand',
       drawHighlight: 'badge.drawHighlight', addComment: 'badge.addComment',
       drawRedaction: 'badge.drawRedaction', drawErase: 'badge.drawErase',
-      editText: 'badge.editText', fillBucket: 'badge.fillBucket',
+      editText: 'badge.editText', fillBucket: 'badge.fillBucket', crop: 'badge.crop',
     };
     r.modeBadge.textContent = t(badgeKeys[mode] ?? 'badge.select');
     r.modeBadge.classList.toggle('active', mode !== 'select');

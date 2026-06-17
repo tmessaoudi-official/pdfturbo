@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PageService, type IPageContext } from '../../src/core/pageService';
 import { DocumentModel } from '../../src/core/documentModel';
-import { HistoryManager, DeletePageCmd, ReorderPagesCmd, InsertBlankPageCmd } from '../../src/core/historyManager';
+import { HistoryManager, DeletePageCmd, ReorderPagesCmd, InsertBlankPageCmd, SetPageCropCmd, MacroCmd } from '../../src/core/historyManager';
 
 vi.mock('../../src/utils/i18n', () => ({ t: (key: string) => key }));
 
@@ -323,5 +323,76 @@ describe('PageService.insertBlankPage — undoability (G3)', () => {
     expect(() => ctx.historyManager.undo()).not.toThrow();
     expect(ctx.documentModel.pageCount).toBe(0);
     expect(ctx.documentModel.currentPage).toBeNull();
+  });
+});
+
+describe('PageService.cropPage', () => {
+  it('stores the drawn rect as the page crop (identity at rotation 0)', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPage(id, { x: 50, y: 60, width: 200, height: 300 }, false);
+    expect(ctx.historyManager.execute).toHaveBeenCalledWith(expect.any(SetPageCropCmd));
+    expect(ctx.documentModel.pages[0].crop).toEqual({ x: 50, y: 60, width: 200, height: 300 });
+    expect(ctx.onPageStructureChange).toHaveBeenCalled();
+  });
+
+  it('clamps a drag that overflows the 595x842 page box', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    await svc.cropPage(id, { x: 500, y: 700, width: 300, height: 300 }, false);
+    expect(ctx.documentModel.pages[0].crop).toEqual({ x: 500, y: 700, width: 95, height: 142 });
+  });
+
+  it('ignores a degenerate (near-zero) drag', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPage(id, { x: 10, y: 10, width: 0.4, height: 0.4 }, false);
+    expect(ctx.historyManager.execute).not.toHaveBeenCalled();
+    expect(ctx.documentModel.pages[0].crop).toBeUndefined();
+  });
+
+  it('clears the crop when displayRect is null', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    await svc.cropPage(id, { x: 10, y: 10, width: 100, height: 100 }, false);
+    expect(ctx.documentModel.pages[0].crop).toBeDefined();
+    await svc.cropPage(id, null, false);
+    expect(ctx.documentModel.pages[0].crop).toBeUndefined();
+    expect(ctx.reportError.info).toHaveBeenCalledWith('toast.cropRemoved');
+  });
+
+  it('apply-to-all crops every page in one MacroCmd; undo reverts all', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 3);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPage(id, { x: 20, y: 20, width: 100, height: 120 }, true);
+    expect(ctx.historyManager.execute).toHaveBeenCalledWith(expect.any(MacroCmd));
+    for (const p of ctx.documentModel.pages) {
+      expect(p.crop).toEqual({ x: 20, y: 20, width: 100, height: 120 });
+    }
+    expect(ctx.reportError.info).toHaveBeenCalledWith('toast.cropAppliedAll');
+    ctx.historyManager.undo();
+    for (const p of ctx.documentModel.pages) expect(p.crop).toBeUndefined();
+  });
+
+  it('is a no-op when the page does not exist', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPage('nope', { x: 0, y: 0, width: 10, height: 10 }, false);
+    expect(ctx.historyManager.execute).not.toHaveBeenCalled();
   });
 });

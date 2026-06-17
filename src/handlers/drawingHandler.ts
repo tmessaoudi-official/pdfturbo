@@ -55,7 +55,7 @@ export class DrawingHandler {
       return;
     }
 
-    if (!this.app.mode.startsWith('draw') && this.app.mode !== 'addText' && this.app.mode !== 'addImage' && this.app.mode !== 'addComment' && this.app.mode !== 'addSignature' && this.app.mode !== 'addCode') return;
+    if (!this.app.mode.startsWith('draw') && this.app.mode !== 'addText' && this.app.mode !== 'addImage' && this.app.mode !== 'addComment' && this.app.mode !== 'addSignature' && this.app.mode !== 'addCode' && this.app.mode !== 'crop') return;
     if (this.app.mode === 'drawFreehand') return; // handled by InkLayerHandler
     if (this._previewSvg) { this._previewSvg.remove(); this._previewSvg = null; }
 
@@ -236,6 +236,22 @@ export class DrawingHandler {
       this.app.selectElement(redEl);
       return;
 
+    } else if (this.app.mode === 'crop') {
+      // #G23 — the drawn rect is in display-content space; cropPage maps it into the
+      // page's unrotated content space (rotation-correct) and stores it. ApplyToAll
+      // comes from the crop toolbar checkbox.
+      const x = Math.min(start.x, endX);
+      const y = Math.min(start.y, endY);
+      const w = Math.abs(endX - start.x);
+      const h = Math.abs(endY - start.y);
+      this._drawStart  = null;
+      this._drawPoints = [];
+      if (w < 5 || h < 5) return; // ignore a tiny / accidental drag
+      const applyAll = (document.getElementById('cropApplyAll') as HTMLInputElement | null)?.checked ?? false;
+      void this.app.cropPage(pageId, { x, y, width: w, height: h }, applyAll);
+      this.app.setMode('select');
+      return;
+
     } else if (this.app.mode === 'addText' || this.app.mode === 'addImage' || this.app.mode === 'addComment' || this.app.mode === 'addSignature' || this.app.mode === 'addCode') {
       const x = Math.min(start.x, endX);
       const y = Math.min(start.y, endY);
@@ -376,6 +392,34 @@ export class DrawingHandler {
       el.setAttribute('stroke-width', '2');
       el.setAttribute('stroke-dasharray', '6,3');
       this._previewSvg.appendChild(el);
+
+    } else if (this.app.mode === 'crop') {
+      // Dim the four margins around the crop window + a dashed outline (live preview).
+      const svg = this._previewSvg;
+      const cx0 = Math.min(sx0, sxC), cy0 = Math.min(sy0, syC);
+      const cx1 = Math.max(sx0, sxC), cy1 = Math.max(sy0, syC);
+      const pageW = this.app.ui.canvas.offsetWidth;
+      const pageH = this.app.ui.canvas.offsetHeight;
+      const dim = (dx: number, dy: number, dw: number, dh: number) => {
+        if (dw <= 0 || dh <= 0) return;
+        const r = document.createElementNS(ns, 'rect');
+        r.setAttribute('x', String(dx)); r.setAttribute('y', String(dy));
+        r.setAttribute('width', String(dw)); r.setAttribute('height', String(dh));
+        r.setAttribute('fill', 'rgba(0,0,0,0.45)');
+        svg.appendChild(r);
+      };
+      dim(ox, oy, pageW, cy0 - oy);                 // top
+      dim(ox, cy1, pageW, oy + pageH - cy1);        // bottom
+      dim(ox, cy0, cx0 - ox, cy1 - cy0);            // left
+      dim(cx1, cy0, ox + pageW - cx1, cy1 - cy0);   // right
+      const outline = document.createElementNS(ns, 'rect');
+      outline.setAttribute('x', String(cx0)); outline.setAttribute('y', String(cy0));
+      outline.setAttribute('width', String(cx1 - cx0)); outline.setAttribute('height', String(cy1 - cy0));
+      outline.setAttribute('fill', 'none');
+      outline.setAttribute('stroke', '#fff');
+      outline.setAttribute('stroke-width', '1.5');
+      outline.setAttribute('stroke-dasharray', '6,3');
+      svg.appendChild(outline);
 
     } else if (this.app.mode === 'addText') {
       const el = document.createElementNS(ns, 'rect');

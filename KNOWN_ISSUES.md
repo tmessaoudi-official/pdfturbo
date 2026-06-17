@@ -277,13 +277,26 @@ re-investigate a solved-as-impossible item.
 
 ---
 
+## Crop tool (#G23) — SHIPPED 2026-06-17
+
+Per-page crop: a `crop` tool mode + drag-rect (`DrawingHandler`) → `PageService.cropPage` maps the drawn
+display-space rect into unrotated content space (`redactionRectToContent`) and stores `DocumentPage.crop`
+(rotation-invariant; persists via `toJSON`'s `pages`, **no SCHEMA_VERSION bump** — loader restores `pages`
+wholesale). Export clips via `page.setCropBox` in `buildPageOverlays`, applied **last** so overlays draw in
+source space first (element/ink positions unaffected); Bates/watermark use the cropped "effective box";
+raster + thumbnail + export-preview inherit it (all route through `getPageCropBox`). Undoable
+(`SetPageCropCmd`); **apply-to-all** = one `MacroCmd` (clamped per page). Live editor preview = dimmed-margin
+frame (Design β — full page renders, no pdf.js sub-region). **Full rotation support** (the crop maps through
+the page's effective rotation). Gated `VITE_FEATURE_CROP` (#28; default ON → byte-identical export when no crop).
+Guards: `tests/utils/cropGeometry.test.ts`, `tests/core/{historyManagerCommands,pageService}.test.ts`,
+`tests/export/cropCropBox.test.ts`, `tests/browser/crop-tool.browser.test.ts`.
+**v1b ceilings:** resizable crop-rect handles / numeric margin inputs (v1 = drag-to-set + re-drag + ⤺ Remove);
+apply-to-all uses identical content-space margins clamped per page (not aspect-aware across differing sizes);
+markup annotations authored elsewhere aren't clipped at the content-stream level (the CropBox hides them, as
+PDF viewers do).
+
 ## Deferred features (next — NOT part of the "100%" mandate)
 
-The 100% mandate was about making **shipped** features faithful (done above). These are *new* capabilities:
-
-- **Crop tool** (was gap G23) — **deferred as a new feature (2026-06-17 decision).** Today only read-only
-  `/CropBox` honouring exists. A real crop tool is net-new: a tool mode + drag-rect handler + a
-  `documentModel` crop field + export-pipeline clip + live preview. Effort M–L. Top of the next-features list.
 - **Arabic native-speaker review** — one human pass over the AR locale + RTL rendering (non-engineering).
 
 ---
@@ -305,7 +318,8 @@ This is the structural fix that makes ISSUE-1..5 catchable; jsdom never can.
 
 ---
 _Last updated: 2026-06-17 (All-Features→100% sprint: 22 reachable gaps G1–G22 closed + 21 structural
-ceilings C1–C21 documented with escape-hatch families & trade-offs; crop deferred as a new feature).
+ceilings C1–C21 documented with escape-hatch families & trade-offs). **Crop tool (#G23) shipped 2026-06-17** —
+per-page, rotation-aware, undoable crop via `setCropBox`; dimmed-margin live preview; gated `VITE_FEATURE_CROP`.
 Prior 2026-06-14 (mega-roadmap Sprint 3 batch 2: DOCX hyperlinks + JPEG re-encode + list nesting
 + headings H4–H6 + true-edit TJ-kerning preservation; jsdom 858 / browser 12). Prior batch 1: text-tool
 UX trap fix + DOCX lettered ordered-lists + fidelity scorecards (jsdom 842 / browser 11).
