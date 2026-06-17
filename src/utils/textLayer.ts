@@ -56,6 +56,11 @@ export class TextLayerManager {
 
     if (myGen !== this._gen) return;
 
+    // #6c: align span DOM order with visual order so an Arabic drag-selection
+    // highlights without holes (pdf.js emits per-glyph RTL spans whose DOM order
+    // isn't monotonic in x). No-op for LTR-dominant pages.
+    alignSpanOrderToVisual(textDiv);
+
     await this._renderLinks(page, viewport, canvasOffset, myGen);
   }
 
@@ -154,4 +159,46 @@ export class TextLayerManager {
     this._linkDiv?.remove();
     this._linkDiv = null;
   }
+}
+
+/**
+ * #6c — align text-layer span DOM order with visual reading order (top, then left).
+ *
+ * pdf.js v6 emits Arabic source text as one per-glyph span each, positioned in
+ * visual order but appended to the DOM in an order that is NOT monotonic in x
+ * (measured on a real Arabic PDF: 55 ascending / 17 descending x-transitions on a
+ * 73-span line). The browser renders a selection as the rectangles of the spans
+ * in the DOM range between the two carets, so a contiguous drag selects a
+ * DOM-contiguous range that is VISUALLY fragmented — the highlight shows holes
+ * (selected glyphs interleaved with unselected ones; ~45% of the band was gaps).
+ *
+ * Re-appending spans in visual (top, then left) order makes a DOM-contiguous range
+ * visually contiguous, so the highlight tracks the drag with only natural word-gap
+ * spacing (measured: gaps dropped from 114px → 21px on a 15-glyph range). Spans are
+ * absolutely positioned, so reordering is visually invisible and does not move any
+ * glyph. Copy (#6) re-sorts by geometry, so its output is unaffected by DOM order;
+ * the app's own search/highlight does not depend on pdf.js's findController.
+ *
+ * Gated to RTL/Arabic-DOMINANT pages: reordering an LTR page by (top, left) would
+ * break pdf.js's reading order for multi-column layouts. Returns true if reordered.
+ */
+export function alignSpanOrderToVisual(container: HTMLElement): boolean {
+  const spans = [...container.querySelectorAll<HTMLElement>('span')];
+  const withText = spans.filter((s) => (s.textContent ?? '').trim().length > 0);
+  if (withText.length < 2) return false;
+  // Only reorder RTL/Arabic-dominant pages — an LTR page is already in reading
+  // order, and reordering a multi-column LTR layout by (top, left) would read
+  // across columns instead of down them.
+  const rtl = withText.reduce((n, s) => n + (isArabicText(s.textContent ?? '') ? 1 : 0), 0);
+  if (rtl * 2 <= withText.length) return false;
+  // Measure once, then re-append in visual order via a single fragment (one reflow).
+  const measured = spans.map((s) => {
+    const r = s.getBoundingClientRect();
+    return { s, t: r.top, l: r.left };
+  });
+  measured.sort((a, b) => (Math.abs(a.t - b.t) > 3 ? a.t - b.t : a.l - b.l));
+  const frag = document.createDocumentFragment();
+  for (const m of measured) frag.appendChild(m.s);
+  container.appendChild(frag);
+  return true;
 }
