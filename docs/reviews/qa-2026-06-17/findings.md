@@ -53,7 +53,7 @@ Status: ✅ FIXED this session · 🔲 open · ☑ verified-resolved-in-code (no
 ### Fidelity gaps (raw/fidelity.md, raw/00-baseline.md) — reachable vs structural
 | # | Sev | Finding | Class |
 |---|-----|---------|-------|
-| D1 | P2 | DOCX spot/Separation `scn` color → black-collapse on export (no `setFillColorN` case in op-walk). True-edit twin is DONE; this is the DOCX-export side. | REACHABLE (Gap 6) |
+| D1 | ~~P2~~ **VERIFIED NON-DEFECT (2026-06-18)** | DOCX spot/Separation color does NOT black-collapse. pdf.js v6 `getOperatorList` PRE-RESOLVES Separation/spot → `setFillRGBColor(["#ff8000"])` (measured), which the walker's existing `setFillRGBColor` branch already captures → colorMap → `w.color` → DOCX run. Static "no `setFillColorN` case" finding was a false positive (a bare `scn` is only emitted for PATTERN fills — an unresolvable structural ceiling, not this). Guard: `tests/browser/docx-spot-color.browser.test.ts`. | ~~REACHABLE~~ RESOLVED-BY-VERIFICATION |
 | D2 | P2 | Arabic DOCX/copy bidi is **word-level only** — mixed LTR+RTL single line, char-level reorder, tashkeel GPOS not handled. `bidi-js` installed-but-unused = the lever. | REACHABLE (low ROI) |
 | D3 | P2 | Searchable-OCR **Arabic** exact full-word search imperfect (fontkit GSUB contextual glyphs + incomplete ToUnicode). Latin-7 is exact. | CEILING (documented) |
 | D4 | P2 | Lattice-table → CSV only; **borderless** tables not detected; **multi-table page** collapses to one grid. | borderless=STRUCTURAL; lattice→DOCX-Table(#64)=REACHABLE |
