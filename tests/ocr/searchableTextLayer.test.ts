@@ -15,6 +15,7 @@ import {
   partitionWordsByFont,
   applySearchableLayerToPdf,
   rotateBBoxToUnrotated,
+  horizontalScaleFor,
   SearchableLayerError,
 } from '../../src/ocr/searchableTextLayer';
 
@@ -109,7 +110,7 @@ describe('buildInvisibleTextLayerOps', () => {
     return { doc, font, page, fontKey };
   }
 
-  it('emits 6 text operators (BT · Tr · Tf · Tm · Tj · ET) per non-empty word', async () => {
+  it('emits 7 text operators (BT · Tr · Tf · Tm · Tz · Tj · ET) per non-empty word', async () => {
     const { font, fontKey } = await helvetica();
     const ops = buildInvisibleTextLayerOps(
       [
@@ -118,7 +119,7 @@ describe('buildInvisibleTextLayerOps', () => {
       ],
       { scale: 2, pageHeight: 200, font, fontKey },
     );
-    expect(ops).toHaveLength(12); // 2 words × 6 ops
+    expect(ops).toHaveLength(14); // 2 words × 7 ops (Tz added per word, G18)
   });
 
   it('skips empty / whitespace-only words', async () => {
@@ -130,7 +131,7 @@ describe('buildInvisibleTextLayerOps', () => {
       ],
       { scale: 2, pageHeight: 200, font, fontKey },
     );
-    expect(ops).toHaveLength(6); // only the one real word
+    expect(ops).toHaveLength(7); // only the one real word × 7 ops
   });
 
   it('sets the invisible text render mode (3 Tr) on every word', async () => {
@@ -143,6 +144,106 @@ describe('buildInvisibleTextLayerOps', () => {
     const trOps = ops.filter((o: PDFOperator) => o.toString().trim().endsWith(' Tr'));
     expect(trOps).toHaveLength(1);
     expect(trOps[0].toString().trim()).toBe('3 Tr'); // TextRenderingMode.Invisible
+  });
+});
+
+describe('horizontalScaleFor', () => {
+  it('returns round(100 * target / nat) for a normal width mismatch', () => {
+    // natural advance 50pt, OCR bbox wants 60pt → stretch to 120%.
+    expect(horizontalScaleFor(60, 50)).toBe(120);
+  });
+
+  it('rounds to the nearest integer percent', () => {
+    // 100 * 33 / 50 = 66 exactly; 100 * 10 / 3 = 333.33… → 333.
+    expect(horizontalScaleFor(33, 50)).toBe(66);
+    expect(horizontalScaleFor(10, 3)).toBe(333);
+  });
+
+  it('returns 100 (identity) when the natural width already matches the target', () => {
+    expect(horizontalScaleFor(50, 50)).toBe(100);
+  });
+
+  it('clamps a runaway stretch to the 1000% ceiling (mis-recognized tiny bbox vs wide glyphs)', () => {
+    // A target far wider than the natural advance would demand >1000% — capped.
+    expect(horizontalScaleFor(10000, 50)).toBe(1000);
+  });
+
+  it('clamps a collapse to the 10% floor (1-px bbox vs a real word advance)', () => {
+    // target 0.1pt over 50pt natural → 0.2% → floored to 10%.
+    expect(horizontalScaleFor(0.1, 50)).toBe(10);
+  });
+
+  it('returns 100 (identity, no divide-by-zero) when the natural width is 0', () => {
+    expect(horizontalScaleFor(60, 0)).toBe(100);
+  });
+
+  it('returns 100 (identity) when the natural width is negative or target is non-positive', () => {
+    expect(horizontalScaleFor(60, -5)).toBe(100);
+    expect(horizontalScaleFor(0, 50)).toBe(100);
+    expect(horizontalScaleFor(-3, 50)).toBe(100);
+  });
+});
+
+describe('buildInvisibleTextLayerOps — per-word horizontal scaling (Tz)', () => {
+  // A stub font whose advance metrics we fully control, so we can assert the exact Tz
+  // emitted without depending on real Helvetica metrics. Only the two surfaces
+  // buildInvisibleTextLayerOps touches are stubbed: encodeText + widthOfTextAtSize.
+  function stubFont(natWidth: number) {
+    return {
+      encodeText: (t: string) => t,
+      widthOfTextAtSize: () => natWidth,
+    } as unknown as Parameters<typeof buildInvisibleTextLayerOps>[1]['font'];
+  }
+
+  const tzValue = (ops: PDFOperator[]): number[] =>
+    ops
+      .filter((o) => o.toString().trim().endsWith(' Tz'))
+      .map((o) => Number(o.toString().trim().split(' ')[0]));
+
+  it('emits exactly one Tz op per non-empty word', () => {
+    const ops = buildInvisibleTextLayerOps(
+      [
+        { text: 'Hello', bbox: { x0: 0, y0: 0, x1: 60, y1: 20 } },
+        { text: 'World', bbox: { x0: 70, y0: 0, x1: 130, y1: 20 } },
+      ],
+      { scale: 2, pageHeight: 200, font: stubFont(10), fontKey: PDFName.of('F0') },
+    );
+    expect(tzValue(ops)).toHaveLength(2);
+  });
+
+  it('scales advance to match the OCR bbox width: Tz = round(100 * targetPt / nat)', () => {
+    // bbox width 60px / scale 2 = 30pt target; stub natural advance = 10pt → 300%.
+    const ops = buildInvisibleTextLayerOps(
+      [{ text: 'Hi', bbox: { x0: 0, y0: 0, x1: 60, y1: 20 } }],
+      { scale: 2, pageHeight: 200, font: stubFont(10), fontKey: PDFName.of('F0') },
+    );
+    expect(tzValue(ops)).toEqual([300]);
+  });
+
+  it('emits an identity 100 Tz (no divide-by-zero) when the font advance is 0', () => {
+    const ops = buildInvisibleTextLayerOps(
+      [{ text: 'Hi', bbox: { x0: 0, y0: 0, x1: 60, y1: 20 } }],
+      { scale: 2, pageHeight: 200, font: stubFont(0), fontKey: PDFName.of('F0') },
+    );
+    expect(tzValue(ops)).toEqual([100]);
+  });
+
+  it('uses the remapped (rotated) bbox width for the target so rotated pages scale correctly', () => {
+    // 90° remap of {0,0,40,20} on a 480×240 canvas → unrotated box width 20px (old height).
+    // target = 20px / scale 2 = 10pt; stub nat = 5pt → 200%.
+    const ops = buildInvisibleTextLayerOps(
+      [{ text: 'Rot', bbox: { x0: 0, y0: 0, x1: 40, y1: 20 } }],
+      {
+        scale: 2,
+        pageHeight: 240,
+        font: stubFont(5),
+        fontKey: PDFName.of('F0'),
+        rotation: 90,
+        renderW: 480,
+        renderH: 240,
+      },
+    );
+    expect(tzValue(ops)).toEqual([200]);
   });
 });
 

@@ -20,6 +20,7 @@ import {
   TextRenderingMode,
   beginText,
   endText,
+  setCharacterSqueeze,
   setFontAndSize,
   setTextMatrix,
   setTextRenderingMode,
@@ -79,6 +80,33 @@ export interface InvisibleTextLayerOpts {
 
 /** Smallest font size we will emit; guards degenerate zero-height OCR boxes. */
 const MIN_SIZE = 1;
+
+/**
+ * Horizontal-scaling (`Tz`) clamp bounds, in percent. The natural glyph advance of
+ * the invisible font rarely equals the OCR word's pixel-bbox width, so each word gets
+ * a per-word `Tz` that stretches/squeezes the advance to match its box (G18 — keeps
+ * selection rectangles and text reflow aligned with the recognized word). The clamp
+ * neutralizes pathological inputs: a mis-recognized 1-px-wide bbox would otherwise
+ * demand a near-0% squeeze (collapsing the run to a sliver), and a runaway box a
+ * thousands-of-percent stretch. 100% is the identity (natural advance, no scaling).
+ */
+const MIN_TZ = 10;
+const MAX_TZ = 1000;
+
+/**
+ * Per-word horizontal text scaling (PDF `Tz`, percent) so an invisible word's rendered
+ * advance matches its OCR bbox width. `target` and `nat` are both in PDF points:
+ * `target` = bbox width ÷ render scale (same derivation as the x-origin), `nat` =
+ * `font.widthOfTextAtSize(word, size)`. Returns `round(100 · target / nat)` clamped to
+ * {@link MIN_TZ}…{@link MAX_TZ}. Returns the identity 100 (no scaling, never a
+ * divide-by-zero) when either width is non-positive — e.g. a zero-advance encode or a
+ * degenerate box. Pure → unit-testable without a font.
+ */
+export function horizontalScaleFor(target: number, nat: number): number {
+  if (!(nat > 0) || !(target > 0)) return 100;
+  const tz = Math.round((100 * target) / nat);
+  return Math.min(MAX_TZ, Math.max(MIN_TZ, tz));
+}
 
 /**
  * Convert one OCR word bbox (image pixels, top-left origin, at `scale`) into a
@@ -162,8 +190,11 @@ export function rotateBBoxToUnrotated(
  * Build the flat operator list that paints `words` as invisible (`3 Tr`) text at
  * their OCR positions. Hand the result to `page.pushOperators(...ops)`.
  *
- * Per word: `BT · Tr(3) · Tf · Tm · Tj · ET`. Empty / whitespace-only words are
- * skipped so the layer never carries selectable blanks.
+ * Per word: `BT · Tr(3) · Tf · Tm · Tz · Tj · ET`. The per-word `Tz` (horizontal
+ * scaling, see {@link horizontalScaleFor}) stretches the invisible glyph advance to
+ * match the OCR word's bbox width (G18) — `Tz` is part of the text state, set inside
+ * each word's `BT…ET` block so it never bleeds into the next word. Empty /
+ * whitespace-only words are skipped so the layer never carries selectable blanks.
  */
 export function buildInvisibleTextLayerOps(
   words: ReadonlyArray<OcrWordLike>,
@@ -178,11 +209,18 @@ export function buildInvisibleTextLayerOps(
     // then apply the unchanged px→pt + y-flip math.
     const bbox = rotation === 0 ? word.bbox : rotateBBoxToUnrotated(word.bbox, rotation, renderW, renderH);
     const { x, baselineY, size } = wordToTextPlacement(bbox, scale, pageHeight);
+    // Match the invisible advance to the OCR bbox width (G18): both in PDF points —
+    // target from the (remapped) bbox like the x-origin, natural from font metrics.
+    // Best-effort for Arabic (shaped-glyph metrics are less reliable) but still clamped
+    // and applied, mirroring the documented shaping/ToUnicode ceiling for that script.
+    const targetPt = (bbox.x1 - bbox.x0) / scale;
+    const tz = horizontalScaleFor(targetPt, font.widthOfTextAtSize(text, size));
     ops.push(
       beginText(),
       setTextRenderingMode(TextRenderingMode.Invisible),
       setFontAndSize(fontKey, size),
       setTextMatrix(1, 0, 0, 1, x, baselineY),
+      setCharacterSqueeze(tz),
       showText(font.encodeText(text)),
       endText(),
     );
