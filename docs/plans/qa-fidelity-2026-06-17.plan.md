@@ -41,3 +41,40 @@ structural ones.
 
 ## Baseline corpus (manifest)
 <!-- built in Phase 1 setup: tests/fixtures/corpus.manifest.md -->
+
+---
+
+## RESUME STATE — compact checkpoint 2026-06-17/18 (READ THIS FIRST on resume)
+
+### Commits made this session (ALL UNPUSHED — push is MANUAL)
+- `e1dedda` fix: drawn-signature reset-on-Save P0 + modal a11y (focus traps + Esc-close). VERIFIED LIVE.
+- `17a7fb7` docs(qa): findings.md + raw/ + this plan + 4 small corpus fixtures. arxiv (5.1MB) gitignored.
+- (`5b8872d` #60 compress was already committed+pushed before this session.)
+- Working tree after those commits: was clean except the in-progress edits below.
+
+### DONE + VERIFIED LIVE (Playwright real Chrome, dev :5174) — 0 app console errors
+- F1 P0 signature: Save keeps pad, places element (0→1). F2/F3 sign+ocr focus traps (Tab-wrap, Esc, focus-return). F4 Esc-close all 8 modals.
+- #60 compress lossless (66887→52592B), #56 table-CSV (lattice), OCR visible (+91 els), DOCX (CJK, valid zip), e-Sign generate-cert (valid /ByteRange+pkcs7 signed PDF), empty-state, responsive@375, restore-dialog.
+- N1 FIXED: regenerated valid borderless `data-tables.pdf` (was corrupt HTML); loads 1pg, 0 err.
+- Full results table + N1/N2/N3 findings: `docs/reviews/qa-2026-06-17/findings.md`.
+
+### IN PROGRESS when compacted — deferred Option-2 live items (user wants: #57 → #62 → Arabic)
+- **#57 XFDF round-trip (mid-test):** browser has `data-tables.pdf` loaded (1pg) + **1 highlight element** just drawn via the highlight tool. NEXT STEPS:
+  1. Open export flyout (`#exportChevronBtn`) → click `#exportXfdfBtn`; read `window.__caps` for the .xfdf download; `fetch(href)` the XFDF text; assert it contains `<highlight`.
+  2. Re-import: reparent+show `#xfdfInput` (hidden file input), upload the saved XFDF (write blob to a tmp file first, or test parseXfdf), assert a highlight element is recreated on the page.
+- **#62 flatten:** corpus has NO AcroForm PDF. Either generate one with `@cantoo/pdf-lib` (form.createTextField) like the data-tables generator, OR just confirm `#flattenBtn` produces a valid PDF (form.flatten() no-op without a form). Covered by jsdom `flatten.test`.
+- **Arabic overlay:** no Arabic fixture. Add Arabic text via the addText tool (split-button default), export PDF, assert the Noto-Naskh overlay renders multi-glyph ink width (the arabicOverlay path). Covered by `arabic-overlay.browser.test`.
+
+### Browser/env state (Playwright session — may be stale after compact; re-establish if so)
+- Dev server: `npm run dev` on **:5174** (stale one also on :5173). If down: `npm run dev &` then use :5174.
+- Download-capture technique (reused all session): in page, `delete window.showSaveFilePicker` (force anchor path — FS-Access picker has no UI under Playwright), `URL.revokeObjectURL=()=>{}` (keep blobs fetchable), hook `HTMLAnchorElement.prototype.click` to push `{name,href}` into `window.__caps`, then `fetch(href)` to inspect bytes.
+- Load a PDF: reparent `#fileInput` to body + `style.cssText='position:fixed;...;display:block'` (offsetParent is null for fixed — element IS visible), `browser_click('#fileInput')` opens chooser, `browser_file_upload([path])`.
+- Clear persisted session (avoid restore-dialog intercepting clicks): delete IndexedDB `keyval-store` + `pdf-editor`, then reload.
+- Corpus valid fixtures: `tests/fixtures/corpus-public/{w3c-accessible-table,sample-tables-lattice,japanese-cjk,data-tables}.pdf` (+ gitignored arxiv-multicol-japanese.pdf, 5.1MB, local only).
+
+### Resume sequence on next session
+1. Re-verify tree state: `git log --oneline -3` (expect 17a7fb7, e1dedda, 5b8872d), `git status`.
+2. Finish #57 XFDF round-trip (steps above), then #62 flatten, then Arabic overlay.
+3. Update findings.md "Not exercised live" section as each completes.
+4. Optionally commit any new fixtures/findings; PUSH IS MANUAL — never push autonomously.
+5. Trap to avoid: the prior autonomous run hung on the ask-human-gate-in-background; run the sweep INLINE, not as a background workflow.

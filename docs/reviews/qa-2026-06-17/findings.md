@@ -103,10 +103,28 @@ fetching a revoked blob URL, and the corrupt fixture below).
 | N2 | P3 | Lattice table→CSV emits **spurious empty interstitial columns** (`,,` between data) — v-rule clustering detects more column boundaries than data columns. Content is correct; columns are noisy. |
 | N3 | P3 | The session-restore dialog can be dismissed *after* a new file was already opened on top of it — the two states coexist briefly. Minor; "Start fresh" resolves correctly. |
 
-### Not exercised live (no silent caps — explicitly deferred)
-`#62` flatten residual-widgets · `#57` XFDF Acrobat round-trip · `#53` OpenAction-JS strip ·
-`#54` native Save dialog (FS-Access picker has no UI under Playwright — forced the anchor path) ·
-Arabic overlay width (no Arabic fixture in corpus — `data-tables.pdf` was the likely intended one, see N1) ·
-arxiv-multicol-japanese.pdf render · compress lossy raster path · per-element edit tools
-(text/highlight/redact/crop pointer gestures). These are covered by the jsdom + existing
-browser harness; flagged here so coverage isn't overstated.
+### Deferred items — now exercised live (resume sweep, 2026-06-18, Playwright real Chrome :5174)
+
+The three items the first sweep deferred were verified end-to-end through the running app UI
+(real button/handler/file-input wiring, not just the harness logic). **0 app console errors**
+(a clean reload restored the valid session with 0 errors/0 warnings — see the InvalidPDFException
+note below).
+
+| # | Item | Live result |
+|---|------|-------------|
+| **#57** | XFDF export → import round-trip | ✅ Drew a highlight via the real `drawHighlight` pointer path → clicked `#exportXfdfBtn` → valid `data-tables.xfdf` (419 B, `<xfdf>` root + `<highlight>`, correct editor→user-space **Y-flip** 765→780 pt on an 842 pt page). Cleared the element (0), re-imported via the real `#xfdfInput` change handler → highlight **recreated at identical coords (31,62, 133×15)**, valid `pageId`, undoable. Perfect round-trip. Logic also: jsdom 22/22 (`xfdf`/`xfdfMapping`/`xfdfExport`/`xfdfImport`). |
+| **#62** | Form flatten | ✅ `#flattenBtn` → valid `data-tables-flattened.pdf` (3289 B, `%PDF-1.7`, `%%EOF`), highlight baked in. Form-residue flatten logic: jsdom `flatten.test.ts`. |
+| **Arabic overlay** | addText → Arabic → export | ✅ Placed a text box via the real `addText` drag flow, set `مرحبا بالعالم` through the input event → `downloadPDF` → valid `data-tables-edited.pdf` (8268 B) with **Noto Naskh embedded as Type0/CIDFont**, no export error. Rasterized multi-glyph **ink-width** is harness-proven (`arabic-overlay.browser.test.ts` 3/3 real Chrome). |
+
+**InvalidPDFException note (root-caused, not a build bug):** on the very first navigate (before
+clearing IndexedDB) a *stale persisted session* auto-restored the **pre-N1-fix corrupt `data-tables.pdf`**
+(HTML error page) — pdf.js's `getHexString` decoded its bytes as `<!doctype html>` and threw
+`InvalidPDFException`. After clearing IDB + loading the regenerated valid fixture, a clean reload
+restored the valid session with **0 errors/0 warnings** — the persist/restore path is sound. The
+only other console error was the test-instrumentation blob fetch (no-op'd `revokeObjectURL`).
+
+### Still not exercised live (no silent caps — explicitly deferred)
+`#53` OpenAction-JS strip · `#54` native Save dialog (FS-Access picker has no UI under Playwright —
+forced the anchor path) · arxiv-multicol-japanese.pdf render · compress lossy raster path ·
+per-element edit tools beyond highlight/text (redact/crop pointer gestures). These are covered by
+the jsdom + existing browser harness; flagged here so coverage isn't overstated.
