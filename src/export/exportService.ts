@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget } from '../utils/fileSystemAccess';
@@ -578,25 +578,29 @@ export class ExportService {
     const flowDoc: FlowDoc = { pages: [] };
     for (const docPage of documentModel.pages) {
       // Text the user TYPED on this page (overlay TextElements). `el.text` is logical
-      // Unicode, so this exports correctly in DOCX/MD — including Arabic (#4). Appended
-      // after any reconstructed source text below.
-      const overlayParas = textElementsToFlowParagraphs(
-        elements
-          .filter((el): el is TextElement => el.pageId === docPage.id && el.type === 'text')
-          .map((el) => ({
-            text: el.text, x: el.x, y: el.y, fontSize: el.fontSize,
-            color: el.color, fontFamily: el.fontFamily, bold: el.bold, italic: el.italic,
-          })),
-      );
+      // Unicode, so this exports correctly in DOCX/MD — including Arabic (#4).
+      // Interleaved into the source text by reading order on a source page (G12);
+      // emitted alone on a blank page. The reading-order `y` is attached below for
+      // a source page (it needs the source page height, known after getPage).
+      const overlayEls: OverlayTextLike[] = elements
+        .filter((el): el is TextElement => el.pageId === docPage.id && el.type === 'text')
+        .map((el) => ({
+          text: el.text, x: el.x, y: el.y, fontSize: el.fontSize,
+          color: el.color, fontFamily: el.fontFamily, bold: el.bold, italic: el.italic,
+        }));
       const src = documentModel.sourcePdfs.get(docPage.sourcePdfId);
       if (!src || !docPage.sourcePageNum) {
         // Blank page (no source) carrying typed text: emit it so the text isn't dropped
-        // — this is the "blank page + typed Arabic → empty DOCX" bug.
-        if (overlayParas.length > 0) {
+        // — this is the "blank page + typed Arabic → empty DOCX" bug. No pageHeight is
+        // passed: overlay-only order is already correct via the function's x/y sort, so
+        // these paragraphs carry no reading-order `y` (G12 only matters when merging
+        // with source paragraphs).
+        const blankParas = textElementsToFlowParagraphs(overlayEls);
+        if (blankParas.length > 0) {
           flowDoc.pages.push({
             width: docPage.blankWidth ?? 595,
             height: docPage.blankHeight ?? 842,
-            paragraphs: overlayParas,
+            paragraphs: blankParas,
           });
         }
         continue;
@@ -685,8 +689,13 @@ export class ExportService {
 
       const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined);
       if (pageImages.length > 0) flowPage.images = pageImages;
-      // Append typed overlay text after the reconstructed source text (#4).
-      if (overlayParas.length > 0) flowPage.paragraphs.push(...overlayParas);
+      // Interleave typed overlay text into the source paragraphs by reading order
+      // (G12) instead of appending it at the end. The overlay paragraphs get a PDF
+      // y-up `y` from the SOURCE page height (vp.height, NOT the blank fallback) so
+      // a note typed mid-page exports mid-page. No overlay → flowPage.paragraphs is
+      // returned unchanged (byte-identical pre-G12 output).
+      const overlayParas = textElementsToFlowParagraphs(overlayEls, vp.height);
+      flowPage.paragraphs = interleaveByReadingOrder(flowPage.paragraphs, overlayParas);
       flowDoc.pages.push(flowPage);
     }
     assignHeadings(flowDoc);

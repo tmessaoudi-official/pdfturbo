@@ -1239,8 +1239,20 @@ function _genericFamily(name?: string): 'serif' | 'sans-serif' | 'monospace' {
  * un-reverses pdf.js VISUAL-order *source* text, which would corrupt logical input.
  * Multiline text splits on '\n'; elements are ordered top-to-bottom then L→R.
  * Pure → jsdom-testable.
+ *
+ * When `pageHeight` (the source page height, PDF points) is supplied, each emitted
+ * paragraph gets a reading-order `y` in PDF user space (y-UP) so it can interleave
+ * with source paragraphs (G12): `el.y` is editor DISPLAY space (top-left origin,
+ * y-DOWN), so the box top in PDF space is `pageHeight - el.y`. Successive lines of
+ * a multi-line element step DOWN by one font size (`- lineIdx * el.fontSize`) so
+ * they keep their top-to-bottom order after a descending-y sort. When `pageHeight`
+ * is omitted (the blank-page caller), NO `y` is set and behaviour is unchanged —
+ * those paragraphs sort by insertion order in the writer's `?? -Infinity` fallback.
  */
-export function textElementsToFlowParagraphs(els: ReadonlyArray<OverlayTextLike>): FlowParagraph[] {
+export function textElementsToFlowParagraphs(
+  els: ReadonlyArray<OverlayTextLike>,
+  pageHeight?: number,
+): FlowParagraph[] {
   const ordered = [...els].sort((a, b) => a.y - b.y || a.x - b.x);
   const out: FlowParagraph[] = [];
   for (const el of ordered) {
@@ -1248,16 +1260,45 @@ export function textElementsToFlowParagraphs(els: ReadonlyArray<OverlayTextLike>
     const color =
       el.color && el.color.toUpperCase() !== '#000000' ? el.color.replace(/^#/, '').toUpperCase() : undefined;
     const fontFamily = _genericFamily(el.fontFamily);
+    let lineIdx = 0;
     for (const line of el.text.split('\n')) {
       if (!line.trim()) continue;
       const rtl = isArabicText(line);
-      out.push({
+      const para: FlowParagraph = {
         runs: [{ text: line, bold: !!el.bold, italic: !!el.italic, fontSize: el.fontSize, fontFamily, rtl, color }],
         heading: 0,
         alignment: rtl ? 'right' : 'left',
         rtl,
-      });
+      };
+      if (pageHeight !== undefined) para.y = pageHeight - el.y - lineIdx * el.fontSize;
+      out.push(para);
+      lineIdx++;
     }
   }
   return out;
+}
+
+/**
+ * Merge source paragraphs with typed-overlay paragraphs into one reading-order
+ * sequence (G12). Reading order is DESCENDING PDF y-up (top of page first); this
+ * mirrors the table-interleave convention in flowDocWriters (`p.y ?? -Infinity`,
+ * stable on ties). A paragraph with no `y` sinks to the end, keeping its relative
+ * order. The sort is made stable explicitly via an insertion-order tiebreaker so
+ * a source paragraph and an overlay paragraph at the SAME y keep source-first.
+ *
+ * Identity fast-path: when there is no overlay text the SOURCE array is returned
+ * UNCHANGED (same reference) so a page with no typed text stays byte-identical to
+ * the pre-G12 output — source paragraphs are never re-sorted on their own (which
+ * matters for multi-column pages, where reconstructPage's column-concatenation
+ * order is NOT globally descending-y and must be preserved).
+ */
+export function interleaveByReadingOrder(
+  source: FlowParagraph[],
+  overlay: FlowParagraph[],
+): FlowParagraph[] {
+  if (overlay.length === 0) return source;
+  const yOf = (p: FlowParagraph) => p.y ?? -Infinity; // y-less paragraphs sink to the end
+  const tagged = [...source, ...overlay].map((node, order) => ({ node, order, y: yOf(node) }));
+  tagged.sort((a, b) => b.y - a.y || a.order - b.order);
+  return tagged.map(t => t.node);
 }
