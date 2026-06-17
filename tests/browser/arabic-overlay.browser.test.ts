@@ -196,4 +196,25 @@ describe('drawArabicLine (real Chrome)', () => {
     expect(corrCorrect).toBeGreaterThan(0.8);
     expect(corrCorrect).toBeGreaterThan(corrMirror + 0.3);
   });
+
+  // #3b — a line mixing Arabic with Latin/Western-digits used to route entirely
+  // through the Arabic font, which has no Latin glyphs → "World"/"100" rendered as
+  // .notdef (extracted as U+0000 tofu). Bidi run-segmentation now draws those runs
+  // with Helvetica, so they survive as readable text.
+  it('mixed Arabic + Latin/digits: non-Arabic runs render readable (no tofu)', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([420, 120]);
+    await drawArabicLine(doc, page, {
+      text: 'السعر 100 USD', x: 20, y: 60, right: 400, size: 28, color: { r: 0, g: 0, b: 0 },
+    });
+    const bytes = await doc.save();
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const p = await pdf.getPage(1);
+    const extracted = (await p.getTextContent()).items.map((i) => (i as { str: string }).str).join('');
+    expect(extracted.includes(String.fromCharCode(0))).toBe(false); // non-Arabic runs are real glyphs, not .notdef/tofu (U+0000)
+    expect(extracted).toContain('100'); // Western digits present & readable
+    expect(extracted).toContain('USD'); // Latin word present & readable
+    expect(isArabicText(extracted)).toBe(true); // Arabic still present
+  });
 });
