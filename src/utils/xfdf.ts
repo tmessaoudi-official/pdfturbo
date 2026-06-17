@@ -9,12 +9,16 @@
  * module only serialises/parses, so it is pure and fully unit-testable.
  *
  * Supported subtypes (clean two-way mapping): highlight, text (sticky note),
- * freetext. Other subtypes (ink, stamp, square, circle, line) and richtext/DA
- * appearances are a documented ceiling (#57b) — on import they are ignored
+ * freetext, plus the shape subtypes square, circle, line and ink (G21 —
+ * mapped to the app's `shape` element rect/ellipse/arrow/freehand). Remaining
+ * subtypes (stamp, polygon, polyline) and richtext/DA appearances + form
+ * `<fields>` data are a documented ceiling (#57b) — on import they are ignored
  * (forward-compatible), never mis-mapped.
  */
 
-export type XfdfAnnotType = 'highlight' | 'text' | 'freetext';
+export type XfdfAnnotType =
+  | 'highlight' | 'text' | 'freetext'
+  | 'square' | 'circle' | 'line' | 'ink';
 
 export interface XfdfAnnot {
   type: XfdfAnnotType;
@@ -30,10 +34,16 @@ export interface XfdfAnnot {
   opacity?: number;
   /** Free-text font size (points). Non-standard attribute — app round-trip only. */
   fontSize?: number;
+  /** Border/stroke width in points (square/circle/line/ink — XFDF `width`). */
+  width?: number;
+  /** Line endpoints [x1,y1,x2,y2] in PDF user space (XFDF `start`/`end`). */
+  line?: [number, number, number, number];
+  /** Ink gesture paths; each path is a flat [x0,y0,x1,y1,…] list in user space. */
+  inkList?: number[][];
 }
 
 const NS = 'http://ns.adobe.com/xfdf/';
-const SUPPORTED = new Set<string>(['highlight', 'text', 'freetext']);
+const SUPPORTED = new Set<string>(['highlight', 'text', 'freetext', 'square', 'circle', 'line', 'ink']);
 
 function escAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -51,6 +61,27 @@ function quadFromRect(r: readonly [number, number, number, number]): string {
   return `${x1},${y2},${x2},${y2},${x1},${y1},${x2},${y1}`;
 }
 
+/** Flat [x0,y0,x1,y1,…] point list → XFDF `<gesture>` body "x0,y0;x1,y1;…". */
+function pathToGesture(path: readonly number[]): string {
+  const pairs: string[] = [];
+  for (let i = 0; i + 1 < path.length; i += 2) pairs.push(`${path[i]},${path[i + 1]}`);
+  return pairs.join(';');
+}
+
+/** XFDF `<gesture>` body "x0,y0;x1,y1;…" → flat [x0,y0,x1,y1,…]; non-finite
+ *  coordinates are dropped (the pair is skipped). */
+function gestureToPath(body: string): number[] {
+  const out: number[] = [];
+  for (const pair of body.split(';')) {
+    const t = pair.trim();
+    if (t === '') continue;
+    const [xs, ys] = t.split(',');
+    const x = Number(xs), y = Number(ys);
+    if (Number.isFinite(x) && Number.isFinite(y)) out.push(x, y);
+  }
+  return out;
+}
+
 /** Serialise annotation records to an XFDF document string. */
 export function buildXfdf(annots: XfdfAnnot[]): string {
   const lines = annots.map(a => {
@@ -60,6 +91,22 @@ export function buildXfdf(annots: XfdfAnnot[]): string {
       if (a.opacity !== undefined) attrs.push(`opacity="${a.opacity}"`);
       attrs.push(`coords="${quadFromRect(a.rect)}"`);
       return `    <highlight ${attrs.join(' ')}/>`;
+    }
+    if (a.type === 'square' || a.type === 'circle') {
+      if (a.width !== undefined) attrs.push(`width="${a.width}"`);
+      return `    <${a.type} ${attrs.join(' ')}/>`;
+    }
+    if (a.type === 'line') {
+      if (a.width !== undefined) attrs.push(`width="${a.width}"`);
+      const ln = a.line ?? a.rect;
+      attrs.push(`start="${ln[0]},${ln[1]}"`, `end="${ln[2]},${ln[3]}"`);
+      return `    <line ${attrs.join(' ')}/>`;
+    }
+    if (a.type === 'ink') {
+      if (a.width !== undefined) attrs.push(`width="${a.width}"`);
+      const gestures = (a.inkList ?? [])
+        .map(path => `<gesture>${pathToGesture(path)}</gesture>`).join('');
+      return `    <ink ${attrs.join(' ')}>${gestures}</ink>`;
     }
     if (a.type === 'freetext' && a.fontSize !== undefined) attrs.push(`fontsize="${a.fontSize}"`);
     const body = a.contents !== undefined ? `<contents>${escText(a.contents)}</contents>` : '';
@@ -114,6 +161,23 @@ export function parseXfdf(xml: string): XfdfAnnot[] {
     if (type === 'highlight') {
       const op = num(el.getAttribute('opacity'));
       if (op !== undefined) annot.opacity = op;
+    } else if (type === 'square' || type === 'circle' || type === 'line' || type === 'ink') {
+      const w = num(el.getAttribute('width'));
+      if (w !== undefined) annot.width = w;
+      if (type === 'line') {
+        const start = (el.getAttribute('start') ?? '').split(',').map(s => Number(s.trim()));
+        const end = (el.getAttribute('end') ?? '').split(',').map(s => Number(s.trim()));
+        if (start.length === 2 && end.length === 2 && [...start, ...end].every(n => Number.isFinite(n))) {
+          annot.line = [start[0], start[1], end[0], end[1]];
+        }
+      } else if (type === 'ink') {
+        const paths: number[][] = [];
+        for (const g of Array.from(el.getElementsByTagName('gesture'))) {
+          const path = gestureToPath(g.textContent ?? '');
+          if (path.length >= 2) paths.push(path);
+        }
+        annot.inkList = paths;
+      }
     } else {
       const contentsEl = el.getElementsByTagName('contents')[0];
       if (contentsEl) annot.contents = contentsEl.textContent ?? '';
