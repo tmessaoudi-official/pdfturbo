@@ -442,6 +442,7 @@
     "blankPageInsertFailed": "Failed to insert blank page",
     "appUpdateAvailable": "Update available — reload the page to apply",
     "passwordRequired": "User password is required",
+    "passwordTooWeak": "Open password must be at least {{min}} characters",
     "eyedropperUnsupported": "Color picker not supported in this browser"
   },
   "thumbnail": {

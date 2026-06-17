@@ -1,6 +1,6 @@
 import type { PDFTurboApp, ToolMode } from '../../core/pdfTurboApp';
 import { FlyoutManager } from '../flyoutManager';
-import { randomOwnerPassword } from '../../export/encryption';
+import { randomOwnerPassword, validateUserPassword, MIN_PASSWORD_LENGTH } from '../../export/encryption';
 import { confirmDestructive } from '../confirmDialog';
 import { bindExtractPagesModal } from './extractPagesBinder';
 
@@ -207,7 +207,8 @@ export function bindModalEvents(app: PDFTurboApp): void {
   });
   document.getElementById('lockPdfApplyBtn')?.addEventListener('click', () => {
     const user = (document.getElementById('lockUserPassword') as HTMLInputElement).value.trim();
-    if (!user) { app.reportError.warn('toast.passwordRequired'); return; }
+    const pwErr = validateUserPassword(user);
+    if (pwErr) { app.reportError.warn(pwErr, pwErr === 'toast.passwordTooWeak' ? { min: MIN_PASSWORD_LENGTH } : undefined); return; }
     // CORE-P0-2/CORE-7: when no owner password is given, generate a strong random
     // one instead of reusing the user password — owner==user makes the permission
     // flags trivially strippable (anyone with the open password gains owner rights).

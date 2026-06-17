@@ -58,6 +58,16 @@ export async function encryptPdf(pdfDoc: PDFDocument, pw: EncryptionPasswords): 
   });
 }
 
+/** Minimum open-password length for Lock PDF. NIST SP 800-63B floor for user-chosen secrets. */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/** Returns an i18n toast key when the open password is unacceptable, else null. */
+export function validateUserPassword(pw: string): 'toast.passwordRequired' | 'toast.passwordTooWeak' | null {
+  if (!pw) return 'toast.passwordRequired';
+  if (pw.length < MIN_PASSWORD_LENGTH) return 'toast.passwordTooWeak';
+  return null;
+}
+
 /**
  * Generate a strong random owner password (used when the user supplies only a
  * user/open password). A distinct, unknown owner password makes the permission

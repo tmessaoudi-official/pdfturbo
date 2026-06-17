@@ -442,6 +442,7 @@
     "blankPageInsertFailed": "تعذّر إدراج صفحة فارغة",
     "appUpdateAvailable": "يتوفر تحديث — أعد تحميل الصفحة",
     "passwordRequired": "كلمة مرور المستخدم مطلوبة",
+    "passwordTooWeak": "يجب ألا تقل كلمة مرور الفتح عن {{min}} أحرف",
     "eyedropperUnsupported": "أداة انتقاء اللون غير مدعومة في هذا المتصفح"
   },
   "thumbnail": {
