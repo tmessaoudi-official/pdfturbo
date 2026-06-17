@@ -64,6 +64,17 @@ export interface InvisibleTextLayerOpts {
   font: PDFFont;
   /** The page resource key for `font` (`page.node.newFontDictionary(font.name, font.ref)`). */
   fontKey: PDFName;
+  /**
+   * Cardinal page `/Rotate` the OCR canvas was rendered at (0/90/180/270).
+   * Defaults to 0 (no remap — byte-identical to the unrotated path). When non-zero,
+   * each word bbox is first remapped to unrotated-canvas space via
+   * {@link rotateBBoxToUnrotated} using `renderW`/`renderH`.
+   */
+  rotation?: CardinalAngle;
+  /** Rendered (rotated) canvas width in pixels — required when `rotation` is non-zero. */
+  renderW?: number;
+  /** Rendered (rotated) canvas height in pixels — required when `rotation` is non-zero. */
+  renderH?: number;
 }
 
 /** Smallest font size we will emit; guards degenerate zero-height OCR boxes. */
@@ -87,6 +98,66 @@ export function wordToTextPlacement(
   return { x, baselineY, size };
 }
 
+/** The four cardinal `/Rotate` angles the searchable layer can remap. */
+export type CardinalAngle = 0 | 90 | 180 | 270;
+
+/** Normalize any `/Rotate` value to 0..359; returns null if not a multiple of 90. */
+export function asCardinalAngle(angle: number): CardinalAngle | null {
+  const a = ((Math.trunc(angle) % 360) + 360) % 360;
+  return a === 0 || a === 90 || a === 180 || a === 270 ? a : null;
+}
+
+/**
+ * Remap an OCR word bbox captured on a canvas rendered at the page's EFFECTIVE
+ * `/Rotate` back into UNROTATED-canvas pixel space (still top-left origin, y-down,
+ * still at the render scale). `wordToTextPlacement` then turns that into unrotated
+ * PDF points exactly as it does for an unrotated page.
+ *
+ * The OCR canvas is produced by pdf.js `getViewport({ scale })`, which bakes the
+ * page's intrinsic `/Rotate` into the raster — so a word's pixel box is in
+ * rotated-display space, NOT the unrotated PDF user space the invisible text layer
+ * must be written in. `renderW`/`renderH` are the rendered (rotated) canvas pixel
+ * dimensions; for 90°/270° the rendered width corresponds to the unrotated page
+ * height and vice-versa, so the box's width/height swap.
+ *
+ * Pure → unit-testable. Identity at 0° (rotation-0 stays byte-identical).
+ *
+ * @param bbox    word box in rotated-canvas pixels (top-left origin).
+ * @param angle   cardinal page rotation (0/90/180/270, CW display convention).
+ * @param renderW rendered (rotated) canvas width in pixels.
+ * @param renderH rendered (rotated) canvas height in pixels.
+ */
+export function rotateBBoxToUnrotated(
+  bbox: OcrBBoxLike,
+  angle: CardinalAngle,
+  renderW: number,
+  renderH: number,
+): OcrBBoxLike {
+  if (angle === 0) return bbox;
+  // Map both corners, then re-normalize (min/max) since rotation can flip order.
+  const map = (px: number, py: number): [number, number] => {
+    switch (angle) {
+      // 90° CW display: (x,y) → (y, renderW - x); unrotated canvas is renderH×renderW.
+      case 90:
+        return [py, renderW - px];
+      // 180°: mirror both axes; dimensions unchanged.
+      case 180:
+        return [renderW - px, renderH - py];
+      // 270° CW display: (x,y) → (renderH - y, x); unrotated canvas is renderH×renderW.
+      case 270:
+        return [renderH - py, px];
+    }
+  };
+  const [ax, ay] = map(bbox.x0, bbox.y0);
+  const [bx, by] = map(bbox.x1, bbox.y1);
+  return {
+    x0: Math.min(ax, bx),
+    y0: Math.min(ay, by),
+    x1: Math.max(ax, bx),
+    y1: Math.max(ay, by),
+  };
+}
+
 /**
  * Build the flat operator list that paints `words` as invisible (`3 Tr`) text at
  * their OCR positions. Hand the result to `page.pushOperators(...ops)`.
@@ -98,12 +169,15 @@ export function buildInvisibleTextLayerOps(
   words: ReadonlyArray<OcrWordLike>,
   opts: InvisibleTextLayerOpts,
 ): PDFOperator[] {
-  const { scale, pageHeight, font, fontKey } = opts;
+  const { scale, pageHeight, font, fontKey, rotation = 0, renderW = 0, renderH = 0 } = opts;
   const ops: PDFOperator[] = [];
   for (const word of words) {
     const text = word.text.trim();
     if (text.length === 0) continue;
-    const { x, baselineY, size } = wordToTextPlacement(word.bbox, scale, pageHeight);
+    // Remap a rotated-canvas bbox into unrotated-canvas pixels first (identity at 0°),
+    // then apply the unchanged px→pt + y-flip math.
+    const bbox = rotation === 0 ? word.bbox : rotateBBoxToUnrotated(word.bbox, rotation, renderW, renderH);
+    const { x, baselineY, size } = wordToTextPlacement(bbox, scale, pageHeight);
     ops.push(
       beginText(),
       setTextRenderingMode(TextRenderingMode.Invisible),
@@ -168,9 +242,10 @@ export class SearchableLayerError extends Error {
  * visible overlay performs is deliberately omitted here.
  *
  * @param sourcePageNum 1-based page number (matches `DocumentPage.sourcePageNum`).
- * @throws SearchableLayerError('ROTATED_PAGE') when the page has a non-zero
- *   `/Rotate` — OCR bboxes are in the rotated render space and would be mis-placed
- *   against pdf-lib's unrotated page coords. Rotated-page support is a follow-up.
+ * @throws SearchableLayerError('ROTATED_PAGE') ONLY when the page has a non-cardinal
+ *   `/Rotate` (not a multiple of 90 — e.g. a malformed 45°). Cardinal rotations
+ *   (90/180/270) are remapped into unrotated PDF coords via {@link rotateBBoxToUnrotated}
+ *   and supported; arbitrary angles can't be axis-aligned, so they stay refused.
  */
 export async function applySearchableLayerToPdf(
   srcBytes: Uint8Array,
@@ -181,19 +256,29 @@ export async function applySearchableLayerToPdf(
   const doc = await PDFDocument.load(srcBytes);
   const page = doc.getPage(sourcePageNum - 1);
 
-  const angle = ((page.getRotation().angle % 360) + 360) % 360;
-  if (angle !== 0) throw new SearchableLayerError('ROTATED_PAGE');
+  const rotation = asCardinalAngle(page.getRotation().angle);
+  // Arbitrary (non-cardinal) angles can't be remapped to an axis-aligned box → refuse.
+  if (rotation === null) throw new SearchableLayerError('ROTATED_PAGE');
 
   const { latin, arabic } = partitionWordsByFont(words);
   if (latin.length === 0 && arabic.length === 0) return null;
 
-  const pageHeight = page.getHeight();
+  // pdf-lib getSize() is the UNROTATED MediaBox size; the invisible text is written
+  // in that unrotated user space (the page's own /Rotate re-applies on display). The
+  // OCR canvas, however, was rendered at the EFFECTIVE rotation, so for 90°/270° its
+  // pixel width/height are swapped relative to the unrotated page.
+  const { width: unrotW, height: unrotH } = page.getSize();
+  const pageHeight = unrotH;
+  const swap = rotation === 90 || rotation === 270;
+  const renderW = (swap ? unrotH : unrotW) * scale;
+  const renderH = (swap ? unrotW : unrotH) * scale;
+  const rot = { rotation, renderW, renderH };
   const ops: PDFOperator[] = [];
 
   if (latin.length > 0) {
     const helv = await doc.embedFont(StandardFonts.Helvetica);
     const fontKey = page.node.newFontDictionary(helv.name, helv.ref);
-    ops.push(...buildInvisibleTextLayerOps(latin, { scale, pageHeight, font: helv, fontKey }));
+    ops.push(...buildInvisibleTextLayerOps(latin, { scale, pageHeight, font: helv, fontKey, ...rot }));
   }
 
   if (arabic.length > 0) {
@@ -208,7 +293,7 @@ export async function applySearchableLayerToPdf(
     // is incomplete — a documented partial, the same ceiling as the visible overlay.
     // A clean-ToUnicode PoC (per-codepoint isolated encoding) was tried and rejected:
     // it traded the artifact for RTL order reversal in pdf.js getTextContent.
-    ops.push(...buildInvisibleTextLayerOps(arabic, { scale, pageHeight, font: arFont, fontKey }));
+    ops.push(...buildInvisibleTextLayerOps(arabic, { scale, pageHeight, font: arFont, fontKey, ...rot }));
   }
 
   page.pushOperators(...ops);

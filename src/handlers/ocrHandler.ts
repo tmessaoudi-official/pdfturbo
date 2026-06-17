@@ -94,6 +94,15 @@ export function ocrAssetPaths(base: string): OcrAssetPaths {
  * Map one OCR word (image-pixel bbox, top-left origin) to a TextElement in
  * element space (PDF points, top-left origin). Both spaces are top-left, so
  * only the render scale divides out — no Y-flip. Pure → jsdom-unit-testable.
+ *
+ * Rotation note: the visible path renders the OCR canvas at the page's intrinsic
+ * `/Rotate` (no user rotation), and the element layer is composed in that SAME
+ * displayed/rotated viewport space, so a plain scale-divide already lands visible
+ * elements correctly when user rotation is 0 (the common case). The
+ * UNROTATED-PDF-space remap is only needed by the searchable-layer path (which
+ * writes into unrotated user space) — see `rotateBBoxToUnrotated` in
+ * `searchableTextLayer.ts`. Aligning the visible path with a non-zero USER
+ * rotation is a follow-up (G15b).
  */
 export function ocrWordToTextElement(w: OcrWordLike, scale: number, pageId: string): TextElement {
   const x = w.bbox.x0 / scale;
@@ -126,8 +135,9 @@ export class OcrHandler {
    * Recognize text on the current page and emit it in the requested {@link OcrOutputMode}.
    * @returns the number of words placed (0 when the page is blank/has no source,
    *          or no usable text was found).
-   * @throws SearchableLayerError('ROTATED_PAGE') in `'searchable'` mode on a rotated
-   *   page (the source bbox space can't be mapped to unrotated PDF coords yet).
+   * @throws SearchableLayerError('ROTATED_PAGE') in `'searchable'` mode only on a
+   *   NON-cardinal rotation (a `/Rotate` that is not a multiple of 90). Cardinal
+   *   rotations (90/180/270) are remapped to unrotated PDF coords and supported.
    */
   async run(
     language: string,
@@ -188,8 +198,10 @@ export class OcrHandler {
       const { latin, arabic } = partitionWordsByFont(result.words);
       const placed = latin.length + arabic.length;
       if (placed === 0) return 0;
-      // Throws SearchableLayerError('ROTATED_PAGE') on a rotated page — let it
-      // propagate so the caller can show a specific message.
+      // Cardinal-rotated pages (90/180/270) are remapped to unrotated PDF coords
+      // inside applySearchableLayerToPdf. It still throws SearchableLayerError(
+      // 'ROTATED_PAGE') for a non-cardinal /Rotate — let that propagate so the
+      // caller can show the specific "rotated unsupported" message.
       const newBytes = await applySearchableLayerToPdf(src.bytes, page.sourcePageNum, result.words, scale);
       if (!newBytes) return 0;
       // Reuse the true-edit byte-swap: undoable (ReplaceSourcePdfBytesCmd) + persisted.

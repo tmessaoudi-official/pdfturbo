@@ -8,12 +8,13 @@
  * "is it actually selectable" proof lives in the real-Chrome browser test.
  */
 import { describe, it, expect } from 'vitest';
-import { PDFDocument, StandardFonts, degrees, type PDFOperator } from '@cantoo/pdf-lib';
+import { PDFDocument, PDFName, StandardFonts, degrees, type PDFOperator } from '@cantoo/pdf-lib';
 import {
   wordToTextPlacement,
   buildInvisibleTextLayerOps,
   partitionWordsByFont,
   applySearchableLayerToPdf,
+  rotateBBoxToUnrotated,
   SearchableLayerError,
 } from '../../src/ocr/searchableTextLayer';
 
@@ -39,6 +40,63 @@ describe('wordToTextPlacement', () => {
   it('floors size at a positive minimum for degenerate (zero-height) boxes', () => {
     const p = wordToTextPlacement({ x0: 0, y0: 50, x1: 10, y1: 50 }, scale, pageHeight);
     expect(p.size).toBeGreaterThan(0);
+  });
+});
+
+describe('rotateBBoxToUnrotated', () => {
+  // A rotated-canvas render whose pixel dimensions are 120 (w) × 80 (h).
+  // A word sits in the top-left of the rendered (rotated) image: x0=0,y0=0,x1=30,y1=20.
+  const RW = 120;
+  const RH = 80;
+  const tl = { x0: 0, y0: 0, x1: 30, y1: 20 };
+
+  it('is the identity at 0° (rotation-0 byte-identical guarantee)', () => {
+    expect(rotateBBoxToUnrotated(tl, 0, RW, RH)).toEqual(tl);
+  });
+
+  it('maps a top-left word to a top-right word and swaps w/h at 90°', () => {
+    // 90° display rotation (CW): unrotated canvas is RH×RW = 80×120.
+    // Top-left of the rotated render came from the top-right of the unrotated page.
+    // (rx,ry)=(0,0) → (ux,uy)=(ry, RW-rx)=(0,120) bottom edge; corner (30,20)→(20,90).
+    // Normalized: x∈[0,20], y∈[90,120]. Width 20 = old height, height 30 = old width (swapped).
+    const r = rotateBBoxToUnrotated(tl, 90, RW, RH);
+    expect(r).toEqual({ x0: 0, y0: 90, x1: 20, y1: 120 });
+    expect(r.x1 - r.x0).toBe(20); // old height
+    expect(r.y1 - r.y0).toBe(30); // old width
+  });
+
+  it('mirrors both axes (no swap) at 180°', () => {
+    // (rx,ry)→(RW-rx, RH-ry). Corners (0,0)&(30,20) → (120,80)&(90,60).
+    // Normalized: x∈[90,120], y∈[60,80].
+    expect(rotateBBoxToUnrotated(tl, 180, RW, RH)).toEqual({ x0: 90, y0: 60, x1: 120, y1: 80 });
+  });
+
+  it('maps a top-left word to a bottom-left word and swaps w/h at 270°', () => {
+    // 270° display: unrotated canvas RH×RW = 80×120. (rx,ry)→(RH-ry, rx).
+    // Corners (0,0)&(30,20) → (80,0)&(60,30). Normalized: x∈[60,80], y∈[0,30].
+    const r = rotateBBoxToUnrotated(tl, 270, RW, RH);
+    expect(r).toEqual({ x0: 60, y0: 0, x1: 80, y1: 30 });
+    expect(r.x1 - r.x0).toBe(20); // old height
+    expect(r.y1 - r.y0).toBe(30); // old width
+  });
+
+  it('round-trips a 90° remap through wordToTextPlacement onto the unrotated page', () => {
+    // Unrotated page is 120pt wide × 240pt tall (portrait); rendered at scale 2
+    // with a 90° /Rotate → rotated canvas is 480w × 240h px (landscape).
+    // A word at the rotated render's top-left maps to the unrotated page's top edge.
+    const scale = 2;
+    const unrotatedPageH = 240; // points
+    const renderW = 480;
+    const renderH = 240;
+    const word = { x0: 0, y0: 0, x1: 40, y1: 20 }; // rotated-canvas px
+    const u = rotateBBoxToUnrotated(word, 90, renderW, renderH);
+    const p = wordToTextPlacement(u, scale, unrotatedPageH);
+    // u = (ry, RW-rx): (0,0)&(40,20) → (0,480)&(20,440) → x∈[0,20], y∈[440,480].
+    // x = 0/2 = 0; baselineY = 240 - 480/2 = 0 (bottom edge ⇒ top of the unrotated page
+    //   becomes the visual top after the page's own /Rotate re-applies); size=(480-440)/2=20.
+    expect(p.x).toBe(0);
+    expect(p.baselineY).toBe(0);
+    expect(p.size).toBe(20);
   });
 });
 
@@ -151,8 +209,42 @@ describe('applySearchableLayerToPdf (Latin / jsdom)', () => {
     expect(out).toBeNull();
   });
 
-  it('throws SearchableLayerError("ROTATED_PAGE") on a rotated page', async () => {
+  it('writes a layer (does NOT throw) on a 90° cardinal-rotated page', async () => {
     const src = await makeSourcePdf(90);
+    // Page is 300×200, /Rotate 90 → rendered canvas is 400w × 600h px at scale 2.
+    const out = await applySearchableLayerToPdf(
+      src,
+      1,
+      [{ text: 'Rotated', bbox: { x0: 10, y0: 10, x1: 120, y1: 50 } }],
+      2,
+    );
+    expect(out).toBeInstanceOf(Uint8Array);
+    if (!out) throw new Error('expected layer bytes');
+    expect(out.length).toBeGreaterThan(src.length);
+    await expect(PDFDocument.load(out)).resolves.toBeTruthy();
+  });
+
+  it('writes a layer on 180° and 270° cardinal-rotated pages', async () => {
+    for (const angle of [180, 270]) {
+      const src = await makeSourcePdf(angle);
+      const out = await applySearchableLayerToPdf(
+        src,
+        1,
+        [{ text: 'Word', bbox: { x0: 10, y0: 10, x1: 80, y1: 40 } }],
+        2,
+      );
+      expect(out, `angle ${angle}`).toBeInstanceOf(Uint8Array);
+    }
+  });
+
+  it('still throws ROTATED_PAGE for a genuinely non-cardinal angle (malformed /Rotate)', async () => {
+    // pdf-lib's setRotation REJECTS non-multiples of 90, so build a /Rotate 45 page
+    // by hand (the reader getRotation() does NOT validate, mirroring a real-world
+    // malformed PDF). The cardinal-rotation support must still refuse 45°.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([300, 200]);
+    page.node.set(PDFName.of('Rotate'), doc.context.obj(45));
+    const src = await doc.save();
     await expect(
       applySearchableLayerToPdf(src, 1, [{ text: 'Hi', bbox: { x0: 0, y0: 0, x1: 10, y1: 10 } }], 2),
     ).rejects.toMatchObject({ code: 'ROTATED_PAGE' });
