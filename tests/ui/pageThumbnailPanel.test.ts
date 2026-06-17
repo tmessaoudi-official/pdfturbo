@@ -195,3 +195,50 @@ describe('PageThumbnailPanel — lazy rasterization (#46)', () => {
     expect(img0?.getAttribute('src')).toBe('data:image/png;base64,AAAA');
   });
 });
+
+// G17 — when an overlay compositor is set, the thumbnail prefers it (so the thumb
+// shows the user's annotations/ink); when the compositor returns null (page has no
+// overlays), it falls back to the plain source raster (identical-to-today thumb).
+describe('PageThumbnailPanel — overlay compositor (G17)', () => {
+  let container: HTMLElement;
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  it('uses the compositor result when it returns a data URL (skips generateThumbnail)', async () => {
+    const renderer = { generateThumbnail: vi.fn().mockResolvedValue('data:image/jpeg;base64,SOURCE') } as unknown as PDFRenderer;
+    const model = makeModel(1);
+    const panel = new PageThumbnailPanel({
+      container, renderer, model,
+      onNavigate: vi.fn(), onDelete: vi.fn(), onReorder: vi.fn(), onRotate: vi.fn(),
+      onAddPdf: vi.fn(), onDownload: vi.fn(), onDownloadImage: vi.fn(),
+    });
+    const compositor = vi.fn().mockResolvedValue('data:image/jpeg;base64,OVERLAY');
+    panel.setOverlayCompositor(compositor);
+    await panel.render();
+    await new Promise(r => { setTimeout(r, 0); });
+    expect(compositor).toHaveBeenCalledWith(0);
+    expect(renderer.generateThumbnail).not.toHaveBeenCalled();
+    const img = container.querySelector('img.thumb-img');
+    expect(img?.getAttribute('src')).toBe('data:image/jpeg;base64,OVERLAY');
+  });
+
+  it('falls back to generateThumbnail when the compositor returns null', async () => {
+    const renderer = { generateThumbnail: vi.fn().mockResolvedValue('data:image/jpeg;base64,SOURCE') } as unknown as PDFRenderer;
+    const model = makeModel(1);
+    const panel = new PageThumbnailPanel({
+      container, renderer, model,
+      onNavigate: vi.fn(), onDelete: vi.fn(), onReorder: vi.fn(), onRotate: vi.fn(),
+      onAddPdf: vi.fn(), onDownload: vi.fn(), onDownloadImage: vi.fn(),
+    });
+    const compositor = vi.fn().mockResolvedValue(null);
+    panel.setOverlayCompositor(compositor);
+    await panel.render();
+    await new Promise(r => { setTimeout(r, 0); });
+    expect(compositor).toHaveBeenCalledWith(0);
+    expect(renderer.generateThumbnail).toHaveBeenCalledWith(0);
+    const img = container.querySelector('img.thumb-img');
+    expect(img?.getAttribute('src')).toBe('data:image/jpeg;base64,SOURCE');
+  });
+});

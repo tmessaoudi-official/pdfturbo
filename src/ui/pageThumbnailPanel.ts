@@ -19,6 +19,12 @@ export class PageThumbnailPanel {
   // #46 — lazy rasterization: only generate a thumbnail when its item nears the
   // viewport. One shared observer; recreated/disconnected per render.
   private _io: IntersectionObserver | null = null;
+  // G17 — optional compositor that rasterizes the page WITH its overlay
+  // annotations + ink (a thumbnail-scale analog of the PNG export). Injected by
+  // the app (delegating to ExportService.renderThumbnailWithOverlays). When it
+  // returns null (page has no overlays/ink) we fall back to the plain source
+  // raster so an unedited thumbnail stays identical to the source-only path.
+  private _overlayCompositor: ((index: number) => Promise<string | null>) | null = null;
 
   constructor(opts: {
     container: HTMLElement;
@@ -68,10 +74,25 @@ export class PageThumbnailPanel {
     return this._io;
   }
 
+  /**
+   * G17 — supply a compositor that renders a page WITH its overlay annotations +
+   * ink. Called by the app once after construction; absent (default) reproduces
+   * the source-only thumbnail behaviour exactly.
+   */
+  setOverlayCompositor(fn: (index: number) => Promise<string | null>): void {
+    this._overlayCompositor = fn;
+  }
+
   /** Rasterize (or reuse the cached) thumbnail for one page into `img`. */
   private async _loadThumb(index: number, pageId: string, img: HTMLImageElement): Promise<void> {
     const cached = this._thumbCache.get(pageId);
     if (cached) { img.src = cached; return; }
+    // G17 — prefer the overlay-aware raster; a null result means "no overlays on
+    // this page", so fall through to the plain source thumbnail (unchanged path).
+    if (this._overlayCompositor) {
+      const composited = await this._overlayCompositor(index);
+      if (composited) { this._thumbCache.set(pageId, composited); img.src = composited; return; }
+    }
     const url = await this.renderer.generateThumbnail(index);
     if (url) { this._thumbCache.set(pageId, url); img.src = url; }
   }

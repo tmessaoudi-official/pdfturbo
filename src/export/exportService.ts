@@ -510,6 +510,75 @@ export class ExportService {
     }
   }
 
+  /**
+   * G17 — render a page thumbnail that INCLUDES the user's overlay annotations
+   * (every element type) + ink, by reusing the same compositor as the PNG export
+   * (`_applyOverlaysToPage` → `buildPageOverlays`) at thumbnail scale.
+   *
+   * Returns `null` when the page has no overlay elements AND no ink: the caller
+   * then falls back to the plain source raster, so an unedited thumbnail is
+   * byte-identical to the pre-G17 path and costs nothing extra. A redaction is
+   * composited as its visible fill rect (same as the PNG export — a thumbnail is
+   * a preview, not the true content-stripping export path).
+   *
+   * Mirrors `downloadPageAsImage` but returns a JPEG data URL (matching
+   * `PDFRenderer.generateThumbnail`'s format/quality) and destroys the temporary
+   * pdf.js doc — this path runs repeatedly as the user edits, so the worker must
+   * not leak.
+   */
+  async renderThumbnailWithOverlays(pageIdx: number, thumbScale = 0.15): Promise<string | null> {
+    const { documentModel, elements, inkLayer, reportError } = this._ctx;
+    const docPage = documentModel.pages[pageIdx];
+    if (!docPage) return null;
+
+    const pageElements = elements.filter(el => el.pageId === docPage.id);
+    const hasInk = inkLayer.getStrokes(docPage.id).length > 0;
+    // Nothing to composite → let the caller use the cheaper source-only raster.
+    if (pageElements.length === 0 && !hasInk) return null;
+
+    let renderDoc: pdfjsLib.PDFDocumentProxy | undefined;
+    try {
+      const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
+      const pdfDoc = await PDFDocument.create();
+      const libs = { rgb, degrees, StandardFonts };
+      const pageNumber = pageIdx + 1;
+
+      if (docPage.sourcePdfId === 'blank') {
+        const W = docPage.blankWidth ?? 595;
+        const H = docPage.blankHeight ?? 842;
+        const blankPage = pdfDoc.addPage([W, H]);
+        blankPage.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(1, 1, 1), borderWidth: 0 });
+        await this._applyOverlaysToPage(pdfDoc, blankPage, docPage, pageElements, libs, pageNumber, documentModel.pageCount);
+      } else {
+        const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
+        if (!srcEntry) return null;
+        const srcDoc = await PDFDocument.load(srcEntry.bytes);
+        const [page] = await pdfDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
+        pdfDoc.addPage(page);
+        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, libs, pageNumber, documentModel.pageCount);
+      }
+
+      const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
+      renderDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+      const renderPage = await renderDoc.getPage(1);
+      const vp = renderPage.getViewport({ scale: thumbScale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(vp.width));
+      canvas.height = Math.max(1, Math.round(vp.height));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      await renderPage.render({ canvas, viewport: vp }).promise;
+      return canvas.toDataURL('image/jpeg', 0.7);
+    } catch (err) {
+      // Never break the thumbnail strip — fall back to the source-only raster.
+      reportError.silent(err, `renderThumbnailWithOverlays failed for page ${pageIdx}`);
+      return null;
+    } finally {
+      const task = (renderDoc as { loadingTask?: { destroy?: () => Promise<void> } } | undefined)?.loadingTask;
+      if (task && typeof task.destroy === 'function') void task.destroy().catch(() => {});
+    }
+  }
+
   async exportAsDocx(): Promise<void> {
     const { reportError, progress } = this._ctx;
     const _prog = progress.begin('progress.generatingDocx');

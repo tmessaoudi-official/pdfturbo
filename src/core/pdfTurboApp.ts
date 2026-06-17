@@ -359,6 +359,9 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       onDownload: (index) => this.downloadPage(index),
       onDownloadImage: (index) => this.downloadPageAsImage(index),
     });
+    // G17: composite overlay annotations + ink into thumbnails (returns null for
+    // pages with no elements/ink → panel falls back to the source-only raster).
+    this._thumbnailPanel.setOverlayCompositor((i) => this._exportService.renderThumbnailWithOverlays(i));
   }
 
   private _showPrivacyToastOnce(): void {
