@@ -271,13 +271,32 @@ export async function rasterizePageWithRedactions(
   await renderPage.render({ canvas: offscreen, viewport: vp }).promise;
 
   for (const el of elements.filter(e => e.type === 'redaction')) {
+    ctx.save();
     ctx.fillStyle = (el as { color?: string }).color ?? '#000000';
-    ctx.fillRect(
-      Math.round(el.x * SCALE),
-      Math.round(el.y * SCALE),
-      Math.round(el.width  * SCALE),
-      Math.round(el.height * SCALE),
-    );
+    const rot = el.rotation ?? 0;
+    if (rot) {
+      // Honour the element's OWN rotation: rotate the burn rect about its center, mirroring
+      // the on-screen overlay (elementLayerRenderer: CSS `rotate(${rotation}deg)` with
+      // transform-origin center). CSS rotate and canvas ctx.rotate are both clockwise in
+      // y-down space, so the angle needs no sign flip. (This is the element rotation — the
+      // page-rotation handling above stays untouched.)
+      ctx.translate((el.x + el.width / 2) * SCALE, (el.y + el.height / 2) * SCALE);
+      ctx.rotate(rot * Math.PI / 180);
+      ctx.fillRect(
+        Math.round(-el.width / 2 * SCALE),
+        Math.round(-el.height / 2 * SCALE),
+        Math.round(el.width * SCALE),
+        Math.round(el.height * SCALE),
+      );
+    } else {
+      ctx.fillRect(
+        Math.round(el.x * SCALE),
+        Math.round(el.y * SCALE),
+        Math.round(el.width  * SCALE),
+        Math.round(el.height * SCALE),
+      );
+    }
+    ctx.restore();
   }
 
   // Draw overlay TextElements on top of redactions using canvas 2D API.
