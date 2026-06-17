@@ -1,3 +1,5 @@
+import { reverseRtlText } from '../utils/flowDoc';
+
 export interface MatchResult {
   pageId: string;
   x: number; // scale=1 canvas coords
@@ -58,6 +60,20 @@ export class TextSearchHandler {
       pattern = useRegex ? new RegExp(query, flags) : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
     } catch { return []; }
 
+    // Arabic / presentation-form fallback (#6b): pdf.js returns RTL source text as
+    // VISUAL-order, pre-shaped PRESENTATION-FORM glyphs, but the user types LOGICAL-order
+    // BASE letters — so the raw `pattern` above never matches Arabic. `normPattern` matches
+    // an NFKC-normalized query (non-global → safe for boolean `.test`) against the
+    // reordered/normalized item text below.
+    const normQuery = query.normalize('NFKC');
+    let normPattern: RegExp | null = null;
+    try {
+      const nflags = caseSensitive ? '' : 'i';
+      normPattern = useRegex
+        ? new RegExp(normQuery, nflags)
+        : new RegExp(normQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), nflags);
+    } catch { normPattern = null; }
+
     const results: MatchResult[] = [];
     const vt = viewport.transform as number[];
 
@@ -71,7 +87,9 @@ export class TextSearchHandler {
 
       pattern.lastIndex = 0;
       let m: RegExpExecArray | null;
+      let rawMatched = false;
       while ((m = pattern.exec(item.str)) !== null) {
+        rawMatched = true;
         const matchX = canvasPt[0] + m.index * charW;
         const matchW = Math.max(charW, m[0].length * charW);
         results.push({
@@ -82,6 +100,28 @@ export class TextSearchHandler {
           height: h      / currentScale,
         });
         if (m[0].length === 0) { pattern.lastIndex++; } // guard against zero-length match infinite loop
+      }
+
+      // Arabic / ligature fallback — only when the raw (visual/presentation-form) pass found
+      // nothing. Test the normalized query against the logical reorder (reverseRtlText: visual→
+      // logical + presentation-form→base) and the plain NFKC fold (single glyphs / Latin
+      // ligatures like ﬁ). On a hit, highlight the WHOLE item: sub-character RTL positioning is
+      // unreliable because the visual glyph index ≠ logical character index (documented partial).
+      if (!rawMatched && normPattern) {
+        const reordered = reverseRtlText(item.str);
+        const nfkc      = item.str.normalize('NFKC');
+        const hit =
+          (reordered !== item.str && normPattern.test(reordered)) ||
+          (nfkc !== item.str && nfkc !== reordered && normPattern.test(nfkc));
+        if (hit) {
+          results.push({
+            pageId,
+            x:      canvasPt[0] / currentScale,
+            y:      y           / currentScale,
+            width:  totalW      / currentScale,
+            height: h           / currentScale,
+          });
+        }
       }
     }
     return results;

@@ -69,6 +69,39 @@ describe('TextSearchHandler word-level highlights', () => {
   });
 });
 
+describe('TextSearchHandler Arabic source — presentation-form, visual order (#6b)', () => {
+  // pdf.js v6 returns Arabic source text as VISUAL-order (L→R) PRESENTATION-FORM
+  // glyphs. The string below is the visual layout of the logical word "ابو"
+  // (alef-beh-waw): waw-final, beh-initial, alef-isolated, left→right.
+  // NFKC alone folds it to base letters but in the WRONG order ("وبا"); only the
+  // codepoint-reversal (reverseRtlText) recovers the logical order the user types.
+  const VISUAL_PRESENTATION = 'ﻮﺑﺍ'; // waw, beh, alef (visual L→R)
+  const LOGICAL_BASE = 'ابو'; // "ابو" — what a user types into the find bar
+  const vp = { transform: [1, 0, 0, -1, 0, 842] } as unknown as PageViewport;
+
+  it('finds a logical base-letter query inside presentation-form visual source', async () => {
+    const handler = new TextSearchHandler();
+    await handler.buildIndex(makePage(VISUAL_PRESENTATION), 'ar1');
+    const matches = handler.search(LOGICAL_BASE, 'ar1', vp, 1);
+    expect(matches.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT over-match: an unrelated Arabic query returns nothing', async () => {
+    const handler = new TextSearchHandler();
+    await handler.buildIndex(makePage(VISUAL_PRESENTATION), 'ar2');
+    expect(handler.search('سلام', 'ar2', vp, 1)).toHaveLength(0); // "سلام"
+  });
+
+  it('match for a logical query lands on the page (item-box highlight)', async () => {
+    const handler = new TextSearchHandler();
+    await handler.buildIndex(makePage(VISUAL_PRESENTATION), 'ar3');
+    const [m] = handler.search(LOGICAL_BASE, 'ar3', vp, 1);
+    expect(m).toBeTruthy();
+    expect(m.width).toBeGreaterThan(0);
+    expect(m.height).toBeGreaterThan(0);
+  });
+});
+
 describe('TextSearchHandler rotated page scale (BUG-37)', () => {
   it('Math.hypot extracts correct scale from 90° rotated viewport transform', () => {
     // For a 90° rotation at scale=1.5: vt = [0, -1.5, 1.5, 0, ...]
