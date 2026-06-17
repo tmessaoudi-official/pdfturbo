@@ -1163,6 +1163,50 @@ export function assignHeadings(doc: FlowDoc): void {
       p.heading = rank === -1 ? 0 : ((rank + 1) as 1 | 2 | 3 | 4 | 5 | 6);
     }
   }
+
+  // ── Heuristic style-based promotion (G11) ─────────────────────────────────
+  // Tagged-PDF StructTree heading tags are a separate ceiling; here we recover
+  // headings that authors distinguish by WEIGHT or CASE rather than size — very
+  // common in real documents (e.g. a bold or ALL-CAPS section label set at the
+  // body font size). The size pass above leaves these at heading 0.
+  //
+  // This pass is DELIBERATELY CONSERVATIVE — it favors precision over recall, so
+  // it will miss some real headings rather than mis-promote bold emphasis or an
+  // all-caps acronym sitting inside body text. A paragraph already promoted by
+  // size, or any document with no qualifying line, is left byte-identical. Only
+  // paragraphs still at heading 0 whose dominant run size ≈ bodySize (within 5%)
+  // are eligible, and ALL of the following must hold:
+  //   • short        — ≤ 8 words (headings are short);
+  //   • ≥ 3 letters  — skips "OK", "I", single glyphs / 2-letter acronyms;
+  //   • NOT a list item, and no run underlined/struck (those are body emphasis);
+  //   • AND ( fully-bold: every run bold ) OR ( all-caps: every cased letter is
+  //          uppercase and at least one A–Z is present ).
+  // Promoted BELOW the size-derived headings so genuine size headings keep
+  // H1..HN: level = min(6, headingSizes.length + 1), defaulting to 3 when there
+  // are no size headings at all.
+  const HEADING_SIZE_TOLERANCE = 0.05;
+  const promotionLevel = (headingSizes.length ? Math.min(6, headingSizes.length + 1) : 3) as
+    | 1
+    | 2
+    | 3
+    | 4
+    | 5
+    | 6;
+  for (const page of doc.pages) {
+    for (const p of page.paragraphs) {
+      if (p.heading !== 0 || p.listType || p.runs.length === 0) continue;
+      const domSize = Math.max(...p.runs.map(r => r.fontSize));
+      if (Math.abs(domSize - bodySize) > bodySize * HEADING_SIZE_TOLERANCE) continue;
+      if (p.runs.some(r => r.underline || r.strikethrough)) continue;
+      const text = p.runs.map(r => r.text).join('').trim();
+      const letters = text.replace(/[^A-Za-z]/g, '');
+      if (letters.length < 3) continue;
+      if (text.split(/\s+/).filter(Boolean).length > 8) continue;
+      const fullyBold = p.runs.every(r => r.bold);
+      const allCaps = text === text.toUpperCase() && /[A-Z]/.test(text);
+      if (fullyBold || allCaps) p.heading = promotionLevel;
+    }
+  }
 }
 
 /** Minimal shape of a typed (overlay) text element for flow conversion. */

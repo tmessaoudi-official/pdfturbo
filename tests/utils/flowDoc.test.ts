@@ -177,6 +177,78 @@ describe('assignHeadings — document-wide font-size clustering', () => {
   });
 });
 
+describe('assignHeadings — bold/all-caps body-size promotion (G11)', () => {
+  // All fixtures share a 12pt non-bold body so the weighted bodySize is 12 and
+  // the candidate lines below sit AT body size (so the size pass leaves them 0).
+  const bodyLine = (str: string, y: number) => mkItem(str, 50, y);
+  const lvlOf = (doc: FlowDoc, t: string) =>
+    doc.pages[0].paragraphs.find(p => p.runs.some(r => r.text.includes(t)))?.heading;
+
+  it('promotes an ALL-CAPS short body-size line (a) and a fully-bold short body-size line (b); leaves a long bold para (c), a normal body line (d), and keeps a larger size heading at its level (e)', () => {
+    const page = reconstructPage(
+      [
+        // (e) real larger-size heading (18pt > 12 * 1.15) → size pass gives H1
+        mkItem('Larger Size Heading', 50, 760, { height: 18, transform: [18, 0, 0, 18, 50, 760] }),
+        // (a) ALL-CAPS short body-size line → promoted
+        bodyLine('EXECUTIVE SUMMARY', 730),
+        // (b) fully-bold short body-size line (Arial-BoldMT) → promoted
+        mkItem('Introduction Heading', 50, 700, { fontName: 'fb' }),
+        // (c) long fully-bold body-size paragraph (>8 words) → NOT promoted
+        mkItem(
+          'This is a long bold sentence that runs well beyond eight words so it is body text.',
+          50, 670, { fontName: 'fb' },
+        ),
+        // (d) + body weight: several plain mixed-case body lines dominate the size map
+        bodyLine('Plain body paragraph with plenty of words to dominate the weighted size map.', 640),
+        bodyLine('Another plain body paragraph with plenty of words to dominate the size map.', 610),
+        bodyLine('A third plain body paragraph with plenty of words to keep body dominant here.', 580),
+      ],
+      FONTS, PAGE_W, PAGE_H
+    );
+    const doc: FlowDoc = { pages: [page] };
+    assignHeadings(doc);
+    // (e) larger size keeps its size-derived H1
+    expect(lvlOf(doc, 'Larger Size Heading')).toBe(1);
+    // (a) all-caps promoted to the level BELOW the size headings (1 size heading → H2)
+    expect(lvlOf(doc, 'EXECUTIVE SUMMARY')).toBe(2);
+    // (b) fully-bold promoted to the same below-size level
+    expect(lvlOf(doc, 'Introduction Heading')).toBe(2);
+    // (c) long bold paragraph stays body
+    expect(lvlOf(doc, 'long bold sentence')).toBe(0);
+    // (d) normal body line stays body
+    expect(lvlOf(doc, 'Plain body paragraph')).toBe(0);
+  });
+
+  it('defaults promotions to H3 when there are no size-based headings', () => {
+    const page = reconstructPage(
+      [
+        bodyLine('OVERVIEW', 740), // all-caps short body-size → promoted, no size headings → H3
+        bodyLine('Plain body paragraph with plenty of words to dominate the weighted size map.', 700),
+        bodyLine('Another plain body paragraph with plenty of words to dominate the size map.', 670),
+      ],
+      FONTS, PAGE_W, PAGE_H
+    );
+    const doc: FlowDoc = { pages: [page] };
+    assignHeadings(doc);
+    expect(lvlOf(doc, 'OVERVIEW')).toBe(3);
+    expect(lvlOf(doc, 'Plain body paragraph')).toBe(0);
+  });
+
+  it('does not promote a short all-caps acronym-only line below the 3-letter floor', () => {
+    const page = reconstructPage(
+      [
+        bodyLine('OK', 740), // 2 letters → below floor → stays body
+        bodyLine('Plain body paragraph with plenty of words to dominate the weighted size map.', 700),
+        bodyLine('Another plain body paragraph with plenty of words to dominate the size map.', 670),
+      ],
+      FONTS, PAGE_W, PAGE_H
+    );
+    const doc: FlowDoc = { pages: [page] };
+    assignHeadings(doc);
+    expect(lvlOf(doc, 'OK')).toBe(0);
+  });
+});
+
 describe('reconstructPage — list nesting depth (Gap 4)', () => {
   it('derives listDepth from the item x-indent', () => {
     const items = [
