@@ -190,6 +190,104 @@ cm-scale/rotation Path-3 redraw, rotated-page input placement, Type3, Arabic sha
 
 ---
 
+## All-Features → 100% sprint (2026-06-17) — 22 reachable gaps closed
+
+A 10-lens bounded audit (raw plan: `docs/plans/all-features-to-100.plan.md`, intentionally untracked)
+split every feature into **reachable gaps** (closeable client-side) and **structural ceilings** (next
+section). All 22 reachable, non-gated gaps were closed — each TDD (failing test first), full gate green
+(type-check + oxlint 0/0 + jsdom + browser where relevant), **one commit per gap**. Push is manual.
+
+| ID | Area | Fix | Commit |
+|----|------|-----|--------|
+| G1 | Undo | Shape stroke colour/width, comment body, code/QR payload re-edits go through Commands (were direct mutations → broke undo) | `7f24113` |
+| G2 | Redaction export | Burn honours a user-rotated box's own `rotation` (was AABB over/under-cover) | `c862ee5` |
+| G3 | Pages | Blank-page insert is undoable (`InsertBlankPageCmd`) | `618d4e4` |
+| G4 | Vector export | Element rotation baked for arrow/ellipse/freehand (handle was shown, not baked) | `8ac36ff` |
+| G5 | Sanitizer | Strip annotation/field JS (`/AA`+`/A`), XFA, page XMP, `/AF`, trailer `/ID` | `1a17239` |
+| G6 | Encryption | Password-strength gate + first encryption tests | `de42285` |
+| G7 | True-edit | Cover sized to the run bbox, not `max(width,40)` (was "covers word, edits char") | `136bbe0` |
+| G8 | True-edit | Prefill the inline editor from the matched op text, not one pdf.js glyph | `28e1a18` |
+| G9 | DOCX | Lattice tables → real `docx.Table` (were ~5% recognised) | `c70418f` |
+| G10 | DOCX | Pin Separation/spot-colour→DOCX colour contract (was a non-issue; regression test) | `deae397` |
+| G11 | DOCX | Promote bold/all-caps body-size lines to headings | `61a1619` |
+| G12 | DOCX | Interleave typed overlay text into the page by reading order (was appended) | `e8bc691` |
+| G13 | Search | Whole-document find with cross-page navigation (was single-page) | `5f0fce3` |
+| G14 | Forms | Checkbox/radio/dropdown/listbox AcroForm fill + bake (were dropped) | `f7dd0b6` |
+| G15 | OCR | Cardinal page-rotation support in the searchable layer | `10cdf0c` |
+| G16 | PWA | Update prompt is click-to-reload (was notify-only) | `7eec7ff` |
+| G17 | Thumbnails | Composite overlay annotations + ink (were source-only) | `ffc609d` |
+| G18 | OCR | Searchable-layer word width matched via per-word `Tz` | `8422021` |
+| G19 | Export | Native Save-As on page/image/CSV/DOCX/sanitize paths | `ac7d710` |
+| G20 | Export | Resolution + JPEG/PNG control for page-image export (was fixed scale-2 PNG) | `fc9806d` |
+| G21 | XFDF | Round-trip ink/square/circle/line annotations | `0599504` |
+| G22 | a11y | axe-core CI gate + 2 serious WCAG fixes (contrast, footer-link underline) | `0e53125` |
+
+> Not pushed yet — `git push` triggers the deploy; the pre-push hook re-runs the full cumulative gate.
+
+---
+
+## Structural ceilings — the honest limit of "100% in the browser"
+
+These are **not defects** and **not on a fix list**. They are the points where a pure client-side,
+no-backend PDF editor hits a hard wall: the glyph outline literally isn't in the file, the target format
+can't represent the source, or the library/spec doesn't expose the operation. Each is documented with the
+**escape-hatch** that *would* lift it and the **trade-off** of taking it — so a future session doesn't
+re-investigate a solved-as-impossible item.
+
+> **Decision 2026-06-17: none greenlit.** The cost (multi-MB deps, multi-week builds, or breaking the
+> no-backend / selectable-text promises) isn't justified by current need. Revisit **per-item** only when a
+> real user need forces it. Class is [Inferred: cross-verified in code during the 10-lens audit]; escape-hatch
+> feasibility is [Speculative] unless noted; effort is [Speculative].
+
+### Escape-hatch families (the levers — most ceilings map to one)
+
+| EH | Lever | Unlocks | Pros | Cons / trade-off |
+|----|-------|---------|------|------------------|
+| **EH-A** | **PDFium-WASM** — Google's PDF engine compiled to WASM; page-object text API (e.g. `FPDFText_SetText`) | True in-place edit of *any* font incl. subset/CID/Type3 (C1–C4) | The only path to faithful in-place editing of real-world PDFs; battle-tested engine | ~several-MB wasm payload (whole app precache is ~5 MB today); large integration surface (a 2nd engine beside pdf.js + pdf-lib); Apache-2.0/BSD licence review; CI/build complexity. [Unverified: PDFium WASM text-edit completeness not validated in-repo] |
+| **EH-B** | **HarfBuzz-WASM** (shaping) **+ bidi-js** (UAX#9 bidi — *already a dep*) | Arabic/complex-script char-level shaping + mixed LTR↔RTL single-line reorder + tashkeel GPOS (C2-shaping, C8, C18, C19) | Correct complex-script layout; reuses the already-present bidi-js | Another wasm dep; the shaping↔ToUnicode tension still blocks *exact search* (see C14); word-level RTL already covers the common case |
+| **EH-C** | **Page-as-image** — rasterise each page, embed as one image in the output | DOCX/export **pixel-identity** (C5) | Trivial to build; visually exact | **Destroys all editable/selectable/searchable text** — a real regression for the primary DOCX use-case; very large files. "Looks-exact" niche only |
+| **EH-D** | **Server-side conversion** — headless LibreOffice (`soffice --convert-to docx`) or a render service | Best-in-class PDF→DOCX identity (C5); any heavy transform (C6/C11/C15 TSA) | Highest fidelity available anywhere | **Breaks the core no-backend / nothing-uploaded privacy promise** — the project's whole identity. Off the table unless that promise is renegotiated |
+| **EH-E** | **Whitespace-inference table detection** — cluster text by gaps, infer columns without ruled lines | Borderless tables → DOCX & CSV (C9, C13) | No new dep; pure heuristic | Chronic false positives (aligned prose misread as a table); needs a confidence gate + corpus tuning. Lattice (ruled) tables already work |
+
+### The ceilings (C1–C21)
+
+| ID | Ceiling | Why structural | Escape-hatch |
+|----|---------|----------------|--------------|
+| C1 | True in-place edit of subset/CID fonts with a **new** glyph | The new character's outline is **absent from the embedded subset** — it cannot be drawn in the original font client-side | **EH-A**. Today: Path-2 reuses in-subset glyphs; new glyphs → base-14 redraw or overlay |
+| C2 | Arabic in-place true-edit | Subset CID font + no client-side shaping/bidi → would emit `?` / mis-join | **EH-A** (glyphs) + **EH-B** (shaping). Today: refuses → overlay (which renders correctly via the Arabic overlay path) |
+| C3 | Type3 / Form-XObject true-edit | Type3 glyphs are CharProcs; XObject text lives in its own coordinate space | **EH-A**. Today: refuses → overlay |
+| C4 | `cm` rotation/shear in the Path-3 redraw | Standard-font redraw uses identity `Tm`; translation survives, rotation + typeface are lost | **EH-A**. Today: translation-only redraw |
+| C5 | PDF→DOCX **pixel-identity** | Fixed-layout PDF → reflowable DOCX is lossy by definition | **EH-C** (image, kills text) or **EH-D** (server). Target is high-fidelity *editable*, not identical |
+| C6 | DOCX subset-font **face** | Subset tag strips the real family name; only a heuristic family map remains (~75% face accuracy) | **EH-D**, or font-fingerprint matching (heavy, fuzzy). Content is exact; only the typeface is approximate |
+| C7 | DOCX CJK font-face | No universal CJK family; forcing one risks Han-unification mis-render. **Content is preserved** — only the face is approximate | Per-script `w:eastAsia` mapping (still a guess); Word's own fallback renders the codepoints |
+| C8 | DOCX char-level bidi / mixed LTR+RTL single line | Word-level reorder only; true bidi needs UAX#9 + shaping | **EH-B** |
+| C9 | DOCX **borderless** tables | No ruled lines to detect | **EH-E** |
+| C10 | DOCX 3+ column recursive XY-cut | Reconstructor is 2-column; recursive cut is a research-grade layout problem | Recursive XY-cut algorithm (multi-day, FP-prone) |
+| C11 | DOCX internal GoTo links / sheared images / exact ICC spot colour | No DOCX representation / no client ICC engine | Mostly **EH-D**. External (URL) links already work |
+| C12 | Markup-annotation flatten (#62b) | pdf-lib has no generic markup-flatten API | Raster path (already covers the nuclear redaction-rasterise case) |
+| C13 | Borderless table → CSV | Same as C9 (no grid lines) | **EH-E** |
+| C14 | Arabic searchable-OCR **exact search** (~60% ceiling) | Shaping yields contextual glyphs with incomplete pdf-lib ToUnicode; a clean-ToUnicode PoC was tried + **rejected** (it traded the artifact for RTL order reversal in `getTextContent`) | **EH-B** + a richer ToUnicode writer. Selectable / screen-reader-accessible text already works |
+| C15 | OCR recognition **accuracy** (~85–95% on clean scans) | tesseract LSTM model bound | A cloud OCR (breaks the **EH-D** promise) or a larger local model |
+| C16 | Encryption R6 hash-hardening | `@cantoo/pdf-lib` hardcodes `R:5` | Fork/patch the lib, or a custom AES-256 R6 writer. AES-256 R5 is already strong |
+| C17 | PAdES / TSA / LTV / CA-trusted signatures | node-forge can't emit the ESS signing-cert-v2 signed attribute PAdES-BES needs; TSA/LTV need a backend | Hand-rolled CAdES ASN.1 (large) + **EH-D** for TSA. Multi-sig is **reachable-but-L** (needs an incremental-update writer). Valid ISO-32000 `adbe.pkcs7.detached` ships today |
+| C18 | RTL text-layer select/copy/search **precision** | pdf.js v6 builds the layer as per-glyph, visual-order, presentation-form spans; highlight is item-level | **EH-B** for sub-character precision. Copy/search logical reconstruction already works |
+| C19 | Arabic overlay tashkeel/GPOS micro-positioning | Needs a GPOS shaper; legibility is already fine | **EH-B** |
+| C20 | XFDF Acrobat byte-exactness + rotated-page coords + freetext DA appearance | No Acrobat in-repo to verify against; rotated-page transform unimplemented | Internal round-trip is the correctness guarantee; rotated-page coords are reachable-but-deferred |
+| C21 | Raster ink — no per-stroke edit | Rasterised by design | Use the **vector** freehand tool (the built-in escape) |
+
+---
+
+## Deferred features (next — NOT part of the "100%" mandate)
+
+The 100% mandate was about making **shipped** features faithful (done above). These are *new* capabilities:
+
+- **Crop tool** (was gap G23) — **deferred as a new feature (2026-06-17 decision).** Today only read-only
+  `/CropBox` honouring exists. A real crop tool is net-new: a tool mode + drag-rect handler + a
+  `documentModel` crop field + export-pipeline clip + live preview. Effort M–L. Top of the next-features list.
+- **Arabic native-speaker review** — one human pass over the AR locale + RTL rendering (non-engineering).
+
+---
+
 ## Verified working (regression-guard candidates)
 PDF export (all PDF types) · DOCX/MD/TXT **text** extraction · single body-text true-edit (live+PDF+DOCX
 consistent) · annotation create/move/resize · undo/redo · page nav · zoom · find-in-page · QR panel ·
@@ -206,7 +304,9 @@ This is the structural fix that makes ISSUE-1..5 catchable; jsdom never can.
 > Playwright-managed chromium or add `npx playwright install chromium`.
 
 ---
-_Last updated: 2026-06-14 (mega-roadmap Sprint 3 batch 2: DOCX hyperlinks + JPEG re-encode + list nesting
+_Last updated: 2026-06-17 (All-Features→100% sprint: 22 reachable gaps G1–G22 closed + 21 structural
+ceilings C1–C21 documented with escape-hatch families & trade-offs; crop deferred as a new feature).
+Prior 2026-06-14 (mega-roadmap Sprint 3 batch 2: DOCX hyperlinks + JPEG re-encode + list nesting
 + headings H4–H6 + true-edit TJ-kerning preservation; jsdom 858 / browser 12). Prior batch 1: text-tool
 UX trap fix + DOCX lettered ordered-lists + fidelity scorecards (jsdom 842 / browser 11).
 Evidence: `docs/reviews/research-2026-06-15/` (scorecards
