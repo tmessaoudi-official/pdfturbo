@@ -100,3 +100,32 @@ export class RotatePageCmd implements Command {
     this.onUpdate();
   }
 }
+
+// Insert a blank page at a given index; undo removes it and restores the prior current index.
+// `page` is populated by execute() so the caller can drive UI updates against the new page.
+export class InsertBlankPageCmd implements Command {
+  page!: DocumentPage;
+  private _prevIndex = 0;
+
+  constructor(
+    private model: DocumentModel,
+    private w: number,
+    private h: number,
+    private atIndex: number,
+    private onUpdate: () => void,
+  ) {}
+
+  execute() {
+    this._prevIndex = this.model.currentPageIndex;
+    this.page = this.model.addBlankPage(this.w, this.h, this.atIndex);
+    this.model.currentPageIndex = this.model.pages.indexOf(this.page);
+    this.onUpdate();
+  }
+
+  undo() {
+    this.model.deletePage(this.page.id);
+    const len = this.model.pages.length;
+    this.model.currentPageIndex = len === 0 ? 0 : Math.max(0, Math.min(this._prevIndex, len - 1));
+    this.onUpdate();
+  }
+}

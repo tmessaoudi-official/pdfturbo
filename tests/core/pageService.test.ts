@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PageService, type IPageContext } from '../../src/core/pageService';
 import { DocumentModel } from '../../src/core/documentModel';
-import { HistoryManager, DeletePageCmd, ReorderPagesCmd } from '../../src/core/historyManager';
+import { HistoryManager, DeletePageCmd, ReorderPagesCmd, InsertBlankPageCmd } from '../../src/core/historyManager';
 
 vi.mock('../../src/utils/i18n', () => ({ t: (key: string) => key }));
 
@@ -261,5 +261,67 @@ describe('PageService.insertBlankPage', () => {
     const svc = new PageService(ctx);
     svc.insertBlankPage();
     await vi.waitFor(() => expect(ctx.reportError.error).toHaveBeenCalledWith('toast.renderFailed', expect.anything()));
+  });
+});
+
+// G3 — blank-page insert must go through a history command so it can be undone.
+describe('PageService.insertBlankPage — undoability (G3)', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <select id="blankPageSize"><option value="a4" selected>A4</option></select>
+      <select id="blankPagePosition"><option value="end" selected>End</option></select>
+    `;
+  });
+
+  it('pushes an InsertBlankPageCmd onto the undo stack', () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 2);
+    const svc = new PageService(ctx);
+    vi.spyOn(ctx.historyManager, 'execute');
+    svc.insertBlankPage();
+    expect(ctx.historyManager.execute).toHaveBeenCalledWith(expect.any(InsertBlankPageCmd));
+    expect(ctx.historyManager.canUndo()).toBe(true);
+  });
+
+  it('undo restores pageCount and currentPageIndex (non-empty doc)', () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 3);
+    ctx.documentModel.currentPageIndex = 1;
+    const svc = new PageService(ctx);
+
+    svc.insertBlankPage();
+    expect(ctx.documentModel.pageCount).toBe(4);
+    // appended at end → it becomes the current page
+    expect(ctx.documentModel.currentPageIndex).toBe(3);
+
+    expect(ctx.historyManager.undo()).toBe(true);
+    expect(ctx.documentModel.pageCount).toBe(3);
+    expect(ctx.documentModel.currentPageIndex).toBe(1);
+  });
+
+  it('redo re-inserts the page after an undo', () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 2);
+    const svc = new PageService(ctx);
+    svc.insertBlankPage();
+    expect(ctx.documentModel.pageCount).toBe(3);
+    ctx.historyManager.undo();
+    expect(ctx.documentModel.pageCount).toBe(2);
+    expect(ctx.historyManager.redo()).toBe(true);
+    expect(ctx.documentModel.pageCount).toBe(3);
+  });
+
+  // Edge case: undoing the FIRST-ever blank page returns the doc to empty without crashing.
+  it('undo to empty document does not crash and leaves no current page', async () => {
+    const ctx = makeCtx();
+    const svc = new PageService(ctx);
+    svc.insertBlankPage();
+    expect(ctx.documentModel.pageCount).toBe(1);
+    // let the wasEmpty async bootstrap settle
+    await vi.waitFor(() => expect(ctx.hideEmptyState).toHaveBeenCalled());
+
+    expect(() => ctx.historyManager.undo()).not.toThrow();
+    expect(ctx.documentModel.pageCount).toBe(0);
+    expect(ctx.documentModel.currentPage).toBeNull();
   });
 });

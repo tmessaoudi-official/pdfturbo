@@ -4,7 +4,7 @@ import type { PDFElement } from '../elements/annotationElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import {
   HistoryManager, AddPagesCmd, DeletePageCmd, ReorderPagesCmd, RotatePageCmd,
-  MacroCmd, TransformAnnotationsCmd,
+  InsertBlankPageCmd, MacroCmd, TransformAnnotationsCmd,
   type Command, type ElementTransformSnapshot,
 } from './historyManager';
 import type { InkLayer } from '../infra/inkLayer';
@@ -233,8 +233,10 @@ export class PageService {
       default:          atIndex = total;
     }
 
-    const newPage = ctx.documentModel.addBlankPage(w, h, atIndex);
-    ctx.documentModel.currentPageIndex = ctx.documentModel.pages.indexOf(newPage);
+    const cmd = new InsertBlankPageCmd(
+      ctx.documentModel, w, h, atIndex, () => ctx.onPageStructureChange(),
+    );
+    ctx.historyManager.execute(cmd);
 
     if (wasEmpty) {
       void (async () => {
