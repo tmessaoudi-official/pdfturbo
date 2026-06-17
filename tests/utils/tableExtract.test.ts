@@ -51,6 +51,30 @@ describe('buildTableGrid', () => {
   });
 });
 
+describe('buildTableGrid — spurious empty-column pruning (QA 2026-06-18 N2)', () => {
+  it('drops an interstitial empty column from an over-segmented vertical rule', () => {
+    // Real 2-column table, but one logical grid line is detected twice 10pt apart
+    // (150 and 160, both > tol) → a thin empty band between the real columns.
+    const hR = [h(100), h(200)];
+    const vR = [v(50), v(150), v(160), v(250)];
+    const its = [t(60, 150, 'A'), t(200, 150, 'B')];
+    expect(buildTableGrid(hR, vR, its)).toEqual({ rows: 1, cols: 2, cells: [['A', 'B']] });
+  });
+
+  it('keeps a column that carries data in at least one row', () => {
+    const hR = [h(100), h(150), h(200)];
+    const vR = [v(50), v(150), v(250)];
+    const its = [t(60, 170, 'A'), t(60, 120, 'C'), t(160, 120, 'D')]; // right col empty up top, 'D' below
+    expect(buildTableGrid(hR, vR, its)).toEqual({ rows: 2, cols: 2, cells: [['A', ''], ['C', 'D']] });
+  });
+
+  it('returns null when pruning leaves no data columns', () => {
+    const hR = [h(100), h(200)];
+    const vR = [v(50), v(150), v(250)];
+    expect(buildTableGrid(hR, vR, [])).toBeNull(); // grid lines but no text → nothing to extract
+  });
+});
+
 describe('gridToCsv', () => {
   it('joins cells with commas and rows with newlines', () => {
     expect(gridToCsv({ rows: 2, cols: 2, cells: [['A', 'B'], ['C', 'D']] })).toBe('A,B\nC,D');

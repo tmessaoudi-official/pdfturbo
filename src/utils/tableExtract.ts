@@ -81,7 +81,20 @@ export function buildTableGrid(
     }
     cells.push(rowCells);
   }
-  return { rows, cols, cells };
+
+  // Prune columns that are empty across every row. A doubled / over-segmented
+  // vertical rule (one logical grid line detected as two bounds >tol apart)
+  // creates a thin band that catches no text and would otherwise emit a spurious
+  // empty CSV column (",,"). A genuine column keeps any row with data, so this
+  // never drops real data. If nothing survives there is no table to extract.
+  const keep: number[] = [];
+  for (let c = 0; c < cols; c++) {
+    if (cells.some(row => row[c] !== '')) keep.push(c);
+  }
+  if (!keep.length) return null;
+  if (keep.length === cols) return { rows, cols, cells };
+
+  return { rows, cols: keep.length, cells: cells.map(row => keep.map(c => row[c])) };
 }
 
 /** One RFC 4180 CSV field: quote when it contains a comma, quote, or newline. */
