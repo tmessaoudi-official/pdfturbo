@@ -12,6 +12,63 @@ import { isArabicText } from '../../src/utils/flowDoc';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 
+/**
+ * Column-wise ink-density profile over the inked bounding box, resampled to N
+ * bins. Trimming leading/trailing blank columns makes it position-invariant, so
+ * two renders of the same glyphs at different x-offsets compare equal — only the
+ * left-to-right ink *shape* matters. Used to detect RTL mirror/reversal.
+ */
+function inkProfile(canvas: HTMLCanvasElement, bins = 120): number[] {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('no 2d context');
+  const { width: W, height: H } = canvas;
+  const d = ctx.getImageData(0, 0, W, H).data;
+  const col = new Array<number>(W).fill(0);
+  for (let x = 0; x < W; x++) {
+    let s = 0;
+    for (let y = 0; y < H; y++) {
+      const i = (y * W + x) * 4;
+      if ((d[i] + d[i + 1] + d[i + 2]) / 3 < 128) s++;
+    }
+    col[x] = s;
+  }
+  let lo = 0;
+  let hi = W - 1;
+  while (lo < W && col[lo] === 0) lo++;
+  while (hi > 0 && col[hi] === 0) hi--;
+  const seg = col.slice(lo, hi + 1);
+  const out = new Array<number>(bins).fill(0);
+  for (let k = 0; k < bins; k++) {
+    const a = Math.floor((k * seg.length) / bins);
+    const b = Math.max(a + 1, Math.floor(((k + 1) * seg.length) / bins));
+    let s = 0;
+    let n = 0;
+    for (let j = a; j < b && j < seg.length; j++) {
+      s += seg[j];
+      n++;
+    }
+    out[k] = n ? s / n : 0;
+  }
+  return out;
+}
+
+function pearson(p: number[], q: number[]): number {
+  const n = p.length;
+  const mp = p.reduce((a, b) => a + b, 0) / n;
+  const mq = q.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let dp = 0;
+  let dq = 0;
+  for (let i = 0; i < n; i++) {
+    const a = p[i] - mp;
+    const b = q[i] - mq;
+    num += a * b;
+    dp += a * a;
+    dq += b * b;
+  }
+  return num / Math.sqrt(dp * dq || 1);
+}
+
 describe('drawArabicLine (real Chrome)', () => {
   it('renders shaped Arabic recoverable as real Unicode (no "?")', async () => {
     const { PDFDocument } = await import('@cantoo/pdf-lib');
@@ -41,8 +98,8 @@ describe('drawArabicLine (real Chrome)', () => {
     expect(extracted).not.toContain('?');
 
     // Rasterize: the Arabic must actually paint visible ink (not a blank/tofu box)
-    // and sit in the RIGHT half of the box (RTL right-alignment), confirming the
-    // CID-pair reversal placed it right-to-left rather than mirrored left.
+    // and sit in the RIGHT half of the box (RTL right-alignment). Glyph ORDER /
+    // mirror correctness is asserted separately in the next test (native-RTL corr).
     const scale = 3;
     const vp = p.getViewport({ scale });
     const canvas = document.createElement('canvas');
@@ -80,5 +137,63 @@ describe('drawArabicLine (real Chrome)', () => {
     expect(darkCount).toBeGreaterThan(900); // all glyphs paint, not just alef
     const inkWidthPx = maxX - minX;
     expect(inkWidthPx).toBeGreaterThan(80); // multi-glyph word width, not one stroke
+  });
+
+  // ORDER guard (2026-06-17): the assertions above (right-aligned + multi-glyph)
+  // pass for a MIRROR-REVERSED word too — they never checked left-to-right glyph
+  // order. This caught the reverseCidHex double-reversal: font.encodeText already
+  // returns visual RTL order, so reversing it rendered the line mirror-backwards.
+  // We compare the rendered ink profile against a NATIVE dir=rtl render of the same
+  // string in the same font (ground truth); correct order correlates ~1, a mirror
+  // correlates near 0. Must match the truth AND beat its mirror.
+  it('renders Arabic in correct visual order — matches native RTL, not its mirror', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const S = 'محمد رسول الله';
+    const size = 40;
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([700, 110]);
+    await drawArabicLine(doc, page, { text: S, x: 20, y: 45, right: 680, size, color: { r: 0, g: 0, b: 0 } });
+    const bytes = await doc.save();
+
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const p = await pdf.getPage(1);
+    const scale = 2;
+    const vp = p.getViewport({ scale });
+    const appCanvas = document.createElement('canvas');
+    appCanvas.width = Math.ceil(vp.width);
+    appCanvas.height = Math.ceil(vp.height);
+    const appCtx = appCanvas.getContext('2d');
+    if (!appCtx) throw new Error('no 2d context');
+    appCtx.fillStyle = '#fff';
+    appCtx.fillRect(0, 0, appCanvas.width, appCanvas.height);
+    await p.render({ canvas: appCanvas, canvasContext: appCtx, viewport: vp }).promise;
+
+    // Native ground truth: same string, same font, browser-shaped dir=rtl.
+    const fontUrl = (await import('../../src/assets/fonts/NotoNaskhArabic-Regular.ttf?url')).default;
+    const face = new FontFace('NotoNaskhOrderTest', `url(${fontUrl})`);
+    await face.load();
+    document.fonts.add(face);
+    const refCanvas = document.createElement('canvas');
+    refCanvas.width = appCanvas.width;
+    refCanvas.height = appCanvas.height;
+    const refCtx = refCanvas.getContext('2d');
+    if (!refCtx) throw new Error('no 2d context');
+    refCtx.fillStyle = '#fff';
+    refCtx.fillRect(0, 0, refCanvas.width, refCanvas.height);
+    refCtx.fillStyle = '#000';
+    refCtx.font = `${size * scale}px NotoNaskhOrderTest`;
+    refCtx.direction = 'rtl';
+    refCtx.textAlign = 'right';
+    refCtx.textBaseline = 'middle';
+    refCtx.fillText(S, refCanvas.width - 20 * scale, refCanvas.height / 2);
+
+    const pApp = inkProfile(appCanvas);
+    const pRef = inkProfile(refCanvas);
+    const corrCorrect = pearson(pApp, pRef);
+    const corrMirror = pearson(pApp, [...pRef].reverse());
+    // Correct order strongly correlates with native; mirror does not. (Measured:
+    // fixed ≈ 0.98 correct / ≈ 0.2 mirror; reversed bug ≈ −0.06 correct.)
+    expect(corrCorrect).toBeGreaterThan(0.8);
+    expect(corrCorrect).toBeGreaterThan(corrMirror + 0.3);
   });
 });

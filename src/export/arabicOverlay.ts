@@ -1,13 +1,16 @@
 /**
  * Arabic overlay rendering for the PDF export path (Phase C).
  *
- * pdf-lib `drawText` cannot render correct RTL Arabic: fontkit shapes only in
- * logical order, and drawText then places the glyphs LEFT-to-right → correct
- * joining but mirrored direction. The fix bypasses drawText:
+ * pdf-lib `drawText` cannot render correct RTL Arabic: it lays glyphs out
+ * left-to-right, mirroring the line. The fix bypasses drawText and emits a raw Tj
+ * from the shaped CIDs:
  *
- *   font.encodeText(logical)  →  pdf-lib shapes (fontkit GSUB) + emits 2-byte
- *                                subset CIDs in logical order
- *   reverse the CID PAIRS     →  visual right-to-left order (joining preserved)
+ *   font.encodeText(text)     →  pdf-lib/fontkit shapes (GSUB) and emits 2-byte
+ *                                subset CIDs ALREADY in visual right-to-left order
+ *                                — do NOT reverse them. (Reversing renders the line
+ *                                mirror-backwards; verified 2026-06-17 against a
+ *                                native dir=rtl render: 0.98 correlation when drawn
+ *                                straight vs −0.06 when reversed.)
  *   raw Tj via pushOperators  →  the embedded Type0/CID font's W-array advances
  *                                each glyph; setTextMatrix anchors the run
  *
@@ -87,17 +90,6 @@ export function getArabicFont(pdfDoc: PDFDocument): Promise<PDFFont> {
   return cached;
 }
 
-/**
- * Reverse the 2-byte CID groups of a pdf-lib encodeText hex string. Input may be
- * the raw hex or the `<...>`-wrapped form; output is bare hex (logical→visual for
- * a single RTL run). Pure → unit-testable.
- */
-export function reverseCidHex(hex: string): string {
-  const clean = hex.replace(/^</, '').replace(/>$/, '');
-  const groups = clean.match(/.{1,4}/g) ?? [];
-  return groups.reverse().join('');
-}
-
 export interface ArabicLineOpts {
   text: string;
   /** Left edge of the element box (PDF points, y-up page space). */
@@ -120,11 +112,11 @@ export async function drawArabicLine(
   opts: ArabicLineOpts,
 ): Promise<void> {
   const font = await getArabicFont(pdfDoc);
-  // encodeText shapes (fontkit GSUB) + registers glyphs for the subset, returning
-  // logical-order CIDs. Reverse the pairs for visual RTL placement.
-  const logicalHex = font.encodeText(opts.text).toString();
-  const visualHex = reverseCidHex(logicalHex);
-  if (!visualHex) return;
+  // encodeText shapes (fontkit GSUB) + registers subset glyphs, returning 2-byte
+  // CIDs ALREADY in visual right-to-left order — emit them straight to Tj. Do NOT
+  // reverse: encodeText is not logical-order here, so reversing mirrors the line.
+  const cidHex = font.encodeText(opts.text).toString().replace(/^<|>$/g, '');
+  if (!cidHex) return;
 
   const textWidth = font.widthOfTextAtSize(opts.text, opts.size);
   // Right-align within the element box (RTL convention); never overflow left.
@@ -137,7 +129,7 @@ export async function drawArabicLine(
     setFillingRgbColor(opts.color.r, opts.color.g, opts.color.b),
     setFontAndSize(fontKey, opts.size),
     setTextMatrix(1, 0, 0, 1, startX, opts.y),
-    showText(PDFHexString.of(visualHex)),
+    showText(PDFHexString.of(cidHex)),
     endText(),
     popGraphicsState(),
   );
