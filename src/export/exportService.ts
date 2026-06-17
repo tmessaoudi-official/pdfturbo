@@ -12,6 +12,7 @@ import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableTextItem } from '../utils/tableExtract';
+import { stripDocMetadata, dpiToScale, clampQuality, COMPRESS_DPI_DEFAULT, COMPRESS_QUALITY_DEFAULT, type CompressOptions } from './compress';
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
 import { elementToXfdfAnnot, pageHeightPt } from './xfdfMapping';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
@@ -114,6 +115,27 @@ const IMG_DEFAULTS: Required<ImageExportOptions> = { scale: 2, format: 'png', qu
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
+}
+
+/** Human-readable byte size for toast messages (e.g. "1.2 MB", "840 KB"). */
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Encode a canvas as JPEG bytes at the given quality (#60 lossy compress). */
+function canvasToJpegBytes(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) { reject(new Error('JPEG encode failed')); return; }
+        blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf))).catch(reject);
+      },
+      'image/jpeg',
+      quality,
+    );
+  });
 }
 const SAVE_DOCX: SaveFileType = {
   description: 'Word document',
@@ -266,6 +288,110 @@ export class ExportService {
     } catch (err) {
       reportError.error('toast.sanitizeFailed', err);
       _prog.failed();
+    }
+  }
+
+  /**
+   * Compress the assembled (edits-baked-in) document and save a smaller copy (#60).
+   *
+   *  - LOSSLESS "quick optimize" — re-serialize with object streams + strip /Info
+   *    and XMP metadata. Selectable text / vectors / form fields survive.
+   *  - LOSSY "flatten to images" — render each page to a JPEG at the chosen
+   *    DPI/quality and rebuild an image-only PDF. Big win on scans; selectable text
+   *    is dropped (a documented trade-off shown in the modal).
+   *
+   * Operates on `assemblePdfBytes()` so the user's edits are baked in first. The
+   * export password (if set) is applied to the SAME save as the object-stream
+   * optimization, so encrypting never undoes the size win. Save target is acquired
+   * BEFORE the async assembly (#54 transient-activation).
+   */
+  async compressAndDownload(opts: CompressOptions): Promise<void> {
+    const { documentModel, reportError, progress } = this._ctx;
+    if (!documentModel.pageCount) return;
+    const filename = this._exportBaseName() + '-compressed.pdf';
+    const target = await pickSaveTarget(filename, SAVE_PDF);
+    if (target === 'cancelled') return;
+    const _prog = progress.begin('progress.compressing');
+    try {
+      const assembled = await this.assemblePdfBytes();
+      const out = opts.mode === 'lossy'
+        ? await this._compressLossy(assembled, opts, (d, t) => _prog.setFraction(t ? d / t : null))
+        : await this._compressLossless(assembled);
+      _prog.setFraction(null);
+      await this._saveOrDownload(target, out, filename, 'application/pdf');
+      const saved = assembled.length - out.length;
+      if (target !== 'download') {
+        reportError.info('toast.pdfSaved', { name: target.name });
+      } else if (saved > 0) {
+        reportError.info('toast.compressDone', { size: formatBytes(out.length), percent: Math.round((saved / assembled.length) * 100) });
+      } else {
+        reportError.info('toast.compressNoGain', { size: formatBytes(out.length) });
+      }
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.compressFailed', err);
+      _prog.failed();
+    } finally {
+      await this._ctx.renderCurrentPage();
+      this._ctx.rebuildElementLayer();
+    }
+  }
+
+  /**
+   * Lossless re-serialize: strip metadata + write object streams, applying the
+   * export password (if any) to the same save so the encryption doesn't undo the
+   * size win. Loads with updateMetadata:false to avoid pdf-lib's load-time
+   * Producer/ModDate re-stamp (which would re-inject the metadata we strip).
+   */
+  private async _compressLossless(assembled: Uint8Array): Promise<Uint8Array> {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.load(assembled, { updateMetadata: false });
+    await stripDocMetadata(doc);
+    await this._applyExportPassword(doc);
+    return doc.save({ useObjectStreams: true });
+  }
+
+  /**
+   * Lossy "flatten to images": rasterize every page of the assembled PDF to a
+   * JPEG at the requested DPI (pdf.js viewport honours page rotation, so the
+   * raster is already correctly oriented) and rebuild an image-only PDF whose
+   * pages keep their original point dimensions. Selectable text is dropped. The
+   * temporary pdf.js doc is destroyed so the worker doesn't leak.
+   */
+  private async _compressLossy(
+    assembled: Uint8Array,
+    opts: CompressOptions,
+    onPage: (done: number, total: number) => void,
+  ): Promise<Uint8Array> {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const scale = dpiToScale(opts.dpi ?? COMPRESS_DPI_DEFAULT);
+    const quality = clampQuality(opts.quality ?? COMPRESS_QUALITY_DEFAULT);
+    let renderDoc: pdfjsLib.PDFDocumentProxy | undefined;
+    try {
+      renderDoc = await pdfjsLib.getDocument({ data: assembled }).promise;
+      const out = await PDFDocument.create();
+      const total = renderDoc.numPages;
+      for (let i = 1; i <= total; i++) {
+        const page = await renderDoc.getPage(i);
+        const ptVp = page.getViewport({ scale: 1 });        // page size in points
+        const vp = page.getViewport({ scale });             // raster resolution
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(vp.width));
+        canvas.height = Math.max(1, Math.round(vp.height));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas unavailable for compression raster');
+        await page.render({ canvas, viewport: vp }).promise;
+        const jpeg = await canvasToJpegBytes(canvas, quality);
+        const img = await out.embedJpg(jpeg);
+        const p = out.addPage([ptVp.width, ptVp.height]);
+        p.drawImage(img, { x: 0, y: 0, width: ptVp.width, height: ptVp.height });
+        onPage(i, total);
+      }
+      await this._applyExportPassword(out);
+      return out.save({ useObjectStreams: true });
+    } finally {
+      const task = (renderDoc as { loadingTask?: { destroy?: () => Promise<void> } } | undefined)?.loadingTask;
+      if (task && typeof task.destroy === 'function') void task.destroy().catch(() => {});
     }
   }
 

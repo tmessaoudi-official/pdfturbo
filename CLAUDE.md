@@ -434,6 +434,21 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   render (Design β). Tool mode `'crop'` rides `DrawingHandler` (pointerdown gate + `_updatePreview` + pointer-up
   branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off).
   **Ceiling (v1b):** resizable crop handles / numeric margins; aspect-aware apply-to-all.
+- **PDF compress (#60)**: HYBRID modal (`src/ui/compressPanel.ts`, ⇩ export-flyout `compressBtn`, gated
+  `VITE_FEATURE_COMPRESS`). Two strategies over the **assembled** export bytes (`assemblePdfBytes()` — edits
+  baked in), wired as `ExportService.compressAndDownload(opts)`: (1) **lossless** "quick optimize" — re-load
+  `{updateMetadata:false}` (MUST — else pdf-lib re-stamps `/Info` Producer+ModDate at load, undoing the strip,
+  see [[reference_pdflib_updatemetadata_restamp]]) → `stripDocMetadata` (drops `/Info` + XMP `/Metadata` +
+  trailer `/ID`) → `save({useObjectStreams:true})`; keeps text/vectors/forms. (2) **lossy** "flatten to images"
+  — pdfjs renders each page to a JPEG at `dpiToScale(dpi)` (viewport honours page rotation → correctly
+  oriented), rebuilds an image-only PDF whose pages keep their **point** dimensions (`getViewport({scale:1})`),
+  drops selectable text. Pure helpers (`dpiToScale`/`clampDpi`/`clampQuality`/`stripDocMetadata`/
+  `compressLossless`) live in `src/export/compress.ts` (jsdom-testable); the canvas raster loop is in
+  ExportService (real-Chrome). **Non-obvious:** the export password (when set) is applied to the **same**
+  `save({useObjectStreams:true})` as the optimization — a re-load-to-encrypt would default `useObjectStreams`
+  back to false and undo the size win. Defaults **lossless** / **200 DPI / 0.8 quality** (conservative). Toast
+  reports before→after size + % saved (`formatBytes`). **Ceiling #60b:** true in-place image-XObject
+  downsampling (shrink only embedded rasters, keep text) — pdf-lib has no XObject-replace API.
 
 ## Git & CI
 

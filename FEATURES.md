@@ -59,15 +59,16 @@ already exported (ISSUE-3 is specifically the cross-page `commonObjs` case).
 | ISSUE-4 | P2 | ✅ Fixed — export when text OR images present (`exportService.ts`) |
 | ISSUE-5 | P2 | ↩ Reverted (Sprint 3) — text modes are now SEPARATE: `editText` edits existing text only; new text via draw-to-place `addText`. The unified blank-drop trapped users in a non-interactive mode (`textEditHandler.ts`) |
 
-### Confirmed bugs (still open — pre-existing, out of scope for the 2026-06-14 fix run)
-| ID | Severity | Description |
-|---|---|---|
-| BUG-01 | P1 | **Element visual distortion on rotation**: position math fixed; CSS `transform: rotate()` still missing — content wraps into narrow column on rotated pages |
-| BUG-02 | P1 | **No per-element rotation UI**: no rotation handle; cannot freely rotate individual elements |
-| BUG-09 | P1 | **IndexedDB restore race**: `_restoreSession()` missing `_isLoading` guard — concurrent file drop can mix session elements with new PDF |
-| BUG-04 | P2 | **No SELECT mode toolbar button**: users must press Escape to exit drawing mode |
-| BUG-05 | P2 | **Export preview no-toggle**: clicking eye icon while preview is open re-opens instead of closing |
-| BUG-07 | P3 | **`setPointerCapture` console error**: uncaught on synthetic element placement; needs try/catch |
+### Confirmed bugs — RE-VERIFIED 2026-06-17 (all P1/P2 resolved by later sprints; 2 P2/P3 residuals)
+The 2026-06-14 "still open" list was re-checked against current code on 2026-06-17 — every P1 is fixed.
+| ID | Severity | Status | Evidence |
+|---|---|---|---|
+| BUG-01 | P1 | ✅ Fixed | CSS `transform: rotate(${rotation}deg)` applied in `elementLayerRenderer.ts:60`; baked into export at `exportPipeline.ts:289-297` |
+| BUG-02 | P1 | ✅ Fixed | `.rotation-handle` DOM (`annotationElement.ts:61`, styled `editor.css`) + `interactionHandler._rotate` (snap 45°/5°) + undoable `RotateElementCmd`; tests in `elements.render.test.ts` |
+| BUG-09 | P1 | ✅ Fixed | `isLoading` guard wraps `restoreSession` (`documentLoader.ts:97/100/168`) and the file-drop path (`:263`) |
+| BUG-04 | P2 | ✅ Fixed | `#selectBtn ↖` toolbar button (`index.html:61`, `aria-pressed`) |
+| BUG-05 | P2 | 🟡 Likely fixed | explicit `#exportPreviewClose` button + `exportPreviewOpen` state exist; eye-click toggle path not yet re-driven in a browser |
+| BUG-07 | P3 | 🟡 Mostly fixed | `setPointerCapture` guarded in `interactionHandler` (4 sites); `signaturePad.ts:32` + `inkLayerHandler.ts:38` still unguarded (own-canvas paths, low risk) |
 
 ### All features verified working
 Text tool, Signature tool, Image tool, Comment/note, Arrow/Rect/Circle shapes, Freehand, Highlight, Eraser, **Fill Bucket** (shapes + freehand ink strokes), Redact (cryptographically secure — full rasterization), Edit Text overlay, QR/barcode code tool, Copy/paste, Delete, Undo/redo, Export/download PDF (full + single page + PNG), Export preview, Help modal, Language switcher (EN/FR/AR), RTL Arabic layout, Storage banner dismiss, Zoom in/out/fit, Page rotation (transform math correct), Thumbnail panel (all buttons), Search bar (with permanent highlight add), Watermark modal (density fix applied), Session persistence/restore, Clear all annotations, Form field fill

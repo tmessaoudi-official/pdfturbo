@@ -118,6 +118,16 @@ export interface AppDOMRefs {
   batesColor:           HTMLInputElement;
   batesApply:           HTMLButtonElement;
   batesCancel:          HTMLButtonElement;
+  compressBtn:          HTMLButtonElement;
+  compressModal:        HTMLElement;
+  compressMode:         HTMLSelectElement;
+  compressModeHint:     HTMLElement;
+  compressLossyGroup:   HTMLElement;
+  compressDpi:          HTMLInputElement;
+  compressQuality:      HTMLInputElement;
+  compressQualityVal:   HTMLElement;
+  compressApply:        HTMLButtonElement;
+  compressCancel:       HTMLButtonElement;
   xfdfInput:            HTMLInputElement;
   exportPreviewOverlay: HTMLElement;
   exportPreviewGhost:   HTMLElement;
@@ -317,6 +327,16 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       batesColor:           document.getElementById('batesColor')           as HTMLInputElement,
       batesApply:           document.getElementById('batesApply')           as HTMLButtonElement,
       batesCancel:          document.getElementById('batesCancel')          as HTMLButtonElement,
+      compressBtn:          document.getElementById('compressBtn')          as HTMLButtonElement,
+      compressModal:        document.getElementById('compressModal')        as HTMLElement,
+      compressMode:         document.getElementById('compressMode')         as HTMLSelectElement,
+      compressModeHint:     document.getElementById('compressModeHint')     as HTMLElement,
+      compressLossyGroup:   document.getElementById('compressLossyGroup')   as HTMLElement,
+      compressDpi:          document.getElementById('compressDpi')          as HTMLInputElement,
+      compressQuality:      document.getElementById('compressQuality')      as HTMLInputElement,
+      compressQualityVal:   document.getElementById('compressQualityVal')   as HTMLElement,
+      compressApply:        document.getElementById('compressApply')        as HTMLButtonElement,
+      compressCancel:       document.getElementById('compressCancel')       as HTMLButtonElement,
       exportPreviewOverlay: document.getElementById('exportPreviewOverlay') as HTMLElement,
       exportPreviewGhost:   document.getElementById('exportPreviewGhost')   as HTMLElement,
       exportPreviewConfirm: document.getElementById('exportPreviewConfirm') as HTMLButtonElement,
@@ -438,6 +458,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.exportXfdfBtn.disabled  = false;
     r.importXfdfBtn.disabled  = false;
     r.batesBtn.disabled       = false;
+    r.compressBtn.disabled    = false;
     r.editTextBtn.disabled    = false;
     r.ocrBtn.disabled         = false;
     r.signBtn.disabled        = false;

@@ -23,6 +23,8 @@ describe('feature flags (#28)', () => {
     expect(isEnabled('flatten')).toBe(true);
     expect(isEnabled('xfdf')).toBe(true);
     expect(isEnabled('bates')).toBe(true);
+    expect(isEnabled('crop')).toBe(true);
+    expect(isEnabled('compress')).toBe(true);
   });
 
   it('an env var of false/0/off disables the feature (the deploy kill-switch)', () => {
@@ -38,6 +40,8 @@ describe('feature flags (#28)', () => {
     expect(isEnabled('xfdf')).toBe(false);
     vi.stubEnv('VITE_FEATURE_BATES', 'off');
     expect(isEnabled('bates')).toBe(false);
+    vi.stubEnv('VITE_FEATURE_COMPRESS', 'false');
+    expect(isEnabled('compress')).toBe(false);
   });
 
   it('a non-disabling env value leaves the feature ON', () => {

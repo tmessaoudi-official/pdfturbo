@@ -265,6 +265,18 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.batesApply.addEventListener('click', () => app._applyBates());
   app._setupBatesListeners();
 
+  // ── Compress modal (#60) ───────────────────────────────────────
+  app.ui.compressBtn.addEventListener('click', () => app._openCompressModal());
+  app.ui.compressCancel.addEventListener('click', () => app._closeCompressModal());
+  let _compressBackdropDown = false;
+  app.ui.compressModal.addEventListener('mousedown', (e) => { _compressBackdropDown = e.target === app.ui.compressModal; });
+  app.ui.compressModal.addEventListener('mouseup', (e) => {
+    if (_compressBackdropDown && e.target === app.ui.compressModal) app._closeCompressModal();
+    _compressBackdropDown = false;
+  });
+  app.ui.compressApply.addEventListener('click', () => app._applyCompress());
+  app._setupCompressListeners();
+
   // ── Export preview ─────────────────────────────────────────────
   app.ui.previewExportBtn.addEventListener('click', () => {
     if (app._exportPreviewOpen) app._hideExportPreview();

@@ -52,6 +52,8 @@ import { PanelFocusTrapService } from './panelFocusTrapService';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { BatesPanel } from '../ui/batesPanel';
+import { CompressPanel } from '../ui/compressPanel';
+import type { CompressOptions } from '../export/compress';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
 import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
@@ -120,6 +122,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _signingHandler!: SigningHandler;
   private _watermarkPanel!: WatermarkPanel;
   private _batesPanel!: BatesPanel;
+  private _compressPanel!: CompressPanel;
   private _findBarController!: FindBarController;
   private _documentLoader!: DocumentLoader;
   private _elementLayerRenderer!: ElementLayerRenderer;
@@ -322,6 +325,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._signingHandler = new SigningHandler(this);
     this._watermarkPanel = new WatermarkPanel(this);
     this._batesPanel = new BatesPanel(this);
+    this._compressPanel = new CompressPanel(this);
     this._findBarController = new FindBarController(this);
     this._documentLoader = new DocumentLoader(this);
     this._elementLayerRenderer = new ElementLayerRenderer(this);
@@ -390,6 +394,14 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _openBatesModal(): void { this._batesPanel.open(); }
   _closeBatesModal(): void { this._batesPanel.close(); }
   _applyBates(): void { this._batesPanel.apply(); }
+
+  // ── Compress (delegated to CompressPanel, #60) ────────────────────────────
+  _setupCompressListeners(): void { this._compressPanel.setupListeners(); }
+  _openCompressModal(): void { this._compressPanel.open(); }
+  _closeCompressModal(): void { this._compressPanel.close(); }
+  _applyCompress(): void { this._compressPanel.apply(); }
+  /** ICompressContext: run the compress + download with the chosen options. */
+  compress(opts: CompressOptions): void { void this._exportService.compressAndDownload(opts); }
 
   // ── Find bar (delegated to FindBarController) ───────────────────────────
   _openFindBar(): void { this._findBarController.open(); }

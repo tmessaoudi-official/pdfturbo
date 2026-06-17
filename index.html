@@ -128,6 +128,7 @@
           <button id="exportXfdfBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportXfdfTitle" title="Export annotations as XFDF">XFDF↓</button>
           <button id="importXfdfBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.importXfdfTitle" title="Import annotations from XFDF">XFDF↑</button>
           <button id="batesBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.batesTitle" title="Bates / page numbering">#</button>
+          <button id="compressBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.compressTitle" title="Compress — shrink the PDF (optimize or flatten to images)">⇩</button>
         </div>
       </div>
       <button id="helpBtn" class="btn btn-icon" data-i18n-title="toolbar.helpTitle" title="Keyboard shortcuts (?)">?</button>
@@ -392,6 +393,33 @@
     <div class="wm-actions">
       <button id="batesCancel" class="btn btn-secondary" data-i18n="modal.bates.cancel">Cancel</button>
       <button id="batesApply" class="btn btn-success" data-i18n="modal.bates.apply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="watermark-modal" id="compressModal" role="dialog" aria-modal="true" aria-labelledby="compressModalTitle">
+  <div class="watermark-content">
+    <h2 id="compressModalTitle" data-i18n="modal.compress.title">Compress PDF</h2>
+    <div class="wm-field">
+      <label data-i18n="modal.compress.modeLabel">Method</label>
+      <select id="compressMode" class="wm-input">
+        <option value="lossless" data-i18n="modal.compress.modeLossless">Quick optimize (keeps text — lossless)</option>
+        <option value="lossy" data-i18n="modal.compress.modeLossy">Flatten to images (smaller — drops text)</option>
+      </select>
+    </div>
+    <p class="wm-hint" id="compressModeHint" data-i18n="modal.compress.hintLossless">Re-packs the file and removes metadata. Text, vectors and form fields stay selectable.</p>
+    <div id="compressLossyGroup" style="display:none">
+      <div class="wm-field">
+        <label data-i18n="modal.compress.dpiLabel">Image resolution (DPI)</label>
+        <input type="number" id="compressDpi" class="wm-input" min="72" max="300" value="200">
+      </div>
+      <div class="wm-field">
+        <label><span data-i18n="modal.compress.qualityLabel">JPEG quality</span> <input type="range" id="compressQuality" min="0.3" max="0.95" step="0.05" value="0.8"> <output id="compressQualityVal">0.80</output></label>
+      </div>
+    </div>
+    <div class="wm-actions">
+      <button id="compressCancel" class="btn btn-secondary" data-i18n="modal.compress.cancel">Cancel</button>
+      <button id="compressApply" class="btn btn-success" data-i18n="modal.compress.apply">Compress &amp; download</button>
     </div>
   </div>
 </div>

@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (!isEnabled('bates')) app.ui.batesBtn.style.display = 'none';
   if (!isEnabled('crop')) { app.ui.cropBtn.style.display = 'none'; document.getElementById('cropControls')?.remove(); }
+  if (!isEnabled('compress')) { app.ui.compressBtn.style.display = 'none'; app.ui.compressModal.remove(); }
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {
