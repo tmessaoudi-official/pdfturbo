@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CodeModalManager, type ICodeModalContext } from '../../src/ui/codeModalManager';
+import { HistoryManager } from '../../src/core/historyManager';
 import type { AppDOMRefs } from '../../src/ui/uiController';
 import type { ToolMode } from '../../src/core/pdfTurboApp';
 import type { CodeElement } from '../../src/elements/codeElement';
@@ -40,6 +41,9 @@ function makeUI(): Pick<AppDOMRefs,
   opt.value = 'qrcode';
   opt.selected = true;
   codeFormatSelect.appendChild(opt);
+  const opt128 = document.createElement('option');
+  opt128.value = 'code128';
+  codeFormatSelect.appendChild(opt128);
 
   const codeDataInput = document.createElement('input');
   const qrStyledChk = document.createElement('input');
@@ -87,10 +91,11 @@ function makeUI(): Pick<AppDOMRefs,
   } as unknown as AppDOMRefs;
 }
 
-function makeCtx(ui: ReturnType<typeof makeUI>, initialMode: ToolMode = 'select'): ICodeModalContext & { mode: ToolMode } {
+function makeCtx(ui: ReturnType<typeof makeUI>, initialMode: ToolMode = 'select'): ICodeModalContext & { mode: ToolMode; historyManager: HistoryManager } {
   const ctx = {
     ui: ui as unknown as AppDOMRefs,
-    elements: [],
+    elements: [] as PDFElement[],
+    historyManager: new HistoryManager(50, vi.fn()),
     mode: initialMode,
     setMode: vi.fn((m: ToolMode) => { ctx.mode = m; }),
     autosave: vi.fn(),
@@ -201,6 +206,24 @@ describe('CodeModalManager.save', () => {
     expect(ctx.autosave).toHaveBeenCalled();
     expect(ctx.rebuildElementLayer).toHaveBeenCalled();
     expect(ctx.setMode).not.toHaveBeenCalledWith('addCode');
+  });
+
+  it('records a command on in-place edit, and undo restores prior data + codeType', async () => {
+    const ui = makeUI();
+    const ctx = makeCtx(ui);
+    const fakeEl = { id: 7, codeType: 'qrcode', data: 'old-data', qrStyle: null, bwipOpts: null, cachedDataUrl: 'old-url' } as unknown as CodeElement;
+    (ctx.elements as PDFElement[]).push(fakeEl);
+    const mgr = new CodeModalManager(ctx);
+    mgr.open(fakeEl);
+    ui.codeFormatSelect.value = 'code128';
+    ui.codeDataInput.value = 'new-data';
+    await mgr.save();
+    expect(fakeEl.data).toBe('new-data');
+    expect(fakeEl.codeType).toBe('code128');
+    expect(ctx.historyManager.canUndo()).toBe(true);
+    ctx.historyManager.undo();
+    expect(fakeEl.data).toBe('old-data');
+    expect(fakeEl.codeType).toBe('qrcode');
   });
 
   it('closes the modal after save', async () => {

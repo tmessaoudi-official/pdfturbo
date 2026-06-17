@@ -107,7 +107,10 @@ export class FormattingService {
       this._ctx.rebuildElementLayer();
       this._ctx.autosave();
     } else if (this._ctx.selectedElement?.type === 'shape') {
-      (this._ctx.selectedElement as ShapeElement).strokeColor = value;
+      const she = this._ctx.selectedElement as ShapeElement;
+      const before = { strokeColor: she.strokeColor };
+      she.strokeColor = value;
+      this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, she, before, { strokeColor: value }));
       this._ctx.rebuildElementLayer();
       this._ctx.autosave();
     } else if (this._ctx.selectedElement?.type === 'redaction') {
@@ -164,7 +167,10 @@ export class FormattingService {
 
   setShapeStrokeWidth(value: number): void {
     if (this._ctx.selectedElement?.type !== 'shape') return;
-    (this._ctx.selectedElement as ShapeElement).strokeWidth = value;
+    const she = this._ctx.selectedElement as ShapeElement;
+    const before = { strokeWidth: she.strokeWidth };
+    she.strokeWidth = value;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, she, before, { strokeWidth: value }));
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
   }

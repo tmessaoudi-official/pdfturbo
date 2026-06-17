@@ -2,6 +2,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFRenderer } from '../infra/pdfRenderer';
 import { TextElement } from '../elements/textElement';
+import type { CommentElement } from '../elements/commentElement';
 import { HighlightElement } from '../elements/highlightElement';
 import { TextSearchHandler } from '../handlers/textSearchHandler';
 import { SignaturePad } from '../utils/signaturePad';
@@ -159,7 +160,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   }
   handleElementClick(el: PDFElement): void { this.selectElement(el); }
   handleCodeElementEdit(el: CodeElement): void { this.openCodeModal(el); }
-  handleTextInput(element: TextElement, input: HTMLInputElement | HTMLTextAreaElement): void { this._undoRedoController.handleTextInput(element, input); }
+  handleTextInput(element: TextElement | CommentElement, input: HTMLInputElement | HTMLTextAreaElement): void { this._undoRedoController.handleTextInput(element, input); }
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }

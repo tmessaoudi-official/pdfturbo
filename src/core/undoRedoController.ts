@@ -1,4 +1,5 @@
 import { TextElement } from '../elements/textElement';
+import { CommentElement } from '../elements/commentElement';
 import { TextEditCmd, type HistoryManager } from './historyManager';
 import type { PDFElement } from '../elements/annotationElement';
 import type { IErrorReporter } from './errorReporter';
@@ -23,7 +24,7 @@ export class UndoRedoController {
 
   constructor(private readonly _ctx: IUndoRedoContext) {}
 
-  handleTextInput(element: TextElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+  handleTextInput(element: TextElement | CommentElement, input: HTMLInputElement | HTMLTextAreaElement): void {
     if (this._pendingTextElementId !== element.id) {
       this._pendingTextBefore = element.text;
       this._pendingTextElementId = element.id;

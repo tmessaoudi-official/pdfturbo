@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { UndoRedoController, type IUndoRedoContext } from '../../src/core/undoRedoController';
 import { HistoryManager, TextEditCmd } from '../../src/core/historyManager';
 import { TextElement } from '../../src/elements/textElement';
+import { CommentElement } from '../../src/elements/commentElement';
 import type { PDFElement } from '../../src/elements/annotationElement';
 import type { IErrorReporter } from '../../src/core/errorReporter';
 
@@ -98,6 +99,22 @@ describe('UndoRedoController.handleTextInput', () => {
     // Undo should restore to 'original', not 'step1'
     ctx.historyManager.undo();
     expect(te.text).toBe('original');
+    vi.useRealTimers();
+  });
+
+  it('records a TextEditCmd for a CommentElement edit, and undo restores its text', () => {
+    vi.useFakeTimers();
+    const c = new CommentElement(0, 0, 'p1', { text: 'before' });
+    const ctx = makeCtx();
+    ctx.elements.push(c);
+    const ctrl = new UndoRedoController(ctx);
+    ctrl.handleTextInput(c, { value: 'after' } as HTMLTextAreaElement);
+    expect(c.text).toBe('after');
+    expect(ctx.historyManager.canUndo()).toBe(false);
+    vi.advanceTimersByTime(500);
+    expect(ctx.historyManager.canUndo()).toBe(true);
+    ctx.historyManager.undo();
+    expect(c.text).toBe('before');
     vi.useRealTimers();
   });
 

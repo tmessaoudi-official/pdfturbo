@@ -1,6 +1,7 @@
 import type { ToolMode } from '../core/pdfTurboApp';
 import type { CodeElement } from '../elements/codeElement';
 import type { PDFElement } from '../elements/annotationElement';
+import { MoveResizeCmd, type HistoryManager } from '../core/historyManager';
 import { generateCodeDataUrl, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
 import type { AppDOMRefs } from './uiController';
 import { trapFocus } from '../utils/focusTrap';
@@ -9,6 +10,7 @@ import { t } from '../utils/i18n';
 export interface ICodeModalContext {
   readonly ui: AppDOMRefs;
   readonly elements: PDFElement[];
+  readonly historyManager: HistoryManager;
   readonly mode: ToolMode;
   setMode(mode: ToolMode): void;
   autosave(): void;
@@ -105,11 +107,22 @@ export class CodeModalManager {
       if (editingId !== null) {
         const el = this._ctx.elements.find(x => x.id === editingId) as CodeElement | undefined;
         if (el) {
-          el.codeType = fmt;
-          el.data = data;
-          el.qrStyle = qrStyle ?? null;
-          el.bwipOpts = bwipOpts;
-          el.cachedDataUrl = dataUrl;
+          const before = {
+            codeType: el.codeType,
+            data: el.data,
+            qrStyle: el.qrStyle,
+            bwipOpts: el.bwipOpts,
+            cachedDataUrl: el.cachedDataUrl,
+          };
+          const after = {
+            codeType: fmt,
+            data,
+            qrStyle: qrStyle ?? null,
+            bwipOpts,
+            cachedDataUrl: dataUrl,
+          };
+          Object.assign(el, after);
+          this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, el, before, after));
           this._ctx.autosave();
           this._ctx.rebuildElementLayer();
         }

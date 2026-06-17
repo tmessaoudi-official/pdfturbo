@@ -5,6 +5,7 @@ import type { AppDOMRefs } from './uiController';
 import type { ToolMode } from '../types/tools';
 import type { CodeElement } from '../elements/codeElement';
 import type { TextElement } from '../elements/textElement';
+import type { CommentElement } from '../elements/commentElement';
 import { t } from '../utils/i18n';
 
 // Maps each annotation element type to the ARIA role that best conveys its
@@ -34,7 +35,7 @@ export interface IElementLayerContext {
   handleElementPointerDown(e: PointerEvent, el: PDFElement, div: HTMLDivElement): void;
   handleElementClick(el: PDFElement): void;
   handleCodeElementEdit(el: CodeElement): void;
-  handleTextInput(el: TextElement, input: HTMLInputElement | HTMLTextAreaElement): void;
+  handleTextInput(el: TextElement | CommentElement, input: HTMLInputElement | HTMLTextAreaElement): void;
 }
 
 export class ElementLayerRenderer {
@@ -69,13 +70,13 @@ export class ElementLayerRenderer {
             if (el) this._ctx.handleCodeElementEdit(el);
           });
         }
-        if (element.type === 'text') {
+        if (element.type === 'text' || element.type === 'comment') {
           const input = div.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement | null;
           if (input) {
             const isSelected = this._ctx.selectedElement?.id === element.id;
             if (!isSelected) (input as HTMLElement).style.pointerEvents = 'none';
             input.addEventListener('input', () => {
-              this._ctx.handleTextInput(element as TextElement, input);
+              this._ctx.handleTextInput(element as TextElement | CommentElement, input);
             });
           }
         }

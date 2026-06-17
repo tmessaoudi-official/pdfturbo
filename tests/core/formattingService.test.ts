@@ -194,12 +194,16 @@ describe('FormattingService.setElementColor', () => {
     expect(ctx.historyManager.canUndo()).toBe(true);
   });
 
-  it('sets strokeColor on a ShapeElement (no history command)', () => {
+  it('sets strokeColor on a ShapeElement, records a command, and undo restores it', () => {
     const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const original = shape.strokeColor;
     const ctx = makeCtx(shape);
+    ctx.elements.push(shape);
     new FormattingService(ctx).setElementColor('#00ff00');
     expect(shape.strokeColor).toBe('#00ff00');
-    expect(ctx.historyManager.canUndo()).toBe(false);
+    expect(ctx.historyManager.canUndo()).toBe(true);
+    ctx.historyManager.undo();
+    expect(shape.strokeColor).toBe(original);
   });
 
   it('sets color on a RedactionElement and records a command', () => {
@@ -281,6 +285,18 @@ describe('FormattingService.setShapeStrokeWidth', () => {
     new FormattingService(ctx).setShapeStrokeWidth(4);
     expect(shape.strokeWidth).toBe(4);
     expect(ctx.rebuildElementLayer).toHaveBeenCalled();
+  });
+
+  it('records a command so undo restores the previous strokeWidth', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const original = shape.strokeWidth;
+    const ctx = makeCtx(shape);
+    ctx.elements.push(shape);
+    new FormattingService(ctx).setShapeStrokeWidth(8);
+    expect(shape.strokeWidth).toBe(8);
+    expect(ctx.historyManager.canUndo()).toBe(true);
+    ctx.historyManager.undo();
+    expect(shape.strokeWidth).toBe(original);
   });
 
   it('is a no-op for non-shape elements', () => {
