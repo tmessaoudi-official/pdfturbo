@@ -3,7 +3,7 @@ import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
 import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName, type TextStyle } from '../utils/contentStreamEditor';
-import { extractPsName } from '../utils/flowDoc';
+import { extractPsName, isArabicText } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import { isEnabled } from '../config/features';
 import type { IAppContext } from '../core/appContext';
@@ -50,6 +50,94 @@ function psNameToCssFontFamily(psName: string): string {
     return '"Courier New", Courier, monospace';
   }
   return 'Arial, Helvetica, sans-serif';
+}
+
+/** A pdf.js getTextContent item (the subset of fields the handler relies on). */
+interface PdfTextItem {
+  str: string;
+  transform: number[];
+  width: number;
+  height: number;
+  fontName: string;
+}
+
+/** A contiguous same-baseline run, in pdf.js item space (x = transform[4], y = baseline transform[5]). */
+export interface BaselineRun {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Re-assemble the contiguous, same-baseline, same-font run of text items that
+ * contains the clicked item `best`, for use as the OVERLAY text + bounding box.
+ *
+ * Why: on glyph-positioned PDFs (all Arabic, kerned / justified Latin) pdf.js
+ * emits ONE ITEM PER GLYPH, so a single clicked item carries ~one character while
+ * the historic overlay floored its cover width to 40pt — the user saw a word-wide
+ * redaction cover but a one-glyph editable box (G7, the #1 reported pain). This
+ * returns the whole clicked word so the cover AND the text box span it.
+ *
+ * Scope: OVERLAY ONLY. The in-place content-stream edit path keeps receiving the
+ * original single `best` item — re-clustering its target would corrupt the
+ * position-matched content-stream surgery (its prefill is a separate gap, G8).
+ *
+ * Thresholds (relative to the clicked glyph's font size):
+ *  - fontSize = hypot(transform[0], transform[1]); falls back to item height then
+ *    12 when the text matrix has no scale (so geometry-free fixtures still work).
+ *  - same baseline: |transform[5] − best.transform[5]| ≤ 0.3 × fontSize.
+ *  - run break: an adjacent item is whitespace-only, OR the horizontal gap to it
+ *    (next.x − (cur.x + cur.width)) ≥ 1.0 × fontSize — i.e. a real inter-word space.
+ *
+ * RTL note: items arrive in VISUAL order; we concatenate by ascending x and do
+ * NOT reverse — the Arabic overlay renderer re-shapes RTL from logical-visual.
+ */
+export function clusterBaselineRun(items: PdfTextItem[], best: PdfTextItem): BaselineRun {
+  const fontSize = Math.hypot(best.transform[0], best.transform[1]) || Math.abs(best.height) || 12;
+  const baselineBand = 0.3 * fontSize;
+  const gapBreak = 1.0 * fontSize;
+  const baseY = best.transform[5];
+
+  // Same baseline + same font, keeping whitespace markers so they can act as a
+  // hard break. Sorted left → right (visual order).
+  const sameLine = items
+    .filter(it => it.fontName === best.fontName && Math.abs(it.transform[5] - baseY) <= baselineBand)
+    .sort((a, b) => a.transform[4] - b.transform[4]);
+
+  const bestIdx = sameLine.indexOf(best);
+  // `best` always has content (callers guard `best.str.trim()`); if somehow
+  // absent from the line set, fall back to the lone item.
+  if (bestIdx === -1) {
+    const w = Math.max(Math.abs(best.width), 0);
+    return { text: best.str, x: best.transform[4], y: baseY, width: w, height: Math.abs(best.height) };
+  }
+
+  const adjacentGap = (left: PdfTextItem, right: PdfTextItem): number =>
+    right.transform[4] - (left.transform[4] + Math.abs(left.width));
+
+  // Extend left from best while the neighbour is non-blank and the gap is tight.
+  let lo = bestIdx;
+  while (lo > 0) {
+    const prev = sameLine[lo - 1];
+    if (!prev.str.trim() || adjacentGap(prev, sameLine[lo]) >= gapBreak) break;
+    lo--;
+  }
+  // Extend right from best by the same rule.
+  let hi = bestIdx;
+  while (hi < sameLine.length - 1) {
+    const next = sameLine[hi + 1];
+    if (!next.str.trim() || adjacentGap(sameLine[hi], next) >= gapBreak) break;
+    hi++;
+  }
+
+  const run = sameLine.slice(lo, hi + 1);
+  const text = run.map(it => it.str).join('');
+  const x = run[0].transform[4];
+  const right = Math.max(...run.map(it => it.transform[4] + Math.abs(it.width)));
+  const height = Math.max(...run.map(it => Math.abs(it.height)));
+  return { text, x, y: baseY, width: right - x, height };
 }
 
 export class TextEditHandler {
@@ -114,6 +202,36 @@ export class TextEditHandler {
       return;
     }
 
+    // G7: re-assemble the contiguous same-baseline run around the clicked glyph.
+    // pdf.js emits one item per glyph on glyph-positioned PDFs (all Arabic, kerned
+    // Latin), so `best` alone is ~one character. The run drives the OVERLAY text +
+    // cover only — the in-place true-edit path below still uses the single `best`
+    // item (re-clustering it would corrupt the position-matched stream edit; G8).
+    const run = clusterBaselineRun(items, best);
+
+    // G7 Arabic pre-route (the user's exact #1 case): clicking Arabic source text
+    // would open the inline editor pre-filled with ONE glyph, then refuse Arabic
+    // at commit (replaceTextAt → overlay) and leave a one-glyph box under a 40pt
+    // cover. Skip the editor: drop the clustered overlay (whole-word redaction
+    // cover + editable text box) directly. The Arabic overlay renderer lays the
+    // run out RTL correctly. Latin/in-place edits are unaffected.
+    if (isArabicText(run.text)) {
+      const arH = Math.max(run.height, 10);
+      const arCtx = this._buildOverlayContext(app, {
+        annX: run.x,
+        annY: pageH - run.y - arH,
+        w: run.width,
+        h: arH,
+        pageId: docPage.id,
+        fontName: best.fontName,
+        pdfjsFontFamily: styles[best.fontName]?.fontFamily ?? '',
+        fontSize: Math.round(Math.hypot(best.transform[0], best.transform[1])) || Math.round(arH * 0.82),
+        text: run.text,
+      });
+      this._emitOverlay(app, arCtx);
+      return;
+    }
+
     // ── True edit first: content-stream surgery on the source PDF ──
     try {
       const libDoc = await PDFDocument.load(src.bytes.slice(0));
@@ -170,11 +288,15 @@ export class TextEditHandler {
       // Encrypted or unparseable source PDF — overlay fallback below.
     }
 
-    const w  = Math.max(Math.abs(best.width),  40);
-    const h  = Math.max(Math.abs(best.height), 10);
-    // Canvas-space position: top-left origin
-    const annX = best.transform[4];
-    const annY = pageH - best.transform[5] - h;
+    // G7: cover + text from the clustered baseline RUN (not the single clicked
+    // glyph). On glyph-positioned PDFs `best.width` was floored to 40pt → a
+    // word-wide cover with a one-glyph box; the run gives the true word extent.
+    const w  = Math.max(run.width, 40);
+    const h  = Math.max(run.height, 10);
+    // Canvas-space position: top-left origin, derived from the run bbox the same
+    // way the single-item path did (annX = x, annY = pageH − baseline − height).
+    const annX = run.x;
+    const annY = pageH - run.y - h;
 
     const detectedFontSize = Math.round(Math.hypot(best.transform[0], best.transform[1]));
     const fontSize = detectedFontSize >= 6 && detectedFontSize <= 144
@@ -187,7 +309,7 @@ export class TextEditHandler {
       fontName: best.fontName,
       pdfjsFontFamily: styles[best.fontName]?.fontFamily ?? '',
       fontSize,
-      text: best.str,
+      text: run.text,
     });
     this._emitOverlay(app, overlayCtx);
   }
