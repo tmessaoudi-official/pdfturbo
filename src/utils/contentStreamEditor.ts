@@ -837,6 +837,117 @@ export function findTextOpAt(
 }
 
 /**
+ * Decode one show op's shown text into a logical string, mirroring the operand
+ * kinds the edit path (`replaceShowOpInPlace` / `replaceShowOpHex` / Path-2) acts
+ * on, so the decoded text never diverges from what `replaceTextAt` will replace:
+ *   - literal-string operands  → `decodeLiteralString` (the same helper the edit
+ *     path uses to MEASURE segment lengths);
+ *   - hex operands / `TJ` hex items, font WITH ToUnicode → the font's CMap
+ *     (`forward`, keyed by integer char code), split into `bytesPerCode`-sized code
+ *     units — the SAME map Path-2 builds (it inverts this map to re-encode);
+ *   - hex operands, font WITHOUT ToUnicode but `byteSwapSafe` → the single-byte
+ *     codes are their own character codes (a standard, non-embedded font where
+ *     byte == ASCII; pdf-lib's `drawText` emits standard-font text as hex). This is
+ *     the exact case Path-1 (`replaceShowOpInPlace`) edits, so decoding it here
+ *     keeps prefill == replacement. A byte-swap-UNSAFE font (subset/CID/embedded)
+ *     with no ToUnicode is undecodable here → '' (caller keeps the clicked string).
+ * Numeric `TJ` kerning entries are ignored; segments are concatenated in stream
+ * order. Returns '' when nothing decodes (the caller treats '' as "give up").
+ */
+function decodeShowOpText(
+  op: CsOp,
+  forward: Map<number, string> | null,
+  bytesPerCode: 1 | 2,
+  byteSwapSafe: boolean,
+): string {
+  const decodeHexInner = (inner: string): string => {
+    const clean = inner.replace(/\s+/g, '');
+    let out = '';
+    if (forward) {
+      const step = bytesPerCode * 2;
+      for (let i = 0; i + step <= clean.length; i += step) {
+        const uni = forward.get(parseInt(clean.slice(i, i + step), 16));
+        if (uni !== undefined) out += uni;
+      }
+      return out;
+    }
+    // No ToUnicode: only a standard byte==ASCII font is safely decodable (Path-1).
+    if (!byteSwapSafe) return '';
+    for (let i = 0; i + 2 <= clean.length; i += 2) {
+      out += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16));
+    }
+    return out;
+  };
+
+  const decodeToken = (tok: CsToken | undefined): string => {
+    if (!tok) return '';
+    if (tok.type === 'string') return decodeLiteralString(tok.raw);
+    if (tok.type === 'hexstring') return decodeHexInner(tok.raw.replace(/^</, '').replace(/>$/, ''));
+    return '';
+  };
+
+  if (op.operator === 'TJ') {
+    const arr = op.operands[0];
+    if (!arr || arr.type !== 'array' || !arr.items) return '';
+    // Concatenate string/hex segments in order; ignore the numeric kerning entries.
+    return arr.items
+      .filter(t => t.type === 'string' || t.type === 'hexstring')
+      .map(decodeToken)
+      .join('');
+  }
+  // Tj, ', " — the shown string is the last operand.
+  return decodeToken(op.operands[op.operands.length - 1]);
+}
+
+/**
+ * Decode the editable text of the show op nearest to `point`, for prefilling the
+ * inline true-edit editor (G8). The prefill MUST equal what `replaceTextAt` will
+ * later replace at the same origin: pdf.js splits a `Tj`/`TJ` word into one item
+ * PER GLYPH, so `best.str` is often a single character while the matched op holds
+ * the whole word — prefilling `best.str` then in-place-editing the whole op
+ * corrupts the word down to that one glyph. Returning the matched op's OWN text
+ * keeps prefill == replacement, so a single-`Tj` word shows and edits whole.
+ *
+ * Returns null when:
+ *   - no show op lies within `tolerance` (off-text click);
+ *   - the target lives inside a Form XObject (`inXObject`) — not editable in place,
+ *     the caller falls back to an overlay; or
+ *   - decoding is impossible / yields empty (e.g. a hex op with no ToUnicode) — the
+ *     caller then keeps the clicked item's own string, which is always safe.
+ *
+ * Ceiling: this returns the SINGLE matched op's text. A word drawn across MULTIPLE
+ * separate show ops is a structural limit — only the matched op is edited in place;
+ * the whole-word path is the G7 clustered overlay.
+ */
+export function getEditableTextAt(
+  doc: PDFDocument,
+  pageIndex: number,
+  point: { x: number; y: number },
+  tolerance = 5,
+): string | null {
+  const found = findTarget(doc, pageIndex, point, tolerance);
+  if (!found) return null;
+  // XObject targets aren't truly editable (own coord space + subset font); the
+  // handler overlays instead, so there is no prefill to derive here.
+  if (found.xObjectName || found.target.inXObject) return null;
+
+  const op = found.ops[found.target.opIndex];
+  if (!op) return null;
+
+  // Reuse the trusted ToUnicode machinery so hex operands decode exactly as Path-2
+  // re-encodes them. Built once per call; null when the font carries no ToUnicode.
+  const cmapText = getPageFontToUnicode(doc, pageIndex, found.target.fontKey);
+  const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
+  const bytesPerCode = cmapText ? detectCMapBytesPerCode(cmapText) : 2;
+  // For a hex op with no ToUnicode, only a standard byte==ASCII font (the Path-1
+  // case) is safely decodable — gate on the SAME predicate Path-1 uses.
+  const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, found.target.fontKey);
+
+  const text = decodeShowOpText(op, forward, bytesPerCode, byteSwapSafe);
+  return text.length > 0 ? text : null;
+}
+
+/**
  * Truly delete the text op nearest to `point` (PDF coords, baseline origin).
  * Also blanks shadow ops within SHADOW_RADIUS of the target to remove outline effects.
  * Returns false when no show op lies within `tolerance`.

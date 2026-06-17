@@ -2,7 +2,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
-import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName, type TextStyle } from '../utils/contentStreamEditor';
+import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName, getEditableTextAt, type TextStyle } from '../utils/contentStreamEditor';
 import { extractPsName, isArabicText } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import { isEnabled } from '../config/features';
@@ -265,6 +265,14 @@ export class TextEditHandler {
 
       // #28 kill-switch: with true-edit disabled, treat a hit as a miss → overlay.
       if (target && isEnabled('trueEdit')) {
+        // G8: prefill the inline editor from the MATCHED content-stream op's own
+        // decoded text — exactly what replaceTextAt(matchedOrigin, …) will replace
+        // — NOT `best.str`. pdf.js splits a single Tj/TJ word into one item per
+        // glyph, so `best.str` is often one character while the matched op holds
+        // the whole word; prefilling `best.str` then in-place-editing the whole op
+        // corrupted the word down to that glyph. On any uncertainty
+        // getEditableTextAt returns null and we keep `best.str` (always safe).
+        const editable = getEditableTextAt(libDoc, docPage.sourcePageNum - 1, matchedOrigin, TRUE_EDIT_TOLERANCE);
         this._openTrueEditInput(e, app, {
           libDoc,
           src,
@@ -274,7 +282,7 @@ export class TextEditHandler {
           fontName: best.fontName,
           fontKey: target.fontKey,
           pdfjsFontFamily: styles[best.fontName]?.fontFamily ?? '',
-          originalText: best.str,
+          originalText: editable && editable.length > 0 ? editable : best.str,
           fontSize: Math.hypot(best.transform[0], best.transform[1]) || target.fontSize || 12,
           itemHeight: Math.max(Math.abs(best.height), 10),
           itemWidth: Math.max(Math.abs(best.width), 40),

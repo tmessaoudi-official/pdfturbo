@@ -3,10 +3,11 @@ import { TextEditHandler, clusterBaselineRun } from '../../src/handlers/textEdit
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
-const { mockFindTextOpAt, mockReplaceTextAt, mockDeleteTextAt } = vi.hoisted(() => ({
+const { mockFindTextOpAt, mockReplaceTextAt, mockDeleteTextAt, mockGetEditableTextAt } = vi.hoisted(() => ({
   mockFindTextOpAt: vi.fn(),
   mockReplaceTextAt: vi.fn(),
   mockDeleteTextAt: vi.fn(),
+  mockGetEditableTextAt: vi.fn(),
 }));
 
 vi.mock('@cantoo/pdf-lib', () => ({
@@ -21,6 +22,9 @@ vi.mock('../../src/utils/contentStreamEditor', () => ({
   changeColorAt:    vi.fn(),
   fillColorToHex:   vi.fn(() => null),
   getPageFontBaseName: vi.fn(() => ''),
+  // G8: prefill comes from the matched content-stream op's decoded text. Default
+  // null → handler keeps best.str (the pre-G8 behaviour the other tests assume).
+  getEditableTextAt: mockGetEditableTextAt,
 }));
 
 vi.mock('../../src/utils/flowDoc', () => ({
@@ -118,6 +122,9 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     mockFindTextOpAt.mockReset();
     mockReplaceTextAt.mockReset();
     mockDeleteTextAt.mockReset();
+    // Default: no decoded op text → handler keeps best.str (pre-G8 behaviour).
+    mockGetEditableTextAt.mockReset();
+    mockGetEditableTextAt.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -172,6 +179,62 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     const calls = (mockFindTextOpAt as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls.length).toBe(1);
     expect(calls[0][2]).toMatchObject({ x: 100, y: 600 });
+  });
+
+  // G8: pdf.js splits a glyph-positioned word into one item per glyph, so
+  // `best.str` is a single character while the matched content-stream op holds
+  // the whole word. The inline editor must prefill from getEditableTextAt (the
+  // matched op's own decoded text) — exactly what replaceTextAt will replace — so
+  // editing the prefilled value can't corrupt the whole word down to one glyph.
+  it('prefills the inline editor from getEditableTextAt (matched op text), not best.str (G8)', async () => {
+    const pageH = 841;
+    // `best` is a single mid-word glyph ('l') — the historic prefill source.
+    const item = makeItem('l', 100, 600);
+
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
+      if (Math.abs(origin.x - 100) < 1 && Math.abs(origin.y - 600) < 1) {
+        return { fontKey: 'F1', fontSize: 12, fillColor: undefined };
+      }
+      return null;
+    });
+    // The matched content-stream op decodes to the WHOLE word.
+    mockGetEditableTextAt.mockReturnValue('Hello');
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], pageH));
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    // Prefill is the whole-word op text, NOT the single clicked glyph.
+    expect(input.value).toBe('Hello');
+    expect(input.value).not.toBe('l');
+    // getEditableTextAt was queried at the matched origin with the true-edit tolerance.
+    const geCalls = (mockGetEditableTextAt as ReturnType<typeof vi.fn>).mock.calls;
+    expect(geCalls.length).toBe(1);
+    expect(geCalls[0][2]).toMatchObject({ x: 100, y: 600 });
+  });
+
+  // G8 safety: when getEditableTextAt can't decode the matched op (returns null),
+  // the handler must fall back to best.str — never an empty / lost prefill.
+  it('falls back to best.str when getEditableTextAt returns null (G8 safe fallback)', async () => {
+    const pageH = 841;
+    const item = makeItem('Hello', 100, 600);
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) => {
+      if (Math.abs(origin.x - 100) < 1 && Math.abs(origin.y - 600) < 1) {
+        return { fontKey: 'F1', fontSize: 12, fillColor: undefined };
+      }
+      return null;
+    });
+    mockGetEditableTextAt.mockReturnValue(null);
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], pageH));
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.value).toBe('Hello'); // best.str, since decode gave null
   });
 
   // R2 (2026-06-15 QA sweep): on a ROTATED page the click→content mapping must

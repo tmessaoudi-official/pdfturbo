@@ -27,6 +27,7 @@ import {
   isSubsetFontName,
   isType3Font,
   isVerticalWritingFont,
+  getEditableTextAt,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -570,6 +571,87 @@ describe('replaceTextAt', () => {
     const content = await pageContentText(saved);
     expect(showStrings(content)).toContain('Changed');
     expect(content).toMatch(/\/\S+\s+12\s+Tf/);
+  });
+});
+
+// ── G8: getEditableTextAt — prefill the inline editor from the MATCHED op ───────
+// The inline true-edit editor used to prefill from `best.str`, a SINGLE pdf.js
+// text item (one glyph on glyph-positioned PDFs), while the in-place edit replaces
+// the whole matched CONTENT-STREAM op. getEditableTextAt decodes the matched op's
+// OWN text so prefill == exactly what replaceTextAt will replace.
+
+/** Build a PDF whose page stream has a hex Tj backed by a 2-byte ToUnicode CMap. */
+async function makeHexToUnicodePdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const ctx = doc.context;
+
+  // ToUnicode CMap mapping char codes 0x0001→'H', 0x0002→'i'.
+  const cmapText =
+    '/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n' +
+    '1 begincodespacerange <0000> <FFFF> endcodespacerange\n' +
+    '2 beginbfchar <0001> <0048> <0002> <0069> endbfchar\n' +
+    'endcmap end end';
+  const cb = new Uint8Array(cmapText.length);
+  for (let i = 0; i < cmapText.length; i++) cb[i] = cmapText.charCodeAt(i) & 0xff;
+  const cmapStream = PDFRawStream.of(
+    PDFDict.fromMapWithContext(new Map([[PDFName.of('Length'), ctx.obj(cb.length)]]), ctx),
+    cb,
+  );
+  const cmapRef = ctx.register(cmapStream);
+
+  // A Type0 font carrying that ToUnicode (the show-op operand is decoded via it).
+  const fontDict = PDFDict.fromMapWithContext(new Map(), ctx);
+  fontDict.set(PDFName.of('Type'), PDFName.of('Font'));
+  fontDict.set(PDFName.of('Subtype'), PDFName.of('Type0'));
+  fontDict.set(PDFName.of('BaseFont'), PDFName.of('ABCDEF+Test'));
+  fontDict.set(PDFName.of('Encoding'), PDFName.of('Identity-H'));
+  fontDict.set(PDFName.of('ToUnicode'), cmapRef);
+  const fontRef = ctx.register(fontDict);
+
+  const resFont = PDFDict.fromMapWithContext(new Map(), ctx);
+  resFont.set(PDFName.of('F1'), fontRef);
+  const res = PDFDict.fromMapWithContext(new Map(), ctx);
+  res.set(PDFName.of('Font'), resFont);
+  page.node.set(PDFName.of('Resources'), res);
+
+  // Show "Hi" as hex code units <0001><0002> at origin (50,300).
+  const content = 'BT /F1 12 Tf 1 0 0 1 50 300 Tm <00010002> Tj ET';
+  const pcb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) pcb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(pcb)));
+  return doc.save();
+}
+
+describe('getEditableTextAt', () => {
+  it('returns the whole literal-string op text (NOT one char) at its origin', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    // makeThreeStringPdf draws "Hello" at (50,300) as a single literal Tj op.
+    expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBe('Hello');
+  });
+
+  it('returns null when no show op lies within tolerance (off-text click)', async () => {
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    expect(await getEditableTextAt(doc, 0, { x: 350, y: 30 }, 3)).toBeNull();
+  });
+
+  it('decodes a hex Tj op via the font ToUnicode CMap', async () => {
+    const doc = await PDFDocument.load(await makeHexToUnicodePdf());
+    expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBe('Hi');
+  });
+
+  it('returns null for a target inside a Form XObject (not editable in place)', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf());
+    // The only text lives inside the XObject — the in-place editor cannot use it.
+    expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBeNull();
+  });
+
+  it('matches the exact text replaceTextAt would replace (single literal op)', async () => {
+    // The whole point of G8: prefill == the matched op text, so editing the
+    // prefilled value replaces precisely that op (no corruption).
+    const doc = await PDFDocument.load(await makeThreeStringPdf());
+    const prefill = await getEditableTextAt(doc, 0, { x: 50, y: 200 }, 3);
+    expect(prefill).toBe('KeepMe');
   });
 });
 
