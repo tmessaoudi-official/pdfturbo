@@ -14,7 +14,7 @@
  * The Arabic text path needs a real font fetch and is covered in the browser file.
  */
 import { describe, it, expect } from 'vitest';
-import { renderElementToPdfLib, type PdfRenderCtx } from '../../src/export/pdfElementRenderer';
+import { renderElementToPdfLib, _rotateInElementSpace, type PdfRenderCtx } from '../../src/export/pdfElementRenderer';
 import type { PDFElement } from '../../src/elements/annotationElement';
 
 interface DrawCall { method: string; args: unknown[]; }
@@ -120,6 +120,55 @@ describe('renderElementToPdfLib — branch coverage (M2 #23)', () => {
     }), ctx);
     expect(of(calls, 'drawRectangle')).toHaveLength(1);
     expect(of(calls, 'drawText')).toHaveLength(0);
+  });
+
+  // G4 — vector export must bake the element's own rotation for arrow & freehand
+  // (rect/ellipse/text/image already do, via pdfRotVal/anchorForCenter). The on-screen
+  // overlay rotates the element box clockwise about its center (elementLayerRenderer.ts:
+  // `transform: rotate(${rotation}deg)` + `transform-origin: center center`). These
+  // assert the same rotation lands in the exported draw-call coordinates.
+  it('_rotateInElementSpace rotates a point clockwise about the pivot (y-down)', () => {
+    // unrotated → identity
+    expect(_rotateInElementSpace(60, 50, 50, 50, 0)).toEqual({ x: 60, y: 50 });
+    // 90° CW about (50,50): a point 10 to the RIGHT lands 10 BELOW (y-down ⇒ clockwise)
+    const r90 = _rotateInElementSpace(60, 50, 50, 50, 90);
+    expect(r90.x).toBeCloseTo(50, 6);
+    expect(r90.y).toBeCloseTo(60, 6);
+    // 180° about center: point reflects through the pivot
+    const r180 = _rotateInElementSpace(60, 50, 50, 50, 180);
+    expect(r180.x).toBeCloseTo(40, 6);
+    expect(r180.y).toBeCloseTo(50, 6);
+  });
+
+  it('shape arrow bakes element rotation into the shaft endpoints (rotation:90)', async () => {
+    const { ctx, calls } = makeRecordingCtx(); // totalRot=0 ⇒ tp(px,py)={x:px, y:200-py}
+    // bbox center (50,10); endpoints (10,10)&(90,10) rotate 90°CW → (50,-30)&(50,50)
+    // then tp → start {x:50,y:230}, end {x:50,y:150}. Un-rotated would be x:10/x:90.
+    await renderElementToPdfLib(el({
+      type: 'shape', shapeType: 'arrow', x: 10, y: 10, width: 80, height: 0,
+      x1: 10, y1: 10, x2: 90, y2: 10, strokeColor: '#000000', strokeWidth: 2, rotation: 90,
+    }), ctx);
+    const shaft = of(calls, 'drawLine')[0].args[0] as {
+      start: { x: number; y: number }; end: { x: number; y: number };
+    };
+    expect(shaft.start.x).toBeCloseTo(50, 4);
+    expect(shaft.start.y).toBeCloseTo(230, 4);
+    expect(shaft.end.x).toBeCloseTo(50, 4);
+    expect(shaft.end.y).toBeCloseTo(150, 4);
+  });
+
+  it('shape freehand bakes element rotation into the SVG path points (rotation:90)', async () => {
+    const { ctx, calls } = makeRecordingCtx(); // totalRot=0
+    // bbox center (20,15); first point (10,10) rotates 90°CW → (25,5), tp → {x:25,y:195},
+    // SVG y-flip Ho-y = 200-195 = 5 ⇒ path starts "M 25 5". Un-rotated would be "M 10 10".
+    await renderElementToPdfLib(el({
+      type: 'shape', shapeType: 'freehand', x: 10, y: 10, width: 20, height: 10,
+      points: [{ x: 10, y: 10 }, { x: 20, y: 20 }, { x: 30, y: 15 }],
+      strokeColor: '#000000', strokeWidth: 2, rotation: 90,
+    }), ctx);
+    const d = of(calls, 'drawSvgPath')[0].args[0] as string;
+    expect(d.startsWith('M 25 5')).toBe(true);
+    expect(d).not.toContain('M 10 10');
   });
 
   it('routes every ElementType to a renderer that draws something', async () => {

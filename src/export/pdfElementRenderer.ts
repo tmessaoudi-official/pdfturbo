@@ -64,6 +64,28 @@ export function getStandardFont(fontFamily: string, bold: boolean, italic: boole
 }
 
 /**
+ * Rotate a point about a pivot in ELEMENT space (y-down, clockwise) — the same
+ * space the on-screen overlay rotates in (elementLayerRenderer.ts: CSS
+ * `rotate(${rotation}deg)` + `transform-origin: center center`). Used to bake an
+ * arrow's / freehand stroke's own rotation into its points BEFORE they pass through
+ * `tp()` (page rotation + crop). `degCW` is degrees clockwise; 0 ⇒ identity.
+ *
+ * In a y-DOWN coordinate system the standard rotation matrix
+ *   x' = dx·cos − dy·sin ,  y' = dx·sin + dy·cos
+ * turns clockwise (positive angle sweeps +x toward +y, i.e. right → down) — which
+ * matches CSS `rotate()`, so no sign flip is needed here.
+ */
+export function _rotateInElementSpace(px: number, py: number, cx: number, cy: number, degCW: number): { x: number; y: number } {
+  if (!degCW) return { x: px, y: py };
+  const t = (degCW * Math.PI) / 180;
+  const c = Math.cos(t);
+  const s = Math.sin(t);
+  const dx = px - cx;
+  const dy = py - cy;
+  return { x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
+}
+
+/**
  * Per-element draw helpers derived once from the page geometry (rotation swap,
  * crop origin, element rotation). Computed in `renderElementToPdfLib` and handed
  * to each per-type renderer so the shared trig isn't recomputed per branch.
@@ -174,10 +196,15 @@ function renderShape(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers)
   const she = element as ShapeElement;
   const { page, libs } = ctx;
   const { rgb } = libs;
-  const { tp, swapDims, pdfRotVal, anchorForCenter, Ho } = hlp;
+  const { tp, swapDims, pdfRotVal, anchorForCenter, elemRot, Ho } = hlp;
   const col = hexToRgbValues(she.strokeColor);
   const shapeColor = rgb(col.r, col.g, col.b);
   const lw = she.strokeWidth;
+  // Pivot for the element's own rotation: bbox centre, in element space (the same
+  // y-down/clockwise space tp() consumes). Arrow/freehand bake rotation into their
+  // points HERE (before tp); rect/ellipse instead pass `rotate: pdfRotVal` to pdf-lib.
+  const pivotX = element.x + element.width / 2;
+  const pivotY = element.y + element.height / 2;
   switch (she.shapeType) {
     case 'rect': {
       const ew = swapDims ? element.height : element.width;
@@ -197,8 +224,13 @@ function renderShape(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers)
       break;
     }
     case 'arrow': {
-      const pt1 = tp(she.x1, she.y1);
-      const pt2 = tp(she.x2, she.y2);
+      // Rotate endpoints about the bbox centre in element space, THEN map to page
+      // space — the arrowhead angle below is derived from the rotated page-space
+      // endpoints, so it follows the rotation automatically.
+      const r1 = _rotateInElementSpace(she.x1, she.y1, pivotX, pivotY, elemRot);
+      const r2 = _rotateInElementSpace(she.x2, she.y2, pivotX, pivotY, elemRot);
+      const pt1 = tp(r1.x, r1.y);
+      const pt2 = tp(r2.x, r2.y);
       const pa = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x);
       const headLen = Math.max(12, lw * 5);
       const headThick = Math.max(1, Math.min(lw, lw * 0.4));
@@ -211,7 +243,12 @@ function renderShape(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers)
       if (she.points.length < 2) break;
       // Convert to SVG coords: tp() gives PDF (y-up), drawSvgPath maps SVG y-down via origin (0, Ho).
       // SVG y = Ho - pdf_y ensures SVG (px, Ho-pdf_y) → PDF (px, pdf_y) with origin {x:0,y:Ho}.
-      const tpts = she.points.map(p => { const r = tp(p.x, p.y); return { x: r.x, y: Ho - r.y }; });
+      // Element rotation is baked in element space BEFORE tp (so the y-flip below is unaffected).
+      const tpts = she.points.map(p => {
+        const rp = _rotateInElementSpace(p.x, p.y, pivotX, pivotY, elemRot);
+        const r = tp(rp.x, rp.y);
+        return { x: r.x, y: Ho - r.y };
+      });
       let d = `M ${tpts[0].x} ${tpts[0].y}`;
       for (let i = 1; i < tpts.length; i++) d += ` L ${tpts[i].x} ${tpts[i].y}`;
       page.drawSvgPath(d, { x: 0, y: Ho, borderColor: shapeColor, borderWidth: lw, scale: 1 });
