@@ -60,8 +60,8 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
     clearTimeout(app._searchDebounceTimer ?? undefined);
     app._searchDebounceTimer = setTimeout(() => app._search(), 300);
   });
-  app.ui.findNext.addEventListener('click', () => app._nextMatch());
-  app.ui.findPrev.addEventListener('click', () => app._prevMatch());
+  app.ui.findNext.addEventListener('click', () => guard(app._nextMatch()));
+  app.ui.findPrev.addEventListener('click', () => guard(app._prevMatch()));
   app.ui.findHighlight.addEventListener('click', () => app._highlightCurrentMatch());
   app.ui.findClose.addEventListener('click', () => app._closeFindBar());
   app.ui.findCaseSensitive.addEventListener('click', () => {
@@ -77,7 +77,7 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
   app.ui.findInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (e.shiftKey) app._prevMatch(); else app._nextMatch();
+      if (e.shiftKey) guard(app._prevMatch()); else guard(app._nextMatch());
     }
     if (e.key === 'Escape') { e.preventDefault(); app._closeFindBar(); }
   });

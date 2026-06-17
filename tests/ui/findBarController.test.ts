@@ -41,6 +41,7 @@ function makeCtx(overrides: Partial<IFindBarContext> = {}): IFindBarContext {
     addHighlightForMatch: vi.fn(),
     autosave: vi.fn(),
     rebuildElementLayer: vi.fn(),
+    navigateToMatchPage: vi.fn().mockResolvedValue(undefined),
     reportError: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), silent: vi.fn() },
     ...overrides,
   };
@@ -131,23 +132,55 @@ describe('FindBarController.nextMatch / prevMatch', () => {
   it('prevMatch does nothing when count is 0', () => {
     const ctx = makeCtx();
     const ctrl = new FindBarController(ctx);
-    ctrl.prevMatch();
+    void ctrl.prevMatch();
     expect(ctx.searchManager.prev).not.toHaveBeenCalled();
+  });
+
+  it('nextMatch navigates to the match page when it differs from the displayed page (G13)', async () => {
+    const match = { pageId: 'p2', x: 0, y: 0, width: 10, height: 10 };
+    const sm = makeSearchManager([match]);
+    sm.count = 1;
+    sm.currentMatch = match;
+    // displayed page is p1, match lives on p2
+    const ctx = makeCtx({
+      searchManager: sm as unknown as IFindBarContext['searchManager'],
+      documentModel: { currentPage: { id: 'p1' } } as unknown as IFindBarContext['documentModel'],
+    });
+    const ctrl = new FindBarController(ctx);
+    await ctrl.nextMatch();
+    expect(sm.next).toHaveBeenCalled();
+    expect(ctx.navigateToMatchPage).toHaveBeenCalledWith('p2');
+  });
+
+  it('nextMatch does NOT navigate when the match is on the displayed page (single-page unchanged)', async () => {
+    const match = { pageId: 'p1', x: 0, y: 0, width: 10, height: 10 };
+    const sm = makeSearchManager([match]);
+    sm.count = 1;
+    sm.currentMatch = match;
+    const ctx = makeCtx({
+      searchManager: sm as unknown as IFindBarContext['searchManager'],
+      documentModel: { currentPage: { id: 'p1' } } as unknown as IFindBarContext['documentModel'],
+    });
+    const ctrl = new FindBarController(ctx);
+    await ctrl.nextMatch();
+    expect(ctx.navigateToMatchPage).not.toHaveBeenCalled();
   });
 });
 
 describe('FindBarController.highlightCurrentMatch', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  it('calls addHighlightForMatch with current match and pageId', () => {
-    const match = { x: 10, y: 20, width: 50, height: 15 };
+  it('calls addHighlightForMatch with current match and the MATCH\'s own pageId (G13)', () => {
+    // G13: highlight on the match's own page, not the displayed page — they may
+    // differ momentarily during cross-page navigation.
+    const match = { pageId: 'p2', x: 10, y: 20, width: 50, height: 15 };
     const sm = makeSearchManager([match]);
     sm.count = 1;
     sm.currentMatch = match;
     const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'] });
     const ctrl = new FindBarController(ctx);
     ctrl.highlightCurrentMatch();
-    expect(ctx.addHighlightForMatch).toHaveBeenCalledWith(match, 'p1');
+    expect(ctx.addHighlightForMatch).toHaveBeenCalledWith(match, 'p2');
   });
 
   it('does nothing when there is no current match', () => {

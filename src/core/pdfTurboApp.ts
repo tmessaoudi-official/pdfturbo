@@ -392,9 +392,31 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _openFindBar(): void { this._findBarController.open(); }
   _closeFindBar(): void { this.closeFindBar(); }
   _search(): Promise<void> { return this._findBarController.search(); }
-  _nextMatch(): void { this._findBarController.nextMatch(); }
-  _prevMatch(): void { this._findBarController.prevMatch(); }
+  _nextMatch(): Promise<void> { return this._findBarController.nextMatch(); }
+  _prevMatch(): Promise<void> { return this._findBarController.prevMatch(); }
   _highlightCurrentMatch(): void { this._findBarController.highlightCurrentMatch(); }
+
+  // G13 — switch the displayed page to a cross-page search match WITHOUT touching
+  // the active search results/index (unlike goToPageIndex, which clears + re-runs
+  // the search). Mirrors only the render half of page navigation.
+  async navigateToMatchPage(pageId: string): Promise<void> {
+    const idx = this.documentModel.pages.findIndex(p => p.id === pageId);
+    if (idx < 0 || idx === this.documentModel.currentPageIndex) return;
+    this.documentModel.currentPageIndex = idx;
+    this.selectElement(null);
+    if (this._isFitMode) {
+      const fitScale = await this.renderer.computeFitScale(this.containerWidth);
+      const isMobile = window.innerWidth <= 640;
+      this.zoomScale = isMobile ? Math.max(fitScale, 0.65) : fitScale;
+      this.renderer.setScale(this.zoomScale);
+      this.setZoomDisplay(Math.round(this.zoomScale * 100) + '%');
+    }
+    await this.renderCurrentPage();
+    this.updateActiveThumbnail();
+    this.updatePageInfo();
+    this.rebuildElementLayer();
+    this.refreshExportPreviewIfOpen();
+  }
 
   // ── Image handling ───────────────────────────────────────────
   _handleImageFileSelect(e: Event): void { this._placementManager.handleImageFileSelect(e); }
