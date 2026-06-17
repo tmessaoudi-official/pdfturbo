@@ -10,7 +10,7 @@ import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } fro
 import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
-import { pickSaveTarget, writeToHandle, type SaveTarget } from '../utils/fileSystemAccess';
+import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableTextItem } from '../utils/tableExtract';
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
 import { elementToXfdfAnnot, pageHeightPt } from './xfdfMapping';
@@ -86,6 +86,19 @@ export function applyFormFieldValue(form: PDFForm, fieldName: string, value: str
     // mismatch) must not abort the whole export — skip just this field.
   }
 }
+
+// ── Save file types (#54/G19) ──────────────────────────────────────────────
+// Advertised in the native Save dialog's type filter + reused as the Blob MIME
+// for the anchor-download fallback, so every export path carries the right
+// extension whichever save route the browser takes.
+const SAVE_PDF: SaveFileType = { description: 'PDF document', mime: 'application/pdf', ext: '.pdf' };
+const SAVE_PNG: SaveFileType = { description: 'PNG image', mime: 'image/png', ext: '.png' };
+const SAVE_CSV: SaveFileType = { description: 'CSV spreadsheet', mime: 'text/csv', ext: '.csv' };
+const SAVE_DOCX: SaveFileType = {
+  description: 'Word document',
+  mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ext: '.docx',
+};
 
 // ── ExportService ────────────────────────────────────────────────────────────
 
@@ -211,13 +224,19 @@ export class ExportService {
   async sanitizeAndDownload(): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
     if (!documentModel.pageCount) return;
+    const filename = this._exportBaseName() + '-sanitized.pdf';
+    // #54: pick the save target BEFORE assembling + sanitizing (both async).
+    const target = await pickSaveTarget(filename, SAVE_PDF);
+    if (target === 'cancelled') return;
     const _prog = progress.begin('progress.sanitizing');
     try {
       const assembled = await this.assemblePdfBytes();
       const { sanitizePdf, anyRemoved } = await import('../utils/pdfSanitizer');
       const { bytes, report } = await sanitizePdf(assembled);
-      this._downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }), this._exportBaseName() + '-sanitized.pdf');
-      if (anyRemoved(report)) {
+      await this._saveOrDownload(target, bytes, filename, 'application/pdf');
+      if (target !== 'download') {
+        reportError.info('toast.pdfSaved', { name: target.name });
+      } else if (anyRemoved(report)) {
         reportError.info('toast.sanitized', { count: Object.values(report).filter(Boolean).length });
       } else {
         reportError.info('toast.sanitizeNothing');
@@ -272,14 +291,22 @@ export class ExportService {
     const idx = pageIdx ?? documentModel.currentPageIndex;
     const docPage = documentModel.pages[idx];
     if (!docPage || docPage.sourcePdfId === 'blank') { reportError.warn('toast.noTableFound'); return; }
+    const filename = `${this._exportBaseName()}-table.csv`;
+    // #54: pick the save target BEFORE the async pdf.js text/op extraction. When
+    // no grid is found we simply never write — the picked handle is abandoned
+    // (no file is created until createWritable+write), so the only cost of a
+    // miss after picking is the dialog itself.
+    const target = await pickSaveTarget(filename, SAVE_CSV);
+    if (target === 'cancelled') return;
     const _prog = progress.begin('progress.extractingTable');
     try {
       const data = await this._extractPageTableData(docPage);
       const grid = data ? buildTableGrid(data.hRules, data.vRules, data.items) : null;
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
       const blob = new Blob([gridToCsv(grid)], { type: 'text/csv;charset=utf-8' });
-      this._downloadBlob(blob, `${this._exportBaseName()}-table.csv`);
-      reportError.info('toast.tableExtracted', { rows: grid.rows, cols: grid.cols });
+      await this._saveOrDownload(target, blob, filename, 'text/csv;charset=utf-8');
+      if (target === 'download') reportError.info('toast.tableExtracted', { rows: grid.rows, cols: grid.cols });
+      else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
       reportError.error('toast.tableExtractFailed', err);
@@ -437,6 +464,11 @@ export class ExportService {
     const { documentModel, elements, reportError, progress } = this._ctx;
     const docPage = documentModel.pages[pageIdx];
     if (!docPage) return;
+    const filename = `${this._exportBaseName()}-page${pageIdx + 1}.pdf`;
+    // #54: pick the save target inside the click's activation window, BEFORE the
+    // async source load + page assembly (those awaits would outlive activation).
+    const target = await pickSaveTarget(filename, SAVE_PDF);
+    if (target === 'cancelled') return;
     const _prog = progress.begin('progress.exportingPage');
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     try {
@@ -455,8 +487,11 @@ export class ExportService {
         await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageIdx + 1, documentModel.pageCount);
       }
 
-      await this._savePdfDocAndDownload(pdfDoc, `${this._exportBaseName()}-page${pageIdx + 1}.pdf`);
-      reportError.info('toast.pageDownloaded', { page: pageIdx + 1 });
+      await this._applyExportPassword(pdfDoc);
+      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      await this._saveOrDownload(target, bytes, filename, 'application/pdf');
+      if (target === 'download') reportError.info('toast.pageDownloaded', { page: pageIdx + 1 });
+      else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
       reportError.error('toast.pageExportFailed', err);
@@ -469,6 +504,11 @@ export class ExportService {
     const idx = pageIdx ?? documentModel.currentPageIndex;
     const docPage = documentModel.pages[idx];
     if (!docPage) return;
+    const filename = `${this._exportBaseName()}-page${idx + 1}.png`;
+    // #54: pick the save target BEFORE the pdf-lib assembly + pdf.js raster +
+    // toBlob — all async, each would outlive the click's transient activation.
+    const target = await pickSaveTarget(filename, SAVE_PNG);
+    if (target === 'cancelled') return;
     const _prog = progress.begin('progress.exportingImage');
     try {
       const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
@@ -500,9 +540,15 @@ export class ExportService {
 
       offscreen.toBlob((blob) => {
         if (!blob) { reportError.error('toast.imageExportFailed'); _prog.failed(); return; }
-        this._downloadBlob(blob, `${this._exportBaseName()}-page${idx + 1}.png`);
-        reportError.info('toast.imageExported', { page: idx + 1 });
-        _prog.done();
+        // Target was acquired pre-raster; write/anchor it now. Save errors must
+        // settle the progress bar, so route the async save through .then/.catch.
+        this._saveOrDownload(target, blob, filename, 'image/png')
+          .then(() => {
+            if (target === 'download') reportError.info('toast.imageExported', { page: idx + 1 });
+            else reportError.info('toast.pdfSaved', { name: target.name });
+            _prog.done();
+          })
+          .catch((err) => { reportError.error('toast.imageExportFailed', err); _prog.failed(); });
       }, 'image/png');
     } catch (err) {
       reportError.error('toast.imageExportFailed', err);
@@ -581,6 +627,12 @@ export class ExportService {
 
   async exportAsDocx(): Promise<void> {
     const { reportError, progress } = this._ctx;
+    const filename = this._exportBaseName() + '.docx';
+    // #54: pick the save target BEFORE the heavy flow extraction + DOCX build.
+    // A content-less document never writes (the handle is abandoned, so no empty
+    // file is created) — the dialog is the only cost of that rare miss.
+    const target = await pickSaveTarget(filename, SAVE_DOCX);
+    if (target === 'cancelled') return;
     const _prog = progress.begin('progress.generatingDocx');
     try {
       const flowDoc = await this._extractFlowDoc();
@@ -596,8 +648,9 @@ export class ExportService {
         return;
       }
       const blob = await flowDocToDocxBlob(flowDoc);
-      this._downloadBlob(blob, this._exportBaseName() + '.docx');
-      reportError.info('toast.docxExported');
+      await this._saveOrDownload(target, blob, filename, SAVE_DOCX.mime);
+      if (target === 'download') reportError.info('toast.docxExported');
+      else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
       reportError.error('toast.exportFailed', err);
@@ -636,12 +689,32 @@ export class ExportService {
    * handle (native save) or the anchor download. `target` must not be 'cancelled'
    * (callers handle that earlier). Returns which path was taken so the caller can
    * pick the right toast by branching on `target` themselves (which narrows it).
+   *
+   * PDF-bytes shim over `_saveOrDownload` — kept so the historic PDF callers
+   * (downloadPDF / downloadPageRange / downloadFlattened) read unchanged.
    */
   private async _saveBytesTo(target: Exclude<SaveTarget, 'cancelled'>, bytes: Uint8Array, filename: string): Promise<void> {
+    await this._saveOrDownload(target, bytes, filename, 'application/pdf');
+  }
+
+  /**
+   * Write export output to a resolved save target (#54/G19): a file handle
+   * (native "Save As") or the anchor-download fallback. Accepts PDF/image bytes
+   * (`Uint8Array`) or a ready Blob (CSV / DOCX / PNG) — the download path wraps
+   * bytes in a `mime` Blob; the handle path writes either as-is. `target` must
+   * not be 'cancelled' (callers handle the user-cancel no-op before any work).
+   */
+  private async _saveOrDownload(
+    target: Exclude<SaveTarget, 'cancelled'>,
+    data: Uint8Array | Blob,
+    filename: string,
+    mime: string,
+  ): Promise<void> {
     if (target === 'download') {
-      this._downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }), filename);
+      const blob = data instanceof Blob ? data : new Blob([data.buffer as ArrayBuffer], { type: mime });
+      this._downloadBlob(blob, filename);
     } else {
-      await writeToHandle(target, bytes);
+      await writeToHandle(target, data);
     }
   }
 
@@ -681,12 +754,6 @@ export class ExportService {
       reportError: this._ctx.reportError,
       bates: this._ctx.documentModel.bates, pageNumber, pageCount,
     });
-  }
-
-  private async _savePdfDocAndDownload(pdfDoc: BuildPageCtx['pdfDoc'], filename: string): Promise<void> {
-    await this._applyExportPassword(pdfDoc);
-    const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-    this._downloadBlob(new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' }), filename);
   }
 
   /**

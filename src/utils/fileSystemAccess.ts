@@ -38,20 +38,37 @@ export function canUseFsSave(): boolean {
 export type SaveTarget = FsFileHandle | 'download' | 'cancelled';
 
 /**
+ * The file type advertised in the native Save dialog's type filter. Defaults to
+ * PDF so the historic PDF callers keep their exact behaviour; non-PDF exports
+ * (PNG / CSV / DOCX) pass their own so the dialog offers the right extension.
+ */
+export interface SaveFileType {
+  description: string;
+  mime: string;
+  ext: string;
+}
+
+const PDF_TYPE: SaveFileType = { description: 'PDF document', mime: 'application/pdf', ext: '.pdf' };
+
+/**
  * Acquire a save target within the user-activation window. Returns:
  *  - an `FsFileHandle` when the user picks a location,
  *  - `'cancelled'` when the user dismisses the dialog (AbortError) → caller should no-op,
  *  - `'download'` when the API is unavailable OR fails for any non-abort reason
  *    (progressive-enhancement contract: degrade to the anchor download, never fail
  *    the export because the fancy save path was blocked).
+ *
+ * `type` advertises the file's extension/MIME in the dialog filter (defaults to
+ * PDF). The picker MUST be called within transient user activation — before any
+ * slow `await` (PDF assembly, DOCX build, canvas raster) — or it throws.
  */
-export async function pickSaveTarget(suggestedName: string): Promise<SaveTarget> {
+export async function pickSaveTarget(suggestedName: string, type: SaveFileType = PDF_TYPE): Promise<SaveTarget> {
   const show = picker();
   if (!show) return 'download';
   try {
     return await show({
       suggestedName,
-      types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }],
+      types: [{ description: type.description, accept: { [type.mime]: [type.ext] } }],
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
@@ -59,9 +76,13 @@ export async function pickSaveTarget(suggestedName: string): Promise<SaveTarget>
   }
 }
 
-/** Write bytes to a previously-acquired file handle and close the stream. */
-export async function writeToHandle(handle: FsFileHandle, bytes: Uint8Array): Promise<void> {
+/**
+ * Write data to a previously-acquired file handle and close the stream. Accepts
+ * a `Uint8Array` (serialized PDF bytes) or a `Blob` (PNG / CSV / DOCX exports) —
+ * the underlying writable handles both, so no copy is forced for the Blob path.
+ */
+export async function writeToHandle(handle: FsFileHandle, data: Uint8Array | Blob): Promise<void> {
   const writable = await handle.createWritable();
-  await writable.write(bytes.buffer as ArrayBuffer);
+  await writable.write(data instanceof Blob ? data : (data.buffer as ArrayBuffer));
   await writable.close();
 }

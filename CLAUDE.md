@@ -63,7 +63,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `downloadPage`, `downloadPageAsImage` on `pdfTurboApp.ts` are now thin
   one-line delegators to `_exportService`; the shared rotation/cropbox/watermark/ink logic
   lives once in `src/export/exportPipeline.ts` (`buildPageOverlays`) + `exportService.ts`
-  helpers (`_applyOverlaysToPage`, `_savePdfDocAndDownload`). Apply export fixes in
+  helpers (`_applyOverlaysToPage`, `_saveOrDownload`). Apply export fixes in
   `exportService`/`exportPipeline`, not in three places.
 - **`renderElements()` destroys and recreates every element DOM node** on each call.
   Focus-restoration hacks depend on this; keyed identity is NOT preserved.
@@ -218,7 +218,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   (not just `page.objs`) — bitmap typed as `CanvasImageSource` (v6 bitmaps are `VideoFrame`). Guarded by
   `tests/browser/issue3-docx-images.browser.test.ts`. **ISSUE-4 fix:** `exportAsDocx` emits a file when
   there is text OR images (image-only PDFs export their images instead of a silent no-op). Also:
-  **export-path dedup** — extracted `_applyOverlaysToPage` + `_savePdfDocAndDownload` helpers
+  **export-path dedup** — extracted `_applyOverlaysToPage` + `_saveOrDownload` helpers
   in `exportService.ts`, eliminating the triplicated 10-param `buildPageOverlays` block.
   **Sprint 2 fidelity (2026-06-14):** (B-1) real font faces via 28-entry `WORD_FONT_ALLOWLIST` +
   `resolveWordFont` (strips subset/style/foundry suffix; unknown → serif/sans/mono fallback) instead of
