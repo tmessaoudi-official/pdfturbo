@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget } from '../utils/fileSystemAccess';
@@ -16,6 +16,7 @@ import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
 import { elementToXfdfAnnot, pageHeightPt } from './xfdfMapping';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import type { PDFElement } from '../elements/annotationElement';
+import type { TextElement } from '../elements/textElement';
 import type { DocumentModel } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
@@ -576,8 +577,30 @@ export class ExportService {
     const { documentModel, elements } = this._ctx;
     const flowDoc: FlowDoc = { pages: [] };
     for (const docPage of documentModel.pages) {
+      // Text the user TYPED on this page (overlay TextElements). `el.text` is logical
+      // Unicode, so this exports correctly in DOCX/MD — including Arabic (#4). Appended
+      // after any reconstructed source text below.
+      const overlayParas = textElementsToFlowParagraphs(
+        elements
+          .filter((el): el is TextElement => el.pageId === docPage.id && el.type === 'text')
+          .map((el) => ({
+            text: el.text, x: el.x, y: el.y, fontSize: el.fontSize,
+            color: el.color, fontFamily: el.fontFamily, bold: el.bold, italic: el.italic,
+          })),
+      );
       const src = documentModel.sourcePdfs.get(docPage.sourcePdfId);
-      if (!src || !docPage.sourcePageNum) continue;
+      if (!src || !docPage.sourcePageNum) {
+        // Blank page (no source) carrying typed text: emit it so the text isn't dropped
+        // — this is the "blank page + typed Arabic → empty DOCX" bug.
+        if (overlayParas.length > 0) {
+          flowDoc.pages.push({
+            width: docPage.blankWidth ?? 595,
+            height: docPage.blankHeight ?? 842,
+            paragraphs: overlayParas,
+          });
+        }
+        continue;
+      }
       const page = await src.doc.getPage(docPage.sourcePageNum);
 
       // Redaction-aware extraction: drop any source text item that sits under a
@@ -660,6 +683,8 @@ export class ExportService {
 
       const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot);
       if (pageImages.length > 0) flowPage.images = pageImages;
+      // Append typed overlay text after the reconstructed source text (#4).
+      if (overlayParas.length > 0) flowPage.paragraphs.push(...overlayParas);
       flowDoc.pages.push(flowPage);
     }
     assignHeadings(flowDoc);

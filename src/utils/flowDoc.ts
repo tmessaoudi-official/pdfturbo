@@ -1034,3 +1034,56 @@ export function assignHeadings(doc: FlowDoc): void {
     }
   }
 }
+
+/** Minimal shape of a typed (overlay) text element for flow conversion. */
+export interface OverlayTextLike {
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  /** '#rrggbb' fill color. */
+  color?: string;
+  /** Concrete family name (e.g. 'Arial', 'Times New Roman'). */
+  fontFamily?: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+/** Map a concrete font family name to the generic category the flow model uses. */
+function _genericFamily(name?: string): 'serif' | 'sans-serif' | 'monospace' {
+  const n = (name ?? '').toLowerCase();
+  if (/courier|consol|mono|menlo/.test(n)) return 'monospace';
+  if (/times|georgia|serif|garamond|minion|cambria/.test(n)) return 'serif';
+  return 'sans-serif';
+}
+
+/**
+ * Convert text the user TYPED in-app (overlay TextElements) into flow paragraphs
+ * for DOCX/MD export (#4). `el.text` is already LOGICAL Unicode (what the user
+ * typed), so Arabic passes through unchanged with rtl=true + right alignment —
+ * Word's own bidi lays it out correctly. Do NOT apply reverseRtlText here: that
+ * un-reverses pdf.js VISUAL-order *source* text, which would corrupt logical input.
+ * Multiline text splits on '\n'; elements are ordered top-to-bottom then L→R.
+ * Pure → jsdom-testable.
+ */
+export function textElementsToFlowParagraphs(els: ReadonlyArray<OverlayTextLike>): FlowParagraph[] {
+  const ordered = [...els].sort((a, b) => a.y - b.y || a.x - b.x);
+  const out: FlowParagraph[] = [];
+  for (const el of ordered) {
+    if (typeof el.text !== 'string') continue;
+    const color =
+      el.color && el.color.toUpperCase() !== '#000000' ? el.color.replace(/^#/, '').toUpperCase() : undefined;
+    const fontFamily = _genericFamily(el.fontFamily);
+    for (const line of el.text.split('\n')) {
+      if (!line.trim()) continue;
+      const rtl = isArabicText(line);
+      out.push({
+        runs: [{ text: line, bold: !!el.bold, italic: !!el.italic, fontSize: el.fontSize, fontFamily, rtl, color }],
+        heading: 0,
+        alignment: rtl ? 'right' : 'left',
+        rtl,
+      });
+    }
+  }
+  return out;
+}
