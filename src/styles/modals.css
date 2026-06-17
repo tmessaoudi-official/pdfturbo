@@ -93,7 +93,9 @@
   font-size: 12px;
   color: #6c757d;
 }
-.app-footer a { color: #2563eb; text-decoration: none; }
+/* G22: links underlined by default so they're distinguishable without relying
+   on color (WCAG 1.4.1) — the inline GitHub link sits inside the © text block. */
+.app-footer a { color: #2563eb; text-decoration: underline; }
 .app-footer a:hover { text-decoration: underline; }
 .footer-links { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 6px; }
 .privacy-chip {
