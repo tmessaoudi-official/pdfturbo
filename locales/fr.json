@@ -441,6 +441,8 @@
     "imageExported": "Page {{page}} exportée en PNG !",
     "blankPageInsertFailed": "Impossible d'insérer une page vierge",
     "appUpdateAvailable": "Mise à jour disponible — rechargez la page",
+    "appUpdateReload": "Recharger",
+    "appUpdateDismiss": "Plus tard",
     "passwordRequired": "Le mot de passe utilisateur est requis",
     "passwordTooWeak": "Le mot de passe d'ouverture doit comporter au moins {{min}} caractères",
     "eyedropperUnsupported": "Pipette non supportée dans ce navigateur"

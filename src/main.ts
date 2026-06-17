@@ -4,8 +4,9 @@ import './utils/polyfills';
 import { PDFTurboApp } from './core/pdfTurboApp';
 import { LogBuffer } from './core/logBuffer';
 import { installGlobalErrorBoundary } from './core/globalErrorBoundary';
-import { initI18n, changeLanguage, onLanguageChanged, t } from './utils/i18n';
+import { initI18n, changeLanguage, onLanguageChanged } from './utils/i18n';
 import { registerSW } from 'virtual:pwa-register';
+import { wireSwUpdate } from './pwaUpdate';
 import { isEnabled } from './config/features';
 
 // Shared diagnostic ring buffer (M0 #41). Created before anything else so the global
@@ -16,19 +17,41 @@ const logBuffer = new LogBuffer();
 let appRef: PDFTurboApp | undefined;
 installGlobalErrorBoundary({ getReporter: () => appRef?.reportError, log: logBuffer });
 
-registerSW({
-  onNeedRefresh() {
-    // App is fully initialized by the time SW fires; grab the reporter from window.app if available.
-    // In production window.app is not set, so we fall back to a direct toast via the DOM.
-    const appInstance = (window as { app?: PDFTurboApp }).app;
-    if (appInstance) {
-      appInstance.reportError.info('toast.appUpdateAvailable');
-    } else {
-      const toast = document.getElementById('toast');
-      if (toast) { toast.textContent = t('toast.appUpdateAvailable'); toast.className = 'show'; }
-    }
-  },
+// G16 — actionable PWA update. registerType:'prompt' (vite.config.ts) parks the
+// new service worker until the user opts in. `wireSwUpdate` captures the
+// `updateSW` returned by registerSW and hands the apply action to
+// `_showSwUpdateBanner`, which surfaces a persistent, dismissible "Reload"
+// affordance (the toast auto-dismisses in ~2.5s, too fast to act on). Clicking
+// Reload calls updateSW(true) → activate the waiting SW + reload to the new
+// version. No auto-reload: updateSW is only called from the click handler.
+wireSwUpdate({
+  registerSW,
+  showUpdatePrompt: _showSwUpdateBanner,
 });
+
+/**
+ * Reveal the static update banner and wire its actions. `applyUpdate` activates
+ * the waiting SW and reloads (passed in by wireSwUpdate). Idempotent: re-binds
+ * fresh listeners on each call (a new onNeedRefresh supersedes the prior offer).
+ */
+function _showSwUpdateBanner(applyUpdate: () => void): void {
+  const banner = document.getElementById('swUpdateBanner');
+  const reloadBtn = document.getElementById('swUpdateReload');
+  const dismissBtn = document.getElementById('swUpdateDismiss');
+  if (!banner) return;
+  banner.style.display = '';
+  // Replace nodes to drop any stale listeners from a previous offer, then bind.
+  const freshReload = reloadBtn?.cloneNode(true) as HTMLElement | undefined;
+  if (reloadBtn && freshReload) {
+    reloadBtn.replaceWith(freshReload);
+    freshReload.addEventListener('click', () => { applyUpdate(); });
+  }
+  const freshDismiss = dismissBtn?.cloneNode(true) as HTMLElement | undefined;
+  if (dismissBtn && freshDismiss) {
+    dismissBtn.replaceWith(freshDismiss);
+    freshDismiss.addEventListener('click', () => { banner.style.display = 'none'; });
+  }
+}
 
 declare global {
   interface Window { app?: PDFTurboApp; }

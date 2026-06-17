@@ -103,8 +103,9 @@
   padding: 3px 12px; font-size: 11px; font-weight: 600;
   margin: 6px auto 4px; cursor: default;
 }
-/* Cookie/storage banner */
-#storageBanner {
+/* Cookie/storage banner + G16 PWA-update banner (shared bar style) */
+#storageBanner,
+#swUpdateBanner {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   background: #1e293b;
@@ -117,8 +118,11 @@
   gap: 16px;
   z-index: 9000;
 }
+/* The update banner sits at the top so it never overlaps the storage banner. */
+#swUpdateBanner { top: 0; bottom: auto; z-index: 9100; }
 #storageBanner a { color: #93c5fd; }
-#storageBannerDismiss {
+#storageBannerDismiss,
+#swUpdateReload {
   background: #2563eb;
   color: white;
   border: none;
@@ -128,6 +132,17 @@
   font-size: 13px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+.sw-update-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.sw-update-dismiss {
+  background: transparent;
+  color: #cbd5e1;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
 }
 .restore-dialog {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
