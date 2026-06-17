@@ -211,6 +211,9 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     // Overlay added two elements (redaction + text) via MacroCmd
     expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
     expect(document.body.querySelector('.true-edit-input')).toBeNull();
+    // Honest UX (#1): the user is told it became an editable overlay, not a silent
+    // in-place edit — the fallback must never be a silent surprise.
+    expect((app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat()).toContain('toast.trueEditOverlay');
   });
 
   // BUG A1 (commit-time): the editor opens for a non-XObject target, but the

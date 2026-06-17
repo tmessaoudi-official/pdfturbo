@@ -352,6 +352,7 @@
     "batesDisabled": "Page numbering / Bates disabled",
     "highlightAdded": "Highlight added — Ctrl+Z to undo",
     "trueTextEdited": "Text edited in the PDF — Ctrl+Z to undo",
+    "trueEditOverlay": "Couldn't edit this text in place — added an editable overlay instead",
     "trueEditFailed": "Couldn't apply the text edit — the document is unchanged",
     "trueTextDeleted": "Text deleted from the PDF — Ctrl+Z to undo",
     "ocrDone": "Text recognized — {{count}} words added (Ctrl+Z to undo)",

@@ -162,7 +162,15 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
   pdf-lib `page.drawText` after `setPageContent` — it orphans the redraw). XObject-embedded targets
   refuse before blanking (no delete-without-replacement). Guarded by
-  `tests/browser/issue2-true-edit.browser.test.ts`. **Text modes are SEPARATE (Sprint 3, reverted the
+  `tests/browser/issue2-true-edit.browser.test.ts`. **Honest fallback (#1, 2026-06-17):** maximal
+  in-place coverage ("Option 2") is structurally bounded — Path 1 (standard fonts) + Path 2 (reuse
+  glyphs ALREADY in the embedded subset) ARE the ceiling. A NEW character absent from a subset/CID font
+  has no glyph outline in the PDF, so it cannot be drawn in the original font client-side (→ Path 3
+  base-14 substitute, or refuse → overlay). So `_emitOverlay` now surfaces `toast.trueEditOverlay`
+  ("couldn't edit in place — added an editable overlay") on EVERY fallback (Arabic / subset-new-glyph /
+  Form XObject / encrypted source) — no more silent surprise; the Arabic overlay itself renders
+  correctly via the #3/#3b bidi path. Guarded by the overlay-fallback case in
+  `tests/handlers/textEditHandler.test.ts`. **Text modes are SEPARATE (Sprint 3, reverted the
   ISSUE-5 unification):** `editText` edits EXISTING source text only — a blank-canvas click drops NO box
   (it re-shows the editText hint). New text is created with the draw-to-place `addText` tool (the
   split-button default), which sizes by drag and auto-switches to `select`. The old blank-drop trapped

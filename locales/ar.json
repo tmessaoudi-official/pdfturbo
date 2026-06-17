@@ -352,6 +352,7 @@
     "batesDisabled": "تم إلغاء الترقيم / بيتس",
     "highlightAdded": "تم إضافة التظليل — Ctrl+Z للتراجع",
     "trueTextEdited": "تم تعديل النص في ملف PDF — Ctrl+Z للتراجع",
+    "trueEditOverlay": "تعذّر تعديل هذا النص مباشرةً — تمت إضافة طبقة قابلة للتحرير بدلاً من ذلك",
     "trueEditFailed": "تعذّر تطبيق تعديل النص — المستند دون تغيير",
     "trueTextDeleted": "تم حذف النص من ملف PDF — Ctrl+Z للتراجع",
     "ocrDone": "تم التعرّف على النص — أُضيفت {{count}} كلمة (Ctrl+Z للتراجع)",

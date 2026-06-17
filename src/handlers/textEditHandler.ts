@@ -308,6 +308,11 @@ export class TextEditHandler {
     app.autosave();
     app.setMode('select');
     app.selectElement(textEl);
+    // Honest UX (#1): this text couldn't be edited IN PLACE (Arabic / subset or
+    // CID font lacking the new glyph / Form XObject / encrypted source). It's now
+    // an editable overlay drawn on top — tell the user so the fallback is never a
+    // silent surprise. (Arabic overlays render correctly via the #3/#3b bidi path.)
+    app.reportError.info('toast.trueEditOverlay');
 
     const freshInput = app.ui.container.querySelector(
       `[data-id='${textEl.id}'] input, [data-id='${textEl.id}'] textarea`

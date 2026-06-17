@@ -352,6 +352,7 @@
     "batesDisabled": "Numérotation / Bates désactivée",
     "highlightAdded": "Surlignage ajouté — Ctrl+Z pour annuler",
     "trueTextEdited": "Texte modifié dans le PDF — Ctrl+Z pour annuler",
+    "trueEditOverlay": "Impossible de modifier ce texte directement — calque modifiable ajouté à la place",
     "trueEditFailed": "Impossible d'appliquer la modification du texte — le document est inchangé",
     "trueTextDeleted": "Texte supprimé du PDF — Ctrl+Z pour annuler",
     "ocrDone": "Texte reconnu — {{count}} mots ajoutés (Ctrl+Z pour annuler)",
