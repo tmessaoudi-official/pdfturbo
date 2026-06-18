@@ -433,8 +433,20 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `signatureManager.test.ts`). **Remote round-robin**: each signer draws → exports (D1 bakes the sig into page
   content) → sends to the next, who opens it and adds theirs; the 🔏 crypto seal applies ONCE, LAST (re-export
   after sealing invalidates it — `ALREADY_SIGNED`). Visible sigs = approval-stamp grade, NOT tamper-evident.
-  **Ceiling:** true N-party CRYPTO co-signing (incremental-update append-only) = **D3**; editable free-text
-  caption date = v1b. **Arabic `mentionDefault`/labels are [Unverified]** — need native review.
+  **D3 spike (2026-06-18) — true N-party CRYPTO co-signing is REACHABLE, NOT a structural ceiling.**
+  `src/signing/incrementalSigner.ts` (EXPERIMENTAL, **unwired**, `ALREADY_SIGNED` guard untouched) proves a 2nd
+  independent CMS signature can be appended via a hand-built **append-only incremental update**: read structure
+  with pdf-lib (never re-save) → append new sig dict + field + new-revision page/AcroForm + classic incremental
+  `xref`/`trailer << … /Prev >>` → reuse `byteRange.ts` primitives + `buildDetachedCms`. The prior "ceiling" was
+  mis-attributed: pdf-lib's `save()` renumbers objects (kills sig-1), but that's the *tool's serialiser*, not the
+  PDF format. Sig-1 survives because its `/ByteRange` ends at the original EOF (untouched by the append). Guarded
+  by `tests/signing/incrementalSigner.test.ts` (7: append-only prefix byte-identical, BOTH `/ByteRange` digests
+  validate, pdf-lib re-parses). **Caveat:** proves ByteRange-digest correctness + append-only preservation;
+  Adobe/DSS acceptance is UNVERIFIED in-repo (no Acrobat) → keep `ALREADY_SIGNED` until manual verification.
+  Classic-xref + ASCII-object only; inputs unvalidated (spike). Verdict:
+  `docs/reviews/2026-06-18-incremental-multisign-spike-verdict.md`. **Approval model B (D1/D2) stays the default**
+  for the no-backend tool; D3 is now an opt-in productionisation candidate. Editable free-text caption date = v1b.
+  **Arabic `mentionDefault`/labels are [Unverified]** — need native review.
 - **Per-page crop (#G23)**: `DocumentPage.crop?` is a rect in **unrotated content space** (y-down, top-left,
   relative to the source `getPageCropBox()` box) — rotation-invariant, so `rotatePage` is untouched and it
   persists via `toJSON`'s `pages` with **no SCHEMA_VERSION bump** (`documentLoader` assigns `pages` wholesale).
