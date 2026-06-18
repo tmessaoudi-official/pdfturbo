@@ -61,4 +61,12 @@ describe('SignatureManager', () => {
     expect(ctx.setMode).toHaveBeenCalledWith('select');
     expect(addSignatureBtn.classList.contains('active')).toBe(false);
   });
+
+  it('closeModal() drops any pending caption armed by the Signers panel (leak guard, F-D D2)', () => {
+    const { ctx } = makeCtx(false);
+    const mgr = new SignatureManager(ctx);
+    mgr.pendingCaption = { signer: 'Alice', mention: 'Lu et approuvé' };
+    mgr.closeModal();
+    expect(mgr.pendingCaption).toBeNull();
+  });
 });

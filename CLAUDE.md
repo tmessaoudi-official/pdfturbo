@@ -419,6 +419,22 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   **PAdES (ETSI.CAdES.detached) is a ceiling** with node-forge: its pkcs7 `_attributeToAsn1` can't add the
   ESS signing-certificate-v2 signed attribute PAdES-BES requires, so we keep the valid ISO 32000-1
   `adbe.pkcs7.detached` rather than emit a malformed PAdES. A real PAdES needs hand-rolled CAdES ASN.1.
+- **Approval caption + guided Signers panel (F-D D1/D2)**: a drawn `SignatureElement` carries an OPTIONAL
+  caption (`signer`/`mention` default "Lu et approuvé"/`signedDate`); `buildSignatureCaptionLines` (pure) is
+  shared by the DOM render and the export bake (`pdfElementRenderer`) — caption ABSENT ⇒ byte-identical, and
+  `toJSON` omits the keys unset (NO schema bump). D2 = `src/ui/signersPanel.ts` (👥 `signersBtn`, gated
+  `VITE_FEATURE_SIGNERS`; mirrors batesPanel — own focus-trap/Esc/backdrop, no preview) is a **guided wizard**:
+  fill name+mention(+date) → `buildSignerCaption` → arms `pendingSignatureCaption` → `setMode('addSignature')`
+  opens the pad → `commitPlacement` (placementManager.ts:196) reads/applies `{...caption}` then CLEARS it.
+  Repeat per signer — the PAGE is the roster (no separate list). **Non-obvious leak guard:** the plain ✍ click
+  (toolBinder) + `S` shortcut (keyboardBinder) + pad-cancel (`SignatureManager.closeModal`) ALL clear
+  `pendingCaption` first, so a plain signature can NEVER inherit a panel caption (provable invariant; guards in
+  `tests/ui/signersPanel.test.ts`, `placementSignatureCaption.test.ts`, `keyboardBinder.test.ts`,
+  `signatureManager.test.ts`). **Remote round-robin**: each signer draws → exports (D1 bakes the sig into page
+  content) → sends to the next, who opens it and adds theirs; the 🔏 crypto seal applies ONCE, LAST (re-export
+  after sealing invalidates it — `ALREADY_SIGNED`). Visible sigs = approval-stamp grade, NOT tamper-evident.
+  **Ceiling:** true N-party CRYPTO co-signing (incremental-update append-only) = **D3**; editable free-text
+  caption date = v1b. **Arabic `mentionDefault`/labels are [Unverified]** — need native review.
 - **Per-page crop (#G23)**: `DocumentPage.crop?` is a rect in **unrotated content space** (y-down, top-left,
   relative to the source `getPageCropBox()` box) — rotation-invariant, so `rotatePage` is untouched and it
   persists via `toJSON`'s `pages` with **no SCHEMA_VERSION bump** (`documentLoader` assigns `pages` wholesale).

@@ -55,6 +55,8 @@ import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { BatesPanel } from '../ui/batesPanel';
 import { CompressPanel } from '../ui/compressPanel';
+import { SignersPanel } from '../ui/signersPanel';
+import type { SignatureCaption } from '../elements/signatureElement';
 import type { CompressOptions } from '../export/compress';
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
@@ -125,6 +127,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _watermarkPanel!: WatermarkPanel;
   private _batesPanel!: BatesPanel;
   private _compressPanel!: CompressPanel;
+  private _signersPanel!: SignersPanel;
   private _findBarController!: FindBarController;
   private _documentLoader!: DocumentLoader;
   private _elementLayerRenderer!: ElementLayerRenderer;
@@ -144,6 +147,13 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   set currentSignature(v: string | null) { this._signatureManager.currentSignature = v; }
   get signatureNatural(): { w: number; h: number } | null { return this._signatureManager.signatureNatural; }
   set signatureNatural(v: { w: number; h: number } | null) { this._signatureManager.signatureNatural = v; }
+  // F-D D2 — approval caption armed by the Signers panel (IPlacementContext / ISignersContext).
+  get pendingSignatureCaption(): SignatureCaption | null { return this._signatureManager.pendingCaption; }
+  set pendingSignatureCaption(v: SignatureCaption | null) { this._signatureManager.pendingCaption = v; }
+  setPendingSignatureCaption(v: SignatureCaption | null): void { this._signatureManager.pendingCaption = v; }
+  /** Clear any armed caption — the plain ✍ / `S` leak guard (toolBinder/keyboardBinder). */
+  clearPendingSignatureCaption(): void { this._signatureManager.pendingCaption = null; }
+  now(): Date { return new Date(); }
   // ── ISignatureContext callbacks ────────────────────────────────────────────
   getTrapCleanup(): (() => void) | null { return this._focusTrapService.getCleanup(); }
   setTrapCleanup(fn: (() => void) | null): void { this._focusTrapService.setCleanup(fn); }
@@ -329,6 +339,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._watermarkPanel = new WatermarkPanel(this);
     this._batesPanel = new BatesPanel(this);
     this._compressPanel = new CompressPanel(this);
+    this._signersPanel = new SignersPanel(this);
     this._findBarController = new FindBarController(this);
     this._documentLoader = new DocumentLoader(this);
     this._elementLayerRenderer = new ElementLayerRenderer(this);
@@ -403,6 +414,11 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _openCompressModal(): void { this._compressPanel.open(); }
   _closeCompressModal(): void { this._compressPanel.close(); }
   _applyCompress(): void { this._compressPanel.apply(); }
+
+  // ── Signers panel (guided approval signatures, F-D D2) ────────────────────
+  openSignersPanel(): void { this._signersPanel.open(); }
+  closeSignersPanel(): void { this._signersPanel.close(); }
+  _signersDraw(): void { this._signersPanel.draw(); }
   /** ICompressContext: run the compress + download with the chosen options. */
   compress(opts: CompressOptions): void { void this._exportService.compressAndDownload(opts); }
 

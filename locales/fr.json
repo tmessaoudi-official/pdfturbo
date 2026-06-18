@@ -27,6 +27,8 @@
     "annotateTitle": "Outils d'annotation",
     "sign": "✍ Signer",
     "signTitle": "Signer (S)",
+    "signers": "👥 Signataires",
+    "signersTitle": "Signatures d'approbation (plusieurs signataires)",
     "addImageLabel": "Image",
     "addImageTitle": "Ajouter une image (I)",
     "highlightTitle": "Pinceau de surligneur (H)",
@@ -329,6 +331,16 @@
       "removeSignature": "Retirer",
       "privacyNote": "Votre certificat ne quitte jamais votre navigateur. La signature couvre vos modifications et annotations actuelles.",
       "run": "Signer →",
+      "cancel": "Annuler"
+    },
+    "signers": {
+      "title": "Ajouter une signature d'approbation",
+      "hint": "Renseignez le signataire, puis dessinez la signature et cliquez sur la page pour la placer. Répétez pour chaque signataire. Chaque signataire peut exporter le PDF et l'envoyer au suivant ; appliquez le sceau numérique (🔏) en dernier — réexporter après le scellement l'invalide. Les signatures visibles sont un cachet d'approbation, pas une preuve cryptographique.",
+      "nameLabel": "Nom du signataire",
+      "mentionLabel": "Mention",
+      "mentionDefault": "Lu et approuvé",
+      "dateLabel": "Inclure la date du jour",
+      "drawBtn": "Dessiner et placer →",
       "cancel": "Annuler"
     },
     "code": {

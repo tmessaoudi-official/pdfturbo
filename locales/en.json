@@ -27,6 +27,8 @@
     "annotateTitle": "Annotation tools",
     "sign": "✍ Sign",
     "signTitle": "Sign (S)",
+    "signers": "👥 Signers",
+    "signersTitle": "Approval signatures (multiple signers)",
     "addImageLabel": "Image",
     "addImageTitle": "Add Image (I)",
     "highlightTitle": "Highlight brush (H)",
@@ -329,6 +331,16 @@
       "removeSignature": "Remove",
       "privacyNote": "Your certificate never leaves your browser. The signature covers your current edits and annotations.",
       "run": "Sign →",
+      "cancel": "Cancel"
+    },
+    "signers": {
+      "title": "Add approval signature",
+      "hint": "Fill in the signer, then draw the signature and click on the page to place it. Repeat for each signer. Each signer can export the PDF and send it to the next; apply the digital seal (🔏) last — re-exporting after sealing invalidates it. Visible signatures are an approval stamp, not cryptographic proof.",
+      "nameLabel": "Signer name",
+      "mentionLabel": "Mention",
+      "mentionDefault": "Read and approved",
+      "dateLabel": "Include today's date",
+      "drawBtn": "Draw & place →",
       "cancel": "Cancel"
     },
     "code": {

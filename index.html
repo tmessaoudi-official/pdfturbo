@@ -112,6 +112,7 @@
     <div class="toolbar-sep" id="tbsep-3"></div>
     <div class="toolbar-group" id="tbg-actions">
       <button id="addSignatureBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n="toolbar.sign" data-i18n-title="toolbar.signTitle" title="Sign (S)">✍ Sign</button>
+      <button id="signersBtn" class="btn btn-secondary" disabled data-i18n="toolbar.signers" data-i18n-title="toolbar.signersTitle" title="Approval signatures">👥 Signers</button>
       <div class="draw-flyout-wrap" id="exportSplitWrap">
         <div class="text-split-btn">
           <button id="downloadBtn" class="btn btn-success" disabled data-i18n-title="toolbar.downloadTitle" title="Download filled PDF">⬇ <span class="btn-label" data-i18n="toolbar.downloadLabel">Download</span></button><button id="exportChevronBtn" class="btn btn-success" disabled aria-haspopup="true" aria-expanded="false" data-i18n-title="toolbar.exportChevronTitle" title="Export options">▾</button>
@@ -593,6 +594,27 @@
     <div class="code-modal-actions">
       <button id="cancelSignModal" class="btn btn-secondary" data-i18n="modal.sign.cancel">Cancel</button>
       <button id="runSignModal" class="btn btn-success" data-i18n="modal.sign.run">Sign →</button>
+    </div>
+  </div>
+</div>
+<div class="code-modal" id="signersModal" role="dialog" aria-modal="true" aria-labelledby="signersModalTitle">
+  <div class="code-modal-content">
+    <h2 id="signersModalTitle" data-i18n="modal.signers.title">Add approval signature</h2>
+    <p class="code-preview-hint" data-i18n="modal.signers.hint">Fill in the signer, then draw the signature and click on the page to place it. Repeat for each signer. Each signer can export the PDF and send it to the next; apply the digital seal (🔏) last — re-exporting after sealing invalidates it.</p>
+    <div class="code-field">
+      <label for="signerName" data-i18n="modal.signers.nameLabel">Signer name</label>
+      <input type="text" id="signerName" autocomplete="off">
+    </div>
+    <div class="code-field">
+      <label for="signerMention" data-i18n="modal.signers.mentionLabel">Mention</label>
+      <input type="text" id="signerMention" autocomplete="off">
+    </div>
+    <div class="code-field">
+      <label><input type="checkbox" id="signerDate" checked> <span data-i18n="modal.signers.dateLabel">Include today's date</span></label>
+    </div>
+    <div class="code-modal-actions">
+      <button id="signersCancel" class="btn btn-secondary" data-i18n="modal.signers.cancel">Cancel</button>
+      <button id="signersDrawBtn" class="btn btn-success" data-i18n="modal.signers.drawBtn">Draw &amp; place →</button>
     </div>
   </div>
 </div>

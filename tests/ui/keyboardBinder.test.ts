@@ -8,7 +8,7 @@ function modal(active: boolean): HTMLElement {
   return d;
 }
 
-function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'watermark' | 'code' | 'bates' | 'sign' | 'ocr' | 'compress', boolean>> = {}) {
+function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'watermark' | 'code' | 'bates' | 'sign' | 'signers' | 'ocr' | 'compress', boolean>> = {}) {
   const findBar = document.createElement('div');
   findBar.style.display = 'none';
   const app = {
@@ -21,6 +21,7 @@ function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'wat
       codeModal: modal(!!active.code),
       batesModal: modal(!!active.bates),
       signModal: modal(!!active.sign),
+      signersModal: modal(!!active.signers),
       ocrModal: modal(!!active.ocr),
       findBar,
     },
@@ -32,6 +33,8 @@ function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'wat
     closeCodeModal: vi.fn(),
     _closeBatesModal: vi.fn(),
     closeSignModal: vi.fn(),
+    closeSignersPanel: vi.fn(),
+    clearPendingSignatureCaption: vi.fn(),
     closeOcrModal: vi.fn(),
     _closeFindBar: vi.fn(),
     setMode: vi.fn(),
@@ -99,6 +102,14 @@ describe('keyboardBinder Escape-to-close — sign/ocr + display modals (QA 2026-
     expect(app.setMode).not.toHaveBeenCalled();
   });
 
+  it('closes the Signers panel on Escape when active (F-D D2)', () => {
+    const app = makeApp({ signers: true });
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(app.closeSignersPanel).toHaveBeenCalled();
+    expect(app.setMode).not.toHaveBeenCalled();
+  });
+
   it('dismisses the blank-page modal via its Cancel button on Escape', () => {
     const cancel = displayModal('blankPageModal', 'blankPageCancelBtn', true);
     const app = makeApp();
@@ -151,6 +162,9 @@ describe('keyboardBinder crop shortcut (P) — QA 2026-06-18 A2', () => {
       documentModel: { pageCount },
       mode,
       setMode: vi.fn(),
+      // Accumulated global keydown listeners from later describe-blocks may dispatch
+      // 's' onto this host; the real app always has this method (leak guard).
+      clearPendingSignatureCaption: vi.fn(),
     } as unknown as PDFTurboApp & { setMode: ReturnType<typeof vi.fn> };
   }
   const pressKey = (key: string) =>
@@ -174,6 +188,37 @@ describe('keyboardBinder crop shortcut (P) — QA 2026-06-18 A2', () => {
     const app = cropApp(0, 'select');
     bindKeyboardEvents(app);
     pressKey('p');
+    expect(app.setMode).not.toHaveBeenCalled();
+  });
+});
+
+describe('keyboardBinder S shortcut — caption leak guard (F-D D2)', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  function signApp(pageCount: number, mode: string) {
+    return {
+      documentModel: { pageCount },
+      mode,
+      setMode: vi.fn(),
+      clearPendingSignatureCaption: vi.fn(),
+    } as unknown as PDFTurboApp & { setMode: ReturnType<typeof vi.fn>; clearPendingSignatureCaption: ReturnType<typeof vi.fn> };
+  }
+  const pressKey = (key: string) =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+
+  it('clears any armed caption before entering addSignature (plain path stays caption-free)', () => {
+    const app = signApp(1, 'select');
+    bindKeyboardEvents(app);
+    pressKey('s');
+    expect(app.clearPendingSignatureCaption).toHaveBeenCalled();
+    expect(app.setMode).toHaveBeenCalledWith('addSignature');
+  });
+
+  it('does nothing on S when no page is loaded', () => {
+    const app = signApp(0, 'select');
+    bindKeyboardEvents(app);
+    pressKey('S');
+    expect(app.clearPendingSignatureCaption).not.toHaveBeenCalled();
     expect(app.setMode).not.toHaveBeenCalled();
   });
 });

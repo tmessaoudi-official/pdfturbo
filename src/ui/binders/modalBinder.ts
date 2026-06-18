@@ -270,6 +270,17 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.batesApply.addEventListener('click', () => app._applyBates());
   app._setupBatesListeners();
 
+  // ── Signers panel (guided approval signatures, F-D D2) ─────────
+  app.ui.signersBtn.addEventListener('click', () => app.openSignersPanel());
+  app.ui.signersCancel.addEventListener('click', () => app.closeSignersPanel());
+  app.ui.signersDrawBtn.addEventListener('click', () => app._signersDraw());
+  let _signersBackdropDown = false;
+  app.ui.signersModal.addEventListener('mousedown', (e) => { _signersBackdropDown = e.target === app.ui.signersModal; });
+  app.ui.signersModal.addEventListener('mouseup', (e) => {
+    if (_signersBackdropDown && e.target === app.ui.signersModal) app.closeSignersPanel();
+    _signersBackdropDown = false;
+  });
+
   // ── Compress modal (#60) ───────────────────────────────────────
   app.ui.compressBtn.addEventListener('click', () => app._openCompressModal());
   app.ui.compressCancel.addEventListener('click', () => app._closeCompressModal());

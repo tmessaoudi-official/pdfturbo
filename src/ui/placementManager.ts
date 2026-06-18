@@ -8,7 +8,7 @@ import { getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/c
 import { TextElement } from '../elements/textElement';
 import { ImageElement } from '../elements/imageElement';
 import { CommentElement } from '../elements/commentElement';
-import { SignatureElement } from '../elements/signatureElement';
+import { SignatureElement, type SignatureCaption } from '../elements/signatureElement';
 import { CodeElement } from '../elements/codeElement';
 
 export interface IPlacementContext {
@@ -22,6 +22,8 @@ export interface IPlacementContext {
   // Signature state — owned by pdfTurboApp until Wave 3D
   currentSignature: string | null;
   signatureNatural: { w: number; h: number } | null;
+  // F-D D2 — approval caption armed by the Signers panel; consumed at placement.
+  pendingSignatureCaption: SignatureCaption | null;
   // Side effects
   autosave(): void;
   setMode(mode: ToolMode): void;
@@ -186,6 +188,10 @@ export class PlacementManager {
       const sig = this._ctx.currentSignature;
       if (!sig) return;
       this._ctx.currentSignature = null;
+      // F-D D2 — bake in the approval caption armed by the Signers panel, then
+      // clear it so the next (possibly plain) placement starts caption-free.
+      const caption = this._ctx.pendingSignatureCaption;
+      this._ctx.pendingSignatureCaption = null;
       this._ctx.ui.addSignatureBtn.classList.remove('active');
       const nat = this._ctx.signatureNatural;
       this._ctx.signatureNatural = null;
@@ -193,7 +199,7 @@ export class PlacementManager {
       const fh = w < 10
         ? (nat ? Math.round(200 * nat.h / nat.w) : 80)
         : (nat ? Math.round(fw * nat.h / nat.w) : h);
-      const sigEl = new SignatureElement(x, y, pageId, sig, { width: fw, height: fh });
+      const sigEl = new SignatureElement(x, y, pageId, sig, { width: fw, height: fh, ...(caption ?? {}) });
       this._ctx.historyManager.execute(new AddElementCmd(this._ctx.elements, sigEl));
       this._ctx.autosave();
       this._ctx.setMode('select');

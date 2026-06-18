@@ -8,6 +8,9 @@ export function bindToolEvents(app: PDFTurboApp): void {
   });
   app.ui.addSignatureBtn.addEventListener('click', () => {
     if (!app.documentModel.pageCount) return;
+    // Leak guard (F-D D2): the plain ✍ path must never inherit a caption armed by
+    // the Signers panel — clearing here makes that invariant hold by construction.
+    app.clearPendingSignatureCaption();
     app.setMode(app.mode === 'addSignature' ? 'select' : 'addSignature');
   });
   app.ui.addImageBtn.addEventListener('click', () => {

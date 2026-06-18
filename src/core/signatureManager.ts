@@ -3,6 +3,7 @@ import type { SignaturePad } from '../utils/signaturePad';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import type { ToolMode } from '../types/tools';
 import type { SetModeOptions } from './toolModeService';
+import type { SignatureCaption } from '../elements/signatureElement';
 import { trapFocus } from '../utils/focusTrap';
 
 export interface ISignatureContext {
@@ -16,6 +17,12 @@ export interface ISignatureContext {
 
 export class SignatureManager {
   currentSignature: string | null = null;
+  /**
+   * F-D D2 — approval caption captured by the Signers panel, consumed once at
+   * placement (PlacementManager) then cleared. The plain ✍ path never sets this
+   * (and clears it on entry), so a plain signature can never inherit a caption.
+   */
+  pendingCaption: SignatureCaption | null = null;
   private _signatureNatural: { w: number; h: number } | null = null;
 
   constructor(private readonly _ctx: ISignatureContext) {}
@@ -42,6 +49,9 @@ export class SignatureManager {
     this._ctx.setTrapCleanup(null);
     this._ctx.setMode('select');
     this._ctx.ui.addSignatureBtn.classList.remove('active');
+    // Cancelling the pad must drop any caption armed by the Signers panel, so it
+    // can't leak onto a later plain ✍ signature (the leak guard's cancel path).
+    this.pendingCaption = null;
   }
 
   save(): void {

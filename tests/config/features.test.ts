@@ -25,6 +25,7 @@ describe('feature flags (#28)', () => {
     expect(isEnabled('bates')).toBe(true);
     expect(isEnabled('crop')).toBe(true);
     expect(isEnabled('compress')).toBe(true);
+    expect(isEnabled('signers')).toBe(true);
   });
 
   it('an env var of false/0/off disables the feature (the deploy kill-switch)', () => {
@@ -42,6 +43,8 @@ describe('feature flags (#28)', () => {
     expect(isEnabled('bates')).toBe(false);
     vi.stubEnv('VITE_FEATURE_COMPRESS', 'false');
     expect(isEnabled('compress')).toBe(false);
+    vi.stubEnv('VITE_FEATURE_SIGNERS', 'false');
+    expect(isEnabled('signers')).toBe(false);
   });
 
   it('a non-disabling env value leaves the feature ON', () => {

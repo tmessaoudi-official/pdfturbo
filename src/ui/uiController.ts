@@ -185,6 +185,14 @@ export interface AppDOMRefs {
   signSigImg:         HTMLImageElement;
   signSigRemove:      HTMLButtonElement;
   signPickRect:       HTMLButtonElement;
+  // F-D D2 — guided Signers panel (approval signatures with captions).
+  signersBtn:         HTMLButtonElement;
+  signersModal:       HTMLElement;
+  signerName:         HTMLInputElement;
+  signerMention:      HTMLInputElement;
+  signerDate:         HTMLInputElement;
+  signersDrawBtn:     HTMLButtonElement;
+  signersCancel:      HTMLButtonElement;
   codeModal:        HTMLElement;
   codeFormatSelect: HTMLSelectElement;
   codeDataInput:    HTMLTextAreaElement;
@@ -396,6 +404,13 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       signSigImg:         document.getElementById('signSigImg')         as HTMLImageElement,
       signSigRemove:      document.getElementById('signSigRemove')      as HTMLButtonElement,
       signPickRect:       document.getElementById('signPickRect')       as HTMLButtonElement,
+      signersBtn:         document.getElementById('signersBtn')         as HTMLButtonElement,
+      signersModal:       document.getElementById('signersModal')       as HTMLElement,
+      signerName:         document.getElementById('signerName')         as HTMLInputElement,
+      signerMention:      document.getElementById('signerMention')      as HTMLInputElement,
+      signerDate:         document.getElementById('signerDate')         as HTMLInputElement,
+      signersDrawBtn:     document.getElementById('signersDrawBtn')     as HTMLButtonElement,
+      signersCancel:      document.getElementById('signersCancel')      as HTMLButtonElement,
       codeModal:        document.getElementById('codeModal')        as HTMLElement,
       codeFormatSelect: document.getElementById('codeFormatSelect') as HTMLSelectElement,
       codeDataInput:    document.getElementById('codeDataInput')    as HTMLTextAreaElement,
@@ -432,6 +447,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.addTextBtn.disabled     = false;
     r.exportChevronBtn.disabled = false;
     r.addSignatureBtn.disabled = false;
+    r.signersBtn.disabled     = false;
     r.downloadBtn.disabled    = false;
     r.prevPageBtn.disabled    = false;
     r.nextPageBtn.disabled    = false;

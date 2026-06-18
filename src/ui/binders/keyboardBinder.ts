@@ -27,6 +27,7 @@ export function bindKeyboardEvents(app: PDFTurboApp): void {
       if (app.ui.compressModal.classList.contains('active')) { app._closeCompressModal(); return; }
       if (app.ui.codeModal.classList.contains('active')) { app.closeCodeModal(); return; }
       if (app.ui.signModal.classList.contains('active')) { app.closeSignModal(); return; }
+      if (app.ui.signersModal.classList.contains('active')) { app.closeSignersPanel(); return; }
       // F-C C2: Esc while picking the sign rect cancels the pick and reopens the modal
       // (it was hidden, not closed) so the user is never stranded in signRect mode.
       if (app.mode === 'signRect') { void app.onSignRectPicked(null); return; }
@@ -70,7 +71,12 @@ export function bindKeyboardEvents(app: PDFTurboApp): void {
         if (app.documentModel.pageCount) app.setMode(app.mode === 'addText' ? 'select' : 'addText');
         break;
       case 's': case 'S':
-        if (app.documentModel.pageCount) app.setMode(app.mode === 'addSignature' ? 'select' : 'addSignature');
+        // Leak guard (F-D D2): mirror the ✍ button — the plain shortcut path
+        // never carries a Signers-panel caption.
+        if (app.documentModel.pageCount) {
+          app.clearPendingSignatureCaption();
+          app.setMode(app.mode === 'addSignature' ? 'select' : 'addSignature');
+        }
         break;
       case 'i': case 'I': if (app.documentModel.pageCount) app.ui.addImageInput.click(); break;
       case 'a': case 'A':
