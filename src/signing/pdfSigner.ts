@@ -89,7 +89,7 @@ export class PdfSigner {
       const signerName = (opts.name ?? '').trim() || material.commonName;
       const signDate = new Date();
 
-      this._drawAppearance(pdfLib, doc, page, opts, signerName, signDate);
+      await this._drawAppearance(pdfLib, doc, page, opts, signerName, signDate);
       const sigFieldRef = this._buildSignatureDict(pdfLib, doc, page, opts, signerName, signDate);
       this._registerAcroFormField(pdfLib, doc, sigFieldRef);
 
@@ -145,14 +145,14 @@ export class PdfSigner {
     }
   }
 
-  private _drawAppearance(
+  private async _drawAppearance(
     pdfLib: typeof import('@cantoo/pdf-lib'),
     doc: import('@cantoo/pdf-lib').PDFDocument,
     page: import('@cantoo/pdf-lib').PDFPage,
     opts: SignOptions,
     signerName: string | undefined,
     signDate: Date,
-  ): void {
+  ): Promise<void> {
     const { rect } = opts;
     const lines = buildAppearanceLines({
       name: signerName,
@@ -174,11 +174,40 @@ export class PdfSigner {
       borderOpacity: 0.9,
     });
 
-    const fontSize = Math.max(6, Math.min(11, rect.height / (lines.length + 1)));
-    const lineGap = fontSize * 1.25;
     const padding = Math.min(4, rect.width * 0.05);
-    let cursorY = rect.y + rect.height - padding - fontSize;
+
+    // F-C: when a drawn-signature PNG is supplied, embed it in the TOP portion of
+    // the rect (aspect-preserved, centred) and shrink the text area to the bottom.
+    // A decode failure must never abort signing — fall back to text-only.
+    let textTop = rect.y + rect.height; // top of the text band (default: whole rect)
+    if (opts.appearanceImage && opts.appearanceImage.length) {
+      try {
+        const png = await doc.embedPng(opts.appearanceImage);
+        const imgBandH = rect.height * 0.6;
+        const availW = rect.width - padding * 2;
+        const availH = imgBandH - padding;
+        const scale = Math.min(availW / png.width, availH / png.height, 1);
+        const drawW = png.width * scale;
+        const drawH = png.height * scale;
+        page.drawImage(png, {
+          x: rect.x + (rect.width - drawW) / 2,
+          y: rect.y + rect.height - padding - drawH,
+          width: drawW,
+          height: drawH,
+        });
+        textTop = rect.y + rect.height - imgBandH;
+      } catch {
+        // Corrupt/unsupported PNG → keep the text-only appearance.
+        textTop = rect.y + rect.height;
+      }
+    }
+
+    const textBandH = textTop - rect.y;
+    const fontSize = Math.max(6, Math.min(11, textBandH / (lines.length + 1)));
+    const lineGap = fontSize * 1.25;
+    let cursorY = textTop - padding - fontSize;
     for (const line of lines) {
+      if (cursorY < rect.y + padding) break;
       page.drawText(line, {
         x: rect.x + padding,
         y: cursorY,
@@ -187,7 +216,6 @@ export class PdfSigner {
         maxWidth: rect.width - padding * 2,
       });
       cursorY -= lineGap;
-      if (cursorY < rect.y + padding) break;
     }
   }
 

@@ -661,12 +661,33 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.signSourceUpload.checked = true;
     this.ui.signUploadGroup.style.display = '';
     this.ui.signGenGroup.style.display = 'none';
+    this._refreshSignSignaturePreview();
     this.ui.signModal.classList.add('active');
     this._focusTrapService.getCleanup()?.();
     this._focusTrapService.setCleanup(trapFocus(
       this.ui.signModal.querySelector('.code-modal-content') as HTMLElement,
       this.ui.signBtn,
     ));
+  }
+  /**
+   * F-C: show the drawn-signature preview + a Remove control inside the sign
+   * modal. The image is auto-embedded into the appearance; Remove clears the
+   * shared drawn signature (`currentSignature`) so the box reverts to text-only.
+   */
+  private _refreshSignSignaturePreview(): void {
+    const sig = this.currentSignature;
+    if (sig) {
+      this.ui.signSigImg.src = sig;
+      this.ui.signSigRow.style.display = '';
+    } else {
+      this.ui.signSigImg.removeAttribute('src');
+      this.ui.signSigRow.style.display = 'none';
+    }
+    // onclick (not addEventListener) is idempotent across repeated modal opens.
+    this.ui.signSigRemove.onclick = (): void => {
+      this.currentSignature = null;
+      this._refreshSignSignaturePreview();
+    };
   }
   closeSignModal(): void {
     this._focusTrapService.getCleanup()?.();

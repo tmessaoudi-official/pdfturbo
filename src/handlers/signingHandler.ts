@@ -26,6 +26,8 @@ import type { IErrorReporter } from '../contracts/errorReporter';
 export interface ISigningContext {
   /** Current document filename (drives the `<base>-signed.pdf` output name). */
   readonly currentFilename: string | null;
+  /** Drawn-signature data URL (✍ tool), or null — embedded into the appearance (F-C). */
+  readonly currentSignature: string | null;
   /** Read-only DOM handles (sign-modal fields live here). */
   readonly ui: AppDOMRefs;
   /** Structured error reporter (toasts). */
@@ -52,6 +54,8 @@ export interface SignFormInput {
   reason?: string;
   location?: string;
   name?: string;
+  /** Optional drawn-signature PNG bytes embedded into the appearance (F-C). */
+  appearanceImage?: Uint8Array;
 }
 
 /**
@@ -72,7 +76,23 @@ export function buildSignOptions(form: SignFormInput): SignOptions {
     reason: clean(form.reason),
     location: clean(form.location),
     name: clean(form.name),
+    appearanceImage: form.appearanceImage,
   };
+}
+
+/**
+ * Decode a `data:image/png;base64,…` URL (the drawn-signature pad output) to raw
+ * PNG bytes for embedding (F-C). Returns undefined for null / non-data-url / a
+ * non-PNG mime — pdf-lib's appearance path embeds PNG only.
+ */
+export function dataUrlToBytes(dataUrl: string | null): Uint8Array | undefined {
+  if (!dataUrl) return undefined;
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!m) return undefined;
+  const bin = atob(m[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
 }
 
 export class SigningHandler {
@@ -174,6 +194,8 @@ export class SigningHandler {
         reason: ui.signReason.value,
         location: ui.signLocation.value,
         name: genName ?? ui.signName.value,
+        // F-C: embed the drawn signature (✍) if one exists and wasn't removed.
+        appearanceImage: dataUrlToBytes(this.app.currentSignature),
       }, assembled);
       this.app.closeSignModal();
       this.app.reportError.info('toast.signed', { name: signedCn ?? '' });

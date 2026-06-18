@@ -36,6 +36,12 @@ export interface SignOptions {
   name?: string;
   /** Optional contact info string embedded in the signature dictionary. */
   contactInfo?: string;
+  /**
+   * Optional PNG bytes of a drawn signature image (F-C). When present it is
+   * embedded into the appearance rect (image on top, the name/date text below);
+   * absent → the existing text-only appearance.
+   */
+  appearanceImage?: Uint8Array;
 }
 
 /** Result of a successful signing operation. */

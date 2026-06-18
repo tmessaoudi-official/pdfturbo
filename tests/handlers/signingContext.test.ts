@@ -88,6 +88,7 @@ function makeCtx(ui: SignUi) {
   const closeSignModal = vi.fn();
   const ctx: ISigningContext = {
     currentFilename: 'doc.pdf',
+    currentSignature: null,
     ui: ui as unknown as AppDOMRefs,
     reportError,
     assemblePdfBytes,

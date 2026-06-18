@@ -576,6 +576,13 @@
       <label for="signName" data-i18n="modal.sign.nameLabel">Signer name (optional, defaults to certificate name)</label>
       <input type="text" id="signName">
     </div>
+    <div class="code-field" id="signSigRow" style="display:none">
+      <label data-i18n="modal.sign.signatureImageLabel">Your drawn signature (shown in the signature box)</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <img id="signSigImg" alt="" style="max-height:48px;max-width:160px;border:1px solid #ccc;background:#fff">
+        <button type="button" id="signSigRemove" class="btn btn-secondary" data-i18n="modal.sign.removeSignature">Remove</button>
+      </div>
+    </div>
     <p class="code-preview-hint" data-i18n="modal.sign.privacyNote">Your certificate never leaves your browser. The signature covers your current edits and annotations.</p>
     <p id="signError" class="sign-error" role="alert" style="display:none;color:#c0392b"></p>
     <div class="code-field" id="signProgressRow" style="display:none">
