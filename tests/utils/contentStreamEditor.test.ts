@@ -623,7 +623,71 @@ async function makeHexToUnicodePdf(): Promise<Uint8Array> {
   return doc.save();
 }
 
+/**
+ * Build a PDF whose page stream draws a LITERAL string of custom glyph-code bytes
+ * with a SUBSET font (BaseFont `ABCDEF+…`) and NO ToUnicode. This mirrors real
+ * subset fonts (LibreOffice/wkhtmltopdf/TeX) whose `( … ) Tj` operand bytes are
+ * glyph indices, not WinAnsi text. Decoding the literal verbatim yields garbage,
+ * so getEditableTextAt MUST return null (caller keeps the pdf.js item string).
+ * @param withToUnicode when true, attaches a 1-byte ToUnicode mapping 0x01→'H' 0x02→'i'.
+ */
+async function makeSubsetLiteralPdf(withToUnicode: boolean): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const ctx = doc.context;
+
+  const fontDict = PDFDict.fromMapWithContext(new Map(), ctx);
+  fontDict.set(PDFName.of('Type'), PDFName.of('Font'));
+  fontDict.set(PDFName.of('Subtype'), PDFName.of('TrueType'));
+  fontDict.set(PDFName.of('BaseFont'), PDFName.of('ABCDEF+Custom')); // subset tag → byte-swap-unsafe
+
+  if (withToUnicode) {
+    const cmapText =
+      '/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n' +
+      '1 begincodespacerange <00> <FF> endcodespacerange\n' +
+      '2 beginbfchar <01> <0048> <02> <0069> endbfchar\n' +
+      'endcmap end end';
+    const cb = new Uint8Array(cmapText.length);
+    for (let i = 0; i < cmapText.length; i++) cb[i] = cmapText.charCodeAt(i) & 0xff;
+    const cmapStream = PDFRawStream.of(
+      PDFDict.fromMapWithContext(new Map([[PDFName.of('Length'), ctx.obj(cb.length)]]), ctx),
+      cb,
+    );
+    fontDict.set(PDFName.of('ToUnicode'), ctx.register(cmapStream));
+  }
+  const fontRef = ctx.register(fontDict);
+
+  const resFont = PDFDict.fromMapWithContext(new Map(), ctx);
+  resFont.set(PDFName.of('F1'), fontRef);
+  const res = PDFDict.fromMapWithContext(new Map(), ctx);
+  res.set(PDFName.of('Font'), resFont);
+  page.node.set(PDFName.of('Resources'), res);
+
+  // Show a literal string of raw glyph-code bytes 0x01 0x02 at origin (50,300).
+  const content = 'BT /F1 12 Tf 1 0 0 1 50 300 Tm (\x01\x02) Tj ET';
+  const pcb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) pcb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(pcb)));
+  return doc.save();
+}
+
 describe('getEditableTextAt', () => {
+  it('returns null for a subset-font literal show-string with no ToUnicode (REGRESSION: glyph-code garbage)', async () => {
+    // The bytes 0x01 0x02 are GLYPH CODES, not characters. Decoding the literal
+    // verbatim would prefill the editor with "\x01\x02" (random characters) —
+    // the reported click-to-edit regression. With no ToUnicode and a byte-swap-
+    // unsafe font, the only safe answer is null (handler keeps the pdf.js string).
+    const doc = await PDFDocument.load(await makeSubsetLiteralPdf(false));
+    expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBeNull();
+  });
+
+  it('decodes a subset-font literal show-string via its ToUnicode CMap', async () => {
+    // Same subset font, but WITH a 1-byte ToUnicode: the literal glyph codes
+    // 0x01 0x02 map to 'H' 'i' — decode correctly rather than fall back.
+    const doc = await PDFDocument.load(await makeSubsetLiteralPdf(true));
+    expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBe('Hi');
+  });
+
   it('returns the whole literal-string op text (NOT one char) at its origin', async () => {
     const doc = await PDFDocument.load(await makeThreeStringPdf());
     // makeThreeStringPdf draws "Hello" at (50,300) as a single literal Tj op.

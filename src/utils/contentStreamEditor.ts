@@ -860,29 +860,47 @@ function decodeShowOpText(
   bytesPerCode: 1 | 2,
   byteSwapSafe: boolean,
 ): string {
-  const decodeHexInner = (inner: string): string => {
-    const clean = inner.replace(/\s+/g, '');
+  // Decode a raw byte sequence to a logical string, applying the SAME font-safety
+  // gate to literal- and hex-string operands alike. A literal `( … )` operand's
+  // bytes are char codes in the font's encoding exactly like a hex operand's —
+  // for a subset/CID/embedded font those are glyph codes, NOT ASCII, so decoding
+  // them verbatim yields garbage. (The literal branch used to skip this gate,
+  // which prefilled the inline editor with random characters — the click-to-edit
+  // regression.)
+  const decodeBytes = (bytes: number[]): string => {
     let out = '';
     if (forward) {
-      const step = bytesPerCode * 2;
-      for (let i = 0; i + step <= clean.length; i += step) {
-        const uni = forward.get(parseInt(clean.slice(i, i + step), 16));
+      for (let i = 0; i + bytesPerCode <= bytes.length; i += bytesPerCode) {
+        let code = 0;
+        for (let k = 0; k < bytesPerCode; k++) code = (code << 8) | bytes[i + k];
+        const uni = forward.get(code);
         if (uni !== undefined) out += uni;
       }
       return out;
     }
     // No ToUnicode: only a standard byte==ASCII font is safely decodable (Path-1).
     if (!byteSwapSafe) return '';
-    for (let i = 0; i + 2 <= clean.length; i += 2) {
-      out += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16));
-    }
+    for (const b of bytes) out += String.fromCharCode(b);
     return out;
+  };
+
+  const hexToBytes = (inner: string): number[] => {
+    const clean = inner.replace(/\s+/g, '');
+    const bytes: number[] = [];
+    for (let i = 0; i + 2 <= clean.length; i += 2) bytes.push(parseInt(clean.slice(i, i + 2), 16));
+    return bytes;
+  };
+  const literalToBytes = (raw: string): number[] => {
+    const decoded = decodeLiteralString(raw);
+    const bytes: number[] = [];
+    for (let i = 0; i < decoded.length; i++) bytes.push(decoded.charCodeAt(i) & 0xff);
+    return bytes;
   };
 
   const decodeToken = (tok: CsToken | undefined): string => {
     if (!tok) return '';
-    if (tok.type === 'string') return decodeLiteralString(tok.raw);
-    if (tok.type === 'hexstring') return decodeHexInner(tok.raw.replace(/^</, '').replace(/>$/, ''));
+    if (tok.type === 'string') return decodeBytes(literalToBytes(tok.raw));
+    if (tok.type === 'hexstring') return decodeBytes(hexToBytes(tok.raw.replace(/^</, '').replace(/>$/, '')));
     return '';
   };
 
