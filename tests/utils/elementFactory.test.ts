@@ -229,6 +229,48 @@ describe('fromJSON — unknown type', () => {
   });
 });
 
+// ── B3: id-guard against a missing/corrupt id poisoning the counter ──────────
+describe('fromJSON — id guard (B3)', () => {
+  it('keeps the constructor-assigned id when the blob has no id (no undefined)', () => {
+    PDFElement._nextId = 7;
+    const el = ElementFactory.fromJSON({
+      type: 'text', x: 1, y: 2, width: 10, height: 10, pageId: 'p1', text: 'x',
+    });
+    expect(el).not.toBeNull();
+    const e = el as PDFElement;
+    expect(typeof e.id).toBe('number');
+    expect(Number.isFinite(e.id)).toBe(true);
+    expect(e.id).toBe(7); // the id the constructor assigned, not undefined
+  });
+
+  it('a legacy/corrupt blob without id does NOT poison syncIdCounter with NaN', () => {
+    PDFElement._nextId = 3;
+    const el = ElementFactory.fromJSON({
+      type: 'redaction', x: 0, y: 0, width: 5, height: 5, pageId: 'p1',
+    }) as PDFElement;
+    ElementFactory.syncIdCounter([el]);
+    expect(Number.isNaN(PDFElement._nextId)).toBe(false);
+    expect(PDFElement._nextId).toBeGreaterThanOrEqual(1);
+  });
+
+  it('an explicit numeric id (including 0) is still honoured', () => {
+    PDFElement._nextId = 99;
+    const a = ElementFactory.fromJSON({ id: 0, type: 'text', x: 0, y: 0, width: 1, height: 1, pageId: 'p1', text: 'a' }) as PDFElement;
+    const b = ElementFactory.fromJSON({ id: 42, type: 'text', x: 0, y: 0, width: 1, height: 1, pageId: 'p1', text: 'b' }) as PDFElement;
+    expect(a.id).toBe(0);
+    expect(b.id).toBe(42);
+  });
+
+  it('a non-numeric id (NaN) falls back to the constructor id, not the bad value', () => {
+    PDFElement._nextId = 11;
+    const el = ElementFactory.fromJSON({
+      id: NaN, type: 'text', x: 0, y: 0, width: 1, height: 1, pageId: 'p1', text: 'x',
+    }) as PDFElement;
+    expect(Number.isFinite(el.id)).toBe(true);
+    expect(el.id).toBe(11);
+  });
+});
+
 // ── syncIdCounter ──────────────────────────────────────────────────────────────
 describe('syncIdCounter', () => {
   it('advances _nextId to max id + 1', () => {

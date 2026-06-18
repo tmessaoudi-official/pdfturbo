@@ -459,6 +459,7 @@
     "pdfSaved": "Saved to {{name}}",
     "extractDone": "Extracted {{count}} page(s)",
     "extractNoPages": "No valid pages in that range",
+    "formValueDropped": "{{count}} form value(s) didn't match the field's options and were skipped",
     "tableExtracted": "Table extracted — {{rows}} rows × {{cols}} columns",
     "flattenDone": "Flattened — form fields baked into a static copy",
     "compressDone": "Compressed — {{size}} ({{percent}}% smaller)",

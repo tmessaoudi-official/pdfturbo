@@ -459,6 +459,7 @@
     "pdfSaved": "Enregistré dans {{name}}",
     "extractDone": "{{count}} page(s) extraite(s)",
     "extractNoPages": "Aucune page valide dans cette plage",
+    "formValueDropped": "{{count}} valeur(s) de formulaire ne correspondai(en)t à aucune option du champ et ont été ignorée(s)",
     "tableExtracted": "Tableau extrait — {{rows}} lignes × {{cols}} colonnes",
     "flattenDone": "Aplati — champs de formulaire intégrés dans une copie statique",
     "compressDone": "Compressé — {{size}} ({{percent}} % de moins)",

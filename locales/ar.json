@@ -459,6 +459,7 @@
     "pdfSaved": "تم الحفظ في {{name}}",
     "extractDone": "تم استخراج {{count}} صفحة",
     "extractNoPages": "لا توجد صفحات صالحة في هذا النطاق",
+    "formValueDropped": "{{count}} من قيم النموذج لم تطابق خيارات الحقل وتم تجاهلها",
     "tableExtracted": "تم استخراج الجدول — {{rows}} صفوف × {{cols}} أعمدة",
     "flattenDone": "تم التسطيح — تم دمج حقول النموذج في نسخة ثابتة",
     "compressDone": "تم الضغط — {{size}} (أصغر بنسبة {{percent}}%)",

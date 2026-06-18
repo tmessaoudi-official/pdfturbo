@@ -70,10 +70,12 @@ async function multiFieldSourceBytes(): Promise<{
 interface Probe {
   svc: ExportService;
   downloads: { blob: Blob; filename: string }[];
+  warns: { key: string; opts?: unknown }[];
 }
 
 function buildProbe(src: Uint8Array, formValues: Record<string, Record<string, string>>): Probe {
   const downloads: { blob: Blob; filename: string }[] = [];
+  const warns: { key: string; opts?: unknown }[] = [];
   const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
   const ctx = {
     documentModel: {
@@ -87,7 +89,7 @@ function buildProbe(src: Uint8Array, formValues: Record<string, Record<string, s
     currentFilename: 'form.pdf',
     exportPassword: null,
     inkLayer: { getStrokes: () => [] },
-    reportError: { info: () => {}, warn: () => {}, error: () => {} },
+    reportError: { info: () => {}, warn: (key: string, opts?: unknown) => warns.push({ key, opts }), error: () => {} },
     progress: { begin: () => handle },
     cleanEmptyTextElements() {},
     renderCurrentPage: () => Promise.resolve(),
@@ -96,7 +98,7 @@ function buildProbe(src: Uint8Array, formValues: Record<string, Record<string, s
   const svc = new ExportService(ctx);
   (svc as unknown as { _downloadBlob: (b: Blob, f: string) => void })._downloadBlob = (blob, filename) =>
     downloads.push({ blob, filename });
-  return { svc, downloads };
+  return { svc, downloads, warns };
 }
 
 describe('G14 — form-fill applies checkbox/radio/dropdown/listbox values', () => {
@@ -151,6 +153,49 @@ describe('G14 — form-fill applies checkbox/radio/dropdown/listbox values', () 
     const doc = await PDFDocument.load(bytes);
     const form = doc.getForm();
     expect(() => applyFormFieldValue(form, 'no.such.field', 'x')).not.toThrow();
+  });
+
+  // ── B1: a real option-mismatch must be surfaced, not silently swallowed ───
+  // Empirically (pdf-lib): radio/listbox `.select(badValue)` THROW on a value
+  // that isn't an option (real silent-drop) — dropdown is lenient and silently
+  // accepts it (the typed value survives on flatten, so there's nothing to
+  // drop). So the throwing types are what B1 must catch and report.
+  it('returns true on a valid choice and false when a radio value is not an option', async () => {
+    const { bytes, radioOptions } = await multiFieldSourceBytes();
+    const doc = await PDFDocument.load(bytes);
+    const form = doc.getForm();
+    expect(applyFormFieldValue(form, 'the.radio', radioOptions[0])).toBe(true);
+    expect(applyFormFieldValue(form, 'the.radio', 'not-an-option')).toBe(false);
+  });
+
+  it('returns false when a listbox value is not an option', async () => {
+    const { bytes } = await multiFieldSourceBytes();
+    const doc = await PDFDocument.load(bytes);
+    const form = doc.getForm();
+    expect(applyFormFieldValue(form, 'the.list', 'one')).toBe(true);
+    expect(applyFormFieldValue(form, 'the.list', 'nope')).toBe(false);
+  });
+
+  it('returns true when there is no value to drop (missing field, text field)', async () => {
+    const { bytes } = await multiFieldSourceBytes();
+    const doc = await PDFDocument.load(bytes);
+    const form = doc.getForm();
+    expect(applyFormFieldValue(form, 'no.such.field', 'x')).toBe(true);
+    expect(applyFormFieldValue(form, 'the.text', 'anything goes')).toBe(true);
+  });
+
+  it('export warns (toast.formValueDropped) when a typed value is dropped on mismatch', async () => {
+    const { bytes } = await multiFieldSourceBytes();
+    const { svc, warns } = buildProbe(bytes, { s1: { 'the.radio': 'not-an-option', 'the.text': 'ok' } });
+    await svc.downloadPDF();
+    expect(warns.some(w => w.key === 'toast.formValueDropped')).toBe(true);
+  });
+
+  it('export does NOT warn when all typed values are valid', async () => {
+    const { bytes, radioOptions } = await multiFieldSourceBytes();
+    const { svc, warns } = buildProbe(bytes, { s1: { 'the.radio': radioOptions[0], 'the.text': 'ok' } });
+    await svc.downloadPDF();
+    expect(warns.some(w => w.key === 'toast.formValueDropped')).toBe(false);
   });
 
   it('bakes all choice values into the exported PDF via downloadFlattened (e2e)', async () => {

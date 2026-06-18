@@ -14,7 +14,13 @@ export class ElementFactory {
   static fromJSON(data: Record<string, any>): PDFElement | null {
     const pageId: string = data['pageId'] ?? String(data['page'] ?? '1');
     const applyBase = (el: PDFElement) => {
-      el.id = data['id'] as number;
+      // B3: only override the constructor-assigned id when the blob carries a
+      // valid finite number. A legacy/corrupt blob missing `id` (or holding NaN
+      // / a non-number) would otherwise set el.id = undefined/NaN, which then
+      // poisons syncIdCounter (Math.floor(undefined) → NaN) and breaks every
+      // later id. Keeping the auto-assigned id is the safe fallback.
+      const rawId = data['id'];
+      if (typeof rawId === 'number' && Number.isFinite(rawId)) el.id = rawId;
       if (data['rotation']) el.rotation = data['rotation'] as number;
       return el;
     };

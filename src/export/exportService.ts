@@ -57,12 +57,12 @@ export interface IExportContext {
  * onto the wrong field. Push-buttons and signatures carry no fillable value, so
  * they fall through here (and are excluded from the interactive overlay too).
  */
-export function applyFormFieldValue(form: PDFForm, fieldName: string, value: string): void {
+export function applyFormFieldValue(form: PDFForm, fieldName: string, value: string): boolean {
   let field;
   try {
     field = form.getField(fieldName);
   } catch {
-    return; // field missing in this source
+    return true; // field missing in this source — there is no value to drop
   }
   try {
     if (field instanceof PDFTextField) {
@@ -82,9 +82,12 @@ export function applyFormFieldValue(form: PDFForm, fieldName: string, value: str
       else field.clear();
     }
     // else: push-button / signature / unknown — no fillable value.
+    return true;
   } catch {
-    // A value that doesn't match the field's options (stale option, type
-    // mismatch) must not abort the whole export — skip just this field.
+    // B1: a value that doesn't match the field's options (stale option, type
+    // mismatch) must not abort the whole export — skip just this field, but
+    // return false so the caller can surface the silently-dropped value.
+    return false;
   }
 }
 
@@ -533,6 +536,7 @@ export class ExportService {
       // flattenAllForms (#62 — the "Flatten & download" button) EVERY source's
       // form is flattened regardless, so an opened PDF's untouched interactive
       // fields are baked into static content and the export carries no widgets.
+      const droppedFields: string[] = [];
       for (const [id, srcDoc] of srcDocs) {
         const vals = formValues[id];
         const hasVals = !!vals && Object.keys(vals).length > 0;
@@ -543,11 +547,18 @@ export class ExportService {
             // G14: dispatch on the field's real type (text / checkbox / radio /
             // dropdown / listbox) so every persisted choice bakes in, not just text.
             for (const [fieldName, value] of Object.entries(vals)) {
-              applyFormFieldValue(form, fieldName, value);
+              // B1: a value that doesn't match a dropdown/radio/listbox option is
+              // skipped (never aborts the export) — collect it so we can warn.
+              if (!applyFormFieldValue(form, fieldName, value)) droppedFields.push(fieldName);
             }
           }
           form.flatten();
         } catch { /* no form fields in this source */ }
+      }
+      // B1: surface silently-dropped form values once, rather than losing them
+      // without a trace. A warn (not an error) — the export still succeeds.
+      if (droppedFields.length) {
+        this._ctx.reportError.warn('toast.formValueDropped', { count: droppedFields.length });
       }
 
       // Pre-copy all needed pages from each source (one copyPages call per source)
