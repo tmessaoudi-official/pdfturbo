@@ -36,11 +36,11 @@ Status: ✅ FIXED this session · 🔲 open · ☑ verified-resolved-in-code (no
 ### Accessibility (raw/ux-a11y.md) — beyond the F2–F4 fixes above
 | # | Sev | Finding | Location |
 |---|-----|---------|----------|
-| A1 | P2 | blankPage/extractPages/pdfPassword/lockPdf modals are `display:flex` only — **no focus trap** (Esc now works via F4, but Tab can still escape). | `modalBinder.ts:151-230` |
-| A2 | P2 | Crop tool title advertises shortcut **"Crop page (P)" but no `P` handler exists**; help table omits crop entirely. | `index.html:74` vs `keyboardBinder.ts` |
-| A3 | P2 | **Tool-mode changes not announced** — `modeBadge` has no `aria-live`; hotkey mode switches are silent to SR users. | `index.html:139` |
-| A4 | P2 | Toolbar-customizer **merged-group submenu trigger has no accessible name** (empty `<button>` + `aria-haspopup` only). | `toolbarCustomizer.ts:259-262` |
-| A5 | P3 | `progress-overlay` empty `aria-label=""` may suppress the dynamic progress label on some SRs. | `index.html:648-652` |
+| A1 | ~~P2~~ ✅ **FIXED 2026-06-18 (`a2e1483`)** | blankPage/extractPages/pdfPassword/lockPdf modals had no focus trap. Now wired via `attachDisplayModalFocusTrap` (MutationObserver on `style` → `trapFocus` on show, teardown + focus-return on hide; `focusFirst` preserves the existing open-time `input.focus()`). Guard: `tests/utils/displayModalFocusTrap.test.ts`. | `modalBinder.ts`, `extractPagesBinder.ts` |
+| A2 | ~~P2~~ ✅ **FIXED 2026-06-18 (`a2e1483`)** | Crop tool advertised "Crop page (P)" with no `P` handler. Added the `p`/`P` case in `keyboardBinder` (gated by `isEnabled('crop')`, mirrors the toolbar toggle) + help-table row in all 3 locales. Guard: `tests/ui/keyboardBinder.test.ts` (crop-shortcut describe). | `keyboardBinder.ts`, `index.html` |
+| A3 | ~~P2~~ ✅ **FIXED 2026-06-18** | `modeBadge` is now `role="status" aria-live="polite"` → hotkey mode switches are announced. Guard: `tests/ui/indexHtmlA11y.test.ts` (A3). | `index.html` |
+| A4 | ~~P2~~ ✅ **FIXED 2026-06-18** | Submenu trigger now carries `aria-label`+`title` = `t('toolbar.submenuTrigger')` ("More tools", all 3 locales). Guard: `tests/ui/toolbarCustomizer.test.ts` (A4). | `toolbarCustomizer.ts` |
+| A5 | ~~P3~~ ✅ **FIXED 2026-06-18** | Dropped the empty `aria-label=""` so the accessible name falls through to `#progress-label`. Guard: `tests/ui/indexHtmlA11y.test.ts` (A5). | `index.html` |
 | A6 | P3 | Export flyout hides 12 actions behind one chevron (low discoverability for top-level features). | `index.html:115-133` |
 | A7 | P3 | Two near-identical signing entry points (✍ draw vs 🔏 cert); 🖊 emoji labels 4 different controls. | `index.html:89,114` |
 
@@ -100,7 +100,7 @@ fetching a revoked blob URL, and the corrupt fixture below).
 | # | Sev | Finding |
 |---|-----|---------|
 | N1 | ✅ FIXED | `data-tables.pdf` was an HTML error page (`<!doctype…`, 8 KB) saved as `.pdf` (failed download). **Replaced** with a locally-generated valid borderless data-table PDF (`@cantoo/pdf-lib`, 2492 B, `%PDF-1.7`) — adds genuine borderless-table coverage (lattice already covered). Verified: loads as 1 page, 0 console errors. |
-| N2 | P3 | Lattice table→CSV emits **spurious empty interstitial columns** (`,,` between data) — v-rule clustering detects more column boundaries than data columns. Content is correct; columns are noisy. |
+| N2 | ✅ **FIXED 2026-06-18 (`ad7790b`)** | Lattice table→CSV emitted **spurious empty interstitial columns** (`,,`). `buildTableGrid` now prunes any column empty across every row (a doubled/over-segmented v-rule). Never drops real data (a genuine column keeps any row with content); returns `null` if nothing survives. Guard: `tests/utils/tableExtract.test.ts` (empty-column-pruning describe). |
 | N3 | P3 | The session-restore dialog can be dismissed *after* a new file was already opened on top of it — the two states coexist briefly. Minor; "Start fresh" resolves correctly. |
 
 ### Deferred items — now exercised live (resume sweep, 2026-06-18, Playwright real Chrome :5174)

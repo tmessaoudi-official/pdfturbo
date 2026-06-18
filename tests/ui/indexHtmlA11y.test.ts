@@ -79,6 +79,23 @@ describe('index.html — accessible names on toolbar inputs', () => {
     });
   }
 
+  // ── QA 2026-06-18 — A3 / A5 ──────────────────────────────────────────────
+  it('A3: #modeBadge is a polite live region (mode switches are announced to SRs)', () => {
+    const badge = doc.getElementById('modeBadge');
+    expect(badge, '#modeBadge must exist').not.toBeNull();
+    expect(badge?.getAttribute('aria-live')).toBe('polite');
+    expect(badge?.getAttribute('role')).toBe('status');
+  });
+
+  it('A5: #progress-overlay has no empty aria-label (would suppress the dynamic label)', () => {
+    const overlay = doc.getElementById('progress-overlay');
+    expect(overlay, '#progress-overlay must exist').not.toBeNull();
+    // An empty aria-label="" overrides the accessible name with the empty string
+    // on some SRs, hiding the #progress-label text. Either drop the attribute or
+    // give it a real value — never leave it empty.
+    expect(overlay?.getAttribute('aria-label') ?? 'absent').not.toBe('');
+  });
+
   it('every data-i18n / data-i18n-aria key referenced for these a11y elements resolves in EN/FR/AR', () => {
     const selectors = [
       'a.skip-link',

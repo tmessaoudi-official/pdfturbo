@@ -1,5 +1,6 @@
 import Sortable from 'sortablejs';
 import type { ILayoutStorage } from './layoutStorage';
+import { t } from '../utils/i18n';
 
 const STORAGE_KEY = 'pdfturbo_toolbar_order';
 
@@ -260,6 +261,11 @@ export class ToolbarCustomizer {
     trigger.className = 'btn toolbar-submenu-trigger';
     trigger.setAttribute('aria-expanded', 'false');
     trigger.setAttribute('aria-haspopup', 'true');
+    // A4 (QA 2026-06-18): the trigger has no visible text (CSS chevron only), so
+    // without an explicit name screen readers announce an unnamed button.
+    const label = t('toolbar.submenuTrigger');
+    trigger.setAttribute('aria-label', label);
+    trigger.title = label;
     const flyout = document.createElement('div');
     flyout.className = 'toolbar-submenu-flyout';
     wrap.appendChild(trigger);

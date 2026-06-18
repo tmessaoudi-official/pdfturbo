@@ -59,6 +59,7 @@
     "importXfdfTitle": "Import annotations from XFDF",
     "helpTitle": "Keyboard shortcuts (?)",
     "settingsTitle": "Settings (⚙)",
+    "submenuTrigger": "More tools",
     "editTextLabel": "Edit Text",
     "editTextTitle": "Edit PDF text — click a word to overlay and edit it",
     "addCodeLabel": "Code",

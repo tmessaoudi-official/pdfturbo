@@ -136,7 +136,7 @@
       <input type="file" id="addPdfInput" accept="application/pdf,image/*" multiple>
       <input type="file" id="xfdfInput" accept=".xfdf,application/vnd.adobe.xfdf">
     </div>
-    <div id="modeBadge" class="mode-badge">SELECT</div>
+    <div id="modeBadge" class="mode-badge" role="status" aria-live="polite">SELECT</div>
   </div>
   <div class="toolbar toolbar-row2" role="toolbar" data-i18n-aria="a11y.toolbarSecondary">
     <div class="toolbar-group" id="formattingGroup">
@@ -646,7 +646,7 @@
 <span id="pageInfo" style="display:none"></span>
 <button id="donePill" class="done-pill" data-i18n="donePill" style="display:none">✓ Done drawing</button>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
-<div id="progress-overlay" role="status" aria-live="polite" aria-label="">
+<div id="progress-overlay" role="status" aria-live="polite">
   <div class="progress-spinner"></div>
   <progress id="progress-bar" max="1" value="0"></progress>
   <span id="progress-label"></span>

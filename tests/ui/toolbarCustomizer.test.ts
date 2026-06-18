@@ -348,6 +348,23 @@ describe('ToolbarCustomizer', () => {
     expect(sub).toMatchObject({ type: 'submenu', items: ['g1', 'g2'] });
   });
 
+  it('mergeGroups() gives the submenu trigger an accessible name (QA 2026-06-18 A4)', () => {
+    // The merged-group flyout trigger was an empty <button aria-haspopup> with no
+    // text and no aria-label → screen readers announced an unnamed button.
+    const toolbar = makeToolbar([
+      { id: 'g1', buttons: ['a'] },
+      { id: 'g2', buttons: ['b'] },
+    ]);
+    const tc = new ToolbarCustomizer(toolbar, storage);
+    const submenuId = tc.mergeGroups('g1', 'g2') as string;
+    const trigger = document.getElementById(submenuId)?.querySelector(
+      '.toolbar-submenu-trigger',
+    ) as HTMLElement | null;
+    expect(trigger).not.toBeNull();
+    const name = trigger?.getAttribute('aria-label') ?? trigger?.textContent ?? '';
+    expect(name.trim().length, 'submenu trigger needs an accessible name').toBeGreaterThan(0);
+  });
+
   it('mergeGroups() returns null when target is not in container', () => {
     const toolbar = makeToolbar([
       { id: 'g1', buttons: ['a'] },
