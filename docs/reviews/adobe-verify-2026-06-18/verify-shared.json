@@ -1,0 +1,38 @@
+[
+  {
+    "index": 0,
+    "byteRange": [
+      0,
+      2906,
+      19290,
+      582
+    ],
+    "digestMatches": true,
+    "signatureValid": true,
+    "signerCommonName": "Alice Alpha"
+  },
+  {
+    "index": 1,
+    "byteRange": [
+      0,
+      20050,
+      36434,
+      838
+    ],
+    "digestMatches": true,
+    "signatureValid": true,
+    "signerCommonName": "Alice Alpha"
+  },
+  {
+    "index": 2,
+    "byteRange": [
+      0,
+      37450,
+      53834,
+      735
+    ],
+    "digestMatches": true,
+    "signatureValid": true,
+    "signerCommonName": "Alice Alpha"
+  }
+]
