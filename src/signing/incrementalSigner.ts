@@ -31,7 +31,7 @@
  */
 
 import { SignError, type SignatureRect } from './types';
-import { formatPdfDate, rectToPdfArray } from './appearance';
+import { formatPdfDate, rectToPdfArray, validatePageIndex, validateRect } from './appearance';
 import type { P12Material } from './p12';
 import { buildDetachedCms } from './cms';
 import {
@@ -97,6 +97,38 @@ export function parseLastStartxref(bytes: Uint8Array): number {
   }
   if (!digits) throw new Error('Malformed startxref (no offset).');
   return parseInt(digits, 10);
+}
+
+/**
+ * H3 — guard the classic-xref assumption. The append-only engine writes a classic
+ * `xref` table + `trailer << … /Prev origStartxref >>`, which is only a valid
+ * incremental update when the document the reader resolves first is itself a classic
+ * `xref` table. A PDF whose last `startxref` points at a cross-reference STREAM
+ * (`N G obj << /Type /XRef … >> stream`, PDF 1.5+) would be silently mis-extended
+ * (the reader follows the XRef stream, not our appended table), corrupting every
+ * signature. We refuse such inputs up front with a typed error.
+ *
+ * @throws {SignError} `UNSUPPORTED_XREF` if the byte at `startxrefOffset` (after
+ *         whitespace) is not the literal `xref` keyword.
+ */
+export function assertClassicXref(bytes: Uint8Array, startxrefOffset: number): void {
+  let i = startxrefOffset;
+  // Skip leading whitespace (the offset may point at an EOL before the keyword).
+  while (i < bytes.length && (bytes[i] === 0x20 || bytes[i] === 0x0a || bytes[i] === 0x0d || bytes[i] === 0x09)) {
+    i++;
+  }
+  const keyword = 'xref';
+  let ok = i + keyword.length <= bytes.length;
+  for (let k = 0; ok && k < keyword.length; k++) {
+    if (bytes[i + k] !== keyword.charCodeAt(k)) ok = false;
+  }
+  if (!ok) {
+    throw new SignError(
+      'UNSUPPORTED_XREF',
+      'This PDF uses a cross-reference stream (PDF 1.5+) the incremental-signing engine cannot extend; ' +
+        're-save it with a classic xref table first.',
+    );
+  }
 }
 
 /**
@@ -173,6 +205,19 @@ export async function addIncrementalSignature(
   const ctx = doc.context;
   const origLen = signedBytes.length;
   const origStartxref = parseLastStartxref(signedBytes);
+
+  // H3 — refuse xref-stream / hybrid inputs the append-only engine cannot extend.
+  assertClassicXref(signedBytes, origStartxref);
+
+  // H2 — input preflight: reuse the shipped placement validators (typed
+  // INVALID_PAGE / INVALID_RECT). Deliberately does NOT call isPdfSigned — this
+  // engine MUST accept an already-signed PDF (that is the whole point); the
+  // shipped ALREADY_SIGNED guard lives in PdfSigner.preflight and is untouched.
+  validatePageIndex(opts.page, doc.getPageCount());
+  {
+    const { width, height } = doc.getPage(opts.page).getSize();
+    validateRect(opts.rect, { width, height });
+  }
 
   // ── Read structure (no save) ──────────────────────────────────────────────
   type TrailerInfoLike = {

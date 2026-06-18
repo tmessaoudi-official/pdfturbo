@@ -440,10 +440,24 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `xref`/`trailer << … /Prev >>` → reuse `byteRange.ts` primitives + `buildDetachedCms`. The prior "ceiling" was
   mis-attributed: pdf-lib's `save()` renumbers objects (kills sig-1), but that's the *tool's serialiser*, not the
   PDF format. Sig-1 survives because its `/ByteRange` ends at the original EOF (untouched by the append). Guarded
-  by `tests/signing/incrementalSigner.test.ts` (7: append-only prefix byte-identical, BOTH `/ByteRange` digests
+  by `tests/signing/incrementalSigner.test.ts` (append-only prefix byte-identical, BOTH `/ByteRange` digests
   validate, pdf-lib re-parses). **Caveat:** proves ByteRange-digest correctness + append-only preservation;
   Adobe/DSS acceptance is UNVERIFIED in-repo (no Acrobat) → keep `ALREADY_SIGNED` until manual verification.
-  Classic-xref + ASCII-object only; inputs unvalidated (spike). Verdict:
+  **In-repo hardening H1–H4 DONE (2026-06-18, still unwired, `ALREADY_SIGNED` untouched):** **H1** NEW
+  `src/signing/cmsVerify.ts` `verifyAllSignatures(bytes)` cryptographically re-checks EVERY embedded sig via
+  node-forge `rawCapture` (no brittle `p7.verify()`) — messageDigest authAttr === SHA-256(ByteRange span) AND
+  the authAttrs RSA-verify against the **CMS-embedded** signer cert (`p7.certificates[0]`); the auth-attrs are
+  re-DER'd wrapped in a **UNIVERSAL SET (0x31)**, NOT the `[0]` IMPLICIT tag (the classic forge-verify trap) —
+  a tamper test (flip a covered byte → `digestMatches:false`) proves it's real, not rubber-stamp. Kept OUT of
+  the `index.ts` barrel (mirrors `incrementalSigner`). **H2** `addIncrementalSignature` now preflights via the
+  shipped `validatePageIndex`/`validateRect` (typed `INVALID_PAGE`/`INVALID_RECT`) but deliberately does NOT
+  call `isPdfSigned` (it MUST accept an already-signed PDF — that's the point). **H3** exported
+  `assertClassicXref(bytes, startxrefOffset)` refuses xref-STREAM / hybrid inputs (peek at the offset, require
+  the literal `xref` keyword) with NEW typed `SignError('UNSUPPORTED_XREF')` (added to the union + 3 locales,
+  ar [Unverified]; `signingHandler` maps `sign.error.${code}` dynamically so it's additive). **H4** coverage:
+  two DISTINCT certs (each sig verifies against its own embedded cert), triple-sign N>2 (3 ByteRanges valid,
+  append-only prefix preserved), multi-page. `beforeAll` gets 60s (two RSA-2048 keygens; hookTimeout ≠ the 30s
+  testTimeout). Classic-xref + ASCII-object only remains the documented input contract. Verdict:
   `docs/reviews/2026-06-18-incremental-multisign-spike-verdict.md`. **Approval model B (D1/D2) stays the default**
   for the no-backend tool; D3 is now an opt-in productionisation candidate. Editable free-text caption date = v1b.
   **Arabic `mentionDefault`/labels are [Unverified]** — need native review.

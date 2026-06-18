@@ -567,6 +567,7 @@
       "PDF_PARSE_FAILED": "Could not read the PDF for signing.",
       "PLACEHOLDER_NOT_FOUND": "Signing failed (internal placeholder error).",
       "ALREADY_SIGNED": "This PDF is already signed. Export an unsigned copy before signing again.",
+      "UNSUPPORTED_XREF": "This PDF's internal structure isn't supported for this operation. Re-save it first.",
       "SIGN_FAILED": "Signing failed. Please try again."
     }
   },

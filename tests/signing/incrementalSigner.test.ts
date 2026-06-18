@@ -21,7 +21,10 @@ import {
   addIncrementalSignature,
   parseLastStartxref,
   countSignatures,
+  assertClassicXref,
 } from '../../src/signing/incrementalSigner';
+import { verifyAllSignatures } from '../../src/signing/cmsVerify';
+import { SignError } from '../../src/signing/types';
 import {
   findByteRangeToken,
   indexOfAscii,
@@ -170,5 +173,144 @@ describe('incrementalSigner — append-only second signature (POC)', () => {
     // Both signature /Contents slots and both /ByteRange tokens survive a reparse path.
     expect(indexOfAscii(twice, '/Prev')).toBeGreaterThan(once.length - 1); // /Prev lives in the appended trailer
     expect(() => findByteRangeToken(twice.subarray(once.length))).not.toThrow();
+  });
+});
+
+describe('incrementalSigner — H3 assertClassicXref (pure)', () => {
+  const ascii = (s: string): Uint8Array => {
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+    return out;
+  };
+
+  it('passes when the startxref offset points at a classic "xref" keyword', () => {
+    const pdf = ascii('%PDF-1.4\nbody\nxref\n0 1\n...\n');
+    const off = indexOfAscii(pdf, 'xref'); // robustly locate the keyword
+    expect(() => assertClassicXref(pdf, off)).not.toThrow();
+  });
+
+  it('tolerates leading whitespace/EOL before the keyword', () => {
+    const pdf = ascii('%PDF-1.4\n\r\n  xref\n0 1\n');
+    expect(() => assertClassicXref(pdf, 9)).not.toThrow(); // offset at the EOL before "  xref"
+  });
+
+  it('throws UNSUPPORTED_XREF when the offset points at an xref STREAM object', () => {
+    // PDF 1.5+ cross-reference stream: startxref points at "N G obj << /Type /XRef …".
+    const pdf = ascii('%PDF-1.5\nbody\n6 0 obj\n<< /Type /XRef /Size 7 >>\nstream\n');
+    let err: unknown;
+    try {
+      assertClassicXref(pdf, 14); // offset of '6 0 obj'
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(SignError);
+    expect((err as SignError).code).toBe('UNSUPPORTED_XREF');
+  });
+});
+
+describe('incrementalSigner — H2/H3/H4 hardening', () => {
+  let p12A: Uint8Array;
+  let materialA: P12Material;
+  let materialB: P12Material;
+  const rect = { x: 20, y: 20, width: 160, height: 50 };
+
+  beforeAll(async () => {
+    const a = await generateSelfSignedP12({ commonName: 'Cert Alpha', organization: 'PDFturbo' }, 'pw');
+    const b = await generateSelfSignedP12({ commonName: 'Cert Beta', organization: 'PDFturbo' }, 'pw');
+    p12A = a.p12;
+    materialA = await loadP12(a.p12, 'pw');
+    materialB = await loadP12(b.p12, 'pw');
+  }, 60_000);
+
+  async function signWithA(pages = 1, page = 0): Promise<Uint8Array> {
+    const { PDFDocument, StandardFonts } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (let i = 0; i < pages; i++) doc.addPage([400, 400]).drawText(`Page ${i + 1}`, { x: 20, y: 360, size: 14, font });
+    const pdf = await doc.save({ useObjectStreams: false });
+    const { bytes } = await new PdfSigner().sign(pdf, { p12: p12A, passphrase: 'pw', page, rect, name: 'Cert Alpha' });
+    return bytes;
+  }
+
+  // ── H2: input preflight (typed page/rect errors; ALREADY_SIGNED NOT used) ──
+  it('H2 — refuses an out-of-range page with INVALID_PAGE', async () => {
+    const once = await signWithA(1);
+    await expect(
+      addIncrementalSignature(once, { page: 5, rect }, materialB),
+    ).rejects.toMatchObject({ code: 'INVALID_PAGE' });
+  });
+
+  it('H2 — refuses an off-page rect with INVALID_RECT', async () => {
+    const once = await signWithA(1);
+    await expect(
+      addIncrementalSignature(once, { page: 0, rect: { x: 380, y: 380, width: 200, height: 200 } }, materialB),
+    ).rejects.toMatchObject({ code: 'INVALID_RECT' });
+  });
+
+  // ── H3: xref-stream input refused via the real engine ──
+  it('H3 — refuses an xref-stream input with UNSUPPORTED_XREF', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    doc.addPage([400, 400]);
+    const streamPdf = await doc.save({ useObjectStreams: true }); // emits an xref STREAM
+    await expect(
+      addIncrementalSignature(streamPdf, { page: 0, rect }, materialB),
+    ).rejects.toMatchObject({ code: 'UNSUPPORTED_XREF' });
+  });
+
+  // ── H4: distinct certs — each signature validates against its OWN embedded cert ──
+  it('H4 — two DISTINCT certs: both signatures verify against their own cert', async () => {
+    const once = await signWithA(1);
+    const { bytes: twice } = await addIncrementalSignature(
+      once,
+      { page: 0, rect: { x: 220, y: 20, width: 160, height: 50 }, name: 'Cert Beta' },
+      materialB,
+    );
+    const checks = await verifyAllSignatures(twice);
+    expect(checks).toHaveLength(2);
+    expect(checks.every((c) => c.digestMatches && c.signatureValid)).toBe(true);
+    // The two signatures carry DIFFERENT embedded signer certs.
+    const cns = checks.map((c) => c.signerCommonName).sort();
+    expect(cns).toEqual(['Cert Alpha', 'Cert Beta']);
+  });
+
+  // ── H4: triple-sign (N>2) — all three ByteRanges validate, append-only ──
+  it('H4 — triple-sign: three signatures, all valid, prefix preserved', async () => {
+    const once = await signWithA(1);
+    const len1 = once.length;
+    const { bytes: twice } = await addIncrementalSignature(
+      once,
+      { page: 0, rect: { x: 220, y: 20, width: 80, height: 50 }, name: 'Cert Beta' },
+      materialB,
+    );
+    const len2 = twice.length;
+    const { bytes: thrice } = await addIncrementalSignature(
+      twice,
+      { page: 0, rect: { x: 310, y: 20, width: 80, height: 50 }, name: 'Cert Alpha' },
+      materialA,
+    );
+    expect(countSignatures(thrice)).toBe(3);
+    // Append-only: each earlier revision is a verbatim prefix of the next.
+    expect(Array.from(thrice.subarray(0, len1))).toEqual(Array.from(once));
+    expect(Array.from(thrice.subarray(0, len2))).toEqual(Array.from(twice));
+    const checks = await verifyAllSignatures(thrice);
+    expect(checks).toHaveLength(3);
+    expect(checks.every((c) => c.digestMatches && c.signatureValid)).toBe(true);
+  });
+
+  // ── H4: multi-page — sign page 0, counter-sign page 1 ──
+  it('H4 — multi-page: signatures on different pages both verify', async () => {
+    const once = await signWithA(2, 0); // 2-page doc, sig-1 on page 0
+    const { bytes: twice } = await addIncrementalSignature(
+      once,
+      { page: 1, rect, name: 'Cert Beta' },
+      materialB,
+    );
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const reparsed = await PDFDocument.load(twice, { ignoreEncryption: true, updateMetadata: false });
+    expect(reparsed.getPageCount()).toBe(2);
+    const checks = await verifyAllSignatures(twice);
+    expect(checks).toHaveLength(2);
+    expect(checks.every((c) => c.digestMatches && c.signatureValid)).toBe(true);
   });
 });

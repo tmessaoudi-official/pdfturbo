@@ -63,6 +63,7 @@ export type SignErrorCode =
   | 'PDF_PARSE_FAILED' // the input PDF could not be loaded
   | 'PLACEHOLDER_NOT_FOUND' // internal: signature placeholder lost after save
   | 'ALREADY_SIGNED' // the input PDF already carries a signature (re-signing refused)
+  | 'UNSUPPORTED_XREF' // input uses an xref STREAM / hybrid xref the incremental engine can't extend
   | 'SIGN_FAILED'; // CMS/PKCS#7 production failed
 
 /** Typed error carrying a {@link SignErrorCode} for UI branching. */

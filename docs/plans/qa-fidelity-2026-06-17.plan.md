@@ -23,6 +23,7 @@ structural ones.
 - [2026-06-18] AGREED: All F-A→F-D commits already PUSHED (master==origin/master; the precompact handoff's "8 unpushed" was stale). Resuming the PAUSED backlog (Option 1) THEN productionising D3 (Option 3), per user.
 - [2026-06-18] AGREED (CHALLENGED): I1 = **WIRE, not remove**. `CodeFormat.placeholder` is a never-wired latent feature (the code modal HAS a `codeDataInput` textarea with no placeholder); finishing it beats deleting genuine per-format intent. Plan: replace the 3 generic `'Any text…'` literals with `''`, add i18n key `modal.code.anyTextPlaceholder` (en/fr/ar — ar [Unverified]), wire in `CodeModalManager.syncVisibility` as `placeholder = fmt.placeholder || t('modal.code.anyTextPlaceholder')` (concrete sample values stay literal = correctly-untranslated example data). 3C params = full 30/8. Batch R (B1+B3) + batch i (I1+I2) = 2 commits, TDD.
 - [2026-06-18] DONE (TDD): **Batch R (robustness)** — B1 `applyFormFieldValue` now returns `boolean` (false when radio/listbox `.select` throws on a non-option value; dropdown is lenient & silently accepts so nothing is dropped — the gaps.md "dropdown" claim was a partial false positive, root-caused empirically); `_assemblePdfDoc` collects dropped fields and `reportError.warn('toast.formValueDropped',{count})` once. B3 `elementFactory.applyBase` sets `el.id` only for a finite-number `data.id`, else keeps the constructor id (no undefined/NaN poison of syncIdCounter). +9 tests (formFieldFill +6, elementFactory +4 incl. id:0/NaN edges; one of the 4 was a pre-existing-invariant). i18n key `toast.formValueDropped` ×3 (ar [Unverified]). type-check+oxlint clean; full jsdom suite **1565 pass + 2 xfail**.
+- [2026-06-18] AGREED (Option 3, AskUserQuestion): productionise D3 = **Full in-repo hardening H1–H4** (CMS re-verify of BOTH sigs via node-forge; input preflight reusing PdfSigner logic minus ALREADY_SIGNED; xref-stream-input guard → typed UNSUPPORTED refusal; coverage = 2 distinct certs + triple-sign N>2 + multi-page). Module stays EXPERIMENTAL/unwired; `ALREADY_SIGNED` guard UNTOUCHED; NO UI wiring. Hard ceiling acknowledged: Adobe/DSS third-party acceptance is unverifiable in-repo (no Acrobat) → remains a manual gate before any real shipping. 3C = full 30/8 (session preference).
 - [2026-06-18] DONE (TDD): **Batch i (i18n cleanup)** — I1 WIRED (not removed): `CodeModalManager.syncVisibility` is now the sole runtime owner of `codeDataInput.placeholder` = `getCodeFormat(fmt)?.placeholder || t('modal.code.anyTextPlaceholder')`; the 3 generic 2D `'Any text…'` literals → `''`; removed the static `data-i18n-placeholder="modal.code.contentPlaceholder"` binding from index.html (kept the static `placeholder=` attr); repurposed locale key `contentPlaceholder`→`anyTextPlaceholder` (×3, ar [Unverified]). I2 removed dead `toast.clickToPlaceImage` (×3). +2 tests (codeModalManager). Full jsdom suite **1567 pass + 2 xfail**; type-check + oxlint clean. Net result: the code-content input now shows a correct per-format hint instead of a misleading URL for every format. **Backlog batches B1/B3/I1/I2 ALL DONE.**
 - [2026-06-18] REFINED (3C cycle 1 finding F10): the textarea is NOT placeholder-less — `index.html:455` already binds `data-i18n-placeholder="modal.code.contentPlaceholder"` (="https://example.com"), shown for EVERY format (misleading for 1D barcodes). Redesign to SINGLE-OWNER: remove that `data-i18n-placeholder` binding (keep the static `placeholder=` attr for pre-JS paint), make `syncVisibility` the sole runtime owner, and REMOVE the now-redundant `modal.code.contentPlaceholder` key (3 files) so I1 doesn't re-create I2-style dead-key clutter. `contentPlaceholder` referenced only in index.html (no tests). Minor v1: per-format placeholder won't re-translate on a language switch made while the modal is already open (concrete samples aren't translated anyway).
 - [2026-06-18] PIVOT (user-directed): paused backlog batches 2&3; researched (2 Explore agents, file:line-grounded) + brainstormed user's new concerns. User chose to BUILD ALL FOUR features, sequenced F-A→F-B→F-C→F-D (see RESUME STATE "NEXT FEATURE QUEUE"): F-A mobile drag/draw (touch-action tool-mode-aware + setPointerCapture), F-B app version display+semver bump, F-C e-sign visual rect + embed drawn-signature PNG in appearance, F-D e-sign multi-signer = APPROVAL MODEL B (N visible drawn sigs + 1 sealing digital sig; true N-party crypto co-sign is a structural ceiling — pdf-lib full-resave, no incremental update). NOT started — user is compacting first. Confirm F-D UX before coding it.
@@ -199,3 +200,34 @@ before any commit (CI parity). Push is MANUAL.
 4. PUSH IS MANUAL — never push autonomously. Commits in /stack/projects are allowed but ask before pushing.
 5. Trap to avoid: a prior autonomous run hung on the ask-human-gate firing inside a background
    continuation — run this work INLINE, not as a background workflow. (memory: project_ask_human_gate_background_loop)
+
+## Formal Plan — Option 3 / D3 incremental-multisign hardening (H1–H4)
+
+> Phase 4 (2026-06-18). 3C gate cleared 8/8 (manual context scan; `expanding-context` skill absent).
+> Module stays EXPERIMENTAL/unwired; `ALREADY_SIGNED` (in `pdfSigner.preflight`) UNTOUCHED; NO UI.
+
+- **H1 — CMS re-verify of BOTH signatures.** NEW `src/signing/cmsVerify.ts` (dynamic forge, out of the
+  `index.ts` barrel like `incrementalSigner`). `verifyAllSignatures(pdfBytes)` → per signature:
+  parse i-th `/ByteRange` (regex) + i-th `/Contents` hex slot (iterate `findContentsSlot`), rebuild span via
+  `collectSignedBytes`, `asn1.fromDer(buf,{parseAllBytes:false})` → `pkcs7.messageFromAsn1`. Manual
+  `rawCapture` verification (no `p7.verify()`): (a) messageDigest authAttr === forge SHA-256(span);
+  (b) re-DER `authenticatedAttributes` wrapped in a **UNIVERSAL SET (0x31)** → SHA-256 → verify against the
+  CMS-embedded signer cert pubkey (`p7.certificates[0]`). Returns `{index, byteRange, digestMatches,
+  signatureValid, signerCommonName}`. Tamper test proves the verifier rejects a flipped covered byte.
+- **H2 — input preflight (reuse, minus ALREADY_SIGNED).** In `addIncrementalSignature`, after doc load:
+  `validatePageIndex(opts.page, doc.getPageCount())` + `validateRect(opts.rect, page size)` (the exact
+  `appearance.ts` validators PdfSigner uses) → typed `INVALID_PAGE`/`INVALID_RECT`. Deliberately does NOT
+  call `isPdfSigned` (the spike must sign an already-signed doc).
+- **H3 — xref-stream-input guard.** Export `assertClassicXref(bytes, startxrefOffset)`: skip whitespace at
+  the offset, require the exact `xref` keyword, else throw NEW `SignError('UNSUPPORTED_XREF', …)`. Called in
+  `addIncrementalSignature` right after `parseLastStartxref`. Add `'UNSUPPORTED_XREF'` to the `SignErrorCode`
+  union (additive — `signingHandler` maps `sign.error.${code}` dynamically, no exhaustive switch) + a
+  `sign.error.UNSUPPORTED_XREF` key in all 3 locales (ar [Unverified]).
+- **H4 — coverage.** Extend `tests/signing/incrementalSigner.test.ts`: (1) two DISTINCT certs (cert A signs,
+  cert B counter-signs) — verifyAllSignatures confirms each sig validates against its own embedded cert;
+  (2) triple-sign N>2 (countSignatures===3, all 3 ByteRanges validate, append-only prefix preserved);
+  (3) multi-page (sig on page 0, counter-sig on page 1). `beforeAll` gets an explicit 60s timeout (two
+  2048-bit keygens; hookTimeout ≠ the 30s testTimeout).
+- **Acceptance criteria**: type-check + oxlint clean; full jsdom suite green; H1 tamper test red→green proves
+  real verification; `ALREADY_SIGNED` byte-unchanged; `incrementalSigner` still unwired (no new app importer).
+- **Ceiling (manual gate)**: Adobe/DSS third-party acceptance is unverifiable in-repo (no Acrobat).
