@@ -27,9 +27,9 @@ import {
   decodePDFRawStream,
 } from '@cantoo/pdf-lib';
 
-import type { CsToken, CsOp, TextOpInfo } from '../types/contentStream';
-import { isArabicText } from './flowDoc';
-export type { CsToken, CsOp, TextOpInfo } from '../types/contentStream';
+import type { CsToken, CsOp, TextOpInfo, DecorationRule } from '../types/contentStream';
+import { isArabicText, classifyRuleAsUnderline } from './flowDoc';
+export type { CsToken, CsOp, TextOpInfo, DecorationRule } from '../types/contentStream';
 
 /**
  * Max distance (PDF points) at which a secondary show op is treated as belonging
@@ -337,6 +337,10 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let fontSize = 0;
   let leading = 0;
   let renderMode = 0;
+  let charSpacing = 0;
+  let wordSpacing = 0;
+  let hScale = 100;
+  let textRise = 0;
   let fillColor: string | undefined;
   let tfOpIndex: number | undefined;
   let colorOpIndex: number | undefined;
@@ -379,6 +383,18 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         break;
       case 'Tr':
         renderMode = num(op.operands[0]);
+        break;
+      case 'Tc':
+        charSpacing = num(op.operands[0]);
+        break;
+      case 'Tw':
+        wordSpacing = num(op.operands[0]);
+        break;
+      case 'Tz':
+        hScale = num(op.operands[0]);
+        break;
+      case 'Ts':
+        textRise = num(op.operands[0]);
         break;
       case 'TD':
         leading = -num(op.operands[1]);
@@ -442,11 +458,126 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         tfOpIndex,
         colorOpIndex,
         renderMode,
+        // Only carry non-default graphics state (keeps unaffected ops byte-identical).
+        ...(charSpacing !== 0 ? { charSpacing } : {}),
+        ...(wordSpacing !== 0 ? { wordSpacing } : {}),
+        ...(hScale !== 100 ? { hScale } : {}),
+        ...(textRise !== 0 ? { textRise } : {}),
       });
     }
   });
 
   return found;
+}
+
+// ── Decoration rules (underline / strikethrough) ────────────────────────────────
+
+const FILL_PAINTERS = new Set(['f', 'F', 'f*', 'b', 'b*', 'B', 'B*']);
+const PATH_PAINTERS = new Set([...FILL_PAINTERS, 'S', 's', 'n']);
+
+/**
+ * Locate thin FILLED rectangles (`x y w h re` + a fill painter) in the same content
+ * stream, CTM-transformed into PDF user space. These are underline/strikethrough
+ * decoration candidates. The stroked-line form (`m … l … S`) carries no width
+ * operand and is deliberately NOT collected — it is refused (left unchanged). A rect
+ * under a rotated/sheared CTM (b or c ≠ 0) is omitted: its width operand can't be
+ * rewritten by a simple scalar. Pure → jsdom-unit-testable.
+ */
+export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
+  const out: DecorationRule[] = [];
+  let ctm: Matrix = [...IDENTITY];
+  const ctmStack: Matrix[] = [];
+  const num = (t: CsToken | undefined): number => t?.value ?? 0;
+  // Pending `re` rectangles awaiting their painter op (a single painter can close
+  // several preceding `re` ops; we only adjust a rect that is the SOLE pending one).
+  let pending: { reOpIndex: number; x: number; y: number; w: number; h: number; scaleX: number }[] = [];
+  // True when a NON-`re` path-construction op (m/l/c/v/y/h) precedes the painter:
+  // the painter would then also paint that subpath, so resizing/removing the rect
+  // would touch unrelated geometry — refuse the rule entirely.
+  let sawOtherPath = false;
+
+  ops.forEach((op, opIndex) => {
+    switch (op.operator) {
+      case 'q':
+        ctmStack.push([...ctm]);
+        break;
+      case 'Q': {
+        const saved = ctmStack.pop();
+        if (saved) ctm = saved;
+        break;
+      }
+      case 'cm':
+        ctm = multiplyMatrix(ctm, [
+          num(op.operands[0]), num(op.operands[1]), num(op.operands[2]),
+          num(op.operands[3]), num(op.operands[4]), num(op.operands[5]),
+        ]);
+        break;
+      case 're': {
+        // Refuse sheared/rotated CTM — a scalar width rewrite would be wrong.
+        if (Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6) break;
+        const lx = num(op.operands[0]);
+        const ly = num(op.operands[1]);
+        const lw = num(op.operands[2]);
+        const lh = num(op.operands[3]);
+        const p = applyMatrixToPoint(ctm, lx, ly);
+        pending.push({ reOpIndex: opIndex, x: p.x, y: p.y, w: lw * ctm[0], h: lh * ctm[3], scaleX: ctm[0] });
+        break;
+      }
+      case 'm': case 'l': case 'c': case 'v': case 'y': case 'h':
+        sawOtherPath = true;
+        break;
+      default:
+        if (PATH_PAINTERS.has(op.operator)) {
+          // A SINGLE pending rect, closed by a fill painter, with NO other subpath
+          // sharing that painter, is an unambiguous decoration. Multiple rects or a
+          // co-painted m/l/c subpath → leave it alone (resizing/removing it would
+          // touch unrelated geometry).
+          if (pending.length === 1 && !sawOtherPath && FILL_PAINTERS.has(op.operator)) {
+            const r = pending[0];
+            out.push({
+              x: r.x, y: r.y, width: r.w, height: r.h,
+              reOpIndex: r.reOpIndex, widthOperandIndex: 2, painterOpIndex: opIndex,
+              ctmScaleX: r.scaleX, kind: 'rect',
+            });
+          }
+          pending = [];
+          sawOtherPath = false;
+        }
+        break;
+    }
+  });
+
+  return out;
+}
+
+/**
+ * Pick the SINGLE decoration rule that belongs to a text op (origin = baseline,
+ * extent = [origin.x, origin.x + textWidth]). Reuses the export-path classifier so
+ * the baseline-band + ≥50%-overlap thresholds match exactly. Returns null when
+ * there is no match OR more than one candidate (ambiguous → refuse, never guess).
+ */
+export function matchDecorationForText(
+  rules: DecorationRule[],
+  target: { origin: { x: number; y: number }; fontSize: number },
+  textWidth: number,
+): { rule: DecorationRule; kind: 'underline' | 'strikethrough' } | null {
+  const run = { x: target.origin.x, y: target.origin.y, width: textWidth, size: target.fontSize };
+  const hits: { rule: DecorationRule; kind: 'underline' | 'strikethrough' }[] = [];
+  for (const rule of rules) {
+    const kind = classifyRuleAsUnderline(rule, run);
+    if (kind) hits.push({ rule, kind });
+  }
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * New decoration-rule width after a text-length change: scale the old rule width by
+ * the new/old text-width ratio (both measured in the SAME proxy font → path- and
+ * scale-independent). Returns null when the old text width is ~0 (div-by-zero guard).
+ */
+export function adjustedRuleWidth(oldLocalWidth: number, oldTextWidth: number, newTextWidth: number): number | null {
+  if (!(oldTextWidth > 1e-3)) return null;
+  return oldLocalWidth * (newTextWidth / oldTextWidth);
 }
 
 // ── Color helpers ──────────────────────────────────────────────────────────────
@@ -974,7 +1105,8 @@ export function deleteTextAt(
   doc: PDFDocument,
   pageIndex: number,
   point: { x: number; y: number },
-  tolerance = 5
+  tolerance = 5,
+  opts?: { adjustDecorations?: boolean }
 ): boolean {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
@@ -982,8 +1114,30 @@ export function deleteTextAt(
   const delPayload = showOpPayload(found.ops[found.target.opIndex]);
   blankShowOp(found.ops[found.target.opIndex]);
   blankAllNearby(found.ops, found.textOps, found.target, found.target.opIndex, delPayload);
+  // Remove the orphaned underline/strike rule, if exactly one belongs to this text
+  // (matched by its own width — no font metrics needed since we only neutralise it).
+  if (opts?.adjustDecorations) removeDecorationForText(found.ops, found.target);
   writeBack(doc, pageIndex, found);
   return true;
+}
+
+/**
+ * Neutralise (set its fill painter to the no-op `n`) the SINGLE decoration rule that
+ * sits under `target`'s baseline, so deleting underlined text doesn't leave a floating
+ * rule. Matches each rule using its OWN width as the run extent — exact metrics are
+ * unnecessary for removal. Ambiguous (≠1 candidate) → leaves the page unchanged.
+ */
+function removeDecorationForText(ops: CsOp[], target: TextOpInfo): void {
+  const rules = locateDecorationRects(ops);
+  const hits = rules.filter(r =>
+    classifyRuleAsUnderline(r, { x: target.origin.x, y: target.origin.y, width: r.width, size: target.fontSize })
+  );
+  if (hits.length !== 1) return;
+  const painter = ops[hits[0].painterOpIndex];
+  if (painter) {
+    painter.operator = 'n';
+    painter.operands = [];
+  }
 }
 
 // ── Phase B: ToUnicode CMap parsing ───────────────────────────────────────────
@@ -1379,7 +1533,10 @@ export async function replaceTextAt(
   // Canvas-sampled glyph color, used by the Path-3 redraw ONLY when the
   // in-stream fill can't be resolved (scn/Separation/spot) and no style color
   // was given — stops spot-colored text from being recolored black.
-  fallbackColor?: Rgb
+  fallbackColor?: Rgb,
+  // When `adjustDecorations` is set, resize the underline/strikethrough rule that
+  // belongs to the edited text so it tracks the new text length (#text-decoration).
+  opts?: { adjustDecorations?: boolean }
 ): Promise<boolean> {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
@@ -1412,10 +1569,16 @@ export async function replaceTextAt(
   // redraw (Path 3).
   const byteSwapUnsafe = isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
 
+  // Decoration prep (captures the ORIGINAL text width BEFORE Path 1/2 mutate the op);
+  // the returned mutator resizes the matched underline/strike rule, applied just
+  // before each path's writeBack so it rides the SAME atomic SourcePdf.bytes swap.
+  const applyDeco = prepareDecorationResize(doc, pageIndex, found, opts?.adjustDecorations ?? false);
+
   // Path 1: ASCII literal in-stream replacement (only safe for standard,
   // non-embedded fonts where byte code == ASCII).
   if (!byteSwapUnsafe && replaceShowOpInPlace(ops[target.opIndex], newText)) {
     blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
+    if (applyDeco) await applyDeco(newText, ops);
     writeBack(doc, pageIndex, found);
     return true;
   }
@@ -1430,6 +1593,7 @@ export async function replaceTextAt(
     const hexEncoded = encodeWithSubset(newText, reverseMap, bytesPerCode);
     if (hexEncoded !== null && replaceShowOpHex(ops[target.opIndex], hexEncoded)) {
       blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
+      if (applyDeco) await applyDeco(newText, ops);
       writeBack(doc, pageIndex, found);
       return true;
     }
@@ -1488,14 +1652,100 @@ export async function replaceTextAt(
   // Encode through the embedded font so its (WinAnsi) encoding is honoured —
   // handles accented Latin text, not just pure ASCII.
   const showOperand = font.encodeText(newText).toString();
-  const redraw =
-    `\nq\n${fmtNum(cr)} ${fmtNum(cg)} ${fmtNum(cb)} rg\nBT\n` +
-    `/${resName} ${fmtNum(size)} Tf\n` +
-    `1 0 0 1 ${fmtNum(target.origin.x)} ${fmtNum(target.origin.y)} Tm\n` +
-    `${showOperand} Tj\nET\nQ`;
+  const redraw = buildPath3Redraw({
+    resName, size, color: { r: cr, g: cg, b: cb },
+    originX: target.origin.x, originY: target.origin.y, showOperand,
+    charSpacing: target.charSpacing, wordSpacing: target.wordSpacing,
+    hScale: target.hScale, textRise: target.textRise,
+  });
+  if (applyDeco) await applyDeco(newText, ops);
   setPageContent(doc, pageIndex, serializeOps(ops) + redraw);
 
   return true;
+}
+
+/**
+ * Build the Path-3 standard-font redraw block: an isolated `q … Q` text object at
+ * the original baseline. Re-emits captured graphics state (`Tc`/`Tw`/`Tz`/`Ts`) when
+ * present so condensed/spaced/super-subscript text keeps its metrics; omitted state
+ * leaves the page defaults. Pure → jsdom-unit-testable.
+ */
+export function buildPath3Redraw(p: {
+  resName: string;
+  size: number;
+  color: { r: number; g: number; b: number };
+  originX: number;
+  originY: number;
+  showOperand: string;
+  charSpacing?: number;
+  wordSpacing?: number;
+  hScale?: number;
+  textRise?: number;
+}): string {
+  const state =
+    (p.charSpacing !== undefined ? `${fmtNum(p.charSpacing)} Tc\n` : '') +
+    (p.wordSpacing !== undefined ? `${fmtNum(p.wordSpacing)} Tw\n` : '') +
+    (p.hScale !== undefined ? `${fmtNum(p.hScale)} Tz\n` : '') +
+    (p.textRise !== undefined ? `${fmtNum(p.textRise)} Ts\n` : '');
+  return (
+    `\nq\n${fmtNum(p.color.r)} ${fmtNum(p.color.g)} ${fmtNum(p.color.b)} rg\nBT\n` +
+    `/${p.resName} ${fmtNum(p.size)} Tf\n` +
+    state +
+    `1 0 0 1 ${fmtNum(p.originX)} ${fmtNum(p.originY)} Tm\n` +
+    `${p.showOperand} Tj\nET\nQ`
+  );
+}
+
+/**
+ * Capture the inputs needed to resize the decoration rule for an edit, returning an
+ * async mutator (or null when there is nothing to do). The OLD text is decoded NOW,
+ * before Path 1/2 mutate the show op; the proxy font is embedded lazily inside the
+ * mutator so a later-refused edit never embeds an unused font. The mutator rewrites
+ * the matched `re` op's width operand in place — applied just before writeBack.
+ */
+function prepareDecorationResize(
+  doc: PDFDocument,
+  pageIndex: number,
+  found: EditTarget,
+  adjust: boolean,
+): null | ((newText: string, opsArr: CsOp[]) => Promise<void>) {
+  if (!adjust) return null;
+  const { ops, target } = found;
+  if (locateDecorationRects(ops).length === 0) return null;
+  // Decode the original text now (before any path mutates the op) to measure its width.
+  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
+  const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
+  const bytesPerCode = cmapText ? detectCMapBytesPerCode(cmapText) : 2;
+  const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
+  const oldText = decodeShowOpText(ops[target.opIndex], forward, bytesPerCode, byteSwapSafe);
+  if (!oldText) return null;
+
+  return async (newText, opsArr) => {
+    const rules = locateDecorationRects(opsArr);
+    if (rules.length === 0) return;
+    const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
+    const flags = getPageFontDescriptor(doc, pageIndex, target.fontKey)?.flags ?? 0;
+    const proxy = await doc.embedFont(matchStandardFont(baseName, flags));
+    const size = target.fontSize || 12;
+    let oldW: number, newW: number;
+    try {
+      oldW = proxy.widthOfTextAtSize(oldText, size);
+      newW = proxy.widthOfTextAtSize(newText, size);
+    } catch {
+      return; // proxy can't encode the text → leave the decoration unchanged
+    }
+    const match = matchDecorationForText(rules, target, oldW);
+    if (!match) return;
+    const newUserWidth = adjustedRuleWidth(match.rule.width, oldW, newW);
+    if (newUserWidth === null) return;
+    const newLocalWidth = newUserWidth / (match.rule.ctmScaleX || 1);
+    const reOp = opsArr[match.rule.reOpIndex];
+    const tok = reOp?.operands[match.rule.widthOperandIndex];
+    if (reOp?.operator === 're' && tok) {
+      tok.value = newLocalWidth;
+      tok.raw = fmtNum(newLocalWidth);
+    }
+  };
 }
 
 /** Format a number for a content stream (trim noise, no exponent). */

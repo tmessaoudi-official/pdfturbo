@@ -51,4 +51,36 @@ export interface TextOpInfo {
    * Defaults to 0 (fill) when no `Tr` op preceded the show.
    */
   renderMode?: number;
+  /** Active char spacing (`Tc`), word spacing (`Tw`), horizontal scale percent
+   * (`Tz`, 100 = normal) and text rise (`Ts`) when this op was shown. Captured so
+   * a Path-3 standard-font redraw can re-emit them; absent when left at default. */
+  charSpacing?: number;
+  wordSpacing?: number;
+  hScale?: number;
+  textRise?: number;
+}
+
+/**
+ * A thin filled rectangle decoration (underline / strikethrough), located in the
+ * SAME content stream as the text it decorates. Geometry is in PDF user space
+ * (y-up); the width operand lives at `widthOperandIndex` of the `re` op's operands
+ * (LOCAL coords — divide a user-space delta by `ctmScaleX` to write it back). The
+ * stroked-line form (`m … l … S`) carries no width operand and is not represented
+ * here (it is refused — left unchanged). `painterOpIndex` is the fill op that
+ * paints it (neutralised to `n` to remove the decoration on a delete).
+ */
+export interface DecorationRule {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Index of the `re` op in the grouped ops array. */
+  reOpIndex: number;
+  /** Index within the `re` op's operands of the width number token (= 2). */
+  widthOperandIndex: number;
+  /** Index of the fill painter op (`f`/`F`/`f*`/`B`…) that paints this rect. */
+  painterOpIndex: number;
+  /** Horizontal CTM scale (a) applied to the rect; b == c == 0 is enforced. */
+  ctmScaleX: number;
+  kind: 'rect';
 }

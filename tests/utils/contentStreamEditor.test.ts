@@ -28,6 +28,10 @@ import {
   isType3Font,
   isVerticalWritingFont,
   getEditableTextAt,
+  locateDecorationRects,
+  matchDecorationForText,
+  adjustedRuleWidth,
+  buildPath3Redraw,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -1518,5 +1522,188 @@ describe('replaceTextAt — refuses non-editable text (A5)', () => {
     const ok = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Bonjour');
     expect(ok).toBe(true);
     expect(showStrings(await pageContentText(await doc.save()))).toContain('Bonjour');
+  });
+});
+
+// ── Decoration + graphics-state fidelity ────────────────────────────────────────
+// PDF has NO underline TEXT attribute — underline/strikethrough are SEPARATE thin
+// rects/lines whose width is baked into their own geometry. Editing text to a new
+// length must resize the rule that belongs to it (the reported bug: a longer edit
+// left its tail un-underlined). Plus: a Path-3 redraw must re-emit Tc/Tw/Tz/Ts.
+
+/** Widths of every `re` op whose IMMEDIATE next op is a fill painter. */
+function paintedReWidths(content: string): number[] {
+  const innerOps = groupOps(tokenizeContentStream(content));
+  const FILL = new Set(['f', 'F', 'f*', 'b', 'b*', 'B', 'B*']);
+  const out: number[] = [];
+  for (let i = 0; i < innerOps.length - 1; i++) {
+    if (
+      innerOps[i].operator === 're' &&
+      innerOps[i].operands.length >= 4 &&
+      FILL.has(innerOps[i + 1].operator)
+    ) {
+      out.push(innerOps[i].operands[2].value ?? NaN);
+    }
+  }
+  return out;
+}
+
+/** Standard-font "Hello" with a thin filled underline rect just below its baseline. */
+async function makeUnderlinedTextPdf(rectWidth = 28): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+  if (!helvVal) throw new Error('font missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content =
+    `BT /F1 12 Tf 1 0 0 1 50 300 Tm (Hello) Tj ET\n` +
+    `0 0 0 rg 50 297 ${rectWidth} 1.2 re f`;
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+describe('locateDecorationRects', () => {
+  it('finds a filled `re` rect with CTM-transformed user-space geometry', () => {
+    const rules = locateDecorationRects(ops('1 0 0 1 0 0 cm 10 5 100 2 re f'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ x: 10, y: 5, width: 100, height: 2, kind: 'rect' });
+    expect(rules[0].ctmScaleX).toBeCloseTo(1);
+    expect(rules[0].widthOperandIndex).toBe(2);
+  });
+
+  it('applies the CTM scale to width and position', () => {
+    const rules = locateDecorationRects(ops('2 0 0 1 5 0 cm 10 5 100 2 re f'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0].x).toBeCloseTo(25); // 10*2 + 5
+    expect(rules[0].width).toBeCloseTo(200); // 100*2
+    expect(rules[0].ctmScaleX).toBeCloseTo(2);
+  });
+
+  it('REFUSES (omits) a sheared/rotated-CTM rect', () => {
+    expect(locateDecorationRects(ops('1 0.5 0 1 0 0 cm 10 5 100 2 re f'))).toHaveLength(0);
+  });
+
+  it('REFUSES the stroked-line underline form (no width operand)', () => {
+    expect(locateDecorationRects(ops('10 5 m 110 5 l S'))).toHaveLength(0);
+  });
+
+  it('ignores a `re` ended with the no-op painter `n`', () => {
+    expect(locateDecorationRects(ops('10 5 100 2 re n'))).toHaveLength(0);
+  });
+
+  it('REFUSES a rect whose fill painter ALSO closes an m/l subpath (would erase art)', () => {
+    expect(locateDecorationRects(ops('10 10 m 20 20 l 50 297 28 1 re f'))).toHaveLength(0);
+  });
+});
+
+describe('matchDecorationForText', () => {
+  const target = { origin: { x: 50, y: 300 }, fontSize: 12 };
+  it('matches the single underline rule under the text extent', () => {
+    const m = matchDecorationForText(locateDecorationRects(ops('50 297 28 1 re f')), target, 28);
+    expect(m?.kind).toBe('underline');
+    expect(m?.rule.width).toBeCloseTo(28);
+  });
+
+  it('returns null with TWO candidate rules (double underline → refuse)', () => {
+    const rules = locateDecorationRects(ops('50 297 28 1 re f 50 296 28 1 re f'));
+    expect(rules).toHaveLength(2); // both genuinely in the underline band
+    expect(matchDecorationForText(rules, target, 28)).toBeNull();
+  });
+
+  it('returns null when the rule does not x-overlap the text extent', () => {
+    expect(matchDecorationForText(locateDecorationRects(ops('200 297 28 1 re f')), target, 28)).toBeNull();
+  });
+
+  it('classifies a mid-x-height rule as strikethrough', () => {
+    const m = matchDecorationForText(locateDecorationRects(ops('50 304 28 1 re f')), target, 28);
+    expect(m?.kind).toBe('strikethrough');
+  });
+});
+
+describe('adjustedRuleWidth', () => {
+  it('scales the rule width by the new/old text-width ratio', () => {
+    expect(adjustedRuleWidth(28, 28, 56)).toBeCloseTo(56);
+    expect(adjustedRuleWidth(30, 60, 30)).toBeCloseTo(15);
+  });
+  it('returns null when old text width is ~0 (div-by-zero guard)', () => {
+    expect(adjustedRuleWidth(28, 0, 56)).toBeNull();
+  });
+});
+
+describe('buildPath3Redraw graphics-state', () => {
+  const base = {
+    resName: 'F9', size: 12, color: { r: 0, g: 0, b: 0 },
+    originX: 50, originY: 300, showOperand: '<0048>',
+  };
+  it('emits Tc/Tw/Tz/Ts when present', () => {
+    const s = buildPath3Redraw({ ...base, charSpacing: 2, wordSpacing: 1, hScale: 90, textRise: 3 });
+    expect(s).toMatch(/\b2 Tc\b/);
+    expect(s).toMatch(/\b1 Tw\b/);
+    expect(s).toMatch(/\b90 Tz\b/);
+    expect(s).toMatch(/\b3 Ts\b/);
+  });
+  it('omits Tc/Tw/Tz/Ts when absent (default graphics state)', () => {
+    const s = buildPath3Redraw(base);
+    expect(s).not.toMatch(/\bTc\b/);
+    expect(s).not.toMatch(/\bTw\b/);
+    expect(s).not.toMatch(/\bTz\b/);
+    expect(s).not.toMatch(/\bTs\b/);
+  });
+});
+
+describe('locateTextOps graphics-state capture', () => {
+  it('captures Tc/Tw/Tz/Ts onto the show op', () => {
+    const found = locateTextOps(ops('BT /F1 12 Tf 2 Tc 1 Tw 90 Tz 3 Ts 1 0 0 1 50 300 Tm (Hi) Tj ET'));
+    expect(found).toHaveLength(1);
+    expect(found[0].charSpacing).toBeCloseTo(2);
+    expect(found[0].wordSpacing).toBeCloseTo(1);
+    expect(found[0].hScale).toBeCloseTo(90);
+    expect(found[0].textRise).toBeCloseTo(3);
+  });
+});
+
+describe('replaceTextAt — decoration resize (opt-in)', () => {
+  it('extends the underline rule when the new text is LONGER', async () => {
+    const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(ok).toBe(true);
+    const widths = paintedReWidths(await pageContentText(await doc.save()));
+    expect(widths).toHaveLength(1);
+    expect(widths[0]).toBeGreaterThan(40); // grew from 28 toward ~60
+  });
+
+  it('shrinks the underline rule when the new text is SHORTER', async () => {
+    const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
+    await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Hi', 5, undefined, undefined, { adjustDecorations: true });
+    expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBeLessThan(20);
+  });
+
+  it('leaves the rule untouched when adjustDecorations is off (byte-identical)', async () => {
+    const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
+    await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld'); // no opts
+    expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBeCloseTo(28);
+  });
+});
+
+describe('deleteTextAt — decoration removal (opt-in)', () => {
+  it('removes the orphaned underline rule when its text is deleted', async () => {
+    const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
+    expect(deleteTextAt(doc, 0, { x: 52, y: 300 }, 5, { adjustDecorations: true })).toBe(true);
+    expect(paintedReWidths(await pageContentText(await doc.save()))).toHaveLength(0);
+  });
+
+  it('leaves the rule when adjustDecorations is off', async () => {
+    const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
+    deleteTextAt(doc, 0, { x: 52, y: 300 });
+    expect(paintedReWidths(await pageContentText(await doc.save()))).toHaveLength(1);
   });
 });

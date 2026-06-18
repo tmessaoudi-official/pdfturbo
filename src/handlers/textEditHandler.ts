@@ -597,7 +597,9 @@ export class TextEditHandler {
 
       // Delete: user cleared the text field.
       if (newText.trim() === '' && textChanged) {
-        const ok = await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE);
+        const ok = await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE, {
+          adjustDecorations: isEnabled('textDecor'),
+        });
         if (!ok) return;
         const newBytes = await opts.libDoc.save();
         if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
@@ -643,7 +645,9 @@ export class TextEditHandler {
       // in-stream fill can't be resolved (scn/Separation/spot) and no style
       // color was set — keeps spot-colored text from being recolored black.
       const sampledFallback = hexToRgb01(overlayContext.textColor) ?? undefined;
-      const ok = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style, sampledFallback);
+      const ok = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style, sampledFallback, {
+        adjustDecorations: isEnabled('textDecor'),
+      });
       if (!ok) {
         // A1: the true edit refused (e.g. Type3 / invisible / vertical font, or a
         // subset-font XObject). Don't silently drop the user's change — cover the
