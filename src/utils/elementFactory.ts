@@ -31,7 +31,13 @@ export class ElementFactory {
     }
     if (data['type'] === 'signature') {
       const el = new SignatureElement(data['x'], data['y'], pageId, data['data'],
-        { width: data['width'], height: data['height'] });
+        {
+          width: data['width'], height: data['height'],
+          // F-D D1 — optional approval caption (legacy blobs lack these → undefined).
+          signer: data['signer'] as string | undefined,
+          mention: data['mention'] as string | undefined,
+          signedDate: data['signedDate'] as string | undefined,
+        });
       return applyBase(el);
     }
     if (data['type'] === 'shape') {

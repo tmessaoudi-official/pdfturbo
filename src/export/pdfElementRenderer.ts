@@ -1,6 +1,6 @@
 import type { PDFElement, ElementType } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
-import type { SignatureElement } from '../elements/signatureElement';
+import { buildSignatureCaptionLines, type SignatureElement } from '../elements/signatureElement';
 import type { ImageElement } from '../elements/imageElement';
 import type { CodeElement } from '../elements/codeElement';
 import type { HighlightElement } from '../elements/highlightElement';
@@ -144,14 +144,42 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
 
 async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const se = element as SignatureElement;
-  const { pdfDoc, page } = ctx;
+  const { pdfDoc, page, libs: { rgb, StandardFonts } } = ctx;
   const { tp, swapDims, pdfRotVal, anchorForCenter } = hlp;
   const img = await pdfDoc.embedPng(dataUrlToUint8Array(se.data));
-  const ew = swapDims ? element.height : element.width;
-  const eh = swapDims ? element.width : element.height;
-  const corner = tp(element.x, element.y + element.height);
+
+  // F-D D1 — when an approval caption is attached, reserve a bottom band (in the
+  // element's display-height axis) for it; the image fills the rest. No caption →
+  // byte-identical to the pre-D1 path. Read fields directly (the export renderer
+  // treats elements as plain data — no instance methods).
+  const captionLines = buildSignatureCaptionLines(se);
+  const captionBand = captionLines.length ? Math.min(element.height * 0.34, 22) : 0;
+  const imgDispH = element.height - captionBand;
+
+  const ew = swapDims ? imgDispH : element.width;
+  const eh = swapDims ? element.width : imgDispH;
+  const corner = tp(element.x, element.y + imgDispH);
   const a = anchorForCenter(corner.x, corner.y, ew, eh);
   page.drawImage(img, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+
+  if (!captionLines.length) return;
+
+  // Caption text in the bottom band — same baseline/rotation maths as renderText.
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const size = Math.max(6, captionBand * 0.42);
+  const lineHeight = size * 1.2;
+  const pad = Math.min(3, element.width * 0.04);
+  for (let i = 0; i < captionLines.length; i++) {
+    const line = captionLines[i];
+    if (!line) continue;
+    const baseY = element.y + imgDispH + size * 0.9 + i * lineHeight;
+    const raw = tp(element.x + pad, baseY);
+    const at = pdfRotVal ? anchorForCenter(raw.x, raw.y, 0, 0) : raw;
+    page.drawText(line, {
+      x: at.x, y: at.y, size, font, color: rgb(0.07, 0.07, 0.07),
+      maxWidth: element.width - pad * 2, ...(pdfRotVal ? { rotate: pdfRotVal } : {}),
+    });
+  }
 }
 
 async function renderImage(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
