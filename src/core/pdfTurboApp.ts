@@ -216,6 +216,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   setOverlayPointerEvents(isSelect: boolean): void { this._formFieldOverlay.setPointerEvents(isSelect); this._textLayerManager.setPointerEvents(isSelect); }
   hidePlacementGhost(): void { this._placementManager.hidePlacementGhost(); }
   clearToast(): void { this.uiController.clearToast(); }
+  setCanvasTouchAction(value: 'none' | 'pan-x pan-y'): void { this.ui.canvas.style.touchAction = value; }
 
   // ── IFindBarContext accessors ─────────────────────────────────────────────
   get searchManager() { return this._searchManager; }

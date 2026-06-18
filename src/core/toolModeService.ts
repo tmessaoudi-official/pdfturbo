@@ -12,6 +12,12 @@ export interface IToolModeContext {
   openSignatureModal(): void;
   hidePlacementGhost(): void;
   clearToast(): void;
+  /**
+   * F-A (mobile): set the canvas `touch-action`. `'none'` lets the canvas own a
+   * single-finger drag (draw/place); `'pan-x pan-y'` returns the gesture to the
+   * browser for native scroll.
+   */
+  setCanvasTouchAction(value: 'none' | 'pan-x pan-y'): void;
 }
 
 const MODE_HINT_KEYS: Partial<Record<ToolMode, string>> = {
@@ -34,6 +40,19 @@ const MODE_HINT_KEYS: Partial<Record<ToolMode, string>> = {
 
 const PLACEMENT_MODES: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature', 'addCode'];
 
+/**
+ * F-A (mobile drag/draw): true when the active tool needs the canvas to OWN a
+ * single-finger drag gesture — every draw tool (shapes/highlight/redaction/ink/
+ * eraser, all `draw*`), the drag-to-place tools (PLACEMENT_MODES), and crop. For
+ * these the canvas sets `touch-action:none` so the browser does not steal the drag
+ * for native scroll (the root cause of "PDF scroll takes over / can only place").
+ * Tap-only tools (select/editText/fillBucket) keep native scroll. This set mirrors
+ * the engagement guard in DrawingHandler.handlePointerDown.
+ */
+export function canvasCapturesGesture(mode: ToolMode): boolean {
+  return mode.startsWith('draw') || PLACEMENT_MODES.includes(mode) || mode === 'crop';
+}
+
 export interface SetModeOptions {
   /**
    * When true, entering `addSignature` mode does NOT (re)open the signature modal.
@@ -55,6 +74,7 @@ export class ToolModeService {
     ctx.updateModeButtons(mode);
     ctx.updateFormattingToolbar();
     ctx.setOverlayPointerEvents(mode === 'select');
+    ctx.setCanvasTouchAction(canvasCapturesGesture(mode) ? 'none' : 'pan-x pan-y');
     if (mode === 'addSignature' && !opts?.suppressSignatureModal) ctx.openSignatureModal();
     if (!PLACEMENT_MODES.includes(mode)) ctx.hidePlacementGhost();
     const hintKey = MODE_HINT_KEYS[mode];

@@ -69,6 +69,10 @@ export class DrawingHandler {
     this._activeDrawPointerId = e.pointerId;
     this._drawStart           = { x, y };
     this._drawPoints          = [{ x, y }];
+    // F-A (mobile): keep pointermove/up flowing to this handler even if the finger
+    // strays off the canvas mid-drag (mirrors InkLayerHandler). Wrapped because
+    // jsdom / detached elements may not implement setPointerCapture.
+    try { this.app.ui.canvas.setPointerCapture(e.pointerId); } catch { /* unsupported / pointer already released */ }
 
     this._previewSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this._previewSvg.id = 'drawPreview';

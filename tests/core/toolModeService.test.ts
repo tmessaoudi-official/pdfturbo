@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ToolModeService, type IToolModeContext } from '../../src/core/toolModeService';
+import { ToolModeService, canvasCapturesGesture, type IToolModeContext } from '../../src/core/toolModeService';
 import type { ToolMode } from '../../src/core/pdfTurboApp';
 
 vi.mock('../../src/utils/i18n', () => ({ t: (key: string) => key }));
@@ -16,6 +16,7 @@ function makeCtx(initialMode: ToolMode = 'select'): IToolModeContext {
     openSignatureModal:      vi.fn(),
     hidePlacementGhost:      vi.fn(),
     clearToast:              vi.fn(),
+    setCanvasTouchAction:    vi.fn(),
   };
   return ctx;
 }
@@ -128,6 +129,58 @@ describe('ToolModeService.setMode', () => {
     expect(ctx.clearToast).toHaveBeenCalled();
     expect(ctx.reportError.info).not.toHaveBeenCalled();
   });
+
+  // F-A (mobile drag/draw): while a canvas-drag tool is active the canvas must own
+  // the touch gesture (touch-action:none) so a single-finger drag draws instead of
+  // the browser stealing it for native scroll. select/idle keeps native scroll.
+  it('sets canvas touch-action to "none" for a canvas-drag tool', () => {
+    const ctx = makeCtx();
+    const mgr = new ToolModeService(ctx);
+    mgr.setMode('drawRect');
+    expect(ctx.setCanvasTouchAction).toHaveBeenCalledWith('none');
+  });
+
+  it('restores canvas touch-action to "pan-x pan-y" in select mode', () => {
+    const ctx = makeCtx('drawRect');
+    const mgr = new ToolModeService(ctx);
+    mgr.setMode('select');
+    expect(ctx.setCanvasTouchAction).toHaveBeenCalledWith('pan-x pan-y');
+  });
+
+  it('keeps native scroll (pan-x pan-y) for tap-only tools (editText)', () => {
+    const ctx = makeCtx();
+    const mgr = new ToolModeService(ctx);
+    mgr.setMode('editText');
+    expect(ctx.setCanvasTouchAction).toHaveBeenCalledWith('pan-x pan-y');
+  });
+
+  it('captures the gesture (none) for drag-to-place tools (addText)', () => {
+    const ctx = makeCtx();
+    const mgr = new ToolModeService(ctx);
+    mgr.setMode('addText');
+    expect(ctx.setCanvasTouchAction).toHaveBeenCalledWith('none');
+  });
+});
+
+describe('canvasCapturesGesture', () => {
+  const capture: ToolMode[] = [
+    'drawArrow', 'drawRect', 'drawEllipse', 'drawFreehand', 'drawHighlight',
+    'drawRedaction', 'drawErase', 'crop',
+    'addText', 'addImage', 'addComment', 'addSignature', 'addCode',
+  ];
+  const passthrough: ToolMode[] = ['select', 'editText', 'fillBucket'];
+
+  for (const mode of capture) {
+    it(`captures the canvas gesture for "${mode}"`, () => {
+      expect(canvasCapturesGesture(mode)).toBe(true);
+    });
+  }
+
+  for (const mode of passthrough) {
+    it(`lets native scroll through for "${mode}"`, () => {
+      expect(canvasCapturesGesture(mode)).toBe(false);
+    });
+  }
 });
 
 describe('ToolModeService.isShapeMode', () => {

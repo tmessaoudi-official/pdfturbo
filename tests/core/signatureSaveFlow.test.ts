@@ -51,6 +51,7 @@ function wire() {
     openSignatureModal: () => signatureManager.openModal(),
     hidePlacementGhost: vi.fn(),
     clearToast: vi.fn(),
+    setCanvasTouchAction: vi.fn(),
   } satisfies IToolModeContext;
 
   const toolModeService = new ToolModeService(toolMode);
