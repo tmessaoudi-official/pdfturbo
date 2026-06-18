@@ -24,6 +24,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
   // ── Sign modal ─────────────────────────────────────────────────
   app.ui.cancelSignModal.addEventListener('click', () => app.closeSignModal());
   app.ui.runSignModal.addEventListener('click', () => void app.signPdf());
+  app.ui.signPickRect.addEventListener('click', () => app.beginSignRectPick()); // F-C C2
   app.ui.signModal.addEventListener('click', (e) => {
     if (e.target === app.ui.signModal) app.closeSignModal();
   });

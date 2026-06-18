@@ -58,4 +58,6 @@ export interface IAppContext {
   _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<boolean>;
   /** Crop a page (or every page with applyToAll) from a drawn display-space rect; null clears. Undoable. */
   cropPage(pageId: string, displayRect: PageCrop | null, applyToAll: boolean): Promise<void>;
+  /** F-C C2: "Pick on page" for the e-sign box — a drawn display rect (or null) → prefill + reopen the sign modal. */
+  onSignRectPicked(displayRect: { x: number; y: number; width: number; height: number } | null): Promise<void>;
 }

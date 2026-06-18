@@ -184,6 +184,7 @@ export interface AppDOMRefs {
   signSigRow:         HTMLElement;
   signSigImg:         HTMLImageElement;
   signSigRemove:      HTMLButtonElement;
+  signPickRect:       HTMLButtonElement;
   codeModal:        HTMLElement;
   codeFormatSelect: HTMLSelectElement;
   codeDataInput:    HTMLTextAreaElement;
@@ -394,6 +395,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       signSigRow:         document.getElementById('signSigRow')         as HTMLElement,
       signSigImg:         document.getElementById('signSigImg')         as HTMLImageElement,
       signSigRemove:      document.getElementById('signSigRemove')      as HTMLButtonElement,
+      signPickRect:       document.getElementById('signPickRect')       as HTMLButtonElement,
       codeModal:        document.getElementById('codeModal')        as HTMLElement,
       codeFormatSelect: document.getElementById('codeFormatSelect') as HTMLSelectElement,
       codeDataInput:    document.getElementById('codeDataInput')    as HTMLTextAreaElement,

@@ -19,7 +19,7 @@ import { parseXfdf } from '../utils/xfdf';
 import { xfdfAnnotToElement, pageHeightPt } from '../export/xfdfMapping';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
-import { DocumentModel, type SourcePdf, type PageCrop } from './documentModel';
+import { DocumentModel, type SourcePdf, type PageCrop, type DocumentPage } from './documentModel';
 import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
@@ -50,6 +50,7 @@ import { PageNavigationController } from './pageNavigationController';
 import { CleanupService } from './cleanupService';
 import { PanelFocusTrapService } from './panelFocusTrapService';
 import { trapFocus } from '../utils/focusTrap';
+import { displayRectToUserSpaceRect } from '../utils/geometry';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { BatesPanel } from '../ui/batesPanel';
@@ -698,6 +699,64 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.ui.signCertInput.value = '';
     this.ui.signGenPassword.value = '';
   }
+  /**
+   * F-C C2 — "Pick on page": hide the sign modal (preserving its field/credential
+   * state — NOT closeSignModal) and enter `signRect` so the user can drag the
+   * appearance box on the current page.
+   */
+  beginSignRectPick(): void {
+    this._focusTrapService.getCleanup()?.();
+    this._focusTrapService.setCleanup(null);
+    this.ui.signModal.classList.remove('active');
+    this.setMode('signRect');
+  }
+
+  /**
+   * F-C C2 — receive the drawn display-space rect: map it to PDF user space, prefill
+   * the sign-modal X/Y/W/H + page, then reopen the modal. A degenerate/cancelled pick
+   * (null) reopens the modal unchanged so the user is never stranded in `signRect`.
+   */
+  async onSignRectPicked(displayRect: { x: number; y: number; width: number; height: number } | null): Promise<void> {
+    this.setMode('select');
+    const page = this.documentModel.currentPage;
+    if (displayRect && page) {
+      const geom = await this._pageGeomForSign(page);
+      if (geom) {
+        const totalRot = (((geom.srcRot + (page.rotation ?? 0)) % 360) + 360) % 360;
+        const us = displayRectToUserSpaceRect(displayRect, geom.W, geom.H, totalRot);
+        if (us.width >= 1 && us.height >= 1) {
+          this.ui.signX.value = String(Math.round(us.x));
+          this.ui.signY.value = String(Math.round(us.y));
+          this.ui.signW.value = String(Math.round(us.width));
+          this.ui.signH.value = String(Math.round(us.height));
+          this.ui.signPage.value = String(this.documentModel.currentPageIndex + 1);
+        }
+      }
+    }
+    this._reopenSignModal();
+  }
+
+  /** Re-show the sign modal after a pick without resetting fields (unlike openSignModal). */
+  private _reopenSignModal(): void {
+    this._refreshSignSignaturePreview();
+    this.ui.signModal.classList.add('active');
+    this._focusTrapService.getCleanup()?.();
+    this._focusTrapService.setCleanup(trapFocus(
+      this.ui.signModal.querySelector('.code-modal-content') as HTMLElement,
+      this.ui.signBtn,
+    ));
+  }
+
+  /** Unrotated point dimensions + source rotation of a page (for the sign-rect transform). */
+  private async _pageGeomForSign(p: DocumentPage): Promise<{ W: number; H: number; srcRot: number } | null> {
+    if (p.sourcePdfId === 'blank') return { W: p.blankWidth ?? 595, H: p.blankHeight ?? 842, srcRot: 0 };
+    const src = this.documentModel.sourcePdfs.get(p.sourcePdfId);
+    if (!src) return null;
+    const pg = await src.doc.getPage(p.sourcePageNum);
+    const vp = pg.getViewport({ scale: 1, rotation: 0 });
+    return { W: vp.width, H: vp.height, srcRot: (pg.rotate as number) ?? 0 };
+  }
+
   /** Delegates the entire sign-modal flow to the handler (M2 #19). */
   signPdf(): Promise<void> { return this._signingHandler.runSignFlow(); }
 

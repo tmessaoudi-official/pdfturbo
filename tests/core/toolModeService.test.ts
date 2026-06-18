@@ -165,7 +165,7 @@ describe('ToolModeService.setMode', () => {
 describe('canvasCapturesGesture', () => {
   const capture: ToolMode[] = [
     'drawArrow', 'drawRect', 'drawEllipse', 'drawFreehand', 'drawHighlight',
-    'drawRedaction', 'drawErase', 'crop',
+    'drawRedaction', 'drawErase', 'crop', 'signRect',
     'addText', 'addImage', 'addComment', 'addSignature', 'addCode',
   ];
   const passthrough: ToolMode[] = ['select', 'editText', 'fillBucket'];

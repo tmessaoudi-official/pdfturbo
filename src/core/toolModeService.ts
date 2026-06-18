@@ -36,6 +36,7 @@ const MODE_HINT_KEYS: Partial<Record<ToolMode, string>> = {
   editText:      'toast.modeHint.editText',
   fillBucket:    'toast.modeHint.fillBucket',
   crop:          'toast.modeHint.crop',
+  signRect:      'toast.modeHint.signRect',
 };
 
 const PLACEMENT_MODES: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature', 'addCode'];
@@ -50,7 +51,7 @@ const PLACEMENT_MODES: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSi
  * the engagement guard in DrawingHandler.handlePointerDown.
  */
 export function canvasCapturesGesture(mode: ToolMode): boolean {
-  return mode.startsWith('draw') || PLACEMENT_MODES.includes(mode) || mode === 'crop';
+  return mode.startsWith('draw') || PLACEMENT_MODES.includes(mode) || mode === 'crop' || mode === 'signRect';
 }
 
 export interface SetModeOptions {

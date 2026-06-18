@@ -55,7 +55,7 @@ export class DrawingHandler {
       return;
     }
 
-    if (!this.app.mode.startsWith('draw') && this.app.mode !== 'addText' && this.app.mode !== 'addImage' && this.app.mode !== 'addComment' && this.app.mode !== 'addSignature' && this.app.mode !== 'addCode' && this.app.mode !== 'crop') return;
+    if (!this.app.mode.startsWith('draw') && this.app.mode !== 'addText' && this.app.mode !== 'addImage' && this.app.mode !== 'addComment' && this.app.mode !== 'addSignature' && this.app.mode !== 'addCode' && this.app.mode !== 'crop' && this.app.mode !== 'signRect') return;
     if (this.app.mode === 'drawFreehand') return; // handled by InkLayerHandler
     if (this._previewSvg) { this._previewSvg.remove(); this._previewSvg = null; }
 
@@ -254,6 +254,19 @@ export class DrawingHandler {
       const applyAll = (document.getElementById('cropApplyAll') as HTMLInputElement | null)?.checked ?? false;
       void this.app.cropPage(pageId, { x, y, width: w, height: h }, applyAll);
       this.app.setMode('select');
+      return;
+
+    } else if (this.app.mode === 'signRect') {
+      // F-C C2 — "Pick on page" for the e-signature box: hand the drawn display-space
+      // rect to the app, which maps it to PDF user space, prefills the modal, and
+      // reopens it. A degenerate drag (null/tiny) still reopens the modal unchanged.
+      const x = Math.min(start.x, endX);
+      const y = Math.min(start.y, endY);
+      const w = Math.abs(endX - start.x);
+      const h = Math.abs(endY - start.y);
+      this._drawStart  = null;
+      this._drawPoints = [];
+      void this.app.onSignRectPicked(w >= 3 && h >= 3 ? { x, y, width: w, height: h } : null);
       return;
 
     } else if (this.app.mode === 'addText' || this.app.mode === 'addImage' || this.app.mode === 'addComment' || this.app.mode === 'addSignature' || this.app.mode === 'addCode') {
@@ -481,6 +494,18 @@ export class DrawingHandler {
       el.setAttribute('height', String(Math.abs(syC - sy0)));
       el.setAttribute('fill', 'rgba(13,148,136,0.08)');
       el.setAttribute('stroke', '#0d9488');
+      el.setAttribute('stroke-width', '1.5');
+      el.setAttribute('stroke-dasharray', '6,3');
+      this._previewSvg.appendChild(el);
+
+    } else if (this.app.mode === 'signRect') {
+      const el = document.createElementNS(ns, 'rect');
+      el.setAttribute('x', String(Math.min(sx0, sxC)));
+      el.setAttribute('y', String(Math.min(sy0, syC)));
+      el.setAttribute('width', String(Math.abs(sxC - sx0)));
+      el.setAttribute('height', String(Math.abs(syC - sy0)));
+      el.setAttribute('fill', 'rgba(147,51,234,0.07)');
+      el.setAttribute('stroke', '#9333ea');
       el.setAttribute('stroke-width', '1.5');
       el.setAttribute('stroke-dasharray', '6,3');
       this._previewSvg.appendChild(el);

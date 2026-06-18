@@ -324,6 +324,7 @@
       "reasonLabel": "Reason (optional)",
       "locationLabel": "Location (optional)",
       "nameLabel": "Signer name (optional, defaults to certificate name)",
+      "pickOnPage": "Pick on page",
       "signatureImageLabel": "Your drawn signature (shown in the signature box)",
       "removeSignature": "Remove",
       "privacyNote": "Your certificate never leaves your browser. The signature covers your current edits and annotations.",
@@ -436,7 +437,8 @@
       "crop": "Crop tool — drag to mark the area to keep. Press Esc to exit.",
       "drawErase": "Eraser — swipe to erase elements. Press Esc to exit.",
       "editText": "Edit Text — click on any word to overlay and edit it. Press Esc to exit.",
-      "fillBucket": "Fill bucket — click a shape or stroke to fill it with color. Press Esc to exit."
+      "fillBucket": "Fill bucket — click a shape or stroke to fill it with color. Press Esc to exit.",
+      "signRect": "Drag a box where the signature should appear. Press Esc to cancel."
     },
     "copied": "Copied",
     "pastedUndo": "Pasted — Ctrl+Z to undo",

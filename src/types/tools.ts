@@ -14,4 +14,5 @@ export type ToolMode =
   | 'drawErase'
   | 'editText'
   | 'fillBucket'
-  | 'crop';
+  | 'crop'
+  | 'signRect';

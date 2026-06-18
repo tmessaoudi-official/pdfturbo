@@ -324,6 +324,7 @@
       "reasonLabel": "Motif (facultatif)",
       "locationLabel": "Lieu (facultatif)",
       "nameLabel": "Nom du signataire (facultatif, par défaut le nom du certificat)",
+      "pickOnPage": "Choisir sur la page",
       "signatureImageLabel": "Votre signature dessinée (affichée dans le cadre de signature)",
       "removeSignature": "Retirer",
       "privacyNote": "Votre certificat ne quitte jamais votre navigateur. La signature couvre vos modifications et annotations actuelles.",
@@ -436,7 +437,8 @@
       "drawErase": "Gomme — balayez pour effacer des éléments. Appuyez sur Échap pour quitter.",
       "editText": "Éditer texte — cliquez sur un mot pour le superposer et l'éditer. Appuyez sur Échap pour quitter.",
       "addCode": "Outil code — faites glisser pour définir la taille et placer. Appuyez sur Échap pour annuler.",
-      "fillBucket": "Seau de remplissage — cliquez sur une forme ou un trait pour le remplir. Appuyez sur Échap pour quitter."
+      "fillBucket": "Seau de remplissage — cliquez sur une forme ou un trait pour le remplir. Appuyez sur Échap pour quitter.",
+      "signRect": "Tracez un cadre à l'emplacement de la signature. Appuyez sur Échap pour annuler."
     },
     "copied": "Copié",
     "pastedUndo": "Collé — Ctrl+Z pour annuler",

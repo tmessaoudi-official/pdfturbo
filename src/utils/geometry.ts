@@ -109,6 +109,22 @@ export function contentCropToPdfCropBox(
   };
 }
 
+/**
+ * F-C C2 — map a rect drawn in editor DISPLAY space (rotated, y-down, top-left)
+ * to a signature appearance rect in PDF USER space (y-up, bottom-left origin),
+ * clamped to the page. Composes {@link redactionRectToContent} (display→unrotated
+ * content, y-down) + {@link clampContentRect} + a y-flip into user space — the same
+ * content space the e-signer validates against (`page.getSize()`, origin 0).
+ * `W`/`H` are the UNROTATED page point dimensions; `totalRot = (page.rotate + userRotation) % 360`.
+ */
+export function displayRectToUserSpaceRect(
+  rect: { x: number; y: number; width: number; height: number },
+  W: number, H: number, totalRot: number,
+): { x: number; y: number; width: number; height: number } {
+  const c = clampContentRect(redactionRectToContent(rect, W, H, totalRot), W, H);
+  return { x: c.x, y: H - (c.y + c.height), width: c.width, height: c.height };
+}
+
 /** Clamp a content-space rect into the `[0,0,W,H]` content box (keeps width/height ≥ 0). */
 export function clampContentRect(
   rect: { x: number; y: number; width: number; height: number },
