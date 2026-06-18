@@ -2,7 +2,7 @@ import type { ToolMode } from '../core/pdfTurboApp';
 import type { CodeElement } from '../elements/codeElement';
 import type { PDFElement } from '../elements/annotationElement';
 import { MoveResizeCmd, type HistoryManager } from '../core/historyManager';
-import { generateCodeDataUrl, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
+import { generateCodeDataUrl, getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
 import type { AppDOMRefs } from './uiController';
 import { trapFocus } from '../utils/focusTrap';
 import { t } from '../utils/i18n';
@@ -148,6 +148,12 @@ export class CodeModalManager {
     ui.qrStyleSection.style.display = isQr ? '' : 'none';
     ui.qrStyleControls.style.display = (isQr && ui.qrStyledChk.checked) ? '' : 'none';
     ui.barcodeShowTextRow.style.display = is2D ? 'none' : '';
+    // I1: per-format input hint. syncVisibility is the SOLE runtime owner of the
+    // content placeholder (the static data-i18n-placeholder binding was removed
+    // from index.html so it doesn't fight this). A concrete sample (URL / digit
+    // string) is a correctly-untranslated literal; generic 2D codes carry '' and
+    // fall back to the localized "any text" hint.
+    ui.codeDataInput.placeholder = getCodeFormat(fmt)?.placeholder || t('modal.code.anyTextPlaceholder');
   }
 
   triggerPreview(delay = 400): void {

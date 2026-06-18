@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CodeModalManager, type ICodeModalContext } from '../../src/ui/codeModalManager';
+import { getCodeFormat, type CodeFormat } from '../../src/utils/codeGenerator';
 import { HistoryManager } from '../../src/core/historyManager';
 import type { AppDOMRefs } from '../../src/ui/uiController';
 import type { ToolMode } from '../../src/core/pdfTurboApp';
@@ -275,6 +276,30 @@ describe('CodeModalManager.syncVisibility', () => {
     ui.codeFormatSelect.value = 'qrcode';
     mgr.syncVisibility();
     expect(ui.barcodeShowTextRow.style.display).toBe('none');
+  });
+
+  // ── I1: per-format input placeholder (wire the previously-dead field) ──────
+  const fmt = (id: string, placeholder: string): CodeFormat =>
+    ({ id, label: id, category: '2d', bcid: id, squareOutput: true, placeholder });
+
+  it('sets codeDataInput placeholder from the selected format', () => {
+    const ui = makeUI();
+    const ctx = makeCtx(ui);
+    const mgr = new CodeModalManager(ctx);
+    vi.mocked(getCodeFormat).mockReturnValueOnce(fmt('qrcode', 'https://example.com'));
+    ui.codeFormatSelect.value = 'qrcode';
+    mgr.syncVisibility();
+    expect(ui.codeDataInput.placeholder).toBe('https://example.com');
+  });
+
+  it('falls back to the generic anyText placeholder when the format has none', () => {
+    const ui = makeUI();
+    const ctx = makeCtx(ui);
+    const mgr = new CodeModalManager(ctx);
+    vi.mocked(getCodeFormat).mockReturnValueOnce(fmt('datamatrix', ''));
+    ui.codeFormatSelect.value = 'datamatrix';
+    mgr.syncVisibility();
+    expect(ui.codeDataInput.placeholder).toBe('modal.code.anyTextPlaceholder');
   });
 });
 

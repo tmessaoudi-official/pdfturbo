@@ -27,9 +27,9 @@ Status: ✅ FIXED this session · 🔲 open · ☑ verified-resolved-in-code (no
 ### Bugs / silent failures (raw/bugs.md, raw/gaps.md)
 | # | Sev | Finding | Location |
 |---|-----|---------|----------|
-| B1 | P2 | Form-fill value silently dropped on dropdown/radio/listbox **option mismatch** — no toast. | `export/exportService.ts:85-88` |
+| B1 | ~~P2~~ ✅ **FIXED 2026-06-18 (`6f1b350`)** | Form-fill mismatch now surfaced via `toast.formValueDropped`. Root-cause refined: **radio/listbox** `.select(bad)` throw (real silent drop, now reported); **dropdown** is lenient and silently *accepts* a non-option (value survives → nothing dropped) — so the original "dropdown" claim was a partial false positive. `applyFormFieldValue`→`boolean`; `_assemblePdfDoc` collects + warns once. Guard: `tests/export/formFieldFill.test.ts` (B1). | `export/exportService.ts` |
 | B2 | P2 | True-edit: a word spanning **multiple show-ops** edits only the clicked fragment (clustered-overlay fallback covers the whole word). | `utils/contentStreamEditor.ts:918` (documented ceiling) |
-| B3 | P2 | `ElementFactory.fromJSON` sets `el.id = data.id` unconditionally → a legacy/corrupt blob missing `id` poisons `syncIdCounter` (`NaN`). Restore-path robustness. | `elementFactory.ts:17-19,79` |
+| B3 | ~~P2~~ ✅ **FIXED 2026-06-18 (`6f1b350`)** | `fromJSON.applyBase` now overrides `el.id` only for a finite-number `data.id`; missing/NaN id keeps the constructor-assigned id → no `syncIdCounter` NaN poison. `id:0` honoured. Guard: `tests/utils/elementFactory.test.ts` (id guard). | `elementFactory.ts` |
 | B4 | P3 | Form field name-not-found = silent skip (intended cross-source resilience, but a renamed-field fill is a silent no-op). | `export/exportService.ts:64-66` |
 | B5 | P3 | `signature` and `code` elements both serialize payload under JSON key `data` (disambiguated by `type` today; latent foot-gun). | `elementFactory.ts:33,68` |
 
@@ -47,8 +47,8 @@ Status: ✅ FIXED this session · 🔲 open · ☑ verified-resolved-in-code (no
 ### i18n (raw/i18n.md) — headline: **key parity perfect (488/488/488), Arabic natively translated, routing clean**
 | # | Sev | Finding | Location |
 |---|-----|---------|----------|
-| I1 | P3 | `codeGenerator.ts` barcode `placeholder:'Any text…'` — English literal, but the field is **never consumed** (dead data). Remove or i18n it before any future panel wires it. | `codeGenerator.ts:16-18` |
-| I2 | P3 | `toast.clickToPlaceImage` defined in all 3 locales but **referenced nowhere** (locale clutter). | `locales/*.json:387` |
+| I1 | ~~P3~~ ✅ **FIXED 2026-06-18 (batch i)** | WIRED rather than removed: the placeholder field was a never-wired latent feature (the textarea showed a misleading `https://example.com` for every format via a static `data-i18n-placeholder`). Now `CodeModalManager.syncVisibility` sets `codeDataInput.placeholder` per-format (`fmt.placeholder \|\| t('modal.code.anyTextPlaceholder')`); the 3 generic 2D literals → `''`; binding removed from index.html; key `contentPlaceholder`→`anyTextPlaceholder`. Guard: `tests/ui/codeModalManager.test.ts` (placeholder). | `codeGenerator.ts`, `codeModalManager.ts` |
+| I2 | ~~P3~~ ✅ **FIXED 2026-06-18 (batch i)** | Dead `toast.clickToPlaceImage` removed from all 3 locales. | `locales/*.json` |
 
 ### Fidelity gaps (raw/fidelity.md, raw/00-baseline.md) — reachable vs structural
 | # | Sev | Finding | Class |

@@ -8,14 +8,20 @@ export interface CodeFormat {
   bcid: string;
   /** 2D codes with square output (QR, DataMatrix, Aztec) — height is locked to width. */
   squareOutput: boolean;
+  /**
+   * Sample hint shown in the code-content input (wired by CodeModalManager.
+   * syncVisibility, I1). A concrete example (URL / digit string) is a literal,
+   * correctly-untranslated sample; `''` means "no specific sample" and falls
+   * back to the localized `modal.code.anyTextPlaceholder` hint.
+   */
   placeholder: string;
 }
 
 export const CODE_FORMATS: CodeFormat[] = [
   { id: 'qrcode',     label: 'QR Code',     category: '2d', bcid: 'qrcode',     squareOutput: true,  placeholder: 'https://example.com' },
-  { id: 'datamatrix', label: 'Data Matrix',  category: '2d', bcid: 'datamatrix', squareOutput: true,  placeholder: 'Any text…' },
-  { id: 'pdf417',     label: 'PDF417',       category: '2d', bcid: 'pdf417',     squareOutput: false, placeholder: 'Any text…' },
-  { id: 'azteccode',  label: 'Aztec Code',   category: '2d', bcid: 'azteccode',  squareOutput: true,  placeholder: 'Any text…' },
+  { id: 'datamatrix', label: 'Data Matrix',  category: '2d', bcid: 'datamatrix', squareOutput: true,  placeholder: '' },
+  { id: 'pdf417',     label: 'PDF417',       category: '2d', bcid: 'pdf417',     squareOutput: false, placeholder: '' },
+  { id: 'azteccode',  label: 'Aztec Code',   category: '2d', bcid: 'azteccode',  squareOutput: true,  placeholder: '' },
   { id: 'code128',    label: 'Code 128',     category: '1d', bcid: 'code128',    squareOutput: false, placeholder: 'ABC-123' },
   { id: 'code39',     label: 'Code 39',      category: '1d', bcid: 'code39',     squareOutput: false, placeholder: 'CODE39' },
   { id: 'ean13',      label: 'EAN-13',       category: '1d', bcid: 'ean13',      squareOutput: false, placeholder: '590123412345' },
