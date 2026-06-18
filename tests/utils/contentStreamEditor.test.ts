@@ -1601,6 +1601,12 @@ describe('locateDecorationRects', () => {
   it('REFUSES a rect whose fill painter ALSO closes an m/l subpath (would erase art)', () => {
     expect(locateDecorationRects(ops('10 10 m 20 20 l 50 297 28 1 re f'))).toHaveLength(0);
   });
+
+  it('detects a `cm`-translated rect (the q/cm/re/f structure pdf-lib & Word emit)', () => {
+    const rules = locateDecorationRects(ops('q 1 0 0 1 50 297 cm 0 0 28 1.2 re f Q'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ x: 50, y: 297, width: 28, ctmScaleX: 1 });
+  });
 });
 
 describe('matchDecorationForText', () => {
@@ -1691,6 +1697,73 @@ describe('replaceTextAt — decoration resize (opt-in)', () => {
     const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
     await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld'); // no opts
     expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBeCloseTo(28);
+  });
+});
+
+/** "Hello" with the underline drawn the way a STROKED line would be (m/l/S). */
+async function makeLineUnderlinedTextPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+  if (!helvVal) throw new Error('font missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content =
+    `BT /F1 12 Tf 1 0 0 1 50 300 Tm (Hello) Tj ET\n` +
+    `0 0 0 RG 1 w 50 297 m 78 297 l S`;
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+/** "Hello" with the underline as a q/cm-wrapped `re f` (pdf-lib drawRectangle shape). */
+async function makeCmRectUnderlinedTextPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+  if (!helvVal) throw new Error('font missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content =
+    `BT /F1 12 Tf 1 0 0 1 50 300 Tm (Hello) Tj ET\n` +
+    `q 0 0 0 rg 1 0 0 1 50 297 cm 0 0 28 1.2 re f Q`;
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+describe('replaceTextAt — decoration on realistic / refused structures', () => {
+  it('edits the text but LEAVES a stroked-line underline untouched (graceful refuse)', async () => {
+    const doc = await PDFDocument.load(await makeLineUnderlinedTextPdf());
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    expect(showStrings(content)).toContain('HelloWorld'); // text edited
+    const lineOps = groupOps(tokenizeContentStream(content)).map(o => o.operator);
+    expect(lineOps).toContain('l'); // the stroked line survives intact
+    expect(lineOps).toContain('S');
+    expect(content).toContain('78 297 l'); // its geometry is unchanged (not corrupted)
+  });
+
+  it('resizes a q/cm-wrapped `re f` underline (real authoring-tool structure)', async () => {
+    const doc = await PDFDocument.load(await makeCmRectUnderlinedTextPdf());
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(ok).toBe(true);
+    expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBeGreaterThan(40);
   });
 });
 
