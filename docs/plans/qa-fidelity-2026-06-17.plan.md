@@ -19,6 +19,8 @@ structural ones.
 - [2026-06-18] AGREED: QA sweep COMPLETE + pushed (`bbd919c`); next work queue = Option 1 (A1 modal focus-traps + A2 crop `P` shortcut) → Option 2 (N2 lattice-CSV empty columns) → Option 3 (D1 DOCX spot-color). TDD each; push stays MANUAL. Anchors in "NEXT WORK QUEUE" below.
 - [2026-06-18] DONE (autonomous, TDD, UNPUSHED): Option 1 `a2e1483` (A1 focus-trap 4 display modals via MutationObserver helper + A2 crop `P` shortcut + help row en/fr/ar); Option 2 `ad7790b` (N2 prune all-empty lattice CSV columns); Option 3 `9ffe072` (D1 = VERIFIED FALSE POSITIVE — pdf.js v6 pre-resolves Separation/spot → `setFillRGBColor(["#ff8000"])`, walker already captures it; added regression guard, no src change). Full suite green (1485 jsdom + browser guards). PUSHED by user.
 - [2026-06-18] AGREED: Option 3 Arabic string review (`اقتصاص الصفحة`) = correct/idiomatic (matches MS/Adobe AR "Crop" convention) — no change. Option 2 residual backlog = implement ALL THREE batches, TDD, one commit per batch, push MANUAL: (a11y) A3 modeBadge `aria-live`, A4 toolbar submenu-trigger accessible-name, A5 progress-overlay empty `aria-label`; (robustness) B1 form-fill option-mismatch toast, B3 `fromJSON` id-guard vs NaN-poison; (i18n) I1 dead barcode placeholder, I2 unreferenced `toast.clickToPlaceImage`. Also: corrected stale findings.md rows A1/A2/N2 (shipped, were still "open").
+- [2026-06-18] DONE: a11y batch A3/A4/A5 committed `05429a4` (UNPUSHED) — modeBadge `role=status aria-live=polite`, submenu trigger `aria-label/title=t('toolbar.submenuTrigger')` ("More tools" en/fr/ar), dropped empty `aria-label` on #progress-overlay. Guards: indexHtmlA11y.test.ts (A3/A5), toolbarCustomizer.test.ts (A4). Suite 1488+2xfail green. Batches 2&3 (B1/B3, I1/I2) PAUSED.
+- [2026-06-18] PIVOT (user-directed): paused backlog batches 2&3; researched (2 Explore agents, file:line-grounded) + brainstormed user's new concerns. User chose to BUILD ALL FOUR features, sequenced F-A→F-B→F-C→F-D (see RESUME STATE "NEXT FEATURE QUEUE"): F-A mobile drag/draw (touch-action tool-mode-aware + setPointerCapture), F-B app version display+semver bump, F-C e-sign visual rect + embed drawn-signature PNG in appearance, F-D e-sign multi-signer = APPROVAL MODEL B (N visible drawn sigs + 1 sealing digital sig; true N-party crypto co-sign is a structural ceiling — pdf-lib full-resave, no incremental update). NOT started — user is compacting first. Confirm F-D UX before coding it.
 
 ## Known P0 (user-reported, 2026-06-17)
 - **SIG-REGRESSION**: The DRAWN-signature tool (toolbar.sign — NOT the PKCS#12 e-sign / toolbar.signCert) loses the signature on Save — "when I click Save it resets". Must reproduce live + root-cause. Likely in the signature pad modal save handler or the command/persist path. First target of the live browser sweep + static bug agent.
@@ -47,18 +49,60 @@ structural ones.
 
 ---
 
-## RESUME STATE — compact checkpoint #3, 2026-06-18 (READ THIS FIRST on resume)
+## RESUME STATE — compact checkpoint #4, 2026-06-18 (READ THIS FIRST on resume)
 
-> The QA sweep AND the follow-up queue (Option 1/2/3) are **DONE**. Option-1/2/3 commits are
-> **UNPUSHED** (`a2e1483`, `ad7790b`, `9ffe072` on top of pushed `bbd919c`). Push is MANUAL —
-> ask the user. There is no committed open work item left from this plan; the remaining backlog
-> is the lower-priority findings.md rows (A6/A7/I1/I2 P3 polish, D2/D5/D7 reachable-low-ROI,
-> D3/D4/D6 ceilings). Nothing queued — await user direction.
+> ### Where we are
+> - Option 1/2/3 (A1/A2/N2/D1) + a11y batch (A3/A4/A5) all DONE. Commits `a2e1483`, `ad7790b`,
+>   `9ffe072`, `8b53d27` **PUSHED** (user confirmed). a11y batch `05429a4` = **UNPUSHED** (top of tree).
+> - **PAUSED / deferred** (low-priority backlog, NOT abandoned): robustness B1 (form-fill option-mismatch
+>   toast) + B3 (`fromJSON` id-guard vs NaN-poison); i18n cleanup I1 (dead barcode placeholder) + I2
+>   (unreferenced `toast.clickToPlaceImage`). Resume these only if the user asks.
+> - **PUSH IS MANUAL — never push autonomously.** Commits in /stack/projects allowed; ask before pushing.
 >
-> --- (historical: the NEXT WORK QUEUE below was the now-completed Option 1/2/3 spec) ---
-
-> The QA discovery+triage+live-verify sweep is **COMPLETE and PUSHED**. The work below is the
-> NEXT queue the user chose: **Option 1 (A1 + A2) → Option 2 (N2) → Option 3 (D1)**. Start at A1.
+> ### NEXT FEATURE QUEUE — user chose ALL FOUR (2026-06-18 brainstorm), build in this order. NOT yet started.
+> Each is TDD-first (write/extend the failing test, then implement); `npm run type-check && npm run lint &&
+> npm run test` (+ `npm run test:browser` for any pointer/canvas/export change) before each commit. One
+> commit per feature. Research below is grounded — file:line verified by two Explore agents 2026-06-18.
+>
+> **F-A — Mobile drag + "can only place, can't draw" (do FIRST, highest user-pain).**
+>   ROOT CAUSE (Verified): `src/ui/binders/navigationBinder.ts:87` sets `canvas.style.touchAction='pan-x pan-y'`
+>   → browser claims single-finger drag for scroll BEFORE `pointerdown` handlers run; `e.preventDefault()`
+>   (`drawingHandler.ts:81`) is too late. Corroborating: `DrawingHandler` never `setPointerCapture()`s (but
+>   `inkLayerHandler.ts:38` does); `addText` has no touch drag-threshold buffer (element-drag works because
+>   `interactionHandler.ts:61-71` does). FIX DIRECTION: make `touch-action` **tool-mode-aware** — `none` while a
+>   draw/placement/ink tool is active (canvas owns the gesture), `pan-x pan-y` in select/idle; add
+>   `setPointerCapture` to DrawingHandler. Trade-off ACCEPTED by user (implicitly via "build it"): tool active ⇒
+>   canvas drag draws, doesn't scroll (scroll via thumbnail panel / select mode). Verify on real-Chrome harness +
+>   a touch-emulation test. Missing `touch-action:none` surfaces: `#pdfCanvas`, `.canvas-container`, dynamic drawPreview SVG.
+>
+> **F-B — App version display + bump (quick win, do SECOND).**
+>   Today: `package.json` version=`1.0.0`, shown NOWHERE; app `<footer>` at `index.html:206` is the home.
+>   DIRECTION: Vite `define` `__APP_VERSION__` (read package.json) in `vite.config.ts` → render in footer
+>   (optional + git short-SHA / build date). Bump policy: semver — patch=fix, minor=feature (manual `npm version`
+>   or a tiny release step). Add a TS ambient decl for `__APP_VERSION__`. Guard: a jsdom test asserting the footer
+>   shows a semver string.
+>
+> **F-C — E-sign visual rect + real signature image (do THIRD, medium).**
+>   Q2b (visual rect): rect is ALREADY editable via 4 numeric inputs X/Y/W/H (`index.html:554`), bounds-validated
+>   (`src/signing/appearance.ts:23` validateRect). MISSING = visual placement. SEAM: `DrawingHandler` ALREADY has an
+>   `addSignature` drag-rect preview (`drawingHandler.ts:460`) → add a "draw box on page → prefill the modal X/Y/W/H"
+>   flow. Q2c (real signature image): digital sig currently draws TEXT+border only (`src/signing/pdfSigner.ts:148`
+>   `_drawAppearance`, no image). App already captures drawn signature as PNG (`signaturePad.ts:54 getDataURL`) +
+>   embeds PNG (`pdfElementRenderer.ts:145 renderSignature`). SEAM: add `appearanceImage?: Uint8Array` to `SignOptions`,
+>   make `_drawAppearance` async + `await doc.embedPng(...)` into the rect; thread the PNG from `signatureManager.currentSignature`
+>   through `signingHandler` → `buildSignOptions`. Caveat (state to user): appearance is a viewer aid, covered by the
+>   page ByteRange like any content — fine, not separately bound.
+>
+> **F-D — E-sign multi-signer = APPROVAL MODEL B (do LAST, design-confirm with user first).**
+>   TRUE N-party crypto co-signing is a STRUCTURAL CEILING (Verified): `@cantoo/pdf-lib` does a FULL re-save
+>   (`pdfSigner.ts:96 doc.save({useObjectStreams:false})`), not an incremental-update append → a 2nd signature
+>   rewrites byte offsets and invalidates the 1st signature's `/ByteRange`; re-sign is REFUSED today via
+>   `isPdfSigned()` (`pdfSigner.ts:56`) + `ALREADY_SIGNED` preflight (`pdfSigner.ts:118`). MODEL B (reachable, what
+>   the user picked): N **visible drawn signatures** (one per person, the ✍ tool already exists) + **ONE** sealing
+>   digital signature applied last. Build = a multi-slot drawn-signature flow; the existing single e-sign seals the
+>   result. Do NOT remove the ALREADY_SIGNED guard. Confirm exact UX with user before coding (Phase 4 gate).
+>
+> --- (historical below: the now-completed Option 1/2/3 + QA sweep spec) ---
 
 ### Commits (user confirmed PUSHED — deployed via GitHub Pages)
 - `bbd919c` docs(qa): live-verify deferred items #57 XFDF / #62 flatten / Arabic overlay.
