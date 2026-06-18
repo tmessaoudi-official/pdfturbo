@@ -8,6 +8,7 @@ import { initI18n, changeLanguage, onLanguageChanged } from './utils/i18n';
 import { registerSW } from 'virtual:pwa-register';
 import { wireSwUpdate } from './pwaUpdate';
 import { isEnabled } from './config/features';
+import { renderAppVersion } from './utils/appVersion';
 
 // Shared diagnostic ring buffer (M0 #41). Created before anything else so the global
 // error boundary (M0 #1) can record failures that occur during i18n/app construction,
@@ -63,6 +64,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const app = new PDFTurboApp(logBuffer);
   appRef = app;
   if (import.meta.env.DEV) window.app = app;
+
+  // F-B — show the build version in the footer.
+  renderAppVersion(document.getElementById('appVersion'));
 
   // #28 — apply feature kill-switches to the UI. A disabled feature's entry
   // point is removed so it can't be reached; the behavioural gates (true-edit,

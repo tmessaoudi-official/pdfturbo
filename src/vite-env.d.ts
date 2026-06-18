@@ -15,3 +15,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// F-B — build-time app version, injected by Vite `define` (vite.config.ts) from
+// package.json. Not replaced in the test build (no `define` in vitest.config.ts);
+// appVersion.ts guards with `typeof` and falls back to a dev marker.
+declare const __APP_VERSION__: string;
