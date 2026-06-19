@@ -1989,6 +1989,34 @@ describe('replaceTextAt — decoration resize uses embedded glyph advances (#tex
   });
 });
 
+describe('replaceTextAt — Path-3 redraw anchors the underline to the REDRAWN width (#text-decoration-width Path 3)', () => {
+  it('sizes the underline to the standard-font redraw width, not R_old×proxy-ratio', async () => {
+    // The new text adds letters NOT in the subset ToUnicode ('A'..'G'), so Path 2
+    // (subset glyph reuse) fails and the edit redraws the whole run in a standard
+    // font (Path 3, forceProxy=true). The redrawn text therefore renders in the
+    // proxy font, so the underline must span the PROXY width of the new text.
+    //
+    // The bug: the old code scaled R_old (24pt = the EMBEDDED "00" width) by the
+    // proxy ratio helv(new)/helv("00"). Since R_old (24) ≫ helv("00") (~13.3pt),
+    // that overshoots to ~128pt — a long underline tail past the redrawn text (the
+    // exact real-file symptom). The rule must instead equal helv("00ABCDEFG").
+    const doc = await PDFDocument.load(await makeCidDigitUnderlinePdf());
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, '00ABCDEFG', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    expect(btCount(content)).toBeGreaterThanOrEqual(1); // Path 3 redraw fired
+
+    const ruleW = paintedReWidths(content)[0];
+    const helv = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+    const redrawnWidth = helv.widthOfTextAtSize('00ABCDEFG', 12);
+    const ratioOvershoot = 24 * (redrawnWidth / helv.widthOfTextAtSize('00', 12));
+    expect(ruleW).toBeCloseTo(redrawnWidth, 0);     // rule == redrawn text width
+    expect(ruleW).toBeLessThan(ratioOvershoot - 20); // NOT the R_old×ratio overshoot
+  });
+});
+
 /** "Hello" with the underline drawn the way a STROKED line would be (m/l/S). */
 async function makeLineUnderlinedTextPdf(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();

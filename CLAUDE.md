@@ -327,7 +327,16 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   render font there); Path 1/2 default false. **Scoped by `reverseMap.size > 0`** → a base-14 font with no ToUnicode
   keeps the proxy (which is exact there), so the Helvetica decoration tests are byte-unchanged. As a bonus, the
   proxy font is now embedded only on the fallback, so the prior "tiny orphan font dict on every match" is gone in
-  the common case. **Ceiling #text-decoration-b:** highlight/background-rect resize, `re`-drawn-as-stroke (`re S`)
+  the common case. **Path-3 absolute-anchor (2026-06-19, fixes the real-file overshoot the embedded-advance fix did
+  NOT reach):** on a PDF whose every font is a CID/Identity-H subset with **no ToUnicode** (a real Word/LibreOffice
+  invoice), `getPageFontGlyphWidths` returns null AND the reverseMap is empty, so the embedded path can't engage and
+  the edit takes **Path 3** (standard-font redraw). There `forceProxy=true`, and scaling `R_old` by `proxyNew/proxyOld`
+  OVERSHOOTS because `R_old` came from the ORIGINAL embedded font (`R_old ≠ proxyWidth(oldText)`) — measured live:
+  167.6pt rule × 1.539 (HelveticaBold ratio) = 258pt vs the 212pt the redraw actually renders → a ~46pt tail. Fix:
+  when `forceProxy`, set the rule to the **absolute redrawn width** `newW × (Tz hScale/100)` (the proxy IS the render
+  font in Path 3, starting at the same left edge), NOT `R_old × ratio`. Verified on the real file via the live app +
+  canvas pixel scan: overshoot 66px → 1px. Path 1/2 keep the ratio (correct there, `R_old` = embedded oldW). Known
+  P2: a Path-3 edit that ALSO changes fontSize measures `newW` at `target.fontSize`, not the new size (rare). **Ceiling #text-decoration-b:** highlight/background-rect resize, `re`-drawn-as-stroke (`re S`)
   underline, decorations inside Form XObjects, rotated-CTM rects/lines; non-Identity CID encodings + ligature
   ToUnicode keys fall back to the (approximate) proxy. Guards: `tests/utils/contentStreamEditor.test.ts` (rect+line
   locate/match/adjust/redraw/capture/resize/delete + slanted/polyline/sheared/co-painted refusals;

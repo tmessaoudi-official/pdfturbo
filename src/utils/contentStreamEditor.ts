@@ -1848,7 +1848,16 @@ function prepareDecorationResize(
     }
     const match = matchDecorationForText(rules, target, oldW);
     if (!match) return;
-    const newUserWidth = adjustedRuleWidth(match.rule.width, oldW, newW);
+    // forceProxy ⇒ Path 3 redrew the WHOLE run in the proxy/standard font, starting at
+    // the original left edge, so the underline must span the REDRAWN width — anchor to
+    // the measured new width directly (× the Tz horizontal scale that the redraw also
+    // applies). Scaling R_old by the ratio OVERSHOOTS here: R_old came from the ORIGINAL
+    // EMBEDDED font (R_old ≠ proxyWidth(oldText)), so R_old × proxyNew/proxyOld ≠ proxyNew
+    // — the real-file trailing-underline bug on no-ToUnicode CID fonts. Path 1/2 keep the
+    // embedded font (R_old = embedded oldW), where the ratio is correct, so leave them be.
+    const newUserWidth = forceProxy
+      ? newW * ((target.hScale ?? 100) / 100)
+      : adjustedRuleWidth(match.rule.width, oldW, newW);
     if (newUserWidth === null) return;
     // Local segment length = user-space width divided out by the CTM x-scale.
     const newLocalWidth = newUserWidth / (match.rule.ctmScaleX || 1);
