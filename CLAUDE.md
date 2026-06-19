@@ -315,6 +315,20 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   XObject) → handler overlay carries the style. P2 (documented): stroke `w` line-width is not q/Q-stack-restored,
   so a stale `w` may feed a wrong `height` to classification — affects match acceptance only (never resize geometry),
   and a false match still requires a thin horizontal baseline-band line >50% across the text (= an underline).
+  **Text-attribute inventory (#text-attr, 2026-06-19) — what a true-edit preserves:** Path 1 (literal byte-swap)
+  and Path 2 (subset hex) mutate ONLY the show-op operand, so they preserve EVERY surrounding attribute by
+  construction (font/size/fill/stroke/Tc/Tw/Tz/Ts/Tr/Tm/CTM/alpha/dash/clip). Path 3 (standard-font redraw) is the
+  ONLY lossy path — it is appended at **end-of-stream** in an isolated `q…Q`, so it inherits the DEFAULT graphics
+  state and must re-emit each attribute explicitly: it DOES re-emit fill/font/size/Tc/Tw/Tz/Ts/Tr/stroke/`w` and
+  applies `style`. **Path-3 ceilings (all rare, all documented, no real-file repro → not coded):** (1) Tm
+  rotation/skew + CTM scale/rotation flattened to an axis-aligned `1 0 0 1 x y Tm` (F3/F4, the same cm-rotation
+  ceiling above); (2) embedded font face → standard substitute (the core Path-3 tradeoff — glyph shapes/metrics
+  shift slightly); (3) **ExtGState alpha (`ca`/`CA`)** is NOT captured by `locateTextOps`, so semi-transparent
+  (watermark/faded) text redraws fully opaque; (4) **line dash / cap / join** on stroked/outline text are not
+  captured → a dashed outline redraws solid; (5) **text-clip render modes 4–6** keep their FILL (visible) but lose
+  the clip side-effect (the appended redraw is past all page content, so nothing downstream is clipped) — modes
+  3/7 (invisible/clip-only) are refused → overlay. F1/F2 (restyle + stroke/width/Tr) shipped `9d67b84`; common-case
+  edits (Path 1/2 + the Path-3 attrs above) are fully covered.
   **Embedded-advance width (#text-decoration-width, 2026-06-19, fixes the "underline trails past the added text"
   overshoot):** the resize scales the old rule by `newTextWidth/oldTextWidth`. Path 1/2 keep the EMBEDDED font, but
   the widths used to be measured in a base-14 PROXY whose per-glyph metrics differ (measured: a real invoice font's
