@@ -638,14 +638,26 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   }
   async runOcr(): Promise<void> {
     const lang = this.ui.ocrLangSelect.value;
-    const mode: OcrOutputMode = (this.ui.ocrModeSelect.value === 'visible' || !isEnabled('searchableOcr')) ? 'visible' : 'searchable';
+    const sel = this.ui.ocrModeSelect.value;
+    const progressCb = (p: { progress: number }): void => {
+      this.ui.ocrProgress.value = Math.round(p.progress * 100);
+    };
     this.ui.ocrProgressRow.style.display = '';
     this.ui.runOcrModal.disabled = true;
     this.ui.ocrBtn.disabled = true; // M0 #6 — reflect the single-flight gate in the UI
     try {
-      const n = await this._ocrHandler.run(lang, mode, ({ progress }) => {
-        this.ui.ocrProgress.value = Math.round(progress * 100);
-      });
+      if (sel === 'text' || sel === 'docx') {
+        // Read-only outputs: recognize WITHOUT modifying the document, then export
+        // the recognized text (copy + .txt) or build an editable Word file.
+        const result = await this._ocrHandler.recognizeCurrentPage(lang, progressCb);
+        this.closeOcrModal();
+        if (!result || !result.text.trim()) { this.reportError.warn('toast.ocrNoText'); return; }
+        if (sel === 'text') await this._exportService.exportOcrText(result.text);
+        else await this._exportService.exportOcrDocx(result.text);
+        return;
+      }
+      const mode: OcrOutputMode = (sel === 'visible' || !isEnabled('searchableOcr')) ? 'visible' : 'searchable';
+      const n = await this._ocrHandler.run(lang, mode, progressCb);
       this.closeOcrModal();
       if (n > 0) {
         this.reportError.info(mode === 'searchable' ? 'toast.ocrSearchableDone' : 'toast.ocrDone', { count: n });

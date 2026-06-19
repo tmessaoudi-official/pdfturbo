@@ -460,6 +460,22 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `'visible'`); `'searchable'` swaps source bytes via the existing `_applySourcePdfEdit`
   (`ReplaceSourcePdfBytesCmd`, undoable + persisted). UI: `ocrModeSelect` in `ocrModal` (default
   "Searchable layer"); toasts `ocrSearchableDone`/`ocrRotatedUnsupported` (3 locales).
+  **OCR usability (2026-06-20)**: the `ocrModeSelect` "Output" now offers FOUR destinations — the
+  default **searchable layer** (recommended), **`docx`** (export to editable Word), **`text`** (copy +
+  download `.txt`), and **`visible`** (editable boxes, relabeled "for clean pages, not scans" — it was
+  the un-masked overlay that made a scan look unreadable; it's no longer the trap-default since
+  searchable is first). `OcrOutputMode` stays `'visible'|'searchable'` — the two READ-ONLY exports are
+  NOT handled by `run()`; `pdfTurboApp.runOcr` branches on the raw select value and routes `text`/`docx`
+  to `OcrHandler.recognizeCurrentPage(lang,onProgress)` (extracted shared private `_recognize`; `run()`
+  byte-identical, same guards + single-flight) → `ExportService.exportOcrText` (best-effort
+  `navigator.clipboard` + `.txt` download; clipboard rejection in insecure contexts falls back to
+  download-only) / `exportOcrDocx` (pure `ocrTextToFlowDoc(text)` in flowDoc.ts → `flowDocToDocxBlob`).
+  Empty recognized text → `ocrNoText`/`exportNoText` warn, never an empty file. **Non-obvious:**
+  `main.ts` flag-off path now explicitly sets `ocrModeSelect.value='visible'` after removing the
+  searchable option (else the new `docx`/`text` options would become the default when `searchableOcr` is
+  off). OCR→DOCX is a LINEAR reading-order transcription — the scan's column/table layout is NOT
+  reconstructed (ceiling). Guards: `tests/utils/ocrTextToFlowDoc.test.ts`, `tests/export/ocrExport.test.ts`
+  (clipboard fallbacks + docx-unzip), `tests/browser/ocr-export.browser.test.ts` (real engine → real .docx).
   **Latin-7 (eng/fra/deu/spa/ita/por/nld) is exact-searchable.** **Arabic is a documented PARTIAL:**
   recovers as real Arabic Unicode (selectable + screen-reader-accessible) but full-word exact search
   is imperfect — fontkit GSUB shaping yields contextual glyphs with incomplete pdf-lib ToUnicode (same

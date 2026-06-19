@@ -16,6 +16,7 @@
  */
 import type { DocumentModel, DocumentPage, SourcePdf } from '../core/documentModel';
 import { recognizePage, resolveLanguage } from '../ocr';
+import type { OcrResult } from '../ocr/ocrTypes';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd, type HistoryManager } from '../core/historyManager';
 import { applySearchableLayerToPdf, partitionWordsByFont } from '../ocr/searchableTextLayer';
@@ -173,24 +174,9 @@ export class OcrHandler {
     mode: OcrOutputMode,
     onProgress?: (p: OcrRunProgress) => void,
   ): Promise<number> {
-    const scale = OcrHandler.RENDER_SCALE;
-    const pdfPage = await src.doc.getPage(page.sourcePageNum);
-    const viewport = pdfPage.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return 0;
-    await pdfPage.render({ canvas, canvasContext: ctx, viewport }).promise;
-
-    const paths = ocrAssetPaths(import.meta.env.BASE_URL);
-    const result = await recognizePage(canvas, {
-      language: resolveLanguage(language),
-      onProgress: ({ progress, status }) => onProgress?.({ progress, status }),
-      corePath: paths.corePath,
-      workerPath: paths.workerPath,
-      langPath: paths.langPath,
-    });
+    const recd = await this._recognize(page, src, language, onProgress);
+    if (!recd) return 0;
+    const { result, scale } = recd;
 
     if (mode === 'searchable') {
       // Count what will actually be placed (Arabic + WinAnsi-safe Latin); non-Latin
@@ -220,5 +206,68 @@ export class OcrHandler {
     app.rebuildElementLayer();
     app.autosave();
     return cmds.length;
+  }
+
+  /**
+   * Render the current page to a canvas and run recognition. The expensive step
+   * shared by {@link run} (which then bakes the result into the document) and
+   * {@link recognizeCurrentPage} (which returns it untouched for text/DOCX export).
+   * Returns null only when the 2D canvas context is unavailable (run() then yields
+   * 0 words, preserving its original behaviour).
+   */
+  private async _recognize(
+    page: DocumentPage,
+    src: SourcePdf,
+    language: string,
+    onProgress?: (p: OcrRunProgress) => void,
+  ): Promise<{ result: OcrResult; scale: number } | null> {
+    const scale = OcrHandler.RENDER_SCALE;
+    const pdfPage = await src.doc.getPage(page.sourcePageNum);
+    const viewport = pdfPage.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    await pdfPage.render({ canvas, canvasContext: ctx, viewport }).promise;
+
+    const paths = ocrAssetPaths(import.meta.env.BASE_URL);
+    const result = await recognizePage(canvas, {
+      language: resolveLanguage(language),
+      onProgress: ({ progress, status }) => onProgress?.({ progress, status }),
+      corePath: paths.corePath,
+      workerPath: paths.workerPath,
+      langPath: paths.langPath,
+    });
+    return { result, scale };
+  }
+
+  /**
+   * Recognize text on the current page and RETURN the result WITHOUT modifying the
+   * document — the read-only basis for the "copy text" and "export to Word"
+   * outputs. Applies the same guards + single-flight gate as {@link run}. Returns
+   * null when there is no current page / rasterizable source / canvas context.
+   */
+  async recognizeCurrentPage(
+    language: string,
+    onProgress?: (p: OcrRunProgress) => void,
+  ): Promise<OcrResult | null> {
+    const app = this.app;
+    if (this._running) {
+      app.reportError.silent(undefined, 'OcrHandler.recognizeCurrentPage: ignored — already running');
+      return null;
+    }
+    const page = app.documentModel.currentPage;
+    if (!page) return null;
+    const src = app.documentModel.sourcePdfs.get(page.sourcePdfId);
+    if (!src?.doc || page.sourcePageNum < 1) return null;
+
+    this._running = true;
+    try {
+      const recd = await this._recognize(page, src, language, onProgress);
+      return recd ? recd.result : null;
+    } finally {
+      this._running = false;
+    }
   }
 }

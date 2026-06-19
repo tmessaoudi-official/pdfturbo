@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
@@ -853,6 +853,56 @@ export class ExportService {
       }
       this._downloadBlob(new Blob([md], { type: 'text/markdown' }), this._exportBaseName() + '.md');
       reportError.info('toast.mdExported');
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.exportFailed', err);
+      _prog.failed();
+    }
+  }
+
+  /**
+   * Export recognized OCR text as a plain-text download, and best-effort copy it
+   * to the clipboard. READ-ONLY: does NOT modify the document (unlike the in-page
+   * 'visible'/'searchable' OCR modes). Empty text → warn, never an empty file.
+   *
+   * The clipboard write is a progressive enhancement — `navigator.clipboard` is
+   * absent in insecure contexts and `writeText` legitimately rejects when the
+   * permission is denied. Neither must block or fail the guaranteed .txt download,
+   * so the failure is swallowed and reflected only in which toast is shown.
+   */
+  async exportOcrText(text: string): Promise<void> {
+    const { reportError } = this._ctx;
+    const body = text.trim();
+    if (!body) { reportError.warn('toast.exportNoText'); return; }
+    let copied = false;
+    try {
+      const clip = navigator.clipboard;
+      if (clip && typeof clip.writeText === 'function') {
+        await clip.writeText(body);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    this._downloadBlob(new Blob([body], { type: 'text/plain;charset=utf-8' }), this._exportBaseName() + '.txt');
+    reportError.info(copied ? 'toast.ocrTextCopied' : 'toast.ocrTextExported');
+  }
+
+  /**
+   * Export recognized OCR text as an editable Word (.docx) — the clean, editable
+   * deliverable for a scanned page. Builds a linear, reading-order transcription
+   * (the scan's column/table layout is NOT reconstructed — documented ceiling).
+   * Empty text → warn, never an empty file.
+   */
+  async exportOcrDocx(text: string): Promise<void> {
+    const { reportError, progress } = this._ctx;
+    const body = text.trim();
+    if (!body) { reportError.warn('toast.exportNoText'); return; }
+    const _prog = progress.begin('progress.generatingDocx');
+    try {
+      const blob = await flowDocToDocxBlob(ocrTextToFlowDoc(body));
+      this._downloadBlob(blob, this._exportBaseName() + '.docx');
+      reportError.info('toast.docxExported');
       _prog.done();
     } catch (err) {
       reportError.error('toast.exportFailed', err);

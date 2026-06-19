@@ -72,7 +72,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // point is removed so it can't be reached; the behavioural gates (true-edit,
   // OCR mode) are enforced at their call sites too (defence in depth).
   if (!isEnabled('eSign')) app.ui.signBtn.style.display = 'none';
-  if (!isEnabled('searchableOcr')) app.ui.ocrModeSelect.querySelector('option[value="searchable"]')?.remove();
+  if (!isEnabled('searchableOcr')) {
+    app.ui.ocrModeSelect.querySelector('option[value="searchable"]')?.remove();
+    // 'searchable' was the first/default option; with it gone, fall back to the
+    // in-page 'visible' mode (the pre-existing flag-off default) rather than
+    // letting the new 'docx'/'text' export options become the default.
+    app.ui.ocrModeSelect.value = 'visible';
+  }
   if (!isEnabled('flatten')) app.ui.flattenBtn.style.display = 'none';
   if (!isEnabled('xfdf')) {
     app.ui.exportXfdfBtn.style.display = 'none';

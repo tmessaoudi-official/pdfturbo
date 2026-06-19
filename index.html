@@ -637,11 +637,13 @@
     <div class="code-field">
       <label for="ocrModeSelect" data-i18n="modal.ocr.modeLabel">Output</label>
       <select id="ocrModeSelect">
-        <option value="searchable" data-i18n="modal.ocr.modeSearchable">Searchable layer (invisible text over the scan)</option>
-        <option value="visible" data-i18n="modal.ocr.modeVisible">Editable text boxes</option>
+        <option value="searchable" data-i18n="modal.ocr.modeSearchable">Searchable layer — keep the scan, make it selectable (recommended)</option>
+        <option value="docx" data-i18n="modal.ocr.modeDocx">Export to editable Word (.docx)</option>
+        <option value="text" data-i18n="modal.ocr.modeText">Copy &amp; download the text (.txt)</option>
+        <option value="visible" data-i18n="modal.ocr.modeVisible">Editable text boxes (overlay — for clean pages, not scans)</option>
       </select>
     </div>
-    <p class="code-preview-hint" data-i18n="modal.ocr.hint">Recognizes text on the current page and adds it as editable text. Language data is downloaded on first use.</p>
+    <p class="code-preview-hint" data-i18n="modal.ocr.hint">Recognizes text on the current page. “Searchable layer” keeps the scan exactly as-is and adds invisible, selectable text over it. Language data is downloaded on first use.</p>
     <div class="code-field" id="ocrProgressRow" style="display:none">
       <progress id="ocrProgress" max="100" value="0" style="width:100%"></progress>
       <div id="ocrProgressLabel" data-i18n="progress.ocrRecognizing">Recognizing text…</div>

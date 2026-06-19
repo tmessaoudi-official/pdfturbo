@@ -1279,6 +1279,34 @@ export function textElementsToFlowParagraphs(
 }
 
 /**
+ * Build a minimal single-page {@link FlowDoc} from a block of recognized OCR text
+ * (tesseract's `data.text`, newline-separated). Each non-blank line becomes one
+ * body paragraph; an Arabic (RTL) line is right-aligned. Used by the "OCR → Word"
+ * export so a scanned page becomes a clean, EDITABLE `.docx` of plain reading-order
+ * text. Pure → jsdom-unit-testable.
+ *
+ * Page size defaults to US-Letter points (612×792); the DOCX reflows text, so the
+ * exact page box only affects margins, not the recovered text. The original scan's
+ * COLUMN / TABLE layout is NOT reconstructed (documented ceiling) — this is a
+ * faithful linear transcription, not a layout clone.
+ */
+export function ocrTextToFlowDoc(text: string): FlowDoc {
+  const paragraphs: FlowParagraph[] = [];
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const rtl = isArabicText(line);
+    paragraphs.push({
+      runs: [{ text: line, bold: false, italic: false, fontSize: 11, fontFamily: 'serif', rtl }],
+      heading: 0,
+      alignment: rtl ? 'right' : 'left',
+      rtl,
+    });
+  }
+  return { pages: [{ width: 612, height: 792, paragraphs }] };
+}
+
+/**
  * Merge source paragraphs with typed-overlay paragraphs into one reading-order
  * sequence (G12). Reading order is DESCENDING PDF y-up (top of page first); this
  * mirrors the table-interleave convention in flowDocWriters (`p.y ?? -Infinity`,
