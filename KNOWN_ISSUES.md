@@ -295,6 +295,24 @@ apply-to-all uses identical content-space margins clamped per page (not aspect-a
 markup annotations authored elsewhere aren't clipped at the content-stream level (the CropBox hides them, as
 PDF viewers do).
 
+## True-edit restyle + stroke fidelity (F1/F2) — FIXED 2026-06-19
+
+- **F1 · Restyle silently dropped on true-edit · P1 · ✅ FIXED** — the edit-text inline editor offers
+  bold/italic/font-family/color/size toggles, but when the edit resolved via Path 1 (literal) or Path 2 (subset
+  glyph reuse) — *essentially all real text* — `replaceTextAt` swapped the show-op payload and returned **before**
+  reading `style`, so the restyle vanished. **Fix:** `replaceTextAt` now computes `wantsRestyle` and, when set,
+  **skips Path 1 & Path 2 → forces the isolated Path-3 redraw** (the only path that applies `style`, in its own
+  `q…Q` block so it never bleeds onto neighbours). No `style` ⇒ Path 1/2 byte-identical to before. A restyle that
+  Path 3 refuses (Arabic / non-WinAnsi / Form-XObject) still returns false → handler overlay carries the style.
+- **F2 · Path-3 redraw flattened stroked text · P2 · ✅ FIXED** — outline/stroked text (`Tr` 1/2/5/6) lost its
+  stroke color, line width, and render mode on a Path-3 redraw (became flat fill). **Fix:** `locateTextOps` now
+  captures stroke color (`RG`/`G`/`K`/`SC`/`SCN`, reset on `CS`) + line width (`w`) onto `TextOpInfo`, and
+  `buildPath3Redraw` re-emits `Tr` + stroke color + `w` when present (omitted at default → byte-identical). Modes
+  3/7 still refuse. (F3 rotated/sheared `Tm` and F4 `cm`-scale on Path 3 remain the documented cm-transform ceilings.)
+- **Guards:** `tests/utils/contentStreamEditor.test.ts` — F1 (color/bold restyle forces Path 3 via appended-BT
+  count; no-style stays in-place) + F2 (locate stroke/width/Tr capture; `buildPath3Redraw` emit/omit; e2e
+  stroked-text redraw re-emits `Tr`/`RG`/`w`). Full jsdom suite 1627 pass.
+
 ## Deferred features (next — NOT part of the "100%" mandate)
 
 - **Arabic native-speaker review** — one human pass over the AR locale + RTL rendering (non-engineering).

@@ -342,6 +342,8 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let hScale = 100;
   let textRise = 0;
   let fillColor: string | undefined;
+  let strokeColor: string | undefined;
+  let lineWidth: number | undefined;
   let tfOpIndex: number | undefined;
   let colorOpIndex: number | undefined;
   // CTM stack — tracks q/Q nesting and cm transforms
@@ -438,6 +440,23 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         fillColor = undefined;
         colorOpIndex = undefined;
         break;
+      // Stroke color operators (uppercase) — tracked so a Path-3 redraw of
+      // stroked/outline text keeps its stroke color (F2).
+      case 'RG':
+      case 'G':
+      case 'K':
+      case 'SC':
+      case 'SCN':
+        strokeColor = op.operands.map(t => t.raw).join(' ') + ' ' + op.operator;
+        break;
+      case 'CS':
+        // Stroke color space change — stroke color no longer reliable; reset.
+        strokeColor = undefined;
+        break;
+      case 'w':
+        // Line width — re-emitted by a Path-3 redraw so stroked text keeps weight.
+        lineWidth = num(op.operands[0]);
+        break;
       default:
         break;
     }
@@ -463,6 +482,8 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         ...(wordSpacing !== 0 ? { wordSpacing } : {}),
         ...(hScale !== 100 ? { hScale } : {}),
         ...(textRise !== 0 ? { textRise } : {}),
+        ...(strokeColor !== undefined ? { strokeColor } : {}),
+        ...(lineWidth !== undefined ? { lineWidth } : {}),
       });
     }
   });
@@ -1614,6 +1635,18 @@ export async function replaceTextAt(
   // redraw (Path 3).
   const byteSwapUnsafe = isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
 
+  // F1: Path 1 (literal byte swap) and Path 2 (subset glyph reuse) mutate ONLY the
+  // show-op payload — they cannot apply a restyle (bold/italic/family/color/size). When
+  // the caller requests one, skip them and force the isolated Path-3 redraw, which DOES
+  // apply `style` and emits its own color/font inside a q…Q block (so it never bleeds
+  // onto neighbouring text the way an in-place color/Tf rewrite would). No style ⇒
+  // Path 1/2 exactly as before (byte-identical).
+  const wantsRestyle = !!style && (
+    style.bold !== undefined || style.italic !== undefined ||
+    style.fontFamily !== undefined || style.color !== undefined ||
+    style.fontSize !== undefined
+  );
+
   // Decoration prep (captures the ORIGINAL text width BEFORE Path 1/2 mutate the op);
   // the returned mutator resizes the matched underline/strike rule, applied just
   // before each path's writeBack so it rides the SAME atomic SourcePdf.bytes swap.
@@ -1621,7 +1654,7 @@ export async function replaceTextAt(
 
   // Path 1: ASCII literal in-stream replacement (only safe for standard,
   // non-embedded fonts where byte code == ASCII).
-  if (!byteSwapUnsafe && replaceShowOpInPlace(ops[target.opIndex], newText)) {
+  if (!wantsRestyle && !byteSwapUnsafe && replaceShowOpInPlace(ops[target.opIndex], newText)) {
     blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
     if (applyDeco) await applyDeco(newText, ops);
     writeBack(doc, pageIndex, found);
@@ -1630,7 +1663,7 @@ export async function replaceTextAt(
 
   // Path 2: Subset glyph reuse via ToUnicode CMap.
   const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
-  if (cmapText) {
+  if (!wantsRestyle && cmapText) {
     const forward = parseToUnicodeCMap(cmapText);
     const bytesPerCode = detectCMapBytesPerCode(cmapText);
     const reverseMap = new Map<string, number>();
@@ -1702,6 +1735,8 @@ export async function replaceTextAt(
     originX: target.origin.x, originY: target.origin.y, showOperand,
     charSpacing: target.charSpacing, wordSpacing: target.wordSpacing,
     hScale: target.hScale, textRise: target.textRise,
+    renderMode: target.renderMode, strokeColor: target.strokeColor,
+    lineWidth: target.lineWidth,
   });
   if (applyDeco) await applyDeco(newText, ops);
   setPageContent(doc, pageIndex, serializeOps(ops) + redraw);
@@ -1726,12 +1761,20 @@ export function buildPath3Redraw(p: {
   wordSpacing?: number;
   hScale?: number;
   textRise?: number;
+  // Stroked/outline text (F2): re-emit the render mode, stroke color (raw op string,
+  // already suffixed with RG/G/K) and line width so a redraw keeps its outline.
+  renderMode?: number;
+  strokeColor?: string;
+  lineWidth?: number;
 }): string {
   const state =
     (p.charSpacing !== undefined ? `${fmtNum(p.charSpacing)} Tc\n` : '') +
     (p.wordSpacing !== undefined ? `${fmtNum(p.wordSpacing)} Tw\n` : '') +
     (p.hScale !== undefined ? `${fmtNum(p.hScale)} Tz\n` : '') +
-    (p.textRise !== undefined ? `${fmtNum(p.textRise)} Ts\n` : '');
+    (p.textRise !== undefined ? `${fmtNum(p.textRise)} Ts\n` : '') +
+    (p.renderMode ? `${p.renderMode} Tr\n` : '') +
+    (p.strokeColor !== undefined ? `${p.strokeColor}\n` : '') +
+    (p.lineWidth !== undefined ? `${fmtNum(p.lineWidth)} w\n` : '');
   return (
     `\nq\n${fmtNum(p.color.r)} ${fmtNum(p.color.g)} ${fmtNum(p.color.b)} rg\nBT\n` +
     `/${p.resName} ${fmtNum(p.size)} Tf\n` +

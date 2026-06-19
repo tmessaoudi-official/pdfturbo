@@ -305,8 +305,14 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   in-band rule (double underline); a SLANTED line (m/l y differ) or POLYLINE (≥2 `l`); `s` (closepath+stroke,
   ambiguous closing segment) — only plain `S`; and a rect/line whose painter ALSO closes an `m/l/c/v/y/h`
   subpath (neutralising it would erase that vector art), refused via `sawOtherPath` + the single-segment
-  counts. Path-3 redraw re-emits captured `Tc`/`Tw`/`Tz`/`Ts` (`buildPath3Redraw`; `locateTextOps` stamps them
-  onto `TextOpInfo` only when non-default → byte-identical for plain ops). Measurement embeds a base-14 proxy
+  counts. Path-3 redraw re-emits captured `Tc`/`Tw`/`Tz`/`Ts` — and (F2, 2026-06-19) `Tr` render mode + stroke
+  color (`RG`/`G`/`K`/`SC`/`SCN`, reset on `CS`) + line width (`w`) so stroked/outline text keeps its outline —
+  via `buildPath3Redraw`; `locateTextOps` stamps them onto `TextOpInfo` only when non-default → byte-identical for
+  plain ops. **F1 restyle (2026-06-19):** `replaceTextAt` computes `wantsRestyle` (style carries
+  bold/italic/fontFamily/color/fontSize) and SKIPS Path 1 & Path 2 → forces the isolated Path-3 redraw (the only
+  path that applies `style`; its own `q…Q` block, no neighbour bleed) — previously Path 1/2 swapped bytes and
+  silently dropped the restyle. No `style` ⇒ Path 1/2 byte-identical; a restyle Path 3 refuses (Arabic/non-WinAnsi/
+  XObject) → handler overlay carries the style. Measurement embeds a base-14 proxy
   font ⇒ a tiny orphan font dict in output only when a decoration actually matched (negligible; std-14 = no font
   program). P2 (documented): stroke `w` line-width is not q/Q-stack-restored, so a stale `w` may feed a wrong
   `height` to classification — affects match acceptance only (never resize geometry), and a false match still

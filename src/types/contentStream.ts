@@ -58,6 +58,16 @@ export interface TextOpInfo {
   wordSpacing?: number;
   hScale?: number;
   textRise?: number;
+  /**
+   * Raw PDF *stroke* color ops string (uppercase operators), e.g. '0 0 1 RG'
+   * (DeviceRGB), '0.5 G' (gray), '0 0 1 0 K' (CMYK). Captured so a Path-3 redraw of
+   * stroked/outline text (render mode 1/2/4/5/6) keeps its stroke; absent when no
+   * stroke color preceded the show op (F2).
+   */
+  strokeColor?: string;
+  /** Active line width (`w`) when this op was shown — re-emitted by a Path-3 redraw
+   * so stroked text keeps its outline weight. Absent when left at the default (F2). */
+  lineWidth?: number;
 }
 
 /**

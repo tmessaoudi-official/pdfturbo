@@ -1731,6 +1731,136 @@ describe('locateTextOps graphics-state capture', () => {
   });
 });
 
+// ── F2: Path-3 redraw must preserve stroke color, line width (w), render mode (Tr)
+describe('locateTextOps stroke/width/render-mode capture (F2)', () => {
+  it('captures RG stroke color, line width (w) and render mode (Tr)', () => {
+    const found = locateTextOps(ops('BT /F1 12 Tf 1 Tr 0 0 1 RG 2 w 1 0 0 1 50 300 Tm (Hi) Tj ET'));
+    expect(found).toHaveLength(1);
+    expect(found[0].renderMode).toBe(1);
+    expect(found[0].strokeColor).toBe('0 0 1 RG');
+    expect(found[0].lineWidth).toBeCloseTo(2);
+  });
+  it('omits stroke/width when none precede the show op (byte-identical)', () => {
+    const found = locateTextOps(ops('BT /F1 12 Tf 1 0 0 1 50 300 Tm (Hi) Tj ET'));
+    expect(found[0].strokeColor).toBeUndefined();
+    expect(found[0].lineWidth).toBeUndefined();
+  });
+});
+
+describe('buildPath3Redraw stroke/render-mode (F2)', () => {
+  const base = {
+    resName: 'F9', size: 12, color: { r: 0, g: 0, b: 0 },
+    originX: 50, originY: 300, showOperand: '<0048>',
+  };
+  it('emits Tr, stroke color and w when present', () => {
+    const s = buildPath3Redraw({ ...base, renderMode: 1, strokeColor: '0 0 1 RG', lineWidth: 2 });
+    expect(s).toMatch(/\b1 Tr\b/);
+    expect(s).toMatch(/0 0 1 RG/);
+    expect(s).toMatch(/\b2 w\b/);
+  });
+  it('omits Tr/stroke/w when absent (default graphics state — byte-identical)', () => {
+    const s = buildPath3Redraw(base);
+    expect(s).not.toMatch(/\bTr\b/);
+    expect(s).not.toMatch(/\bRG\b/);
+    expect(s).not.toMatch(/\bw\b/);
+  });
+});
+
+// ── F1: a restyle (color/size/bold/italic/family) must NOT be silently dropped.
+// Path 1/2 swap payload bytes and ignore `style`; the fix forces the isolated
+// Path-3 redraw (the only path that applies style) whenever a real restyle is asked.
+function btCount(content: string): number {
+  return (content.match(/\bBT\b/g) || []).length;
+}
+describe('replaceTextAt — restyle forces Path 3 (F1)', () => {
+  // Literal-Tj standard-font base: Path 1 (in-place byte swap) genuinely succeeds
+  // here, so a restyle that forces Path 3 is observable as an APPENDED redraw block.
+  it('applies a color restyle (emits the requested rg via a Path-3 redraw)', async () => {
+    const orig = await makeLiteralHelloPdf();
+    const beforeBt = btCount(await pageContentText(orig));
+    const doc = await PDFDocument.load(orig);
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Bonjour', 5, { color: { r: 1, g: 0, b: 0 } });
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    expect(showStrings(content)).toContain('Bonjour');
+    expect(content).toMatch(/1 0 0 rg/);          // red fill from the restyle reached output
+    expect(btCount(content)).toBe(beforeBt + 1);  // a Path-3 redraw block was appended
+  });
+  it('forces Path 3 for a bold restyle (was silently dropped via Path 1)', async () => {
+    const orig = await makeLiteralHelloPdf();
+    const beforeBt = btCount(await pageContentText(orig));
+    const doc = await PDFDocument.load(orig);
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Bonjour', 5, { bold: true });
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    expect(showStrings(content)).toContain('Bonjour');
+    expect(btCount(content)).toBe(beforeBt + 1);  // took the redraw path, not in-place
+  });
+  it('stays in-place (Path 1) and appends NO redraw when no style is given', async () => {
+    const orig = await makeLiteralHelloPdf();
+    const beforeBt = btCount(await pageContentText(orig));
+    const doc = await PDFDocument.load(orig);
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Bonjour');
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    expect(showStrings(content)).toContain('Bonjour');
+    expect(btCount(content)).toBe(beforeBt);      // unchanged — no extra redraw block
+  });
+});
+
+/** "Hello" as a LITERAL `(Hello) Tj` in standard Helvetica (Path 1 succeeds in place). */
+async function makeLiteralHelloPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+  if (!helvVal) throw new Error('font missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content = `BT /F1 12 Tf 1 0 0 1 50 300 Tm (Hello) Tj ET`;
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+describe('replaceTextAt — Path-3 redraw keeps stroke + render mode (F2 e2e)', () => {
+  it('re-emits Tr, stroke color and width when redrawing stroked text', async () => {
+    const doc = await PDFDocument.load(await makeStrokedTextPdf());
+    // a size restyle forces Path 3 (F1); the redraw must preserve the stroke (F2).
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Hi', 5, { fontSize: 14 });
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    expect(showStrings(content)).toContain('Hi');
+    // tie the assertions to the redraw's own `14 Tf` so they can't match the (blanked) original.
+    expect(content).toMatch(/14 Tf[\s\S]*?\b1 Tr\b/);
+    expect(content).toMatch(/14 Tf[\s\S]*?0 0 1 RG/);
+    expect(content).toMatch(/14 Tf[\s\S]*?\b2 w\b/);
+  });
+});
+
+/** "Hello" drawn as STROKED text (Tr 1) with a blue stroke + 2pt line width. */
+async function makeStrokedTextPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+  if (!helvVal) throw new Error('font missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content = `BT /F1 12 Tf 1 Tr 0 0 1 RG 2 w 1 0 0 1 50 300 Tm (Hello) Tj ET`;
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
 describe('replaceTextAt — decoration resize (opt-in)', () => {
   it('extends the underline rule when the new text is LONGER', async () => {
     const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
