@@ -31,7 +31,14 @@ export class ErrorReporter implements IErrorReporter {
     this._log?.record('error', msgKey, err);
     // oxlint-disable-next-line eslint/no-console -- deliberate diagnostic sink: this is the app-wide error reporter
     console.error('[PDFturbo]', err ?? msgKey);
-    this._queue.enqueue(t(msgKey, params), 'error', DURATION.error);
+    // Inject the error text as the `error` interpolation var so keys carrying `{{error}}`
+    // (toast.pdfLoadFailed, toast.imageConversionFailed) are filled instead of rendering the
+    // literal placeholder to the user. Explicit `params` win over the auto-injected value.
+    let errText: string | undefined;
+    if (err instanceof Error) errText = err.message;
+    else if (typeof err === 'string') errText = err;
+    const interp = errText !== undefined ? { error: errText, ...params } : params;
+    this._queue.enqueue(t(msgKey, interp), 'error', DURATION.error);
   }
 
   silent(err?: unknown, context?: string): void {

@@ -168,6 +168,8 @@ export class ExportService {
     try {
       const pdfDoc = await this._assemblePdfDoc(
         (done, total) => _prog.setFraction(total ? done / total : null),
+        undefined,
+        { cleanMetadata: true },
       );
       // Pages assembled; the final save/encrypt step has no page granularity.
       _prog.setFraction(null);
@@ -206,6 +208,7 @@ export class ExportService {
       const pdfDoc = await this._assemblePdfDoc(
         (done, total) => _prog.setFraction(total ? done / total : null),
         pages,
+        { cleanMetadata: true },
       );
       _prog.setFraction(null);
       await this._applyExportPassword(pdfDoc);
@@ -243,7 +246,7 @@ export class ExportService {
       const pdfDoc = await this._assemblePdfDoc(
         (done, total) => _prog.setFraction(total ? done / total : null),
         undefined,
-        { flattenAllForms: true },
+        { flattenAllForms: true, cleanMetadata: true },
       );
       _prog.setFraction(null);
       await this._applyExportPassword(pdfDoc);
@@ -517,13 +520,19 @@ export class ExportService {
   private async _assemblePdfDoc(
     onPage?: (done: number, total: number) => void,
     pagesSubset?: import('../core/documentModel').DocumentPage[],
-    opts?: { flattenAllForms?: boolean },
+    opts?: { flattenAllForms?: boolean; cleanMetadata?: boolean },
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     const { documentModel, elements, reportError, formValues } = this._ctx;
     const docPages = pagesSubset ?? documentModel.pages;
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     {
-      const pdfDoc = await PDFDocument.create();
+      // P3 (QA sweep 2026-06-19): with opts.cleanMetadata, build the doc with
+      // updateMetadata:false so pdf-lib does NOT stamp its own /Producer + /Creator
+      // ("…Hopding/pdf-lib") + CreationDate/ModDate at save time. Only the user-facing
+      // download paths (downloadPDF / range / flattened) opt in; assemblePdfBytes keeps
+      // the default, so the sign/compress/sanitize paths see byte-identical input (the
+      // sanitize feature still has the producer stamp to strip).
+      const pdfDoc = await PDFDocument.create(opts?.cleanMetadata ? { updateMetadata: false } : {});
 
       // Load each source PDF once
       const srcDocs = new Map<string, import('@cantoo/pdf-lib').PDFDocument>();

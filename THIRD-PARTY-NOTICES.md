@@ -73,3 +73,57 @@ Copyright (c) 2019-present, Yuxi (Evan) You and Vite contributors
 **License**: MIT  
 **Repository**: https://github.com/vite-pwa/vite-plugin-pwa  
 Copyright (c) 2021 Anthony Fu
+
+---
+
+## tesseract.js
+
+**Version**: ^7.0.0  
+**License**: Apache-2.0  
+**Repository**: https://github.com/naptha/tesseract.js  
+Copyright (c) 2015 Project Naptha and Tesseract.js contributors
+
+---
+
+## node-forge
+
+**Version**: ^1.4.0  
+**License**: BSD-3-Clause (or GPL-2.0)  
+**Repository**: https://github.com/digitalbazaar/forge  
+Copyright (c) 2010-2022 Digital Bazaar, Inc.
+
+---
+
+## docx
+
+**Version**: ^9.7.1  
+**License**: MIT  
+**Repository**: https://github.com/dolanmiu/docx  
+Copyright (c) 2016 Dolan Miu
+
+---
+
+## SortableJS
+
+**Version**: ^1.15.7  
+**License**: MIT  
+**Repository**: https://github.com/SortableJS/Sortable  
+Copyright (c) 2019 All contributors to Sortable
+
+---
+
+## @pdf-lib/fontkit
+
+**Version**: ^1.1.1  
+**License**: MIT  
+**Repository**: https://github.com/Hopding/fontkit  
+Copyright (c) 2014 Devon Govett
+
+---
+
+## Noto Naskh Arabic (bundled font)
+
+**License**: SIL Open Font License 1.1  
+**Source**: https://fonts.google.com/noto/specimen/Noto+Naskh+Arabic  
+Copyright The Noto Project Authors (https://github.com/notofonts/arabic)  
+Full license text is vendored at `src/assets/fonts/OFL.txt`.
