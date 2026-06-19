@@ -32,6 +32,8 @@ import {
   matchDecorationForText,
   adjustedRuleWidth,
   buildPath3Redraw,
+  getPageFontGlyphWidths,
+  embeddedTextWidth,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -1883,6 +1885,107 @@ describe('replaceTextAt — decoration resize (opt-in)', () => {
     const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
     await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld'); // no opts
     expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBeCloseTo(28);
+  });
+});
+
+/**
+ * A Type0/CID (Identity-H) subset font whose DIGIT glyph (CID 1 = '0') is much WIDER
+ * than its letter glyph (CID 2 = 'X') — 1000 vs 200 /1000 units — the opposite of
+ * Helvetica's proportions. Underlines the two-digit string "00" with a rect exactly
+ * as wide as the embedded text (24pt at size 12). Editing through Path 2 keeps this
+ * embedded font, so the decoration resize MUST use these advances, not a proxy.
+ */
+async function makeCidDigitUnderlinePdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const ctx = doc.context;
+
+  // ToUnicode: code <0001>→'0' (U+0030), <0002>→'X' (U+0058).
+  const cmapText =
+    '/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n' +
+    '1 begincodespacerange <0000> <FFFF> endcodespacerange\n' +
+    '2 beginbfchar <0001> <0030> <0002> <0058> endbfchar\n' +
+    'endcmap end end';
+  const cb = new Uint8Array(cmapText.length);
+  for (let i = 0; i < cmapText.length; i++) cb[i] = cmapText.charCodeAt(i) & 0xff;
+  const cmapRef = ctx.register(
+    PDFRawStream.of(PDFDict.fromMapWithContext(new Map([[PDFName.of('Length'), ctx.obj(cb.length)]]), ctx), cb),
+  );
+
+  // Descendant CIDFont with explicit /W advances: CID 1 → 1000, CID 2 → 200; /DW 500.
+  const cidFont = PDFDict.fromMapWithContext(new Map(), ctx);
+  cidFont.set(PDFName.of('Type'), PDFName.of('Font'));
+  cidFont.set(PDFName.of('Subtype'), PDFName.of('CIDFontType2'));
+  cidFont.set(PDFName.of('BaseFont'), PDFName.of('ABCDEF+WideDigit'));
+  cidFont.set(PDFName.of('DW'), ctx.obj(500));
+  cidFont.set(PDFName.of('W'), ctx.obj([1, [1000], 2, [200]]));
+  const cidRef = ctx.register(cidFont);
+
+  const fontDict = PDFDict.fromMapWithContext(new Map(), ctx);
+  fontDict.set(PDFName.of('Type'), PDFName.of('Font'));
+  fontDict.set(PDFName.of('Subtype'), PDFName.of('Type0'));
+  fontDict.set(PDFName.of('BaseFont'), PDFName.of('ABCDEF+WideDigit'));
+  fontDict.set(PDFName.of('Encoding'), PDFName.of('Identity-H'));
+  fontDict.set(PDFName.of('ToUnicode'), cmapRef);
+  fontDict.set(PDFName.of('DescendantFonts'), ctx.obj([cidRef]));
+  const fontRef = ctx.register(fontDict);
+
+  const resFont = PDFDict.fromMapWithContext(new Map(), ctx);
+  resFont.set(PDFName.of('F1'), fontRef);
+  const res = PDFDict.fromMapWithContext(new Map(), ctx);
+  res.set(PDFName.of('Font'), resFont);
+  page.node.set(PDFName.of('Resources'), res);
+
+  // Show "00" (<0001><0001>) at (50,300); underline rect 24pt wide = the embedded
+  // text width ((1000+1000)/1000*12). Just below the baseline → underline band.
+  const content =
+    'BT /F1 12 Tf 1 0 0 1 50 300 Tm <00010001> Tj ET\n' + '0 0 0 rg 50 297 24 1.2 re f';
+  const pcb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) pcb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(pcb)));
+  return doc.save();
+}
+
+describe('getPageFontGlyphWidths + embeddedTextWidth', () => {
+  it('reads CID /W advances and measures embedded text width exactly', async () => {
+    const doc = await PDFDocument.load(await makeCidDigitUnderlinePdf());
+    const widths = getPageFontGlyphWidths(doc, 0, '/F1');
+    if (!widths) throw new Error('expected glyph widths');
+    expect(widths.get(1)).toBe(1000); // digit glyph
+    expect(widths.get(2)).toBe(200); // letter glyph
+    expect(widths.get(99)).toBe(500); // unmapped CID → /DW default
+    // reverseMap: '0'→CID 1, 'X'→CID 2.
+    const rev = new Map<string, number>([['0', 1], ['X', 2]]);
+    expect(embeddedTextWidth('00', 12, rev, widths)).toBeCloseTo(24); // (1000+1000)/1000*12
+    expect(embeddedTextWidth('00X', 12, rev, widths)).toBeCloseTo(26.4); // +200/1000*12
+    expect(embeddedTextWidth('0?', 12, rev, widths)).toBeNull(); // unmapped char → bail
+  });
+
+  it('returns null for a non-Identity CID encoding (show-code ≠ CID)', async () => {
+    const doc = await PDFDocument.load(await makeCidDigitUnderlinePdf());
+    const page = doc.getPage(0);
+    const res = doc.context.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+    const fonts = doc.context.lookup(res.get(PDFName.of('Font'))) as PDFDict;
+    const fontDict = doc.context.lookup(fonts.get(PDFName.of('F1'))) as PDFDict;
+    fontDict.set(PDFName.of('Encoding'), PDFName.of('UniGB-UCS2-H')); // non-identity
+    expect(getPageFontGlyphWidths(doc, 0, '/F1')).toBeNull();
+  });
+});
+
+describe('replaceTextAt — decoration resize uses embedded glyph advances (#text-decoration overshoot)', () => {
+  it('tracks the embedded text width, not the proxy font (no trailing underline)', async () => {
+    // Edit "00"→"00X" via Path 2 (subset glyph reuse). The embedded font's digits are
+    // 5× wider than its 'X'; Helvetica's are the opposite. The OLD proxy ratio
+    // (helv "00X"/"00" ≈ 1.60) overshoots the rule to ~38pt; the true embedded ratio
+    // (26.4/24 = 1.10) gives ~26.4pt. The rule must follow the embedded text.
+    const doc = await PDFDocument.load(await makeCidDigitUnderlinePdf());
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, '00X', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(ok).toBe(true);
+    const w = paintedReWidths(await pageContentText(await doc.save()))[0];
+    expect(w).toBeLessThan(30); // NOT the ~38pt proxy overshoot (the reported bug)
+    expect(w).toBeCloseTo(26.4, 0); // the true embedded width
   });
 });
 

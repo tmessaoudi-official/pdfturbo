@@ -21,6 +21,7 @@ import {
   PDFDict,
   PDFDocument,
   PDFName,
+  PDFNumber,
   PDFRawStream,
   PDFRef,
   StandardFonts,
@@ -1738,7 +1739,8 @@ export async function replaceTextAt(
     renderMode: target.renderMode, strokeColor: target.strokeColor,
     lineWidth: target.lineWidth,
   });
-  if (applyDeco) await applyDeco(newText, ops);
+  // Path 3 redraws in a STANDARD font → measure the decoration in the proxy (forceProxy).
+  if (applyDeco) await applyDeco(newText, ops, true);
   setPageContent(doc, pageIndex, serializeOps(ops) + redraw);
 
   return true;
@@ -1796,7 +1798,7 @@ function prepareDecorationResize(
   pageIndex: number,
   found: EditTarget,
   adjust: boolean,
-): null | ((newText: string, opsArr: CsOp[]) => Promise<void>) {
+): null | ((newText: string, opsArr: CsOp[], forceProxy?: boolean) => Promise<void>) {
   if (!adjust) return null;
   const { ops, target } = found;
   if (locateDecorationRects(ops).length === 0) return null;
@@ -1808,19 +1810,41 @@ function prepareDecorationResize(
   const oldText = decodeShowOpText(ops[target.opIndex], forward, bytesPerCode, byteSwapSafe);
   if (!oldText) return null;
 
-  return async (newText, opsArr) => {
+  // Reverse the ToUnicode map (unicode→code) so we can measure with the font's OWN
+  // glyph advances — exact for the embedded font Path 1/2 keep, unlike a proxy whose
+  // per-glyph metrics differ (the trailing-underline bug). Scoped to fonts carrying a
+  // ToUnicode map; without one (e.g. base-14 Helvetica) we keep the proxy estimate.
+  const reverseMap = new Map<string, number>();
+  if (forward) for (const [code, uni] of forward) if (!reverseMap.has(uni)) reverseMap.set(uni, code);
+  const glyphWidths = getPageFontGlyphWidths(doc, pageIndex, target.fontKey);
+
+  // forceProxy: Path 3 redraws the text in a STANDARD font, so the proxy IS the render
+  // font there and embedded advances would be wrong. Path 1/2 keep the embedded font.
+  return async (newText, opsArr, forceProxy = false) => {
     const rules = locateDecorationRects(opsArr);
     if (rules.length === 0) return;
-    const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
-    const flags = getPageFontDescriptor(doc, pageIndex, target.fontKey)?.flags ?? 0;
-    const proxy = await doc.embedFont(matchStandardFont(baseName, flags));
     const size = target.fontSize || 12;
-    let oldW: number, newW: number;
-    try {
-      oldW = proxy.widthOfTextAtSize(oldText, size);
-      newW = proxy.widthOfTextAtSize(newText, size);
-    } catch {
-      return; // proxy can't encode the text → leave the decoration unchanged
+    let oldW: number | undefined, newW: number | undefined;
+    if (!forceProxy && glyphWidths && reverseMap.size > 0) {
+      const eo = embeddedTextWidth(oldText, size, reverseMap, glyphWidths);
+      const en = embeddedTextWidth(newText, size, reverseMap, glyphWidths);
+      if (eo !== null && en !== null && eo > 1e-3) {
+        oldW = eo;
+        newW = en;
+      }
+    }
+    if (oldW === undefined || newW === undefined) {
+      // Fallback: proxy standard font (exact for Path 3's redraw; an approximation for
+      // an embedded font whose metrics differ, but better than leaving the rule frozen).
+      const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
+      const flags = getPageFontDescriptor(doc, pageIndex, target.fontKey)?.flags ?? 0;
+      const proxy = await doc.embedFont(matchStandardFont(baseName, flags));
+      try {
+        oldW = proxy.widthOfTextAtSize(oldText, size);
+        newW = proxy.widthOfTextAtSize(newText, size);
+      } catch {
+        return; // proxy can't encode the text → leave the decoration unchanged
+      }
     }
     const match = matchDecorationForText(rules, target, oldW);
     if (!match) return;
@@ -1886,6 +1910,112 @@ function getPageFontEntry(doc: PDFDocument, pageIndex: number, fontKey: string):
 function descriptorHasFontFile(desc: any): boolean {
   if (!desc?.get) return false;
   return ['FontFile', 'FontFile2', 'FontFile3'].some(k => !!desc.get(PDFName.of(k)));
+}
+
+/** A glyph-advance table for a page font, keyed by show-op code (glyph code unit). */
+export interface GlyphWidths {
+  /** Advance width in 1000-unit glyph space; falls back to the font default. */
+  get(code: number): number;
+}
+
+/**
+ * Read a page font's OWN glyph advances so the decoration resize can measure text in
+ * the font that actually renders it — Path 1/2 keep the embedded font, whose metrics
+ * (e.g. tabular digits ~25% wider than Helvetica) differ from any proxy standard font.
+ * Using a proxy ratio mis-sizes the underline whenever an edit changes the character
+ * mix (the trailing-underline bug). Returns null when no usable width table exists
+ * (e.g. base-14 fonts with no /Widths → the proxy IS exact there) or for a non-Identity
+ * CID encoding (where the show code is not the CID our /W table is keyed by).
+ *   • Type0/CID: DescendantFonts[0] /W (+ /DW default 1000), Identity-H/V only.
+ *   • Simple font: /Widths indexed by (code − /FirstChar).
+ */
+export function getPageFontGlyphWidths(doc: PDFDocument, pageIndex: number, fontKey: string): GlyphWidths | null {
+  const entry = getPageFontEntry(doc, pageIndex, fontKey);
+  if (!entry?.get) return null;
+  const ctx = doc.context;
+  try {
+    const subtype = entry.get(PDFName.of('Subtype'))?.toString() ?? '';
+    if (subtype.includes('Type0')) {
+      // Only Identity encodings guarantee show-code == CID (the /W key).
+      const enc = entry.get(PDFName.of('Encoding'))?.toString() ?? '';
+      if (!/Identity/.test(enc)) return null;
+      // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dicts are untyped
+      const desc = ctx.lookup(entry.get(PDFName.of('DescendantFonts'))) as any;
+      const d0 = desc?.get ? ctx.lookup(desc.get(0)) : null;
+      // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dicts are untyped
+      const cid = d0 as any;
+      if (!cid?.get) return null;
+      const dwRaw = ctx.lookup(cid.get(PDFName.of('DW')));
+      const defaultW = dwRaw instanceof PDFNumber ? dwRaw.asNumber() : 1000;
+      const map = parseCidWArray(ctx, ctx.lookup(cid.get(PDFName.of('W'))));
+      if (!map) return null;
+      return { get: code => map.get(code) ?? defaultW };
+    }
+    // Simple font: /Widths array indexed by char code − /FirstChar.
+    const widthsRaw = ctx.lookup(entry.get(PDFName.of('Widths')));
+    const firstRaw = ctx.lookup(entry.get(PDFName.of('FirstChar')));
+    if (!(widthsRaw instanceof PDFArray) || !(firstRaw instanceof PDFNumber)) return null;
+    const first = firstRaw.asNumber();
+    const arr = widthsRaw.asArray();
+    const map = new Map<number, number>();
+    for (let i = 0; i < arr.length; i++) {
+      const w = ctx.lookup(arr[i]);
+      if (w instanceof PDFNumber) map.set(first + i, w.asNumber());
+    }
+    return map.size > 0 ? { get: code => map.get(code) ?? 0 } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Parse a CIDFont /W array (both `c [w …]` and `cFirst cLast w` forms) → CID→width map. */
+function parseCidWArray(ctx: PDFDocument['context'], W: unknown): Map<number, number> | null {
+  if (!(W instanceof PDFArray)) return null;
+  const arr = W.asArray();
+  const map = new Map<number, number>();
+  let i = 0;
+  while (i < arr.length) {
+    const a = ctx.lookup(arr[i]);
+    const next = ctx.lookup(arr[i + 1]);
+    if (!(a instanceof PDFNumber)) break;
+    if (next instanceof PDFArray) {
+      const cFirst = a.asNumber();
+      const ws = next.asArray();
+      for (let j = 0; j < ws.length; j++) {
+        const w = ctx.lookup(ws[j]);
+        if (w instanceof PDFNumber) map.set(cFirst + j, w.asNumber());
+      }
+      i += 2;
+    } else if (next instanceof PDFNumber) {
+      const w = ctx.lookup(arr[i + 2]);
+      if (w instanceof PDFNumber) for (let c = a.asNumber(); c <= next.asNumber(); c++) map.set(c, w.asNumber());
+      i += 3;
+    } else {
+      break;
+    }
+  }
+  return map.size > 0 ? map : null;
+}
+
+/**
+ * Sum of glyph advances for `text` in text-space units at `size`, using a font's OWN
+ * width table. Each char is mapped to its show code via `reverseMap` (unicode→code,
+ * the same map Path 2 uses to re-encode). Returns null if any char is unmapped — the
+ * caller then falls back to the proxy-font estimate. Pure.
+ */
+export function embeddedTextWidth(
+  text: string,
+  size: number,
+  reverseMap: Map<string, number>,
+  widths: GlyphWidths,
+): number | null {
+  let total = 0;
+  for (const ch of text) {
+    const code = reverseMap.get(ch);
+    if (code === undefined) return null;
+    total += widths.get(code);
+  }
+  return (total / 1000) * size;
 }
 
 /**

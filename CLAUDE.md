@@ -312,15 +312,27 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   bold/italic/fontFamily/color/fontSize) and SKIPS Path 1 & Path 2 → forces the isolated Path-3 redraw (the only
   path that applies `style`; its own `q…Q` block, no neighbour bleed) — previously Path 1/2 swapped bytes and
   silently dropped the restyle. No `style` ⇒ Path 1/2 byte-identical; a restyle Path 3 refuses (Arabic/non-WinAnsi/
-  XObject) → handler overlay carries the style. Measurement embeds a base-14 proxy
-  font ⇒ a tiny orphan font dict in output only when a decoration actually matched (negligible; std-14 = no font
-  program). P2 (documented): stroke `w` line-width is not q/Q-stack-restored, so a stale `w` may feed a wrong
-  `height` to classification — affects match acceptance only (never resize geometry), and a false match still
-  requires a thin horizontal baseline-band line >50% across the text (= an underline). **Ceiling
-  #text-decoration-b:** highlight/background-rect resize, `re`-drawn-as-stroke (`re S`) underline, decorations
-  inside Form XObjects, rotated-CTM rects/lines, exact original-font metrics (proxy ratio is approximate for
-  Path 1/2). Guards: `tests/utils/contentStreamEditor.test.ts` (rect+line locate/match/adjust/redraw/capture/
-  resize/delete + slanted/polyline/sheared/co-painted refusals), `tests/browser/trueedit-underline-resize.browser.test.ts`
+  XObject) → handler overlay carries the style. P2 (documented): stroke `w` line-width is not q/Q-stack-restored,
+  so a stale `w` may feed a wrong `height` to classification — affects match acceptance only (never resize geometry),
+  and a false match still requires a thin horizontal baseline-band line >50% across the text (= an underline).
+  **Embedded-advance width (#text-decoration-width, 2026-06-19, fixes the "underline trails past the added text"
+  overshoot):** the resize scales the old rule by `newTextWidth/oldTextWidth`. Path 1/2 keep the EMBEDDED font, but
+  the widths used to be measured in a base-14 PROXY whose per-glyph metrics differ (measured: a real invoice font's
+  tabular DIGITS are ~25% wider than Helvetica's — proxy/actual 0.80 for digits vs 0.99 for letters), so any edit
+  that shifted the digit/letter MIX drifted the rule (adding letters to a digit run → overshoot tail). Now
+  `prepareDecorationResize` measures with the font's OWN advances via `getPageFontGlyphWidths` (CID `/W`+`/DW`,
+  **Identity encodings only** — else show-code ≠ CID; or simple `/Widths`+`/FirstChar`) + pure `embeddedTextWidth`
+  (maps each char→code via the ToUnicode reverse map, sums advances; null if any char unmapped → proxy fallback).
+  The closure gained `forceProxy`: **Path 3 passes it `true`** (it redraws in the standard font, so the proxy IS the
+  render font there); Path 1/2 default false. **Scoped by `reverseMap.size > 0`** → a base-14 font with no ToUnicode
+  keeps the proxy (which is exact there), so the Helvetica decoration tests are byte-unchanged. As a bonus, the
+  proxy font is now embedded only on the fallback, so the prior "tiny orphan font dict on every match" is gone in
+  the common case. **Ceiling #text-decoration-b:** highlight/background-rect resize, `re`-drawn-as-stroke (`re S`)
+  underline, decorations inside Form XObjects, rotated-CTM rects/lines; non-Identity CID encodings + ligature
+  ToUnicode keys fall back to the (approximate) proxy. Guards: `tests/utils/contentStreamEditor.test.ts` (rect+line
+  locate/match/adjust/redraw/capture/resize/delete + slanted/polyline/sheared/co-painted refusals;
+  `getPageFontGlyphWidths`/`embeddedTextWidth` CID-`/W` read + non-Identity null; a CID-digit underline that resizes
+  to the embedded width 26.4pt, NOT the 38.4pt proxy overshoot), `tests/browser/trueedit-underline-resize.browser.test.ts`
   (real pdf.js pixels: BOTH rect and stroked-line underline extend under the new tail; OFF controls leave it bare).
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
