@@ -989,6 +989,14 @@ function findTarget(
   let best: TextOpInfo | null = null;
   let bestDist = Infinity;
   for (const t of directTextOps) {
+    // Skip blanked/empty show ops. Path 3 (standard-font redraw) blanks the
+    // original op in place — `()Tj` / `[]TJ` — and appends a live redraw at the
+    // end of the stream. Both sit at the same origin, so a later edit would tie
+    // on distance and the ghost (lower opIndex) would win, leaving the live
+    // redraw untouched while the new text overlays it (the "second edit resets /
+    // text on top of each other" bug). An empty op shows nothing, so it is never
+    // a legitimate edit target regardless.
+    if (showOpPayload(pageOps[t.opIndex]).trim() === '') continue;
     const dist = Math.hypot(t.origin.x - point.x, t.origin.y - point.y);
     if (dist <= tolerance && dist < bestDist) { bestDist = dist; best = t; }
   }
@@ -1007,6 +1015,7 @@ function findTarget(
     const xOps = groupOps(tokenizeContentStream(xContent));
     const xTextOps = locateTextOps(xOps);
     for (const t of xTextOps) {
+      if (showOpPayload(xOps[t.opIndex]).trim() === '') continue; // skip blanked ghosts
       const ps = applyMatrixToPoint(xMatrix, t.origin.x, t.origin.y);
       const dist = Math.hypot(ps.x - point.x, ps.y - point.y);
       if (dist <= tolerance && dist < (bestX?.dist ?? Infinity)) {

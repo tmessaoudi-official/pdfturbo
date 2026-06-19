@@ -162,7 +162,17 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
   pdf-lib `page.drawText` after `setPageContent` — it orphans the redraw). XObject-embedded targets
   refuse before blanking (no delete-without-replacement). Guarded by
-  `tests/browser/issue2-true-edit.browser.test.ts`. **Honest fallback (#1, 2026-06-17):** maximal
+  `tests/browser/issue2-true-edit.browser.test.ts`. **Sequential-edit ghost fix (2026-06-19):** Path 3
+  BLANKS the original show op IN PLACE (`()Tj` / `[]TJ`) and APPENDS the redraw at end-of-stream, so two
+  ops share the origin. `findTarget` used to pick the blanked ghost (lower opIndex wins the distance tie)
+  on the NEXT edit → the live redraw lingered and the new text overlaid it (the reported "second edit
+  resets / text on top of each other / underline frozen" bug — manifests on ANY Path-3 edit: CID/subset
+  fonts always, and standard fonts when a restyle forces Path 3). Fix: `findTarget` now SKIPS empty-payload
+  ops (`showOpPayload(...).trim()===''`) in both the page-stream and XObject loops, so delete/replace/the
+  decoration-resize all target the live redraw. An empty op shows nothing, so it is never a valid edit
+  target anyway. Guards: `tests/utils/contentStreamSequentialEdit.test.ts` (jsdom: visible-payload count)
+  + `tests/browser/trueedit-sequential.browser.test.ts` (real Chrome pixels: wide→short far-zone bare,
+  delete clears, 3× edits latest-only, underline tracks the 2nd edit). **Honest fallback (#1, 2026-06-17):** maximal
   in-place coverage ("Option 2") is structurally bounded — Path 1 (standard fonts) + Path 2 (reuse
   glyphs ALREADY in the embedded subset) ARE the ceiling. A NEW character absent from a subset/CID font
   has no glyph outline in the PDF, so it cannot be drawn in the original font client-side (→ Path 3
