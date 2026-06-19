@@ -1548,6 +1548,19 @@ function paintedReWidths(content: string): number[] {
   return out;
 }
 
+/** Span (|lx − mx|) of the first horizontal `m … l S` stroked line in a content stream. */
+function strokedLineSpan(content: string): number | null {
+  const innerOps = groupOps(tokenizeContentStream(content));
+  let mx: number | null = null;
+  for (const op of innerOps) {
+    if (op.operator === 'm' && op.operands.length >= 2) mx = op.operands[0].value ?? null;
+    else if (op.operator === 'l' && op.operands.length >= 2 && mx !== null) {
+      return Math.abs((op.operands[0].value ?? NaN) - mx);
+    }
+  }
+  return null;
+}
+
 /** Standard-font "Hello" with a thin filled underline rect just below its baseline. */
 async function makeUnderlinedTextPdf(rectWidth = 28): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -1575,7 +1588,7 @@ describe('locateDecorationRects', () => {
     expect(rules).toHaveLength(1);
     expect(rules[0]).toMatchObject({ x: 10, y: 5, width: 100, height: 2, kind: 'rect' });
     expect(rules[0].ctmScaleX).toBeCloseTo(1);
-    expect(rules[0].widthOperandIndex).toBe(2);
+    if (rules[0].kind === 'rect') expect(rules[0].widthOperandIndex).toBe(2);
   });
 
   it('applies the CTM scale to width and position', () => {
@@ -1590,8 +1603,45 @@ describe('locateDecorationRects', () => {
     expect(locateDecorationRects(ops('1 0.5 0 1 0 0 cm 10 5 100 2 re f'))).toHaveLength(0);
   });
 
-  it('REFUSES the stroked-line underline form (no width operand)', () => {
-    expect(locateDecorationRects(ops('10 5 m 110 5 l S'))).toHaveLength(0);
+  it('finds a horizontal stroked-line underline (`m … l … S`) as a line rule', () => {
+    const rules = locateDecorationRects(ops('50 297 m 78 297 l S'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ kind: 'line', x: 50, width: 28 });
+    expect(rules[0].ctmScaleX).toBeCloseTo(1);
+  });
+
+  it('finds a right-to-left stroked line (m to the RIGHT of l)', () => {
+    const rules = locateDecorationRects(ops('78 297 m 50 297 l S'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ kind: 'line', x: 50, width: 28 });
+  });
+
+  it('applies CTM scale + translation to a stroked-line rule', () => {
+    const rules = locateDecorationRects(ops('2 0 0 1 5 0 cm 10 297 m 30 297 l S'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0].x).toBeCloseTo(25); // 10*2 + 5
+    expect(rules[0].width).toBeCloseTo(40); // (30-10)*2
+    expect(rules[0].ctmScaleX).toBeCloseTo(2);
+  });
+
+  it('REFUSES a SLANTED stroked line (y endpoints differ → not a decoration)', () => {
+    expect(locateDecorationRects(ops('50 297 m 78 305 l S'))).toHaveLength(0);
+  });
+
+  it('REFUSES a polyline (two `l` segments → not a simple underline)', () => {
+    expect(locateDecorationRects(ops('50 297 m 78 297 l 100 297 l S'))).toHaveLength(0);
+  });
+
+  it('REFUSES a stroked line under a sheared/rotated CTM', () => {
+    expect(locateDecorationRects(ops('1 0.5 0 1 0 0 cm 50 297 m 78 297 l S'))).toHaveLength(0);
+  });
+
+  it('REFUSES a thick stroked line (line width too large → shading, not a rule)', () => {
+    // 4pt-thick stroke over a 12pt run: height 4 > 0.18*12 → classifier rejects it,
+    // but locate still returns the geometry; the thickness lives in `height`.
+    const rules = locateDecorationRects(ops('4 w 50 297 m 78 297 l S'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0].height).toBeCloseTo(4);
   });
 
   it('ignores a `re` ended with the no-op painter `n`', () => {
@@ -1630,6 +1680,12 @@ describe('matchDecorationForText', () => {
   it('classifies a mid-x-height rule as strikethrough', () => {
     const m = matchDecorationForText(locateDecorationRects(ops('50 304 28 1 re f')), target, 28);
     expect(m?.kind).toBe('strikethrough');
+  });
+
+  it('matches a stroked-line underline rule', () => {
+    const m = matchDecorationForText(locateDecorationRects(ops('50 297 m 78 297 l S')), target, 28);
+    expect(m?.kind).toBe('underline');
+    expect(m?.rule.kind).toBe('line');
   });
 });
 
@@ -1743,7 +1799,7 @@ async function makeCmRectUnderlinedTextPdf(): Promise<Uint8Array> {
 }
 
 describe('replaceTextAt — decoration on realistic / refused structures', () => {
-  it('edits the text but LEAVES a stroked-line underline untouched (graceful refuse)', async () => {
+  it('EXTENDS a stroked-line underline when the new text is longer (m…l…S form)', async () => {
     const doc = await PDFDocument.load(await makeLineUnderlinedTextPdf());
     const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld', 5, undefined, undefined, {
       adjustDecorations: true,
@@ -1752,9 +1808,21 @@ describe('replaceTextAt — decoration on realistic / refused structures', () =>
     const content = await pageContentText(await doc.save());
     expect(showStrings(content)).toContain('HelloWorld'); // text edited
     const lineOps = groupOps(tokenizeContentStream(content)).map(o => o.operator);
-    expect(lineOps).toContain('l'); // the stroked line survives intact
+    expect(lineOps).toContain('l'); // the stroked line still exists
     expect(lineOps).toContain('S');
-    expect(content).toContain('78 297 l'); // its geometry is unchanged (not corrupted)
+    expect(strokedLineSpan(content) ?? NaN).toBeGreaterThan(40); // grew from 28 toward ~60
+  });
+
+  it('SHRINKS a stroked-line underline when the new text is shorter', async () => {
+    const doc = await PDFDocument.load(await makeLineUnderlinedTextPdf());
+    await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Hi', 5, undefined, undefined, { adjustDecorations: true });
+    expect(strokedLineSpan(await pageContentText(await doc.save())) ?? NaN).toBeLessThan(20);
+  });
+
+  it('leaves the stroked line untouched when adjustDecorations is off', async () => {
+    const doc = await PDFDocument.load(await makeLineUnderlinedTextPdf());
+    await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld'); // no opts
+    expect(strokedLineSpan(await pageContentText(await doc.save())) ?? NaN).toBeCloseTo(28);
   });
 
   it('resizes a q/cm-wrapped `re f` underline (real authoring-tool structure)', async () => {
@@ -1778,5 +1846,14 @@ describe('deleteTextAt — decoration removal (opt-in)', () => {
     const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
     deleteTextAt(doc, 0, { x: 52, y: 300 });
     expect(paintedReWidths(await pageContentText(await doc.save()))).toHaveLength(1);
+  });
+
+  it('removes an orphaned stroked-line underline when its text is deleted', async () => {
+    const doc = await PDFDocument.load(await makeLineUnderlinedTextPdf());
+    expect(deleteTextAt(doc, 0, { x: 52, y: 300 }, 5, { adjustDecorations: true })).toBe(true);
+    const content = await pageContentText(await doc.save());
+    // The stroke painter `S` is neutralised to `n` → the line no longer paints.
+    const lineOps = groupOps(tokenizeContentStream(content)).map(o => o.operator);
+    expect(lineOps).not.toContain('S');
   });
 });

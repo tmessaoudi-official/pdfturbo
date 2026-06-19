@@ -61,26 +61,48 @@ export interface TextOpInfo {
 }
 
 /**
- * A thin filled rectangle decoration (underline / strikethrough), located in the
- * SAME content stream as the text it decorates. Geometry is in PDF user space
- * (y-up); the width operand lives at `widthOperandIndex` of the `re` op's operands
- * (LOCAL coords — divide a user-space delta by `ctmScaleX` to write it back). The
- * stroked-line form (`m … l … S`) carries no width operand and is not represented
- * here (it is refused — left unchanged). `painterOpIndex` is the fill op that
- * paints it (neutralised to `n` to remove the decoration on a delete).
+ * A thin graphic decoration (underline / strikethrough) located in the SAME content
+ * stream as the text it decorates. Geometry (`x`/`y`/`width`/`height`) is in PDF user
+ * space (y-up), used for baseline classification. `painterOpIndex` is the paint op
+ * that draws it (a fill op for `kind:'rect'`, a stroke `S` for `kind:'line'`),
+ * neutralised to `n` to remove the decoration on a delete. b == c == 0 (no
+ * shear/rotation) is enforced for both kinds so a scalar width rewrite stays valid.
+ *
+ * Two encodings are represented (the two ways authoring tools draw a rule):
+ *  - `rect`: a thin filled rectangle `x y w h re` + fill painter. The width operand
+ *    lives at `widthOperandIndex` of the `re` op (LOCAL coords — divide a user-space
+ *    delta by `ctmScaleX` to write it back).
+ *  - `line`: a horizontal stroked segment `mx my m  lx ly l  S` (the Word/LibreOffice
+ *    form). Resized by rewriting the `l` endpoint x (`endpointOperandIndex`) relative
+ *    to the fixed `m` anchor (`anchorLocalX`, LOCAL coords).
  */
-export interface DecorationRule {
+interface DecorationRuleBase {
   x: number;
   y: number;
   width: number;
   height: number;
+  /** Index of the paint op (fill for rect, stroke `S` for line) that draws this rule. */
+  painterOpIndex: number;
+  /** Horizontal CTM scale (a) applied to the rule; b == c == 0 is enforced. */
+  ctmScaleX: number;
+}
+
+export interface RectDecorationRule extends DecorationRuleBase {
+  kind: 'rect';
   /** Index of the `re` op in the grouped ops array. */
   reOpIndex: number;
   /** Index within the `re` op's operands of the width number token (= 2). */
   widthOperandIndex: number;
-  /** Index of the fill painter op (`f`/`F`/`f*`/`B`…) that paints this rect. */
-  painterOpIndex: number;
-  /** Horizontal CTM scale (a) applied to the rect; b == c == 0 is enforced. */
-  ctmScaleX: number;
-  kind: 'rect';
 }
+
+export interface LineDecorationRule extends DecorationRuleBase {
+  kind: 'line';
+  /** Index of the `l` op whose endpoint x is rewritten to resize the segment. */
+  lineOpIndex: number;
+  /** Index within the `l` op's operands of the endpoint x token (= 0). */
+  endpointOperandIndex: number;
+  /** LOCAL-space x of the `m` anchor (the fixed end the segment grows away from). */
+  anchorLocalX: number;
+}
+
+export type DecorationRule = RectDecorationRule | LineDecorationRule;

@@ -488,13 +488,22 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
   let ctm: Matrix = [...IDENTITY];
   const ctmStack: Matrix[] = [];
   const num = (t: CsToken | undefined): number => t?.value ?? 0;
+  const skewed = (): boolean => Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6;
   // Pending `re` rectangles awaiting their painter op (a single painter can close
   // several preceding `re` ops; we only adjust a rect that is the SOLE pending one).
   let pending: { reOpIndex: number; x: number; y: number; w: number; h: number; scaleX: number }[] = [];
-  // True when a NON-`re` path-construction op (m/l/c/v/y/h) precedes the painter:
-  // the painter would then also paint that subpath, so resizing/removing the rect
-  // would touch unrelated geometry — refuse the rule entirely.
+  // Pending `m`/`l` subpath segments awaiting a stroke painter. A simple horizontal
+  // underline is EXACTLY one `m` then one `l`; a polyline (≥2 `l`) or multi-subpath
+  // (≥2 `m`) is ambiguous → refused.
+  let mList: { localX: number; userX: number; userY: number; scaleX: number; skewed: boolean }[] = [];
+  let lList: { opIndex: number; userX: number; userY: number }[] = [];
+  // True when a curve op (c/v/y/h) precedes the painter: it would share the paint, so
+  // resizing/removing the rect or line would touch unrelated geometry — refuse.
   let sawOtherPath = false;
+  // Current stroke line width (`w`), graphics state — sets a stroked line's thickness.
+  let lineWidthLocal = 1;
+
+  const reset = (): void => { pending = []; mList = []; lList = []; sawOtherPath = false; };
 
   ops.forEach((op, opIndex) => {
     switch (op.operator) {
@@ -512,9 +521,12 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
           num(op.operands[3]), num(op.operands[4]), num(op.operands[5]),
         ]);
         break;
+      case 'w':
+        lineWidthLocal = num(op.operands[0]);
+        break;
       case 're': {
         // Refuse sheared/rotated CTM — a scalar width rewrite would be wrong.
-        if (Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6) break;
+        if (skewed()) break;
         const lx = num(op.operands[0]);
         const ly = num(op.operands[1]);
         const lw = num(op.operands[2]);
@@ -523,16 +535,28 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
         pending.push({ reOpIndex: opIndex, x: p.x, y: p.y, w: lw * ctm[0], h: lh * ctm[3], scaleX: ctm[0] });
         break;
       }
-      case 'm': case 'l': case 'c': case 'v': case 'y': case 'h':
+      case 'm': {
+        const lxm = num(op.operands[0]);
+        const p = applyMatrixToPoint(ctm, lxm, num(op.operands[1]));
+        mList.push({ localX: lxm, userX: p.x, userY: p.y, scaleX: ctm[0], skewed: skewed() });
+        break;
+      }
+      case 'l': {
+        const p = applyMatrixToPoint(ctm, num(op.operands[0]), num(op.operands[1]));
+        lList.push({ opIndex, userX: p.x, userY: p.y });
+        break;
+      }
+      case 'c': case 'v': case 'y': case 'h':
         sawOtherPath = true;
         break;
       default:
         if (PATH_PAINTERS.has(op.operator)) {
-          // A SINGLE pending rect, closed by a fill painter, with NO other subpath
-          // sharing that painter, is an unambiguous decoration. Multiple rects or a
-          // co-painted m/l/c subpath → leave it alone (resizing/removing it would
-          // touch unrelated geometry).
-          if (pending.length === 1 && !sawOtherPath && FILL_PAINTERS.has(op.operator)) {
+          // A SINGLE pending rect, closed by a FILL painter, with NO other subpath
+          // sharing that painter, is an unambiguous filled-rect decoration.
+          if (
+            FILL_PAINTERS.has(op.operator) &&
+            pending.length === 1 && mList.length === 0 && lList.length === 0 && !sawOtherPath
+          ) {
             const r = pending[0];
             out.push({
               x: r.x, y: r.y, width: r.w, height: r.h,
@@ -540,8 +564,29 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
               ctmScaleX: r.scaleX, kind: 'rect',
             });
           }
-          pending = [];
-          sawOtherPath = false;
+          // A SINGLE horizontal `m`→`l` segment, closed by a plain STROKE `S`, with no
+          // rect, no curve and no extra subpath, is a stroked-line decoration (the
+          // Word/LibreOffice underline form). `s` (closepath+stroke) is refused — its
+          // implicit closing segment makes the geometry ambiguous.
+          if (
+            op.operator === 'S' &&
+            pending.length === 0 && mList.length === 1 && lList.length === 1 && !sawOtherPath
+          ) {
+            const m = mList[0];
+            const l = lList[0];
+            if (!m.skewed && Math.abs(m.userY - l.userY) <= 1e-3) {
+              const strokeUser = lineWidthLocal * Math.abs(ctm[3]);
+              out.push({
+                x: Math.min(m.userX, l.userX),
+                y: m.userY - strokeUser / 2,
+                width: Math.abs(l.userX - m.userX),
+                height: strokeUser,
+                lineOpIndex: l.opIndex, endpointOperandIndex: 0, anchorLocalX: m.localX,
+                painterOpIndex: opIndex, ctmScaleX: m.scaleX, kind: 'line',
+              });
+            }
+          }
+          reset();
         }
         break;
     }
@@ -1738,12 +1783,27 @@ function prepareDecorationResize(
     if (!match) return;
     const newUserWidth = adjustedRuleWidth(match.rule.width, oldW, newW);
     if (newUserWidth === null) return;
+    // Local segment length = user-space width divided out by the CTM x-scale.
     const newLocalWidth = newUserWidth / (match.rule.ctmScaleX || 1);
-    const reOp = opsArr[match.rule.reOpIndex];
-    const tok = reOp?.operands[match.rule.widthOperandIndex];
-    if (reOp?.operator === 're' && tok) {
-      tok.value = newLocalWidth;
-      tok.raw = fmtNum(newLocalWidth);
+    if (match.rule.kind === 'rect') {
+      const reOp = opsArr[match.rule.reOpIndex];
+      const tok = reOp?.operands[match.rule.widthOperandIndex];
+      if (reOp?.operator === 're' && tok) {
+        tok.value = newLocalWidth;
+        tok.raw = fmtNum(newLocalWidth);
+      }
+    } else {
+      // Stroked line: move the `l` endpoint x relative to the fixed `m` anchor,
+      // preserving the original draw direction (left→right or right→left).
+      const lOp = opsArr[match.rule.lineOpIndex];
+      const tok = lOp?.operands[match.rule.endpointOperandIndex];
+      if (lOp?.operator === 'l' && tok) {
+        const curEnd = tok.value ?? match.rule.anchorLocalX;
+        const dir = Math.sign(curEnd - match.rule.anchorLocalX) || 1;
+        const newEnd = match.rule.anchorLocalX + dir * newLocalWidth;
+        tok.value = newEnd;
+        tok.raw = fmtNum(newEnd);
+      }
     }
   };
 }

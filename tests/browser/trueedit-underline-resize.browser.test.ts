@@ -47,6 +47,31 @@ async function makeUnderlinedPdf(): Promise<Uint8Array> {
 }
 
 /**
+ * "Hello" in Helvetica underlined by a STROKED horizontal line (`m … l … S`) — the
+ * encoding Word/LibreOffice actually emit (the reported real-file bug: this form was
+ * refused, so the rule stayed frozen and the new tail had no underline).
+ */
+async function makeLineUnderlinedPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([PAGE_W, PAGE_H]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const res = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(res.get(PDFName.of('Font'))) as PDFDict;
+  const helv = fontDict.get([...fontDict.entries()][0][0]);
+  if (!helv) throw new Error('font missing');
+  fontDict.set(PDFName.of('F1'), helv);
+  const content =
+    `BT /F1 12 Tf 1 0 0 1 ${ORIGIN_X} ${BASELINE} Tm (Hello) Tj ET\n` +
+    `0 0 0 RG 1.2 w ${ORIGIN_X} ${BASELINE - 3} m ${ORIGIN_X + UNDERLINE_W} ${BASELINE - 3} l S`;
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+/**
  * Count dark pixels in the underline ROW band (below the glyphs, so only the rule
  * contributes) within a user-space x-window. The tail window [85,120] is well past
  * the original underline end (x≈78) — ink there ⇒ the rule extended under new text.
@@ -88,6 +113,23 @@ describe('true-edit underline resize (#text-decoration)', () => {
     const doc = await PDFDocument.load(await makeUnderlinedPdf());
     await replaceTextAt(doc, 0, { x: ORIGIN_X + 2, y: BASELINE }, 'HelloWorld');
     // Original rule ends at x≈78; the tail window [85,120] stays empty.
+    expect(await tailUnderlineInk(await doc.save())).toBe(0);
+  });
+
+  // The real-file bug: underlines drawn as a STROKED LINE (Word/LibreOffice), not a
+  // filled rect. Previously refused → frozen → bare tail. Now resized.
+  it('extends a STROKED-LINE underline under the new tail when LONGER', async () => {
+    const doc = await PDFDocument.load(await makeLineUnderlinedPdf());
+    const ok = await replaceTextAt(doc, 0, { x: ORIGIN_X + 2, y: BASELINE }, 'HelloWorld', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(ok).toBe(true);
+    expect(await tailUnderlineInk(await doc.save())).toBeGreaterThan(20);
+  });
+
+  it('leaves a STROKED-LINE tail bare when adjustDecorations is OFF (control)', async () => {
+    const doc = await PDFDocument.load(await makeLineUnderlinedPdf());
+    await replaceTextAt(doc, 0, { x: ORIGIN_X + 2, y: BASELINE }, 'HelloWorld');
     expect(await tailUnderlineInk(await doc.save())).toBe(0);
   });
 });

@@ -288,25 +288,34 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   that changed text LENGTH used to leave the rule frozen (longer edit → un-underlined tail; the reported bug).
   `replaceTextAt`/`deleteTextAt` take `opts.adjustDecorations` (wired from `isEnabled('textDecor')`, #28 seam,
   default ON; PURE behavior gate — no UI button, so vite needs NO define, env-undefined→ON like every flag).
-  Pure helpers in `contentStreamEditor.ts`: `locateDecorationRects` (CTM-aware `re`+fill-painter walk, USER
-  space) → `matchDecorationForText` (reuses the export `classifyRuleAsUnderline` baseline-band+≥50%-overlap
+  Pure helpers in `contentStreamEditor.ts`: `locateDecorationRects` (CTM-aware walk, USER space) collects BOTH
+  decoration encodings — filled `re`+fill-painter rects (`kind:'rect'`) AND horizontal stroked lines
+  `mx my m  lx ly l  S` (`kind:'line'`, the Word/LibreOffice underline form; `DecorationRule` is a discriminated
+  union) → `matchDecorationForText` (reuses the export `classifyRuleAsUnderline` baseline-band+≥50%-overlap
   classifier — SINGLE candidate only, else refuse) → `adjustedRuleWidth` (scale by new/old text-width ratio
   measured in the matched standard font → path- AND scale-invariant; the old rule already bakes in Tz/CTM and
-  we keep them, so the ratio cancels — no separate hScale math; div-by-0 guarded). Resize rewrites the `re`
-  width operand IN the same `writeBack` → atomic + undoable via the existing `ReplaceSourcePdfBytesCmd` (NO new
-  command, NO schema bump). Delete neutralises the fill painter to `n` (+ clears its operands). **Non-obvious
-  REFUSE gates (each = leave PDF unchanged, never guess):** sheared/rotated CTM (b or c ≠ 0); >1 in-band rule
-  (double underline); the stroked-LINE form `m…l…S` (no width operand); and — the P1 caught in review — a rect
-  whose fill painter ALSO closes an `m/l/c/v/y/h` subpath (neutralising it would erase that vector art), so
-  `locateDecorationRects` tracks `sawOtherPath` and emits nothing when set. Path-3 redraw now also re-emits
-  captured `Tc`/`Tw`/`Tz`/`Ts` (`buildPath3Redraw`; `locateTextOps` stamps them onto `TextOpInfo` only when
-  non-default → byte-identical for plain ops). Measurement embeds a base-14 proxy font ⇒ a tiny orphan font
-  dict in output only when a decoration actually matched (negligible; std-14 = no font program). **Ceiling
-  #text-decoration-b:** highlight/background-rect resize, stroked-line underline resize, decorations inside
-  Form XObjects, rotated-CTM rects, exact original-font metrics (proxy ratio is approximate for Path 1/2).
-  Guards: `tests/utils/contentStreamEditor.test.ts` (locate/match/adjust/redraw/capture/resize/delete + the
-  co-painted-subpath refusal), `tests/browser/trueedit-underline-resize.browser.test.ts` (real pdf.js pixels:
-  underline extends under the new tail; OFF control leaves the tail bare).
+  we keep them, so the ratio cancels — no separate hScale math; div-by-0 guarded). Resize rewrites the rect's
+  width operand OR the line's `l` endpoint x (relative to the fixed `m` anchor, draw-direction-preserving) IN
+  the same `writeBack` → atomic + undoable via the existing `ReplaceSourcePdfBytesCmd` (NO new command, NO schema
+  bump). Delete neutralises the paint op to `n` (fill for rect, stroke `S` for line) + clears its operands.
+  **The stroked-LINE form is the real-file fix (2026-06-19):** the original 2026-06-18 ship handled ONLY filled
+  `re` rects, so Word/LibreOffice underlines (drawn as `m…l…S`) stayed frozen — the reported "still not
+  propagated" symptom = a successful in-place edit whose stroked rule was refused, NOT the overlay path.
+  **Non-obvious REFUSE gates (each = leave PDF unchanged, never guess):** sheared/rotated CTM (b or c ≠ 0); >1
+  in-band rule (double underline); a SLANTED line (m/l y differ) or POLYLINE (≥2 `l`); `s` (closepath+stroke,
+  ambiguous closing segment) — only plain `S`; and a rect/line whose painter ALSO closes an `m/l/c/v/y/h`
+  subpath (neutralising it would erase that vector art), refused via `sawOtherPath` + the single-segment
+  counts. Path-3 redraw re-emits captured `Tc`/`Tw`/`Tz`/`Ts` (`buildPath3Redraw`; `locateTextOps` stamps them
+  onto `TextOpInfo` only when non-default → byte-identical for plain ops). Measurement embeds a base-14 proxy
+  font ⇒ a tiny orphan font dict in output only when a decoration actually matched (negligible; std-14 = no font
+  program). P2 (documented): stroke `w` line-width is not q/Q-stack-restored, so a stale `w` may feed a wrong
+  `height` to classification — affects match acceptance only (never resize geometry), and a false match still
+  requires a thin horizontal baseline-band line >50% across the text (= an underline). **Ceiling
+  #text-decoration-b:** highlight/background-rect resize, `re`-drawn-as-stroke (`re S`) underline, decorations
+  inside Form XObjects, rotated-CTM rects/lines, exact original-font metrics (proxy ratio is approximate for
+  Path 1/2). Guards: `tests/utils/contentStreamEditor.test.ts` (rect+line locate/match/adjust/redraw/capture/
+  resize/delete + slanted/polyline/sheared/co-painted refusals), `tests/browser/trueedit-underline-resize.browser.test.ts`
+  (real pdf.js pixels: BOTH rect and stroked-line underline extend under the new tail; OFF controls leave it bare).
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order

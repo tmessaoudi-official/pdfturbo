@@ -1,8 +1,57 @@
 # True-edit decoration + graphics-state fidelity Plan
 
-> STATUS: IMPLEMENTED — all tests green (jsdom 1611 pass + 2 xfail; browser +2). Not yet committed.
+> STATUS: 2026-06-19 — STROKED-LINE underline resize implemented (UNCOMMITTED working tree).
+> Root cause of "still not propagated" = the first ship (1f70d77+19b7c58) handled ONLY filled `re`
+> rects; Word/LibreOffice underlines are STROKED LINES (`m…l…S`) → refused → frozen. Now
+> `locateDecorationRects` detects+resizes both (DecorationRule = discriminated rect|line union),
+> delete neutralises `S`→`n`. Green: jsdom 1619+2xfail, real-Chrome 72 (2 new stroked-line pixel
+> tests). AWAITING user's redacted C1/C2 sample (#2) to CONFIRM against the real file, then commit.
+> Old "overlay path" hypothesis (#1 below) is OVERTURNED — the symptom proves an in-place edit.
+
+## Why it failed on the real file (ranked hypotheses — investigate FIRST next session)
+The mechanism is proven on synthetic PDFs (jsdom + real-Chrome pixels), so the gap is the REAL
+file's structure routing around the resize. Ranked by likelihood — get EVIDENCE before fixing
+(systematic-debugging: reproduce with the user's actual file, don't guess):
+
+1. **The edit is an OVERLAY, not a true in-place edit (MOST LIKELY).** `applyDeco` lives INSIDE
+   `replaceTextAt`; if the true edit refuses (subset/CID font where the NEW char isn't in the
+   subset, Arabic, Form XObject, encrypted), it returns false → `textEditHandler` adds an
+   **overlay** TextElement and the source underline rect is NEVER touched. The word "added text"
+   hints at this. → CHECK: does the `toast.trueEditOverlay` ("couldn't edit in place…") fire? If
+   yes, decoration resize must move to the OVERLAY path (draw a fresh underline under the overlay
+   element), not the content-stream path. This is probably the real fix.
+2. **Underline is a STROKED LINE (`m … l … S`), not a filled `re`** → we deliberately refuse →
+   stays frozen. v1 ceiling. Fix = handle the line form (rewrite the `l` endpoint x).
+3. **Underline rect lives in a separate content stream or a Form XObject** → `locateDecorationRects`
+   only walks `found.ops` (the matched op's stream). CHECK whether findTarget merges all page
+   content streams; rect in another stream/XObject = not found.
+4. **Rect shares its painter with an m/l/c subpath** → `sawOtherPath` refuses (correct, but means
+   no resize). 5. Rect drawn as STROKE (`re S` + line width), not fill → only FILL_PAINTERS match.
+
+**Fastest repro:** get the user's PDF (or a redacted 1-page sample) into `tests/fixtures/` and add a
+browser test that edits the actual underlined word; assert the tail underline ink. That converts the
+"works on synthetic / fails on real" gap into a red test. Likely outcome: route decoration through
+the overlay fallback (#1).
+
+## NEW FEATURE REQUEST (separate, LARGE — not started): DOCX read + edit
+User wants the app to READ and EDIT .docx (today it only EXPORTS pdf→docx via flowDocWriters.ts).
+This is a major new capability: parse OOXML (word/document.xml + styles/numbering/media), render to
+the editor model, edit, re-serialize valid OOXML. Scope/spike needed — likely `mammoth`/`docx` for
+parse + the existing `docx` npm for write, or a custom OOXML round-trip. Treat as its own Large
+sprint with brainstorm → design → plan gates. NOT part of #text-decoration.
 
 ## Decisions Log
+- [2026-06-19] DIAGNOSIS (Verified by code read): the shipped fix only resizes FILLED `re`
+  rects (`contentStreamEditor.ts:475/535`); the stroked-line form `m…l…S` is deliberately
+  refused. The reported symptom (old text underlined, only appended tail bare) = a SUCCESSFUL
+  in-place edit with a frozen rule, NOT the overlay path (overlay covers the original +
+  underline). `found.ops` already concatenates all page content streams (`:747`), so
+  "separate stream" is not the cause. → #1 suspect = real underline is a STROKED LINE.
+- [2026-06-19] AGREED (user: "1 and 2 and 3 and four"): do ALL of — (#1) broaden engine to
+  resize the stroked-line underline form + ≥2-rule disambiguation, TDD with synthetic
+  fixtures; (#2) user will share a redacted C1/C2 sample to reproduce exactly; (#3) inventory
+  other text attributes lost on edit; (#4) DOCX read+edit as its own Large design sprint.
+  Sequence: #1 first (live bug, actionable now), fold in #2 sample, #3 inline, #4 separate.
 - [2026-06-18] AGREED: Scope = "Decorations + graphics-state fidelity" — resize the
   underline/strikethrough rule tied to edited text AND capture char/word spacing,
   horizontal scale, and text rise so the Path-3 redraw re-emits them. (User chose this
