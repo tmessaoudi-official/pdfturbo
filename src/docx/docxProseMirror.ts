@@ -54,6 +54,8 @@ export function docToDocModel(doc: PMNode): DocModel {
 export interface DocxEditorHandle {
   /** Serialize the current editor content back into .docx bytes (in-place save). */
   save(): Uint8Array;
+  /** The current editable model (paragraphs + per-run bold/italic) — used by PDF export. */
+  getModel(): DocModel;
   /** The underlying ProseMirror view (for wiring toolbars later). */
   view: EditorView;
   /** Tear down the editor view. */
@@ -82,6 +84,9 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
       const edited = docToDocModel(view.state.doc);
       setDocumentXml(opc, applyParagraphRuns(originalXml, edited.paragraphs));
       return packOpc(opc);
+    },
+    getModel(): DocModel {
+      return docToDocModel(view.state.doc);
     },
     destroy(): void {
       view.destroy();

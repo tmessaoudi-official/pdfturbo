@@ -154,4 +154,14 @@ describe('mountDocxEditor — editable view + in-place save', () => {
     expect(model.paragraphs.map(paragraphText)).not.toContain('Plain');
     expect(getDocumentXml(openOpc(out))).toContain('<w:tbl');
   });
+
+  it('getModel() returns the current paragraphs+runs model', async () => {
+    const container = document.createElement('div');
+    const h = mountDocxEditor(container, await makeStyledDocx());
+    const model = h.getModel();
+    h.destroy();
+    expect(model.paragraphs.length).toBeGreaterThan(0);
+    expect(model.paragraphs.some(p => p.runs.some(r => r.text.length > 0))).toBe(true);
+    expect(model.paragraphs.map(paragraphText)).toContain('Plain');
+  });
 });

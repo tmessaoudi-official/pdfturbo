@@ -31,7 +31,12 @@ describe('createDocxEditorController', () => {
 
   it('loadBytes mounts via the seam, shows the modal, and Save downloads <base>-edited.docx', async () => {
     const saved = new Uint8Array([1, 2, 3]);
-    const handle: DocxEditorHandle = { save: () => saved, view: {} as never, destroy: vi.fn() };
+    const handle: DocxEditorHandle = {
+      save: () => saved,
+      getModel: () => ({ paragraphs: [] }),
+      view: {} as never,
+      destroy: vi.fn(),
+    };
     const loadEditor = vi.fn(() => Promise.resolve(handle));
     const download = vi.fn();
     const c = createDocxEditorController({ loadEditor, download });
