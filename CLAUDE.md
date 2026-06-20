@@ -620,6 +620,26 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   back to false and undo the size win. Defaults **lossless** / **200 DPI / 0.8 quality** (conservative). Toast
   reports before→after size + % saved (`formatBytes`). **Ceiling #60b:** true in-place image-XObject
   downsampling (shrink only embedded rasters, keep text) — pdf-lib has no XObject-replace API.
+- **DOCX read+edit (#1, Track B)**: a SEPARATE editor from the PDF pipeline (it edits a Word doc, not a
+  PDF) — `src/docx/*`, gated `VITE_FEATURE_DOCX_EDIT` (#28 seam). Entry: file-menu `fileMenuEditDocx` →
+  `createDocxEditorController` (lazy-imported on first click; `main.ts` removes the menu item when the flag
+  is off). The controller is **self-contained** — it creates its OWN hidden file input + modal overlay
+  (`.docx-editor-*` in `modals.css`), never touching `documentModel`/`uiController`, so opening a Word doc
+  can't disturb PDF editing. **Cardinal rule (spike verdict
+  `docs/reviews/2026-06-20-docx-phase0-spike-verdict.md`):** edit `word/document.xml` IN PLACE in the
+  unzipped OPC and re-zip — NEVER rebuild via the `docx` writer (it drops every unmodeled part:
+  tables/styles/numbering/headers). `opcEdit.ts` = fflate(MIT) unzip + platform DOMParser edit + re-zip;
+  `docModel.ts` models only TOP-LEVEL `w:body` paragraphs + bold/italic runs (everything else passes
+  through verbatim); `docxProseMirror.ts` maps DocModel↔a ProseMirror(MIT) doc + `mountDocxEditor`.
+  **Save preserves per-run bold/italic** via `applyParagraphRuns` (clones the original first run's `w:rPr`
+  so unmodeled font/size/color survive, applies b/i per run) — NOT the older text-level `applyParagraphTexts`
+  (which flattened a paragraph to one run, losing italic). **Lazy split (verified in `vite build`):** the
+  controller chunk (~2.5 KB) loads on first menu click, the ProseMirror+model editor (~213 KB) on first
+  document open — neither is in the initial bundle. Deps all permissive: prosemirror-* (MIT), fflate (MIT),
+  docx (MIT). **Ceiling / deferred:** per-run formatting beyond bold/italic, tables/lists editing, styles
+  UI, and **DOCX→PDF export** (#1d — there is no flow→PDF renderer; FlowDoc is PDF→flow only). Guards:
+  `tests/docx/{docxEditor,docxEditorController}.test.ts` (jsdom), `tests/browser/docx-editor.browser.test.ts`
+  (real Chrome: lazy default import + real ProseMirror contenteditable render + edit→save round-trip).
 
 ## Git & CI
 

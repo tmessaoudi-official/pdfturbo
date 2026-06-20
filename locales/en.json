@@ -72,6 +72,7 @@
     "signCertTitle": "Sign with a digital certificate (PKCS#12)",
     "newBlankPage": "📄 New Blank Page…",
     "lockPdf": "🔒 Lock PDF…",
+    "editDocx": "📝 Edit Word doc…",
     "langTitle": "Change language",
     "textChevronTitle": "Text tools",
     "drawBtnTitle": "Shapes (A/R/C)",
@@ -81,6 +82,14 @@
     "exportChevronTitle": "Export options",
     "fillColorTitle": "Shape fill color",
     "fillNoneTitle": "No fill / transparent"
+  },
+  "docxEditor": {
+    "title": "Edit Word document",
+    "save": "Save .docx",
+    "close": "Close",
+    "saved": "Saved edited document",
+    "openFailed": "Couldn't open this Word document",
+    "saveFailed": "Couldn't save the document"
   },
   "formatting": {
     "textLabel": "Text / Shape",

@@ -72,6 +72,7 @@
     "signCertTitle": "Signer avec un certificat numérique (PKCS#12)",
     "newBlankPage": "📄 Nouvelle page vierge…",
     "lockPdf": "🔒 Verrouiller le PDF…",
+    "editDocx": "📝 Éditer un doc Word…",
     "langTitle": "Changer de langue",
     "textChevronTitle": "Outils texte",
     "drawBtnTitle": "Formes (A/R/C)",
@@ -81,6 +82,14 @@
     "exportChevronTitle": "Options d'export",
     "fillColorTitle": "Couleur de remplissage de la forme",
     "fillNoneTitle": "Sans remplissage / transparent"
+  },
+  "docxEditor": {
+    "title": "Éditer le document Word",
+    "save": "Enregistrer .docx",
+    "close": "Fermer",
+    "saved": "Document modifié enregistré",
+    "openFailed": "Impossible d'ouvrir ce document Word",
+    "saveFailed": "Impossible d'enregistrer le document"
   },
   "formatting": {
     "textLabel": "Texte / Forme",

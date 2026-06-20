@@ -43,6 +43,7 @@
     "signCertTitle": "التوقيع باستخدام شهادة رقمية (PKCS#12)",
     "newBlankPage": "📄 صفحة فارغة جديدة…",
     "lockPdf": "🔒 قفل PDF…",
+    "editDocx": "📝 تحرير مستند Word…",
     "findTitle": "البحث في الصفحة (Ctrl+F)",
     "arrowTitle": "سهم (A)",
     "rectTitle": "مستطيل (R)",
@@ -81,6 +82,14 @@
     "exportChevronTitle": "خيارات التصدير",
     "fillColorTitle": "لون تعبئة الشكل",
     "fillNoneTitle": "بدون تعبئة / شفاف"
+  },
+  "docxEditor": {
+    "title": "تحرير مستند Word",
+    "save": "حفظ .docx",
+    "close": "إغلاق",
+    "saved": "تم حفظ المستند المعدّل",
+    "openFailed": "تعذّر فتح مستند Word هذا",
+    "saveFailed": "تعذّر حفظ المستند"
   },
   "formatting": {
     "textLabel": "نص / شكل",

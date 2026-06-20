@@ -9,6 +9,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { wireSwUpdate } from './pwaUpdate';
 import { isEnabled } from './config/features';
 import { renderAppVersion } from './utils/appVersion';
+import type { DocxEditorController } from './docx/docxEditorController';
 
 // Shared diagnostic ring buffer (M0 #41). Created before anything else so the global
 // error boundary (M0 #1) can record failures that occur during i18n/app construction,
@@ -88,6 +89,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!isEnabled('crop')) { app.ui.cropBtn.style.display = 'none'; document.getElementById('cropControls')?.remove(); }
   if (!isEnabled('compress')) { app.ui.compressBtn.style.display = 'none'; app.ui.compressModal.remove(); }
   if (!isEnabled('signers')) { app.ui.signersBtn.style.display = 'none'; app.ui.signersModal.remove(); }
+
+  // #1c — DOCX editor entry (flag-gated, lazy). Nothing docx-related (ProseMirror,
+  // the docx model) loads until the user actually opens the editor: the controller
+  // module is dynamically imported on first click, and it in turn lazy-loads the
+  // editor on first document open. Flag off → the menu item is removed entirely.
+  const editDocxBtn = document.getElementById('fileMenuEditDocx');
+  if (!isEnabled('docxEdit')) {
+    editDocxBtn?.remove();
+  } else if (editDocxBtn) {
+    let docxController: DocxEditorController | undefined;
+    editDocxBtn.addEventListener('click', async () => {
+      if (!docxController) {
+        const { createDocxEditorController } = await import('./docx/docxEditorController');
+        docxController = createDocxEditorController({
+          notify: (key, kind) => kind === 'error' ? app.reportError.error(key) : app.reportError.info(key),
+        });
+      }
+      docxController.open();
+    });
+  }
 
   // Language switcher — re-render dynamic DOM on change
   onLanguageChanged(() => {

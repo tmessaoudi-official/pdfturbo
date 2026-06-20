@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_XFDF?: string;
   readonly VITE_FEATURE_BATES?: string;
   readonly VITE_FEATURE_CROP?: string;
+  readonly VITE_FEATURE_DOCX_EDIT?: string;
 }
 
 interface ImportMeta {

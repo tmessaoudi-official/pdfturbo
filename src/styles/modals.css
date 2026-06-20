@@ -171,3 +171,28 @@
   box-shadow: 0 4px 16px rgba(0,0,0,0.25);
   outline: none;
 }
+
+/* #1c — DOCX editor overlay. Full-viewport modal hosting the ProseMirror view. */
+.docx-editor-modal {
+  position: fixed; inset: 0; z-index: 9500;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.45);
+}
+.docx-editor-panel {
+  display: flex; flex-direction: column;
+  width: min(900px, 94vw); height: min(85vh, 900px);
+  background: #fff; border-radius: 8px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.35);
+  overflow: hidden;
+}
+.docx-editor-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+.docx-editor-title { font-weight: 600; font-size: 14px; flex: 1; }
+.docx-editor-close { margin-left: 0; }
+.docx-editor-mount {
+  flex: 1; overflow: auto; padding: 18px 22px;
+}
+.docx-editor-mount .ProseMirror { outline: none; min-height: 100%; line-height: 1.5; }
