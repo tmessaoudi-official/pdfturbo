@@ -55,6 +55,29 @@ describe('createDocxEditorController', () => {
     c.destroy();
   });
 
+  it('Export PDF renders the model and downloads a .pdf via the download seam', async () => {
+    const downloads: { bytes: Uint8Array; filename: string }[] = [];
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]),
+      getModel: () => ({ paragraphs: [{ runs: [{ text: 'Hello world' }] }] }),
+      view: {} as never,
+      destroy: vi.fn(),
+    };
+    const loadEditor = vi.fn(() => Promise.resolve(handle));
+    const download = vi.fn((bytes: Uint8Array, filename: string) => downloads.push({ bytes, filename }));
+    const c = createDocxEditorController({ loadEditor, download });
+
+    await c.loadBytes(new Uint8Array([9]), 'report.docx');
+    const btn = document.querySelector<HTMLButtonElement>('.docx-editor-export-pdf');
+    expect(btn).toBeTruthy();
+    btn?.click();
+
+    await vi.waitFor(() => expect(downloads.length).toBeGreaterThan(0));
+    expect(downloads[0].filename).toBe('report.pdf');
+    expect(new TextDecoder().decode(downloads[0].bytes.slice(0, 5))).toBe('%PDF-');
+    c.destroy();
+  });
+
   it('default wiring (real mountDocxEditor) round-trips an edited document through download', async () => {
     let out: Uint8Array | null = null;
     const c = createDocxEditorController({ download: bytes => { out = bytes; } });

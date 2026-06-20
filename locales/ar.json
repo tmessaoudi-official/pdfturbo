@@ -89,7 +89,11 @@
     "close": "إغلاق",
     "saved": "تم حفظ المستند المعدّل",
     "openFailed": "تعذّر فتح مستند Word هذا",
-    "saveFailed": "تعذّر حفظ المستند"
+    "saveFailed": "تعذّر حفظ المستند",
+    "exportPdf": "تصدير PDF",
+    "pdfExported": "تم تصدير PDF",
+    "pdfUnsupportedChars": "بعض الأحرف غير مدعومة في خطوط PDF وتم استبدالها بـ «؟»",
+    "pdfFailed": "تعذّر تصدير PDF"
   },
   "formatting": {
     "textLabel": "نص / شكل",

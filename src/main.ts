@@ -103,7 +103,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!docxController) {
         const { createDocxEditorController } = await import('./docx/docxEditorController');
         docxController = createDocxEditorController({
-          notify: (key, kind) => kind === 'error' ? app.reportError.error(key) : app.reportError.info(key),
+          notify: (key, kind) =>
+            kind === 'error'
+              ? app.reportError.error(key)
+              : kind === 'warn'
+                ? app.reportError.warn(key)
+                : app.reportError.info(key),
         });
       }
       docxController.open();

@@ -89,7 +89,11 @@
     "close": "Fermer",
     "saved": "Document modifié enregistré",
     "openFailed": "Impossible d'ouvrir ce document Word",
-    "saveFailed": "Impossible d'enregistrer le document"
+    "saveFailed": "Impossible d'enregistrer le document",
+    "exportPdf": "Exporter en PDF",
+    "pdfExported": "PDF exporté",
+    "pdfUnsupportedChars": "Certains caractères ne sont pas pris en charge par les polices PDF et ont été remplacés par « ? »",
+    "pdfFailed": "Échec de l’export PDF"
   },
   "formatting": {
     "textLabel": "Texte / Forme",

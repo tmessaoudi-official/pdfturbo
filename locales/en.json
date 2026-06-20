@@ -89,7 +89,11 @@
     "close": "Close",
     "saved": "Saved edited document",
     "openFailed": "Couldn't open this Word document",
-    "saveFailed": "Couldn't save the document"
+    "saveFailed": "Couldn't save the document",
+    "exportPdf": "Export PDF",
+    "pdfExported": "PDF exported",
+    "pdfUnsupportedChars": "Some characters aren’t supported by the PDF fonts and were replaced with “?”",
+    "pdfFailed": "Couldn’t export the PDF"
   },
   "formatting": {
     "textLabel": "Text / Shape",

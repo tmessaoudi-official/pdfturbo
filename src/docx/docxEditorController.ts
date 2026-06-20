@@ -21,8 +21,8 @@ export interface DocxEditorControllerOptions {
   loadEditor?: (container: HTMLElement, bytes: Uint8Array) => Promise<DocxEditorHandle>;
   /** Persist the edited bytes. Defaults to a blob/anchor download. */
   download?: (bytes: Uint8Array, filename: string) => void;
-  /** User-facing notice seam (e.g. app.reportError.info / .error). Optional. */
-  notify?: (key: string, kind: 'info' | 'error') => void;
+  /** User-facing notice seam (e.g. app.reportError.info / .warn / .error). Optional. */
+  notify?: (key: string, kind: 'info' | 'warn' | 'error') => void;
 }
 
 export interface DocxEditorController {
@@ -58,6 +58,11 @@ function editedName(filename: string): string {
   return filename.replace(/(\.docx)?$/i, '') + '-edited.docx';
 }
 
+/** `foo.docx` → `foo.pdf`. */
+function pdfName(filename: string): string {
+  return filename.replace(/\.docx$/i, '') + '.pdf';
+}
+
 /**
  * Build the editor controller. Appends a hidden file input and a hidden modal to
  * `document.body`; nothing is shown until `open()`/`loadBytes()`.
@@ -89,6 +94,11 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
   title.className = 'docx-editor-title';
   title.textContent = t('docxEditor.title');
 
+  const exportPdfBtn = document.createElement('button');
+  exportPdfBtn.type = 'button';
+  exportPdfBtn.className = 'docx-editor-export-pdf btn';
+  exportPdfBtn.textContent = t('docxEditor.exportPdf');
+
   const saveBtn = document.createElement('button');
   saveBtn.type = 'button';
   saveBtn.className = 'docx-editor-save btn';
@@ -103,7 +113,7 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
   const mount = document.createElement('div');
   mount.className = 'docx-editor-mount';
 
-  header.append(title, saveBtn, closeBtn);
+  header.append(title, exportPdfBtn, saveBtn, closeBtn);
   panel.append(header, mount);
   modal.append(panel);
   document.body.append(input, modal);
@@ -149,9 +159,23 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
     }
   };
 
+  const onExportPdf = (): void => {
+    if (!handle) return;
+    const model = handle.getModel();
+    import('./docxToPdf')
+      .then(({ docModelToPdfBytes }) => docModelToPdfBytes(model))
+      .then(({ bytes, hadUnsupportedChars }) => {
+        download(bytes, pdfName(currentName));
+        notify('docxEditor.pdfExported', 'info');
+        if (hadUnsupportedChars) notify('docxEditor.pdfUnsupportedChars', 'warn');
+      })
+      .catch(() => notify('docxEditor.pdfFailed', 'error'));
+  };
+
   const onClose = (): void => { close(); };
 
   input.addEventListener('change', onInputChange);
+  exportPdfBtn.addEventListener('click', onExportPdf);
   saveBtn.addEventListener('click', onSave);
   closeBtn.addEventListener('click', onClose);
 
@@ -167,6 +191,7 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
     destroy(): void {
       teardownHandle();
       input.removeEventListener('change', onInputChange);
+      exportPdfBtn.removeEventListener('click', onExportPdf);
       saveBtn.removeEventListener('click', onSave);
       closeBtn.removeEventListener('click', onClose);
       input.remove();
