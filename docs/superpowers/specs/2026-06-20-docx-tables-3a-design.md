@@ -28,11 +28,18 @@ table editing; rows/columns/merge-split are deferred to 3b/3c/3d.
 - **Structural edits** — add/remove **row** (3b), add/remove **column** (3c),
   **merge/split** cells (3d). In 3a the table grid is **read-only**: prosemirror-tables'
   structural commands are NOT bound, and no toolbar/keymap exposes them.
-- **Find/replace inside cells** — find/replace continues to search only top-level
-  paragraphs (already the documented v1 ceiling in the find/replace plan). Searching cell
-  text is a follow-up once tables are in the PM model long enough to validate.
 - Column resize handles, cell background/border *editing* (only preservation), table
   insertion/deletion as a whole.
+
+### Find/replace inside cells — now IN scope (free, lifted by 3a)
+
+Because `findMatches` uses ProseMirror's `descendants()` walk and returns `true` for any
+non-textblock node (so it recurses into `table`, `table_row`, `table_cell`), it naturally
+reaches the paragraph textblocks inside cells once they are part of the PM doc. No code
+change to `findReplace.ts` was needed. Find/replace now searches and replaces cell text
+with the same per-textblock semantics as top-level paragraphs. Validated by
+`tests/browser/docx-find-replace.browser.test.ts` (the second test: "find/replace reaches
+text inside a table cell and round-trips correctly").
 
 ### Cell-content note (not structural)
 Pressing Enter inside a cell **splits a cell paragraph** — this changes the cell's
