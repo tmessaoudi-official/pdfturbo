@@ -10,12 +10,15 @@
 - [2026-06-20] AGREED (decision 2 — in-place save): position-addressed cell-paragraph writer extends `applyParagraphRuns` to walk `w:tbl > w:tr > w:tc > w:p` and rewrite each cell paragraph's runs in place; `w:tblPr`/`w:tblGrid`/`w:tcPr` (grid/borders/widths/shading/styles) untouched. No docx-writer rebuild (cardinal rule, one level deeper).
 - [2026-06-20] AGREED (decision 3 — wiring): `tableEditing()` plugin + prosemirror-tables node specs merged into `docxSchema`; `docModelToDoc`/`docToDocModel` emit/read table nodes; gated by existing `VITE_FEATURE_DOCX_EDIT` (no new flag).
 
-## Brainstorm status (PAUSED for compaction 2026-06-20)
-3a design decisions still OPEN (resume here):
-1. How tables enter `DocModel` — it is currently FLAT (`paragraphs: DocParagraph[]`). Cells must round-trip, so the model needs an ordered block list (paragraph | table). BLAST RADIUS: every consumer of `model.paragraphs` (PDF export `docxToPdf.ts`, DOCX→PDF, find/replace via the PM doc not the model, `applyParagraphRuns` save). Likely recommend: extend to `blocks: (DocParagraph|DocTable)[]` while keeping a `paragraphs` view, or thread tables separately.
-2. In-place save cell-addressing — `applyParagraphRuns(originalXml, …)` rewrites top-level body `w:p`. Tables need each cell's `w:p` runs written back into the right `w:tbl>w:tr>w:tc` by position, WITHOUT rebuilding via the docx writer (cardinal rule). Design the position-addressed cell-paragraph writer.
-3. Editor wiring — `tableEditing()` plugin + `columnResizing()` (optional) + table node specs merged into `docxSchema`; `docModelToDoc`/`docToDocModel` emit/read table nodes; CSS for cells; gated by `VITE_FEATURE_DOCX_EDIT` (no new flag).
-Then: write spec (`docs/superpowers/specs/2026-06-20-docx-tables-3a-*.md`) → user review → writing-plans → TDD.
+## Brainstorm status — 3a design CLOSED (2026-06-20)
+All three open decisions resolved (see Decisions Log above): (1) dual-field model `blocks` +
+populated top-level `paragraphs`; (2) table-anchored recursive in-place reconciler `applyBlocks`;
+(3) prosemirror-tables node specs + `tableEditing()` (selection/nav only). Spec approved by user.
 
 ## Formal Plan
-<!-- written at Phase 4 approval, per sub-slice -->
+- **Design spec**: `docs/superpowers/specs/2026-06-20-docx-tables-3a-design.md` (committed e0a7444, refined fae5112)
+- **Implementation plan**: `docs/superpowers/plans/2026-06-20-docx-tables-3a.md` — 11 TDD tasks (T0 dep → T1 model → T2 parse → T3 applyBlocks → T4 cell round-trip → T5 nested → T6 schema → T7 mappers → T8 wiring → T9 browser guard → T10 docs)
+- **Key design crux**: in-place save uses a table-anchored, recursive segment reconciler (naive index-zip corrupts table position on top-level paragraph insert). `applyParagraphRuns` becomes a thin wrapper over `applyBlocks` → existing tests stay byte-stable.
+
+## Status
+3a: spec + plan DONE, awaiting execution-mode choice. Next sub-slices after 3a ships: 3b rows → 3c columns → 3d merge/split.
