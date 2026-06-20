@@ -32,6 +32,12 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "node-forge": "^1.4.0",
     "pdfjs-dist": "^6.0.0",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.9",
+    "prosemirror-schema-basic": "^1.2.4",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.41.9",
     "qr-code-styling": "^1.9.2",
     "sortablejs": "^1.15.7",
     "tesseract.js": "^7.0.0"

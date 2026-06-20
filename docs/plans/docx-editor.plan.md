@@ -327,5 +327,13 @@ exact pagination remain documented ceilings** — schedule only with explicit sc
 
 ---
 
-> **Status:** Designed — not yet implemented. License + architecture decisions logged
-> above. Phase 0 spike is the next concrete action when build begins.
+> **Status:** Phase 0 spike = GO (`d1cc455`, verdict `docs/reviews/2026-06-20-docx-phase0-spike-verdict.md`).
+> Phase 1 #1a DONE (`2b4a682`): in-place OPC edit with verbatim pass-through (`src/docx/opcEdit.ts`,
+> proven to preserve an untouched table while editing a paragraph; zero new deps). **Next: Phase 1 #1b**
+> — add ProseMirror (MIT) deps + map the document model ↔ ProseMirror doc + mount an editable view,
+> wiring saves through `opcEdit` (in-place, never docx-rebuild). #1b needs the ProseMirror dep addition.
+>
+> ## Phase 1 increment log
+> - #1a (DONE, `2b4a682`): `opcEdit.ts` open/get/set/pack + `replaceTextInXml` (in-place, pass-through). 3 tests.
+> - #1b (NEXT): ProseMirror deps + model↔PM mapping + editable view (read-only render first), behind `VITE_FEATURE_DOCX_EDIT`.
+> - #1c: DOCX→PDF via existing FlowDoc export; open-file wiring + UI entry point.
