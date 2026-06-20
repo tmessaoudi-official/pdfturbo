@@ -42,17 +42,22 @@ Three small, well-bounded changes plus tests. No new module; no new dependency; 
 ### 1. Engine contract — `src/utils/contentStreamEditor.ts`
 
 Change `replaceTextAt`'s return type from `Promise<boolean>` to
-`Promise<false | 'inplace' | 'substituted'>`:
+`Promise<false | true | 'substituted'>`:
 
-- **Path 1** (literal byte-swap, standard font) → `'inplace'` — original font kept.
-- **Path 2** (subset glyph reuse via ToUnicode) → `'inplace'` — original font kept.
+- **Path 1** (literal byte-swap, standard font) → `true` — original font kept.
+- **Path 2** (subset glyph reuse via ToUnicode) → `true` — original font kept.
 - **Path 3** (standard-font redraw, the `setPageContent(...)+redraw` branch) → `'substituted'`.
 - **All refuse paths** (`!found`, Type3 / invisible / vertical, Form XObject, Arabic, non-WinAnsi,
   Path-3 build throw) → `false`.
 
-**Backward compatibility:** `false` stays falsy and both string values are truthy, so the single
-production caller's `if (!ok)` guard and every pixel-based browser guard keep working unchanged.
-Only the type annotation and the substitution-branch check are new.
+**Why `true` (not `'inplace'`) for the font-kept paths:** keeping the literal `true` return for
+Path 1/2 leaves the ~12 existing `expect(ok).toBe(true)` assertions in `contentStreamEditor.test.ts`
+green (only the few Path-3 cases change to `'substituted'`), minimising blast radius. The behaviour
+— a toast only when substitution happened — is identical to the three-string variant.
+
+**Backward compatibility:** `false` stays falsy and both `true`/`'substituted'` are truthy, so the
+single production caller's `if (!ok)` guard and every pixel-based browser guard keep working
+unchanged. Only the type annotation and the substitution-branch check are new.
 
 ### 2. Handler — `src/handlers/textEditHandler.ts`
 
@@ -80,7 +85,7 @@ New key `toast.trueEditFontSubstituted`, key-identical across all three files:
 user edits text + changes family/bold/italic in toolbar
   → commit() builds TextStyle
   → replaceTextAt(..., style)
-       Path 1/2 succeed (no restyle requested) → 'inplace'
+       Path 1/2 succeed (no restyle requested) → true
        restyle requested → forced Path 3 → 'substituted' | false(refuse)
   → result === 'substituted' ? toast.trueEditFontSubstituted : toast.trueTextEdited
   → false ? overlay fallback (unchanged)
@@ -93,11 +98,11 @@ untouched), routing to the overlay fallback exactly as today.
 
 ## Testing
 
-- **jsdom `tests/utils/contentStreamEditor.test.ts`** — `replaceTextAt` returns `'inplace'` for a
-  standard-font literal edit (Path 1) and a subset-font in-subset edit (Path 2); `'substituted'`
-  for a forced restyle on a standard font; `false` for Arabic / Form-XObject / Type3 refuse.
+- **jsdom `tests/utils/contentStreamEditor.test.ts`** — `replaceTextAt` returns `true` for a
+  standard-font literal edit (Path 1); `'substituted'` for a forced restyle on a standard font
+  (Path 3); `false` for a Form-XObject refuse.
 - **jsdom `tests/handlers/textEditHandler.test.ts`** — substitution toast fires on a `'substituted'`
-  result; `trueTextEdited` (not substitution) on `'inplace'`; neither substitution path on delete
+  result; `trueTextEdited` (not substitution) on `true`; neither substitution path on delete
   or size/color-only edits.
 - **real-Chrome `tests/browser/trueedit-restyle.browser.test.ts`** — on a fixture with embedded
   text: toggling bold (or changing family) re-renders with a base-14 substitute (text still
