@@ -1,62 +1,174 @@
 /**
- * docxProseMirror — bridge the docx model (docModel.ts) to a ProseMirror editor.
+ * docxProseMirror — bridge the docx model (docModel.ts) to a ProseMirror editor
+ * built on docxSchema (paragraphs, headings, lists; strong/em/underline/font/size).
  *
- * Mapping (pure, testable without a DOM): DocModel ⇄ a ProseMirror doc using the
- * MIT prosemirror-schema-basic schema (paragraphs + strong/em marks). The editor
- * view is mounted lazily; saving routes through opcEdit so untouched OOXML
- * (tables, styles) passes through verbatim — we never rebuild via the docx writer.
+ * The model is FLAT (one paragraph per OOXML `w:p`, list membership carried as
+ * `list:{ordered,level}`), matching OOXML where each list item is a paragraph with
+ * `w:numPr`. The PM doc is NESTED (bullet_list/ordered_list/list_item). The two
+ * mappers convert between flat↔nested. Saving routes through opcEdit so untouched
+ * OOXML (tables, styles) passes through verbatim; heading/list ids are resolved from
+ * the package (opcParts) only when the model actually uses them.
  */
-import { schema } from 'prosemirror-schema-basic';
 import { type Node as PMNode } from 'prosemirror-model';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap } from 'prosemirror-commands';
+import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 
-import { type DocModel, parseDocModel, applyParagraphRuns } from './docModel';
+import { docxSchema } from './docxSchema';
+import { type DocModel, type DocParagraph, type DocRun, parseDocModel, applyParagraphRuns, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
+import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
 
-/** DocModel → a ProseMirror document (doc › paragraph › text with strong/em marks). */
-export function docModelToDoc(model: DocModel): PMNode {
-  const paragraphs = model.paragraphs.map(p => {
-    const inline = p.runs
-      .filter(r => r.text)
-      .map(r => {
-        const marks = [];
-        if (r.bold) marks.push(schema.marks.strong.create());
-        if (r.italic) marks.push(schema.marks.em.create());
-        return schema.text(r.text, marks);
-      });
-    return schema.node('paragraph', null, inline);
-  });
-  return schema.node('doc', null, paragraphs.length ? paragraphs : [schema.node('paragraph')]);
+const m = docxSchema.marks;
+const n = docxSchema.nodes;
+
+/** One model run → a ProseMirror text node carrying the corresponding marks. */
+function inlineOf(run: DocRun): PMNode {
+  const marks = [];
+  if (run.bold) marks.push(m.strong.create());
+  if (run.italic) marks.push(m.em.create());
+  if (run.underline) marks.push(m.underline.create());
+  if (run.fontFamily) marks.push(m.fontFamily.create({ family: run.fontFamily }));
+  if (run.fontSize) marks.push(m.fontSize.create({ size: run.fontSize }));
+  return docxSchema.text(run.text, marks);
+}
+function inlineFor(para: DocParagraph): PMNode[] {
+  return para.runs.filter(r => r.text).map(inlineOf);
+}
+/** A non-list model paragraph → a `heading` or `paragraph` node. */
+function blockFor(para: DocParagraph): PMNode {
+  const inline = inlineFor(para);
+  if (para.heading) return n.heading.create({ level: para.heading }, inline);
+  return n.paragraph.create(null, inline);
+}
+function listParagraph(para: DocParagraph): PMNode {
+  return n.paragraph.create(null, inlineFor(para));
 }
 
-/** A ProseMirror document → DocModel (inverse of docModelToDoc). */
-export function docToDocModel(doc: PMNode): DocModel {
-  const paragraphs: DocModel['paragraphs'] = [];
-  doc.forEach(block => {
-    const runs: DocModel['paragraphs'][number]['runs'] = [];
-    block.forEach(inline => {
-      if (inline.isText && inline.text) {
-        runs.push({
-          text: inline.text,
-          bold: inline.marks.some(m => m.type.name === 'strong') || undefined,
-          italic: inline.marks.some(m => m.type.name === 'em') || undefined,
-        });
+/** Build a (possibly nested) list node for items[pos] at `level`, consuming items of
+ * the same ordered-ness at this level and recursing for deeper ones. Returns the list
+ * node and the index of the first unconsumed item. */
+function buildLevel(items: DocParagraph[], pos: number, level: number): { node: PMNode; next: number } {
+  const ordered = items[pos].list?.ordered ?? false;
+  const listItems: PMNode[] = [];
+  let i = pos;
+  while (i < items.length) {
+    const lst = items[i].list;
+    if (!lst || lst.level < level) break; // belongs to a shallower list → caller handles
+    if (lst.level === level && lst.ordered !== ordered) break; // sibling list of other kind
+    if (lst.level > level) break; // safety: deeper without a same-level parent here
+    const children: PMNode[] = [listParagraph(items[i])];
+    i += 1;
+    // Absorb a deeper run as a nested list inside this item.
+    if (i < items.length && (items[i].list?.level ?? -1) > level) {
+      const sub = buildLevel(items, i, level + 1);
+      children.push(sub.node);
+      i = sub.next;
+    }
+    listItems.push(n.list_item.create(null, children));
+  }
+  const listType = ordered ? n.ordered_list : n.bullet_list;
+  return { node: listType.create(null, listItems), next: i };
+}
+
+/** A maximal run of consecutive list paragraphs → one or more sibling list nodes. */
+function buildListRun(items: DocParagraph[]): PMNode[] {
+  const nodes: PMNode[] = [];
+  let pos = 0;
+  while (pos < items.length) {
+    const r = buildLevel(items, pos, items[pos].list?.level ?? 0);
+    nodes.push(r.node);
+    pos = r.next === pos ? pos + 1 : r.next; // guard against non-advance
+  }
+  return nodes;
+}
+
+/** DocModel → a ProseMirror document (flat paragraphs → nested headings/lists). */
+export function docModelToDoc(model: DocModel): PMNode {
+  const blocks: PMNode[] = [];
+  let i = 0;
+  while (i < model.paragraphs.length) {
+    const p = model.paragraphs[i];
+    if (!p.list) {
+      blocks.push(blockFor(p));
+      i += 1;
+    } else {
+      const run: DocParagraph[] = [];
+      while (i < model.paragraphs.length && model.paragraphs[i].list) {
+        run.push(model.paragraphs[i]);
+        i += 1;
       }
-    });
-    paragraphs.push({ runs });
+      blocks.push(...buildListRun(run));
+    }
+  }
+  return n.doc.create(null, blocks.length ? blocks : [n.paragraph.create()]);
+}
+
+function runsOf(node: PMNode): DocRun[] {
+  const runs: DocRun[] = [];
+  node.forEach(inline => {
+    if (inline.isText && inline.text) {
+      const has = (name: string): boolean => inline.marks.some(mk => mk.type.name === name);
+      const attr = (name: string, key: string): unknown => inline.marks.find(mk => mk.type.name === name)?.attrs[key];
+      const family = attr('fontFamily', 'family');
+      const size = attr('fontSize', 'size');
+      runs.push({
+        text: inline.text,
+        bold: has('strong') || undefined,
+        italic: has('em') || undefined,
+        underline: has('underline') || undefined,
+        fontFamily: typeof family === 'string' ? family : undefined,
+        fontSize: typeof size === 'number' ? size : undefined,
+      });
+    }
   });
+  return runs;
+}
+function clampHeading(level: unknown): 1 | 2 | 3 {
+  const l = Number(level);
+  return (l <= 1 ? 1 : l >= 3 ? 3 : 2) as 1 | 2 | 3;
+}
+
+/** Walk a PM block, appending flat model paragraphs; lists recurse with a depth. */
+function emitBlock(node: PMNode, depth: number, out: DocParagraph[]): void {
+  const name = node.type.name;
+  if (name === 'paragraph') {
+    out.push({ runs: runsOf(node) });
+  } else if (name === 'heading') {
+    out.push({ runs: runsOf(node), heading: clampHeading(node.attrs.level) });
+  } else if (name === 'bullet_list' || name === 'ordered_list') {
+    const ordered = name === 'ordered_list';
+    node.forEach(item => {
+      // item is a list_item: first paragraph = this list entry, deeper nodes recurse.
+      let first = true;
+      item.forEach(child => {
+        if (child.type.name === 'paragraph' && first) {
+          out.push({ runs: runsOf(child), list: { ordered, level: depth } });
+          first = false;
+        } else {
+          emitBlock(child, depth + 1, out);
+        }
+      });
+    });
+  }
+  // other block types (blockquote, code_block, …) are not modeled → skipped
+}
+
+/** A ProseMirror document → DocModel (inverse of docModelToDoc; nested → flat). */
+export function docToDocModel(doc: PMNode): DocModel {
+  const paragraphs: DocParagraph[] = [];
+  doc.forEach(block => emitBlock(block, 0, paragraphs));
   return { paragraphs };
 }
 
 export interface DocxEditorHandle {
   /** Serialize the current editor content back into .docx bytes (in-place save). */
   save(): Uint8Array;
-  /** The current editable model (paragraphs + per-run bold/italic) — used by PDF export. */
+  /** The current editable model — used by PDF export. */
   getModel(): DocModel;
-  /** The underlying ProseMirror view (for wiring toolbars later). */
+  /** The underlying ProseMirror view (for wiring toolbars). */
   view: EditorView;
   /** Tear down the editor view. */
   destroy(): void;
@@ -65,16 +177,23 @@ export interface DocxEditorHandle {
 /**
  * Open a .docx, render its top-level paragraphs into an editable ProseMirror view
  * mounted in `container`, and return a handle whose save() writes edits back in
- * place (tables/styles preserved). Browser + jsdom.
+ * place (tables/styles preserved; heading/list ids resolved only when used).
  */
 export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): DocxEditorHandle {
   const opc = openOpc(bytes);
   const originalXml = getDocumentXml(opc);
-  const model = parseDocModel(originalXml);
+  const model = parseDocModel(originalXml, buildNumberingMap(opc));
 
   const state = EditorState.create({
     doc: docModelToDoc(model),
-    plugins: [keymap(baseKeymap)],
+    plugins: [
+      keymap({
+        Enter: splitListItem(n.list_item),
+        Tab: sinkListItem(n.list_item),
+        'Shift-Tab': liftListItem(n.list_item),
+      }),
+      keymap(baseKeymap),
+    ],
   });
   const view = new EditorView(container, { state });
 
@@ -82,7 +201,15 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     view,
     save(): Uint8Array {
       const edited = docToDocModel(view.state.doc);
-      setDocumentXml(opc, applyParagraphRuns(originalXml, edited.paragraphs));
+      const hasHeading = edited.paragraphs.some(p => p.heading !== undefined);
+      const hasList = edited.paragraphs.some(p => p.list !== undefined);
+      let ids: DocApplyIds | undefined;
+      if (hasHeading || hasList) {
+        const heading = hasHeading ? ensureHeadingStyles(opc) : { 1: 'Heading1', 2: 'Heading2', 3: 'Heading3' };
+        const list = hasList ? ensureListNumbering(opc) : { bulletNumId: 0, orderedNumId: 0 };
+        ids = { heading, bulletNumId: list.bulletNumId, orderedNumId: list.orderedNumId };
+      }
+      setDocumentXml(opc, applyParagraphRuns(originalXml, edited.paragraphs, ids));
       return packOpc(opc);
     },
     getModel(): DocModel {
