@@ -417,6 +417,7 @@
     "trueEditOverlay": "Impossible de modifier ce texte directement — calque modifiable ajouté à la place",
     "trueEditFailed": "Impossible d'appliquer la modification du texte — le document est inchangé",
     "trueTextDeleted": "Texte supprimé du PDF — Ctrl+Z pour annuler",
+    "trueEditFontSubstituted": "Police remplacée — la police d'origine n'a pas pu être conservée ; le texte a été redessiné dans une police standard. Ctrl+Z pour annuler.",
     "ocrDone": "Texte reconnu — {{count}} mots ajoutés (Ctrl+Z pour annuler)",
     "ocrSearchableDone": "Couche interrogeable ajoutée — {{count}} mots désormais sélectionnables (Ctrl+Z pour annuler)",
     "ocrRotatedUnsupported": "La couche interrogeable n'est pas encore prise en charge sur les pages pivotées — essayez « Zones de texte modifiables »",

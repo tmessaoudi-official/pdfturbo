@@ -417,6 +417,7 @@
     "trueEditOverlay": "Couldn't edit this text in place — added an editable overlay instead",
     "trueEditFailed": "Couldn't apply the text edit — the document is unchanged",
     "trueTextDeleted": "Text deleted from the PDF — Ctrl+Z to undo",
+    "trueEditFontSubstituted": "Font substituted — the original font couldn't be kept in place; the text was redrawn in a standard font. Ctrl+Z to undo.",
     "ocrDone": "Text recognized — {{count}} words added (Ctrl+Z to undo)",
     "ocrSearchableDone": "Searchable layer added — {{count}} words now selectable (Ctrl+Z to undo)",
     "ocrRotatedUnsupported": "Searchable layer isn't supported on rotated pages yet — try \"Editable text boxes\"",
