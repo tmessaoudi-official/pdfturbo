@@ -223,7 +223,8 @@ describe('true-edit underline resize — Path-3 redraw does NOT overshoot (#text
     const ok = await replaceTextAt(doc, 0, { x: P3_ORIGIN_X + 1, y: P3_BASELINE }, '00ABCDEFG', 5, undefined, undefined, {
       adjustDecorations: true,
     });
-    expect(ok).toBe(true);
+    // Slice B: this CID subset is redrawn in a base-14 substitute → 'substituted'.
+    expect(ok).toBe('substituted');
     const bytes = await doc.save();
     // Under the redrawn text (text spans ≈[50,121]): the resized underline must paint here.
     expect(await underlineInk(bytes, 95, 118)).toBeGreaterThan(15);

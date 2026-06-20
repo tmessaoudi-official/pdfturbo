@@ -7,6 +7,15 @@
 - [2026-06-20] AGREED: Approved to write spec + implementation plan; execute autonomously per task on master, push manual (same as Slice A).
 
 ## Formal Plan
-<!-- written at Phase 4 by writing-plans -->
 Design spec: `docs/superpowers/specs/2026-06-20-trueedit-restyle-honest-design.md`.
-Implementation plan: `docs/superpowers/plans/2026-06-20-trueedit-restyle-honest.md` (next).
+Implementation plan: `docs/superpowers/plans/2026-06-20-trueedit-restyle-honest.md`.
+
+## Status — DONE (2026-06-20)
+
+All 5 tasks complete and committed: T1 engine return contract `1b6f388`, T2 i18n `cf802eb`,
+T3 handler wiring `3ebf2a4`, T4 real-Chrome guard `6da42aa`, T5 docs (this) + audit. Spec/plan
+`82f74d6`, decisions `bd653fb`. **Design refinement during T1 (TDD-driven):** the substitution
+signal is gated on `byteSwapUnsafe` (Path 3 on a non-standard embedded font), NOT "any Path 3" —
+a Path-3 redraw of an already-standard base-14 font returns plain `true` (no false alarm). Audit
+of `commit()` branches: clean, no defect. Full gate green (type-check 0 · lint 0 · jsdom · real
+Chrome). Push remains manual. Next: Slice C (find/replace, tables, paste-from-Word).

@@ -87,7 +87,8 @@ describe('ISSUE-2 — subset-font edit renders and stays extractable', () => {
     // Confirm we exercised the byte-swap-unsafe path (the source of the data loss).
     expect(isByteSwapUnsafeFont(libDoc, 0, op?.fontKey ?? '')).toBe(true);
     const ok = await replaceTextAt(libDoc, 0, origin, NEW_TEXT, 3);
-    expect(ok).toBe(true);
+    // Slice B: this subset (byte-swap-unsafe) font is redrawn in a base-14 substitute → 'substituted'.
+    expect(ok).toBe('substituted');
     const edited = await libDoc.save();
 
     // The new text must be BOTH extractable and actually rendered (ink present),

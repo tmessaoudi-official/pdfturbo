@@ -162,7 +162,16 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
   pdf-lib `page.drawText` after `setPageContent` — it orphans the redraw). XObject-embedded targets
   refuse before blanking (no delete-without-replacement). Guarded by
-  `tests/browser/issue2-true-edit.browser.test.ts`. **Sequential-edit ghost fix (2026-06-19):** Path 3
+  `tests/browser/issue2-true-edit.browser.test.ts`. **Honest restyle font-substitution (Slice B,
+  2026-06-20):** `replaceTextAt` returns `false | true | 'substituted'` (was `boolean`). Path 1/2 →
+  `true` (original font KEPT); refuse → `false`; Path 3 → `'substituted'` **only when the original was a
+  non-standard embedded font** (`byteSwapUnsafe` = subset/CID/FontFile/Differences) — a Path-3 redraw of
+  an ALREADY-standard base-14 font (e.g. a Helvetica that couldn't byte-swap in place, or a bold/italic
+  restyle of one) returns plain `true`, since it's redrawn in the SAME family with no real loss (no false
+  alarm). `textEditHandler.commit()` surfaces `toast.trueEditFontSubstituted` only on `'substituted'`;
+  the delete and size/color-only in-stream paths (font kept) keep `toast.trueTextDeleted`/`trueTextEdited`.
+  The base-14 substitution CEILING is unchanged — this LABELS it. Guards:
+  `tests/browser/trueedit-restyle.browser.test.ts` + the engine/handler jsdom tests. **Sequential-edit ghost fix (2026-06-19):** Path 3
   BLANKS the original show op IN PLACE (`()Tj` / `[]TJ`) and APPENDS the redraw at end-of-stream, so two
   ops share the origin. `findTarget` used to pick the blanked ghost (lower opIndex wins the distance tie)
   on the NEXT edit → the live redraw lingered and the new text overlaid it (the reported "second edit
