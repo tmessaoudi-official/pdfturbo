@@ -699,6 +699,32 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/docx/wordPaste.test.ts` (7 jsdom: MSO strip + format survival + totality), `tests/docx/docxPaste.test.ts`
   (wiring + plain-text via fake event), `tests/browser/docx-paste.browser.test.ts` (real Chrome: `view.pasteHTML`
   real pipeline → bold/underline/list through save→reopen; plain-text drops formatting).
+  **Find/replace (Slice C #2)**: a Word-style find & replace bar in the DOCX editor — plain + case +
+  whole-word + **regex** (with `$1` capture-group replacement). Three units + wiring, NO new dep, NO new flag
+  (rides `VITE_FEATURE_DOCX_EDIT`): (1) `src/docx/findReplace.ts` PURE core — `findMatches(doc,query,opts)`
+  searches **per textblock** over the flattened `textContent` (so a match spans runs/marks), mapping string
+  offsets → PM positions (`pos+1+offset`); regex compiles in try/catch → typed `{ok:false,error:'invalid-regex'}`
+  (never throws), zero-length matches guarded; `expandReplacement` does `$n` substitution. (2)
+  `src/docx/findReplacePlugin.ts` PM plugin — state `{active,query,replacement,opts,matches,activeIndex,error}`
+  recomputed on query/opts change OR `tr.docChanged` (activeIndex clamped); a `DecorationSet` paints `.fr-match`
+  + active `.fr-match-active`; commands `open/close/setFindQuery/setReplacement/findNext/findPrev/replaceCurrent/
+  replaceAll`. **Replace inherits the marks at the MATCH START** (first char) — `replaceCurrent` deletes+inserts
+  with `doc.resolve(from+1).marks()`; **`replaceAll` applies matches RIGHT-TO-LEFT in ONE transaction** (one undo
+  step; earlier positions stay valid mid-apply, marks read from the original doc). (3) `src/docx/findReplaceBar.ts`
+  the UI (find/replace inputs, case/whole-word/regex toggles, ▲▼, "n of m" counter, Replace/Replace-all, ✕);
+  `Enter`/`Shift+Enter` = next/prev, `Esc` closes; invalid regex → red `.fr-error` field. (4) Wiring in
+  `docxProseMirror.ts`: `findReplacePlugin()` + a `Mod-f`/`Mod-h` keymap that opens the bar via a forward-declared
+  `barRef` (the keymap is built at state-create, before the view/bar exist); `DocxEditorHandle.findReplaceBar?`
+  mounted by `docxEditorController.ts` below the toolbar; a CENTRALISED `dispatchTransaction` supersedes the
+  toolbar's own hook to refresh BOTH toolbar + bar (setProps merges, so paste props survive). **Non-obvious:**
+  the bar's `run()` calls `update()` after each command so the counter refreshes even in unit tests with no
+  view-level hook; the central hook covers external doc edits. **Ceilings (v1):** matches do NOT cross paragraph
+  boundaries (regex `^`/`$` anchor per block); replace formatting = match-start marks only (mixed-format matches
+  collapse); table-cell text is not searched (tables aren't in the PM model until feature #3); PDF find/replace
+  is the separate follow-up ("DOCX first, PDF after"). i18n `findReplace.*` in en/fr/ar (ar [Unverified]). Guards:
+  `tests/docx/findReplace.test.ts` (12 pure), `tests/docx/findReplacePlugin.test.ts` (9), `tests/docx/findReplaceBar.test.ts`
+  (6), `tests/browser/docx-find-replace.browser.test.ts` (real Chrome: Mod-f opens, decorations paint+cycle,
+  replace-all keeps bold through save→reopen, table passes through).
 
 ## Git & CI
 
