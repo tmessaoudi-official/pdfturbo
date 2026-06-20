@@ -100,55 +100,78 @@ function toggleOn(rPr: Element | undefined, tag: string): boolean {
   return v === null || !OFF_VALS.has(v.toLowerCase());
 }
 
+/** Parse one `w:p` element into a DocParagraph (runs + heading/list). */
+function parseParagraph(p: Element, numberingMap?: NumberingMap): DocParagraph {
+  const runs: DocRun[] = [];
+  const rs = p.getElementsByTagName('w:r');
+  for (let i = 0; i < rs.length; i++) {
+    const r = rs[i];
+    const ts = r.getElementsByTagName('w:t');
+    let text = '';
+    for (let j = 0; j < ts.length; j++) text += ts[j].textContent ?? '';
+    if (!text) continue;
+    const rPr = childEl(r, 'w:rPr');
+    const fonts = childEl(rPr, 'w:rFonts');
+    const sz = childEl(rPr, 'w:sz');
+    const szVal = sz ? Number(sz.getAttribute('w:val')) : NaN;
+    const family = fonts?.getAttribute('w:ascii') ?? fonts?.getAttribute('w:hAnsi') ?? undefined;
+    runs.push({
+      text,
+      bold: toggleOn(rPr, 'w:b') || undefined,
+      italic: toggleOn(rPr, 'w:i') || undefined,
+      underline: toggleOn(rPr, 'w:u') || undefined,
+      fontFamily: family || undefined,
+      fontSize: Number.isFinite(szVal) && szVal > 0 ? szVal / 2 : undefined,
+    });
+  }
+  const para: DocParagraph = { runs };
+  const pPr = childEl(p, 'w:pPr');
+  const styleVal = childEl(pPr, 'w:pStyle')?.getAttribute('w:val') ?? '';
+  const hMatch = /heading\s*-?\s*([1-6])/i.exec(styleVal) || /^Heading([1-6])$/.exec(styleVal);
+  if (hMatch) {
+    const lvl = Number(hMatch[1]);
+    if (lvl >= 1 && lvl <= 3) para.heading = lvl as 1 | 2 | 3;
+  }
+  const numPr = childEl(pPr, 'w:numPr');
+  const numIdEl = childEl(numPr, 'w:numId');
+  if (numIdEl) {
+    const numId = Number(numIdEl.getAttribute('w:val'));
+    const ilvl = Number(childEl(numPr, 'w:ilvl')?.getAttribute('w:val') ?? '0');
+    para.list = { ordered: numberingMap?.get(numId) === 'decimal', level: Number.isFinite(ilvl) ? ilvl : 0 };
+  }
+  return para;
+}
+
+/** Parse the ordered w:p / w:tbl children of a container (body or cell) into DocBlocks. */
+function parseContainerBlocks(container: Element, numberingMap?: NumberingMap): DocBlock[] {
+  const out: DocBlock[] = [];
+  for (const el of Array.from(container.children)) {
+    if (el.tagName === 'w:p') out.push(parseParagraph(el, numberingMap));
+    else if (el.tagName === 'w:tbl') out.push(parseTable(el, numberingMap));
+  }
+  return out;
+}
+/** Parse a w:tbl element into a DocTable (rows → cells → recursive blocks). */
+function parseTable(tbl: Element, numberingMap?: NumberingMap): DocTable {
+  const rows: DocRow[] = [];
+  for (const tr of Array.from(tbl.children).filter(c => c.tagName === 'w:tr')) {
+    const cells: DocCell[] = [];
+    for (const tc of Array.from(tr.children).filter(c => c.tagName === 'w:tc')) {
+      cells.push({ blocks: parseContainerBlocks(tc, numberingMap) });
+    }
+    rows.push({ cells });
+  }
+  return { kind: 'table', rows };
+}
+
 /** Parse the main document XML into the editable top-level-paragraph model.
  * `numberingMap` (numId→format) resolves each list paragraph's `ordered`. */
 export function parseDocModel(documentXml: string, numberingMap?: NumberingMap): DocModel {
   const dom = new DOMParser().parseFromString(documentXml, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length > 0) throw new Error('document.xml not well-formed');
-  const paragraphs: DocParagraph[] = topLevelParagraphs(dom).map(p => {
-    const runs: DocRun[] = [];
-    const rs = p.getElementsByTagName('w:r');
-    for (let i = 0; i < rs.length; i++) {
-      const r = rs[i];
-      const ts = r.getElementsByTagName('w:t');
-      let text = '';
-      for (let j = 0; j < ts.length; j++) text += ts[j].textContent ?? '';
-      if (!text) continue;
-      const rPr = childEl(r, 'w:rPr');
-      const fonts = childEl(rPr, 'w:rFonts');
-      const sz = childEl(rPr, 'w:sz');
-      const szVal = sz ? Number(sz.getAttribute('w:val')) : NaN;
-      const family = fonts?.getAttribute('w:ascii') ?? fonts?.getAttribute('w:hAnsi') ?? undefined;
-      runs.push({
-        text,
-        bold: toggleOn(rPr, 'w:b') || undefined,
-        italic: toggleOn(rPr, 'w:i') || undefined,
-        underline: toggleOn(rPr, 'w:u') || undefined,
-        fontFamily: family || undefined,
-        fontSize: Number.isFinite(szVal) && szVal > 0 ? szVal / 2 : undefined,
-      });
-    }
-    const para: DocParagraph = { runs };
-    const pPr = childEl(p, 'w:pPr');
-    const styleVal = childEl(pPr, 'w:pStyle')?.getAttribute('w:val') ?? '';
-    const hMatch = /heading\s*-?\s*([1-6])/i.exec(styleVal) || /^Heading([1-6])$/.exec(styleVal);
-    if (hMatch) {
-      const lvl = Number(hMatch[1]);
-      if (lvl >= 1 && lvl <= 3) para.heading = lvl as 1 | 2 | 3;
-    }
-    const numPr = childEl(pPr, 'w:numPr');
-    const numIdEl = childEl(numPr, 'w:numId');
-    if (numIdEl) {
-      const numId = Number(numIdEl.getAttribute('w:val'));
-      const ilvl = Number(childEl(numPr, 'w:ilvl')?.getAttribute('w:val') ?? '0');
-      para.list = {
-        ordered: numberingMap?.get(numId) === 'decimal',
-        level: Number.isFinite(ilvl) ? ilvl : 0,
-      };
-    }
-    return para;
-  });
-  const blocks: DocBlock[] = paragraphs;
+  const body = dom.getElementsByTagName('w:body')[0];
+  const blocks: DocBlock[] = body ? parseContainerBlocks(body, numberingMap) : [];
+  const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b));
   return { blocks, paragraphs };
 }
 
