@@ -17,7 +17,7 @@ async function textOf(bytes: Uint8Array): Promise<string> {
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const c = await page.getTextContent();
-      out += (c.items as Array<{ str?: string }>).map(it => it.str ?? '').join(' ');
+      out += (c.items as Array<{ str?: string }>).map(item => item.str ?? '').join(' ');
     }
     return out;
   } finally {

@@ -636,10 +636,25 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   (which flattened a paragraph to one run, losing italic). **Lazy split (verified in `vite build`):** the
   controller chunk (~2.5 KB) loads on first menu click, the ProseMirror+model editor (~213 KB) on first
   document open — neither is in the initial bundle. Deps all permissive: prosemirror-* (MIT), fflate (MIT),
-  docx (MIT). **Ceiling / deferred:** per-run formatting beyond bold/italic, tables/lists editing, styles
-  UI, and **DOCX→PDF export** (#1d — there is no flow→PDF renderer; FlowDoc is PDF→flow only). Guards:
-  `tests/docx/{docxEditor,docxEditorController}.test.ts` (jsdom), `tests/browser/docx-editor.browser.test.ts`
-  (real Chrome: lazy default import + real ProseMirror contenteditable render + edit→save round-trip).
+  docx (MIT). **Lazy split (verified in `vite build`):** the
+  controller chunk (~2.5 KB) loads on first menu click, the ProseMirror+model editor (~213 KB) on first
+  document open — neither is in the initial bundle. **#1d DOCX→PDF export DONE:** `src/docx/docxToPdf.ts`
+  is a PURE flow→PDF renderer (the sibling of `flowDocWriters.ts`) — `docModelToPdfBytes(model, opts?)` lays
+  out the editable model with @cantoo/pdf-lib Helvetica StandardFonts (run-level tokenization → preserves
+  inter-run spaces AND mid-word font changes; greedy word-wrap; hard-break of over-wide tokens; pagination;
+  per-run bold/italic via the 4 Helvetica faces). `DocxEditorHandle.getModel()` returns the live model; the
+  editor modal's "Export PDF" button (`docModelToPdfBytes` **dynamically imported** to keep pdf-lib lazy)
+  downloads `<base>.pdf`. **WinAnsi-only:** StandardFonts encode CP1252, so `sanitizeWinAnsi` maps non-WinAnsi
+  codepoints (CJK/Arabic/emoji) → `?` and the controller warns (`docxEditor.pdfUnsupportedChars`); French/
+  German/Spanish accents are in CP1252 → intact. The `notify` seam was widened to `'warn'` (+ `main.ts` lambda).
+  **Ceiling / deferred:** per-run formatting beyond bold/italic, tables/lists editing, styles UI; the PDF export
+  renders ONLY the editable model — tables/images/styles/colors/font-faces/headers/lists/alignment/doc-page-size
+  are NOT rendered (they survive the `.docx` save path as opaque XML but aren't in the model); non-WinAnsi scripts
+  → `?` (font-embedding is the future path); Approach B (docx-preview raster, high-fidelity image PDF) is the
+  documented future alternative. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-20-docx-to-pdf*`. Guards:
+  `tests/docx/{docxEditor,docxEditorController,docxToPdf}.test.ts` (jsdom), `tests/browser/docx-editor.browser.test.ts`
+  + `tests/browser/docx-to-pdf.browser.test.ts` (real Chrome: lazy import + ProseMirror render + edit→save;
+  pdf.js text-extraction confirms selectable text, reading order, French fidelity).
 
 ## Git & CI
 
