@@ -18,6 +18,8 @@ import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-li
 
 import { docxSchema } from './docxSchema';
 import { buildDocxToolbar } from './docxToolbar';
+import { findReplacePlugin } from './findReplacePlugin';
+import { buildFindReplaceBar, type FindReplaceBar } from './findReplaceBar';
 import { cleanWordHtml } from './wordPaste';
 import { type DocModel, type DocParagraph, type DocRun, parseDocModel, applyParagraphRuns, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
@@ -174,6 +176,8 @@ export interface DocxEditorHandle {
   view: EditorView;
   /** The rich-text toolbar element (the controller mounts it above the editor). */
   toolbarDom?: HTMLElement;
+  /** The find/replace bar element (the controller mounts it below the toolbar). */
+  findReplaceBar?: HTMLElement;
   /** Tear down the editor view. */
   destroy(): void;
 }
@@ -188,9 +192,24 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
   const originalXml = getDocumentXml(opc);
   const model = parseDocModel(originalXml, buildNumberingMap(opc));
 
+  // Forward-declared so the Mod-f/Mod-h keymap (built at state creation, before the
+  // view+bar exist) can open the bar once it's wired up.
+  let barRef: FindReplaceBar | null = null;
+
   const state = EditorState.create({
     doc: docModelToDoc(model),
     plugins: [
+      findReplacePlugin(),
+      keymap({
+        'Mod-f': () => {
+          barRef?.open(false);
+          return true;
+        },
+        'Mod-h': () => {
+          barRef?.open(true);
+          return true;
+        },
+      }),
       keymap({
         Enter: splitListItem(n.list_item),
         Tab: sinkListItem(n.list_item),
@@ -222,10 +241,23 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
   });
   view.dom.addEventListener('keydown', _onKeydown);
   const toolbar = buildDocxToolbar(view);
+  const bar = buildFindReplaceBar(view);
+  barRef = bar;
+  // Centralise the post-transaction sync so BOTH the toolbar and the find/replace bar
+  // refresh (the toolbar set its own dispatchTransaction; this supersedes it). setProps
+  // merges, so transformPastedHTML / handlePaste are preserved.
+  view.setProps({
+    dispatchTransaction(tr): void {
+      view.updateState(view.state.apply(tr));
+      toolbar.update();
+      bar.update();
+    },
+  });
 
   return {
     view,
     toolbarDom: toolbar.dom,
+    findReplaceBar: bar.dom,
     save(): Uint8Array {
       const edited = docToDocModel(view.state.doc);
       const hasHeading = edited.paragraphs.some(p => p.heading !== undefined);
@@ -244,6 +276,7 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     },
     destroy(): void {
       view.dom.removeEventListener('keydown', _onKeydown);
+      bar.destroy();
       toolbar.destroy();
       view.destroy();
     },

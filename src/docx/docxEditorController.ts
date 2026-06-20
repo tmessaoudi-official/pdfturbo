@@ -133,6 +133,7 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
     try {
       handle = await loadEditor(mount, bytes);
       if (handle.toolbarDom) panel.insertBefore(handle.toolbarDom, mount); // toolbar above the editor
+      if (handle.findReplaceBar) panel.insertBefore(handle.findReplaceBar, mount); // bar below the toolbar
       modal.style.display = 'flex';
     } catch (err) {
       notify('docxEditor.openFailed', 'error');
