@@ -18,6 +18,7 @@ import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-li
 
 import { docxSchema } from './docxSchema';
 import { buildDocxToolbar } from './docxToolbar';
+import { cleanWordHtml } from './wordPaste';
 import { type DocModel, type DocParagraph, type DocRun, parseDocModel, applyParagraphRuns, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
@@ -198,7 +199,28 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
       keymap(baseKeymap),
     ],
   });
-  const view = new EditorView(container, { state });
+  // Ctrl/Cmd+Shift+V arms a one-shot plain-text paste (read+cleared by handlePaste).
+  let _plainPasteArmed = false;
+  const _onKeydown = (e: KeyboardEvent): void => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+      _plainPasteArmed = true;
+    }
+  };
+
+  const view = new EditorView(container, {
+    state,
+    transformPastedHTML: (html: string): string => cleanWordHtml(html),
+    handlePaste: (v, event): boolean => {
+      if (!_plainPasteArmed) return false;
+      _plainPasteArmed = false;
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      // Drop SOURCE formatting; inserted text inherits the destination context
+      // (true "paste and match style"). insertText is jsdom-safe; pasteText is not.
+      v.dispatch(v.state.tr.insertText(text));
+      return true;
+    },
+  });
+  view.dom.addEventListener('keydown', _onKeydown);
   const toolbar = buildDocxToolbar(view);
 
   return {
@@ -221,6 +243,7 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
       return docToDocModel(view.state.doc);
     },
     destroy(): void {
+      view.dom.removeEventListener('keydown', _onKeydown);
       toolbar.destroy();
       view.destroy();
     },
