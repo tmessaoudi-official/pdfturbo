@@ -580,8 +580,17 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
             pending.length === 1 && mList.length === 0 && lList.length === 0 && !sawOtherPath
           ) {
             const r = pending[0];
+            // Normalize the vertical extent to the TRUE bounding box. PDF `re` allows a
+            // NEGATIVE height (e.g. iText/JasperReports draw filled bands top-down as
+            // `x y w -h re`); a signed height would defeat the classifier's "too tall to
+            // be a decoration" guard (`-h > 0.18*size` is false), letting a full background
+            // fill be mistaken for an underline/strike and resized (#bg-fill). A genuine
+            // thin underline drawn top-down normalizes to a thin positive height and still
+            // classifies. Width keeps its sign — a negative-width rect is already rejected
+            // by the classifier, so the width-operand resize never touches it.
+            const y0 = r.h < 0 ? r.y + r.h : r.y;
             out.push({
-              x: r.x, y: r.y, width: r.w, height: r.h,
+              x: r.x, y: y0, width: r.w, height: Math.abs(r.h),
               reOpIndex: r.reOpIndex, widthOperandIndex: 2, painterOpIndex: opIndex,
               ctmScaleX: r.scaleX, kind: 'rect',
             });
@@ -632,7 +641,18 @@ export function matchDecorationForText(
   const hits: { rule: DecorationRule; kind: 'underline' | 'strikethrough' }[] = [];
   for (const rule of rules) {
     const kind = classifyRuleAsUnderline(rule, run);
-    if (kind) hits.push({ rule, kind });
+    if (!kind) continue;
+    // SYMMETRIC overlap (#bg-fill F1/F2): classifyRuleAsUnderline only checks that the rule
+    // covers ≥50% of the TEXT — a thin full-width table border / footer separator / band edge
+    // that merely crosses the baseline passes (a 500pt rule fully covers a 28pt word), and we
+    // would then RESIZE pre-existing page geometry. A genuine underline/strike is ~text-width,
+    // so also require the TEXT to cover ≥50% of the RULE. (classifyRuleAsUnderline is shared with
+    // the read-only export path, where rejecting a multi-word-spanning underline for one word
+    // would lose the mark — so this destructive-edit-only guard lives here, not in the classifier.)
+    const rw = Math.abs(rule.width);
+    const overlap = Math.min(rule.x + rw, run.x + run.width) - Math.max(rule.x, run.x);
+    if (overlap < 0.5 * rw) continue;
+    hits.push({ rule, kind });
   }
   return hits.length === 1 ? hits[0] : null;
 }
@@ -1206,6 +1226,13 @@ export function deleteTextAt(
 function removeDecorationForText(ops: CsOp[], target: TextOpInfo): void {
   const rules = locateDecorationRects(ops);
   const hits = rules.filter(r =>
+    // NOTE: passing the rule's OWN width as the run extent makes classifyRuleAsUnderline's
+    // overlap test pass trivially, so it would match ANY thin baseline-crossing rule —
+    // including a full-width table border / band edge — and neutralise its paint on delete
+    // (#bg-fill F1/F2, delete path). We have no text width here, but a genuine underline is
+    // ANCHORED at the text's left edge, whereas a page-spanning separator/band starts far
+    // left of the text. Require left-edge proximity so we only ever remove THIS text's rule.
+    Math.abs(r.x - target.origin.x) <= 0.5 * target.fontSize &&
     classifyRuleAsUnderline(r, { x: target.origin.x, y: target.origin.y, width: r.width, size: target.fontSize })
   );
   if (hits.length !== 1) return;

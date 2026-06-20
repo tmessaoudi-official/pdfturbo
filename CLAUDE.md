@@ -311,6 +311,18 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   **The stroked-LINE form is the real-file fix (2026-06-19):** the original 2026-06-18 ship handled ONLY filled
   `re` rects, so Word/LibreOffice underlines (drawn as `m…l…S`) stayed frozen — the reported "still not
   propagated" symptom = a successful in-place edit whose stroked rule was refused, NOT the overlay path.
+  **NEGATIVE-height bbox normalization (#bg-fill, 2026-06-20):** PDF `re` allows a NEGATIVE height — iText/
+  JasperReports draw filled background BANDS top-down as `x y w -h re f` (real-world: a Navigo/IDFM invoice's
+  blue header band = `0.553 0.702 0.886 rg 27 719 540 -66 re f`). `locateDecorationRects` stored the SIGNED height,
+  and `classifyRuleAsUnderline`'s "too tall to be a decoration" guard `rule.height > 0.18*fontSize` is DEFEATED by a
+  negative value (`-66 > 1.98` is false) — so a 66pt full-width background fill was misclassified as the subtitle's
+  strikethrough and its width resized 540→120pt, WIPING the band (the reported "background color changes" bug; only
+  fired for runs whose baseline fell in the mis-computed band, e.g. the size-11 subtitle, not the size-18 heading —
+  hence "sometimes"). Fix: `locateDecorationRects` normalizes every `re` to its true positive bbox (`y0 = h<0 ? y+h : y`,
+  `height = |h|`); a genuine thin top-down underline normalizes to a thin positive height and still matches. Width keeps
+  its sign (a negative-width rect is already rejected by the classifier, so the width-operand resize never touches it).
+  Guard: `tests/utils/contentStreamEditor.test.ts` ("REFUSES a tall background rect drawn with NEGATIVE height" + the
+  thin-underline no-regression case).
   **Non-obvious REFUSE gates (each = leave PDF unchanged, never guess):** sheared/rotated CTM (b or c ≠ 0); >1
   in-band rule (double underline); a SLANTED line (m/l y differ) or POLYLINE (≥2 `l`); `s` (closepath+stroke,
   ambiguous closing segment) — only plain `S`; and a rect/line whose painter ALSO closes an `m/l/c/v/y/h`

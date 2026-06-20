@@ -1689,6 +1689,43 @@ describe('matchDecorationForText', () => {
     expect(m?.kind).toBe('underline');
     expect(m?.rule.kind).toBe('line');
   });
+
+  // Regression (#bg-fill, real iText/JasperReports invoice): a filled background BAND
+  // is drawn top-down as `x y w -h re f` (NEGATIVE height). The signed height used to
+  // defeat the "too tall to be a decoration" guard (`-h > 0.18*size` is false), so the
+  // full-width 40pt band was misclassified as the text's strike/underline and its width
+  // got resized — destroying the background. locateDecorationRects must normalize the
+  // rect to its true (positive) bounding box so the tall-rect guard fires.
+  it('REFUSES a tall background rect drawn with NEGATIVE height (iText band)', () => {
+    const rules = locateDecorationRects(ops('40 320 200 -40 re f'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0].height).toBeGreaterThan(0); // bbox normalized to positive extent
+    expect(matchDecorationForText(rules, target, 100)).toBeNull(); // NOT a decoration
+  });
+
+  it('still matches a THIN underline drawn with negative height (no regression)', () => {
+    // A 1pt underline drawn top-down (`50 298 28 -1 re f`) must still classify.
+    const m = matchDecorationForText(locateDecorationRects(ops('50 298 28 -1 re f')), target, 28);
+    expect(m?.kind).toBe('underline');
+  });
+
+  // Regression (#bg-fill F1/F2): the height-sign fix alone does NOT cover a POSITIVE-height
+  // over-wide rule — a thin full-width table border / footer separator / band edge that
+  // merely crosses a short run's baseline. The one-directional overlap test (rule covers
+  // ≥50% of the RUN) passes (a 500pt rule fully covers a 28pt word), so it was matched and
+  // its width resized — damaging unrelated page geometry. An underline is ~text-width, so
+  // require SYMMETRIC overlap: the run must also cover ≥50% of the RULE.
+  it('REFUSES a thin over-wide separator/border line crossing the baseline', () => {
+    const rules = locateDecorationRects(ops('10 297 500 1 re f'));
+    expect(rules).toHaveLength(1); // it IS a thin rule, just far too wide to be THIS text's underline
+    expect(matchDecorationForText(rules, target, 28)).toBeNull();
+  });
+
+  it('still matches an underline only slightly wider than the text (no regression)', () => {
+    // A real underline is ~text width (here 32 vs text 28) → must still match.
+    const m = matchDecorationForText(locateDecorationRects(ops('48 297 32 1 re f')), target, 28);
+    expect(m?.kind).toBe('underline');
+  });
 });
 
 describe('adjustedRuleWidth', () => {
