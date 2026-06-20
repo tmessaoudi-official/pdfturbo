@@ -2155,3 +2155,108 @@ describe('deleteTextAt — decoration removal (opt-in)', () => {
     expect(lineOps).not.toContain('S');
   });
 });
+
+// ── True-edit edge-case hardening (F5–F9) ───────────────────────────────────────
+// Backlog: docs/reviews/2026-06-20-trueedit-edgecase-audit.md. F1/F2 fixed @ 130f5c0.
+
+/** Standard-font "Hello" with a SUPERSCRIPT text rise (Ts) and an underline rect. */
+async function makeSuperscriptUnderlinedPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('seed', { x: 0, y: 0, size: 1, font });
+  const ctx = doc.context;
+  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+  const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+  if (!helvVal) throw new Error('font missing');
+  fontDict.set(PDFName.of('F1'), helvVal);
+  const content =
+    `BT /F1 12 Tf 4 Ts 1 0 0 1 50 300 Tm (Hello) Tj ET\n` +
+    `0 0 0 rg 50 297 28 1.2 re f`;
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+describe('tokenizeContentStream — inline-image EI boundary (F7)', () => {
+  it('terminates at the whitespace-delimited EI, not an "EI" inside binary data', () => {
+    // Data "aEIb" contains the bytes E,I but NOT whitespace-delimited; the real
+    // terminator is the trailing " EI ". A bare indexOf('EI') would truncate early
+    // and leave "b EI Q" to be mis-tokenized as stray operators, corrupting the page.
+    const toks = tokenizeContentStream('BI /W 1 /H 1 ID aEIb EI Q');
+    const imgs = toks.filter(t => t.type === 'inline-image');
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0].raw).toContain('aEIb');         // binary data kept intact
+    const opsAfter = toks.filter(t => t.type === 'operator').map(t => t.raw);
+    expect(opsAfter).toContain('Q');               // trailing op survives
+    expect(opsAfter).not.toContain('b');           // not mis-tokenized
+    expect(opsAfter).not.toContain('EI');          // false boundary not emitted
+  });
+
+  it('falls back to the first EI when none is whitespace-delimited (never worse than before)', () => {
+    const toks = tokenizeContentStream('BI /W 1 ID xxEIxx');
+    const imgs = toks.filter(t => t.type === 'inline-image');
+    expect(imgs).toHaveLength(1); // still consumes a single inline-image token
+  });
+
+  it('regression: a normal inline image with no internal EI still terminates correctly', () => {
+    const toks = tokenizeContentStream('BI /W 1 ID abcd EI Q');
+    expect(toks.filter(t => t.type === 'inline-image')).toHaveLength(1);
+    expect(toks.filter(t => t.type === 'operator').map(t => t.raw)).toContain('Q');
+  });
+});
+
+describe('locateDecorationRects — mirror / negative-scale CTM refusal (F5)', () => {
+  it('REFUSES a stroked-line underline under a mirror-X CTM (-1 0 0 1)', () => {
+    expect(locateDecorationRects(ops('-1 0 0 1 400 0 cm 50 297 m 78 297 l S'))).toHaveLength(0);
+  });
+
+  it('REFUSES a filled `re` rect under a negative-Y-scale CTM (1 0 0 -1)', () => {
+    expect(locateDecorationRects(ops('1 0 0 -1 0 400 cm 50 297 28 1 re f'))).toHaveLength(0);
+  });
+
+  it('still finds a normal underline under an identity CTM (no over-refusal)', () => {
+    expect(locateDecorationRects(ops('1 0 0 1 0 0 cm 50 297 28 1 re f'))).toHaveLength(1);
+  });
+});
+
+describe('locateTextOps — `"` show op spacing operands (F8)', () => {
+  it('captures aw/ac from a " op as word/char spacing', () => {
+    // `"` ≡ `aw Tw ac Tc string '` — persistent spacing state set by its operands.
+    const [info] = locateTextOps(ops('BT /F1 12 Tf 5 TL 1 0 0 1 50 300 Tm 2.5 1.5 (Hi) " ET'));
+    expect(info.wordSpacing).toBeCloseTo(2.5);
+    expect(info.charSpacing).toBeCloseTo(1.5);
+  });
+});
+
+describe('prepareDecorationResize via replaceTextAt — superscript/subscript refusal (F6)', () => {
+  it('does NOT resize the decoration for text with a non-zero text rise (Ts)', async () => {
+    const doc = await PDFDocument.load(await makeSuperscriptUnderlinedPdf());
+    const ok = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'HelloHelloHello', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(ok).toBe(true); // the text edit still succeeds
+    // The underline rule must stay at its original ~28pt — a super/subscript baseline
+    // is low-confidence, so the matcher must refuse to mutate it (no extension).
+    const widths = paintedReWidths(await pageContentText(await doc.save()));
+    expect(widths.some(w => Math.abs(w - 28) < 1)).toBe(true);
+    expect(widths.every(w => w < 40)).toBe(true); // definitely not extended to the long text
+  });
+});
+
+describe('replaceTextAt — Path-3 redraw of a CP1252-high char (F9)', () => {
+  it('completes a € (Path-3) edit without rejecting and preserves the document', async () => {
+    const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
+    // '€' (U+20AC) is WinAnsi-encodable but fails ASCII Path 1 and has no ToUnicode
+    // for Path 2 → forces the standard-font Path-3 redraw (font.encodeText).
+    const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Prix 5€');
+    expect(ok).toBe(true);
+    const bytes = await doc.save();
+    expect(bytes.length).toBeGreaterThan(0);
+    // Document still re-parses (no corruption from the redraw path).
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount()).toBe(1);
+  });
+});

@@ -77,6 +77,36 @@ export function hasNonWinAnsi(text: string): boolean {
   return false;
 }
 
+/**
+ * Locate the end (exclusive, just past `EI`) of an inline image whose `BI` was just
+ * consumed, with the scanner at `from`. Per PDF spec §8.9.7 the `EI` terminator is
+ * WHITESPACE-DELIMITED; a naive `indexOf('EI')` matches the byte pair "EI" occurring
+ * inside the binary image data and truncates the image early, mis-tokenizing the rest
+ * of the page (F7). Scan from after the `ID` data marker for an `EI` that is preceded
+ * by whitespace AND followed by whitespace / a delimiter / EOF. Falls back to the first
+ * bare `EI` (legacy behaviour), or the stream end, so it is never worse than before.
+ */
+function findInlineImageEnd(src: string, from: number): number {
+  // Image data starts after the `ID` marker + a single whitespace byte.
+  let dataStart = from;
+  const idIdx = src.indexOf('ID', from);
+  if (idIdx !== -1) {
+    dataStart = idIdx + 2;
+    if (WHITESPACE.has(src[dataStart])) dataStart++;
+  }
+  for (let k = dataStart; k < src.length; ) {
+    const ei = src.indexOf('EI', k);
+    if (ei === -1) break;
+    const prevWs = ei === 0 || WHITESPACE.has(src[ei - 1]);
+    const after = src[ei + 2];
+    const afterOk = after === undefined || WHITESPACE.has(after) || DELIMITERS.has(after);
+    if (prevWs && afterOk) return ei + 2;
+    k = ei + 2;
+  }
+  const bare = src.indexOf('EI', from);
+  return bare === -1 ? src.length : bare + 2;
+}
+
 export function tokenizeContentStream(src: string): CsToken[] {
   const tokens: CsToken[] = [];
   let i = 0;
@@ -209,9 +239,9 @@ export function tokenizeContentStream(src: string): CsToken[] {
     while (i < src.length && isRegular(src[i])) i++;
     const word = src.slice(start, i);
     if (word === 'BI') {
-      // Inline image: pass through raw up to and including 'EI'
-      const eiIdx = src.indexOf('EI', i);
-      const end = eiIdx === -1 ? src.length : eiIdx + 2;
+      // Inline image: pass through raw up to and including the whitespace-delimited
+      // 'EI' terminator (F7 — a bare indexOf would match "EI" inside binary data).
+      const end = findInlineImageEnd(src, i);
       tokens.push({ type: 'inline-image', raw: src.slice(start, end) });
       i = end;
     } else {
@@ -466,6 +496,13 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
       if (op.operator === "'" || op.operator === '"') {
         lineMatrix = translateMatrix(0, -leading, lineMatrix);
         textMatrix = [...lineMatrix];
+        // The `"` op (aw ac string ") sets word + char spacing as PERSISTENT graphics
+        // state — spec: `"` ≡ `aw Tw ac Tc string '`. Capture them so a later Path-3
+        // redraw of this run uses the correct spacing (F8); previously ignored.
+        if (op.operator === '"') {
+          wordSpacing = num(op.operands[0]);
+          charSpacing = num(op.operands[1]);
+        }
       }
       const vScale = Math.hypot(textMatrix[2], textMatrix[3]) || 1;
       found.push({
@@ -511,13 +548,16 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
   const ctmStack: Matrix[] = [];
   const num = (t: CsToken | undefined): number => t?.value ?? 0;
   const skewed = (): boolean => Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6;
+  // A mirror / negative-scale CTM (flip-X `-1 0 0 1`, flip-Y `1 0 0 -1`, 180° `-1 0 0 -1`)
+  // can't be width-resized by a positive scalar; refuse rather than resize the wrong way (F5).
+  const mirrored = (): boolean => ctm[0] < 0 || ctm[3] < 0;
   // Pending `re` rectangles awaiting their painter op (a single painter can close
   // several preceding `re` ops; we only adjust a rect that is the SOLE pending one).
   let pending: { reOpIndex: number; x: number; y: number; w: number; h: number; scaleX: number }[] = [];
   // Pending `m`/`l` subpath segments awaiting a stroke painter. A simple horizontal
   // underline is EXACTLY one `m` then one `l`; a polyline (≥2 `l`) or multi-subpath
   // (≥2 `m`) is ambiguous → refused.
-  let mList: { localX: number; userX: number; userY: number; scaleX: number; skewed: boolean }[] = [];
+  let mList: { localX: number; userX: number; userY: number; scaleX: number; skewed: boolean; mirrored: boolean }[] = [];
   let lList: { opIndex: number; userX: number; userY: number }[] = [];
   // True when a curve op (c/v/y/h) precedes the painter: it would share the paint, so
   // resizing/removing the rect or line would touch unrelated geometry — refuse.
@@ -547,8 +587,9 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
         lineWidthLocal = num(op.operands[0]);
         break;
       case 're': {
-        // Refuse sheared/rotated CTM — a scalar width rewrite would be wrong.
-        if (skewed()) break;
+        // Refuse sheared/rotated or mirror/negative-scale CTM — a scalar width
+        // rewrite would be wrong (or flip direction). (F5 adds the mirror case.)
+        if (skewed() || mirrored()) break;
         const lx = num(op.operands[0]);
         const ly = num(op.operands[1]);
         const lw = num(op.operands[2]);
@@ -560,7 +601,7 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
       case 'm': {
         const lxm = num(op.operands[0]);
         const p = applyMatrixToPoint(ctm, lxm, num(op.operands[1]));
-        mList.push({ localX: lxm, userX: p.x, userY: p.y, scaleX: ctm[0], skewed: skewed() });
+        mList.push({ localX: lxm, userX: p.x, userY: p.y, scaleX: ctm[0], skewed: skewed(), mirrored: mirrored() });
         break;
       }
       case 'l': {
@@ -605,7 +646,7 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
           ) {
             const m = mList[0];
             const l = lList[0];
-            if (!m.skewed && Math.abs(m.userY - l.userY) <= 1e-3) {
+            if (!m.skewed && !m.mirrored && Math.abs(m.userY - l.userY) <= 1e-3) {
               const strokeUser = lineWidthLocal * Math.abs(ctm[3]);
               out.push({
                 x: Math.min(m.userX, l.userX),
@@ -1747,36 +1788,49 @@ export async function replaceTextAt(
     return false;
   }
 
+  // F9: build the redraw (and resize the decoration) BEFORE blanking the original.
+  // The standard-font embed/encode can throw for a CP1252-high char whose base-14
+  // AFM lacks a width (€/Œ); doing it AFTER blanking would destroy the original with
+  // no replacement (silent data loss). On any failure, refuse cleanly (return false →
+  // the caller's overlay fallback) with the original op untouched. On success the
+  // emitted ops are identical to before — blank + appended redraw — so byte-output and
+  // all existing Path-3 guards are unchanged.
+  let redraw: string;
+  try {
+    // Color precedence: style override > parseable in-stream fill > sampled
+    // fallback (scn/Separation/spot) > black.
+    const { r: cr, g: cg, b: cb } = resolveRedrawColor(style?.color, target.fillColor, fallbackColor);
+
+    // Font: style bold/italic/fontFamily override font detection from PDF.
+    const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
+    const descriptor = getPageFontDescriptor(doc, pageIndex, target.fontKey);
+    const baseFlags = descriptor?.flags ?? 0;
+    const effectiveName = style ? buildEffectiveFontName(baseName, style) : baseName;
+    const effectiveFlags = style ? buildEffectiveFlags(baseFlags, style) : baseFlags;
+    const stdFont = matchStandardFont(effectiveName, effectiveFlags);
+    const font = await doc.embedFont(stdFont);
+    const resName = addPageFontResource(doc, pageIndex, font.ref);
+    const size = style?.fontSize ?? target.fontSize ?? 12;
+    // Encode through the embedded font so its (WinAnsi) encoding is honoured —
+    // handles accented Latin text, not just pure ASCII.
+    const showOperand = font.encodeText(newText).toString();
+    redraw = buildPath3Redraw({
+      resName, size, color: { r: cr, g: cg, b: cb },
+      originX: target.origin.x, originY: target.origin.y, showOperand,
+      charSpacing: target.charSpacing, wordSpacing: target.wordSpacing,
+      hScale: target.hScale, textRise: target.textRise,
+      renderMode: target.renderMode, strokeColor: target.strokeColor,
+      lineWidth: target.lineWidth,
+    });
+    // Path 3 redraws in a STANDARD font → measure the decoration in the proxy (forceProxy).
+    if (applyDeco) await applyDeco(newText, ops, true);
+  } catch {
+    return false; // overlay fallback — original text untouched
+  }
+
+  // Redraw is guaranteed; now it is safe to remove the original.
   blankShowOp(ops[target.opIndex]);
   blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
-
-  // Color precedence: style override > parseable in-stream fill > sampled
-  // fallback (scn/Separation/spot) > black.
-  const { r: cr, g: cg, b: cb } = resolveRedrawColor(style?.color, target.fillColor, fallbackColor);
-
-  // Font: style bold/italic/fontFamily override font detection from PDF.
-  const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
-  const descriptor = getPageFontDescriptor(doc, pageIndex, target.fontKey);
-  const baseFlags = descriptor?.flags ?? 0;
-  const effectiveName = style ? buildEffectiveFontName(baseName, style) : baseName;
-  const effectiveFlags = style ? buildEffectiveFlags(baseFlags, style) : baseFlags;
-  const stdFont = matchStandardFont(effectiveName, effectiveFlags);
-  const font = await doc.embedFont(stdFont);
-  const resName = addPageFontResource(doc, pageIndex, font.ref);
-  const size = style?.fontSize ?? target.fontSize ?? 12;
-  // Encode through the embedded font so its (WinAnsi) encoding is honoured —
-  // handles accented Latin text, not just pure ASCII.
-  const showOperand = font.encodeText(newText).toString();
-  const redraw = buildPath3Redraw({
-    resName, size, color: { r: cr, g: cg, b: cb },
-    originX: target.origin.x, originY: target.origin.y, showOperand,
-    charSpacing: target.charSpacing, wordSpacing: target.wordSpacing,
-    hScale: target.hScale, textRise: target.textRise,
-    renderMode: target.renderMode, strokeColor: target.strokeColor,
-    lineWidth: target.lineWidth,
-  });
-  // Path 3 redraws in a STANDARD font → measure the decoration in the proxy (forceProxy).
-  if (applyDeco) await applyDeco(newText, ops, true);
   setPageContent(doc, pageIndex, serializeOps(ops) + redraw);
 
   return true;
@@ -1838,6 +1892,11 @@ function prepareDecorationResize(
   if (!adjust) return null;
   const { ops, target } = found;
   if (locateDecorationRects(ops).length === 0) return null;
+  // F6: a super/subscript run carries a text rise (Ts); its reported baseline
+  // (origin.y, with no rise applied) makes the band-match low-confidence and could
+  // match an unrelated nearby rule. Refuse to mutate geometry — leave the rule as-is
+  // (safe no-op) rather than resize/erase the wrong one.
+  if (target.textRise) return null;
   // Decode the original text now (before any path mutates the op) to measure its width.
   const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
   const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;

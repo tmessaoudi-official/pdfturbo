@@ -327,7 +327,24 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   in-band rule (double underline); a SLANTED line (m/l y differ) or POLYLINE (≥2 `l`); `s` (closepath+stroke,
   ambiguous closing segment) — only plain `S`; and a rect/line whose painter ALSO closes an `m/l/c/v/y/h`
   subpath (neutralising it would erase that vector art), refused via `sawOtherPath` + the single-segment
-  counts. Path-3 redraw re-emits captured `Tc`/`Tw`/`Tz`/`Ts` — and (F2, 2026-06-19) `Tr` render mode + stroke
+  counts. **Edge-case hardening F5–F8 (2026-06-20, audit `docs/reviews/2026-06-20-trueedit-edgecase-audit.md`;
+  F3 byte-splice rewrite DEFERRED — round-trip is lossless for bytes 0–255 so it's a blast-radius hardening, not
+  an active bug):** F5 — `locateDecorationRects` now also refuses a **mirror / negative-scale CTM** (`ctm[0]<0 ||
+  ctm[3]<0`; flip-X/flip-Y/180°) for BOTH rect and stroked line (the line path uses `abs()` so a mirror silently
+  flipped resize direction; the `re` path was safe-by-luck only). F6 — `prepareDecorationResize` refuses when the
+  target run carries a non-zero **text rise (`Ts`, super/subscript)**: its reported baseline (origin.y, no rise
+  applied) is low-confidence and could match an unrelated nearby rule (cm-only sizing without Tm scale remains a
+  documented ceiling). F7 — the inline-image tokenizer (`findInlineImageEnd`) now scans for a **whitespace-delimited
+  `EI`** (preceded by whitespace, followed by ws/delimiter/EOF) from after the `ID` marker, falling back to the
+  legacy first-`EI` — a bare `indexOf('EI')` matched the byte pair "EI" inside binary image data and truncated the
+  image, corrupting the whole page on re-serialize (the one concrete corruption vector F3 would also have closed).
+  F8 — `locateTextOps` captures the `"` show op's `aw ac` operands as persistent word/char spacing (spec: `"` ≡
+  `aw Tw ac Tc string '`) so a later Path-3 redraw of that run uses correct spacing. **F9 — Path-3 build-then-blank
+  ordering:** `replaceTextAt` used to `blankShowOp` the original BEFORE embedding/encoding the redraw font, so any
+  throw in `embedFont`/`encodeText` (a CP1252-high char `€`/`Œ` whose base-14 AFM lacks a width) destroyed the
+  original with no replacement (silent data loss). It now builds the redraw string + runs the decoration resize
+  inside a `try`, and only blanks once the redraw is guaranteed; on throw it `return false` → the caller's overlay
+  fallback, original untouched. Success-path byte-output is unchanged (still blank + appended redraw). Path-3 redraw re-emits captured `Tc`/`Tw`/`Tz`/`Ts` — and (F2, 2026-06-19) `Tr` render mode + stroke
   color (`RG`/`G`/`K`/`SC`/`SCN`, reset on `CS`) + line width (`w`) so stroked/outline text keeps its outline —
   via `buildPath3Redraw`; `locateTextOps` stamps them onto `TextOpInfo` only when non-default → byte-identical for
   plain ops. **F1 restyle (2026-06-19):** `replaceTextAt` computes `wantsRestyle` (style carries
