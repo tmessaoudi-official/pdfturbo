@@ -629,16 +629,34 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `docs/reviews/2026-06-20-docx-phase0-spike-verdict.md`):** edit `word/document.xml` IN PLACE in the
   unzipped OPC and re-zip — NEVER rebuild via the `docx` writer (it drops every unmodeled part:
   tables/styles/numbering/headers). `opcEdit.ts` = fflate(MIT) unzip + platform DOMParser edit + re-zip;
-  `docModel.ts` models only TOP-LEVEL `w:body` paragraphs + bold/italic runs (everything else passes
-  through verbatim); `docxProseMirror.ts` maps DocModel↔a ProseMirror(MIT) doc + `mountDocxEditor`.
-  **Save preserves per-run bold/italic** via `applyParagraphRuns` (clones the original first run's `w:rPr`
-  so unmodeled font/size/color survive, applies b/i per run) — NOT the older text-level `applyParagraphTexts`
-  (which flattened a paragraph to one run, losing italic). **Lazy split (verified in `vite build`):** the
+  `docModel.ts` models TOP-LEVEL `w:body` paragraphs with per-run **bold/italic/underline/fontFamily/fontSize**
+  (`w:sz` is half-points → pt×2) and per-paragraph **heading (1–3, `w:pStyle`) + list (`w:numPr`, ordered=decimal
+  vs bullet)** (everything else — tables/styles/numbering/headers — passes through verbatim); `docxProseMirror.ts`
+  maps the FLAT model ↔ a NESTED ProseMirror(MIT) doc (headings + bullet/ordered lists via
+  **prosemirror-schema-list**, MIT) + `mountDocxEditor`.
+  **Save preserves per-run formatting** via `applyParagraphRuns(xml, paras, ids?)`: it clones the original
+  first run's `w:rPr` (so unmodeled color/spacing survive), strips the model-managed toggles (`MANAGED_RPR` =
+  b/i/u/rFonts/sz/szCs), re-adds b/i/u/font/size, and `sortRPrChildren` re-orders them into canonical CT_RPr
+  order (rFonts,b,i,u,sz,szCs — underline is AFTER sz per ECMA-376) — NOT the older text-level
+  `applyParagraphTexts` (which flattened a paragraph to one run). Paragraph props (heading `w:pStyle` + list
+  `w:numPr`, `w:pPr` inserted as first child) are written ONLY when the `ids` arg is passed → without it the
+  output is byte-identical to the #1c runs-only path.
+  **Rich-text toolbar (Phase 2 Slice A)**: `docxToolbar.ts` `buildDocxToolbar(view)` — B/I/U (toggleMark) +
+  heading select (setBlockType) + font/size selects (a custom `setMarkAttr` Command) + bullet/ordered buttons
+  (`inList ? liftListItem : wrapInList`); active-state reflects after every transaction via a hooked
+  `dispatchTransaction`. It rides on `DocxEditorHandle.toolbarDom` (built inside the lazy chunk, so the
+  controller mounts it above the editor with NO extra dynamic import). `docxSchema.ts` extends schema-basic
+  with the u/fontFamily/fontSize marks + `addListNodes(...)`. **opcParts.ts (inject-if-missing)**:
+  `ensureHeadingStyles`/`ensureListNumbering` REUSE existing Heading1–3 / bullet+decimal numbering defs when
+  present, else INJECT minimal spec-valid `<w:style>`/abstractNum+num (abstractNum BEFORE num; ids floored at
+  100) and `registerPart` adds the Override to `[Content_Types].xml` + a Relationship to `document.xml.rels`
+  (creating styles.xml / numbering.xml if absent); `buildNumberingMap` resolves numId→bullet|decimal on read.
+  `save()` resolves these ids ONLY when the edited model actually uses a heading/list. **Ceiling (Slice A):**
+  run formatting beyond b/i/u/font/size (color/highlight/strike), nested-list depth beyond `w:ilvl` round-trip,
+  a styles-gallery UI, and table-cell editing — all deferred to later slices. **Lazy split (verified in `vite build`):** the
   controller chunk (~2.5 KB) loads on first menu click, the ProseMirror+model editor (~213 KB) on first
-  document open — neither is in the initial bundle. Deps all permissive: prosemirror-* (MIT), fflate (MIT),
-  docx (MIT). **Lazy split (verified in `vite build`):** the
-  controller chunk (~2.5 KB) loads on first menu click, the ProseMirror+model editor (~213 KB) on first
-  document open — neither is in the initial bundle. **#1d DOCX→PDF export DONE:** `src/docx/docxToPdf.ts`
+  document open — neither is in the initial bundle. Deps all permissive: prosemirror-* + prosemirror-schema-list
+  (MIT), fflate (MIT), docx (MIT). **#1d DOCX→PDF export DONE:** `src/docx/docxToPdf.ts`
   is a PURE flow→PDF renderer (the sibling of `flowDocWriters.ts`) — `docModelToPdfBytes(model, opts?)` lays
   out the editable model with @cantoo/pdf-lib Helvetica StandardFonts (run-level tokenization → preserves
   inter-run spaces AND mid-word font changes; greedy word-wrap; hard-break of over-wide tokens; pagination;
@@ -652,9 +670,11 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   are NOT rendered (they survive the `.docx` save path as opaque XML but aren't in the model); non-WinAnsi scripts
   → `?` (font-embedding is the future path); Approach B (docx-preview raster, high-fidelity image PDF) is the
   documented future alternative. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-20-docx-to-pdf*`. Guards:
-  `tests/docx/{docxEditor,docxEditorController,docxToPdf}.test.ts` (jsdom), `tests/browser/docx-editor.browser.test.ts`
-  + `tests/browser/docx-to-pdf.browser.test.ts` (real Chrome: lazy import + ProseMirror render + edit→save;
-  pdf.js text-extraction confirms selectable text, reading order, French fidelity).
+  `tests/docx/{docxEditor,docxEditorController,docModelRichText,opcParts,docxSchema,docxMapping,docxToolbar,docxToPdf}.test.ts`
+  (jsdom), `tests/browser/docx-editor.browser.test.ts` + `tests/browser/docx-to-pdf.browser.test.ts`
+  + `tests/browser/docx-toolbar.browser.test.ts` (real Chrome: toolbar drives bold+H1+bullet via genuine
+  commands → save → reopen → formatting survives AND an untouched table passes through; the cardinal in-place
+  rule), confirming selectable text, reading order, French fidelity.
 
 ## Git & CI
 
