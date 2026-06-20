@@ -213,3 +213,30 @@
   height: 28px; padding: 0 4px; border: 1px solid var(--border, #ccc);
   border-radius: 4px; background: var(--btn-bg, #fff); font-size: 13px;
 }
+
+/* Find/replace bar (Slice C #2) — sits below the toolbar inside the docx modal. */
+.fr-bar {
+  padding: 6px 22px; border-bottom: 1px solid var(--border, #ddd);
+  background: var(--panel-bg, #f3f4f6);
+}
+.fr-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.fr-replace-row { margin-top: 4px; }
+.fr-find, .fr-replace {
+  height: 28px; padding: 0 8px; min-width: 180px; flex: 0 1 240px;
+  border: 1px solid var(--border, #ccc); border-radius: 4px;
+  background: var(--btn-bg, #fff); font-size: 13px;
+}
+.fr-find.fr-error { border-color: #dc2626; background: #fef2f2; }
+.fr-toggle, .fr-btn {
+  min-width: 28px; height: 28px; padding: 0 8px; cursor: pointer;
+  border: 1px solid var(--border, #ccc); border-radius: 4px;
+  background: var(--btn-bg, #fff); font-size: 13px; line-height: 1;
+}
+.fr-toggle:hover, .fr-btn:hover { background: var(--btn-hover-bg, #eee); }
+.fr-toggle.active { background: var(--accent, #2563eb); color: #fff; border-color: var(--accent, #2563eb); }
+.fr-counter { font-size: 12px; color: var(--muted, #6b7280); min-width: 56px; text-align: center; }
+.fr-close { margin-left: auto; }
+
+/* Match highlights painted by the find/replace plugin's decorations. */
+.fr-match { background: rgba(250, 204, 21, 0.45); border-radius: 2px; }
+.fr-match-active { background: rgba(249, 115, 22, 0.85); color: #111; }

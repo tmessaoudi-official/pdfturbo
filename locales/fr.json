@@ -1,4 +1,19 @@
 {
+  "findReplace": {
+    "find": "Rechercher",
+    "replace": "Remplacer",
+    "caseSensitive": "Respecter la casse",
+    "wholeWord": "Mot entier",
+    "regex": "Expression régulière",
+    "previous": "Correspondance précédente",
+    "next": "Correspondance suivante",
+    "replaceOne": "Remplacer",
+    "replaceAll": "Tout remplacer",
+    "close": "Fermer la recherche",
+    "counter": "{{current}} sur {{total}}",
+    "noMatches": "Aucune correspondance",
+    "invalidRegex": "Expression régulière invalide"
+  },
   "a11y": {
     "skipToContent": "Aller au contenu principal",
     "toolbarPrimary": "Barre d'outils principale",

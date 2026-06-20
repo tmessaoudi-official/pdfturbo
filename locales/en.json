@@ -1,4 +1,19 @@
 {
+  "findReplace": {
+    "find": "Find",
+    "replace": "Replace",
+    "caseSensitive": "Match case",
+    "wholeWord": "Whole word",
+    "regex": "Regular expression",
+    "previous": "Previous match",
+    "next": "Next match",
+    "replaceOne": "Replace",
+    "replaceAll": "Replace all",
+    "close": "Close find",
+    "counter": "{{current}} of {{total}}",
+    "noMatches": "No matches",
+    "invalidRegex": "Invalid regular expression"
+  },
   "a11y": {
     "skipToContent": "Skip to main content",
     "toolbarPrimary": "Primary toolbar",

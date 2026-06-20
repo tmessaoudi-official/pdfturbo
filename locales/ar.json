@@ -1,4 +1,19 @@
 {
+  "findReplace": {
+    "find": "بحث",
+    "replace": "استبدال",
+    "caseSensitive": "مطابقة الحالة",
+    "wholeWord": "كلمة كاملة",
+    "regex": "تعبير نمطي",
+    "previous": "التطابق السابق",
+    "next": "التطابق التالي",
+    "replaceOne": "استبدال",
+    "replaceAll": "استبدال الكل",
+    "close": "إغلاق البحث",
+    "counter": "{{current}} من {{total}}",
+    "noMatches": "لا توجد تطابقات",
+    "invalidRegex": "تعبير نمطي غير صالح"
+  },
   "a11y": {
     "skipToContent": "تخطٍ إلى المحتوى الرئيسي",
     "toolbarPrimary": "شريط الأدوات الرئيسي",
