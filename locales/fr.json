@@ -95,6 +95,19 @@
     "pdfUnsupportedChars": "Certains caractères ne sont pas pris en charge par les polices PDF et ont été remplacés par « ? »",
     "pdfFailed": "Échec de l’export PDF"
   },
+  "docxToolbar": {
+    "bold": "Gras",
+    "italic": "Italique",
+    "underline": "Souligné",
+    "headingNormal": "Normal",
+    "h1": "Titre 1",
+    "h2": "Titre 2",
+    "h3": "Titre 3",
+    "font": "Police",
+    "size": "Taille",
+    "bulletList": "Liste à puces",
+    "orderedList": "Liste numérotée"
+  },
   "formatting": {
     "textLabel": "Texte / Forme",
     "boldTitle": "Gras",

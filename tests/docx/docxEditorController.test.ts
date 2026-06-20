@@ -89,6 +89,28 @@ describe('createDocxEditorController', () => {
     c.destroy();
   });
 
+  it('mounts the editor toolbar above the editor when the handle provides one', async () => {
+    const toolbarDom = document.createElement('div');
+    toolbarDom.className = 'docx-toolbar';
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]),
+      getModel: () => ({ paragraphs: [] }),
+      view: {} as never,
+      toolbarDom,
+      destroy: vi.fn(() => toolbarDom.remove()),
+    };
+    const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download: vi.fn() });
+    await c.loadBytes(new Uint8Array([9]), 'doc.docx');
+    const panel = document.querySelector<HTMLElement>('.docx-editor-panel');
+    const tb = panel?.querySelector('.docx-toolbar');
+    expect(tb).toBe(toolbarDom);
+    // toolbar sits before the editor mount
+    expect(toolbarDom.nextElementSibling?.classList.contains('docx-editor-mount')).toBe(true);
+    c.close();
+    expect(document.querySelector('.docx-toolbar')).toBeNull(); // removed on teardown
+    c.destroy();
+  });
+
   it('destroy() removes the input and modal from the DOM', () => {
     const c = createDocxEditorController();
     expect(document.querySelector('input[data-docx-editor-input]')).not.toBeNull();

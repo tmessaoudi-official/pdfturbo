@@ -95,6 +95,19 @@
     "pdfUnsupportedChars": "بعض الأحرف غير مدعومة في خطوط PDF وتم استبدالها بـ «؟»",
     "pdfFailed": "تعذّر تصدير PDF"
   },
+  "docxToolbar": {
+    "bold": "غامق",
+    "italic": "مائل",
+    "underline": "تسطير",
+    "headingNormal": "عادي",
+    "h1": "عنوان 1",
+    "h2": "عنوان 2",
+    "h3": "عنوان 3",
+    "font": "الخط",
+    "size": "الحجم",
+    "bulletList": "قائمة نقطية",
+    "orderedList": "قائمة مرقّمة"
+  },
   "formatting": {
     "textLabel": "نص / شكل",
     "boldTitle": "عريض",

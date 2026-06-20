@@ -95,6 +95,19 @@
     "pdfUnsupportedChars": "Some characters aren’t supported by the PDF fonts and were replaced with “?”",
     "pdfFailed": "Couldn’t export the PDF"
   },
+  "docxToolbar": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "underline": "Underline",
+    "headingNormal": "Normal",
+    "h1": "Heading 1",
+    "h2": "Heading 2",
+    "h3": "Heading 3",
+    "font": "Font",
+    "size": "Size",
+    "bulletList": "Bullet list",
+    "orderedList": "Numbered list"
+  },
   "formatting": {
     "textLabel": "Text / Shape",
     "boldTitle": "Bold",

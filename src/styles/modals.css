@@ -196,3 +196,20 @@
   flex: 1; overflow: auto; padding: 18px 22px;
 }
 .docx-editor-mount .ProseMirror { outline: none; min-height: 100%; line-height: 1.5; }
+
+.docx-toolbar {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 6px 22px; border-bottom: 1px solid var(--border, #ddd);
+  background: var(--panel-bg, #fafafa);
+}
+.docx-tb-btn {
+  min-width: 28px; height: 28px; padding: 0 8px; cursor: pointer;
+  border: 1px solid var(--border, #ccc); border-radius: 4px;
+  background: var(--btn-bg, #fff); font-size: 13px; line-height: 1;
+}
+.docx-tb-btn:hover { background: var(--btn-hover-bg, #eee); }
+.docx-tb-btn.active { background: var(--accent, #2563eb); color: #fff; border-color: var(--accent, #2563eb); }
+.docx-tb-select {
+  height: 28px; padding: 0 4px; border: 1px solid var(--border, #ccc);
+  border-radius: 4px; background: var(--btn-bg, #fff); font-size: 13px;
+}

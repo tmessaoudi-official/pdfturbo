@@ -132,6 +132,7 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
     currentName = filename || 'document.docx';
     try {
       handle = await loadEditor(mount, bytes);
+      if (handle.toolbarDom) panel.insertBefore(handle.toolbarDom, mount); // toolbar above the editor
       modal.style.display = 'flex';
     } catch (err) {
       notify('docxEditor.openFailed', 'error');

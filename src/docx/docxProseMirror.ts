@@ -17,6 +17,7 @@ import { baseKeymap } from 'prosemirror-commands';
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 
 import { docxSchema } from './docxSchema';
+import { buildDocxToolbar } from './docxToolbar';
 import { type DocModel, type DocParagraph, type DocRun, parseDocModel, applyParagraphRuns, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
@@ -170,6 +171,8 @@ export interface DocxEditorHandle {
   getModel(): DocModel;
   /** The underlying ProseMirror view (for wiring toolbars). */
   view: EditorView;
+  /** The rich-text toolbar element (the controller mounts it above the editor). */
+  toolbarDom?: HTMLElement;
   /** Tear down the editor view. */
   destroy(): void;
 }
@@ -196,9 +199,11 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     ],
   });
   const view = new EditorView(container, { state });
+  const toolbar = buildDocxToolbar(view);
 
   return {
     view,
+    toolbarDom: toolbar.dom,
     save(): Uint8Array {
       const edited = docToDocModel(view.state.doc);
       const hasHeading = edited.paragraphs.some(p => p.heading !== undefined);
@@ -216,6 +221,7 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
       return docToDocModel(view.state.doc);
     },
     destroy(): void {
+      toolbar.destroy();
       view.destroy();
     },
   };
