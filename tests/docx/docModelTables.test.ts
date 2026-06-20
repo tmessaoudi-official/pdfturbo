@@ -1,11 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { parseDocModel, isDocTable, type DocTable, type DocParagraph } from '../../src/docx/docModel';
+import { parseDocModel, isDocTable, applyBlocks, applyParagraphRuns, type DocTable, type DocParagraph } from '../../src/docx/docModel';
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 function docXml(bodyInner: string): string {
   return `<?xml version="1.0"?><w:document ${W}><w:body>${bodyInner}</w:body></w:document>`;
 }
 const para = (text: string): string => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+describe('docModel — applyBlocks (table-free equals applyParagraphRuns)', () => {
+  it('produces the same output as applyParagraphRuns for paragraph-only edits', () => {
+    const xml = docXml(para('one') + para('two'));
+    const edited: DocParagraph[] = [{ runs: [{ text: 'ONE', bold: true }] }, { runs: [{ text: 'two' }] }];
+    const viaBlocks = applyBlocks(xml, edited);
+    const viaParas = applyParagraphRuns(xml, edited);
+    expect(viaBlocks).toBe(viaParas);
+    expect(parseDocModel(viaBlocks).paragraphs[0].runs[0]).toMatchObject({ text: 'ONE', bold: true });
+  });
+
+  it('append and remove paths are also byte-equal to applyParagraphRuns', () => {
+    // Append: 1 DOM paragraph, 2 model paragraphs (extra cloned + appended at end).
+    const xmlAppend = docXml(para('one'));
+    const editedAppend: DocParagraph[] = [{ runs: [{ text: 'ONE' }] }, { runs: [{ text: 'TWO' }] }];
+    expect(applyBlocks(xmlAppend, editedAppend)).toBe(applyParagraphRuns(xmlAppend, editedAppend));
+    // Remove: 2 DOM paragraphs, 1 model paragraph (trailing removed).
+    const xmlRemove = docXml(para('one') + para('two'));
+    const editedRemove: DocParagraph[] = [{ runs: [{ text: 'ONE' }] }];
+    expect(applyBlocks(xmlRemove, editedRemove)).toBe(applyParagraphRuns(xmlRemove, editedRemove));
+  });
+});
 
 describe('docModel — blocks (paragraph-only back-compat)', () => {
   it('populates blocks alongside paragraphs for a table-free doc', () => {

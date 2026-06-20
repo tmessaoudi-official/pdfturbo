@@ -334,49 +334,120 @@ function applyParagraphProps(dom: Document, p: Element, para: DocParagraph, ids:
   }
 }
 
+/** Rewrite a w:p element's runs from a DocParagraph in place (rPr base reused; props via ids). */
+function setRunsOn(dom: Document, p: Element, para: DocParagraph, ids?: DocApplyIds): void {
+  const existing = Array.from(p.children).filter(c => c.tagName === 'w:r');
+  const baseRPr = existing.length
+    ? (Array.from(existing[0].children).find(c => c.tagName === 'w:rPr') as Element | undefined)
+    : undefined;
+  for (const r of existing) r.remove();
+  if (ids) applyParagraphProps(dom, p, para, ids);
+  const runs = para.runs.length ? para.runs : [{ text: '' }];
+  for (const run of runs) p.appendChild(buildRun(dom, baseRPr, run));
+}
+
+/** Direct w:p / w:tbl children of a container, in document order. */
+function containerBlockEls(container: Element): Element[] {
+  return Array.from(container.children).filter(c => c.tagName === 'w:p' || c.tagName === 'w:tbl');
+}
+
 /**
- * Write a full per-run model back into the ORIGINAL document XML IN PLACE — the
- * formatting-preserving successor to applyParagraphTexts. For each top-level
- * paragraph, the existing `w:r` runs are replaced by runs rebuilt from the model
- * (bold/italic per run; the original first run's `w:rPr` is reused as the base so
- * unmodeled formatting like font/size survives). `w:pPr` and every non-run node
- * (tables, bookmarks, …) pass through verbatim. Extra paragraphs are appended by
- * cloning the last; removed paragraphs are deleted.
+ * Reconcile a container's (body or w:tc) w:p/w:tbl children against a model block list.
+ * Tables are immutable anchors (3a): zip them 1:1 by order and recurse into cells; the
+ * paragraphs between/around tables are reconciled in place with an insertion anchor.
+ * `requireParagraph` keeps ≥1 w:p in a cell (OOXML requires a cell to end with a w:p).
  */
-export function applyParagraphRuns(documentXml: string, paragraphs: DocParagraph[], ids?: DocApplyIds): string {
+function reconcileContainer(dom: Document, container: Element, blocks: DocBlock[], ids: DocApplyIds | undefined, requireParagraph: boolean): void {
+  const domEls = containerBlockEls(container);
+  const domTables = domEls.filter(e => e.tagName === 'w:tbl');
+  const modelTables = blocks.filter(isDocTable);
+  // Structure is read-only in 3a → counts must match. If not, bail (leave tables verbatim,
+  // reconcile only the paragraph blocks against the DOM paragraphs) to avoid corruption.
+  if (domTables.length !== modelTables.length) {
+    reconcileParagraphsOnly(dom, container, blocks.filter((b): b is DocParagraph => !isDocTable(b)), ids, requireParagraph);
+    return;
+  }
+  // Segment both sides by tables.
+  const modelSegs: DocParagraph[][] = [];
+  let seg: DocParagraph[] = [];
+  for (const b of blocks) {
+    if (isDocTable(b)) { modelSegs.push(seg); seg = []; } else seg.push(b);
+  }
+  modelSegs.push(seg);
+  const domSegs: Element[][] = [];
+  let dseg: Element[] = [];
+  for (const e of domEls) {
+    if (e.tagName === 'w:tbl') { domSegs.push(dseg); dseg = []; } else dseg.push(e);
+  }
+  domSegs.push(dseg);
+  // Reconcile each paragraph segment with the following table as its insert anchor.
+  for (let k = 0; k < modelSegs.length; k++) {
+    const anchor = k < domTables.length ? domTables[k] : null; // null → append at container end
+    reconcileSegment(dom, container, domSegs[k], modelSegs[k], anchor, ids, requireParagraph && k === modelSegs.length - 1);
+  }
+  // Recurse into each table's cells.
+  for (let t = 0; t < domTables.length; t++) writeTable(dom, domTables[t], modelTables[t], ids);
+}
+
+/** Reconcile one run of paragraphs (a segment) against existing w:p elements. */
+function reconcileSegment(dom: Document, container: Element, domParas: Element[], modelParas: DocParagraph[], anchor: Element | null, ids: DocApplyIds | undefined, requireParagraph: boolean): void {
+  const n = Math.min(domParas.length, modelParas.length);
+  for (let i = 0; i < n; i++) setRunsOn(dom, domParas[i], modelParas[i], ids);
+  // Append extras before the anchor (or at container end if anchor null), cloning a template.
+  const template = domParas.length ? domParas[domParas.length - 1] : null;
+  for (let i = n; i < modelParas.length; i++) {
+    const p = template ? (template.cloneNode(true) as Element) : dom.createElementNS(W_NS, 'w:p');
+    setRunsOn(dom, p, modelParas[i], ids);
+    if (anchor) container.insertBefore(p, anchor);
+    else container.appendChild(p);
+  }
+  // Remove extra DOM paragraphs (keep ≥1 if requireParagraph and the segment would empty).
+  for (let i = domParas.length - 1; i >= modelParas.length; i--) {
+    if (requireParagraph && modelParas.length === 0 && i === 0) {
+      setRunsOn(dom, domParas[0], { runs: [{ text: '' }] }, ids); // blank, keep the cell valid
+      break;
+    }
+    domParas[i].remove();
+  }
+}
+
+/** Reconcile only paragraph blocks against DOM paragraphs (fallback when table counts diverge). */
+function reconcileParagraphsOnly(dom: Document, container: Element, paras: DocParagraph[], ids: DocApplyIds | undefined, requireParagraph: boolean): void {
+  const domParas = Array.from(container.children).filter(c => c.tagName === 'w:p');
+  reconcileSegment(dom, container, domParas, paras, null, ids, requireParagraph);
+}
+
+/** Rewrite a table's cell paragraphs from a DocTable; structure (tblPr/grid/tcPr) untouched. */
+function writeTable(dom: Document, tbl: Element, table: DocTable, ids: DocApplyIds | undefined): void {
+  const domRows = Array.from(tbl.children).filter(c => c.tagName === 'w:tr');
+  const n = Math.min(domRows.length, table.rows.length);
+  for (let r = 0; r < n; r++) {
+    const domCells = Array.from(domRows[r].children).filter(c => c.tagName === 'w:tc');
+    const cells = table.rows[r].cells;
+    const m = Math.min(domCells.length, cells.length);
+    for (let c = 0; c < m; c++) reconcileContainer(dom, domCells[c], cells[c].blocks, ids, true);
+  }
+}
+
+/**
+ * Write a full block model back into the ORIGINAL document XML IN PLACE. Generalizes
+ * applyParagraphRuns: top-level paragraphs AND tables (cells rewritten, structure verbatim).
+ */
+export function applyBlocks(documentXml: string, blocks: DocBlock[], ids?: DocApplyIds): string {
   const dom = new DOMParser().parseFromString(documentXml, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length > 0) return documentXml;
   const body = dom.getElementsByTagName('w:body')[0];
   if (!body) return documentXml;
-  let ps = topLevelParagraphs(dom);
-  if (ps.length === 0) return documentXml;
-
-  const setRuns = (p: Element, para: DocParagraph): void => {
-    const existing = Array.from(p.children).filter(c => c.tagName === 'w:r');
-    const baseRPr = existing.length
-      ? (Array.from(existing[0].children).find(c => c.tagName === 'w:rPr') as Element | undefined)
-      : undefined;
-    for (const r of existing) r.remove();
-    // Paragraph-level props (heading/list) need resolved style/numbering ids; without
-    // `ids` they are ignored → byte-identical to the #1c runs-only behavior.
-    if (ids) applyParagraphProps(dom, p, para, ids);
-    // An empty paragraph still needs one (empty) run to stay valid/visible.
-    const runs = para.runs.length ? para.runs : [{ text: '' }];
-    for (const run of runs) p.appendChild(buildRun(dom, baseRPr, run));
-  };
-
-  const template = ps[ps.length - 1];
-  for (let i = 0; i < paragraphs.length; i++) {
-    if (i < ps.length) {
-      setRuns(ps[i], paragraphs[i]);
-    } else {
-      const clone = template.cloneNode(true) as Element;
-      setRuns(clone, paragraphs[i]);
-      body.appendChild(clone);
-    }
-  }
-  ps = topLevelParagraphs(dom);
-  for (let i = ps.length - 1; i >= paragraphs.length; i--) ps[i].remove();
-
+  reconcileContainer(dom, body, blocks, ids, false);
   return new XMLSerializer().serializeToString(dom);
+}
+
+/**
+ * Write a full per-run model back into the ORIGINAL document XML IN PLACE — the
+ * formatting-preserving successor to applyParagraphTexts. Delegates to applyBlocks;
+ * a table-free doc has zero w:tbl → single segment with anchor=null → byte-identical
+ * update/append-at-end/remove behavior to the original implementation.
+ */
+export function applyParagraphRuns(documentXml: string, paragraphs: DocParagraph[], ids?: DocApplyIds): string {
+  return applyBlocks(documentXml, paragraphs, ids);
 }
