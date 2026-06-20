@@ -240,3 +240,10 @@
 /* Match highlights painted by the find/replace plugin's decorations. */
 .fr-match { background: rgba(250, 204, 21, 0.45); border-radius: 2px; }
 .fr-match-active { background: rgba(249, 115, 22, 0.85); color: #111; }
+
+/* ── DOCX table display (3a: read-only structure, editable cells) ──── */
+.docx-editor-mount .ProseMirror table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+.docx-editor-mount .ProseMirror td,
+.docx-editor-mount .ProseMirror th { border: 1px solid var(--border, #ccc); padding: 4px 6px; vertical-align: top; }
+.docx-editor-mount .ProseMirror .selectedCell { background: rgba(80, 130, 255, 0.18); }
+.docx-editor-mount .ProseMirror .column-resize-handle { display: none; } /* resize not enabled in 3a */

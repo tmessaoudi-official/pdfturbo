@@ -1,7 +1,71 @@
 import { describe, it, expect } from 'vitest';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell } from 'docx';
 import { docxSchema } from '../../src/docx/docxSchema';
-import { docModelToDoc, docToDocModel } from '../../src/docx/docxProseMirror';
+import { docModelToDoc, docToDocModel, mountDocxEditor } from '../../src/docx/docxProseMirror';
+import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';
 import type { DocModel, DocTable, DocParagraph } from '../../src/docx/docModel';
+
+/** Build the same minimal .docx as docxEditor.test.ts (Plain + BoldWord + table with "Cell A"). */
+async function makeDocxWithTable(): Promise<Uint8Array> {
+  const doc = new Document({
+    sections: [{
+      children: [
+        new Paragraph({ children: [new TextRun({ text: 'Plain' })] }),
+        new Paragraph({ children: [new TextRun({ text: 'BoldWord', bold: true }), new TextRun({ text: ' ital', italics: true })] }),
+        new Table({
+          rows: [new TableRow({ children: [new TableCell({ children: [new Paragraph('Cell A')] })] })],
+        }),
+      ],
+    }],
+  });
+  return new Uint8Array(await Packer.toBuffer(doc));
+}
+
+describe('mountDocxEditor — save routes through applyBlocks (table cell edits propagate)', () => {
+  it('save() preserves a table through an unedited round-trip', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const h = mountDocxEditor(container, await makeDocxWithTable());
+    const saved = h.save();
+    h.destroy();
+    container.remove();
+    const xml = getDocumentXml(openOpc(saved));
+    expect(xml).toContain('<w:tbl');
+    expect(xml).toContain('Cell A');
+  });
+
+  it('save() propagates a cell text edit (requires applyBlocks not applyParagraphRuns)', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const h = mountDocxEditor(container, await makeDocxWithTable());
+
+    // Find the position of "Cell A" inside the PM doc.
+    let cellTextPos = -1;
+    let cellTextLen = 0;
+    h.view.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text?.includes('Cell A')) {
+        cellTextPos = pos;
+        cellTextLen = node.text.length;
+        return false;
+      }
+      return true;
+    });
+    expect(cellTextPos).toBeGreaterThan(0); // sanity: text found
+
+    // Edit "Cell A" → "Cell B" inside the table cell.
+    h.view.dispatch(h.view.state.tr.insertText('Cell B', cellTextPos, cellTextPos + cellTextLen));
+
+    const saved = h.save();
+    h.destroy();
+    container.remove();
+
+    const xml = getDocumentXml(openOpc(saved));
+    expect(xml).toContain('<w:tbl');
+    // Cell edit must propagate — requires save() to use applyBlocks(edited.blocks).
+    expect(xml).toContain('Cell B');
+    expect(xml).not.toContain('Cell A');
+  });
+});
 
 describe('docxSchema — table nodes', () => {
   it('includes prosemirror-tables node types', () => {

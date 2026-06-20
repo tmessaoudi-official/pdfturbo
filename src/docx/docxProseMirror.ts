@@ -15,13 +15,14 @@ import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap } from 'prosemirror-commands';
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
+import { tableEditing } from 'prosemirror-tables';
 
 import { docxSchema } from './docxSchema';
 import { buildDocxToolbar } from './docxToolbar';
 import { findReplacePlugin } from './findReplacePlugin';
 import { buildFindReplaceBar, type FindReplaceBar } from './findReplaceBar';
 import { cleanWordHtml } from './wordPaste';
-import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, isDocTable, parseDocModel, applyParagraphRuns, type DocApplyIds } from './docModel';
+import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, isDocTable, parseDocModel, applyBlocks, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
 
@@ -219,6 +220,15 @@ export interface DocxEditorHandle {
   destroy(): void;
 }
 
+/** Recursively check whether any paragraph in a block tree satisfies `pred`. */
+function anyParagraph(blocks: DocBlock[], pred: (p: DocParagraph) => boolean): boolean {
+  return blocks.some(b =>
+    isDocTable(b)
+      ? b.rows.some(r => r.cells.some(c => anyParagraph(c.blocks, pred)))
+      : pred(b),
+  );
+}
+
 /**
  * Open a .docx, render its top-level paragraphs into an editable ProseMirror view
  * mounted in `container`, and return a handle whose save() writes edits back in
@@ -236,6 +246,7 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
   const state = EditorState.create({
     doc: docModelToDoc(model),
     plugins: [
+      tableEditing(),
       findReplacePlugin(),
       // Mod-f / Mod-h open the in-app find/replace bar. This intentionally overrides the
       // browser's native Find — but ONLY while the editor view holds DOM focus, because a
@@ -302,15 +313,15 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     findReplaceBar: bar.dom,
     save(): Uint8Array {
       const edited = docToDocModel(view.state.doc);
-      const hasHeading = edited.paragraphs.some(p => p.heading !== undefined);
-      const hasList = edited.paragraphs.some(p => p.list !== undefined);
+      const hasHeading = anyParagraph(edited.blocks, p => p.heading !== undefined);
+      const hasList = anyParagraph(edited.blocks, p => p.list !== undefined);
       let ids: DocApplyIds | undefined;
       if (hasHeading || hasList) {
         const heading = hasHeading ? ensureHeadingStyles(opc) : { 1: 'Heading1', 2: 'Heading2', 3: 'Heading3' };
         const list = hasList ? ensureListNumbering(opc) : { bulletNumId: 0, orderedNumId: 0 };
         ids = { heading, bulletNumId: list.bulletNumId, orderedNumId: list.orderedNumId };
       }
-      setDocumentXml(opc, applyParagraphRuns(originalXml, edited.paragraphs, ids));
+      setDocumentXml(opc, applyBlocks(originalXml, edited.blocks, ids));
       return packOpc(opc);
     },
     getModel(): DocModel {
