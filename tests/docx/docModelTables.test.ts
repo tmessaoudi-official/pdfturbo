@@ -99,3 +99,24 @@ describe('docModel — table cell round-trip (structure preserved)', () => {
     expect(re.blocks.map(b => (b.kind === 'table' ? 'T' : (b as DocParagraph).runs[0].text))).toEqual(['P1', 'P1.5', 'T', 'P2']);
   });
 });
+
+describe('docModel — nested table round-trip', () => {
+  it('edits a nested cell and preserves both outer and inner structure', () => {
+    const inner = `<w:tbl><w:tblPr><w:tblStyle w:val="Inner"/></w:tblPr><w:tblGrid><w:gridCol w:w="50"/></w:tblGrid>${row(cell('inner-A'))}</w:tbl>`;
+    // Outer cell contains a paragraph AND a nested table.
+    const outerCell = `<w:tc><w:tcPr/><w:p><w:r><w:t>outer-lead</w:t></w:r></w:p>${inner}</w:tc>`;
+    const xml = docXml(`<w:tbl><w:tblPr><w:tblStyle w:val="Outer"/></w:tblPr><w:tblGrid><w:gridCol w:w="300"/></w:tblGrid><w:tr>${outerCell}</w:tr></w:tbl>`);
+    const model = parseDocModel(xml);
+    const outer = model.blocks[0] as DocTable;
+    const cellBlocks = outer.rows[0].cells[0].blocks;
+    expect(cellBlocks.map(b => (b.kind === 'table' ? 'T' : 'P'))).toEqual(['P', 'T']); // lead para + nested table
+    const innerTable = cellBlocks[1] as DocTable;
+    (innerTable.rows[0].cells[0].blocks[0] as DocParagraph).runs = [{ text: 'INNER-EDITED' }];
+    const out = applyBlocks(xml, model.blocks);
+    expect(out).toContain('<w:tblStyle w:val="Outer"/>');
+    expect(out).toContain('<w:tblStyle w:val="Inner"/>');
+    const re = parseDocModel(out);
+    const reInner = (re.blocks[0] as DocTable).rows[0].cells[0].blocks[1] as DocTable;
+    expect((reInner.rows[0].cells[0].blocks[0] as DocParagraph).runs[0].text).toBe('INNER-EDITED');
+  });
+});
