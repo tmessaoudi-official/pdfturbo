@@ -9,10 +9,18 @@
 import { Schema, type DOMOutputSpec, type Mark } from 'prosemirror-model';
 import { schema as basicSchema } from 'prosemirror-schema-basic';
 import { addListNodes } from 'prosemirror-schema-list';
+import { tableNodes } from 'prosemirror-tables';
 
 // list_item content = a paragraph followed by any block (allows nested lists).
 // schema.spec.{nodes,marks} are OrderedMaps (the prosemirror-example-setup pattern).
-const nodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
+let nodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
+nodes = nodes.append(
+  tableNodes({
+    tableGroup: 'block',     // tables are top-level + nestable block content
+    cellContent: 'block+',   // cells hold paragraphs, headings, lists, nested tables
+    cellAttributes: {},      // 3a models no extra cell attrs (colspan/rowspan/colwidth are built in)
+  }),
+);
 
 const marks = basicSchema.spec.marks.append({
   underline: {
