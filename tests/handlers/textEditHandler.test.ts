@@ -324,6 +324,59 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect((app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });
 
+  // Slice B: when replaceTextAt reports 'substituted' (the embedded font was
+  // redrawn in a base-14 substitute), the commit must tell the user honestly via
+  // toast.trueEditFontSubstituted — NOT the plain trueTextEdited.
+  it('fires the font-substituted toast when replaceTextAt substitutes the font (Path 3)', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({
+      save: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    });
+    const item = makeItem('Heading', 100, 600);
+    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
+      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
+    mockReplaceTextAt.mockResolvedValue('substituted');
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], 841));
+    (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    input.value = 'Changed';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise<void>(r => { setTimeout(r, 0); });
+
+    const infos = (app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat();
+    expect(infos).toContain('toast.trueEditFontSubstituted');
+    expect(infos).not.toContain('toast.trueTextEdited');
+  });
+
+  it('fires the plain edited toast (not substituted) when the font is kept', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({
+      save: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    });
+    const item = makeItem('Heading', 100, 600);
+    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
+      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
+    mockReplaceTextAt.mockResolvedValue(true);
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], 841));
+    (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    input.value = 'Changed';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise<void>(r => { setTimeout(r, 0); });
+
+    const infos = (app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat();
+    expect(infos).toContain('toast.trueTextEdited');
+    expect(infos).not.toContain('toast.trueEditFontSubstituted');
+  });
+
   // UX (Sprint 3): editText must edit EXISTING source text ONLY. A blank-area
   // click must NOT drop a new text box (the ISSUE-5 unification did, which trapped
   // the user in a non-interactive mode — elements are pointer-events:none outside

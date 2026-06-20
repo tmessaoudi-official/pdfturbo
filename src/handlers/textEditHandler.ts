@@ -645,10 +645,10 @@ export class TextEditHandler {
       // in-stream fill can't be resolved (scn/Separation/spot) and no style
       // color was set — keeps spot-colored text from being recolored black.
       const sampledFallback = hexToRgb01(overlayContext.textColor) ?? undefined;
-      const ok = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style, sampledFallback, {
+      const result = await replaceTextAt(opts.libDoc, opts.pageIndex, opts.origin, newText, TRUE_EDIT_TOLERANCE, style, sampledFallback, {
         adjustDecorations: isEnabled('textDecor'),
       });
-      if (!ok) {
+      if (!result) {
         // A1: the true edit refused (e.g. Type3 / invisible / vertical font, or a
         // subset-font XObject). Don't silently drop the user's change — cover the
         // original with a redaction and place an editable text box carrying the
@@ -659,7 +659,10 @@ export class TextEditHandler {
 
       const newBytes = await opts.libDoc.save();
       if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
-        app.reportError.info('toast.trueTextEdited');
+        // Slice B: 'substituted' means a non-standard embedded font was redrawn in
+        // a base-14 substitute — tell the user honestly. Path 1/2 (font kept) → the
+        // plain edited toast.
+        app.reportError.info(result === 'substituted' ? 'toast.trueEditFontSubstituted' : 'toast.trueTextEdited');
       }
     };
 
