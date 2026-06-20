@@ -722,9 +722,19 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   boundaries (regex `^`/`$` anchor per block); replace formatting = match-start marks only (mixed-format matches
   collapse); table-cell text is not searched (tables aren't in the PM model until feature #3); PDF find/replace
   is the separate follow-up ("DOCX first, PDF after"). i18n `findReplace.*` in en/fr/ar (ar [Unverified]). Guards:
-  `tests/docx/findReplace.test.ts` (12 pure), `tests/docx/findReplacePlugin.test.ts` (9), `tests/docx/findReplaceBar.test.ts`
-  (6), `tests/browser/docx-find-replace.browser.test.ts` (real Chrome: Mod-f opens, decorations paint+cycle,
+  `tests/docx/findReplace.test.ts` (15 pure), `tests/docx/findReplacePlugin.test.ts` (11), `tests/docx/findReplaceBar.test.ts`
+  (7), `tests/browser/docx-find-replace.browser.test.ts` (real Chrome: Mod-f opens, decorations paint+cycle,
   replace-all keeps bold through save→reopen, table passes through).
+  **C#2 hardening (2026-06-20):** (a) **match cap** — `findReplace.ts` exports `MAX_MATCHES=1000`; `findMatches`
+  stops the descend + bounds each `matchBlock(…, limit)` at the cap and returns `truncated?:true`, threaded through
+  the plugin state (`FindReplaceState.truncated`) so the bar counter shows `"n of 1000+"`. A broad query (`.`, `\s`,
+  a lone letter) over a large doc would otherwise build tens of thousands of decorations + a giant replace-all tx =
+  frozen tab; `replaceAll` now acts on the first batch (re-run for the rest). **Residual ceiling:** catastrophic
+  backtracking *inside one `re.exec()`* is uninterruptable in synchronous JS without a Worker/RE2 (both excluded by
+  the no-new-dep rule) — NOT defended, documented. (b) **`Mod-f` override is intentional and already focus-scoped** —
+  a `prosemirror-keymap` handler fires only on editor-focused keydown, so native browser Find works everywhere except
+  inside the open editor (the in-app-editor norm: Docs/VS Code/Notion). No new locale key (counter reuses
+  `findReplace.counter` with a string `total`). Guards: the 3 truncation cases above (core+plugin+bar).
 
 ## Git & CI
 

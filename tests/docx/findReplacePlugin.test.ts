@@ -143,6 +143,19 @@ describe('findReplacePlugin', () => {
     expect(fr(st).matches).toHaveLength(0);
   });
 
+  it('flags truncated when a broad query exceeds the match cap', () => {
+    let st = mkState(doc(para(s.text('a'.repeat(1100)))));
+    st = run(st, setFindQuery('a', PLAIN)).state;
+    expect(fr(st).matches.length).toBe(1000);
+    expect(fr(st).truncated).toBe(true);
+  });
+
+  it('does not flag truncated for an ordinary query', () => {
+    let st = mkState(doc(para(s.text('a b a'))));
+    st = run(st, setFindQuery('a', PLAIN)).state;
+    expect(fr(st).truncated).toBe(false);
+  });
+
   it('plugin matches agree with the pure core', () => {
     const d = doc(para(s.text('cat category')));
     let st = mkState(d);

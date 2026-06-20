@@ -20,6 +20,8 @@ export interface FindReplaceState {
   matches: FindMatch[];
   activeIndex: number; // -1 when there are no matches
   error: 'invalid-regex' | null;
+  /** True when the match list was capped at MAX_MATCHES (more may exist). */
+  truncated: boolean;
 }
 
 type FRAction =
@@ -39,6 +41,7 @@ const INITIAL: FindReplaceState = {
   matches: [],
   activeIndex: -1,
   error: null,
+  truncated: false,
 };
 
 function clampIndex(idx: number, len: number): number {
@@ -49,11 +52,11 @@ function clampIndex(idx: number, len: number): number {
 }
 
 /** Recompute matches for `query`/`opts` against `doc` (empty query → no matches, no error). */
-function recompute(doc: EditorState['doc'], query: string, opts: FindOptions): { matches: FindMatch[]; error: 'invalid-regex' | null } {
-  if (query === '') return { matches: [], error: null };
+function recompute(doc: EditorState['doc'], query: string, opts: FindOptions): { matches: FindMatch[]; error: 'invalid-regex' | null; truncated: boolean } {
+  if (query === '') return { matches: [], error: null, truncated: false };
   const r = findMatches(doc, query, opts);
-  if (r.ok) return { matches: r.matches, error: null };
-  return { matches: [], error: r.error === 'invalid-regex' ? 'invalid-regex' : null };
+  if (r.ok) return { matches: r.matches, error: null, truncated: r.truncated === true };
+  return { matches: [], error: r.error === 'invalid-regex' ? 'invalid-regex' : null, truncated: false };
 }
 
 export function findReplacePlugin(): Plugin<FindReplaceState> {
@@ -74,14 +77,14 @@ export function findReplacePlugin(): Plugin<FindReplaceState> {
             case 'setActiveIndex':
               return { ...value, activeIndex: clampIndex(meta.index, value.matches.length) };
             case 'setQuery': {
-              const { matches, error } = recompute(newState.doc, meta.query, meta.opts);
-              return { ...value, query: meta.query, opts: meta.opts, matches, error, activeIndex: matches.length ? 0 : -1 };
+              const { matches, error, truncated } = recompute(newState.doc, meta.query, meta.opts);
+              return { ...value, query: meta.query, opts: meta.opts, matches, error, truncated, activeIndex: matches.length ? 0 : -1 };
             }
           }
         }
         if (tr.docChanged && value.query !== '') {
-          const { matches, error } = recompute(newState.doc, value.query, value.opts);
-          return { ...value, matches, error, activeIndex: clampIndex(value.activeIndex, matches.length) };
+          const { matches, error, truncated } = recompute(newState.doc, value.query, value.opts);
+          return { ...value, matches, error, truncated, activeIndex: clampIndex(value.activeIndex, matches.length) };
         }
         return value;
       },

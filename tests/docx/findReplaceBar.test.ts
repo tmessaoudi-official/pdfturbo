@@ -66,6 +66,15 @@ describe('findReplaceBar', () => {
     expect(q<HTMLElement>('.fr-counter').textContent).toBe('1 of 2');
   });
 
+  it('shows a "+" in the counter when matches are capped', () => {
+    mount('a'.repeat(1100));
+    bar.open(false);
+    const find = q<HTMLInputElement>('.fr-find');
+    find.value = 'a';
+    find.dispatchEvent(new Event('input'));
+    expect(q<HTMLElement>('.fr-counter').textContent).toBe('1 of 1000+');
+  });
+
   it('the close button closes the bar and deactivates the plugin', () => {
     mount('hello');
     bar.open(false);

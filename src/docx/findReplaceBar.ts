@@ -63,8 +63,10 @@ export function buildFindReplaceBar(view: EditorView): FindReplaceBar {
     const fr = findReplaceKey.getState(view.state);
     if (!fr) return;
     findInput.classList.toggle('fr-error', fr.error === 'invalid-regex');
-    const total = fr.matches.length;
-    const current = total === 0 ? 0 : fr.activeIndex + 1;
+    const count = fr.matches.length;
+    const current = count === 0 ? 0 : fr.activeIndex + 1;
+    // When the match list was capped, show "n of 1000+" so the user knows more exist.
+    const total: string | number = fr.truncated ? `${count}+` : count;
     counter.textContent = fr.query === '' ? '' : t('findReplace.counter', { current, total });
   }
 

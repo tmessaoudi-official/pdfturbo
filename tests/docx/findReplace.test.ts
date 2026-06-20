@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Node as PMNode } from 'prosemirror-model';
 import { docxSchema as s } from '../../src/docx/docxSchema';
-import { findMatches, expandReplacement, type FindOptions } from '../../src/docx/findReplace';
+import { findMatches, expandReplacement, MAX_MATCHES, type FindOptions } from '../../src/docx/findReplace';
 
 const PLAIN: FindOptions = { caseSensitive: false, wholeWord: false, regex: false };
 const opt = (o: Partial<FindOptions>): FindOptions => ({ ...PLAIN, ...o });
@@ -79,6 +79,31 @@ describe('findReplace — findMatches', () => {
     const m = matchesOf(d, 'World', PLAIN);
     expect(m).toHaveLength(1);
     expect(m[0].from).toBe(8); // para1 nodeSize 7 → para2 content starts at 8
+  });
+
+  it('caps a broad query at MAX_MATCHES and flags truncation', () => {
+    // A single block with more occurrences than the cap (e.g. typing "." in regex
+    // mode, or a long repeated run) must not accumulate unbounded matches/decorations.
+    const d = doc(para(s.text('a'.repeat(MAX_MATCHES + 100))));
+    const r = findMatches(d, 'a', PLAIN);
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.matches).toHaveLength(MAX_MATCHES);
+    expect(r.truncated).toBe(true);
+  });
+
+  it('does not flag truncation when matches fit under the cap', () => {
+    const r = findMatches(doc(para(s.text('a a a'))), 'a', PLAIN);
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.matches).toHaveLength(3);
+    expect(r.truncated).toBeFalsy();
+  });
+
+  it('caps a broad regex query at MAX_MATCHES too', () => {
+    const d = doc(para(s.text('x'.repeat(MAX_MATCHES + 50))));
+    const r = findMatches(d, '.', opt({ regex: true }));
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.matches).toHaveLength(MAX_MATCHES);
+    expect(r.truncated).toBe(true);
   });
 });
 

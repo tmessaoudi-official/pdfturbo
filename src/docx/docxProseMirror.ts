@@ -200,6 +200,11 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     doc: docModelToDoc(model),
     plugins: [
       findReplacePlugin(),
+      // Mod-f / Mod-h open the in-app find/replace bar. This intentionally overrides the
+      // browser's native Find — but ONLY while the editor view holds DOM focus, because a
+      // prosemirror-keymap handler is dispatched solely on editor-focused keydown. Outside
+      // the editor (or with it closed) the browser's Ctrl+F works normally. This matches the
+      // in-app-editor norm (Google Docs / VS Code / Notion all capture Ctrl+F when focused).
       keymap({
         'Mod-f': () => {
           barRef?.open(false);
