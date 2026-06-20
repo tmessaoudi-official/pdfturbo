@@ -21,4 +21,10 @@ populated top-level `paragraphs`; (2) table-anchored recursive in-place reconcil
 - **Key design crux**: in-place save uses a table-anchored, recursive segment reconciler (naive index-zip corrupts table position on top-level paragraph insert). `applyParagraphRuns` becomes a thin wrapper over `applyBlocks` → existing tests stay byte-stable.
 
 ## Status
+3a: DONE — committed T0–T9b (92a724b through 513fad1). Recursive `DocTable`/`DocCell` model, in-place `applyBlocks` reconciler (cell text editable + formatting + nested tables), `prosemirror-tables@1.8.5` schema integration + `tableEditing()` (structure read-only), find/replace reaches cells. Guards: docModelTables / docxTablesMapping / docx-tables browser. Next: 3b (rows — add/delete).
+
+## Status — prior
 3a: spec + plan DONE, awaiting execution-mode choice. Next sub-slices after 3a ships: 3b rows → 3c columns → 3d merge/split.
+
+## Decision (during execution, 2026-06-20)
+- AGREED: Putting tables in the PM doc (T7) made C#2 find/replace operate on table CELL text too — out of the 3a spec's stated scope but a free, desirable feature (position mapping is per-textblock, identical to paragraphs). User chose to ACCEPT it: update the stale find/replace browser-test assertion, add a guard that find/replace finds+replaces INSIDE a cell, and update the 3a spec's "find/replace cells out of scope" line. The C#2 plan's "table cells out of scope" ceiling is now LIFTED for the DOCX editor.
