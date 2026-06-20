@@ -21,7 +21,7 @@ import { buildDocxToolbar } from './docxToolbar';
 import { findReplacePlugin } from './findReplacePlugin';
 import { buildFindReplaceBar, type FindReplaceBar } from './findReplaceBar';
 import { cleanWordHtml } from './wordPaste';
-import { type DocModel, type DocParagraph, type DocRun, parseDocModel, applyParagraphRuns, type DocApplyIds } from './docModel';
+import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, isDocTable, parseDocModel, applyParagraphRuns, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
 
@@ -89,24 +89,38 @@ function buildListRun(items: DocParagraph[]): PMNode[] {
   return nodes;
 }
 
+/** Emit a list of DocBlocks (paragraphs + tables) into PM block nodes. Shared by body+cells. */
+function blocksToNodes(blocks: DocBlock[]): PMNode[] {
+  const out: PMNode[] = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const b = blocks[i];
+    if (isDocTable(b)) { out.push(tableToNode(b)); i += 1; continue; }
+    if (!b.list) { out.push(blockFor(b)); i += 1; continue; }
+    // gather a maximal run of list paragraphs (existing buildListRun logic)
+    const runItems: DocParagraph[] = [];
+    while (i < blocks.length && !isDocTable(blocks[i]) && (blocks[i] as DocParagraph).list) {
+      runItems.push(blocks[i] as DocParagraph); i += 1;
+    }
+    out.push(...buildListRun(runItems));
+  }
+  return out;
+}
+function tableToNode(table: DocTable): PMNode {
+  const rows = table.rows.map(r =>
+    n.table_row.create(null, r.cells.map(cellToNode)),
+  );
+  return n.table.create(null, rows);
+}
+function cellToNode(cell: DocCell): PMNode {
+  const content = blocksToNodes(cell.blocks);
+  // cellContent is block+ → guarantee at least one paragraph.
+  return n.table_cell.create(null, content.length ? content : [n.paragraph.create()]);
+}
+
 /** DocModel → a ProseMirror document (flat paragraphs → nested headings/lists). */
 export function docModelToDoc(model: DocModel): PMNode {
-  const blocks: PMNode[] = [];
-  let i = 0;
-  while (i < model.paragraphs.length) {
-    const p = model.paragraphs[i];
-    if (!p.list) {
-      blocks.push(blockFor(p));
-      i += 1;
-    } else {
-      const run: DocParagraph[] = [];
-      while (i < model.paragraphs.length && model.paragraphs[i].list) {
-        run.push(model.paragraphs[i]);
-        i += 1;
-      }
-      blocks.push(...buildListRun(run));
-    }
-  }
+  const blocks = blocksToNodes(model.blocks);
   return n.doc.create(null, blocks.length ? blocks : [n.paragraph.create()]);
 }
 
@@ -160,11 +174,33 @@ function emitBlock(node: PMNode, depth: number, out: DocParagraph[]): void {
   // other block types (blockquote, code_block, …) are not modeled → skipped
 }
 
+function cellOf(cellNode: PMNode): DocCell {
+  const blocks: DocBlock[] = [];
+  cellNode.forEach(child => emitBlockTo(child, 0, blocks));
+  return { blocks: blocks.length ? blocks : [{ runs: [] }] };
+}
+/** Like emitBlock but writes into a DocBlock[] and recognizes table nodes. */
+function emitBlockTo(node: PMNode, depth: number, out: DocBlock[]): void {
+  const name = node.type.name;
+  if (name === 'table') {
+    const rows: DocRow[] = [];
+    node.forEach(rowNode => {
+      const cells: DocCell[] = [];
+      rowNode.forEach(cellNode => cells.push(cellOf(cellNode)));
+      rows.push({ cells });
+    });
+    out.push({ kind: 'table', rows });
+    return;
+  }
+  // emitBlock only pushes paragraphs; emitBlockTo handles tables before delegating.
+  emitBlock(node, depth, out as DocParagraph[]);
+}
+
 /** A ProseMirror document → DocModel (inverse of docModelToDoc; nested → flat). */
 export function docToDocModel(doc: PMNode): DocModel {
-  const paragraphs: DocParagraph[] = [];
-  doc.forEach(block => emitBlock(block, 0, paragraphs));
-  const blocks = paragraphs;
+  const blocks: DocBlock[] = [];
+  doc.forEach(block => emitBlockTo(block, 0, blocks));
+  const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b));
   return { blocks, paragraphs };
 }
 
