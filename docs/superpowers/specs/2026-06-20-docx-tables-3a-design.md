@@ -48,7 +48,8 @@ required, but the table node specs and the recursive save warrant their own modu
 ### 1. Model — `src/docx/docModel.ts` (extend)
 
 Today the model is flat: `DocModel = { paragraphs: DocParagraph[] }`. Extend to an
-ordered recursive block list, keeping a **derived** `paragraphs` view for back-compat.
+ordered recursive block list (`blocks`) **and keep `paragraphs` as a populated
+top-level field** for back-compat (lowest blast radius — see rationale below).
 
 ```ts
 export type DocBlock = DocParagraph | DocTable;            // discriminated by `kind`
@@ -56,18 +57,24 @@ export interface DocParagraph { kind: 'paragraph'; runs: DocRun[]; heading?: 1|2
 export interface DocTable { kind: 'table'; rows: DocRow[]; }
 export interface DocRow   { cells: DocCell[]; }
 export interface DocCell  { blocks: DocBlock[]; }           // recursive → nested tables
-export interface DocModel { blocks: DocBlock[]; }
+export interface DocModel {
+  blocks: DocBlock[];          // full ordered body content (paragraphs + tables)
+  paragraphs: DocParagraph[];  // = blocks.filter(b => b.kind === 'paragraph') — top-level only, cells excluded
+}
 ```
 
 - **Discriminant**: add `kind: 'paragraph'` to `DocParagraph` so `DocBlock` is a clean
-  discriminated union (avoids `'rows' in block` structural sniffing). This is the only
-  breaking shape change to `DocParagraph`.
-- **Derived view**: `export function paragraphsOf(model: DocModel): DocParagraph[]` returns
-  the **top-level** paragraphs (the body-level `DocParagraph` blocks, NOT cell paragraphs).
-  Consumers that currently read `model.paragraphs` switch to either `model.blocks` (table-aware)
-  or `paragraphsOf(model)` (top-level only), case by case. Rationale: a single `paragraphs`
-  getter that flattened cells would silently change `docxToPdf.ts` and PDF-export output;
-  an explicit helper makes each consumer's intent visible and testable.
+  discriminated union (avoids `'rows' in block` structural sniffing). The added `kind`
+  is the only shape change to `DocParagraph`; existing code reading `.runs`/`.heading`/
+  `.list` is unaffected.
+- **`paragraphs` stays populated**: `parseDocModel` and `docToDocModel` both set
+  `paragraphs = blocks.filter(b => b.kind === 'paragraph')`. Its meaning is *exactly today's*
+  — top-level paragraphs, cells excluded. So every current consumer
+  (`docxToPdf.ts:132`, `docxSpike.ts`, ~30 `tests/docx/*` assertions) keeps passing
+  **untouched**; tables ride only in `blocks`, and the save switches to `applyBlocks`.
+- Rationale: a `paragraphs` field that flattened cells in would silently change
+  `docxToPdf.ts`/PDF-export output. Keeping it top-level-only preserves current behavior
+  exactly, while `blocks` carries the new table data for the save and the editor.
 
 #### Parse (`parseDocModel`)
 - Walk `w:body` children in order. `w:p` → `DocParagraph` (existing logic, + `kind`).
@@ -129,11 +136,11 @@ export interface DocModel { blocks: DocBlock[]; }
   → setDocumentXml → packOpc ⇒ edited .docx bytes
 ```
 
-PDF export (`getModel()` → `docxToPdf.ts`): switches to walk `model.blocks`. For 3a the
-PDF renderer may render table cell *text* as flowed paragraphs (no grid lines) — rendering
-the table grid in the PDF is a documented follow-up, NOT a 3a deliverable. (To be confirmed
-in the plan: simplest correct behavior is to render each cell's paragraphs in order; grid
-fidelity is out of scope.)
+PDF export (`getModel()` → `docxToPdf.ts`): **unchanged in 3a**. It walks `model.paragraphs`
+(top-level only) exactly as today, so table cell text is NOT rendered to the exported PDF —
+the same behavior as before tables were editable. Rendering cell text (and eventually the
+grid) into the PDF is a clean follow-up that reads `model.blocks`. This keeps 3a's PDF-export
+path byte-identical and zero-churn.
 
 ## Error handling
 - `parseTable` on a malformed table (missing `w:tr`/`w:tc`) → skip the malformed node,
@@ -158,7 +165,8 @@ fidelity is out of scope.)
   → cell loses it; `w:tcPr` untouched.
 - `docModelToDoc`/`docToDocModel`: PM table node ↔ `DocTable` symmetry incl. nesting.
 - Back-compat: `applyParagraphRuns` wrapper byte-identical to pre-3a on a table-free doc.
-- Derived view: `paragraphsOf` returns only top-level paragraphs (excludes cell paragraphs).
+- Top-level `paragraphs` field: equals `blocks.filter(kind==='paragraph')`; on a doc with a
+  table, cell paragraphs are NOT in `model.paragraphs` (preserves today's meaning).
 
 ### Real Chrome (`npm run test:browser`)
 - `docx-tables.browser.test.ts`: open a real .docx with a table (and a nested table) →
@@ -179,7 +187,8 @@ fidelity is out of scope.)
 - **Push is manual** (the user pushes). No Co-Authored-By trailers.
 - Linters: oxlint — no `any`/non-null `!`; `_`-prefix unused/private; private methods `_`.
 
-## Open question for the plan (flagged, not blocking)
-- PDF export of tables: render cell paragraphs flowed (no grid) vs. defer entirely. Decide
-  at Phase 4 — leaning "render cell paragraphs in document order, grid is a follow-up" so
-  `getModel()`-driven PDF export doesn't silently drop cell text.
+## Resolved decisions (were open, now locked)
+- **Model shape** — dual field: `blocks` (full ordered content) + populated top-level
+  `paragraphs` (cells excluded). Lowest blast radius; existing consumers untouched.
+- **PDF export of table cells** — DEFERRED to a follow-up. 3a leaves `docxToPdf.ts`
+  byte-identical (top-level paragraphs only). Cell-text-in-PDF reads `blocks` later.
