@@ -684,6 +684,21 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   + `tests/browser/docx-toolbar.browser.test.ts` (real Chrome: toolbar drives bold+H1+bullet via genuine
   commands → save → reopen → formatting survives AND an untouched table passes through; the cardinal in-place
   rule), confirming selectable text, reading order, French fidelity.
+  **Paste-from-Word (Slice C #1)**: `src/docx/wordPaste.ts` `cleanWordHtml(html)` is a PURE MSO sanitiser
+  (platform `DOMParser`; strips `mso-*` style decls, `<o:p>`/`<xml>`/`<style>`/`<meta>`/office-namespaced tags,
+  BOTH conditional-comment forms — downlevel-hidden `<!--[if]…<![endif]-->` removed, downlevel-revealed
+  `<![if]…<![endif]>` UNWRAPPED so list bullets survive — empty `MsoNormal` spacers, `file://`/src-less images;
+  keeps `data:`/`http(s):` images) wired as the EditorView `transformPastedHTML` hook (`docxProseMirror.ts`); the
+  default DOMParser then parses through the EXISTING schema parseDOM (b/i/u/font/size/H1–6/lists/links) — NO new
+  schema, NO new dep, NO new flag (rides `VITE_FEATURE_DOCX_EDIT`). Ctrl+Shift+V arms a one-shot `_plainPasteArmed`
+  flag (keydown on `view.dom`) → `handlePaste` does `tr.insertText` (NOT `view.pasteText` — pasteText builds a
+  `ClipboardEvent` internally, which jsdom lacks; insertText is jsdom-safe and correctly "match destination style":
+  drops SOURCE formatting, inherits the cursor context). **Ceiling:** pasted tables fall back to ProseMirror default
+  (grid dropped, cell text → paragraphs — feature #3 upgrades this); colour/highlight/strikethrough dropped (no
+  schema mark); link URL survives in the editor but NOT the OPC save (`DocRun` carries no `linkUrl`). Guards:
+  `tests/docx/wordPaste.test.ts` (7 jsdom: MSO strip + format survival + totality), `tests/docx/docxPaste.test.ts`
+  (wiring + plain-text via fake event), `tests/browser/docx-paste.browser.test.ts` (real Chrome: `view.pasteHTML`
+  real pipeline → bold/underline/list through save→reopen; plain-text drops formatting).
 
 ## Git & CI
 
