@@ -60,3 +60,42 @@ describe('docModel — table parsing', () => {
     expect(cellPara.runs[0].text).toBe('A1');
   });
 });
+
+describe('docModel — table cell round-trip (structure preserved)', () => {
+  it('edits a cell paragraph and leaves tblPr/tblGrid/tcPr verbatim', () => {
+    const xml = docXml(
+      para('before') +
+      `<w:tbl><w:tblPr><w:tblStyle w:val="Grid"/></w:tblPr><w:tblGrid><w:gridCol w:w="100"/><w:gridCol w:w="200"/></w:tblGrid>` +
+      row(cell('A1'), cell('B1')) + row(cell('A2'), cell('B2')) + `</w:tbl>` +
+      para('after'),
+    );
+    const model = parseDocModel(xml);
+    // Edit cell A1 → "EDITED"
+    const t = model.blocks[1] as DocTable;
+    (t.rows[0].cells[0].blocks[0] as DocParagraph).runs = [{ text: 'EDITED', bold: true }];
+    const out = applyBlocks(xml, model.blocks);
+    // Structure preserved verbatim
+    expect(out).toContain('<w:tblStyle w:val="Grid"/>');
+    expect(out).toContain('<w:gridCol w:w="100"/>');
+    expect(out).toContain('<w:gridCol w:w="200"/>');
+    // Cell A1 edited, siblings intact
+    const re = parseDocModel(out);
+    const rt = re.blocks[1] as DocTable;
+    expect((rt.rows[0].cells[0].blocks[0] as DocParagraph).runs[0]).toMatchObject({ text: 'EDITED', bold: true });
+    expect((rt.rows[0].cells[1].blocks[0] as DocParagraph).runs[0].text).toBe('B1');
+    expect((rt.rows[1].cells[0].blocks[0] as DocParagraph).runs[0].text).toBe('A2');
+    // Top-level paragraphs intact and ordered around the table
+    expect(re.paragraphs.map(p => p.runs[0].text)).toEqual(['before', 'after']);
+  });
+
+  it('preserves table position when a paragraph is inserted before the table', () => {
+    const xml = docXml(para('P1') + table(row(cell('C'))) + para('P2'));
+    const model = parseDocModel(xml);
+    // Insert a new top-level paragraph between P1 and the table.
+    model.blocks.splice(1, 0, { runs: [{ text: 'P1.5' }] });
+    const out = applyBlocks(xml, model.blocks);
+    const re = parseDocModel(out);
+    // Order must be P1, P1.5, TABLE, P2 — the table did NOT jump.
+    expect(re.blocks.map(b => (b.kind === 'table' ? 'T' : (b as DocParagraph).runs[0].text))).toEqual(['P1', 'P1.5', 'T', 'P2']);
+  });
+});
