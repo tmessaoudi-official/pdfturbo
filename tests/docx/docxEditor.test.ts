@@ -102,11 +102,13 @@ describe('docModel — applyParagraphRuns (per-run formatting, in place)', () =>
 
 describe('docModel ⇄ ProseMirror mapping', () => {
   it('round-trips text and bold/italic marks through a ProseMirror doc', () => {
+    const paras = [
+      { runs: [{ text: 'hello ' }, { text: 'bold', bold: true }] },
+      { runs: [{ text: 'italic', italic: true }] },
+    ];
     const model: DocModel = {
-      paragraphs: [
-        { runs: [{ text: 'hello ' }, { text: 'bold', bold: true }] },
-        { runs: [{ text: 'italic', italic: true }] },
-      ],
+      blocks: paras,
+      paragraphs: paras,
     };
     const back = docToDocModel(docModelToDoc(model));
     expect(back.paragraphs.map(paragraphText)).toEqual(['hello bold', 'italic']);
@@ -115,7 +117,7 @@ describe('docModel ⇄ ProseMirror mapping', () => {
   });
 
   it('represents an empty document as a single empty paragraph (valid PM doc)', () => {
-    const doc = docModelToDoc({ paragraphs: [] });
+    const doc = docModelToDoc({ blocks: [], paragraphs: [] });
     expect(doc.childCount).toBe(1);
     expect(doc.firstChild?.type.name).toBe('paragraph');
   });

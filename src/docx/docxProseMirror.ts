@@ -164,7 +164,8 @@ function emitBlock(node: PMNode, depth: number, out: DocParagraph[]): void {
 export function docToDocModel(doc: PMNode): DocModel {
   const paragraphs: DocParagraph[] = [];
   doc.forEach(block => emitBlock(block, 0, paragraphs));
-  return { paragraphs };
+  const blocks = paragraphs;
+  return { blocks, paragraphs };
 }
 
 export interface DocxEditorHandle {

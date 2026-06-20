@@ -33,7 +33,7 @@ describe('createDocxEditorController', () => {
     const saved = new Uint8Array([1, 2, 3]);
     const handle: DocxEditorHandle = {
       save: () => saved,
-      getModel: () => ({ paragraphs: [] }),
+      getModel: () => ({ blocks: [], paragraphs: [] }),
       view: {} as never,
       destroy: vi.fn(),
     };
@@ -57,9 +57,10 @@ describe('createDocxEditorController', () => {
 
   it('Export PDF renders the model and downloads a .pdf via the download seam', async () => {
     const downloads: { bytes: Uint8Array; filename: string }[] = [];
+    const paras = [{ runs: [{ text: 'Hello world' }] }];
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]),
-      getModel: () => ({ paragraphs: [{ runs: [{ text: 'Hello world' }] }] }),
+      getModel: () => ({ blocks: paras, paragraphs: paras }),
       view: {} as never,
       destroy: vi.fn(),
     };
@@ -94,7 +95,7 @@ describe('createDocxEditorController', () => {
     toolbarDom.className = 'docx-toolbar';
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]),
-      getModel: () => ({ paragraphs: [] }),
+      getModel: () => ({ blocks: [], paragraphs: [] }),
       view: {} as never,
       toolbarDom,
       destroy: vi.fn(() => toolbarDom.remove()),

@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import { docModelToDoc, docToDocModel, mountDocxEditor } from '../../src/docx/docxProseMirror';
-import { parseDocModel, type DocModel } from '../../src/docx/docModel';
+import { parseDocModel, type DocModel, type DocParagraph } from '../../src/docx/docModel';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';
 import { buildNumberingMap } from '../../src/docx/opcParts';
 
@@ -21,14 +21,16 @@ async function plainDocx(): Promise<Uint8Array> {
 
 describe('mapping — run marks (Task 6)', () => {
   it('round-trips underline / fontFamily / fontSize marks', () => {
-    const back = rt({ paragraphs: [{ runs: [{ text: 'x', underline: true, fontFamily: 'Arial', fontSize: 14 }] }] });
+    const paras = [{ runs: [{ text: 'x', underline: true, fontFamily: 'Arial', fontSize: 14 }] }];
+    const back = rt({ blocks: paras, paragraphs: paras });
     expect(back.paragraphs[0].runs[0]).toMatchObject({ text: 'x', underline: true, fontFamily: 'Arial', fontSize: 14 });
   });
 });
 
 describe('mapping — heading nodes (Task 6)', () => {
   it('round-trips a heading level', () => {
-    const back = rt({ paragraphs: [{ runs: [{ text: 'Title' }], heading: 2 }, { runs: [{ text: 'body' }] }] });
+    const paras: DocParagraph[] = [{ runs: [{ text: 'Title' }], heading: 2 }, { runs: [{ text: 'body' }] }];
+    const back = rt({ blocks: paras, paragraphs: paras });
     expect(back.paragraphs[0].heading).toBe(2);
     expect(back.paragraphs[1].heading).toBeUndefined();
   });
@@ -36,11 +38,13 @@ describe('mapping — heading nodes (Task 6)', () => {
 
 describe('mapping — lists (Task 6)', () => {
   it('groups consecutive same-ordered list paragraphs and round-trips ordered+level', () => {
+    const paras: DocParagraph[] = [
+      { runs: [{ text: 'a' }], list: { ordered: true, level: 0 } },
+      { runs: [{ text: 'b' }], list: { ordered: true, level: 0 } },
+    ];
     const doc = docModelToDoc({
-      paragraphs: [
-        { runs: [{ text: 'a' }], list: { ordered: true, level: 0 } },
-        { runs: [{ text: 'b' }], list: { ordered: true, level: 0 } },
-      ],
+      blocks: paras,
+      paragraphs: paras,
     });
     // exactly one ordered_list with two items
     let ordered = 0;
@@ -54,22 +58,26 @@ describe('mapping — lists (Task 6)', () => {
   });
 
   it('round-trips a nested list level', () => {
+    const paras: DocParagraph[] = [
+      { runs: [{ text: 'top' }], list: { ordered: false, level: 0 } },
+      { runs: [{ text: 'sub' }], list: { ordered: false, level: 1 } },
+    ];
     const back = rt({
-      paragraphs: [
-        { runs: [{ text: 'top' }], list: { ordered: false, level: 0 } },
-        { runs: [{ text: 'sub' }], list: { ordered: false, level: 1 } },
-      ],
+      blocks: paras,
+      paragraphs: paras,
     });
     expect(back.paragraphs[0].list).toMatchObject({ level: 0 });
     expect(back.paragraphs[1].list).toMatchObject({ level: 1 });
   });
 
   it('splits a bullet run and an ordered run into separate list nodes', () => {
+    const paras: DocParagraph[] = [
+      { runs: [{ text: 'b1' }], list: { ordered: false, level: 0 } },
+      { runs: [{ text: 'o1' }], list: { ordered: true, level: 0 } },
+    ];
     const doc = docModelToDoc({
-      paragraphs: [
-        { runs: [{ text: 'b1' }], list: { ordered: false, level: 0 } },
-        { runs: [{ text: 'o1' }], list: { ordered: true, level: 0 } },
-      ],
+      blocks: paras,
+      paragraphs: paras,
     });
     const names: string[] = [];
     doc.forEach(n => names.push(n.type.name));
@@ -83,12 +91,14 @@ describe('mountDocxEditor — save resolves ids and round-trips heading+list (Ta
     const container = document.createElement('div');
     const h = mountDocxEditor(container, await plainDocx());
     // Replace the whole doc with a model carrying a heading + a 2-item ordered list.
+    const paras: DocParagraph[] = [
+      { runs: [{ text: 'Heading' }], heading: 1 },
+      { runs: [{ text: 'first' }], list: { ordered: true, level: 0 } },
+      { runs: [{ text: 'second' }], list: { ordered: true, level: 0 } },
+    ];
     const newDoc = docModelToDoc({
-      paragraphs: [
-        { runs: [{ text: 'Heading' }], heading: 1 },
-        { runs: [{ text: 'first' }], list: { ordered: true, level: 0 } },
-        { runs: [{ text: 'second' }], list: { ordered: true, level: 0 } },
-      ],
+      blocks: paras,
+      paragraphs: paras,
     });
     h.view.dispatch(h.view.state.tr.replaceWith(0, h.view.state.doc.content.size, newDoc.content));
     const out = h.save();

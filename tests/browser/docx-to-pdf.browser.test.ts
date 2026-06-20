@@ -27,11 +27,13 @@ async function textOf(bytes: Uint8Array): Promise<string> {
 
 describe('docModelToPdfBytes (real Chrome, #1d)', () => {
   it('renders run text in reading order, selectable via pdf.js', async () => {
+    const paras = [
+      { runs: [{ text: 'Alpha ' }, { text: 'Bravo', bold: true }] },
+      { runs: [{ text: 'Charlie Delta' }] },
+    ];
     const { bytes } = await docModelToPdfBytes({
-      paragraphs: [
-        { runs: [{ text: 'Alpha ' }, { text: 'Bravo', bold: true }] },
-        { runs: [{ text: 'Charlie Delta' }] },
-      ],
+      blocks: paras,
+      paragraphs: paras,
     });
     const text = await textOf(bytes);
     expect(text).toContain('Alpha');
@@ -41,8 +43,10 @@ describe('docModelToPdfBytes (real Chrome, #1d)', () => {
   });
 
   it('keeps accented French intact (WinAnsi)', async () => {
+    const paras = [{ runs: [{ text: 'éàçùê — déjà vu' }] }];
     const { bytes, hadUnsupportedChars } = await docModelToPdfBytes({
-      paragraphs: [{ runs: [{ text: 'éàçùê — déjà vu' }] }],
+      blocks: paras,
+      paragraphs: paras,
     });
     expect(hadUnsupportedChars).toBe(false);
     expect(await textOf(bytes)).toContain('déjà');

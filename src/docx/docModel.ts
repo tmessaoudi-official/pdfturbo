@@ -21,14 +21,28 @@ export interface DocRun {
   fontSize?: number;
 }
 export interface DocParagraph {
+  /** Discriminates DocBlock; optional (absent ⇒ paragraph) to keep existing literals valid. */
+  kind?: 'paragraph';
   runs: DocRun[];
   /** Heading level 1–3 (w:pStyle = HeadingN); undefined = body paragraph. */
   heading?: 1 | 2 | 3;
   /** List membership (w:numPr): ordered=decimal vs bullet; level = w:ilvl. */
   list?: { ordered: boolean; level: number };
 }
+export interface DocCell { blocks: DocBlock[]; }        // recursive → nested tables
+export interface DocRow { cells: DocCell[]; }
+export interface DocTable { kind: 'table'; rows: DocRow[]; }
+export type DocBlock = DocParagraph | DocTable;
 export interface DocModel {
+  /** Full ordered body content (top-level paragraphs + tables). */
+  blocks: DocBlock[];
+  /** Top-level paragraphs only (cells excluded) = blocks.filter(kind !== 'table'). Back-compat. */
   paragraphs: DocParagraph[];
+}
+
+/** Narrow a DocBlock to DocTable. */
+export function isDocTable(b: DocBlock): b is DocTable {
+  return (b as DocTable).kind === 'table';
 }
 
 /** Resolved style/numbering ids for writing paragraph-level props (from opcParts). */
@@ -134,7 +148,8 @@ export function parseDocModel(documentXml: string, numberingMap?: NumberingMap):
     }
     return para;
   });
-  return { paragraphs };
+  const blocks: DocBlock[] = paragraphs;
+  return { blocks, paragraphs };
 }
 
 /** Concatenated text of a paragraph (helper for callers). */
