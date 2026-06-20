@@ -579,6 +579,39 @@ describe('replaceTextAt', () => {
     expect(showStrings(content)).toContain('Changed');
     expect(content).toMatch(/\/\S+\s+12\s+Tf/);
   });
+
+  // Slice B: the return value tells the caller whether the original font was kept
+  // (Path 1/2, OR a Path-3 redraw of an already-standard font → true) or whether a
+  // NON-standard embedded font was replaced by a base-14 substitute (Path 3 on a
+  // subset/CID/embedded font → 'substituted'), so the handler can warn honestly.
+  // Refuse paths still return false.
+  it('returns true (font kept) for an in-place literal edit of a standard font (Path 1)', async () => {
+    const doc = await PDFDocument.load(await makeLiteralHelloPdf());
+    const result = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Bonjour');
+    expect(result).toBe(true);
+  });
+
+  it('returns true for a Path-3 redraw of an ALREADY-standard font (no real substitution)', async () => {
+    // Helvetica restyle (bold) forces Path 3, but the redraw is the SAME standard
+    // family → not a lossy substitution → plain true, no false "substituted" alarm.
+    const doc = await PDFDocument.load(await makeLiteralHelloPdf());
+    const result = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Bonjour', 5, { bold: true });
+    expect(result).toBe(true);
+  });
+
+  it("returns 'substituted' when an embedded (subset, no-ToUnicode) font is redrawn in base-14 (Path 3)", async () => {
+    // Subset TrueType with no ToUnicode: Path 1 is byte-swap-unsafe and Path 2 has
+    // no CMap, so the edit redraws in a base-14 substitute — a genuine substitution.
+    const doc = await PDFDocument.load(await makeSubsetLiteralPdf(false));
+    const result = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Hi');
+    expect(result).toBe('substituted');
+  });
+
+  it('returns false (refused) for a Form-XObject target — no substitution claim', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf());
+    const result = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Changed', 3, { bold: true });
+    expect(result).toBe(false);
+  });
 });
 
 // ── G8: getEditableTextAt — prefill the inline editor from the MATCHED op ───────
@@ -2042,7 +2075,8 @@ describe('replaceTextAt — Path-3 redraw anchors the underline to the REDRAWN w
     const ok = await replaceTextAt(doc, 0, { x: 52, y: 300 }, '00ABCDEFG', 5, undefined, undefined, {
       adjustDecorations: true,
     });
-    expect(ok).toBe(true);
+    // Slice B: this embedded CID subset is redrawn in a base-14 substitute → 'substituted'.
+    expect(ok).toBe('substituted');
     const content = await pageContentText(await doc.save());
     expect(btCount(content)).toBeGreaterThanOrEqual(1); // Path 3 redraw fired
 

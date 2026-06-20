@@ -1681,7 +1681,7 @@ export async function replaceTextAt(
   // When `adjustDecorations` is set, resize the underline/strikethrough rule that
   // belongs to the edited text so it tracks the new text length (#text-decoration).
   opts?: { adjustDecorations?: boolean }
-): Promise<boolean> {
+): Promise<false | true | 'substituted'> {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return false;
 
@@ -1833,7 +1833,15 @@ export async function replaceTextAt(
   blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
   setPageContent(doc, pageIndex, serializeOps(ops) + redraw);
 
-  return true;
+  // Slice B — honest substitution signal. Path 3 redraws in a base-14 standard
+  // font. That is a genuine, lossy substitution ONLY when the ORIGINAL font was
+  // non-standard (subset / CID / embedded FontFile / Differences-encoded) — i.e.
+  // `byteSwapUnsafe`. When the original is already a plain standard font (e.g. a
+  // base-14 Helvetica that merely couldn't be byte-swapped in place, or a
+  // bold/italic restyle of one), it is redrawn in the SAME standard family, so
+  // there is nothing to warn about → return plain `true`. Path 1/2 also return
+  // `true` (original font kept); refuse paths return `false`.
+  return byteSwapUnsafe ? 'substituted' : true;
 }
 
 /**
