@@ -2135,6 +2135,13 @@ export function isByteSwapUnsafeFont(doc: PDFDocument, pageIndex: number, fontKe
   if (!entry?.get) return false;
   const subtype = entry.get(PDFName.of('Subtype'))?.toString() ?? '';
   if (subtype.includes('Type0')) return true; // CID fonts never use plain byte=ASCII
+  // F14: a non-standard byte→glyph map (`/Encoding << /Differences […] >>`) means the
+  // byte code is NOT plain ASCII even WITHOUT an embedded program — e.g. a simple
+  // TrueType/Type1 font relying on a system font but remapping codes via Differences.
+  // Path-1 byte-swap assumes byte==ASCII and would paint the wrong glyphs for remapped
+  // codes, so treat any Differences-bearing encoding as byte-swap-unsafe.
+  const enc = doc.context.lookup(entry.get(PDFName.of('Encoding')));
+  if (enc instanceof PDFDict && enc.get(PDFName.of('Differences'))) return true;
   // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
   const topDesc = doc.context.lookup(entry.get(PDFName.of('FontDescriptor'))) as any;
   if (descriptorHasFontFile(topDesc)) return true;

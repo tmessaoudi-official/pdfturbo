@@ -25,6 +25,7 @@ import {
   getPageRotation,
   locatePageTextOps,
   isSubsetFontName,
+  isByteSwapUnsafeFont,
   isType3Font,
   isVerticalWritingFont,
   getEditableTextAt,
@@ -2258,5 +2259,59 @@ describe('replaceTextAt — Path-3 redraw of a CP1252-high char (F9)', () => {
     // Document still re-parses (no corruption from the redraw path).
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(1);
+  });
+});
+
+// ── F14: byte-swap-unsafe detection for a simple font with /Differences ────────
+/**
+ * Build a PDF with a simple /TrueType font that has NO embedded FontFile (relies
+ * on a system font) but a custom `/Encoding << /Differences […] >>` remapping byte
+ * codes to non-standard glyph names. Path-1 byte-swap assumes byte==ASCII and would
+ * paint the wrong glyphs for the remapped codes, so isByteSwapUnsafeFont must refuse
+ * it (F14). A control variant uses a plain /WinAnsiEncoding NAME (safe → false).
+ */
+async function makeSimpleFontEncodingPdf(useDifferences: boolean): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const ctx = doc.context;
+
+  const fontDict = PDFDict.fromMapWithContext(new Map(), ctx);
+  fontDict.set(PDFName.of('Type'), PDFName.of('Font'));
+  fontDict.set(PDFName.of('Subtype'), PDFName.of('TrueType'));
+  fontDict.set(PDFName.of('BaseFont'), PDFName.of('Arial')); // no subset tag, no FontFile
+  if (useDifferences) {
+    const encDict = PDFDict.fromMapWithContext(new Map(), ctx);
+    const diffs = PDFArray.withContext(ctx);
+    diffs.push(ctx.obj(0x41));
+    diffs.push(PDFName.of('afii10017')); // Cyrillic A remapped onto code 0x41
+    encDict.set(PDFName.of('Differences'), diffs);
+    fontDict.set(PDFName.of('Encoding'), encDict);
+  } else {
+    fontDict.set(PDFName.of('Encoding'), PDFName.of('WinAnsiEncoding'));
+  }
+  const fontRef = ctx.register(fontDict);
+
+  const resFont = PDFDict.fromMapWithContext(new Map(), ctx);
+  resFont.set(PDFName.of('F1'), fontRef);
+  const res = PDFDict.fromMapWithContext(new Map(), ctx);
+  res.set(PDFName.of('Font'), resFont);
+  page.node.set(PDFName.of('Resources'), res);
+
+  const content = 'BT /F1 12 Tf 1 0 0 1 50 300 Tm (A) Tj ET';
+  const cb = new Uint8Array(content.length);
+  for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+  return doc.save();
+}
+
+describe('isByteSwapUnsafeFont — /Differences encoding (F14)', () => {
+  it('refuses byte-swap for a simple font with a /Differences encoding', async () => {
+    const doc = await PDFDocument.load(await makeSimpleFontEncodingPdf(true));
+    expect(isByteSwapUnsafeFont(doc, 0, '/F1')).toBe(true);
+  });
+
+  it('allows byte-swap for the same font with a plain name encoding (control)', async () => {
+    const doc = await PDFDocument.load(await makeSimpleFontEncodingPdf(false));
+    expect(isByteSwapUnsafeFont(doc, 0, '/F1')).toBe(false);
   });
 });

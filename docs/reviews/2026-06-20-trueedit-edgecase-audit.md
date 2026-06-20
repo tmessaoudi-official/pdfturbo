@@ -202,3 +202,26 @@ So the class is **partially** closed. The width-ratio/extent guard (F1/F2 fix) i
 - tokenizer: `BI … <bytes containing 'EI'> EI` must terminate at the whitespace-delimited `EI`.
 - `replaceTextAt`: `€`-containing Path-3 edit must not reject the promise (try/catch → false → overlay).
 - A real-browser guard on a ruled-table PDF: edit a cell, assert the cell border line is byte-unchanged.
+
+---
+
+## Disposition (updated 2026-06-20, after the F5–F9 + F14 work)
+
+| # | Status | Note |
+|---|--------|------|
+| F1 | **DONE** (`130f5c0`) | Symmetric-overlap guard lives in `matchDecorationForText` (the destructive consumer), NOT the shared export classifier — require the TEXT to cover ≥50% of the RULE too, so an over-wide border/separator/band is rejected. The audit predated this classification. |
+| F2 | **DONE** (`130f5c0`) | Same fix as F1 (symmetric overlap is the mechanism). |
+| F3 | **DEFERRED** | Byte-splice rewrite. Round-trip is lossless for bytes 0–255 (`String.fromCharCode`⇄`& 0xff` is identity), so this is blast-radius hardening, not active corruption. The one concrete corruption vector was F7 (now fixed). Tracked as its own designed effort. |
+| F4 | **DEFERRED with F3** | Single-stream write-back; subsumed by the byte-splice approach. |
+| F5 | **DONE** (`5438e29`) | `locateDecorationRects` refuses mirror/negative-scale CTM for rect AND stroked line. |
+| F6 | **DONE** (`5438e29`) | `prepareDecorationResize` refuses runs with non-zero `textRise`. |
+| F7 | **DONE** (`5438e29`) | `findInlineImageEnd` requires a whitespace-delimited `EI`. The real corruption vector. |
+| F8 | **DONE** (`5438e29`) | `locateTextOps` captures the `"` op's `aw ac` as persistent spacing. |
+| F9 | **DONE** (`5438e29`) | Path-3 build-then-blank ordering (CP1252 encode throw no longer destroys the original). |
+| F14 | **DONE** (this commit) | `isByteSwapUnsafeFont` now refuses a simple font with `/Encoding << /Differences >>` (non-standard byte→glyph map) → Path 1 no longer paints wrong glyphs for remapped codes. Guards: `isByteSwapUnsafeFont — /Differences encoding (F14)` (2 tests). |
+| F11 | **WON'T FIX (investigated, rejected)** | Confining shadow-dedup to the same `BT…ET` block was implemented then REVERTED: a legitimate drop-shadow is commonly drawn in a SEPARATE `BT…ET` block (pdf-lib's `drawText` emits one BT per call — see the existing A4 `makeOverlappingTextPdf` fixture), so block-scoping would stop blanking real shadows (regression at the line-508 test). A shadow and a <0.5pt-apart distinct cell with identical payload are geometrically indistinguishable; the existing `SHADOW_RADIUS = 0.5` is already the tightest safe heuristic. Accepted limitation. |
+| F10 | **OPEN (Low)** | Sheared/rotated `Tm` inflates the derived font size. Defensive; pairs with the documented cm-rotation ceiling. Would need a Tm-shear flag on `TextOpInfo` + a refusal in `prepareDecorationResize` (mirrors the F6 textRise gate). |
+| F12 | **DEFERRED with F3** | Multi-stream split-token; the byte-splice approach is the real fix. |
+| F13 | **OPEN (Low)** | `Q` stack underflow drifts CTM. Would abort decoration-resize for the page on imbalance. Low likelihood (malformed streams only). |
+| F15 | **ACCEPTED (P3)** | Absolute 2-pt min width fails SAFE (misses a decoration, never corrupts). Not worth a font-relative rewrite. |
+| F16 | **ACCEPTED (P3)** | 3-dp `fmtNum` rounding only visible on large-media/CAD PDFs; changing precision risks regressing normal output. |
