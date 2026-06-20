@@ -127,3 +127,12 @@ Copyright (c) 2014 Devon Govett
 **Source**: https://fonts.google.com/noto/specimen/Noto+Naskh+Arabic  
 Copyright The Noto Project Authors (https://github.com/notofonts/arabic)  
 Full license text is vendored at `src/assets/fonts/OFL.txt`.
+
+---
+
+## prosemirror-tables
+
+**Version**: 1.8.5  
+**License**: MIT  
+**Repository**: https://github.com/ProseMirror/prosemirror-tables  
+Copyright (c) 2015-2016 by Marijn Haverbeke and others
