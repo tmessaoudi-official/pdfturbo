@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell } from 'docx';
-import { parseDocModel, applyParagraphTexts, paragraphText, type DocModel } from '../../src/docx/docModel';
+import { parseDocModel, applyParagraphTexts, applyParagraphRuns, paragraphText, type DocModel } from '../../src/docx/docModel';
 import { docModelToDoc, docToDocModel, mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';
 import { parseDocx } from '../../src/docx/docxSpike';
@@ -59,6 +59,34 @@ describe('docModel — applyParagraphTexts (in-place, pass-through)', () => {
   });
 });
 
+describe('docModel — applyParagraphRuns (per-run formatting, in place)', () => {
+  it('writes multiple bold/italic runs back while preserving the table', async () => {
+    const xml = getDocumentXml(openOpc(await makeStyledDocx()));
+    const out = applyParagraphRuns(xml, [
+      { runs: [{ text: 'Hello ' }, { text: 'bold', bold: true }, { text: ' and ' }, { text: 'ital', italic: true }] },
+      { runs: [{ text: 'BoldWord ital' }] },
+    ]);
+    expect(out).toContain('<w:tbl'); // table passes through verbatim
+    const model = parseDocModel(out);
+    expect(model.paragraphs[0].runs.map(r => r.text)).toEqual(['Hello ', 'bold', ' and ', 'ital']);
+    expect(model.paragraphs[0].runs[1].bold).toBe(true);
+    expect(model.paragraphs[0].runs[1].italic).toBeUndefined();
+    expect(model.paragraphs[0].runs[3].italic).toBe(true);
+    expect(model.paragraphs[0].runs[3].bold).toBeUndefined();
+  });
+
+  it('preserves an unmodeled run property (font) from the original first run', async () => {
+    const doc = new Document({
+      sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'X', font: 'Courier New' })] })] }],
+    });
+    const xml = getDocumentXml(openOpc(new Uint8Array(await Packer.toBuffer(doc))));
+    const out = applyParagraphRuns(xml, [{ runs: [{ text: 'edited', bold: true }] }]);
+    expect(out).toContain('Courier New'); // rFonts cloned from the base run survives
+    const model = parseDocModel(out);
+    expect(model.paragraphs[0].runs[0]).toMatchObject({ text: 'edited', bold: true });
+  });
+});
+
 describe('docModel ⇄ ProseMirror mapping', () => {
   it('round-trips text and bold/italic marks through a ProseMirror doc', () => {
     const model: DocModel = {
@@ -98,6 +126,18 @@ describe('mountDocxEditor — editable view + in-place save', () => {
     expect(getDocumentXml(openOpc(out))).toContain('<w:tbl');
     const reopened = parseDocx(out); // reads ALL paragraphs incl. table cells
     expect(reopened.paragraphs).toEqual(expect.arrayContaining(['Plain', 'BoldWord ital', 'Cell A']));
+  });
+
+  it('save() preserves per-run bold AND italic (no flatten to one run)', async () => {
+    const container = document.createElement('div');
+    const h = mountDocxEditor(container, await makeStyledDocx());
+    const out = h.save(); // no edit
+    h.destroy();
+    const model = parseDocModel(getDocumentXml(openOpc(out)));
+    const p = model.paragraphs.find(pp => paragraphText(pp) === 'BoldWord ital');
+    expect(p?.runs.find(r => r.text.includes('BoldWord'))?.bold).toBe(true);
+    expect(p?.runs.find(r => r.text.includes('ital'))?.italic).toBe(true);
+    expect(getDocumentXml(openOpc(out))).toContain('<w:tbl');
   });
 
   it('save() reflects a programmatic edit and still preserves the table', async () => {

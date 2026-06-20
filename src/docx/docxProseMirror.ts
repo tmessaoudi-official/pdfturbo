@@ -13,7 +13,7 @@ import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap } from 'prosemirror-commands';
 
-import { type DocModel, parseDocModel, paragraphText, applyParagraphTexts } from './docModel';
+import { type DocModel, parseDocModel, applyParagraphRuns } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 
 /** DocModel → a ProseMirror document (doc › paragraph › text with strong/em marks). */
@@ -80,8 +80,7 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     view,
     save(): Uint8Array {
       const edited = docToDocModel(view.state.doc);
-      const texts = edited.paragraphs.map(paragraphText);
-      setDocumentXml(opc, applyParagraphTexts(originalXml, texts));
+      setDocumentXml(opc, applyParagraphRuns(originalXml, edited.paragraphs));
       return packOpc(opc);
     },
     destroy(): void {
