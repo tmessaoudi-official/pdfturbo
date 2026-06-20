@@ -72,7 +72,6 @@ function buildProbe(srcBytes: Uint8Array): Probe {
 }
 
 async function textOnPage(bytes: Uint8Array, pageNum: number): Promise<string> {
-  const pdfjsLib = await import('pdfjs-dist');
   const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
   try {
     const page = await doc.getPage(pageNum);
