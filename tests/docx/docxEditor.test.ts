@@ -75,15 +75,28 @@ describe('docModel — applyParagraphRuns (per-run formatting, in place)', () =>
     expect(model.paragraphs[0].runs[3].bold).toBeUndefined();
   });
 
-  it('preserves an unmodeled run property (font) from the original first run', async () => {
+  it('preserves an unmodeled run property (color) from the original first run', async () => {
+    // w:color is NOT modeled by DocRun → it must survive via the cloned base rPr.
+    // (Font IS modeled now — Slice A — so it round-trips through the model instead.)
+    const doc = new Document({
+      sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'X', color: '00AA00' })] })] }],
+    });
+    const xml = getDocumentXml(openOpc(new Uint8Array(await Packer.toBuffer(doc))));
+    const out = applyParagraphRuns(xml, [{ runs: [{ text: 'edited', bold: true }] }]);
+    expect(out).toContain('w:val="00AA00"'); // unmodeled color cloned from base rPr survives
+    const model = parseDocModel(out);
+    expect(model.paragraphs[0].runs[0]).toMatchObject({ text: 'edited', bold: true });
+  });
+
+  it('round-trips a modeled font through parse → apply (font now lives in the model)', async () => {
     const doc = new Document({
       sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'X', font: 'Courier New' })] })] }],
     });
     const xml = getDocumentXml(openOpc(new Uint8Array(await Packer.toBuffer(doc))));
-    const out = applyParagraphRuns(xml, [{ runs: [{ text: 'edited', bold: true }] }]);
-    expect(out).toContain('Courier New'); // rFonts cloned from the base run survives
-    const model = parseDocModel(out);
-    expect(model.paragraphs[0].runs[0]).toMatchObject({ text: 'edited', bold: true });
+    const parsed = parseDocModel(xml);
+    expect(parsed.paragraphs[0].runs[0].fontFamily).toBe('Courier New');
+    const out = applyParagraphRuns(xml, parsed.paragraphs); // re-apply the parsed model
+    expect(out).toContain('Courier New');
   });
 });
 
