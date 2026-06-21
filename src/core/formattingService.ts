@@ -2,6 +2,7 @@ import { TextElement, type TextAlign } from '../elements/textElement';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd, type HistoryManager } from './historyManager';
+import { applyTextCase, type TextCaseMode } from '../utils/textCase';
 import type { PDFElement } from '../elements/annotationElement';
 import type { AppDOMRefs } from '../ui/uiController';
 import type { ToolMode } from '../types/tools';
@@ -257,6 +258,18 @@ export class FormattingService {
     const before = { backgroundColor: te.backgroundColor };
     te.backgroundColor = undefined;
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { backgroundColor: undefined }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  transformCase(mode: TextCaseMode): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const next = applyTextCase(te.text, mode);
+    if (next === te.text) return;
+    const before = { text: te.text };
+    te.text = next;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { text: next }));
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
   }

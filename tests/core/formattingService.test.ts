@@ -491,3 +491,68 @@ describe('FormattingService.setTextBackground / clearTextBackground', () => {
     expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
   });
 });
+
+// ── transformCase ──────────────────────────────────────────────────────────
+
+describe('FormattingService.transformCase', () => {
+  it('rewrites the element text via one command', () => {
+    const te = new TextElement(0, 0, 'p1');
+    te.text = 'hello world';
+    const ctx = makeCtx(te);
+    ctx.elements.push(te);
+    new FormattingService(ctx).transformCase('title');
+    expect(te.text).toBe('Hello World');
+    expect(ctx.historyManager.canUndo()).toBe(true);
+  });
+
+  it('applies uppercase', () => {
+    const te = new TextElement(0, 0, 'p1');
+    te.text = 'hello world';
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).transformCase('upper');
+    expect(te.text).toBe('HELLO WORLD');
+  });
+
+  it('applies lowercase', () => {
+    const te = new TextElement(0, 0, 'p1');
+    te.text = 'HELLO WORLD';
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).transformCase('lower');
+    expect(te.text).toBe('hello world');
+  });
+
+  it('is a no-op when text does not change', () => {
+    const te = new TextElement(0, 0, 'p1');
+    te.text = 'hello world';
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).transformCase('lower');
+    expect(ctx.historyManager.canUndo()).toBe(false);
+  });
+
+  it('is a no-op when no element is selected', () => {
+    const ctx = makeCtx(null);
+    new FormattingService(ctx).transformCase('title');
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when selected element is not text', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const ctx = makeCtx(shape);
+    new FormattingService(ctx).transformCase('upper');
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+
+  it('can undo/redo the case transformation', () => {
+    const te = new TextElement(0, 0, 'p1');
+    te.text = 'hello';
+    const ctx = makeCtx(te);
+    ctx.elements.push(te);
+    const svc = new FormattingService(ctx);
+    svc.transformCase('upper');
+    expect(te.text).toBe('HELLO');
+    ctx.historyManager.undo();
+    expect(te.text).toBe('hello');
+    ctx.historyManager.redo();
+    expect(te.text).toBe('HELLO');
+  });
+});
