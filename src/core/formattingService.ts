@@ -76,6 +76,40 @@ export class FormattingService {
     this._ctx.autosave();
   }
 
+  toggleUnderline(): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = { underline: te.underline };
+    te.underline = !te.underline;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { underline: te.underline }));
+    this._ctx.ui.underlineBtn.classList.toggle('btn-active-fmt', te.underline);
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  toggleStrikethrough(): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = { strikethrough: te.strikethrough };
+    te.strikethrough = !te.strikethrough;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { strikethrough: te.strikethrough }));
+    this._ctx.ui.strikeBtn.classList.toggle('btn-active-fmt', te.strikethrough);
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  /** Cycle text alignment left → center → right → left. */
+  cycleAlign(): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const next = te.align === 'left' ? 'center' : te.align === 'center' ? 'right' : 'left';
+    const before = { align: te.align };
+    te.align = next;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { align: next }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
   setFontSize(size: number): void {
     if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
     const te = this._ctx.selectedElement as TextElement;

@@ -113,6 +113,35 @@ describe('renderElementToPdfLib — branch coverage (M2 #23)', () => {
     expect(txt[0].args[0]).toBe('Hello note');
   });
 
+  it('text underline + strikethrough draw two rule lines; plain text draws none (Workstream C)', async () => {
+    const base = {
+      type: 'text', x: 10, y: 10, width: 200, height: 30, text: 'hi',
+      fontSize: 14, color: '#000000', fontFamily: 'Arial', bold: false, italic: false, align: 'left', rotation: 0,
+    };
+    const { ctx, calls } = makeRecordingCtx();
+    await renderElementToPdfLib(el({ ...base, underline: true, strikethrough: true }), ctx);
+    expect(of(calls, 'drawText')).toHaveLength(1);
+    expect(of(calls, 'drawLine')).toHaveLength(2);
+
+    const { ctx: c2, calls: k2 } = makeRecordingCtx();
+    await renderElementToPdfLib(el({ ...base, underline: false, strikethrough: false }), c2);
+    expect(of(k2, 'drawLine')).toHaveLength(0);
+  });
+
+  it('text alignment shifts the draw origin (left vs right differ)', async () => {
+    const base = {
+      type: 'text', x: 10, y: 10, width: 200, height: 30, text: 'hi',
+      fontSize: 14, color: '#000000', fontFamily: 'Arial', bold: false, italic: false, underline: false, strikethrough: false, rotation: 0,
+    };
+    const { ctx, calls } = makeRecordingCtx();
+    await renderElementToPdfLib(el({ ...base, align: 'left' }), ctx);
+    const { ctx: c2, calls: k2 } = makeRecordingCtx();
+    await renderElementToPdfLib(el({ ...base, align: 'right' }), c2);
+    const lx = (of(calls, 'drawText')[0].args[1] as { x: number }).x;
+    const rx = (of(k2, 'drawText')[0].args[1] as { x: number }).x;
+    expect(Math.abs(rx - lx)).toBeGreaterThan(0);
+  });
+
   it('comment with empty text draws only the rectangle (no drawText)', async () => {
     const { ctx, calls } = makeRecordingCtx();
     await renderElementToPdfLib(el({

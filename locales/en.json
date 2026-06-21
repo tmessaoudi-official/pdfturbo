@@ -120,6 +120,7 @@
     "h3": "Heading 3",
     "font": "Font",
     "size": "Size",
+    "color": "Font color",
     "bulletList": "Bullet list",
     "orderedList": "Numbered list"
   },
@@ -127,6 +128,9 @@
     "textLabel": "Text / Shape",
     "boldTitle": "Bold",
     "italicTitle": "Italic",
+    "underlineTitle": "Underline",
+    "strikeTitle": "Strikethrough",
+    "alignTitle": "Align (cycles left/center/right)",
     "fontSizeDownTitle": "Decrease font size (A-)",
     "fontSizeUpTitle": "Increase font size (A+)",
     "zoomOutTitle": "Zoom out",

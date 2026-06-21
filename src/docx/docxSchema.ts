@@ -56,6 +56,36 @@ const marks = basicSchema.spec.marks.append({
       return ['span', { style: `font-size: ${mark.attrs.size as number}pt` }, 0];
     },
   },
+  color: {
+    attrs: { value: {} },
+    parseDOM: [
+      {
+        style: 'color',
+        getAttrs: (value: string): { value: string } | false => {
+          const hex = cssColorToHex(value);
+          return hex ? { value: hex } : false;
+        },
+      },
+    ],
+    toDOM(mark: Mark): DOMOutputSpec {
+      return ['span', { style: `color: ${mark.attrs.value as string}` }, 0];
+    },
+  },
 });
+
+/** Normalize a CSS color (`#rgb`, `#rrggbb`, `rgb(r,g,b)`) to `#rrggbb`, or null if unparseable. */
+export function cssColorToHex(value: string): string | null {
+  const v = value.trim().toLowerCase();
+  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(v);
+  if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
+  const long = /^#([0-9a-f]{6})$/.exec(v);
+  if (long) return `#${long[1]}`;
+  const rgbm = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/.exec(v);
+  if (rgbm) {
+    const h = (n: string): string => Math.min(255, parseInt(n, 10)).toString(16).padStart(2, '0');
+    return `#${h(rgbm[1])}${h(rgbm[2])}${h(rgbm[3])}`;
+  }
+  return null;
+}
 
 export const docxSchema = new Schema({ nodes, marks });

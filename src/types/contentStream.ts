@@ -68,6 +68,14 @@ export interface TextOpInfo {
   /** Active line width (`w`) when this op was shown — re-emitted by a Path-3 redraw
    * so stroked text keeps its outline weight. Absent when left at the default (F2). */
   lineWidth?: number;
+  /**
+   * Set when the combined text→user transform (textMatrix × CTM) is rotated, sheared,
+   * or non-uniformly scaled (beyond the `Tz` horizontal scale). An axis-aligned scalar
+   * decoration line drawn at `origin` would be mis-placed under such a transform, so
+   * `addDecorationAt` refuses these (the same cm-rotation ceiling Path-3 documents).
+   * Absent (falsy) for upright, uniformly-scaled text — the common case.
+   */
+  tilted?: true;
 }
 
 /**

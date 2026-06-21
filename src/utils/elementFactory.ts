@@ -30,6 +30,8 @@ export class ElementFactory {
         fontSize: data['fontSize'], color: data['color'],
         fontFamily: data['fontFamily'] || 'Arial',
         bold: data['bold'] || false, italic: data['italic'] || false,
+        underline: data['underline'] || false, strikethrough: data['strikethrough'] || false,
+        align: data['align'] || 'left',
         multiline: data['multiline']
       });
       el.text = data['text'] || '';

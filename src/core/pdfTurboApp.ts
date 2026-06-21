@@ -809,6 +809,9 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   setFontFamily(value: string): void { this._formattingService.setFontFamily(value); }
   toggleBold(): void { this._formattingService.toggleBold(); }
   toggleItalic(): void { this._formattingService.toggleItalic(); }
+  toggleUnderline(): void { this._formattingService.toggleUnderline(); }
+  toggleStrikethrough(): void { this._formattingService.toggleStrikethrough(); }
+  cycleAlign(): void { this._formattingService.cycleAlign(); }
   setFontSize(size: number): void { this._formattingService.setFontSize(size); }
   adjustFontSize(delta: number): void { this._formattingService.adjustFontSize(delta); }
   setElementColor(value: string): void { this._formattingService.setElementColor(value); }

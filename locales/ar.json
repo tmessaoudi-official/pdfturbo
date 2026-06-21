@@ -120,6 +120,7 @@
     "h3": "عنوان 3",
     "font": "الخط",
     "size": "الحجم",
+    "color": "لون الخط",
     "bulletList": "قائمة نقطية",
     "orderedList": "قائمة مرقّمة"
   },
@@ -127,6 +128,9 @@
     "textLabel": "نص / شكل",
     "boldTitle": "عريض",
     "italicTitle": "مائل",
+    "underlineTitle": "تسطير",
+    "strikeTitle": "يتوسطه خط",
+    "alignTitle": "محاذاة (يسار/وسط/يمين)",
     "fontSizeDownTitle": "تصغير الخط (A-)",
     "fontSizeUpTitle": "تكبير الخط (A+)",
     "zoomOutTitle": "تصغير",

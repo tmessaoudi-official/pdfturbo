@@ -21,6 +21,8 @@ function makeUI() {
   return {
     boldBtn:        makeBtn(),
     italicBtn:      makeBtn(),
+    underlineBtn:   makeBtn(),
+    strikeBtn:      makeBtn(),
     fontSizeInput:  { value: '14', disabled: false } as unknown as HTMLInputElement,
     fillNoneBtn:    makeBtn(),
     fillColorInput: { value: '#ff0000', style: { opacity: '1' } } as unknown as HTMLInputElement,
@@ -93,6 +95,41 @@ describe('FormattingService.toggleBold', () => {
     const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
     const ctx = makeCtx(shape);
     new FormattingService(ctx).toggleBold();
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+});
+
+// ── underline / strikethrough / alignment (Workstream C) ─────────────────────
+
+describe('FormattingService.toggleUnderline / toggleStrikethrough / cycleAlign', () => {
+  it('flips underline and records an undoable command', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).toggleUnderline();
+    expect(te.underline).toBe(true);
+    expect(ctx.historyManager.canUndo()).toBe(true);
+    expect(ctx.rebuildElementLayer).toHaveBeenCalledOnce();
+  });
+
+  it('flips strikethrough on a TextElement', () => {
+    const te = new TextElement(0, 0, 'p1', { strikethrough: true });
+    new FormattingService(makeCtx(te)).toggleStrikethrough();
+    expect(te.strikethrough).toBe(false);
+  });
+
+  it('cycles alignment left → center → right → left', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    const svc = new FormattingService(ctx);
+    svc.cycleAlign(); expect(te.align).toBe('center');
+    svc.cycleAlign(); expect(te.align).toBe('right');
+    svc.cycleAlign(); expect(te.align).toBe('left');
+  });
+
+  it('underline/strike/align are no-ops without a text element', () => {
+    const ctx = makeCtx(null);
+    const svc = new FormattingService(ctx);
+    svc.toggleUnderline(); svc.toggleStrikethrough(); svc.cycleAlign();
     expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
   });
 });

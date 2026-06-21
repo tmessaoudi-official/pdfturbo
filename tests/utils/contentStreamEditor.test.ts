@@ -35,6 +35,8 @@ import {
   buildPath3Redraw,
   getPageFontGlyphWidths,
   embeddedTextWidth,
+  buildStandaloneDecoration,
+  addDecorationAt,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -2347,5 +2349,98 @@ describe('isByteSwapUnsafeFont — /Differences encoding (F14)', () => {
   it('allows byte-swap for the same font with a plain name encoding (control)', async () => {
     const doc = await PDFDocument.load(await makeSimpleFontEncodingPdf(false));
     expect(isByteSwapUnsafeFont(doc, 0, '/F1')).toBe(false);
+  });
+});
+
+// ── B2: standalone decoration (add NEW underline/strike to true-edited text) ─────
+
+describe('buildStandaloneDecoration', () => {
+  it('emits an isolated stroked horizontal line q … m … l … S Q', () => {
+    const block = buildStandaloneDecoration({ x0: 50, x1: 110, y: 295, thickness: 0.6, color: { r: 0, g: 0, b: 0 } });
+    expect(block).toContain('q');
+    expect(block).toContain('Q');
+    expect(block).toContain(' m ');
+    expect(block).toContain(' l ');
+    expect(block).toContain(' S');
+    expect(block).toContain('0.6 w');
+    // endpoints carry the x span and a single shared y
+    expect(block).toContain('50 295 m');
+    expect(block).toContain('110 295 l');
+  });
+
+  it('encodes the stroke color via RG', () => {
+    const block = buildStandaloneDecoration({ x0: 0, x1: 10, y: 0, thickness: 1, color: { r: 1, g: 0, b: 0 } });
+    expect(block).toMatch(/1 0 0 RG/);
+  });
+});
+
+async function makeUnderlineTargetPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('Underline', { x: 50, y: 300, size: 12, font });
+  return doc.save();
+}
+
+describe('addDecorationAt', () => {
+  it('appends a stroked underline below the text baseline', async () => {
+    const doc = await PDFDocument.load(await makeUnderlineTargetPdf());
+    const before = await locatePageTextOps(doc, 0);
+    expect(before.length).toBe(1);
+    const origin = before[0].origin;
+    const ok = await addDecorationAt(doc, 0, origin, 'underline', 5);
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    const linifiedOps = groupOps(tokenizeContentStream(content));
+    // A new stroke painter appeared (drawText emits only fill text → no S before).
+    expect(linifiedOps.some(o => o.operator === 'S')).toBe(true);
+    // The underline sits just below the baseline (300): m/l y ≈ 300 - 0.1*12 = 298.8.
+    const mOp = linifiedOps.find(o => o.operator === 'm');
+    const lOp = linifiedOps.find(o => o.operator === 'l');
+    expect(mOp).toBeTruthy();
+    expect(lOp).toBeTruthy();
+    const my = mOp?.operands[1]?.value ?? 0;
+    expect(my).toBeGreaterThan(296);
+    expect(my).toBeLessThan(300);
+    // It spans roughly the text width (Helvetica 'Underline' @12pt ≈ 50pt wide).
+    const span = (lOp?.operands[0]?.value ?? 0) - (mOp?.operands[0]?.value ?? 0);
+    expect(span).toBeGreaterThan(30);
+    expect(span).toBeLessThan(80);
+  });
+
+  it('places a strikethrough line through the glyph body (higher than underline)', async () => {
+    const doc = await PDFDocument.load(await makeUnderlineTargetPdf());
+    const origin = (await locatePageTextOps(doc, 0))[0].origin;
+    const ok = await addDecorationAt(doc, 0, origin, 'strikethrough', 5);
+    expect(ok).toBe(true);
+    const content = await pageContentText(await doc.save());
+    const linifiedOps = groupOps(tokenizeContentStream(content));
+    const mOp = linifiedOps.find(o => o.operator === 'm');
+    const my = mOp?.operands[1]?.value ?? 0;
+    // Strike crosses mid-glyph → above the baseline (300).
+    expect(my).toBeGreaterThan(301);
+  });
+
+  it('returns false and changes nothing when no text is near the point', async () => {
+    const doc = await PDFDocument.load(await makeUnderlineTargetPdf());
+    const ok = await addDecorationAt(doc, 0, { x: 10, y: 10 }, 'underline', 5);
+    expect(ok).toBe(false);
+    const content = await pageContentText(await doc.save());
+    expect(groupOps(tokenizeContentStream(content)).some(o => o.operator === 'S')).toBe(false);
+  });
+
+  it('REFUSES rotated text (tilted CTM) — leaves the page unchanged', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 400]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText('Slanted', { x: 100, y: 200, size: 12, font, rotate: degrees(30) });
+    const bytes = await doc.save();
+    const doc2 = await PDFDocument.load(bytes);
+    const t = (await locatePageTextOps(doc2, 0))[0];
+    expect(t.tilted).toBe(true);
+    const ok = await addDecorationAt(doc2, 0, t.origin, 'underline', 5);
+    expect(ok).toBe(false);
+    const content = await pageContentText(await doc2.save());
+    expect(groupOps(tokenizeContentStream(content)).some(o => o.operator === 'S')).toBe(false);
   });
 });

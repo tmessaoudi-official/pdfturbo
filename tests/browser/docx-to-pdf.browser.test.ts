@@ -51,4 +51,44 @@ describe('docModelToPdfBytes (real Chrome, #1d)', () => {
     expect(hadUnsupportedChars).toBe(false);
     expect(await textOf(bytes)).toContain('déjà');
   });
+
+  it('renders heading text and list markers (Workstream A fidelity)', async () => {
+    const blocks = [
+      { heading: 1 as const, runs: [{ text: 'BigTitle' }] },
+      { list: { ordered: true, level: 0 }, runs: [{ text: 'alpha' }] },
+      { list: { ordered: true, level: 0 }, runs: [{ text: 'beta' }] },
+      { list: { ordered: false, level: 0 }, runs: [{ text: 'gamma' }] },
+    ];
+    const { bytes } = await docModelToPdfBytes({ blocks, paragraphs: blocks });
+    const text = await textOf(bytes);
+    expect(text).toContain('BigTitle');
+    // Ordered markers count up; the unordered item gets a bullet.
+    expect(text).toContain('1.');
+    expect(text).toContain('2.');
+    expect(text).toContain('•');
+    // Reading order: title before list items.
+    expect(text.indexOf('BigTitle')).toBeLessThan(text.indexOf('alpha'));
+  });
+
+  it('renders TABLE cell text (not silently dropped — #1d table fix)', async () => {
+    // Regression: tables used to be omitted from the PDF export entirely. Now the
+    // grid renders and every cell's text must be selectable, in row-major order.
+    const c = (text: string) => ({ blocks: [{ runs: [{ text }] }] });
+    const cap = { runs: [{ text: 'After table' }] };
+    const t = {
+      kind: 'table' as const,
+      rows: [
+        { cells: [c('Item'), c('Qty')] },
+        { cells: [c('Widget'), c('42')] },
+      ],
+    };
+    const { bytes } = await docModelToPdfBytes({ blocks: [t, cap], paragraphs: [cap] });
+    const text = await textOf(bytes);
+    for (const cell of ['Item', 'Qty', 'Widget', '42', 'After table']) {
+      expect(text).toContain(cell);
+    }
+    // header cell precedes data cell precedes the trailing paragraph (reading order)
+    expect(text.indexOf('Item')).toBeLessThan(text.indexOf('Widget'));
+    expect(text.indexOf('Widget')).toBeLessThan(text.indexOf('After table'));
+  });
 });

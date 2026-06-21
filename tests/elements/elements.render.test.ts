@@ -81,6 +81,23 @@ describe('TextElement render', () => {
     expect(div.style.height).toBe('80px');
   });
 
+  it('applies underline + strikethrough as text-decoration and the align (Workstream C)', () => {
+    const el = new TextElement(0, 0, 'p1', { underline: true, strikethrough: true, align: 'center' });
+    const div = el.render(document.createElement('div'), offset, scale);
+    const input = div.querySelector('textarea') as HTMLTextAreaElement;
+    expect(input.style.textDecoration).toContain('underline');
+    expect(input.style.textDecoration).toContain('line-through');
+    expect(input.style.textAlign).toBe('center');
+  });
+
+  it('defaults to no decoration and left align', () => {
+    const el = new TextElement(0, 0, 'p1');
+    const div = el.render(document.createElement('div'), offset, scale);
+    const input = div.querySelector('textarea') as HTMLTextAreaElement;
+    expect(input.style.textDecoration).toBe('none');
+    expect(input.style.textAlign).toBe('left');
+  });
+
   it('multiline=true renders a textarea', () => {
     const el = new TextElement(0, 0, 'p1', { multiline: true });
     const div = el.render(document.createElement('div'), offset, scale);

@@ -1,5 +1,7 @@
 import { PDFElement, type ElementJSON } from './annotationElement';
 
+export type TextAlign = 'left' | 'center' | 'right';
+
 export interface TextOptions {
   width?: number;
   height?: number;
@@ -8,6 +10,9 @@ export interface TextOptions {
   fontFamily?: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  align?: TextAlign;
   multiline?: boolean;
 }
 
@@ -18,6 +23,9 @@ export class TextElement extends PDFElement {
   fontFamily: string;
   bold: boolean;
   italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
+  align: TextAlign;
   multiline: boolean;
 
   constructor(x: number, y: number, pageId: string, options: TextOptions = {}) {
@@ -27,6 +35,9 @@ export class TextElement extends PDFElement {
     this.fontFamily = options.fontFamily ?? 'Arial';
     this.bold = options.bold ?? false;
     this.italic = options.italic ?? false;
+    this.underline = options.underline ?? false;
+    this.strikethrough = options.strikethrough ?? false;
+    this.align = options.align ?? 'left';
     this.multiline = options.multiline ?? true;
   }
 
@@ -57,6 +68,9 @@ export class TextElement extends PDFElement {
     input.style.fontFamily = this.fontFamily;
     input.style.fontWeight = this.bold ? 'bold' : 'normal';
     input.style.fontStyle = this.italic ? 'italic' : 'normal';
+    const deco = [this.underline ? 'underline' : '', this.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ');
+    input.style.textDecoration = deco || 'none';
+    input.style.textAlign = this.align;
   }
 
   applyStyles(div: HTMLDivElement, canvasOffset: { left: number; top: number }, scale = 1): void {
@@ -69,6 +83,8 @@ export class TextElement extends PDFElement {
 
   override toJSON(): ElementJSON {
     return { ...super.toJSON(), text: this.text, fontSize: this.fontSize, color: this.color,
-      fontFamily: this.fontFamily, bold: this.bold, italic: this.italic, multiline: this.multiline };
+      fontFamily: this.fontFamily, bold: this.bold, italic: this.italic,
+      underline: this.underline, strikethrough: this.strikethrough, align: this.align,
+      multiline: this.multiline };
   }
 }

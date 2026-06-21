@@ -75,15 +75,15 @@ describe('docModel — applyParagraphRuns (per-run formatting, in place)', () =>
     expect(model.paragraphs[0].runs[3].bold).toBeUndefined();
   });
 
-  it('preserves an unmodeled run property (color) from the original first run', async () => {
-    // w:color is NOT modeled by DocRun → it must survive via the cloned base rPr.
-    // (Font IS modeled now — Slice A — so it round-trips through the model instead.)
+  it('preserves an unmodeled run property (highlight) from the original first run', async () => {
+    // w:color IS modeled now (Workstream A) → it round-trips through the model. Use a
+    // still-unmodeled property (w:highlight) to guard the cloned-base-rPr pass-through.
     const doc = new Document({
-      sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'X', color: '00AA00' })] })] }],
+      sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'X', highlight: 'green' })] })] }],
     });
     const xml = getDocumentXml(openOpc(new Uint8Array(await Packer.toBuffer(doc))));
     const out = applyParagraphRuns(xml, [{ runs: [{ text: 'edited', bold: true }] }]);
-    expect(out).toContain('w:val="00AA00"'); // unmodeled color cloned from base rPr survives
+    expect(out).toContain('<w:highlight'); // unmodeled highlight cloned from base rPr survives
     const model = parseDocModel(out);
     expect(model.paragraphs[0].runs[0]).toMatchObject({ text: 'edited', bold: true });
   });

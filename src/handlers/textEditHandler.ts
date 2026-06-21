@@ -2,7 +2,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
-import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, fillColorToHex, getPageFontBaseName, getEditableTextAt, type TextStyle } from '../utils/contentStreamEditor';
+import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, addDecorationAt, fillColorToHex, getPageFontBaseName, getEditableTextAt, type TextStyle } from '../utils/contentStreamEditor';
 import { extractPsName, isArabicText } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import { isEnabled } from '../config/features';
@@ -530,6 +530,16 @@ export class TextEditHandler {
     ui.italicBtn.classList.toggle('btn-active-fmt', italic);
     ui.italicBtn.setAttribute('aria-pressed', String(italic));
     ui.italicBtn.disabled = false;
+    // B2: underline/strikethrough are ADD-only during a true edit (we don't detect a
+    // pre-existing decoration), so they start OFF and, when toggled on, append a
+    // standalone decoration that keeps the original font. Gated by the textDecor seam.
+    const decoEnabled = isEnabled('textDecor');
+    ui.underlineBtn.classList.remove('btn-active-fmt');
+    ui.underlineBtn.setAttribute('aria-pressed', 'false');
+    ui.underlineBtn.disabled = !decoEnabled;
+    ui.strikeBtn.classList.remove('btn-active-fmt');
+    ui.strikeBtn.setAttribute('aria-pressed', 'false');
+    ui.strikeBtn.disabled = !decoEnabled;
     ui.fontSizeInput.value = String(Math.round(opts.fontSize));
     ui.fontSizeInput.disabled = false;
     ui.fontFamily.value = familyToSelect[fontFamily] ?? 'Arial';
@@ -553,15 +563,44 @@ export class TextEditHandler {
       input.style.top = `${e.clientY - fontPx}px`;
     }
 
+    // B1: during a true content-stream edit nothing is a selected TextElement, so the
+    // toolbar's Bold/Italic clicks route to FormattingService.toggleBold/Italic which
+    // early-return — leaving `btn-active-fmt` (which commit() reads) frozen. Attach
+    // session-local toggles so the buttons actually flip the bold/italic restyle state
+    // while editing; removed on close so they never leak to element-formatting clicks.
+    const toggleFmt = (b: HTMLButtonElement) => (): void => {
+      const on = !b.classList.contains('btn-active-fmt');
+      b.classList.toggle('btn-active-fmt', on);
+      b.setAttribute('aria-pressed', String(on));
+    };
+    const onBoldClick = toggleFmt(ui.boldBtn);
+    const onItalicClick = toggleFmt(ui.italicBtn);
+    const onUnderlineClick = toggleFmt(ui.underlineBtn);
+    const onStrikeClick = toggleFmt(ui.strikeBtn);
+    ui.boldBtn.addEventListener('click', onBoldClick);
+    ui.italicBtn.addEventListener('click', onItalicClick);
+    ui.underlineBtn.addEventListener('click', onUnderlineClick);
+    ui.strikeBtn.addEventListener('click', onStrikeClick);
+
     const resetToolbar = () => {
+      ui.boldBtn.removeEventListener('click', onBoldClick);
+      ui.italicBtn.removeEventListener('click', onItalicClick);
+      ui.underlineBtn.removeEventListener('click', onUnderlineClick);
+      ui.strikeBtn.removeEventListener('click', onStrikeClick);
       ui.boldBtn.disabled = true;
       ui.italicBtn.disabled = true;
+      ui.underlineBtn.disabled = true;
+      ui.strikeBtn.disabled = true;
       ui.fontSizeInput.disabled = true;
       ui.fontFamily.disabled = true;
       ui.boldBtn.classList.remove('btn-active-fmt');
       ui.italicBtn.classList.remove('btn-active-fmt');
+      ui.underlineBtn.classList.remove('btn-active-fmt');
+      ui.strikeBtn.classList.remove('btn-active-fmt');
       ui.boldBtn.setAttribute('aria-pressed', 'false');
       ui.italicBtn.setAttribute('aria-pressed', 'false');
+      ui.underlineBtn.setAttribute('aria-pressed', 'false');
+      ui.strikeBtn.setAttribute('aria-pressed', 'false');
     };
 
     let done = false;
@@ -579,6 +618,8 @@ export class TextEditHandler {
       // Snapshot toolbar state before close() resets the controls.
       const newBold       = ui.boldBtn.classList.contains('btn-active-fmt');
       const newItalic     = ui.italicBtn.classList.contains('btn-active-fmt');
+      const newUnderline  = ui.underlineBtn.classList.contains('btn-active-fmt');
+      const newStrike     = ui.strikeBtn.classList.contains('btn-active-fmt');
       const newFontSize   = Math.round(parseFloat(ui.fontSizeInput.value) || opts.fontSize);
       const newFontFamily = ui.fontFamily.value || originalFontFamily;
       const newColorHex   = ui.colorInput.value;
@@ -592,8 +633,21 @@ export class TextEditHandler {
       const familyChanged  = newFontFamily !== originalFontFamily;
       const colorChanged   = originalColorHex !== '' && newColorHex !== originalColorHex;
       const styleChanged   = sizeChanged || boldChanged || italicChanged || familyChanged || colorChanged;
+      // B2: underline/strike are ADD-only (start OFF) → toggled-on == decoration to add.
+      const decoAdded      = (newUnderline || newStrike) && isEnabled('textDecor');
 
-      if (!textChanged && !styleChanged) return;
+      if (!textChanged && !styleChanged && !decoAdded) return;
+
+      // B2: append the standalone decoration(s) to the (already-edited) doc, keeping the
+      // original font — no Path-3 substitution. Non-fatal: a refused add (tilted text)
+      // just leaves the line off. Returns whether any decoration was actually applied.
+      const applyDecorations = async (): Promise<boolean> => {
+        if (!decoAdded) return false;
+        let any = false;
+        if (newUnderline && await addDecorationAt(opts.libDoc, opts.pageIndex, opts.origin, 'underline', TRUE_EDIT_TOLERANCE)) any = true;
+        if (newStrike && await addDecorationAt(opts.libDoc, opts.pageIndex, opts.origin, 'strikethrough', TRUE_EDIT_TOLERANCE)) any = true;
+        return any;
+      };
 
       // Delete: user cleared the text field.
       if (newText.trim() === '' && textChanged) {
@@ -623,6 +677,10 @@ export class TextEditHandler {
           }
         }
         if (allHandled) {
+          const decoApplied = await applyDecorations();
+          // Nothing actually changed (decoration-only commit that the engine refused,
+          // e.g. tilted text) → don't write a no-op revision.
+          if (!sizeChanged && !colorChanged && !decoApplied) return;
           const newBytes = await opts.libDoc.save();
           if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
             app.reportError.info('toast.trueTextEdited');
@@ -657,6 +715,7 @@ export class TextEditHandler {
         return;
       }
 
+      await applyDecorations();
       const newBytes = await opts.libDoc.save();
       if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
         // Slice B: 'substituted' means a non-standard embedded font was redrawn in

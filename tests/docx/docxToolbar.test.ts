@@ -75,6 +75,15 @@ describe('docxToolbar (Task 7)', () => {
     expect(view.state.doc.rangeHasMark(1, 7, docxSchema.marks.fontSize)).toBe(true);
   });
 
+  it('color picker applies the color mark over the selection (Workstream A)', () => {
+    mount('tint');
+    selectAll();
+    const color = ctrl<HTMLInputElement>('color');
+    color.value = '#ff0000';
+    color.dispatchEvent(new Event('input'));
+    expect(view.state.doc.rangeHasMark(1, 5, docxSchema.marks.color)).toBe(true);
+  });
+
   it('bullet and ordered buttons wrap the selection in the right list, toggling off on repeat', () => {
     mount('item');
     ctrl<HTMLElement>('bullet').click();

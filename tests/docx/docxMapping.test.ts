@@ -25,6 +25,12 @@ describe('mapping — run marks (Task 6)', () => {
     const back = rt({ blocks: paras, paragraphs: paras });
     expect(back.paragraphs[0].runs[0]).toMatchObject({ text: 'x', underline: true, fontFamily: 'Arial', fontSize: 14 });
   });
+
+  it('round-trips a run color mark (Workstream A)', () => {
+    const paras = [{ runs: [{ text: 'red', color: '#ff0000' }] }];
+    const back = rt({ blocks: paras, paragraphs: paras });
+    expect(back.paragraphs[0].runs[0]).toMatchObject({ text: 'red', color: '#ff0000' });
+  });
 });
 
 describe('mapping — heading nodes (Task 6)', () => {

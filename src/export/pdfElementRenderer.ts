@@ -126,18 +126,38 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
     const line = lines[i];
     if (!line) continue;
     const baseY = te.y + te.fontSize * 0.9 + i * lineHeight;
-    const rawAnchor = tp(te.x, baseY);
-    const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
     if (isArabicText(line)) {
       // Arabic: render shaped, right-to-left via the embedded Noto Naskh font
       // (drawText can't place shaped glyphs RTL). Right-align to the box edge.
+      const rawAnchor = tp(te.x, baseY);
+      const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
       const rightAnchor = tp(te.x + (te.width || 0), baseY);
       await drawArabicLine(pdfDoc, page, {
         text: line, x: a.x, y: a.y, right: Math.max(a.x, rightAnchor.x),
         size: te.fontSize, color: col,
       });
     } else {
+      // Alignment: shift the draw origin within the element box (display space, pre-transform).
+      const lineW = font.widthOfTextAtSize(line, te.fontSize);
+      const boxW = te.width || lineW;
+      const off = te.align === 'center' ? Math.max(0, (boxW - lineW) / 2)
+        : te.align === 'right' ? Math.max(0, boxW - lineW) : 0;
+      const rawAnchor = tp(te.x + off, baseY);
+      const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
       page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+      // Underline / strikethrough as drawn lines. Rotated text is a documented ceiling
+      // (the rule geometry would need the full rotation transform). `elemRot` (not
+      // pdfRotVal — which is degrees(-0), truthy even unrotated) is the unrotated signal.
+      if (!elemRot && (te.underline || te.strikethrough)) {
+        const thick = Math.max(0.5, te.fontSize * 0.06);
+        const lineColor = rgb(col.r, col.g, col.b);
+        if (te.underline) {
+          page.drawLine({ start: tp(te.x + off, baseY + te.fontSize * 0.12), end: tp(te.x + off + lineW, baseY + te.fontSize * 0.12), thickness: thick, color: lineColor });
+        }
+        if (te.strikethrough) {
+          page.drawLine({ start: tp(te.x + off, baseY - te.fontSize * 0.3), end: tp(te.x + off + lineW, baseY - te.fontSize * 0.3), thickness: thick, color: lineColor });
+        }
+      }
     }
   }
 }

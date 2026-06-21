@@ -90,8 +90,13 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   activation*** — an `await` (e.g. PDF assembly) can outlive it, so the picker MUST be acquired BEFORE the
   slow work (`pickSaveTarget` is called first in `downloadPDF`, then assemble, then `writeToHandle`).
   Cancel (AbortError) → silent no-op; any non-abort failure → anchor-download fallback (progressive
-  enhancement). Only `downloadPDF` is rewired; `downloadPage`/sanitize/DOCX still plain-download.
-  Open-via-picker + recent-files deferred (#54b).
+  enhancement). The picker is now used by **all the major byte exports** — `downloadPDF`,
+  `downloadPage`/`downloadPageRange`, `downloadFlattened`, `sanitizeAndDownload`, `compressAndDownload`,
+  `exportTableCsv`, `downloadPageAsImage`, **and `exportAsDocx`** (each calls `pickSaveTarget` FIRST, before
+  the heavy assembly, to stay within the transient-activation window). Only `exportAsMarkdown`/TXT and the
+  XFDF export stay plain `_downloadBlob`. **Automation note:** the native Save dialog can't be driven by
+  Playwright — to capture a download in a browser test, `delete window.showSaveFilePicker` to force the
+  anchor-download fallback. Open-via-picker + recent-files deferred (#54b).
 - **Table → CSV (#56)**: `src/utils/tableExtract.ts` (`clusterPositions`/`buildTableGrid`/`gridToCsv`, pure) +
   `ExportService.exportTableCsv`. `walkPageOps` now emits **`vRules`** (thin *vertical* line-like rects) alongside
   the horizontal `rules` — the horizontal filter (underline/strike) is byte-unchanged; vertical is a new
@@ -405,6 +410,35 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `getPageFontGlyphWidths`/`embeddedTextWidth` CID-`/W` read + non-Identity null; a CID-digit underline that resizes
   to the embedded width 26.4pt, NOT the 38.4pt proxy overshoot), `tests/browser/trueedit-underline-resize.browser.test.ts`
   (real pdf.js pixels: BOTH rect and stroked-line underline extend under the new tail; OFF controls leave it bare).
+  **Richer PDF text toolbar (2026-06-21) — three sub-items.** The formatting toolbar (`index.html`) gained
+  **Underline / Strikethrough / Align** buttons (`underlineBtn`/`strikeBtn`/`alignBtn`), wired in
+  `formattingBinder.ts` → `pdfTurboApp` delegators → `FormattingService.toggleUnderline`/`toggleStrikethrough`/
+  `cycleAlign` (each a `MoveResizeCmd`, early-returns without a selected TextElement). **(C) overlay TextElement**
+  carries `underline`/`strikethrough`/`align` (`textElement.ts` + `elementFactory.ts`, **no SCHEMA_VERSION bump** —
+  the three are optional, `toJSON` omits when unset); DOM render sets `text-decoration`/`text-align`, and the
+  export bake (`pdfElementRenderer.renderText`) draws the lines via `page.drawLine` + applies an alignment x-offset
+  (`font.widthOfTextAtSize`). Decorations are gated `if (!elemRot && …)` — the rotation signal is **`elemRot`**
+  (numeric, 0 = unrotated), NOT `pdfRotVal` (= `degrees(-0)`, truthy even at 0°); rotated-element decoration is the
+  ceiling. **(B1) dead Bold/Italic during a true edit FIXED:** the toolbar's B/I clicks route to
+  `FormattingService.toggle*` which early-return with no selected element, so `btn-active-fmt` (which `commit()`
+  reads) never flipped. `textEditHandler._openTrueEditInput` now attaches **session-local** click toggles on
+  bold/italic (and underline/strike) that flip the class directly, removed on close so they never leak to
+  element-formatting clicks. **(B2) NEW underline/strike on true-edited EXISTING text** — `addDecorationAt(doc,
+  pageIndex, point, kind, tol)` appends a **standalone stroked line** (`buildStandaloneDecoration` → `q w RG m l S Q`)
+  at the text baseline, KEEPING the original font (no Path-3 substitution). Width is measured in the font's OWN
+  advances (`getPageFontGlyphWidths`/`embeddedTextWidth`) with a standard-font proxy fallback, × the `Tz` hScale;
+  underline sits at `baseline − 0.1·size`, strike at `baseline + 0.28·size`. **Refuse gates (leave PDF unchanged):**
+  a new `TextOpInfo.tilted` flag (set in `locateTextOps` when the text→user transform `textMatrix × CTM` is
+  rotated / sheared / non-uniformly scaled beyond Tz) and invisible render mode 3/7 and undecodable text. Wired in
+  `commit()` as ADD-only toggles (start OFF): a decoration-only commit takes the in-stream fast path + a no-op-save
+  guard; bold/text edits run `replaceTextAt` first, then `applyDecorations` appends to the (already-edited) doc
+  before save — both undoable via the existing `ReplaceSourcePdfBytesCmd`. Gated by the `textDecor` seam (default
+  ON). Guards: `tests/utils/contentStreamEditor.test.ts` (buildStandaloneDecoration + addDecorationAt underline/
+  strike geometry + tilted/no-match refusals), `tests/handlers/textEditHandler.test.ts` (decoration-only commit
+  calls addDecorationAt; no-toggle = no add + no save), `tests/browser/trueedit-add-decoration.browser.test.ts`
+  (real pdf.js pixels: underline below baseline, strike through glyph body, none cross-contaminates). Verified
+  live (synthetic PDF, screenshots in `qa-shots/b2-session/`): bold + underline + bold-underline all apply
+  in-place, same font, no overlay.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order
@@ -674,10 +708,17 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   downloads `<base>.pdf`. **WinAnsi-only:** StandardFonts encode CP1252, so `sanitizeWinAnsi` maps non-WinAnsi
   codepoints (CJK/Arabic/emoji) → `?` and the controller warns (`docxEditor.pdfUnsupportedChars`); French/
   German/Spanish accents are in CP1252 → intact. The `notify` seam was widened to `'warn'` (+ `main.ts` lambda).
-  **Ceiling / deferred:** per-run formatting beyond bold/italic, tables/lists editing, styles UI; the PDF export
-  renders ONLY the editable model — tables/images/styles/colors/font-faces/headers/lists/alignment/doc-page-size
-  are NOT rendered (they survive the `.docx` save path as opaque XML but aren't in the model); non-WinAnsi scripts
-  → `?` (font-embedding is the future path); Approach B (docx-preview raster, high-fidelity image PDF) is the
+  **DOCX→PDF fidelity (Workstream A, 2026-06-21):** the renderer now also draws **heading sizes**
+  (`headingFontSize(level, base)` — H1/H2/H3 × 1.7/1.4/1.18, bold), **list markers** (`listMarkerText(ordered,
+  ordinal, level)` — bullet `•` vs decimal/lower-alpha/lower-roman cycling per 3 levels, `makeListState()` ordinal
+  counter, indent `INDENT_PER_LEVEL` per `list.level`), per-run **underline** (`page.drawLine` at baseline) and
+  per-run **color**. Color is a full vertical slice: `DocRun.color?` (`#rrggbb`) ↔ OPC `w:color@w:val`
+  (`docModel.ts` parse/`buildRun`, added to `MANAGED_RPR`) ↔ ProseMirror `color` mark (`docxSchema.ts`
+  `cssColorToHex` + `docxProseMirror.ts` map) ↔ a color picker in `docxToolbar.ts` ↔ `_hexColor` in the PDF render.
+  **Ceiling / deferred:** per-run formatting beyond b/i/u/size/color, tables/lists EDITING, styles UI; the PDF
+  export still renders ONLY the editable model — tables/images/font-faces/headers/doc-page-size are NOT rendered
+  (they survive the `.docx` save path as opaque XML but aren't in the model); non-WinAnsi scripts → `?`
+  (font-embedding is the future path); Approach B (docx-preview raster, high-fidelity image PDF) is the
   documented future alternative. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-20-docx-to-pdf*`. Guards:
   `tests/docx/{docxEditor,docxEditorController,docModelRichText,opcParts,docxSchema,docxMapping,docxToolbar,docxToPdf}.test.ts`
   (jsdom), `tests/browser/docx-editor.browser.test.ts` + `tests/browser/docx-to-pdf.browser.test.ts`

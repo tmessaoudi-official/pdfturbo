@@ -57,6 +57,20 @@ describe('docModel — run-level underline / font / size (Task 1)', () => {
     expect(run).toMatchObject({ text: 'edited', underline: true, fontFamily: 'Georgia', fontSize: 18 });
   });
 
+  it('reads w:color → #rrggbb and round-trips run color through applyParagraphRuns', async () => {
+    const xml = await xmlOf(
+      new Document({
+        sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'red', color: 'FF0000' })] })] }],
+      }),
+    );
+    expect(parseDocModel(xml).paragraphs[0].runs[0]).toMatchObject({ text: 'red', color: '#ff0000' });
+
+    const out = applyParagraphRuns(xml, [{ runs: [{ text: 'green', color: '#00 ff00'.replace(' ', '') }] }]);
+    expect(out).toContain('<w:color');
+    expect(out).toContain('w:val="00ff00"');
+    expect(parseDocModel(out).paragraphs[0].runs[0]).toMatchObject({ text: 'green', color: '#00ff00' });
+  });
+
   it('emits w:rPr children in CT_RPr schema order (rFonts < b < i < sz < u)', async () => {
     const xml = await xmlOf(
       new Document({ sections: [{ children: [new Paragraph({ children: [new TextRun('x')] })] }] }),
@@ -76,14 +90,16 @@ describe('docModel — run-level underline / font / size (Task 1)', () => {
     expect(iSz).toBeLessThan(iU); // underline (27) follows sz (24) per CT_RPr
   });
 
-  it('preserves an unmodeled rPr child (w:color) when restyling', async () => {
+  it('preserves an unmodeled rPr child (w:highlight) when restyling', async () => {
+    // w:color is now MODELED (see the color round-trip test); use a still-unmodeled
+    // property to guard that the base rPr's other children survive a restyle.
     const xml = await xmlOf(
       new Document({
-        sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'c', color: 'FF0000' })] })] }],
+        sections: [{ children: [new Paragraph({ children: [new TextRun({ text: 'c', highlight: 'yellow' })] })] }],
       }),
     );
     const out = applyParagraphRuns(xml, [{ runs: [{ text: 'c', bold: true }] }]);
-    expect(out).toContain('w:val="FF0000"'); // color cloned from base rPr survives
+    expect(out).toContain('<w:highlight'); // unmodeled highlight cloned from base rPr survives
   });
 });
 

@@ -505,6 +505,18 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         }
       }
       const vScale = Math.hypot(textMatrix[2], textMatrix[3]) || 1;
+      // Combined text→user linear transform (textMatrix × CTM). For upright,
+      // uniformly-scaled text the off-diagonals are ~0 and the horizontal scale
+      // (after dividing out the Tz hScale) matches the vertical scale; anything
+      // else means a scalar axis-aligned underline would be mis-placed → tilted.
+      const trm = multiplyMatrix(textMatrix, ctm);
+      const sxRaw = Math.hypot(trm[0], trm[1]);
+      const sx = sxRaw / (hScale / 100 || 1);
+      const sy = Math.hypot(trm[2], trm[3]);
+      const tilted =
+        Math.abs(trm[1]) > 1e-3 ||
+        Math.abs(trm[2]) > 1e-3 ||
+        (sy > 1e-6 && Math.abs(sx - sy) > 0.02 * sy);
       found.push({
         opIndex,
         operator: op.operator,
@@ -522,6 +534,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         ...(textRise !== 0 ? { textRise } : {}),
         ...(strokeColor !== undefined ? { strokeColor } : {}),
         ...(lineWidth !== undefined ? { lineWidth } : {}),
+        ...(tilted ? { tilted: true as const } : {}),
       });
     }
   });
@@ -1664,6 +1677,103 @@ export function changeColorAt(
     { type: 'number', raw: b, value: color.b },
   ];
   writeBack(doc, pageIndex, found);
+  return true;
+}
+
+/**
+ * Build an isolated stroked horizontal line (`q <w> w <r> <g> <b> RG x0 y m x1 y l S Q`)
+ * for a standalone underline / strikethrough. Drawn at end-of-stream in its own `q…Q`
+ * block so it inherits the default graphics state and never disturbs prior content.
+ * Pure → jsdom-unit-testable.
+ */
+export function buildStandaloneDecoration(p: {
+  x0: number;
+  x1: number;
+  y: number;
+  thickness: number;
+  color: Rgb;
+}): string {
+  return (
+    `\nq ${fmtNum(p.thickness)} w ` +
+    `${fmtNum(p.color.r)} ${fmtNum(p.color.g)} ${fmtNum(p.color.b)} RG ` +
+    `${fmtNum(p.x0)} ${fmtNum(p.y)} m ${fmtNum(p.x1)} ${fmtNum(p.y)} l S Q`
+  );
+}
+
+/**
+ * Add a NEW underline / strikethrough to the text op nearest `point`, KEEPING the
+ * original text + font (no Path-3 substitution). The decoration is a standalone stroked
+ * line appended to the content stream at the text baseline, its width measured in the
+ * font's OWN advances (embedded-exact) with a standard-font proxy fallback.
+ *
+ * Refuses (returns false, leaves the PDF unchanged) when:
+ *   - no editable text op is within `tolerance` of `point`;
+ *   - the text is `tilted` (rotated / sheared / non-uniformly scaled) — a scalar
+ *     axis-aligned line would be mis-placed (the cm-rotation ceiling);
+ *   - the text is invisible (render mode 3 / 7 — an OCR layer over a scan);
+ *   - the shown text can't be decoded (so its width can't be measured).
+ */
+export async function addDecorationAt(
+  doc: PDFDocument,
+  pageIndex: number,
+  point: { x: number; y: number },
+  kind: 'underline' | 'strikethrough',
+  tolerance = 5
+): Promise<boolean> {
+  const found = findTarget(doc, pageIndex, point, tolerance);
+  if (!found) return false;
+  const { ops, target } = found;
+  if (target.tilted) return false;
+  if (target.renderMode === 3 || target.renderMode === 7) return false;
+
+  // Decode the shown text so we can measure its rendered width.
+  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
+  const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
+  const bytesPerCode = cmapText ? detectCMapBytesPerCode(cmapText) : 2;
+  const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
+  const text = decodeShowOpText(ops[target.opIndex], forward, bytesPerCode, byteSwapSafe);
+  if (!text) return false;
+
+  const size = target.fontSize || 12;
+
+  // Measure width in the font's OWN advances when available (Path 1/2 keep the embedded
+  // font, whose metrics differ from any proxy); else fall back to a standard-font proxy.
+  let width: number | null = null;
+  const reverseMap = new Map<string, number>();
+  if (forward) for (const [code, uni] of forward) if (!reverseMap.has(uni)) reverseMap.set(uni, code);
+  const glyphWidths = getPageFontGlyphWidths(doc, pageIndex, target.fontKey);
+  if (glyphWidths && reverseMap.size > 0) {
+    const w = embeddedTextWidth(text, size, reverseMap, glyphWidths);
+    if (w !== null && w > 1e-3) width = w;
+  }
+  if (width === null) {
+    const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
+    const flags = getPageFontDescriptor(doc, pageIndex, target.fontKey)?.flags ?? 0;
+    try {
+      const proxy = await doc.embedFont(matchStandardFont(baseName, flags));
+      width = proxy.widthOfTextAtSize(text, size);
+    } catch {
+      return false; // can't measure → refuse rather than draw a wrong-length line
+    }
+  }
+  if (!(width > 0)) return false;
+
+  const userWidth = width * ((target.hScale ?? 100) / 100);
+  const x0 = target.origin.x;
+  const x1 = x0 + userWidth;
+  // Underline just below the baseline; strikethrough through the glyph body.
+  const y = kind === 'underline' ? target.origin.y - size * 0.1 : target.origin.y + size * 0.28;
+  const thickness = Math.max(0.4, size * 0.05);
+  // Line colour = the text's own fill (else black) so the decoration matches the glyphs.
+  const color = resolveRedrawColor(undefined, target.fillColor, undefined);
+
+  const block = buildStandaloneDecoration({ x0, x1, y, thickness, color });
+  const content = serializeOps(ops) + block;
+  if (found.xObjectName) {
+    setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
+  } else {
+    setPageContent(doc, pageIndex, content);
+  }
   return true;
 }
 

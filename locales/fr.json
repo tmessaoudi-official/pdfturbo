@@ -120,6 +120,7 @@
     "h3": "Titre 3",
     "font": "Police",
     "size": "Taille",
+    "color": "Couleur du texte",
     "bulletList": "Liste à puces",
     "orderedList": "Liste numérotée"
   },
@@ -127,6 +128,9 @@
     "textLabel": "Texte / Forme",
     "boldTitle": "Gras",
     "italicTitle": "Italique",
+    "underlineTitle": "Souligné",
+    "strikeTitle": "Barré",
+    "alignTitle": "Alignement (gauche/centre/droite)",
     "fontSizeDownTitle": "Diminuer la taille (A-)",
     "fontSizeUpTitle": "Augmenter la taille (A+)",
     "zoomOutTitle": "Dézoomer",

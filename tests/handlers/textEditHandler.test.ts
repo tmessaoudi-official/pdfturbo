@@ -3,11 +3,12 @@ import { TextEditHandler, clusterBaselineRun } from '../../src/handlers/textEdit
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
-const { mockFindTextOpAt, mockReplaceTextAt, mockDeleteTextAt, mockGetEditableTextAt } = vi.hoisted(() => ({
+const { mockFindTextOpAt, mockReplaceTextAt, mockDeleteTextAt, mockGetEditableTextAt, mockAddDecorationAt } = vi.hoisted(() => ({
   mockFindTextOpAt: vi.fn(),
   mockReplaceTextAt: vi.fn(),
   mockDeleteTextAt: vi.fn(),
   mockGetEditableTextAt: vi.fn(),
+  mockAddDecorationAt: vi.fn(),
 }));
 
 vi.mock('@cantoo/pdf-lib', () => ({
@@ -20,6 +21,7 @@ vi.mock('../../src/utils/contentStreamEditor', () => ({
   replaceTextAt:    mockReplaceTextAt,
   changeSizeAt:     vi.fn(),
   changeColorAt:    vi.fn(),
+  addDecorationAt:  mockAddDecorationAt,
   fillColorToHex:   vi.fn(() => null),
   getPageFontBaseName: vi.fn(() => ''),
   // G8: prefill comes from the matched content-stream op's decoded text. Default
@@ -86,6 +88,8 @@ function makeApp(canvas: HTMLCanvasElement, fakePage: ReturnType<typeof makeFake
     canvas,
     boldBtn:       Object.assign(document.createElement('button'), { disabled: false }),
     italicBtn:     Object.assign(document.createElement('button'), { disabled: false }),
+    underlineBtn:  Object.assign(document.createElement('button'), { disabled: false }),
+    strikeBtn:     Object.assign(document.createElement('button'), { disabled: false }),
     fontSizeInput: Object.assign(document.createElement('input'),  { disabled: false }),
     fontFamily:    Object.assign(document.createElement('select'), { disabled: false }),
     colorInput:    Object.assign(document.createElement('input'),  { value: '#000000' }),
@@ -375,6 +379,60 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     const infos = (app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat();
     expect(infos).toContain('toast.trueTextEdited');
     expect(infos).not.toContain('toast.trueEditFontSubstituted');
+  });
+
+  // B2: toggling Underline during a true edit (no text change) must APPEND a
+  // standalone decoration via addDecorationAt — keeping the original font — and
+  // still save, even though nothing else changed.
+  it('adds an underline decoration on a decoration-only true edit', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({
+      save: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    });
+    const item = makeItem('Hello', 100, 600);
+    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
+      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
+    mockAddDecorationAt.mockReset();
+    mockAddDecorationAt.mockResolvedValue(true);
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], 841));
+    (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    // Toggle Underline ON (session-local listener flips btn-active-fmt), keep text.
+    app.ui.underlineBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise<void>(r => { setTimeout(r, 0); });
+
+    const decoCalls = (mockAddDecorationAt as ReturnType<typeof vi.fn>).mock.calls;
+    expect(decoCalls.length).toBe(1);
+    expect(decoCalls[0][3]).toBe('underline');
+    expect((app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat()).toContain('toast.trueTextEdited');
+  });
+
+  // B2: with no decoration toggled and no text/style change, addDecorationAt must
+  // NOT be called and no revision is written (no silent no-op edit).
+  it('does not add a decoration when neither underline nor strike is toggled', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const save = vi.fn().mockResolvedValue(new Uint8Array([1]));
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({ save });
+    const item = makeItem('Hello', 100, 600);
+    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
+      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
+    mockAddDecorationAt.mockReset();
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], 841));
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise<void>(r => { setTimeout(r, 0); });
+
+    expect((mockAddDecorationAt as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect(save).not.toHaveBeenCalled();
   });
 
   // UX (Sprint 3): editText must edit EXISTING source text ONLY. A blank-area

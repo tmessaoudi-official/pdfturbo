@@ -31,6 +31,9 @@ export interface AppDOMRefs {
   fontFamily: HTMLSelectElement;
   boldBtn: HTMLButtonElement;
   italicBtn: HTMLButtonElement;
+  underlineBtn: HTMLButtonElement;
+  strikeBtn: HTMLButtonElement;
+  alignBtn: HTMLButtonElement;
   modeBadge: HTMLElement;
   fileMenuBtn: HTMLButtonElement;
   fileMenuWrap: HTMLElement;
@@ -252,6 +255,9 @@ export class UIController {
       fontFamily:       document.getElementById('fontFamily')       as HTMLSelectElement,
       boldBtn:          document.getElementById('boldBtn')          as HTMLButtonElement,
       italicBtn:        document.getElementById('italicBtn')        as HTMLButtonElement,
+      underlineBtn:     document.getElementById('underlineBtn')     as HTMLButtonElement,
+      strikeBtn:        document.getElementById('strikeBtn')        as HTMLButtonElement,
+      alignBtn:         document.getElementById('alignBtn')         as HTMLButtonElement,
       modeBadge:        document.getElementById('modeBadge')        as HTMLElement,
       fileMenuBtn:              document.getElementById('fileMenuBtn')              as HTMLButtonElement,
       fileMenuWrap:             document.getElementById('fileMenuWrap')             as HTMLElement,
@@ -575,22 +581,35 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.fontFamily.disabled      = !isText;
     r.boldBtn.disabled         = !isText;
     r.italicBtn.disabled       = !isText;
+    r.underlineBtn.disabled    = !isText;
+    r.strikeBtn.disabled       = !isText;
+    r.alignBtn.disabled        = !isText;
     r.fontSizeInput.disabled   = !isText;
     r.fontSizeDownBtn.disabled = !isText;
     r.fontSizeUpBtn.disabled   = !isText;
     if (isText) {
-      r.fontFamily.value = (el as TextElement).fontFamily || 'Arial';
-      r.boldBtn.classList.toggle('btn-active-fmt',   !!(el as TextElement).bold);
-      r.italicBtn.classList.toggle('btn-active-fmt', !!(el as TextElement).italic);
-      r.boldBtn.setAttribute('aria-pressed',   String(!!(el as TextElement).bold));
-      r.italicBtn.setAttribute('aria-pressed', String(!!(el as TextElement).italic));
-      r.fontSizeInput.value = String((el as TextElement).fontSize);
-      r.colorInput.value    = (el as TextElement).color;
+      const te = el as TextElement;
+      r.fontFamily.value = te.fontFamily || 'Arial';
+      r.boldBtn.classList.toggle('btn-active-fmt',   !!te.bold);
+      r.italicBtn.classList.toggle('btn-active-fmt', !!te.italic);
+      r.underlineBtn.classList.toggle('btn-active-fmt', !!te.underline);
+      r.strikeBtn.classList.toggle('btn-active-fmt', !!te.strikethrough);
+      r.boldBtn.setAttribute('aria-pressed',   String(!!te.bold));
+      r.italicBtn.setAttribute('aria-pressed', String(!!te.italic));
+      r.underlineBtn.setAttribute('aria-pressed', String(!!te.underline));
+      r.strikeBtn.setAttribute('aria-pressed', String(!!te.strikethrough));
+      r.alignBtn.setAttribute('aria-label', `align-${te.align}`);
+      r.fontSizeInput.value = String(te.fontSize);
+      r.colorInput.value    = te.color;
     } else {
       r.boldBtn.classList.remove('btn-active-fmt');
       r.italicBtn.classList.remove('btn-active-fmt');
+      r.underlineBtn.classList.remove('btn-active-fmt');
+      r.strikeBtn.classList.remove('btn-active-fmt');
       r.boldBtn.setAttribute('aria-pressed', 'false');
       r.italicBtn.setAttribute('aria-pressed', 'false');
+      r.underlineBtn.setAttribute('aria-pressed', 'false');
+      r.strikeBtn.setAttribute('aria-pressed', 'false');
     }
 
     // Unified color picker: always enabled, syncs value to context

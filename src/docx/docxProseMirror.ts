@@ -12,6 +12,9 @@
 import { type Node as PMNode } from 'prosemirror-model';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+// ProseMirror's own stylesheet (sets `white-space: pre-wrap` etc.) — silences the
+// "expects the CSS white-space property to be set" console warning and fixes wrapping.
+import 'prosemirror-view/style/prosemirror.css';
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap } from 'prosemirror-commands';
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
@@ -37,6 +40,7 @@ function inlineOf(run: DocRun): PMNode {
   if (run.underline) marks.push(m.underline.create());
   if (run.fontFamily) marks.push(m.fontFamily.create({ family: run.fontFamily }));
   if (run.fontSize) marks.push(m.fontSize.create({ size: run.fontSize }));
+  if (run.color) marks.push(m.color.create({ value: run.color }));
   return docxSchema.text(run.text, marks);
 }
 function inlineFor(para: DocParagraph): PMNode[] {
@@ -133,6 +137,7 @@ function runsOf(node: PMNode): DocRun[] {
       const attr = (name: string, key: string): unknown => inline.marks.find(mk => mk.type.name === name)?.attrs[key];
       const family = attr('fontFamily', 'family');
       const size = attr('fontSize', 'size');
+      const color = attr('color', 'value');
       runs.push({
         text: inline.text,
         bold: has('strong') || undefined,
@@ -140,6 +145,7 @@ function runsOf(node: PMNode): DocRun[] {
         underline: has('underline') || undefined,
         fontFamily: typeof family === 'string' ? family : undefined,
         fontSize: typeof size === 'number' ? size : undefined,
+        color: typeof color === 'string' ? color : undefined,
       });
     }
   });

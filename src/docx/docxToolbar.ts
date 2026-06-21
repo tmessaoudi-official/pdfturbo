@@ -139,12 +139,22 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
     run(setMarkAttr(m.fontSize, sizeSel.value ? { size: Number(sizeSel.value) } : null));
   });
 
+  // Font color picker. A native <input type=color> always carries a #rrggbb value;
+  // selecting one applies the `color` mark across the selection (or stored mark when empty).
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.className = 'docx-tb-color';
+  colorInput.dataset.act = 'color';
+  colorInput.title = t('docxToolbar.color');
+  colorInput.value = '#000000';
+  colorInput.addEventListener('input', () => run(setMarkAttr(m.color, { value: colorInput.value })));
+
   const toggleList = (listType: NodeType): Command =>
     inList(view.state, listType) ? liftListItem(n.list_item) : wrapInList(listType);
   const bulletBtn = btn('bullet', t('docxToolbar.bulletList'), () => toggleList(n.bullet_list));
   const orderedBtn = btn('ordered', t('docxToolbar.orderedList'), () => toggleList(n.ordered_list));
 
-  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, bulletBtn, orderedBtn);
+  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn);
 
   const update = (): void => {
     boldBtn.classList.toggle('active', markActive(view.state, m.strong));
@@ -153,6 +163,8 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
     headingSel.value = String(currentHeading(view.state));
     bulletBtn.classList.toggle('active', inList(view.state, n.bullet_list));
     orderedBtn.classList.toggle('active', inList(view.state, n.ordered_list));
+    const cMark = (view.state.storedMarks || view.state.selection.$from.marks()).find(mk => mk.type === m.color);
+    if (cMark) colorInput.value = cMark.attrs.value as string;
   };
 
   // Hook the view's dispatch so the toolbar re-syncs after every transaction.

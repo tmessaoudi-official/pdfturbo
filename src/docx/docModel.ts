@@ -19,6 +19,8 @@ export interface DocRun {
   fontFamily?: string;
   /** Run font size in POINTS (w:sz is half-points: written as pt*2). */
   fontSize?: number;
+  /** Run color as a #rrggbb hex string (w:color@w:val, which stores RRGGBB without '#'). */
+  color?: string;
 }
 export interface DocParagraph {
   /** Discriminates DocBlock; optional (absent ⇒ paragraph) to keep existing literals valid. */
@@ -115,6 +117,8 @@ function parseParagraph(p: Element, numberingMap?: NumberingMap): DocParagraph {
     const sz = childEl(rPr, 'w:sz');
     const szVal = sz ? Number(sz.getAttribute('w:val')) : NaN;
     const family = fonts?.getAttribute('w:ascii') ?? fonts?.getAttribute('w:hAnsi') ?? undefined;
+    const colorVal = childEl(rPr, 'w:color')?.getAttribute('w:val') ?? '';
+    const color = /^[0-9a-f]{6}$/i.test(colorVal) ? `#${colorVal.toLowerCase()}` : undefined;
     runs.push({
       text,
       bold: toggleOn(rPr, 'w:b') || undefined,
@@ -122,6 +126,7 @@ function parseParagraph(p: Element, numberingMap?: NumberingMap): DocParagraph {
       underline: toggleOn(rPr, 'w:u') || undefined,
       fontFamily: family || undefined,
       fontSize: Number.isFinite(szVal) && szVal > 0 ? szVal / 2 : undefined,
+      color,
     });
   }
   const para: DocParagraph = { runs };
@@ -231,7 +236,7 @@ export function applyParagraphTexts(documentXml: string, texts: string[]): strin
 }
 
 /** Tags managed by the model run — stripped before re-adding so we never duplicate. */
-const MANAGED_RPR = new Set(['w:b', 'w:i', 'w:u', 'w:rFonts', 'w:sz', 'w:szCs']);
+const MANAGED_RPR = new Set(['w:b', 'w:i', 'w:u', 'w:rFonts', 'w:sz', 'w:szCs', 'w:color']);
 
 /**
  * Build a `w:r` for one model run: clone the paragraph's BASE `w:rPr` (so unmodeled
@@ -254,6 +259,14 @@ function buildRun(dom: Document, baseRPr: Element | undefined, run: DocRun): Ele
   }
   if (run.bold) rPr.appendChild(dom.createElementNS(W_NS, 'w:b'));
   if (run.italic) rPr.appendChild(dom.createElementNS(W_NS, 'w:i'));
+  if (run.color) {
+    const hex = /^#?([0-9a-f]{6})$/i.exec(run.color.trim());
+    if (hex) {
+      const col = dom.createElementNS(W_NS, 'w:color');
+      col.setAttribute('w:val', hex[1].toLowerCase());
+      rPr.appendChild(col);
+    }
+  }
   if (run.underline) {
     const u = dom.createElementNS(W_NS, 'w:u');
     u.setAttribute('w:val', 'single');

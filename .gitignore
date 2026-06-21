@@ -21,3 +21,5 @@
 # scripts/prepare-ocr-assets.mjs (npm run ocr:assets). Kept out of git history;
 # CI regenerates them before tests/build. See docs/plans/ocr-csp-fix.plan.md.
 /public/tesseract/
+# Local QA / visual-evidence screenshots — never committed (binary, ad-hoc).
+/qa-shots/
