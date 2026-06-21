@@ -10,6 +10,17 @@ function makePage(text: string) {
   } as unknown as PDFPageProxy;
 }
 
+// Build a page from explicit per-glyph items: each entry is one text item with its
+// own str + x origin (PDF user space, baseline y constant). This reproduces pdf.js v6's
+// REAL Arabic layout — one item per glyph, VISUAL (L→R) order, presentation forms.
+function makeGlyphPage(glyphs: { str: string; x: number }[], y = 500, w = 7, h = 14) {
+  return {
+    getTextContent: () => Promise.resolve({
+      items: glyphs.map((g) => ({ str: g.str, transform: [1, 0, 0, 1, g.x, y], width: w, height: h })),
+    }),
+  } as unknown as PDFPageProxy;
+}
+
 describe('TextSearchHandler LRU cache', () => {
   it('evicts oldest entry when cache exceeds 20 pages', async () => {
     const handler = new TextSearchHandler();
@@ -69,36 +80,78 @@ describe('TextSearchHandler word-level highlights', () => {
   });
 });
 
-describe('TextSearchHandler Arabic source — presentation-form, visual order (#6b)', () => {
-  // pdf.js v6 returns Arabic source text as VISUAL-order (L→R) PRESENTATION-FORM
-  // glyphs. The string below is the visual layout of the logical word "ابو"
-  // (alef-beh-waw): waw-final, beh-initial, alef-isolated, left→right.
-  // NFKC alone folds it to base letters but in the WRONG order ("وبا"); only the
-  // codepoint-reversal (reverseRtlText) recovers the logical order the user types.
-  const VISUAL_PRESENTATION = 'ﻮﺑﺍ'; // waw, beh, alef (visual L→R)
+describe('TextSearchHandler Arabic source — presentation-form item (#6b)', () => {
+  // pdf.js v6 emits a MULTI-glyph Arabic run as ONE item whose chars are in NATIVE
+  // (LOGICAL) source order, as PRESENTATION FORMS — verified against real output (the
+  // trailing "لام" of "السلام" is one logical-order item). The string below is the logical
+  // presentation-form layout of "ابو" (alef-initial, beh-medial, waw-final). NFKC folds it to
+  // base letters in the CORRECT order; reading order comes from item position, never from
+  // reversing an item's internal chars (reversing scrambled multi-char items).
+  const LOGICAL_PRESENTATION = 'ﺍﺑﻮ'; // alef, beh, waw (logical order)
   const LOGICAL_BASE = 'ابو'; // "ابو" — what a user types into the find bar
   const vp = { transform: [1, 0, 0, -1, 0, 842] } as unknown as PageViewport;
 
   it('finds a logical base-letter query inside presentation-form visual source', async () => {
     const handler = new TextSearchHandler();
-    await handler.buildIndex(makePage(VISUAL_PRESENTATION), 'ar1');
+    await handler.buildIndex(makePage(LOGICAL_PRESENTATION), 'ar1');
     const matches = handler.search(LOGICAL_BASE, 'ar1', vp, 1);
     expect(matches.length).toBeGreaterThan(0);
   });
 
   it('does NOT over-match: an unrelated Arabic query returns nothing', async () => {
     const handler = new TextSearchHandler();
-    await handler.buildIndex(makePage(VISUAL_PRESENTATION), 'ar2');
+    await handler.buildIndex(makePage(LOGICAL_PRESENTATION), 'ar2');
     expect(handler.search('سلام', 'ar2', vp, 1)).toHaveLength(0); // "سلام"
   });
 
   it('match for a logical query lands on the page (item-box highlight)', async () => {
     const handler = new TextSearchHandler();
-    await handler.buildIndex(makePage(VISUAL_PRESENTATION), 'ar3');
+    await handler.buildIndex(makePage(LOGICAL_PRESENTATION), 'ar3');
     const [m] = handler.search(LOGICAL_BASE, 'ar3', vp, 1);
     expect(m).toBeTruthy();
     expect(m.width).toBeGreaterThan(0);
     expect(m.height).toBeGreaterThan(0);
+  });
+});
+
+describe('TextSearchHandler Arabic source — PER-GLYPH items (real pdf.js v6 layout)', () => {
+  // pdf.js v6 splits Arabic into ONE item per glyph, VISUAL (L→R) order, presentation forms.
+  // A logical multi-glyph query therefore never fits inside a single item.str, so the
+  // per-item matcher (raw + #6b normalized) finds nothing. These cases reproduce that.
+  const vp = { transform: [1, 0, 0, -1, 0, 842] } as unknown as PageViewport;
+
+  it('finds a logical query spanning presentation-form per-glyph items ("ابو")', async () => {
+    const handler = new TextSearchHandler();
+    // logical "ابو" → visual presentation forms L→R: waw(ﻮ), beh(ﺑ), alef(ﺍ)
+    await handler.buildIndex(makeGlyphPage([
+      { str: 'ﻮ', x: 50 }, { str: 'ﺑ', x: 57 }, { str: 'ﺍ', x: 64 },
+    ]), 'arpg1');
+    const matches = handler.search('ابو', 'arpg1', vp, 1);
+    expect(matches.length).toBeGreaterThan(0);
+    expect(matches[0].width).toBeGreaterThan(0);
+    expect(matches[0].height).toBeGreaterThan(0);
+  });
+
+  it('finds a 7-glyph word spanning per-glyph items ("العربية") + substring', async () => {
+    const handler = new TextSearchHandler();
+    // logical "العربية" → visual (reverse): ة ي ب ر ع ل ا, one item each, L→R
+    const visual = [...'ةيبرعلا'];
+    await handler.buildIndex(makeGlyphPage(visual.map((str, i) => ({ str, x: 50 + i * 7 }))), 'arpg2');
+    expect(handler.search('العربية', 'arpg2', vp, 1).length).toBeGreaterThan(0);
+    expect(handler.search('عربية', 'arpg2', vp, 1).length).toBeGreaterThan(0); // substring
+  });
+
+  it('does NOT over-match: unrelated Arabic query against per-glyph items returns 0', async () => {
+    const handler = new TextSearchHandler();
+    const visual = [...'ةيبرعلا'];
+    await handler.buildIndex(makeGlyphPage(visual.map((str, i) => ({ str, x: 50 + i * 7 }))), 'arpg3');
+    expect(handler.search('سلام', 'arpg3', vp, 1)).toHaveLength(0);
+  });
+
+  it('Latin search is unaffected by the Arabic line pass', async () => {
+    const handler = new TextSearchHandler();
+    await handler.buildIndex(makePage('Hello World search me'), 'lat1');
+    expect(handler.search('search', 'lat1', vp, 1)).toHaveLength(1);
   });
 });
 
