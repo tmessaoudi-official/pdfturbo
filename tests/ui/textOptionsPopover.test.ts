@@ -237,6 +237,30 @@ describe('TextOptionsPopover', () => {
       expect(svc.setBaselineShift).toHaveBeenCalledWith('sub');
     });
 
+    it('superscriptBtn re-click when already super clears back to baseline (toggle off)', () => {
+      // Build a popover whose selectedText already has baselineShift==='super'
+      document.body.innerHTML = '';
+      const { pop, ui, svc } = makePopover();
+      // Inject a fake selectedText with baselineShift set
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (pop as any)._ctx.selectedText = { baselineShift: 'super' } as any;
+      pop.setupListeners();
+      (ui.superscriptBtn as HTMLButtonElement).click();
+      // Toggle-off: should call setBaselineShift(null)
+      expect(svc.setBaselineShift).toHaveBeenCalledWith(null);
+    });
+
+    it('subscriptBtn re-click when already sub clears back to baseline (toggle off)', () => {
+      document.body.innerHTML = '';
+      const { pop, ui, svc } = makePopover();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (pop as any)._ctx.selectedText = { baselineShift: 'sub' } as any;
+      pop.setupListeners();
+      (ui.subscriptBtn as HTMLButtonElement).click();
+      // Toggle-off: should call setBaselineShift(null)
+      expect(svc.setBaselineShift).toHaveBeenCalledWith(null);
+    });
+
     it('open() syncs textStrokeWidth and charSpacingInput from selected TextElement', () => {
       // Re-create context with a selectedText that has Slice-2 fields
       const { pop, ui } = makePopover();

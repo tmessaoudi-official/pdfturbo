@@ -73,8 +73,14 @@ export class TextOptionsPopover {
     ui.horizontalScaleInput?.addEventListener('input', () =>
       svc.setHorizontalScale(floatOr(ui.horizontalScaleInput?.value ?? '100', 100)),
     );
-    ui.superscriptBtn?.addEventListener('click', () => svc.setBaselineShift('super'));
-    ui.subscriptBtn?.addEventListener('click', () => svc.setBaselineShift('sub'));
+    ui.superscriptBtn?.addEventListener('click', () => {
+      const cur = this._ctx.selectedText?.baselineShift;
+      svc.setBaselineShift(cur === 'super' ? null : 'super');
+    });
+    ui.subscriptBtn?.addEventListener('click', () => {
+      const cur = this._ctx.selectedText?.baselineShift;
+      svc.setBaselineShift(cur === 'sub' ? null : 'sub');
+    });
   }
 
   open(): void {
