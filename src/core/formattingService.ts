@@ -1,4 +1,4 @@
-import { TextElement } from '../elements/textElement';
+import { TextElement, type TextAlign } from '../elements/textElement';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd, type HistoryManager } from './historyManager';
@@ -205,6 +205,58 @@ export class FormattingService {
     const before = { strokeWidth: she.strokeWidth };
     she.strokeWidth = value;
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, she, before, { strokeWidth: value }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  setAlign(value: TextAlign): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = { align: te.align };
+    te.align = value;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { align: value }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  setLineHeight(mult: number): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const v = Math.min(3, Math.max(1, mult));
+    const before = { lineHeight: te.lineHeight };
+    te.lineHeight = v;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { lineHeight: v }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  setTextOpacity(v: number): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const o = Math.min(1, Math.max(0, v));
+    const before = { opacity: te.opacity };
+    te.opacity = o;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { opacity: o }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  setTextBackground(value: string): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = { backgroundColor: te.backgroundColor };
+    te.backgroundColor = value;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { backgroundColor: value }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  clearTextBackground(): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = { backgroundColor: te.backgroundColor };
+    te.backgroundColor = undefined;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { backgroundColor: undefined }));
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
   }

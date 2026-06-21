@@ -373,3 +373,121 @@ describe('FormattingService.updateFormattingToolbar', () => {
     expect(svc.effectiveFillColor).toBeUndefined();
   });
 });
+
+// ── setAlign / setLineHeight / setTextOpacity / setTextBackground ──────────
+
+describe('FormattingService.setAlign', () => {
+  it('sets align on a TextElement and records a command', () => {
+    const te = new TextElement(0, 0, 'p1', { align: 'left' });
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setAlign('right');
+    expect(te.align).toBe('right');
+    expect(ctx.historyManager.canUndo()).toBe(true);
+  });
+
+  it('is a no-op when no element is selected', () => {
+    const ctx = makeCtx(null);
+    new FormattingService(ctx).setAlign('center');
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when selected element is not text', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const ctx = makeCtx(shape);
+    new FormattingService(ctx).setAlign('right');
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+});
+
+describe('FormattingService.setLineHeight', () => {
+  it('sets lineHeight on a TextElement and records a command', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setLineHeight(1.5);
+    expect(te.lineHeight).toBe(1.5);
+    expect(ctx.historyManager.canUndo()).toBe(true);
+  });
+
+  it('clamps to 3.0 max', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setLineHeight(5);
+    expect(te.lineHeight).toBe(3);
+  });
+
+  it('clamps to 1.0 min', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setLineHeight(0.2);
+    expect(te.lineHeight).toBe(1);
+  });
+
+  it('is a no-op for non-text elements', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const ctx = makeCtx(shape);
+    new FormattingService(ctx).setLineHeight(2);
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+});
+
+describe('FormattingService.setTextOpacity', () => {
+  it('sets opacity on a TextElement and records a command', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setTextOpacity(0.5);
+    expect(te.opacity).toBe(0.5);
+    expect(ctx.historyManager.canUndo()).toBe(true);
+  });
+
+  it('clamps to 1 max', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setTextOpacity(2);
+    expect(te.opacity).toBe(1);
+  });
+
+  it('clamps to 0 min', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setTextOpacity(-1);
+    expect(te.opacity).toBe(0);
+  });
+
+  it('is a no-op for non-text elements', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const ctx = makeCtx(shape);
+    new FormattingService(ctx).setTextOpacity(0.5);
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+});
+
+describe('FormattingService.setTextBackground / clearTextBackground', () => {
+  it('sets backgroundColor on a TextElement and records a command', () => {
+    const te = new TextElement(0, 0, 'p1');
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).setTextBackground('#00ff00');
+    expect(te.backgroundColor).toBe('#00ff00');
+    expect(ctx.historyManager.canUndo()).toBe(true);
+  });
+
+  it('clears backgroundColor via clearTextBackground', () => {
+    const te = new TextElement(0, 0, 'p1', { backgroundColor: '#ff0000' });
+    const ctx = makeCtx(te);
+    new FormattingService(ctx).clearTextBackground();
+    expect(te.backgroundColor).toBeUndefined();
+  });
+
+  it('clearTextBackground is a no-op for non-text elements', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const ctx = makeCtx(shape);
+    new FormattingService(ctx).clearTextBackground();
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+
+  it('setTextBackground is a no-op for non-text elements', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const ctx = makeCtx(shape);
+    new FormattingService(ctx).setTextBackground('#fff');
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+});
