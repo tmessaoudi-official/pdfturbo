@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFRenderer } from '../infra/pdfRenderer';
-import { TextElement } from '../elements/textElement';
+import { TextElement, type TextAlign } from '../elements/textElement';
 import type { CommentElement } from '../elements/commentElement';
 import { HighlightElement } from '../elements/highlightElement';
 import { TextSearchHandler } from '../handlers/textSearchHandler';
@@ -58,6 +58,9 @@ import { CompressPanel } from '../ui/compressPanel';
 import { SignersPanel } from '../ui/signersPanel';
 import type { SignatureCaption } from '../elements/signatureElement';
 import type { CompressOptions } from '../export/compress';
+import { TextOptionsPopover } from '../ui/textOptionsPopover';
+import type { TextCaseMode } from '../utils/textCase';
+
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
 import { ElementLayerRenderer } from '../ui/elementLayerRenderer';
@@ -141,6 +144,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   private _pageNavController!: PageNavigationController;
   private _cleanupService!: CleanupService;
   private _focusTrapService!: PanelFocusTrapService;
+  private _textOptionsPopover!: TextOptionsPopover;
 
   // ── Signature accessors (IPlacementContext) ───────────────────────────────
   get currentSignature(): string | null { return this._signatureManager.currentSignature; }
@@ -354,6 +358,17 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this._toolbarCustomizer.restore();
     this._toolbarCustomizer.enableDragDrop();
     this._formattingService = new FormattingService(this);
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const _self = this;
+    this._textOptionsPopover = new TextOptionsPopover({
+      ui: this.ui,
+      svc: this._formattingService,
+      get selectedText() {
+        const el = _self.selectedElement;
+        return el?.type === 'text' ? (el as TextElement) : null;
+      },
+    });
+    this._textOptionsPopover.setupListeners();
     this._undoRedoController = new UndoRedoController(this);
     this._pageNavController = new PageNavigationController(this);
     this._cleanupService = new CleanupService(this);
@@ -421,6 +436,13 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _signersDraw(): void { this._signersPanel.draw(); }
   /** ICompressContext: run the compress + download with the chosen options. */
   compress(opts: CompressOptions): void { void this._exportService.compressAndDownload(opts); }
+
+  // ── Text options popover ─────────────────────────────────────────────────
+  closeTextOptions(): void {
+    this._textOptionsPopover.close();
+    this._formattingService.cancelPainter();
+    this.ui.formatPainterBtn.classList.remove('btn-active-fmt');
+  }
 
   // ── Find bar (delegated to FindBarController) ───────────────────────────
   _openFindBar(): void { this._findBarController.open(); }
@@ -795,6 +817,11 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.rebuildElementLayer();
     this._updateFormattingToolbar();
     this._updateCopyPasteBtns();
+    // Format painter: paste style onto a newly selected text element, then disarm.
+    if (this._formattingService.painterArmed && element?.type === 'text') {
+      this._formattingService.pasteTextStyle();
+      this.ui.formatPainterBtn.classList.remove('btn-active-fmt');
+    }
   }
 
   get effectiveFillColor(): string | undefined { return this._formattingService.effectiveFillColor; }
@@ -812,6 +839,9 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   toggleUnderline(): void { this._formattingService.toggleUnderline(); }
   toggleStrikethrough(): void { this._formattingService.toggleStrikethrough(); }
   cycleAlign(): void { this._formattingService.cycleAlign(); }
+  setAlign(value: TextAlign): void { this._formattingService.setAlign(value); this._formattingService.updateFormattingToolbar(); }
+  transformCase(mode: TextCaseMode): void { this._formattingService.transformCase(mode); }
+  clearFormatting(): void { this._formattingService.clearFormatting(); }
   setFontSize(size: number): void { this._formattingService.setFontSize(size); }
   adjustFontSize(delta: number): void { this._formattingService.adjustFontSize(delta); }
   setElementColor(value: string): void { this._formattingService.setElementColor(value); }

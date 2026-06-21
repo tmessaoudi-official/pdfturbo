@@ -9,6 +9,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { wireSwUpdate } from './pwaUpdate';
 import { isEnabled } from './config/features';
 import { renderAppVersion } from './utils/appVersion';
+import { COLOR_PRESETS, getRecentColors, pushRecentColor } from './utils/recentColors';
 import type { DocxEditorController } from './docx/docxEditorController';
 
 // Shared diagnostic ring buffer (M0 #41). Created before anything else so the global
@@ -18,6 +19,41 @@ import type { DocxEditorController } from './docx/docxEditorController';
 const logBuffer = new LogBuffer();
 let appRef: PDFTurboApp | undefined;
 installGlobalErrorBoundary({ getReporter: () => appRef?.reportError, log: logBuffer });
+
+/**
+ * Render color preset + recently-used swatches into the `#colorSwatchRow` span.
+ * Clicking a swatch sets the text-color input and fires the color change on the app.
+ */
+function _renderColorSwatches(app: PDFTurboApp): void {
+  const row = app.ui.colorSwatchRow;
+  const render = (): void => {
+    row.innerHTML = '';
+    const colors = [...COLOR_PRESETS, ...getRecentColors()];
+    const seen = new Set<string>();
+    for (const hex of colors) {
+      const norm = hex.toLowerCase();
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      const btn = document.createElement('button');
+      btn.className = 'color-swatch';
+      btn.style.background = norm;
+      btn.title = norm;
+      btn.addEventListener('click', () => {
+        app.ui.colorInput.value = norm;
+        app.setElementColor(norm);
+        pushRecentColor(norm);
+        render();
+      });
+      row.appendChild(btn);
+    }
+  };
+  // Re-render when the color input changes so recent colors stay fresh.
+  app.ui.colorInput.addEventListener('change', () => {
+    pushRecentColor(app.ui.colorInput.value);
+    render();
+  });
+  render();
+}
 
 // G16 — actionable PWA update. registerType:'prompt' (vite.config.ts) parks the
 // new service worker until the user opts in. `wireSwUpdate` captures the
@@ -68,6 +104,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // F-B — show the build version in the footer.
   renderAppVersion(document.getElementById('appVersion'));
+
+  // Render color preset + recent-color swatches in the toolbar swatch row.
+  _renderColorSwatches(app);
 
   // #28 — apply feature kill-switches to the UI. A disabled feature's entry
   // point is removed so it can't be reached; the behavioural gates (true-edit,

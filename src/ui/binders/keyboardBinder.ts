@@ -28,6 +28,7 @@ export function bindKeyboardEvents(app: PDFTurboApp): void {
       if (app.ui.codeModal.classList.contains('active')) { app.closeCodeModal(); return; }
       if (app.ui.signModal.classList.contains('active')) { app.closeSignModal(); return; }
       if (app.ui.signersModal.classList.contains('active')) { app.closeSignersPanel(); return; }
+      if (app.ui.textOptionsModal.classList.contains('active')) { app.closeTextOptions(); return; }
       // F-C C2: Esc while picking the sign rect cancels the pick and reopens the modal
       // (it was hidden, not closed) so the user is never stranded in signRect mode.
       if (app.mode === 'signRect') { void app.onSignRectPicked(null); return; }

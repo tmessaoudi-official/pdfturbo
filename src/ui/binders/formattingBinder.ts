@@ -9,6 +9,9 @@ export function bindFormattingEvents(app: PDFTurboApp): void {
   app.ui.underlineBtn.addEventListener('click', () => app.toggleUnderline());
   app.ui.strikeBtn.addEventListener('click', () => app.toggleStrikethrough());
   app.ui.alignBtn.addEventListener('click', () => app.cycleAlign());
+  app.ui.alignLeftBtn.addEventListener('click', () => app.setAlign('left'));
+  app.ui.alignCenterBtn.addEventListener('click', () => app.setAlign('center'));
+  app.ui.alignRightBtn.addEventListener('click', () => app.setAlign('right'));
   app.ui.fontSizeInput.addEventListener('change', (e) => {
     const size = Math.max(8, Math.min(72, parseInt((e.target as HTMLInputElement).value, 10) || 14));
     app.setFontSize(size);

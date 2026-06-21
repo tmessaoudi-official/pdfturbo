@@ -159,6 +159,21 @@ input[type="file"] {
   cursor: grabbing;
   background: #6d28d9;
 }
+.color-swatch-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 4px;
+}
+.color-swatch {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
 .signature-modal {
   display: none;
   position: fixed;
