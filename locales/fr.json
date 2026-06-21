@@ -152,7 +152,14 @@
     "bgColorLabel": "Arrière-plan",
     "none": "Aucun",
     "clearFmt": "Effacer la mise en forme",
-    "formatPainter": "🖌 Reproduire la mise en forme"
+    "formatPainter": "🖌 Reproduire la mise en forme",
+    "justify": "Justifier",
+    "stroke": "Contour",
+    "charSpacing": "Interlettrage",
+    "horizontalScale": "Largeur %",
+    "baseline": "Ligne de base",
+    "superscript": "Exposant",
+    "subscript": "Indice"
   },
   "findbar": {
     "placeholder": "Rechercher dans la page…",

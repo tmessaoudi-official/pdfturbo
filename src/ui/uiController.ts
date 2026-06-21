@@ -238,7 +238,15 @@ export interface AppDOMRefs {
   alignLeftBtn:        HTMLButtonElement;
   alignCenterBtn:      HTMLButtonElement;
   alignRightBtn:       HTMLButtonElement;
-  colorSwatchRow:      HTMLElement;
+  alignJustifyBtn:     HTMLButtonElement;
+  // Slice 2 — stroke / spacing / scale / super-sub
+  textStrokeColor:       HTMLInputElement;
+  textStrokeWidth:       HTMLInputElement;
+  charSpacingInput:      HTMLInputElement;
+  horizontalScaleInput:  HTMLInputElement;
+  superscriptBtn:        HTMLButtonElement;
+  subscriptBtn:          HTMLButtonElement;
+  colorSwatchRow:        HTMLElement;
 }
 
 export class UIController {
@@ -476,7 +484,15 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       alignLeftBtn:        document.getElementById('alignLeftBtn')        as HTMLButtonElement,
       alignCenterBtn:      document.getElementById('alignCenterBtn')      as HTMLButtonElement,
       alignRightBtn:       document.getElementById('alignRightBtn')       as HTMLButtonElement,
-      colorSwatchRow:      document.getElementById('colorSwatchRow')      as HTMLElement,
+      alignJustifyBtn:     document.getElementById('alignJustifyBtn')     as HTMLButtonElement,
+      // Slice 2 — stroke / spacing / scale / super-sub
+      textStrokeColor:       document.getElementById('textStrokeColor')       as HTMLInputElement,
+      textStrokeWidth:       document.getElementById('textStrokeWidth')       as HTMLInputElement,
+      charSpacingInput:      document.getElementById('charSpacingInput')      as HTMLInputElement,
+      horizontalScaleInput:  document.getElementById('horizontalScaleInput')  as HTMLInputElement,
+      superscriptBtn:        document.getElementById('superscriptBtn')        as HTMLButtonElement,
+      subscriptBtn:          document.getElementById('subscriptBtn')          as HTMLButtonElement,
+      colorSwatchRow:        document.getElementById('colorSwatchRow')        as HTMLElement,
     };
   }
 
@@ -625,6 +641,9 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.alignLeftBtn.disabled    = !isText;
     r.alignCenterBtn.disabled  = !isText;
     r.alignRightBtn.disabled   = !isText;
+    r.alignJustifyBtn.disabled = !isText;
+    r.superscriptBtn.disabled  = !isText;
+    r.subscriptBtn.disabled    = !isText;
     if (isText) {
       const te = el as TextElement;
       r.fontFamily.value = te.fontFamily || 'Arial';
@@ -637,9 +656,16 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.underlineBtn.setAttribute('aria-pressed', String(!!te.underline));
       r.strikeBtn.setAttribute('aria-pressed', String(!!te.strikethrough));
       r.alignBtn.setAttribute('aria-label', `align-${te.align}`);
-      r.alignLeftBtn.classList.toggle('btn-active-fmt',   te.align === 'left');
-      r.alignCenterBtn.classList.toggle('btn-active-fmt', te.align === 'center');
-      r.alignRightBtn.classList.toggle('btn-active-fmt',  te.align === 'right');
+      r.alignLeftBtn.classList.toggle('btn-active-fmt',    te.align === 'left');
+      r.alignCenterBtn.classList.toggle('btn-active-fmt',  te.align === 'center');
+      r.alignRightBtn.classList.toggle('btn-active-fmt',   te.align === 'right');
+      r.alignJustifyBtn.classList.toggle('btn-active-fmt', te.align === 'justify');
+      r.superscriptBtn.classList.toggle('btn-active-fmt',  te.baselineShift === 'super');
+      r.subscriptBtn.classList.toggle('btn-active-fmt',    te.baselineShift === 'sub');
+      if (r.textStrokeWidth) r.textStrokeWidth.value = String(te.strokeWidth ?? 0);
+      if (r.textStrokeColor && te.strokeColor) r.textStrokeColor.value = te.strokeColor;
+      if (r.charSpacingInput) r.charSpacingInput.value = String(te.charSpacing ?? 0);
+      if (r.horizontalScaleInput) r.horizontalScaleInput.value = String(te.horizontalScale ?? 100);
       r.fontSizeInput.value = String(te.fontSize);
       r.colorInput.value    = te.color;
     } else {
@@ -654,6 +680,9 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.alignLeftBtn.classList.remove('btn-active-fmt');
       r.alignCenterBtn.classList.remove('btn-active-fmt');
       r.alignRightBtn.classList.remove('btn-active-fmt');
+      r.alignJustifyBtn.classList.remove('btn-active-fmt');
+      r.superscriptBtn.classList.remove('btn-active-fmt');
+      r.subscriptBtn.classList.remove('btn-active-fmt');
     }
 
     // Unified color picker: always enabled, syncs value to context

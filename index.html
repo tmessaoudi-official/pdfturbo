@@ -161,9 +161,10 @@
       <input type="color" id="color" value="#000000" class="toolbar-color" data-i18n-aria="toolbar.ariaTextColor">
       <button id="colorEyedropperBtn" class="btn btn-icon btn-sm" data-i18n-title="toolbar.eyedropperTitle" title="Pick color from screen (eyedropper)">🖊</button>
       <span class="toolbar-sep"></span>
-      <button id="alignLeftBtn"   class="btn btn-icon" disabled data-i18n-title="formatting.alignLeftTitle"   title="Align left">⯇</button>
-      <button id="alignCenterBtn" class="btn btn-icon" disabled data-i18n-title="formatting.alignCenterTitle" title="Align center">≡</button>
-      <button id="alignRightBtn"  class="btn btn-icon" disabled data-i18n-title="formatting.alignRightTitle"  title="Align right">⯈</button>
+      <button id="alignLeftBtn"    class="btn btn-icon" disabled data-i18n-title="formatting.alignLeftTitle"    title="Align left">⯇</button>
+      <button id="alignCenterBtn"  class="btn btn-icon" disabled data-i18n-title="formatting.alignCenterTitle"  title="Align center">≡</button>
+      <button id="alignRightBtn"   class="btn btn-icon" disabled data-i18n-title="formatting.alignRightTitle"   title="Align right">⯈</button>
+      <button id="alignJustifyBtn" class="btn btn-icon" disabled data-i18n-title="formatting.justify"           title="Justify">⬛</button>
       <span id="colorSwatchRow" class="color-swatch-row"></span>
       <button id="textOptionsBtn" class="btn btn-icon" disabled data-i18n-title="formatting.moreTextTitle" title="More text options">⋮</button>
       <label id="fillColorLabel" style="display:none;align-items:center;gap:3px;font-size:12px;" data-i18n-title="toolbar.fillColorTitle" title="Shape fill color">
@@ -826,6 +827,27 @@
         <input type="color" id="textBgColor" value="#ffff00">
         <button id="textBgNoneBtn" class="btn btn-sm" data-i18n="formatting.none">None</button>
       </label>
+    </div>
+    <div class="wm-field">
+      <label><span data-i18n="formatting.stroke">Outline</span>
+        <input type="color"  id="textStrokeColor" value="#000000">
+        <input type="number" id="textStrokeWidth" min="0" max="3" step="0.25" value="0" style="width:4rem">
+      </label>
+    </div>
+    <div class="wm-field">
+      <label><span data-i18n="formatting.charSpacing">Letter spacing</span>
+        <input type="number" id="charSpacingInput" min="-5" max="20" step="0.5" value="0" style="width:4rem">
+      </label>
+    </div>
+    <div class="wm-field">
+      <label><span data-i18n="formatting.horizontalScale">Width %</span>
+        <input type="number" id="horizontalScaleInput" min="50" max="200" step="5" value="100" style="width:4rem">
+      </label>
+    </div>
+    <div class="wm-field">
+      <label><span data-i18n="formatting.baseline">Baseline</span></label>
+      <button id="superscriptBtn" class="btn btn-sm" data-i18n-title="formatting.superscript" title="Superscript">x²</button>
+      <button id="subscriptBtn"   class="btn btn-sm" data-i18n-title="formatting.subscript"   title="Subscript">x₂</button>
     </div>
     <div class="wm-actions">
       <button id="clearFmtBtn"     class="btn btn-secondary btn-sm" data-i18n="formatting.clearFmt">Clear formatting</button>

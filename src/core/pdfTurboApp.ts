@@ -856,6 +856,17 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   setRedactColor(value: string): void { this._formattingService.setRedactColor(value); }
   setShapeStrokeWidth(value: number): void { this._formattingService.setShapeStrokeWidth(value); }
 
+  // Slice 2 delegators
+  setTextStroke(color: string, width: number): void { this._formattingService.setTextStroke(color, width); }
+  clearTextStroke(): void { this._formattingService.clearTextStroke(); }
+  setCharSpacing(pt: number): void { this._formattingService.setCharSpacing(pt); }
+  setHorizontalScale(pct: number): void { this._formattingService.setHorizontalScale(pct); }
+  toggleBaselineShift(mode: 'super' | 'sub'): void {
+    const el = this.selectedElement;
+    const cur = el?.type === 'text' ? (el as TextElement).baselineShift : undefined;
+    this._formattingService.setBaselineShift(cur === mode ? null : mode);
+  }
+
 
   addTextAtPosition(e: MouseEvent) { this._placementManager.addTextAtPosition(e); }
 

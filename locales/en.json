@@ -152,7 +152,14 @@
     "bgColorLabel": "Background",
     "none": "None",
     "clearFmt": "Clear formatting",
-    "formatPainter": "🖌 Format painter"
+    "formatPainter": "🖌 Format painter",
+    "justify": "Justify",
+    "stroke": "Outline",
+    "charSpacing": "Letter spacing",
+    "horizontalScale": "Width %",
+    "baseline": "Baseline",
+    "superscript": "Superscript",
+    "subscript": "Subscript"
   },
   "findbar": {
     "placeholder": "Search in page…",

@@ -56,6 +56,25 @@ export class TextOptionsPopover {
         ui.formatPainterBtn.classList.add('btn-active-fmt');
       }
     });
+
+    // Slice 2 — stroke / spacing / scale / super-sub
+    ui.textStrokeWidth?.addEventListener('input', () => {
+      const w = parseFloat(ui.textStrokeWidth?.value ?? '0');
+      if (!Number.isFinite(w) || w <= 0) svc.clearTextStroke();
+      else svc.setTextStroke(ui.textStrokeColor?.value || '#000000', w);
+    });
+    ui.textStrokeColor?.addEventListener('input', () => {
+      const w = parseFloat(ui.textStrokeWidth?.value || '0');
+      if (Number.isFinite(w) && w > 0) svc.setTextStroke(ui.textStrokeColor?.value ?? '#000000', w);
+    });
+    ui.charSpacingInput?.addEventListener('input', () =>
+      svc.setCharSpacing(floatOr(ui.charSpacingInput?.value ?? '0', 0)),
+    );
+    ui.horizontalScaleInput?.addEventListener('input', () =>
+      svc.setHorizontalScale(floatOr(ui.horizontalScaleInput?.value ?? '100', 100)),
+    );
+    ui.superscriptBtn?.addEventListener('click', () => svc.setBaselineShift('super'));
+    ui.subscriptBtn?.addEventListener('click', () => svc.setBaselineShift('sub'));
   }
 
   open(): void {
@@ -67,6 +86,11 @@ export class TextOptionsPopover {
       if (te.backgroundColor) {
         ui.textBgColor.value = te.backgroundColor;
       }
+      // Slice 2
+      if (ui.textStrokeWidth) ui.textStrokeWidth.value = String(te.strokeWidth ?? 0);
+      if (ui.textStrokeColor && te.strokeColor) ui.textStrokeColor.value = te.strokeColor;
+      if (ui.charSpacingInput) ui.charSpacingInput.value = String(te.charSpacing ?? 0);
+      if (ui.horizontalScaleInput) ui.horizontalScaleInput.value = String(te.horizontalScale ?? 100);
     }
     ui.textOptionsModal.classList.add('active');
     this._trapCleanup?.();

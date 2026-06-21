@@ -152,7 +152,14 @@
     "bgColorLabel": "الخلفية",
     "none": "بلا",
     "clearFmt": "مسح التنسيق",
-    "formatPainter": "🖌 نسخ التنسيق"
+    "formatPainter": "🖌 نسخ التنسيق",
+    "justify": "ضبط",
+    "stroke": "حد خارجي",
+    "charSpacing": "تباعد الأحرف",
+    "horizontalScale": "العرض %",
+    "baseline": "خط الأساس",
+    "superscript": "مرتفع",
+    "subscript": "منخفض"
   },
   "findbar": {
     "placeholder": "البحث في الصفحة…",

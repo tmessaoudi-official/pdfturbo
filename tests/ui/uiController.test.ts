@@ -76,7 +76,10 @@ function seedDOM(): void {
     'textLineHeight', 'textOpacity', 'textBgColor', 'textBgNoneBtn',
     'textCaseUpperBtn', 'textCaseLowerBtn', 'textCaseTitleBtn',
     'clearFmtBtn', 'formatPainterBtn',
-    'alignLeftBtn', 'alignCenterBtn', 'alignRightBtn',
+    'alignLeftBtn', 'alignCenterBtn', 'alignRightBtn', 'alignJustifyBtn',
+    // Slice 2 — popover controls
+    'textStrokeColor', 'textStrokeWidth', 'charSpacingInput', 'horizontalScaleInput',
+    'superscriptBtn', 'subscriptBtn',
     'colorSwatchRow',
   ];
   ids.forEach(id => el('div', id));
@@ -180,6 +183,26 @@ describe('UIController', () => {
       expect(alignLeft.classList.contains('btn-active-fmt')).toBe(false);
       expect(alignCenter.classList.contains('btn-active-fmt')).toBe(false);
       expect(alignRight.classList.contains('btn-active-fmt')).toBe(false);
+    });
+  });
+
+  // Slice 2 — justify button active-state
+  describe('updateFormattingToolbar() justify active-state (Slice 2)', () => {
+    it('marks the justify button active when align is justify', () => {
+      const te = new TextElement(0, 0, 'p1', { align: 'justify' });
+      ctrl.updateFormattingToolbar(te, 'select');
+      const alignJustify = document.getElementById('alignJustifyBtn') as HTMLElement;
+      const alignLeft    = document.getElementById('alignLeftBtn')    as HTMLElement;
+      expect(alignJustify.classList.contains('btn-active-fmt')).toBe(true);
+      expect(alignLeft.classList.contains('btn-active-fmt')).toBe(false);
+    });
+
+    it('clears btn-active-fmt from alignJustifyBtn when no text element is selected', () => {
+      const te = new TextElement(0, 0, 'p1', { align: 'justify' });
+      ctrl.updateFormattingToolbar(te, 'select');
+      ctrl.updateFormattingToolbar(null, 'select');
+      const alignJustify = document.getElementById('alignJustifyBtn') as HTMLElement;
+      expect(alignJustify.classList.contains('btn-active-fmt')).toBe(false);
     });
   });
 });
