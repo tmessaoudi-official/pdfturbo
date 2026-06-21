@@ -184,6 +184,7 @@
     "fillBucket": "🪣 FILL"
   },
   "modal": {
+    "close": "Close",
     "watermark": {
       "title": "Watermark Settings",
       "enable": "Enable watermark on all pages",

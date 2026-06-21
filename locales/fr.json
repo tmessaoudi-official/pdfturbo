@@ -184,6 +184,7 @@
     "fillBucket": "🪣 REMPLIR"
   },
   "modal": {
+    "close": "Fermer",
     "watermark": {
       "title": "Paramètres du filigrane",
       "enable": "Activer le filigrane sur toutes les pages",
