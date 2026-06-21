@@ -51,6 +51,16 @@ function makeCtx(selectedElement: PDFElement | null = null): IFormattingContext 
   return Object.assign(ctx, { elements, historyManager, ui });
 }
 
+function makeTextCtx(opts?: Record<string, unknown>): {
+  svc: FormattingService;
+  te: TextElement;
+  history: HistoryManager;
+} {
+  const te = new TextElement(0, 0, 'p1', opts);
+  const ctx = makeCtx(te);
+  return { svc: new FormattingService(ctx), te, history: ctx.historyManager };
+}
+
 // ── toggleBold ─────────────────────────────────────────────────────────────
 
 describe('FormattingService.toggleBold', () => {
@@ -488,6 +498,56 @@ describe('FormattingService.setTextBackground / clearTextBackground', () => {
     const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
     const ctx = makeCtx(shape);
     new FormattingService(ctx).setTextBackground('#fff');
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+});
+
+// ── clearFormatting ────────────────────────────────────────────────────────
+
+describe('FormattingService.clearFormatting', () => {
+  it('clearFormatting resets fmt fields but keeps text, in one command', () => {
+    const { svc, te, history } = makeTextCtx({
+      bold: true,
+      italic: true,
+      underline: true,
+      strikethrough: true,
+      align: 'right',
+      fontFamily: 'Times',
+      fontSize: 30,
+      color: '#ff0000',
+    });
+    te.text = 'keep me';
+    te.lineHeight = 2;
+    te.opacity = 0.5;
+    te.backgroundColor = '#ff0';
+    svc.clearFormatting();
+    expect(te.text).toBe('keep me');
+    expect(te.bold).toBe(false);
+    expect(te.italic).toBe(false);
+    expect(te.underline).toBe(false);
+    expect(te.strikethrough).toBe(false);
+    expect(te.align).toBe('left');
+    expect(te.fontFamily).toBe('Arial');
+    expect(te.fontSize).toBe(14);
+    expect(te.color).toBe('#000000');
+    expect(te.lineHeight).toBeUndefined();
+    expect(te.opacity).toBeUndefined();
+    expect(te.backgroundColor).toBeUndefined();
+    expect(history.canUndo()).toBe(true);
+  });
+
+  it('is a no-op when no element is selected', () => {
+    const ctx = makeCtx(null);
+    const svc = new FormattingService(ctx);
+    svc.clearFormatting();
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when selected element is not text', () => {
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const ctx = makeCtx(shape);
+    const svc = new FormattingService(ctx);
+    svc.clearFormatting();
     expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
   });
 });

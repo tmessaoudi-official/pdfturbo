@@ -273,4 +273,39 @@ export class FormattingService {
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
   }
+
+  clearFormatting(): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = {
+      bold: te.bold,
+      italic: te.italic,
+      underline: te.underline,
+      strikethrough: te.strikethrough,
+      align: te.align,
+      fontFamily: te.fontFamily,
+      fontSize: te.fontSize,
+      color: te.color,
+      lineHeight: te.lineHeight,
+      opacity: te.opacity,
+      backgroundColor: te.backgroundColor,
+    };
+    const after = {
+      bold: false,
+      italic: false,
+      underline: false,
+      strikethrough: false,
+      align: 'left' as const,
+      fontFamily: 'Arial',
+      fontSize: 14,
+      color: '#000000',
+      lineHeight: undefined,
+      opacity: undefined,
+      backgroundColor: undefined,
+    };
+    Object.assign(te, after);
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
 }
