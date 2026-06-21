@@ -10,6 +10,7 @@ import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { transformPoint, hexToRgbValues } from '../utils/geometry';
 import { isArabicText } from '../utils/flowDoc';
 import { drawArabicLine } from './arabicOverlay';
+import { drawStyledTextLine, hasAdvancedText, effectiveLineWidth } from './styledText';
 
 export interface PdfRenderCtx {
   // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFDocument internals are untyped here
@@ -136,6 +137,22 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
     page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(bg.r, bg.g, bg.b), opacity: alpha, borderWidth: 0 });
   }
 
+  // Tier-2 attrs (stroke/charSpacing/horizontalScale/baselineShift/justify) require raw
+  // PDF operators — drawText cannot express them. Rotated elements always use drawText
+  // (the operator path doesn't reapply the rotation matrix, documented ceiling).
+  const advanced = hasAdvancedText(te) && !elemRot;
+  // fontKey is a PDFName used to reference the embedded font in the raw operator stream.
+  // page.node is the internal PDFPageLeaf; accessed via `any` (same pattern as arabicOverlay).
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFPageLeaf internals are untyped here
+  const fontKey = advanced ? (page as any).node.newFontDictionary(font.name, font.ref) : null;
+  // Opacity via ExtGState (mirrors what drawText does internally). Cast needed because
+  // maybeEmbedGraphicsState is private on PDFPage.
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib private method access
+  const gsName = advanced && alpha < 1 ? (page as any).maybeEmbedGraphicsState({ opacity: alpha, borderOpacity: alpha }) : undefined;
+  const subSup = te.baselineShift;
+  const drawSize = subSup ? te.fontSize * 0.65 : te.fontSize;
+  const rise = subSup === 'super' ? te.fontSize * 0.33 : subSup === 'sub' ? -(te.fontSize * 0.15) : 0;
+
   const lines = te.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -152,14 +169,39 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
         size: te.fontSize, color: col,
       });
     } else {
-      // Alignment: shift the draw origin within the element box (display space, pre-transform).
-      const lineW = font.widthOfTextAtSize(line, te.fontSize);
+      // Measure width using the effective size (drawSize accounts for sub/superscript shrink).
+      const measureSize = advanced ? drawSize : te.fontSize;
+      const lineW = advanced
+        ? effectiveLineWidth(font, line, measureSize, te.charSpacing ?? 0, te.horizontalScale ?? 100)
+        : font.widthOfTextAtSize(line, te.fontSize);
       const boxW = te.width || lineW;
-      const off = te.align === 'center' ? Math.max(0, (boxW - lineW) / 2)
-        : te.align === 'right' ? Math.max(0, boxW - lineW) : 0;
+      const isLast = i === lines.length - 1;
+      let wordSpacing = 0;
+      let off = 0;
+      if (advanced && te.align === 'justify' && !isLast) {
+        const spaces = (line.match(/ /g) ?? []).length;
+        if (spaces > 0 && boxW > lineW) wordSpacing = (boxW - lineW) / spaces;
+      } else {
+        off = te.align === 'center' ? Math.max(0, (boxW - lineW) / 2)
+          : te.align === 'right' ? Math.max(0, boxW - lineW) : 0;
+      }
       const rawAnchor = tp(te.x + off, baseY);
       const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
-      page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), opacity: alpha, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+      if (advanced) {
+        drawStyledTextLine(page, {
+          text: line, x: a.x, y: a.y, size: drawSize, font, fontKey,
+          color: col,
+          charSpacing: te.charSpacing,
+          horizontalScale: te.horizontalScale,
+          strokeColor: te.strokeColor ? hexToRgbValues(te.strokeColor) : undefined,
+          strokeWidth: te.strokeWidth,
+          baselineRise: rise,
+          wordSpacing,
+          gsName,
+        });
+      } else {
+        page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), opacity: alpha, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+      }
       // Underline / strikethrough as drawn lines. Rotated text is a documented ceiling
       // (the rule geometry would need the full rotation transform). `elemRot` (not
       // pdfRotVal — which is degrees(-0), truthy even unrotated) is the unrotated signal.
