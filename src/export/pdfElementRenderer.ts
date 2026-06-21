@@ -114,13 +114,28 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
   if (!te.text) return;
   const { pdfDoc, page, libs } = ctx;
   const { rgb, StandardFonts } = libs;
-  const { tp, elemRot, pdfRotVal, anchorForCenter } = hlp;
+  const { tp, swapDims, elemRot, pdfRotVal, anchorForCenter } = hlp;
   const col = hexToRgbValues(te.color);
+  const alpha = te.opacity ?? 1;
   const fontName = getStandardFont(te.fontFamily, te.bold, te.italic);
   const font = await pdfDoc.embedFont(StandardFonts[fontName as keyof typeof StandardFonts]);
   // 0.9 = measured Arial fontBoundingBoxAscent/fontSize ratio (avg across 8–72px);
   // aligns PDF baseline with the browser's CSS text baseline. Max residual error < 0.6pt.
-  const lineHeight = te.fontSize * 1.2;
+  const lineHeight = te.fontSize * (te.lineHeight ?? 1.2);
+
+  // Background fill behind the whole text box (skip when rotated — documented ceiling,
+  // same guard as underline/strikethrough). Anchor matches renderHighlight / renderRedaction:
+  // tp(x, y+height) gives the bottom-left corner in PDF (y-up) space; width/height are the
+  // effective dims after the page-rotation swap (same as the highlight renderer).
+  if (te.backgroundColor && !elemRot) {
+    const bg = hexToRgbValues(te.backgroundColor);
+    const ew = swapDims ? (te.height || 0) : (te.width || 0);
+    const eh = swapDims ? (te.width || 0) : (te.height || 0);
+    const corner = tp(te.x, te.y + (te.height || 0));
+    const a = anchorForCenter(corner.x, corner.y, ew, eh);
+    page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(bg.r, bg.g, bg.b), opacity: alpha, borderWidth: 0 });
+  }
+
   const lines = te.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -144,7 +159,7 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
         : te.align === 'right' ? Math.max(0, boxW - lineW) : 0;
       const rawAnchor = tp(te.x + off, baseY);
       const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
-      page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+      page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), opacity: alpha, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
       // Underline / strikethrough as drawn lines. Rotated text is a documented ceiling
       // (the rule geometry would need the full rotation transform). `elemRot` (not
       // pdfRotVal — which is degrees(-0), truthy even unrotated) is the unrotated signal.
@@ -152,10 +167,10 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
         const thick = Math.max(0.5, te.fontSize * 0.06);
         const lineColor = rgb(col.r, col.g, col.b);
         if (te.underline) {
-          page.drawLine({ start: tp(te.x + off, baseY + te.fontSize * 0.12), end: tp(te.x + off + lineW, baseY + te.fontSize * 0.12), thickness: thick, color: lineColor });
+          page.drawLine({ start: tp(te.x + off, baseY + te.fontSize * 0.12), end: tp(te.x + off + lineW, baseY + te.fontSize * 0.12), thickness: thick, color: lineColor, opacity: alpha });
         }
         if (te.strikethrough) {
-          page.drawLine({ start: tp(te.x + off, baseY - te.fontSize * 0.3), end: tp(te.x + off + lineW, baseY - te.fontSize * 0.3), thickness: thick, color: lineColor });
+          page.drawLine({ start: tp(te.x + off, baseY - te.fontSize * 0.3), end: tp(te.x + off + lineW, baseY - te.fontSize * 0.3), thickness: thick, color: lineColor, opacity: alpha });
         }
       }
     }
