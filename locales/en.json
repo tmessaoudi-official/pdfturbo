@@ -131,6 +131,9 @@
     "underlineTitle": "Underline",
     "strikeTitle": "Strikethrough",
     "alignTitle": "Align (cycles left/center/right)",
+    "alignLeftTitle": "Align left",
+    "alignCenterTitle": "Align center",
+    "alignRightTitle": "Align right",
     "fontSizeDownTitle": "Decrease font size (A-)",
     "fontSizeUpTitle": "Increase font size (A+)",
     "zoomOutTitle": "Zoom out",
@@ -141,7 +144,15 @@
     "prevPageTitle": "Previous page (Ctrl+←)",
     "nextPageTitle": "Next page (Ctrl+→)",
     "lastPageTitle": "Last page",
-    "fillLabel": "Fill"
+    "fillLabel": "Fill",
+    "moreTextTitle": "Text options",
+    "caseLabel": "Case",
+    "lineSpacingLabel": "Line spacing",
+    "opacityLabel": "Opacity",
+    "bgColorLabel": "Background",
+    "none": "None",
+    "clearFmt": "Clear formatting",
+    "formatPainter": "🖌 Format painter"
   },
   "findbar": {
     "placeholder": "Search in page…",

@@ -131,6 +131,9 @@
     "underlineTitle": "تسطير",
     "strikeTitle": "يتوسطه خط",
     "alignTitle": "محاذاة (يسار/وسط/يمين)",
+    "alignLeftTitle": "محاذاة لليسار",
+    "alignCenterTitle": "توسيط",
+    "alignRightTitle": "محاذاة لليمين",
     "fontSizeDownTitle": "تصغير الخط (A-)",
     "fontSizeUpTitle": "تكبير الخط (A+)",
     "zoomOutTitle": "تصغير",
@@ -141,7 +144,15 @@
     "prevPageTitle": "الصفحة السابقة (Ctrl+←)",
     "nextPageTitle": "الصفحة التالية (Ctrl+→)",
     "lastPageTitle": "الصفحة الأخيرة",
-    "fillLabel": "تعبئة"
+    "fillLabel": "تعبئة",
+    "moreTextTitle": "خيارات النص",
+    "caseLabel": "حالة الأحرف",
+    "lineSpacingLabel": "تباعد الأسطر",
+    "opacityLabel": "الشفافية",
+    "bgColorLabel": "الخلفية",
+    "none": "بلا",
+    "clearFmt": "مسح التنسيق",
+    "formatPainter": "🖌 نسخ التنسيق"
   },
   "findbar": {
     "placeholder": "البحث في الصفحة…",

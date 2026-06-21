@@ -131,6 +131,9 @@
     "underlineTitle": "Souligné",
     "strikeTitle": "Barré",
     "alignTitle": "Alignement (gauche/centre/droite)",
+    "alignLeftTitle": "Aligner à gauche",
+    "alignCenterTitle": "Centrer",
+    "alignRightTitle": "Aligner à droite",
     "fontSizeDownTitle": "Diminuer la taille (A-)",
     "fontSizeUpTitle": "Augmenter la taille (A+)",
     "zoomOutTitle": "Dézoomer",
@@ -141,7 +144,15 @@
     "prevPageTitle": "Page précédente (Ctrl+←)",
     "nextPageTitle": "Page suivante (Ctrl+→)",
     "lastPageTitle": "Dernière page",
-    "fillLabel": "Remplissage"
+    "fillLabel": "Remplissage",
+    "moreTextTitle": "Options de texte",
+    "caseLabel": "Casse",
+    "lineSpacingLabel": "Interligne",
+    "opacityLabel": "Opacité",
+    "bgColorLabel": "Arrière-plan",
+    "none": "Aucun",
+    "clearFmt": "Effacer la mise en forme",
+    "formatPainter": "🖌 Reproduire la mise en forme"
   },
   "findbar": {
     "placeholder": "Rechercher dans la page…",
