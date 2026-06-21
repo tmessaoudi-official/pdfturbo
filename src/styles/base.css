@@ -3,10 +3,14 @@
   padding: 0;
   box-sizing: border-box;
 }
-/* Skip-nav: off-screen until focused (keyboard a11y). */
+/* Skip-nav: hidden until focused (keyboard a11y).
+   Uses the clip-based visually-hidden pattern — NOT `left:-9999px`, which is
+   RTL-unsafe: in `dir=rtl` an off-screen-left box flips into ~10000px of
+   horizontal page overflow (the document scrollWidth balloons and the layout
+   displaces). Clipping to 0×0 hides it with zero overflow in any direction. */
 .skip-link {
   position: absolute;
-  left: -9999px;
+  left: 0;
   top: 0;
   z-index: 1000;
   padding: 8px 14px;
@@ -15,9 +19,19 @@
   border-radius: 0 0 6px 0;
   font-size: 14px;
   text-decoration: none;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .skip-link:focus {
-  left: 0;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
   outline: 3px solid #1e3a8a;
 }
 body {
