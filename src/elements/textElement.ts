@@ -96,6 +96,26 @@ export class TextElement extends PDFElement {
     input.style.textDecoration = deco || 'none';
     input.style.textAlign = this.align;
     input.style.lineHeight = this.lineHeight !== undefined ? String(this.lineHeight) : '';
+    // Slice 2 previews
+    const strokeW = this.strokeWidth ?? 0;
+    if (this.strokeColor && strokeW > 0) {
+      input.style.setProperty('-webkit-text-stroke', `${strokeW * scale}px ${this.strokeColor}`);
+    } else {
+      input.style.removeProperty('-webkit-text-stroke');
+    }
+    const charSp = this.charSpacing ?? 0;
+    input.style.letterSpacing = charSp !== 0 ? `${charSp * scale}px` : '';
+    const hScale = this.horizontalScale ?? 100;
+    if (hScale !== 100) {
+      input.style.transformOrigin = this.align === 'right' ? 'right' : this.align === 'center' ? 'center' : 'left';
+      input.style.transform = `scaleX(${hScale / 100})`;
+    } else {
+      input.style.transform = '';
+    }
+    if (this.baselineShift) {
+      input.style.fontSize = (this.fontSize * 0.65 * scale) + 'px';
+      input.style.verticalAlign = this.baselineShift === 'super' ? 'super' : 'sub';
+    }
   }
 
   applyStyles(div: HTMLDivElement, canvasOffset: { left: number; top: number }, scale = 1): void {

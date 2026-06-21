@@ -39,6 +39,23 @@ describe('TextElement', () => {
   });
 });
 
+describe('TextElement Slice-2 DOM preview', () => {
+  it('applies stroke, char-spacing, horizontal-scale, justify, baseline shift to the input', () => {
+    const el = new TextElement(0, 0, 'p1', {
+      strokeColor: '#ff0000', strokeWidth: 1, charSpacing: 2,
+      horizontalScale: 80, align: 'justify', baselineShift: 'super', fontSize: 20,
+    });
+    const input = document.createElement('textarea');
+    el._applyInputFormatting(input, 1);
+    expect(input.style.getPropertyValue('-webkit-text-stroke')).toContain('1px');
+    expect(input.style.letterSpacing).toBe('2px');
+    expect(input.style.transform).toContain('scaleX(0.8)');
+    expect(input.style.textAlign).toBe('justify');
+    // super → smaller font + raised
+    expect(parseFloat(input.style.fontSize)).toBeCloseTo(20 * 0.65, 1);
+  });
+});
+
 describe('TextElement Slice-2 fields', () => {
   it('omits new fields from toJSON when unset (no schema churn)', () => {
     const el = new TextElement(0, 0, 'p1', { });
