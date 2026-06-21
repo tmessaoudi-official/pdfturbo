@@ -267,6 +267,62 @@ export class FormattingService {
     this._ctx.autosave();
   }
 
+  setTextStroke(color: string, width: number): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const w = Math.min(10, Math.max(0, Number.isFinite(width) ? width : 0));
+    const before = { strokeColor: te.strokeColor, strokeWidth: te.strokeWidth };
+    const after = { strokeColor: color, strokeWidth: w };
+    Object.assign(te, after);
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  clearTextStroke(): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = { strokeColor: te.strokeColor, strokeWidth: te.strokeWidth };
+    const after = { strokeColor: undefined, strokeWidth: undefined };
+    Object.assign(te, after);
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  setCharSpacing(pt: number): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const v = Math.min(20, Math.max(-5, Number.isFinite(pt) ? pt : 0));
+    const before = { charSpacing: te.charSpacing };
+    te.charSpacing = v;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { charSpacing: v }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  setHorizontalScale(pct: number): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const v = Math.min(200, Math.max(50, Number.isFinite(pct) ? pct : 100));
+    const before = { horizontalScale: te.horizontalScale };
+    te.horizontalScale = v;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { horizontalScale: v }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  setBaselineShift(mode: 'super' | 'sub' | null): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const v = mode ?? undefined;
+    const before = { baselineShift: te.baselineShift };
+    te.baselineShift = v;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { baselineShift: v }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
   transformCase(mode: TextCaseMode): void {
     if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
     const te = this._ctx.selectedElement as TextElement;
@@ -294,6 +350,11 @@ export class FormattingService {
       lineHeight: te.lineHeight,
       opacity: te.opacity,
       backgroundColor: te.backgroundColor,
+      strokeColor: te.strokeColor,
+      strokeWidth: te.strokeWidth,
+      charSpacing: te.charSpacing,
+      horizontalScale: te.horizontalScale,
+      baselineShift: te.baselineShift,
     };
     const after = {
       bold: false,
@@ -307,6 +368,11 @@ export class FormattingService {
       lineHeight: undefined,
       opacity: undefined,
       backgroundColor: undefined,
+      strokeColor: undefined,
+      strokeWidth: undefined,
+      charSpacing: undefined,
+      horizontalScale: undefined,
+      baselineShift: undefined,
     };
     Object.assign(te, after);
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
@@ -329,6 +395,11 @@ export class FormattingService {
       lineHeight: te.lineHeight,
       opacity: te.opacity,
       backgroundColor: te.backgroundColor,
+      strokeColor: te.strokeColor,
+      strokeWidth: te.strokeWidth,
+      charSpacing: te.charSpacing,
+      horizontalScale: te.horizontalScale,
+      baselineShift: te.baselineShift,
     };
     return true;
   }

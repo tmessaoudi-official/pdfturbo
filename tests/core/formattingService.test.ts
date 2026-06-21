@@ -55,10 +55,11 @@ function makeTextCtx(opts?: Record<string, unknown>): {
   svc: FormattingService;
   te: TextElement;
   history: HistoryManager;
+  ctx: ReturnType<typeof makeCtx>;
 } {
   const te = new TextElement(0, 0, 'p1', opts);
   const ctx = makeCtx(te);
-  return { svc: new FormattingService(ctx), te, history: ctx.historyManager };
+  return { svc: new FormattingService(ctx), te, history: ctx.historyManager, ctx };
 }
 
 function makeSelectableCtx(elements: PDFElement[]): {
@@ -735,5 +736,48 @@ describe('FormattingService.copyTextStyle / pasteTextStyle', () => {
     expect(dst.lineHeight).toBe(1.5);
     expect(dst.opacity).toBe(0.7);
     expect(dst.backgroundColor).toBe('#ffff00');
+  });
+});
+
+// ── Slice-2 setters ────────────────────────────────────────────────────────
+
+describe('FormattingService Slice-2 setters', () => {
+  it('setTextStroke records color+width and setCharSpacing clamps', () => {
+    const { svc, te, history } = makeTextCtx();
+    svc.setTextStroke('#ff0000', 2);
+    expect(te.strokeColor).toBe('#ff0000');
+    expect(te.strokeWidth).toBe(2);
+    svc.setCharSpacing(999);          // clamp upper
+    expect(te.charSpacing).toBe(20);
+    svc.setCharSpacing(-999);         // clamp lower
+    expect(te.charSpacing).toBe(-5);
+    expect(history.canUndo()).toBe(true);
+  });
+
+  it('setHorizontalScale clamps 50..200 and setBaselineShift toggles', () => {
+    const { svc, te } = makeTextCtx();
+    svc.setHorizontalScale(10);  expect(te.horizontalScale).toBe(50);
+    svc.setHorizontalScale(999); expect(te.horizontalScale).toBe(200);
+    svc.setBaselineShift('super'); expect(te.baselineShift).toBe('super');
+    svc.setBaselineShift(null);    expect(te.baselineShift).toBeUndefined();
+  });
+
+  it('clearTextStroke and clearFormatting reset Slice-2 fields', () => {
+    const { svc, te } = makeTextCtx();
+    svc.setTextStroke('#000000', 1); svc.setCharSpacing(3); svc.setHorizontalScale(80); svc.setBaselineShift('sub');
+    svc.clearTextStroke();
+    expect(te.strokeWidth).toBeUndefined();
+    expect(te.strokeColor).toBeUndefined();
+    svc.clearFormatting();
+    expect(te.charSpacing).toBeUndefined();
+    expect(te.horizontalScale).toBeUndefined();
+    expect(te.baselineShift).toBeUndefined();
+    expect(te.align).toBe('left');
+  });
+
+  it('setters no-op when selection is not a text element', () => {
+    const { svc, ctx } = makeTextCtx();
+    (ctx as { selectedElement: PDFElement | null }).selectedElement = null;
+    expect(() => svc.setCharSpacing(2)).not.toThrow();
   });
 });
