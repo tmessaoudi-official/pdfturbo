@@ -222,6 +222,23 @@ export interface AppDOMRefs {
   settingsPanel:    HTMLElement;
   resetToolbarBtn:  HTMLButtonElement;
   closeSettingsBtn: HTMLButtonElement;
+  // Task 8 — text ⋮ popover + inline align buttons
+  textOptionsBtn:      HTMLButtonElement;
+  textOptionsModal:    HTMLElement;
+  textOptionsCloseBtn: HTMLButtonElement;
+  textLineHeight:      HTMLInputElement;
+  textOpacity:         HTMLInputElement;
+  textBgColor:         HTMLInputElement;
+  textBgNoneBtn:       HTMLButtonElement;
+  textCaseUpperBtn:    HTMLButtonElement;
+  textCaseLowerBtn:    HTMLButtonElement;
+  textCaseTitleBtn:    HTMLButtonElement;
+  clearFmtBtn:         HTMLButtonElement;
+  formatPainterBtn:    HTMLButtonElement;
+  alignLeftBtn:        HTMLButtonElement;
+  alignCenterBtn:      HTMLButtonElement;
+  alignRightBtn:       HTMLButtonElement;
+  colorSwatchRow:      HTMLElement;
 }
 
 export class UIController {
@@ -443,6 +460,23 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       settingsPanel:    document.getElementById('settingsPanel')    as HTMLElement,
       resetToolbarBtn:  document.getElementById('resetToolbarBtn')  as HTMLButtonElement,
       closeSettingsBtn: document.getElementById('closeSettingsBtn') as HTMLButtonElement,
+      // Task 8 — text ⋮ popover + inline align buttons
+      textOptionsBtn:      document.getElementById('textOptionsBtn')      as HTMLButtonElement,
+      textOptionsModal:    document.getElementById('textOptionsModal')    as HTMLElement,
+      textOptionsCloseBtn: document.getElementById('textOptionsCloseBtn') as HTMLButtonElement,
+      textLineHeight:      document.getElementById('textLineHeight')      as HTMLInputElement,
+      textOpacity:         document.getElementById('textOpacity')         as HTMLInputElement,
+      textBgColor:         document.getElementById('textBgColor')         as HTMLInputElement,
+      textBgNoneBtn:       document.getElementById('textBgNoneBtn')       as HTMLButtonElement,
+      textCaseUpperBtn:    document.getElementById('textCaseUpperBtn')    as HTMLButtonElement,
+      textCaseLowerBtn:    document.getElementById('textCaseLowerBtn')    as HTMLButtonElement,
+      textCaseTitleBtn:    document.getElementById('textCaseTitleBtn')    as HTMLButtonElement,
+      clearFmtBtn:         document.getElementById('clearFmtBtn')         as HTMLButtonElement,
+      formatPainterBtn:    document.getElementById('formatPainterBtn')    as HTMLButtonElement,
+      alignLeftBtn:        document.getElementById('alignLeftBtn')        as HTMLButtonElement,
+      alignCenterBtn:      document.getElementById('alignCenterBtn')      as HTMLButtonElement,
+      alignRightBtn:       document.getElementById('alignRightBtn')       as HTMLButtonElement,
+      colorSwatchRow:      document.getElementById('colorSwatchRow')      as HTMLElement,
     };
   }
 
@@ -587,6 +621,10 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.fontSizeInput.disabled   = !isText;
     r.fontSizeDownBtn.disabled = !isText;
     r.fontSizeUpBtn.disabled   = !isText;
+    r.textOptionsBtn.disabled  = !isText;
+    r.alignLeftBtn.disabled    = !isText;
+    r.alignCenterBtn.disabled  = !isText;
+    r.alignRightBtn.disabled   = !isText;
     if (isText) {
       const te = el as TextElement;
       r.fontFamily.value = te.fontFamily || 'Arial';
