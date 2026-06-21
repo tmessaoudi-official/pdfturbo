@@ -512,6 +512,23 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     highlight position is item-level; mixed LTR+RTL single-line bidi; SR reading order becomes visual L→R.
     Guards: `tests/utils/rtlClipboard.test.ts`, `tests/handlers/textSearchHandler.test.ts` (Arabic #6b),
     `tests/browser/arabic-selection.browser.test.ts` (#6c, real layout — jsdom can't lay out spans).
+    **Cross-item Arabic search + multi-char copy fix (2026-06-21, `9b6fa35`+`2cfbb0f`):** the #6b
+    per-item fallback found ZERO real Arabic matches — pdf.js splits a word across MANY per-glyph items, so a
+    multi-glyph query never fits one `item.str`. KEY (verified live): pdf.js emits SINGLE glyphs in VISUAL
+    position order but MULTI-char items/spans in NATIVE (LOGICAL) char order (the trailing "لام" of "السلام"
+    is one logical-order item). So correct reconstruction orders tokens by READING POSITION (RTL → x-descending)
+    and folds each NFKC-ONLY — NEVER reverses a token's internal chars (the old blanket `reverseRtlText(visual)`
+    scrambled multi-char tokens: "السلام"→"السمال"). `TextSearchHandler.buildLogicalLines` (pure, exported) does
+    this per-line with an item→offset token map → match maps to the covering items' union box; the Arabic line
+    pass is gated to `isArabicText(query)` (Latin stays per-item, no double-count). `reconstructLogicalText`
+    (copy) got the SAME no-internal-reverse fix → embedded LTR words/numbers ("PDFturbo"/"100%") now stay intact.
+    This OVERTURNS the original #6b assumption (visual-order multi-char items) — its synthetic single-item
+    fixture was unrealistic and was corrected to logical order. Selection ordering was already correct
+    (`alignSpanOrderToVisual`); residual striped highlight at large fonts = inherent per-glyph-span SEAMS
+    (cosmetic, not fixed). Ceilings: neutral bracket mirroring "(RTL)"→")RTL(" (UAX#9 L4), "الله" ligature
+    reorder, multi-token LTR run order. Guards: `tests/handlers/textSearchHandler.test.ts` (per-glyph spanning),
+    `tests/utils/rtlClipboard.test.ts` (multi-char span + embedded-LTR), `tests/browser/arabic-search.browser.test.ts`
+    + `tests/browser/arabic-copy.browser.test.ts` (real pdf.js items). Fixture+gen: `scripts/gen-arabic-fixture.mjs`.
   - **Multi-language DOCX (#2 `9cfc38a`)**: Cyrillic + CJK source text is preserved verbatim through
     PDF→DOCX/MD/TXT — they're LTR like Latin, so they take the same reconstructPage + writer path and the only
     script branch (`isArabicText` RTL reorder) must not fire. CONTENT is intact (verified, no prod change).
