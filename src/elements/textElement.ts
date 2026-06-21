@@ -14,6 +14,9 @@ export interface TextOptions {
   strikethrough?: boolean;
   align?: TextAlign;
   multiline?: boolean;
+  backgroundColor?: string;
+  lineHeight?: number;
+  opacity?: number;
 }
 
 export class TextElement extends PDFElement {
@@ -27,6 +30,9 @@ export class TextElement extends PDFElement {
   strikethrough: boolean;
   align: TextAlign;
   multiline: boolean;
+  backgroundColor?: string;
+  lineHeight?: number;
+  opacity?: number;
 
   constructor(x: number, y: number, pageId: string, options: TextOptions = {}) {
     super('text', x, y, options.width ?? 200, options.height ?? 30, pageId);
@@ -39,6 +45,9 @@ export class TextElement extends PDFElement {
     this.strikethrough = options.strikethrough ?? false;
     this.align = options.align ?? 'left';
     this.multiline = options.multiline ?? true;
+    this.backgroundColor = options.backgroundColor;
+    this.lineHeight = options.lineHeight;
+    this.opacity = options.opacity;
   }
 
   render(_container: HTMLElement, canvasOffset: { left: number; top: number }, scale = 1): HTMLDivElement {
@@ -79,12 +88,22 @@ export class TextElement extends PDFElement {
     div.style.width = (this.width * scale) + 'px';
     div.style.height = (this.height * scale) + 'px';
     div.style.zIndex = '16';
+    if (this.opacity !== undefined) div.style.opacity = String(this.opacity);
+    if (this.backgroundColor) {
+      const hex = this.backgroundColor.replace(/^#/, '');
+      const ch = (s: string) => { const v = parseInt(s, 16); return Number.isNaN(v) ? 0 : v; };
+      const r = ch(hex.substring(0, 2)), g = ch(hex.substring(2, 4)), b = ch(hex.substring(4, 6));
+      div.style.background = `rgba(${r},${g},${b},1)`;
+    }
   }
 
   override toJSON(): ElementJSON {
     return { ...super.toJSON(), text: this.text, fontSize: this.fontSize, color: this.color,
       fontFamily: this.fontFamily, bold: this.bold, italic: this.italic,
       underline: this.underline, strikethrough: this.strikethrough, align: this.align,
-      multiline: this.multiline };
+      multiline: this.multiline,
+      ...(this.backgroundColor !== undefined ? { backgroundColor: this.backgroundColor } : {}),
+      ...(this.lineHeight !== undefined ? { lineHeight: this.lineHeight } : {}),
+      ...(this.opacity !== undefined ? { opacity: this.opacity } : {}) };
   }
 }

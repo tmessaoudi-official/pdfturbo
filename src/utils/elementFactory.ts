@@ -32,7 +32,10 @@ export class ElementFactory {
         bold: data['bold'] || false, italic: data['italic'] || false,
         underline: data['underline'] || false, strikethrough: data['strikethrough'] || false,
         align: data['align'] || 'left',
-        multiline: data['multiline']
+        multiline: data['multiline'],
+        backgroundColor: data['backgroundColor'],
+        lineHeight: typeof data['lineHeight'] === 'number' ? data['lineHeight'] : undefined,
+        opacity: typeof data['opacity'] === 'number' ? data['opacity'] : undefined,
       });
       el.text = data['text'] || '';
       return applyBase(el);
