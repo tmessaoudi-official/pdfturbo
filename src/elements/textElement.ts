@@ -80,6 +80,7 @@ export class TextElement extends PDFElement {
     const deco = [this.underline ? 'underline' : '', this.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ');
     input.style.textDecoration = deco || 'none';
     input.style.textAlign = this.align;
+    input.style.lineHeight = this.lineHeight !== undefined ? String(this.lineHeight) : '';
   }
 
   applyStyles(div: HTMLDivElement, canvasOffset: { left: number; top: number }, scale = 1): void {

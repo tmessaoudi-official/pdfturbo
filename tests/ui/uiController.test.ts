@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UIController } from '../../src/ui/uiController';
+import { TextElement } from '../../src/elements/textElement';
 
 vi.mock('../../src/utils/i18n', () => ({ t: (key: string) => key }));
 
@@ -19,7 +20,7 @@ function seedDOM(): void {
     'pageInfo', 'pdfCanvas', 'canvasContainer', 'signatureModal', 'signatureCanvas',
     'fontSize', 'color', 'colorEyedropperBtn', 'sigLineWidth', 'sigColor',
     'zoomOutBtn', 'zoomInBtn', 'zoomDisplay', 'fitBtn', 'undoBtn', 'redoBtn',
-    'fontFamily', 'boldBtn', 'italicBtn', 'modeBadge',
+    'fontFamily', 'boldBtn', 'italicBtn', 'underlineBtn', 'strikeBtn', 'alignBtn', 'modeBadge',
     'fileMenuBtn', 'fileMenuWrap', 'fileMenuOpen', 'fileMenuClose',
     'fileMenuClearAnnotations', 'fileMenuResetSession',
     'firstPage', 'lastPage', 'pageInput', 'pageTotal', 'toast',
@@ -36,6 +37,8 @@ function seedDOM(): void {
     'pageThumbnailContainer', 'addPdfInput', 'commentBtn', 'redactBtn', 'cropBtn',
     'copyBtn', 'pasteBtn', 'donePill', 'eraserBtn',
     'previewExportBtn', 'exportDocxBtn', 'exportMdBtn',
+    'sanitizeBtn', 'extractPagesBtn', 'exportTableBtn', 'flattenBtn',
+    'exportXfdfBtn', 'importXfdfBtn', 'xfdfInput',
     'exportPreviewOverlay', 'exportPreviewGhost', 'exportPreviewConfirm', 'exportPreviewClose',
     'selectBtn', 'restoreDialog', 'restoreYesBtn', 'restoreNoBtn',
     'editTextBtn', 'textModeBtn', 'textChevronBtn', 'textSplitWrap',
@@ -46,10 +49,35 @@ function seedDOM(): void {
     'barcodeShowTextRow', 'barcodeShowTextChk', 'codePreviewImg', 'codePreviewStatus',
     'cancelCodeModal', 'saveCodeModal', 'fillColor', 'fillColorLabel', 'fillNoneBtn',
     'settingsBtn', 'settingsPanel', 'resetToolbarBtn', 'closeSettingsBtn',
+    // Bates panel
+    'batesBtn', 'batesModal', 'batesEnabled', 'batesMode', 'batesNumberingGroup',
+    'batesPrefix', 'batesStart', 'batesDigits', 'batesPosition', 'batesFontSize',
+    'batesColor', 'batesApply', 'batesCancel',
+    // Compress panel
+    'compressBtn', 'compressModal', 'compressMode', 'compressModeHint', 'compressLossyGroup',
+    'compressDpi', 'compressQuality', 'compressQualityVal', 'compressApply', 'compressCancel',
+    // OCR
+    'ocrBtn', 'ocrModal', 'ocrLangSelect', 'ocrModeSelect', 'ocrProgressRow',
+    'ocrProgress', 'ocrProgressLabel', 'runOcrModal', 'cancelOcrModal',
+    // Signing
+    'signBtn', 'signModal', 'signCertInput', 'signPassword', 'signPage',
+    'signX', 'signY', 'signW', 'signH', 'signReason', 'signLocation', 'signName',
+    'signError', 'signProgressRow', 'runSignModal', 'cancelSignModal',
+    'signSigRow', 'signSigImg', 'signSigRemove', 'signPickRect',
     // M2 #20 — generate-cert sign refs (formerly raw getElementById in signPdf)
     'signSourceUpload', 'signSourceGenerate', 'signUploadGroup', 'signGenGroup',
     'signGenPassword', 'signGenCN', 'signGenOrg', 'signGenEmail', 'signGenCountry',
     'signGenValidity',
+    // Signers panel (F-D D2)
+    'signersBtn', 'signersModal', 'signerName', 'signerMention', 'signerDate',
+    'signersDrawBtn', 'signersCancel',
+    // Task 8 — text options popover + inline align buttons
+    'textOptionsBtn', 'textOptionsModal', 'textOptionsCloseBtn',
+    'textLineHeight', 'textOpacity', 'textBgColor', 'textBgNoneBtn',
+    'textCaseUpperBtn', 'textCaseLowerBtn', 'textCaseTitleBtn',
+    'clearFmtBtn', 'formatPainterBtn',
+    'alignLeftBtn', 'alignCenterBtn', 'alignRightBtn',
+    'colorSwatchRow',
   ];
   ids.forEach(id => el('div', id));
 }
@@ -114,5 +142,44 @@ describe('UIController', () => {
     const addTextBtn = document.getElementById('addTextBtn') as HTMLElement;
     expect(selectBtn.getAttribute('aria-pressed')).toBe('true');
     expect(addTextBtn.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  // FIX 1 — inline align buttons active-state
+  describe('updateFormattingToolbar() align active-state (FIX 1)', () => {
+    it('sets btn-active-fmt on alignCenterBtn only when selected TextElement has align=center', () => {
+      const te = new TextElement(0, 0, 'p1', { align: 'center' });
+      ctrl.updateFormattingToolbar(te, 'select');
+      const alignLeft   = document.getElementById('alignLeftBtn')   as HTMLElement;
+      const alignCenter = document.getElementById('alignCenterBtn') as HTMLElement;
+      const alignRight  = document.getElementById('alignRightBtn')  as HTMLElement;
+      expect(alignCenter.classList.contains('btn-active-fmt')).toBe(true);
+      expect(alignLeft.classList.contains('btn-active-fmt')).toBe(false);
+      expect(alignRight.classList.contains('btn-active-fmt')).toBe(false);
+    });
+
+    it('sets btn-active-fmt on alignLeftBtn only when selected TextElement has align=left', () => {
+      const te = new TextElement(0, 0, 'p1', { align: 'left' });
+      ctrl.updateFormattingToolbar(te, 'select');
+      const alignLeft   = document.getElementById('alignLeftBtn')   as HTMLElement;
+      const alignCenter = document.getElementById('alignCenterBtn') as HTMLElement;
+      const alignRight  = document.getElementById('alignRightBtn')  as HTMLElement;
+      expect(alignLeft.classList.contains('btn-active-fmt')).toBe(true);
+      expect(alignCenter.classList.contains('btn-active-fmt')).toBe(false);
+      expect(alignRight.classList.contains('btn-active-fmt')).toBe(false);
+    });
+
+    it('clears btn-active-fmt from all three align buttons when no text element is selected', () => {
+      // Pre-arm: simulate a text element having been selected
+      const te = new TextElement(0, 0, 'p1', { align: 'right' });
+      ctrl.updateFormattingToolbar(te, 'select');
+      // Now deselect (null → non-text context)
+      ctrl.updateFormattingToolbar(null, 'select');
+      const alignLeft   = document.getElementById('alignLeftBtn')   as HTMLElement;
+      const alignCenter = document.getElementById('alignCenterBtn') as HTMLElement;
+      const alignRight  = document.getElementById('alignRightBtn')  as HTMLElement;
+      expect(alignLeft.classList.contains('btn-active-fmt')).toBe(false);
+      expect(alignCenter.classList.contains('btn-active-fmt')).toBe(false);
+      expect(alignRight.classList.contains('btn-active-fmt')).toBe(false);
+    });
   });
 });

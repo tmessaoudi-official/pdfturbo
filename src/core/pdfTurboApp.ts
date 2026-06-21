@@ -262,7 +262,12 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   // ── IDocumentLoaderContext accessors ──────────────────────────────────────
   get isLoading(): boolean { return this._isLoading; }
   setIsLoading(v: boolean): void { this._isLoading = v; }
-  resetDocumentModel(): void { this.documentModel = new DocumentModel(); this.renderer.setModel(this.documentModel); }
+  resetDocumentModel(): void {
+    this.documentModel = new DocumentModel();
+    this.renderer.setModel(this.documentModel);
+    this._formattingService.cancelPainter();
+    this.ui.formatPainterBtn.classList.remove('btn-active-fmt');
+  }
   setFormValues(v: Record<string, Record<string, string>>): void { this._formValues = v; }
   setWarnedUnsupportedFields(v: boolean): void { this._warnedUnsupportedFields = v; }
   setSelectedElement(el: PDFElement | null): void { this.selectedElement = el; }

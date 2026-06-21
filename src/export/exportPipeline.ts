@@ -317,10 +317,20 @@ export async function rasterizePageWithRedactions(
     const te = el as import('../elements/textElement').TextElement;
     if (!te.text) continue;
     ctx.save();
+    ctx.globalAlpha = te.opacity ?? 1;
+    if (te.backgroundColor) {
+      ctx.fillStyle = te.backgroundColor;
+      ctx.fillRect(
+        Math.round(te.x * SCALE),
+        Math.round(te.y * SCALE),
+        Math.round(te.width * SCALE),
+        Math.round(te.height * SCALE),
+      );
+    }
     const fontPx = Math.round(te.fontSize * SCALE);
     ctx.font = `${te.italic ? 'italic ' : ''}${te.bold ? 'bold ' : ''}${fontPx}px ${te.fontFamily || 'Arial'}, sans-serif`;
     ctx.fillStyle = te.color || '#000000';
-    const lineHeight = te.fontSize * 1.2 * SCALE;
+    const lineHeight = te.fontSize * (te.lineHeight ?? 1.2) * SCALE;
     te.text.split('\n').forEach((line, i) => {
       if (!line) return;
       ctx.fillText(line, Math.round(te.x * SCALE), Math.round((te.y + te.fontSize * 0.9) * SCALE + i * lineHeight));

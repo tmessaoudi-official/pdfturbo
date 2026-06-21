@@ -637,6 +637,9 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.underlineBtn.setAttribute('aria-pressed', String(!!te.underline));
       r.strikeBtn.setAttribute('aria-pressed', String(!!te.strikethrough));
       r.alignBtn.setAttribute('aria-label', `align-${te.align}`);
+      r.alignLeftBtn.classList.toggle('btn-active-fmt',   te.align === 'left');
+      r.alignCenterBtn.classList.toggle('btn-active-fmt', te.align === 'center');
+      r.alignRightBtn.classList.toggle('btn-active-fmt',  te.align === 'right');
       r.fontSizeInput.value = String(te.fontSize);
       r.colorInput.value    = te.color;
     } else {
@@ -648,6 +651,9 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.italicBtn.setAttribute('aria-pressed', 'false');
       r.underlineBtn.setAttribute('aria-pressed', 'false');
       r.strikeBtn.setAttribute('aria-pressed', 'false');
+      r.alignLeftBtn.classList.remove('btn-active-fmt');
+      r.alignCenterBtn.classList.remove('btn-active-fmt');
+      r.alignRightBtn.classList.remove('btn-active-fmt');
     }
 
     // Unified color picker: always enabled, syncs value to context
