@@ -464,6 +464,39 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   **Backlog/ceiling (Slice 2+):** Tier-2 (stroke/outline, char-spacing `Tc`, horizontal-scale `Tz`, justify,
   whole-box sub/superscript), find&replace on overlay text, links, bullet/numbered lists, multi-run rich text
   (ceiling); RTL direction-aware controls are gated behind the open Arabic-RTL P1 overflow defect.
+  **Rich text toolbar Slice 2 (Tier-2, 2026-06-21)** — 5 advanced controls on overlay `TextElement`s: text
+  **stroke/outline**, **character spacing** (`Tc`), **horizontal scale** (`Tz`), **justify** align, and whole-box
+  **super/subscript**. New OPTIONAL `TextElement` fields `strokeColor`/`strokeWidth`/`charSpacing`/`horizontalScale`/
+  `baselineShift:'super'|'sub'` + `TextAlign` widened to include `'justify'` (**no SCHEMA_VERSION bump**; `toJSON`
+  omits when unset, `elementFactory.fromJSON` rehydrates with type guards → legacy blobs restore). Mutations route
+  through `FormattingService`: `setTextStroke`/`clearTextStroke`, `setCharSpacing` (clamp −5..20), `setHorizontalScale`
+  (clamp 50..200), `setBaselineShift('super'|'sub'|null)`, justify via the existing `setAlign('justify')` — each a
+  `MoveResizeCmd`, NaN-safe clamps (`Number.isFinite`, never `parseFloat(...)||x`), and `clearFormatting`/the format
+  painter carry all 5. **The core is the raw-operator bake** `src/export/styledText.ts` (`hasAdvancedText(te)`,
+  `effectiveLineWidth(font,line,size,charSpacing,horizontalScale)`, `drawStyledTextLine(page,opts)` via
+  `page.pushOperators` — the `arabicOverlay.ts` pattern): `renderText` takes the operator path **ONLY when
+  `hasAdvancedText(te) && !elemRot`**, else the existing `page.drawText` runs UNCHANGED → **byte-identical export for
+  every element without an advanced attr** (real-Chrome-guarded). **Non-obvious:** (1) stroke = render mode 2 via
+  `TextRenderingMode.FillAndOutline` (NOT `FillThenStroke`, which does not exist in `@cantoo/pdf-lib`) + `RG`/`w`;
+  (2) `Tz` has no named helper → `PDFOperator.of(PDFOperatorNames.SetTextHorizontalScaling, [PDFNumber.of(pct)])`;
+  (3) opacity reuses `page.maybeEmbedGraphicsState({opacity,borderOpacity})` (it's **private** → localized `(page as
+  any)` cast, gated `advanced && alpha<1`); (4) justify distributes `Tw = (boxW−lineW)/spaces` on NON-last lines only
+  (single/last line → normal alignment offset); (5) sub/super = 0.65× draw size + `Ts` rise (super +0.33×fontSize,
+  sub −0.15×fontSize); (6) the popover super/sub buttons **toggle** — re-clicking the active one clears to baseline
+  (reads `ctx.selectedText.baselineShift`); they stay mutually exclusive. UI: inline **J** button beside L/C/R
+  (`formattingBinder` → `app.setAlign`) + 4 popover rows wired in `textOptionsPopover.ts` (stroke color+width,
+  letter-spacing, width%, x²/x₂); `uiController.updateFormattingToolbar` toggles `btn-active-fmt` + reflects values;
+  i18n `formatting.{justify,stroke,charSpacing,horizontalScale,baseline,superscript,subscript}` in en/fr/ar (ar
+  [Unverified]). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
+  (attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path does NOT apply Tc/Tz/
+  stroke (Latin/WinAnsi only — documented); the **raster export path** (`exportPipeline.ts`, redaction pages +
+  thumbnails) is code-reviewed for these attrs, NOT pixel-guarded — the vector bake IS. Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-06-21-rich-pdf-text-toolbar-slice2*`. Guards: `tests/export/styledText.test.ts`
+  (pure `hasAdvancedText`/`effectiveLineWidth`), `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,
+  uiController}.test.ts`, `tests/browser/text-toolbar-slice2.browser.test.ts` (real Chrome: pdf.js OPS-38
+  `setTextRenderingMode` present in styled / ABSENT in plain → catches a silent regression to `drawText`).
+  **Backlog (Slice 3+):** stroke/Tc/Tz on Arabic overlay, RTL direction-aware controls, per-run/multi-run rich text
+  (ceiling), find&replace on overlay text, links, bullet/numbered lists, true-edit of these attrs.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order

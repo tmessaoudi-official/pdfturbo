@@ -1,7 +1,7 @@
 # Rich PDF Text Toolbar — Slice 2 (Tier-2) Design
 
 **Date:** 2026-06-21
-**Status:** Design — awaiting user review before plan
+**Status:** Implemented (2026-06-21 — commits 2abf23b..cf8b80a; subagent-driven, all 7 tasks reviewed clean)
 **Scope:** 5 Tier-2 text-formatting controls for overlay `TextElement`s — text stroke/outline,
 character spacing (Tc), horizontal scale (Tz), justify alignment, and whole-box super/subscript —
 plus the new raw-operator bake path they require.
