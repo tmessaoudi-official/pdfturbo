@@ -22,6 +22,22 @@ per-glyph, visual-order, presentation-form spans.
 - [2026-06-21] DONE Slice A: Arabic search works (live: السلام 1/1, العربية 1/4, الحروف/عليكم/
   وبركاته/القائمة/الثالث 1/1, Latin unaffected, nonsense 0). Ceiling: "الله" ligature + mixed
   LTR-in-RTL runs (→ Slice B). Gate: tc0/lint0/jsdom 1886+2xfail/browser arabic-search 1/1.
+- [2026-06-21] FINDING: COPY (`reconstructLogicalText`) had the SAME bug — blanket
+  `reverseRtlText(visual)` scrambled multi-char spans (live: "...لاختباا رتجاا ه..."). The same
+  no-internal-reverse fix applies (order spans by reading position, NFKC-only).
+- [2026-06-21] DONE Slice B: copy fixed. Live: body line copies verbatim
+  "هذه فقرة مكتوبة ... وتشكيل الحروف"; embedded "PDFturbo"/"100%" intact. NO bidi-js needed —
+  the no-reverse approach already keeps embedded LTR words+numbers correct. Residual ceiling:
+  neutral bracket mirroring "(RTL)"→")RTL(" (UAX#9 L4) + "الله" ligature. Gate: tc0/lint0/
+  jsdom 1888+2xfail/browser arabic-copy 1/1.
+- [2026-06-21] DONE Slice C (selection): INVESTIGATED — ordering already correct
+  (`alignSpanOrderToVisual`: 0 backward DOM transitions, 0 cross-line bleed) and copied content
+  now correct (Slice B). Live body-line selection = clean contiguous band. The residual striped
+  look at LARGE font (24pt heading) is inter-glyph SEAMS of pdf.js's per-glyph absolutely-
+  positioned spans — cosmetic, inherent, NOT fixable without replacing the text layer. No code
+  change (Rule 14: no fix without a reproducing defect); documented as ceiling. Screenshots:
+  arabic-qa/01..04.
+- [2026-06-21] COMPLETE: all three addressed. Plan can be closed.
 
 ## Root cause (Verified)
 `page.getTextContent().items` for an Arabic PDF are mostly ONE glyph each, in VISUAL (L→R)

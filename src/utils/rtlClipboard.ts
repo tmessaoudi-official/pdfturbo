@@ -8,16 +8,21 @@
  * glyphs, visually ordered, unspaced: unsearchable, un-pasteable garbage.
  *
  * `reconstructLogicalText` rebuilds proper text from the selected spans' geometry:
- * cluster into rows, infer spaces from x-gaps, then per row emit logical order —
- * RTL rows are `reverseRtlText`'d (codepoint-reverse + NFKC: visual→logical and
- * presentation-form→base letter), LTR rows are NFKC-normalized as-is. This mirrors
- * the export's reconstruction (orderLineWords / reverseRtlText) at glyph-span level.
+ * cluster into rows, infer spaces from x-gaps, then per row emit logical order by
+ * READING POSITION — RTL rows are read right-to-left (spans ordered by descending x),
+ * each span NFKC-folded (presentation-form→base letter), LTR rows left-to-right. It
+ * NEVER reverses a span's internal chars: pdf.js emits single glyphs in visual position
+ * order but a MULTI-char span in native (logical) order, so a blanket codepoint-reverse
+ * scrambled multi-char spans ("السلام"→"السمال"). Position-ordering + NFKC fixes that
+ * (the same rule `TextSearchHandler.buildLogicalLines` uses for Arabic find).
  *
- * Ceiling (documented partial): a single line mixing LTR+RTL is reversed as one RTL
- * run (the embedded Latin/number run ends up order-reversed) — full UAX#9 bidi at
- * char level is out of scope, same as the DOCX export.
+ * Ceiling (documented partial): an embedded LTR run inside an RTL line whose glyphs are
+ * split into multiple spans/tokens still ends up token-order-reversed, and neutral
+ * brackets mirror — full UAX#9 char-level bidi is out of scope, same as the DOCX export.
+ * Special shaped ligatures (e.g. "الله") whose own item text is reordered also remain a
+ * partial.
  */
-import { isArabicText, reverseRtlText } from './flowDoc';
+import { isArabicText } from './flowDoc';
 
 export interface SpanGeom {
   text: string;
@@ -55,20 +60,27 @@ export function reconstructLogicalText(spans: ReadonlyArray<SpanGeom>): string {
   }
 
   const lines = rows.map((row) => {
-    const byX = [...row].sort((a, b) => a.left - b.left);
+    const byX = [...row].sort((a, b) => a.left - b.left); // visual L→R
     const rtlVotes = byX.reduce((n, s) => n + (isArabicText(s.text) ? 1 : 0), 0);
     const rtl = rtlVotes * 2 > byX.length;
-    let visual = '';
-    for (let i = 0; i < byX.length; i++) {
+    // Reading order comes from span POSITION (RTL → right-to-left), NEVER from reversing a
+    // span's internal chars: pdf.js emits single glyphs in visual position order but a
+    // MULTI-char span keeps its native (logical) char order (the trailing "لام" of "السلام"
+    // is one logical-order span). A blanket reverse scrambled those ("السلام"→"السمال"); we
+    // order spans by reading position and fold each NFKC-only.
+    const order = rtl ? [...byX].reverse() : byX;
+    let out = '';
+    for (let i = 0; i < order.length; i++) {
       if (i > 0) {
-        const gap = byX[i].left - byX[i - 1].right;
-        if (gap > medianW * 0.4) visual += ' ';
+        const a = order[i - 1];
+        const b = order[i];
+        const leftCell = a.left <= b.left ? a : b;
+        const rightCell = a.left <= b.left ? b : a;
+        if (rightCell.left - leftCell.right > medianW * 0.4) out += ' ';
       }
-      visual += byX[i].text;
+      out += order[i].text.normalize('NFKC');
     }
-    // RTL: visual order is the codepoint-reverse of logical → reverseRtlText restores
-    // logical order AND folds presentation forms to base letters (NFKC). LTR: just NFKC.
-    return rtl ? reverseRtlText(visual) : visual.normalize('NFKC');
+    return out;
   });
 
   return lines.join('\n');

@@ -43,4 +43,26 @@ describe('reconstructLogicalText (#6 Arabic copy)', () => {
   it('returns empty string for no spans', () => {
     expect(reconstructLogicalText([])).toBe('');
   });
+
+  it('keeps a MULTI-char span in its native (logical) order — does not reverse within a span', () => {
+    // pdf.js emits the trailing "لام" of "السلام" as ONE span whose chars are in native
+    // (logical) order, at the visual LEFT; the remaining glyphs follow to the right as
+    // single items. The old blanket reverseRtlText(visual) reversed within the span and
+    // scrambled the word ("لسمال"). Reading order comes from span POSITION, never from
+    // reversing a span's internal chars.
+    const spans = [
+      g('لام', 0, 24), // logical ل-ا-م, visual-leftmost (so logical-LAST)
+      g('س', 26, 8),
+      g('ل', 36, 8),
+      g('ا', 46, 8),   // visual-rightmost (so logical-FIRST)
+    ];
+    expect(reconstructLogicalText(spans)).toBe('السلام');
+  });
+
+  it('keeps an embedded LTR token intact inside an RTL line (no internal reverse)', () => {
+    // RTL line, visual L→R: "ب"@0, "PDF"@12, "ا"@40. Read right-to-left → "ا PDF ب".
+    // The Latin token must stay "PDF", not "FDP" (the old blanket reverse flipped it).
+    const spans = [g('ب', 0, 8), g('PDF', 12, 24), g('ا', 40, 8)];
+    expect(reconstructLogicalText(spans)).toBe('ا PDF ب');
+  });
 });
