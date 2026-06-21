@@ -38,3 +38,36 @@ describe('TextElement', () => {
     expect(div.style.opacity).toBe('0.4');
   });
 });
+
+describe('TextElement Slice-2 fields', () => {
+  it('omits new fields from toJSON when unset (no schema churn)', () => {
+    const el = new TextElement(0, 0, 'p1', { });
+    const json = el.toJSON();
+    expect('strokeWidth' in json).toBe(false);
+    expect('charSpacing' in json).toBe(false);
+    expect('horizontalScale' in json).toBe(false);
+    expect('baselineShift' in json).toBe(false);
+  });
+
+  it('round-trips set fields through toJSON + factory', () => {
+    const el = new TextElement(0, 0, 'p1', {
+      strokeColor: '#ff0000', strokeWidth: 1.5, charSpacing: 2,
+      horizontalScale: 80, baselineShift: 'super', align: 'justify',
+    });
+    const round = ElementFactory.fromJSON(el.toJSON()) as TextElement;
+    expect(round.strokeColor).toBe('#ff0000');
+    expect(round.strokeWidth).toBe(1.5);
+    expect(round.charSpacing).toBe(2);
+    expect(round.horizontalScale).toBe(80);
+    expect(round.baselineShift).toBe('super');
+    expect(round.align).toBe('justify');
+  });
+
+  it('legacy blob (no new fields) restores with defaults', () => {
+    const legacy = new TextElement(0, 0, 'p1').toJSON();
+    const round = ElementFactory.fromJSON(legacy) as TextElement;
+    expect(round.strokeWidth).toBeUndefined();
+    expect(round.horizontalScale).toBeUndefined();
+    expect(round.align).toBe('left');
+  });
+});

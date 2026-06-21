@@ -1,6 +1,6 @@
 import { PDFElement, type ElementJSON } from './annotationElement';
 
-export type TextAlign = 'left' | 'center' | 'right';
+export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 
 export interface TextOptions {
   width?: number;
@@ -17,6 +17,11 @@ export interface TextOptions {
   backgroundColor?: string;
   lineHeight?: number;
   opacity?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  charSpacing?: number;
+  horizontalScale?: number;
+  baselineShift?: 'super' | 'sub';
 }
 
 export class TextElement extends PDFElement {
@@ -33,6 +38,11 @@ export class TextElement extends PDFElement {
   backgroundColor?: string;
   lineHeight?: number;
   opacity?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  charSpacing?: number;
+  horizontalScale?: number;
+  baselineShift?: 'super' | 'sub';
 
   constructor(x: number, y: number, pageId: string, options: TextOptions = {}) {
     super('text', x, y, options.width ?? 200, options.height ?? 30, pageId);
@@ -48,6 +58,11 @@ export class TextElement extends PDFElement {
     this.backgroundColor = options.backgroundColor;
     this.lineHeight = options.lineHeight;
     this.opacity = options.opacity;
+    this.strokeColor = options.strokeColor;
+    this.strokeWidth = options.strokeWidth;
+    this.charSpacing = options.charSpacing;
+    this.horizontalScale = options.horizontalScale;
+    this.baselineShift = options.baselineShift;
   }
 
   render(_container: HTMLElement, canvasOffset: { left: number; top: number }, scale = 1): HTMLDivElement {
@@ -105,6 +120,11 @@ export class TextElement extends PDFElement {
       multiline: this.multiline,
       ...(this.backgroundColor !== undefined ? { backgroundColor: this.backgroundColor } : {}),
       ...(this.lineHeight !== undefined ? { lineHeight: this.lineHeight } : {}),
-      ...(this.opacity !== undefined ? { opacity: this.opacity } : {}) };
+      ...(this.opacity !== undefined ? { opacity: this.opacity } : {}),
+      ...(this.strokeColor !== undefined ? { strokeColor: this.strokeColor } : {}),
+      ...(this.strokeWidth !== undefined ? { strokeWidth: this.strokeWidth } : {}),
+      ...(this.charSpacing !== undefined ? { charSpacing: this.charSpacing } : {}),
+      ...(this.horizontalScale !== undefined ? { horizontalScale: this.horizontalScale } : {}),
+      ...(this.baselineShift !== undefined ? { baselineShift: this.baselineShift } : {}) };
   }
 }

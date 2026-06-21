@@ -36,6 +36,11 @@ export class ElementFactory {
         backgroundColor: data['backgroundColor'],
         lineHeight: typeof data['lineHeight'] === 'number' ? data['lineHeight'] : undefined,
         opacity: typeof data['opacity'] === 'number' ? data['opacity'] : undefined,
+        strokeColor: typeof data['strokeColor'] === 'string' ? data['strokeColor'] : undefined,
+        strokeWidth: typeof data['strokeWidth'] === 'number' ? data['strokeWidth'] : undefined,
+        charSpacing: typeof data['charSpacing'] === 'number' ? data['charSpacing'] : undefined,
+        horizontalScale: typeof data['horizontalScale'] === 'number' ? data['horizontalScale'] : undefined,
+        baselineShift: data['baselineShift'] === 'super' || data['baselineShift'] === 'sub' ? data['baselineShift'] : undefined,
       });
       el.text = data['text'] || '';
       return applyBase(el);
