@@ -27,7 +27,6 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
         <button id="formatPainterBtn">Format painter</button>
         <button id="textOptionsCloseBtn">Close</button>
         <!-- Slice 2 controls -->
-        <input type="color"  id="textStrokeColor" value="#000000" />
         <input type="number" id="textStrokeWidth" value="0" />
         <input type="number" id="charSpacingInput" value="0" />
         <input type="number" id="horizontalScaleInput" value="100" />
@@ -62,7 +61,6 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
     alignJustifyBtn:     g('alignJustifyBtn')     as HTMLButtonElement,
     colorSwatchRow:      g('colorSwatchRow')      as HTMLElement,
     // Slice 2
-    textStrokeColor:       g('textStrokeColor')       as HTMLInputElement,
     textStrokeWidth:       g('textStrokeWidth')       as HTMLInputElement,
     charSpacingInput:      g('charSpacingInput')      as HTMLInputElement,
     horizontalScaleInput:  g('horizontalScaleInput')  as HTMLInputElement,
@@ -190,13 +188,12 @@ describe('TextOptionsPopover', () => {
 
   // Slice 2 — new controls wired in setupListeners()
   describe('Slice 2 controls', () => {
-    it('textStrokeWidth input with positive width calls setTextStroke', () => {
+    it('textStrokeWidth input with positive width calls setTextStroke (width only)', () => {
       const { pop, ui, svc } = makePopover();
       pop.setupListeners();
-      (ui.textStrokeColor as HTMLInputElement).value = '#ff0000';
       (ui.textStrokeWidth as HTMLInputElement).value = '1.5';
       ui.textStrokeWidth.dispatchEvent(new Event('input'));
-      expect(svc.setTextStroke).toHaveBeenCalledWith('#ff0000', 1.5);
+      expect(svc.setTextStroke).toHaveBeenCalledWith(1.5);
     });
 
     it('textStrokeWidth input with 0 calls clearTextStroke', () => {

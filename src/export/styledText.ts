@@ -32,8 +32,7 @@ export interface StyledTextOpts {
   color: { r: number; g: number; b: number };
   charSpacing?: number;         // Tc, pt
   horizontalScale?: number;     // Tz, percent (100 = none)
-  strokeColor?: { r: number; g: number; b: number };
-  strokeWidth?: number;         // > 0 → fill+stroke
+  strokeWidth?: number;         // > 0 → fill+stroke (stroke painted in the fill color)
   baselineRise?: number;        // Ts, pt (super +, sub −)
   wordSpacing?: number;         // Tw, pt (justify)
   gsName?: PDFName;             // opacity ExtGState (page.maybeEmbedGraphicsState)
@@ -77,7 +76,8 @@ export function drawStyledTextLine(page: PDFPage, o: StyledTextOpts): void {
   ops.push(beginText(), setFillingRgbColor(o.color.r, o.color.g, o.color.b));
   const strokeWidth = o.strokeWidth ?? 0;
   if (strokeWidth > 0) {
-    const s = o.strokeColor ?? o.color;
+    // Outline is painted in the element's own fill color (no separate stroke color).
+    const s = o.color;
     ops.push(
       setStrokingRgbColor(s.r, s.g, s.b),
       setLineWidth(strokeWidth),

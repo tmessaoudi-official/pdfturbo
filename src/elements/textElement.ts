@@ -17,7 +17,6 @@ export interface TextOptions {
   backgroundColor?: string;
   lineHeight?: number;
   opacity?: number;
-  strokeColor?: string;
   strokeWidth?: number;
   charSpacing?: number;
   horizontalScale?: number;
@@ -38,7 +37,6 @@ export class TextElement extends PDFElement {
   backgroundColor?: string;
   lineHeight?: number;
   opacity?: number;
-  strokeColor?: string;
   strokeWidth?: number;
   charSpacing?: number;
   horizontalScale?: number;
@@ -58,7 +56,6 @@ export class TextElement extends PDFElement {
     this.backgroundColor = options.backgroundColor;
     this.lineHeight = options.lineHeight;
     this.opacity = options.opacity;
-    this.strokeColor = options.strokeColor;
     this.strokeWidth = options.strokeWidth;
     this.charSpacing = options.charSpacing;
     this.horizontalScale = options.horizontalScale;
@@ -96,10 +93,10 @@ export class TextElement extends PDFElement {
     input.style.textDecoration = deco || 'none';
     input.style.textAlign = this.align;
     input.style.lineHeight = this.lineHeight !== undefined ? String(this.lineHeight) : '';
-    // Slice 2 previews
+    // Slice 2 previews — outline uses the element's own fill color (palette-chosen)
     const strokeW = this.strokeWidth ?? 0;
-    if (this.strokeColor && strokeW > 0) {
-      input.style.setProperty('-webkit-text-stroke', `${strokeW * scale}px ${this.strokeColor}`);
+    if (strokeW > 0) {
+      input.style.setProperty('-webkit-text-stroke', `${strokeW * scale}px ${this.color}`);
     } else {
       input.style.removeProperty('-webkit-text-stroke');
     }
@@ -141,7 +138,6 @@ export class TextElement extends PDFElement {
       ...(this.backgroundColor !== undefined ? { backgroundColor: this.backgroundColor } : {}),
       ...(this.lineHeight !== undefined ? { lineHeight: this.lineHeight } : {}),
       ...(this.opacity !== undefined ? { opacity: this.opacity } : {}),
-      ...(this.strokeColor !== undefined ? { strokeColor: this.strokeColor } : {}),
       ...(this.strokeWidth !== undefined ? { strokeWidth: this.strokeWidth } : {}),
       ...(this.charSpacing !== undefined ? { charSpacing: this.charSpacing } : {}),
       ...(this.horizontalScale !== undefined ? { horizontalScale: this.horizontalScale } : {}),

@@ -195,7 +195,6 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
           color: col,
           charSpacing: te.charSpacing,
           horizontalScale: te.horizontalScale,
-          strokeColor: te.strokeColor ? hexToRgbValues(te.strokeColor) : undefined,
           strokeWidth: te.strokeWidth,
           baselineRise: rise,
           wordSpacing,

@@ -267,14 +267,15 @@ export class FormattingService {
     this._ctx.autosave();
   }
 
-  setTextStroke(color: string, width: number): void {
+  // Text outline: the stroke is drawn in the element's own fill color (chosen from the
+  // shared color palette) — there is no separate stroke color. Only the width is set here.
+  setTextStroke(width: number): void {
     if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
     const te = this._ctx.selectedElement as TextElement;
     const w = Math.min(10, Math.max(0, Number.isFinite(width) ? width : 0));
-    const before = { strokeColor: te.strokeColor, strokeWidth: te.strokeWidth };
-    const after = { strokeColor: color, strokeWidth: w };
-    Object.assign(te, after);
-    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
+    const before = { strokeWidth: te.strokeWidth };
+    te.strokeWidth = w;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { strokeWidth: w }));
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
   }
@@ -282,10 +283,9 @@ export class FormattingService {
   clearTextStroke(): void {
     if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
     const te = this._ctx.selectedElement as TextElement;
-    const before = { strokeColor: te.strokeColor, strokeWidth: te.strokeWidth };
-    const after = { strokeColor: undefined, strokeWidth: undefined };
-    Object.assign(te, after);
-    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
+    const before = { strokeWidth: te.strokeWidth };
+    te.strokeWidth = undefined;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { strokeWidth: undefined }));
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
   }
@@ -350,7 +350,6 @@ export class FormattingService {
       lineHeight: te.lineHeight,
       opacity: te.opacity,
       backgroundColor: te.backgroundColor,
-      strokeColor: te.strokeColor,
       strokeWidth: te.strokeWidth,
       charSpacing: te.charSpacing,
       horizontalScale: te.horizontalScale,
@@ -368,7 +367,6 @@ export class FormattingService {
       lineHeight: undefined,
       opacity: undefined,
       backgroundColor: undefined,
-      strokeColor: undefined,
       strokeWidth: undefined,
       charSpacing: undefined,
       horizontalScale: undefined,
@@ -395,7 +393,6 @@ export class FormattingService {
       lineHeight: te.lineHeight,
       opacity: te.opacity,
       backgroundColor: te.backgroundColor,
-      strokeColor: te.strokeColor,
       strokeWidth: te.strokeWidth,
       charSpacing: te.charSpacing,
       horizontalScale: te.horizontalScale,

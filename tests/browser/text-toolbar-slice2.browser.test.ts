@@ -48,7 +48,7 @@ describe('Slice-2 bake (real Chrome)', () => {
   it('stroke path emits setTextRenderingMode; plain element does not', async () => {
     // Styled: stroke forces hasAdvancedText → operator path → Tr op emitted.
     const styledEl = new TextElement(40, 40, 'p1', {
-      strokeColor: '#ff0000',
+      color: '#ff0000',     // outline is painted in the fill color (no separate stroke color)
       strokeWidth: 1,
       charSpacing: 2,
       horizontalScale: 80,

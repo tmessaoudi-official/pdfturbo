@@ -78,7 +78,7 @@ function seedDOM(): void {
     'clearFmtBtn', 'formatPainterBtn',
     'alignLeftBtn', 'alignCenterBtn', 'alignRightBtn', 'alignJustifyBtn',
     // Slice 2 — popover controls
-    'textStrokeColor', 'textStrokeWidth', 'charSpacingInput', 'horizontalScaleInput',
+    'textStrokeWidth', 'charSpacingInput', 'horizontalScaleInput',
     'superscriptBtn', 'subscriptBtn',
     'colorSwatchRow',
   ];

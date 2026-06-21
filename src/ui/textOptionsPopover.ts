@@ -57,15 +57,11 @@ export class TextOptionsPopover {
       }
     });
 
-    // Slice 2 — stroke / spacing / scale / super-sub
+    // Slice 2 — stroke (width only; outline uses the element's fill color) / spacing / scale / super-sub
     ui.textStrokeWidth?.addEventListener('input', () => {
       const w = parseFloat(ui.textStrokeWidth?.value ?? '0');
       if (!Number.isFinite(w) || w <= 0) svc.clearTextStroke();
-      else svc.setTextStroke(ui.textStrokeColor?.value || '#000000', w);
-    });
-    ui.textStrokeColor?.addEventListener('input', () => {
-      const w = parseFloat(ui.textStrokeWidth?.value || '0');
-      if (Number.isFinite(w) && w > 0) svc.setTextStroke(ui.textStrokeColor?.value ?? '#000000', w);
+      else svc.setTextStroke(w);
     });
     ui.charSpacingInput?.addEventListener('input', () =>
       svc.setCharSpacing(floatOr(ui.charSpacingInput?.value ?? '0', 0)),
@@ -94,7 +90,6 @@ export class TextOptionsPopover {
       }
       // Slice 2
       if (ui.textStrokeWidth) ui.textStrokeWidth.value = String(te.strokeWidth ?? 0);
-      if (ui.textStrokeColor && te.strokeColor) ui.textStrokeColor.value = te.strokeColor;
       if (ui.charSpacingInput) ui.charSpacingInput.value = String(te.charSpacing ?? 0);
       if (ui.horizontalScaleInput) ui.horizontalScaleInput.value = String(te.horizontalScale ?? 100);
     }

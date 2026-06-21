@@ -742,10 +742,9 @@ describe('FormattingService.copyTextStyle / pasteTextStyle', () => {
 // ── Slice-2 setters ────────────────────────────────────────────────────────
 
 describe('FormattingService Slice-2 setters', () => {
-  it('setTextStroke records color+width and setCharSpacing clamps', () => {
+  it('setTextStroke records width (outline uses fill color) and setCharSpacing clamps', () => {
     const { svc, te, history } = makeTextCtx();
-    svc.setTextStroke('#ff0000', 2);
-    expect(te.strokeColor).toBe('#ff0000');
+    svc.setTextStroke(2);
     expect(te.strokeWidth).toBe(2);
     svc.setCharSpacing(999);          // clamp upper
     expect(te.charSpacing).toBe(20);
@@ -764,10 +763,9 @@ describe('FormattingService Slice-2 setters', () => {
 
   it('clearTextStroke and clearFormatting reset Slice-2 fields', () => {
     const { svc, te } = makeTextCtx();
-    svc.setTextStroke('#000000', 1); svc.setCharSpacing(3); svc.setHorizontalScale(80); svc.setBaselineShift('sub');
+    svc.setTextStroke(1); svc.setCharSpacing(3); svc.setHorizontalScale(80); svc.setBaselineShift('sub');
     svc.clearTextStroke();
     expect(te.strokeWidth).toBeUndefined();
-    expect(te.strokeColor).toBeUndefined();
     svc.clearFormatting();
     expect(te.charSpacing).toBeUndefined();
     expect(te.horizontalScale).toBeUndefined();

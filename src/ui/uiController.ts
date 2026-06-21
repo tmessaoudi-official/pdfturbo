@@ -240,7 +240,6 @@ export interface AppDOMRefs {
   alignRightBtn:       HTMLButtonElement;
   alignJustifyBtn:     HTMLButtonElement;
   // Slice 2 — stroke / spacing / scale / super-sub
-  textStrokeColor:       HTMLInputElement;
   textStrokeWidth:       HTMLInputElement;
   charSpacingInput:      HTMLInputElement;
   horizontalScaleInput:  HTMLInputElement;
@@ -486,7 +485,6 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       alignRightBtn:       document.getElementById('alignRightBtn')       as HTMLButtonElement,
       alignJustifyBtn:     document.getElementById('alignJustifyBtn')     as HTMLButtonElement,
       // Slice 2 — stroke / spacing / scale / super-sub
-      textStrokeColor:       document.getElementById('textStrokeColor')       as HTMLInputElement,
       textStrokeWidth:       document.getElementById('textStrokeWidth')       as HTMLInputElement,
       charSpacingInput:      document.getElementById('charSpacingInput')      as HTMLInputElement,
       horizontalScaleInput:  document.getElementById('horizontalScaleInput')  as HTMLInputElement,
@@ -663,7 +661,6 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.superscriptBtn.classList.toggle('btn-active-fmt',  te.baselineShift === 'super');
       r.subscriptBtn.classList.toggle('btn-active-fmt',    te.baselineShift === 'sub');
       if (r.textStrokeWidth) r.textStrokeWidth.value = String(te.strokeWidth ?? 0);
-      if (r.textStrokeColor && te.strokeColor) r.textStrokeColor.value = te.strokeColor;
       if (r.charSpacingInput) r.charSpacingInput.value = String(te.charSpacing ?? 0);
       if (r.horizontalScaleInput) r.horizontalScaleInput.value = String(te.horizontalScale ?? 100);
       r.fontSizeInput.value = String(te.fontSize);
