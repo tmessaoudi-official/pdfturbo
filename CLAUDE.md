@@ -439,6 +439,31 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   (real pdf.js pixels: underline below baseline, strike through glyph body, none cross-contaminates). Verified
   live (synthetic PDF, screenshots in `qa-shots/b2-session/`): bold + underline + bold-underline all apply
   in-place, same font, no overlay.
+  **Rich text toolbar Slice 1 (2026-06-21)** — 8 Tier-1 controls on overlay `TextElement`s via inline buttons + a
+  new "Text ⋮" popover (`src/ui/textOptionsPopover.ts`, **app-owned**, mirrors `batesPanel`; Esc branch added to
+  `keyboardBinder.ts`). New OPTIONAL `TextElement` fields `backgroundColor`/`lineHeight`/`opacity` (**no
+  SCHEMA_VERSION bump**; `toJSON` omits when unset, `elementFactory.fromJSON` reads with `?? default` so legacy
+  blobs restore). All mutations route through `FormattingService`: `setAlign`, `setLineHeight` (clamp 1–3),
+  `setTextOpacity` (clamp 0–1), `setTextBackground`/`clearTextBackground`, `transformCase` (pure
+  `src/utils/textCase.ts`, title-case preserves whitespace via capture-group split), `clearFormatting` (resets 10
+  fmt fields in ONE `MoveResizeCmd`, NOT `text`), and the **format painter** (`copyTextStyle`→`pasteTextStyle`,
+  `painterArmed`/`cancelPainter`; paste-on-select hook in `pdfTurboApp.selectElement`, armed-state cleared on
+  document load via `resetDocumentModel` so it can't leak across PDFs). Color presets/recent = pure
+  `src/utils/recentColors.ts` (localStorage try/catch, cap 8) rendered as a swatch row in `main.ts` (swatch click
+  sets `colorInput.value` + applies). Bake (`pdfElementRenderer.renderText`): bg rect (gated `!elemRot`, anchored
+  via the shared highlight/redaction `anchorForCenter`) + `fontSize * (lineHeight ?? 1.2)` + `opacity ?? 1` threaded
+  to text/decoration/rect. Discrete **L/C/R align buttons** (the old cycle stays for back-compat); the active one
+  gets `btn-active-fmt`, synced in `uiController.updateFormattingToolbar`. **Non-obvious:** (1) the **raster export
+  path** (`exportPipeline.ts`, used for redaction-bearing pages + thumbnails) ALSO honors lineHeight/opacity/
+  backgroundColor now (`globalAlpha` scoped inside the existing `ctx.save()/restore()`), but is **code-reviewed,
+  NOT pixel-test-guarded** — the primary vector bake IS; (2) the editor `<textarea>` preview now sets
+  `style.lineHeight` (`_applyInputFormatting`) for parity with the bake. No feature flag (additive core-toolbar
+  improvement). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-21-rich-pdf-text-toolbar-slice1*`. Guards:
+  `tests/core/formattingService.test.ts`, `tests/utils/{textCase,recentColors}.test.ts`,
+  `tests/ui/{textOptionsPopover,uiController}.test.ts`, `tests/browser/{text-toolbar,text-toolbar-bake}.browser.test.ts`.
+  **Backlog/ceiling (Slice 2+):** Tier-2 (stroke/outline, char-spacing `Tc`, horizontal-scale `Tz`, justify,
+  whole-box sub/superscript), find&replace on overlay text, links, bullet/numbered lists, multi-run rich text
+  (ceiling); RTL direction-aware controls are gated behind the open Arabic-RTL P1 overflow defect.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order
