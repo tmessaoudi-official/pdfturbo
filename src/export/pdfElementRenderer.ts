@@ -10,7 +10,7 @@ import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { transformPoint, hexToRgbValues } from '../utils/geometry';
 import { isArabicText } from '../utils/flowDoc';
 import { drawArabicLine } from './arabicOverlay';
-import { drawStyledTextLine, hasAdvancedText, effectiveLineWidth } from './styledText';
+import { drawStyledTextLine, hasAdvancedText, effectiveLineWidth, justifyWordSpacing } from './styledText';
 
 export interface PdfRenderCtx {
   // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFDocument internals are untyped here
@@ -180,7 +180,9 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
       let off = 0;
       if (advanced && te.align === 'justify' && !isLast) {
         const spaces = (line.match(/ /g) ?? []).length;
-        if (spaces > 0 && boxW > lineW) wordSpacing = (boxW - lineW) / spaces;
+        // PDF spec §9.4.4: the Tw word-spacing displacement is scaled by Tz/100 at render
+        // time, so to fill the on-page gap we must divide by the horizontal-scale factor.
+        wordSpacing = justifyWordSpacing(boxW, lineW, spaces, te.horizontalScale ?? 100);
       } else {
         off = te.align === 'center' ? Math.max(0, (boxW - lineW) / 2)
           : te.align === 'right' ? Math.max(0, boxW - lineW) : 0;

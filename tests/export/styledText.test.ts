@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { effectiveLineWidth, hasAdvancedText } from '../../src/export/styledText';
+import { effectiveLineWidth, hasAdvancedText, justifyWordSpacing } from '../../src/export/styledText';
 
 const fakeFont = { widthOfTextAtSize: (t: string, s: number) => t.length * s * 0.5 } as never;
 
@@ -21,5 +21,31 @@ describe('styledText pure helpers', () => {
     expect(hasAdvancedText({ horizontalScale: 80 } as never)).toBe(true);
     expect(hasAdvancedText({ baselineShift: 'sub' } as never)).toBe(true);
     expect(hasAdvancedText({ align: 'justify' } as never)).toBe(true);
+  });
+
+  describe('justifyWordSpacing', () => {
+    it('returns (boxW-lineW)/spaces/scale at Tz=100', () => {
+      // gap=100, spaces=2, scale=1 → 50
+      expect(justifyWordSpacing(200, 100, 2, 100)).toBeCloseTo(50, 10);
+    });
+
+    it('doubles Tw when Tz=50 (half scale → double Tw to fill the same on-page gap)', () => {
+      // gap=100, spaces=2, scale=0.5 → 100
+      expect(justifyWordSpacing(200, 100, 2, 50)).toBeCloseTo(100, 10);
+    });
+
+    it('returns 0 when there is no gap (lineW >= boxW)', () => {
+      expect(justifyWordSpacing(100, 100, 2, 100)).toBe(0);
+      expect(justifyWordSpacing(80, 100, 2, 100)).toBe(0);
+    });
+
+    it('returns 0 when spaces <= 0', () => {
+      expect(justifyWordSpacing(200, 100, 0, 100)).toBe(0);
+      expect(justifyWordSpacing(200, 100, -1, 100)).toBe(0);
+    });
+
+    it('defaults to Tz=100 when horizontalScale is omitted', () => {
+      expect(justifyWordSpacing(200, 100, 2)).toBeCloseTo(50, 10);
+    });
   });
 });

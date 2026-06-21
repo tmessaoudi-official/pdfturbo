@@ -55,6 +55,21 @@ export function effectiveLineWidth(font: PDFFont, line: string, size: number, ch
   return base * (horizontalScale / 100);
 }
 
+/**
+ * Per-gap Tw word-spacing to justify a line to boxW, accounting for Tz scaling.
+ *
+ * PDF spec §9.4.4: the Tw operator displacement is scaled by Th = Tz/100 at render time,
+ * so to fill an on-page gap G = (boxW − lineW) across `spaces` gaps the required Tw is
+ * G / spaces / (Tz/100), NOT G / spaces.
+ *
+ * Returns 0 when there is no gap (lineW ≥ boxW) or no word gaps (spaces ≤ 0).
+ */
+export function justifyWordSpacing(boxW: number, lineW: number, spaces: number, horizontalScale = 100): number {
+  if (spaces <= 0 || boxW <= lineW) return 0;
+  const scale = (horizontalScale || 100) / 100;
+  return (boxW - lineW) / spaces / scale;
+}
+
 /** Emit one styled text line via raw operators. WinAnsi only (caller guards Arabic). */
 export function drawStyledTextLine(page: PDFPage, o: StyledTextOpts): void {
   const ops: PDFOperator[] = [pushGraphicsState()];
