@@ -21,11 +21,16 @@ export interface IFormattingContext {
 
 export class FormattingService {
   private _noFill = true;
+  private _copiedTextStyle: Record<string, unknown> | null = null;
 
   constructor(private readonly _ctx: IFormattingContext) {}
 
   get effectiveFillColor(): string | undefined {
     return this._noFill ? undefined : this._ctx.ui.fillColorInput.value;
+  }
+
+  get painterArmed(): boolean {
+    return this._copiedTextStyle !== null;
   }
 
   _syncFillToggleUI(): void {
@@ -305,6 +310,47 @@ export class FormattingService {
     };
     Object.assign(te, after);
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  copyTextStyle(): boolean {
+    if (this._ctx.selectedElement?.type !== 'text') return false;
+    const te = this._ctx.selectedElement as TextElement;
+    this._copiedTextStyle = {
+      bold: te.bold,
+      italic: te.italic,
+      underline: te.underline,
+      strikethrough: te.strikethrough,
+      align: te.align,
+      fontFamily: te.fontFamily,
+      fontSize: te.fontSize,
+      color: te.color,
+      lineHeight: te.lineHeight,
+      opacity: te.opacity,
+      backgroundColor: te.backgroundColor,
+    };
+    return true;
+  }
+
+  cancelPainter(): void {
+    this._copiedTextStyle = null;
+  }
+
+  pasteTextStyle(): void {
+    if (!this._copiedTextStyle || this._ctx.selectedElement?.type !== 'text') {
+      this._copiedTextStyle = null;
+      return;
+    }
+    const te = this._ctx.selectedElement as TextElement;
+    const keys = Object.keys(this._copiedTextStyle);
+    const before: Record<string, unknown> = {};
+    for (const k of keys) {
+      before[k] = (te as unknown as Record<string, unknown>)[k];
+    }
+    Object.assign(te, this._copiedTextStyle);
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, this._copiedTextStyle));
+    this._copiedTextStyle = null;
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
   }

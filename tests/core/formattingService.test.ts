@@ -61,6 +61,37 @@ function makeTextCtx(opts?: Record<string, unknown>): {
   return { svc: new FormattingService(ctx), te, history: ctx.historyManager };
 }
 
+function makeSelectableCtx(elements: PDFElement[]): {
+  svc: FormattingService;
+  setSelected: (el: PDFElement | null) => void;
+  record: ReturnType<typeof vi.fn>;
+} {
+  let selected: PDFElement | null = elements[0] ?? null;
+  const recordMock = vi.fn();
+  const historyManager = new HistoryManager(50, vi.fn());
+  historyManager.record = recordMock;
+  const ui = makeUI();
+  const ctx = {
+    elements,
+    historyManager,
+    ui: ui as unknown as AppDOMRefs,
+    mode: 'select' as const,
+    get selectedElement() { return selected; },
+    rebuildElementLayer: vi.fn(),
+    autosave: vi.fn(),
+    syncFormattingUIDisplay: vi.fn(),
+  } satisfies IFormattingContext;
+  return { svc: new FormattingService(ctx), setSelected: (el) => { selected = el; }, record: recordMock };
+}
+
+function makeShapeCtx(): {
+  svc: FormattingService;
+} {
+  const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+  const ctx = makeCtx(shape);
+  return { svc: new FormattingService(ctx) };
+}
+
 // ── toggleBold ─────────────────────────────────────────────────────────────
 
 describe('FormattingService.toggleBold', () => {
@@ -614,5 +645,95 @@ describe('FormattingService.transformCase', () => {
     expect(te.text).toBe('hello');
     ctx.historyManager.redo();
     expect(te.text).toBe('HELLO');
+  });
+});
+
+// ── copyTextStyle / pasteTextStyle ─────────────────────────────────────────
+
+describe('FormattingService.copyTextStyle / pasteTextStyle', () => {
+  it('copyTextStyle then pasteTextStyle transfers formatting to another element', () => {
+    const src = new TextElement(0, 0, 'p', { bold: true, fontSize: 22, color: '#ff0000', align: 'center' });
+    const dst = new TextElement(0, 0, 'p');
+    const { svc, setSelected, record } = makeSelectableCtx([src, dst]);
+    setSelected(src);
+    expect(svc.copyTextStyle()).toBe(true);
+    expect(svc.painterArmed).toBe(true);
+    setSelected(dst);
+    svc.pasteTextStyle();
+    expect(dst.bold).toBe(true);
+    expect(dst.fontSize).toBe(22);
+    expect(dst.color).toBe('#ff0000');
+    expect(dst.align).toBe('center');
+    expect(svc.painterArmed).toBe(false); // disarmed after paste
+    expect(record).toHaveBeenCalledTimes(1); // copy is not a command, paste is
+  });
+
+  it('copyTextStyle returns false when selection is not text', () => {
+    const { svc } = makeShapeCtx();
+    expect(svc.copyTextStyle()).toBe(false);
+    expect(svc.painterArmed).toBe(false);
+  });
+
+  it('cancelPainter disarms the painter', () => {
+    const te = new TextElement(0, 0, 'p', { bold: true });
+    const { svc, setSelected } = makeSelectableCtx([te]);
+    setSelected(te);
+    expect(svc.copyTextStyle()).toBe(true);
+    expect(svc.painterArmed).toBe(true);
+    svc.cancelPainter();
+    expect(svc.painterArmed).toBe(false);
+  });
+
+  it('pasteTextStyle is a no-op when painter not armed', () => {
+    const te = new TextElement(0, 0, 'p');
+    const { svc, setSelected, record } = makeSelectableCtx([te]);
+    setSelected(te);
+    svc.pasteTextStyle();
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('pasteTextStyle is a no-op when target is not text', () => {
+    const src = new TextElement(0, 0, 'p', { bold: true });
+    const shape = new ShapeElement('rect', 0, 0, 100, 50, 'p1');
+    const { svc, setSelected, record } = makeSelectableCtx([src, shape]);
+    setSelected(src);
+    svc.copyTextStyle();
+    setSelected(shape);
+    svc.pasteTextStyle();
+    expect(record).toHaveBeenCalledTimes(0); // only copy is no-op here, paste is also no-op
+    expect(svc.painterArmed).toBe(false); // disarmed even on no-op
+  });
+
+  it('pasteTextStyle copies all formatting attributes', () => {
+    const src = new TextElement(0, 0, 'p', {
+      bold: true,
+      italic: true,
+      underline: true,
+      strikethrough: true,
+      align: 'right',
+      fontFamily: 'Courier New',
+      fontSize: 18,
+      color: '#00ff00',
+      lineHeight: 1.5,
+      opacity: 0.7,
+      backgroundColor: '#ffff00',
+    });
+    const dst = new TextElement(0, 0, 'p');
+    const { svc, setSelected } = makeSelectableCtx([src, dst]);
+    setSelected(src);
+    svc.copyTextStyle();
+    setSelected(dst);
+    svc.pasteTextStyle();
+    expect(dst.bold).toBe(true);
+    expect(dst.italic).toBe(true);
+    expect(dst.underline).toBe(true);
+    expect(dst.strikethrough).toBe(true);
+    expect(dst.align).toBe('right');
+    expect(dst.fontFamily).toBe('Courier New');
+    expect(dst.fontSize).toBe(18);
+    expect(dst.color).toBe('#00ff00');
+    expect(dst.lineHeight).toBe(1.5);
+    expect(dst.opacity).toBe(0.7);
+    expect(dst.backgroundColor).toBe('#ffff00');
   });
 });
