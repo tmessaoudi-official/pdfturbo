@@ -4,7 +4,7 @@ import './utils/polyfills';
 import { PDFTurboApp } from './core/pdfTurboApp';
 import { LogBuffer } from './core/logBuffer';
 import { installGlobalErrorBoundary } from './core/globalErrorBoundary';
-import { initI18n, changeLanguage, onLanguageChanged } from './utils/i18n';
+import { initI18n, changeLanguage, onLanguageChanged, t } from './utils/i18n';
 import { registerSW } from 'virtual:pwa-register';
 import { wireSwUpdate } from './pwaUpdate';
 import { isEnabled } from './config/features';
@@ -46,6 +46,14 @@ function _renderColorSwatches(app: PDFTurboApp): void {
       });
       row.appendChild(btn);
     }
+    // "Custom color…" — opens the native full-spectrum picker so any colour is
+    // reachable directly from the palette (the presets are a shortcut, not a cap).
+    const custom = document.createElement('button');
+    custom.className = 'color-swatch color-swatch-custom';
+    custom.title = t('toolbar.customColorTitle');
+    custom.setAttribute('aria-label', t('toolbar.customColorTitle'));
+    custom.addEventListener('click', () => app.ui.colorInput.click());
+    row.appendChild(custom);
   };
   // Re-render when the color input changes so recent colors stay fresh.
   app.ui.colorInput.addEventListener('change', () => {

@@ -94,6 +94,7 @@
     "shapeWidthTitle": "Line width (px)",
     "redactColorTitle": "Redact color",
     "eyedropperTitle": "Pick color from screen (eyedropper)",
+    "customColorTitle": "Custom color… (pick any color)",
     "exportChevronTitle": "Export options",
     "fillColorTitle": "Shape fill color",
     "fillNoneTitle": "No fill / transparent"
