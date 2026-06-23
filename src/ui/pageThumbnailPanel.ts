@@ -29,6 +29,10 @@ export class PageThumbnailPanel {
   private onDownload: (index: number) => void;
   private onDownloadImage: (index: number, opts?: ImageExportOptions) => void;
   private _dragSrcIndex: number | null = null;
+  // #QA-2026-06-23 P3 #1 — after a delete-triggered re-render (which wipes the strip via
+  // innerHTML=''), restore keyboard focus to the thumbnail now occupying the deleted slot
+  // instead of dropping it to <body>. Set by the × button, consumed at the end of render().
+  private _focusSlotAfterRender: number | null = null;
   // G20 — the open image-export preset menu (one at a time), so a second open or
   // an outside click can dismiss it.
   private _imgMenu: HTMLElement | null = null;
@@ -226,6 +230,7 @@ export class PageThumbnailPanel {
       del.title = t('thumbnail.deletePage');
       del.addEventListener('click', (e) => {
         e.stopPropagation();
+        this._focusSlotAfterRender = i; // restore focus to this slot after the re-render (#QA P3 #1)
         this.onDelete(page.id);
       });
 
@@ -328,6 +333,17 @@ export class PageThumbnailPanel {
     addBtn.append(plusSpan, labelSpan);
     addBtn.addEventListener('click', this.onAddPdf);
     this.strip.appendChild(addBtn);
+
+    // #QA-2026-06-23 P3 #1 — restore focus after a delete re-render. The deleted slot index
+    // is clamped to the last surviving thumbnail (deleting the end page focuses the new last).
+    if (this._focusSlotAfterRender !== null) {
+      const items = this.strip.querySelectorAll<HTMLElement>('.thumb-item');
+      if (items.length > 0) {
+        const slot = Math.min(this._focusSlotAfterRender, items.length - 1);
+        items[slot]?.focus();
+      }
+      this._focusSlotAfterRender = null;
+    }
   }
 
   /** Invalidate thumbnail cache for a page (call after page content changes) */

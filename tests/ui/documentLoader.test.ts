@@ -215,6 +215,29 @@ describe('DocumentLoader.restoreSession', () => {
     await loader.restoreSession();
     expect(ctx.progress.begin).not.toHaveBeenCalled();
   });
+
+  // #QA-2026-06-23 P3 (#2): the restore dialog declares aria-modal but had no Esc handler /
+  // focus management. Esc must dismiss it (treated as "don't restore") and focus the Yes button.
+  it('Esc dismisses the restore dialog (declines restore) and focuses the Yes button', async () => {
+    const { loadState, clearState } = await import('../../src/infra/storage');
+    vi.mocked(loadState).mockResolvedValueOnce(
+      { pages: [{}], sourcePdfs: [] } as unknown as Awaited<ReturnType<typeof loadState>>,
+    );
+    const ctx = makeCtx();
+    // Nest the Yes/No buttons inside the dialog so the focus trap can find them.
+    ctx.ui.restoreDialog.append(ctx.ui.restoreYesBtn, ctx.ui.restoreNoBtn);
+    document.body.appendChild(ctx.ui.restoreDialog);
+    const loader = new DocumentLoader(ctx);
+    const done = loader.restoreSession();
+    await Promise.resolve(); // let _askRestoreSession show the dialog
+    expect(ctx.ui.restoreDialog.style.display).toBe('');
+    expect(document.activeElement).toBe(ctx.ui.restoreYesBtn);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await done;
+    expect(ctx.ui.restoreDialog.style.display).toBe('none');
+    expect(vi.mocked(clearState)).toHaveBeenCalled();
+    expect(ctx.setIsLoading).not.toHaveBeenCalled(); // declined → never started loading
+  });
 });
 
 describe('DocumentLoader.imagesToPdf', () => {

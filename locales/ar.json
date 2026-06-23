@@ -592,6 +592,7 @@
   "element": {
     "deleteTitle": "حذف",
     "rotateTitle": "تدوير",
+    "resizeTitle": "تغيير الحجم",
     "burnLabel": "⚠ يُطبَّق عند التصدير",
     "aria": {
       "label": "تعليق {{type}}",

@@ -592,6 +592,7 @@
   "element": {
     "deleteTitle": "Delete",
     "rotateTitle": "Rotate",
+    "resizeTitle": "Resize",
     "burnLabel": "⚠ Burn on export",
     "aria": {
       "label": "{{type}} annotation",

@@ -42,6 +42,7 @@ export abstract class PDFElement {
     deleteBtn.className = 'control-btn delete-btn';
     deleteBtn.textContent = '×';
     deleteBtn.title = t('element.deleteTitle');
+    deleteBtn.setAttribute('aria-label', t('element.deleteTitle')); // #QA P3 #3 — explicit a11y name
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       deleteBtn.dispatchEvent(
@@ -60,6 +61,7 @@ export abstract class PDFElement {
     const handle = document.createElement('div');
     handle.className = 'rotation-handle';
     handle.title = t('element.rotateTitle');
+    handle.setAttribute('aria-label', t('element.rotateTitle')); // #QA P3 #3
     handle.textContent = '↻';
     return handle;
   }
@@ -67,6 +69,8 @@ export abstract class PDFElement {
   createResizeHandle(): HTMLDivElement {
     const handle = document.createElement('div');
     handle.className = 'resize-handle';
+    handle.title = t('element.resizeTitle');
+    handle.setAttribute('aria-label', t('element.resizeTitle')); // #QA P3 #3
     return handle;
   }
 

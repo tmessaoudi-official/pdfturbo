@@ -592,6 +592,7 @@
   "element": {
     "deleteTitle": "Supprimer",
     "rotateTitle": "Pivoter",
+    "resizeTitle": "Redimensionner",
     "burnLabel": "⚠ Appliqué à l'export",
     "aria": {
       "label": "Annotation {{type}}",

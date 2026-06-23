@@ -75,6 +75,37 @@ describe('PageThumbnailPanel', () => {
     expect(items[2].classList.contains('thumb-active')).toBe(false);
   });
 
+  // #QA-2026-06-23 P3 (#1): activating delete (e.g. via keyboard on the × button) re-renders
+  // the strip (innerHTML=''), which would drop focus to <body>. After the re-render, focus must
+  // land on the thumbnail now occupying the deleted slot (clamped to the last when deleting the end).
+  it('moves focus to the adjacent thumbnail after a delete-triggered re-render', async () => {
+    const model = makeModel(3, 1);
+    const { panel } = makePanel(container, model);
+    await panel.render();
+    // Simulate the real delete flow: the × button click records the slot + calls onDelete...
+    const del = container.querySelectorAll<HTMLElement>('.thumb-item')[1].querySelector('.thumb-delete') as HTMLElement;
+    del.click();
+    // ...the app removes the page and re-renders the (now 2-page) strip.
+    model.pages.splice(1, 1);
+    await panel.render();
+    const items = container.querySelectorAll<HTMLElement>('.thumb-item');
+    expect(items).toHaveLength(2);
+    expect(document.activeElement).toBe(items[1]); // slot 1 still exists → focus it
+  });
+
+  it('clamps post-delete focus to the last thumbnail when the end page was removed', async () => {
+    const model = makeModel(3);
+    const { panel } = makePanel(container, model);
+    await panel.render();
+    const del = container.querySelectorAll<HTMLElement>('.thumb-item')[2].querySelector('.thumb-delete') as HTMLElement;
+    del.click();
+    model.pages.splice(2, 1);
+    await panel.render();
+    const items = container.querySelectorAll<HTMLElement>('.thumb-item');
+    expect(items).toHaveLength(2);
+    expect(document.activeElement).toBe(items[1]); // clamped from 2 → 1
+  });
+
   it('click on thumbnail triggers onNavigate with correct index', async () => {
     const model = makeModel(3);
     const { panel, onNavigate } = makePanel(container, model);

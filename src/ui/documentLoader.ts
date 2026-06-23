@@ -12,6 +12,7 @@ import type { IErrorReporter } from '../core/errorReporter';
 import type { IProgressManager } from './progressManager';
 import { ElementFactory } from '../utils/elementFactory';
 import { loadState, clearState } from '../infra/storage';
+import { trapFocus } from '../utils/focusTrap';
 
 // Untrusted-PDF input caps — defence-in-depth against OOM/DoS from a malicious
 // or pathological file. Deliberately generous: a real document never approaches
@@ -78,15 +79,24 @@ export class DocumentLoader {
     return new Promise(resolve => {
       const dialog = this._ctx.ui.restoreDialog;
       dialog.style.display = '';
+      // #QA-2026-06-23 P3 #2 — a11y: trap Tab inside the dialog, restore focus on close, and
+      // let Esc dismiss it (treated as "don't restore", same as the No button). The dialog
+      // already declares role=dialog aria-modal in index.html; this adds the missing behavior.
+      const prevFocus = document.activeElement as HTMLElement | null;
+      const releaseTrap = trapFocus(dialog, prevFocus ?? undefined);
       const onYes = () => { cleanup(); resolve(true); };
       const onNo  = () => { cleanup(); resolve(false); };
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onNo(); } };
       const cleanup = () => {
         dialog.style.display = 'none';
         this._ctx.ui.restoreYesBtn.removeEventListener('click', onYes);
         this._ctx.ui.restoreNoBtn.removeEventListener('click', onNo);
+        document.removeEventListener('keydown', onKey);
+        releaseTrap();
       };
       this._ctx.ui.restoreYesBtn.addEventListener('click', onYes);
       this._ctx.ui.restoreNoBtn.addEventListener('click', onNo);
+      document.addEventListener('keydown', onKey);
       this._ctx.ui.restoreYesBtn.focus();
     });
   }
