@@ -595,6 +595,21 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     `tests/utils/bidi.test.ts` (13) + the per-surface guards (`rtlClipboard`/`flowDocArabic`/`textSearchHandler`) +
     the extended `tests/browser/arabic-overlay.browser.test.ts`. Spec/plan:
     `docs/superpowers/{specs,plans}/2026-06-23-arabic-rtl-bidi-engine*`.
+  - **RTL-aware text toolbar (Feature 3 Slice 2, `ebae519`)**: `TextElement.direction?: 'auto'|'rtl'|'ltr'`
+    (default `'auto'`, OPTIONAL, **no `SCHEMA_VERSION` bump** — `toJSON` omits when auto, `elementFactory`
+    reads `?? 'auto'`). `resolveDirection(direction, text)` (in `textElement.ts`) = `'auto'` → `baseDirection(text)`
+    (first-strong UAX#9, exported from `utils/bidi`). The editor `<input>.dir` is set from the resolved
+    direction in `_applyInputFormatting` (fixes Arabic typing/caret). Toolbar `⇋ rtlBtn` (in the align group) →
+    `app.toggleDirection` → `FormattingService.toggleDirection` (overrides the resolved direction to the
+    opposite explicit value) / `setDirection` — each a `MoveResizeCmd` whose `before` carries BOTH
+    `{direction, align}`, and which defaults a still-`'left'` align to `'right'` when the result resolves RTL
+    (so undo restores both). `uiController.updateFormattingToolbar` reflects `rtlBtn` active via
+    `resolveDirection(te.direction, te.text) === 'rtl'`. **Export is UNCHANGED** — `pdfElementRenderer.renderText`
+    already auto-RTLs `isArabicText` lines via `drawArabicLine`; `direction` is editor + alignment only in v1
+    (forcing the Arabic font path on non-Arabic text mis-renders — declined). **Gotcha:** any test that builds
+    the uiController refs from a partial DOM must seed `'rtlBtn'` (else `getElementById` → null →
+    `r.rtlBtn.disabled` throws). i18n `formatting.rtlTitle` (ar [Unverified]). Spec/plan:
+    `docs/superpowers/{specs,plans}/2026-06-23-arabic-rtl-toolbar*`.
   - **Multi-language DOCX (#2 `9cfc38a`)**: Cyrillic + CJK source text is preserved verbatim through
     PDF→DOCX/MD/TXT — they're LTR like Latin, so they take the same reconstructPage + writer path and the only
     script branch (`isArabicText` RTL reorder) must not fire. CONTENT is intact (verified, no prod change).

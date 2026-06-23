@@ -106,7 +106,18 @@ is the separate true-edit tool; Replace skips them with a hint).
   `arabicOverlay.ts`); one shared utility retires all four. `bidi-js@1.0.3` (MIT, full UAX#9) is already
   vendored (transitive via jsdom) → adopt, don't hand-roll; promote to a direct prod dependency.
 - Spec (slice 1): `docs/superpowers/specs/2026-06-23-arabic-rtl-bidi-engine-design.md` (brainstorming WIP).
-## Feature 3 Slice 2 — RTL-aware toolbar controls — IN PROGRESS (brainstorming)
+## Feature 3 Slice 2 — RTL-aware toolbar controls — DONE
+- [2026-06-23] **Slice 2 SHIPPED `ebae519`** (+ spec `a953eb9`, plan `fa82aeb`). `TextElement.direction`
+  ('auto'|'rtl'|'ltr', default auto, no schema bump) + toolbar `⇋ rtlBtn`. `baseDirection` exported from
+  `utils/bidi` (first-strong); `resolveDirection` in `textElement`. Editor `input.dir` = resolved direction
+  (fixes Arabic typing); `FormattingService.setDirection/toggleDirection` (MoveResizeCmd; RTL defaults a
+  still-`'left'` align to `'right'`); app delegators; uiController registry/disabled/active reflection;
+  formattingBinder wiring; i18n `formatting.rtlTitle` (ar [Unverified]). **Export UNCHANGED** (already
+  content-auto-RTL). Gate GREEN: tsc · oxlint · jsdom **2039+2/173** · audit 0. Eyes-on: live in-browser
+  `dir` resolution correct (`qa-shots/f3-rtl-toolbar/`). No new browser test (no export change; editor `dir`
+  is jsdom-covered + identical in Chrome). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-23-arabic-rtl-toolbar*`.
+- Next: **Slice 3 (ligature/tashkeel — evaluate-then-defer)**.
+### Slice 2 decision log (historical)
 - [2026-06-23] DECISION (user): after Slice 1 shipped, proceed to **Slice 2 (RTL-aware toolbar)** now.
   Own brainstorm→spec→plan→build cycle. Goal: right-align default + RTL direction toggle when editing
   Arabic overlay text. Builds on the Slice-1 bidi engine.
