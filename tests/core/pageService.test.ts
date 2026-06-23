@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PageService, type IPageContext } from '../../src/core/pageService';
+import { PageService, clampPageMm, type IPageContext } from '../../src/core/pageService';
 import { DocumentModel } from '../../src/core/documentModel';
 import { HistoryManager, DeletePageCmd, ReorderPagesCmd, InsertBlankPageCmd, SetPageCropCmd, MacroCmd } from '../../src/core/historyManager';
 
@@ -215,6 +215,24 @@ describe('PageService.applyZoom', () => {
   });
 });
 
+describe('clampPageMm (#QA-2026-06-23 P3 #4)', () => {
+  it('returns the parsed value for valid positive input', () => {
+    expect(clampPageMm('210', 210)).toBe(210);
+    expect(clampPageMm('150.5', 210)).toBe(150.5);
+  });
+  it('falls back for empty / non-numeric / non-positive input', () => {
+    expect(clampPageMm('', 297)).toBe(297);
+    expect(clampPageMm('abc', 297)).toBe(297);
+    expect(clampPageMm(undefined, 210)).toBe(210);
+    expect(clampPageMm('0', 210)).toBe(210);
+    expect(clampPageMm('-5', 210)).toBe(210);
+  });
+  it('clamps absurd values into the sane page range', () => {
+    expect(clampPageMm('999999', 210)).toBeLessThanOrEqual(5080);
+    expect(clampPageMm('1', 210)).toBeGreaterThanOrEqual(10);
+  });
+});
+
 describe('PageService.insertBlankPage', () => {
   beforeEach(() => {
     document.body.innerHTML = `
@@ -252,6 +270,24 @@ describe('PageService.insertBlankPage', () => {
     const svc = new PageService(ctx);
     svc.insertBlankPage();
     expect(ctx.documentModel.pages[1].id).toBe(originalId);
+  });
+
+  // #QA-2026-06-23 P3 (#4): custom blank-page dims must never insert a NaN-/zero-sized page.
+  it('falls back to A4 dims when custom width/height inputs are empty or non-numeric', () => {
+    document.body.innerHTML = `
+      <select id="blankPageSize"><option value="custom" selected>Custom</option></select>
+      <select id="blankPagePosition"><option value="end" selected>End</option></select>
+      <input id="blankPageW" value="">
+      <input id="blankPageH" value="abc">
+    `;
+    const ctx = makeCtx();
+    const svc = new PageService(ctx);
+    svc.insertBlankPage();
+    const page = ctx.documentModel.pages[ctx.documentModel.pageCount - 1];
+    expect(Number.isFinite(page.blankWidth)).toBe(true);
+    expect(page.blankWidth).toBeGreaterThan(0);
+    expect(Number.isFinite(page.blankHeight)).toBe(true);
+    expect(page.blankHeight).toBeGreaterThan(0);
   });
 
   // M0 #9 — a failed render must surface a toast, not an unhandled rejection.

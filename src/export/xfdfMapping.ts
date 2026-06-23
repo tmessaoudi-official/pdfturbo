@@ -75,7 +75,11 @@ export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeigh
  * display space; `pageId` is the target document page's id.
  */
 export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: number): PDFElement | null {
-  const [x1, y1, x2, y2] = a.rect;
+  // Normalize the rect (#QA-2026-06-23 P3 #7): a foreign/malformed XFDF may store it
+  // inverted (urx<llx or ury<lly), which would otherwise yield a negative-size element.
+  const [rx1, ry1, rx2, ry2] = a.rect;
+  const x1 = Math.min(rx1, rx2), x2 = Math.max(rx1, rx2);
+  const y1 = Math.min(ry1, ry2), y2 = Math.max(ry1, ry2);
   const x = x1, w = x2 - x1, h = y2 - y1, y = pageHeight - y2;
   if (a.type === 'highlight') {
     return new HighlightElement(x, y, w, h, pageId, a.color ?? '#FFFF00', a.opacity ?? 0.3);

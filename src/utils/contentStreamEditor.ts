@@ -1450,12 +1450,17 @@ export function replaceShowOpHex(op: CsOp, newHex: string): boolean {
     // The A2 guarantee still holds: every segment is rewritten, so no stale glyph
     // bytes survive (overflow segments become empty <>). newHex is a multiple of
     // bytesPerCode and so is each original segment, so the slices stay aligned.
+    // #QA-2026-06-23 P3 #6: a MALFORMED source segment with ODD hex length would hand
+    // a non-last segment an odd-length slice, splitting a 2-byte code across the
+    // boundary — round each non-last `take` DOWN to an even count so emitted codes
+    // stay whole bytes; the (even) remainder is absorbed by the last segment.
     const inner = newHex.replace(/^</, '').replace(/>$/, '');
     let cursor = 0;
     for (let hi = 0; hi < hexItems.length; hi++) {
       const isLast = hi === hexItems.length - 1;
       const origLen = hexItems[hi].raw.replace(/^</, '').replace(/>$/, '').length;
-      const take = isLast ? inner.length - cursor : Math.min(origLen, inner.length - cursor);
+      let take = isLast ? inner.length - cursor : Math.min(origLen, inner.length - cursor);
+      if (!isLast) take -= take % 2; // never split a byte (2 hex chars) across segments
       const slice = take > 0 ? inner.slice(cursor, cursor + take) : '';
       cursor += slice.length;
       hexItems[hi].raw = `<${slice}>`;

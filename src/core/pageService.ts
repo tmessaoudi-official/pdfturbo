@@ -14,6 +14,18 @@ import type { IProgressManager } from '../ui/progressManager';
 import { transformCanvasPoint, redactionRectToContent, clampContentRect } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
 
+/**
+ * NaN-safe parse for the custom blank-page mm inputs (#QA-2026-06-23 P3 #4). Empty / non-numeric
+ * / non-positive input falls back to the given default; the result is clamped to a sane positive
+ * page range (10mm–5080mm ≈ the PDF 14400pt ceiling) so a malformed value can never insert a
+ * NaN-, zero-, or absurdly-sized blank page.
+ */
+export function clampPageMm(raw: string | undefined, fallbackMm: number): number {
+  const n = parseFloat(raw ?? '');
+  const mm = Number.isFinite(n) && n > 0 ? n : fallbackMm;
+  return Math.min(5080, Math.max(10, mm));
+}
+
 export interface IPageContext {
   readonly documentModel: DocumentModel;
   readonly elements: PDFElement[];
@@ -278,8 +290,8 @@ export class PageService {
 
     let w = 595, h = 842;
     if (sizeKey === 'custom') {
-      const mmW = parseFloat((document.getElementById('blankPageW') as HTMLInputElement)?.value ?? '210');
-      const mmH = parseFloat((document.getElementById('blankPageH') as HTMLInputElement)?.value ?? '297');
+      const mmW = clampPageMm((document.getElementById('blankPageW') as HTMLInputElement)?.value, 210);
+      const mmH = clampPageMm((document.getElementById('blankPageH') as HTMLInputElement)?.value, 297);
       w = Math.round(mmW * 2.8346);
       h = Math.round(mmH * 2.8346);
     } else if (sizeKey === 'match') {

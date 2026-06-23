@@ -1123,6 +1123,23 @@ describe('replaceShowOpHex', () => {
     expect(serialized).toContain('-30');
   });
 
+  // #QA-2026-06-23 P3 (#6): a malformed source TJ segment with ODD hex length must not
+  // cause a 2-byte code to be split across the segment boundary — distribution rounds each
+  // non-last take down to an even number of hex chars, so every emitted segment stays whole.
+  it('keeps every TJ segment even-length when a source segment had odd hex length', () => {
+    const src = 'BT [<486> -50 <6C6C6F>] TJ ET'; // seg0 odd (3 chars), seg1 odd (5 chars)
+    const innerOps = groupOps(tokenizeContentStream(src));
+    const textOps = locateTextOps(innerOps);
+    const ok = replaceShowOpHex(innerOps[textOps[0].opIndex], '<00480069>'); // 8 hex chars
+    expect(ok).toBe(true);
+    const serialized = serializeOps(innerOps);
+    const segs = [...serialized.matchAll(/<([0-9A-Fa-f]*)>/g)].map(m => m[1]);
+    expect(segs.length).toBeGreaterThan(0);
+    for (const s of segs) expect(s.length % 2).toBe(0); // no half-byte split
+    // no stale source glyphs survive
+    expect(serialized).not.toContain('6C6C6F');
+  });
+
   it('leaves a single-hexstring TJ array unchanged apart from the swap (A2 regression)', () => {
     const src = 'BT [<4865>] TJ ET';
     const innerOps = groupOps(tokenizeContentStream(src));

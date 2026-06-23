@@ -36,6 +36,14 @@ describe('XFDF element mapping (#57)', () => {
     expect(xfdfAnnotToElement(a, 'p1', H)).toMatchObject({ type: 'text', x: 10, y: 20, width: 150, height: 30, pageId: 'p1', text: 'hi there', fontSize: 14 });
   });
 
+  // #QA-2026-06-23 P3 (#7): a foreign/malformed XFDF may carry an inverted rect
+  // (urx<llx or ury<lly). xfdfAnnotToElement must normalize it to a positive-size
+  // element at the correct top-left, not emit negative width/height.
+  it('normalizes an inverted/negative-size rect to positive geometry', () => {
+    const inverted = { type: 'highlight' as const, page: 0, rect: [250, 700, 50, 680] as [number, number, number, number], color: '#FFFF00', opacity: 0.4 };
+    expect(xfdfAnnotToElement(inverted, 'p1', H)).toMatchObject({ type: 'highlight', x: 50, y: 100, width: 200, height: 20 });
+  });
+
   it('returns null for unsupported element types (skipped, never mis-mapped)', () => {
     const sig: ElementJSON = { id: 9, type: 'signature', x: 0, y: 0, width: 10, height: 10, pageId: 'p1' };
     expect(elementToXfdfAnnot(sig, 0, H)).toBeNull();
