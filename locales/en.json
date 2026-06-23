@@ -236,7 +236,7 @@
       "modeLossless": "Quick optimize (keeps text — lossless)",
       "modeLossy": "Flatten to images (smaller — drops text)",
       "hintLossless": "Re-packs the file and removes metadata. Text, vectors and form fields stay selectable.",
-      "hintLossy": "Renders every page to an image at the chosen resolution. Much smaller for scans, but the text is no longer selectable or searchable.",
+      "hintLossy": "Renders every page to an image at the chosen resolution. Much smaller for scans, but text, hyperlinks and form fields are all flattened away — no longer selectable, searchable or fillable.",
       "dpiLabel": "Image resolution (DPI)",
       "qualityLabel": "JPEG quality",
       "cancel": "Cancel",

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, StandardFonts, decodePDFRawStream, degrees, rgb } from '@cantoo/pdf-lib';
 import {
   tokenizeContentStream,
@@ -37,6 +37,7 @@ import {
   embeddedTextWidth,
   buildStandaloneDecoration,
   addDecorationAt,
+  stringToContentBytes,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -2459,5 +2460,26 @@ describe('addDecorationAt', () => {
     expect(ok).toBe(false);
     const content = await pageContentText(await doc2.save());
     expect(groupOps(tokenizeContentStream(content)).some(o => o.operator === 'S')).toBe(false);
+  });
+});
+
+// ── #QA-2026-06-23 P3 #9 — stringToContentBytes guards against a >0xFF code point ──
+describe('stringToContentBytes (#9 latent-corruption guard)', () => {
+  it('round-trips byte values 0–255 losslessly without warning', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let s = ''; for (let i = 0; i < 256; i++) s += String.fromCharCode(i);
+    const bytes = stringToContentBytes(s);
+    expect(bytes.length).toBe(256);
+    for (let i = 0; i < 256; i++) expect(bytes[i]).toBe(i);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('warns (not silent) when a code point exceeds 0xFF, still masking to a byte', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bytes = stringToContentBytes('AĀB'); // U+0100 = 256
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('>0xFF'));
+    expect(bytes[1]).toBe(0x00); // 0x100 & 0xff
+    spy.mockRestore();
   });
 });

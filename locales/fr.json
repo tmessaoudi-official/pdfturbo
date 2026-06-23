@@ -236,7 +236,7 @@
       "modeLossless": "Optimisation rapide (conserve le texte — sans perte)",
       "modeLossy": "Aplatir en images (plus léger — supprime le texte)",
       "hintLossless": "Recompacte le fichier et supprime les métadonnées. Le texte, les vecteurs et les champs de formulaire restent sélectionnables.",
-      "hintLossy": "Convertit chaque page en image à la résolution choisie. Bien plus léger pour les numérisations, mais le texte n'est plus sélectionnable ni recherchable.",
+      "hintLossy": "Convertit chaque page en image à la résolution choisie. Bien plus léger pour les numérisations, mais le texte, les liens et les champs de formulaire sont aplatis — ni sélectionnables, ni recherchables, ni remplissables.",
       "dpiLabel": "Résolution des images (DPI)",
       "qualityLabel": "Qualité JPEG",
       "cancel": "Annuler",

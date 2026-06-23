@@ -911,11 +911,33 @@ function getPageContent(doc: PDFDocument, pageIndex: number): string {
   return out;
 }
 
+/**
+ * Pack a raw-byte content string into bytes. A PDF content stream is a BYTE string — every char
+ * here is built via `String.fromCharCode(byte)`, so each code point must be 0–255. A code point
+ * >0xFF means a Unicode char leaked into the stream (a builder that forgot to byte-encode); the
+ * `& 0xff` mask would then silently corrupt it. Lossless today, but the mask is a latent footgun
+ * (#QA-2026-06-23 P3 #9) — so we surface the first offending code point instead of truncating in
+ * silence. (One pass, no extra cost — the check rides the existing copy loop.)
+ */
+export function stringToContentBytes(content: string): Uint8Array {
+  const bytes = new Uint8Array(content.length);
+  let high = -1;
+  for (let i = 0; i < content.length; i++) {
+    const c = content.charCodeAt(i);
+    if (c > 0xff && high < 0) high = c;
+    bytes[i] = c & 0xff;
+  }
+  if (high >= 0) {
+    // eslint-disable-next-line no-console -- surface latent content-stream corruption (no reporter here)
+    console.warn(`[contentStreamEditor] content stream contained code point U+${high.toString(16).toUpperCase().padStart(4, '0')} (>0xFF) — truncated to a byte; the stream must be a raw byte string`);
+  }
+  return bytes;
+}
+
 /** Replace the page's Contents with a single new uncompressed stream. */
 function setPageContent(doc: PDFDocument, pageIndex: number, content: string): void {
   const page = doc.getPage(pageIndex);
-  const bytes = new Uint8Array(content.length);
-  for (let i = 0; i < content.length; i++) bytes[i] = content.charCodeAt(i) & 0xff;
+  const bytes = stringToContentBytes(content);
   const stream = doc.context.stream(bytes);
   const ref = doc.context.register(stream);
   page.node.set(PDFName.of('Contents'), ref);
@@ -946,8 +968,7 @@ function setFormXObjectContent(
     const oldStream = doc.context.lookup(streamRef);
     if (!(oldStream instanceof PDFRawStream)) return;
 
-    const bytes = new Uint8Array(content.length);
-    for (let i = 0; i < content.length; i++) bytes[i] = content.charCodeAt(i) & 0xff;
+    const bytes = stringToContentBytes(content);
 
     // Build new dict: copy all entries except /Filter, /DecodeParms (now uncompressed), update /Length
     const newDict = PDFDict.fromMapWithContext(new Map(), doc.context);

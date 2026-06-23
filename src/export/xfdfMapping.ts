@@ -124,6 +124,13 @@ export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: num
 /**
  * Page height in points for the display↔user-space flip: blank pages carry it
  * directly; source pages read it from the loaded pdf.js page viewport.
+ *
+ * Ceiling (#QA-2026-06-23 P3 #12): this returns the FULL unrotated source height and ignores a
+ * per-page crop (`docPage.crop`) and page rotation. XFDF coordinates are therefore expressed
+ * against the uncropped, unrotated page box — correct for an uncropped/unrotated page (the common
+ * case) and for a faithful internal export→import round-trip, but a cropped or rotated page will
+ * have its imported/exported annotations offset. Documented, same class as the rotated-page
+ * ceiling (#57b); a fix would need to thread the effective crop box + rotation transform here.
  */
 export async function pageHeightPt(
   docPage: DocumentPage,

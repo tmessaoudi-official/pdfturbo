@@ -15,6 +15,29 @@ test each one needs before it can be called "fixed with confidence."
 - **Confidence scale:** Verified (reproduced + measured) · Inferred (consistent with evidence) ·
   Needs-manual (automation couldn't drive it).
 
+## Privacy — data at rest (by design, #QA-2026-06-23 P3 #8/#13)
+
+PDFturbo is a **100% client-side, no-backend** tool: nothing is ever uploaded. The flip side of
+that design is that the session is autosaved to the browser's **IndexedDB in cleartext** so it can
+be restored after a reload. That store includes, **unencrypted on the local machine**:
+
+- the **original source PDF bytes** — note this is the *pre-redaction* original (redaction is an
+  overlay that is only burned in at export; the unredacted source persists in the session), and
+- typed **form-field values** (which may contain PII).
+
+**This is intentional, not a defect** — at-rest encryption with no backend has no safe key-storage
+story (a key kept beside the data in the same browser profile protects against nothing), so it would
+be security theater. The honest mitigations are operational, surfaced to the user:
+
+- The session lives only in **this browser profile on this device** — it never leaves the machine.
+- **"Start fresh"** on the restore prompt, or closing the document, clears the saved session
+  (`clearState`); use it on a shared/public machine.
+- For a redaction that must be unrecoverable, **export the redacted PDF and work from that copy** —
+  the export burns the redaction into the page content and drops the source bytes.
+
+A future opt-in passphrase-derived encryption of the IndexedDB store is a *feature* (own design +
+key-handling spike), not a P3 fix — deliberately **not** done as silent at-rest crypto.
+
 > ⚠️ **Why these shipped green:** the default Vitest suite runs in **jsdom**, which cannot exercise
 > pointer drag, canvas-coordinate text matching, or `ImageBitmap`/`VideoFrame` extraction. All issues
 > below live in that real-browser layer. A browser-level harness is now in place —
