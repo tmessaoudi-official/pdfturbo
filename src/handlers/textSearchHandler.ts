@@ -77,9 +77,11 @@ export function buildLogicalLines(
     const byX = [...row].sort((a, b) => a.it.transform[4] - b.it.transform[4]); // visual L→R
     const rtlVotes = byX.reduce((n, c) => n + (isArabicText(c.it.str) ? 1 : 0), 0);
     const rtl = rtlVotes * 2 > byX.length;
-    // Logical reading order at ITEM granularity (UAX#9 L2): RTL-item runs reversed,
-    // embedded LTR-item runs kept forward. Items stay atomic → the token→item map is valid.
-    const order = rtl ? logicalItemOrder(byX, (c) => isArabicText(c.it.str)) : byX;
+    // Logical reading order at ITEM granularity (UAX#9 L2). An item flows forward (LTR)
+    // ONLY if it carries a strong-LTR Latin LETTER; a pure number/neutral run (e.g. an
+    // embedded "100"/"%" laid in RTL visual order) flows WITH the RTL line and is reversed.
+    // Items stay atomic → the token→item map is valid.
+    const order = rtl ? logicalItemOrder(byX, (c) => !/[A-Za-z]/.test(c.it.str)) : byX;
     let text = '';
     const tokens: LogicalLineToken[] = [];
     for (let k = 0; k < order.length; k++) {

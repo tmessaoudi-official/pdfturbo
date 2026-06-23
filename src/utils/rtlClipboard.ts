@@ -69,9 +69,12 @@ export function reconstructLogicalText(spans: ReadonlyArray<SpanGeom>): string {
     // MULTI-char span keeps its native (logical) char order (the trailing "لام" of "السلام"
     // is one logical-order span). A blanket reverse scrambled those ("السلام"→"السمال"); we
     // order spans by reading position and fold each NFKC-only.
-    // Logical reading order at SPAN granularity (UAX#9 L2): RTL-span runs reversed,
-    // embedded LTR-span runs kept forward, multi-char tokens never internally reversed.
-    const order = rtl ? logicalItemOrder(byX, (s) => isArabicText(s.text)) : byX;
+    // Logical reading order at SPAN granularity (UAX#9 L2). A span flows forward (LTR)
+    // ONLY if it carries a strong-LTR Latin LETTER; a pure number/neutral run (e.g. an
+    // embedded "100" "%" laid in RTL visual order) flows WITH the RTL line and is reversed
+    // — matching the bidi behavior for European numbers inside an RTL paragraph. Multi-char
+    // tokens are never internally reversed.
+    const order = rtl ? logicalItemOrder(byX, (s) => !/[A-Za-z]/.test(s.text)) : byX;
     let out = '';
     for (let i = 0; i < order.length; i++) {
       if (i > 0) {

@@ -66,6 +66,16 @@ describe('reconstructLogicalText (#6 Arabic copy)', () => {
     expect(reconstructLogicalText(spans)).toBe('ا PDF ب');
   });
 
+  it('reverses an embedded NUMBER+percent run (no Latin letter) to logical order', () => {
+    // Real-PDF case (arabic-allcases.pdf): an embedded number run is laid in RTL visual
+    // order — "%" sits LEFT of "100". Logical reading is "100%". A run with NO strong-LTR
+    // letter must flow with the RTL line (reverse), unlike a Latin-letter run (kept forward).
+    const spans = [
+      g('ا', 0), g('ل', 10), g('%', 40, 8), g('100', 50, 18), g('بنسبة', 76, 30),
+    ];
+    expect(reconstructLogicalText(spans)).toContain('100%');
+  });
+
   it('keeps an embedded PER-GLYPH LTR run forward in an RTL line', () => {
     // pdf.js often emits Latin per-glyph too: visual L→R "M a i n" then Arabic "ا ب ح ر م".
     // Logical reading: "مرحبا Main" — "Main" forward, NOT "niaM" (the blanket span-reverse bug).
