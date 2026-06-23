@@ -8,6 +8,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
+import { drawTextElementToCanvas } from './rasterText';
 import { transformPoint, hexToRgbValues, contentCropToPdfCropBox } from '../utils/geometry';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import type { PDFElement } from '../elements/annotationElement';
@@ -154,6 +155,7 @@ export async function drawBatesOnPage(
   pageNumber: number,
   pageCount: number,
   libs: PdfLibDrawOps,
+  totalRot = 0,
 ): Promise<void> {
   const { rgb, pdfDoc, StandardFonts } = libs;
   const text = batesStampText(bates, pageNumber, pageCount);
@@ -161,11 +163,24 @@ export async function drawBatesOnPage(
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const textWidth = font.widthOfTextAtSize(text, bates.fontSize);
   const MARGIN = 24;
-  const { x, y } = batesPosition(bates.position, W_orig, H_orig, textWidth, bates.fontSize, MARGIN);
+  const rot = ((totalRot % 360) + 360) % 360;
+
+  // The user picks a corner of the VISUAL (rotated) page, so place the stamp in
+  // the rotated frame (dims swapped for 90/270), then map that anchor back to
+  // unrotated content space via transformPoint — the page's /Rotate re-rotates
+  // the drawn text so it appears upright at the chosen corner (same mechanism
+  // the element renderer uses). At rot=0 transformPoint is the identity y-flip,
+  // so this is byte-identical to the pre-fix path (with or without a crop).
+  const visW = (rot === 90 || rot === 270) ? H_orig : W_orig;
+  const visH = (rot === 90 || rot === 270) ? W_orig : H_orig;
+  const { x: vx, y: vyUp } = batesPosition(bates.position, visW, visH, textWidth, bates.fontSize, MARGIN);
+  // batesPosition returns a y-UP baseline anchor in the visual box; convert to
+  // display (y-down) for transformPoint, which maps display→content (y-up).
+  const content = transformPoint(vx, visH - vyUp, W_orig, H_orig, rot);
   const col = hexToRgbValues(bates.color);
   page.drawText(text, {
-    x: cropOriginX + x,
-    y: cropOriginY + y,
+    x: cropOriginX + content.x,
+    y: cropOriginY + content.y,
     size: bates.fontSize,
     font,
     color: rgb(col.r, col.g, col.b),
@@ -218,7 +233,7 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   // #61 Bates / page number — drawn last so it sits above content; uses the
   // page's full-document position so single-page / range exports stay correct.
   if (ctx.bates?.enabled && ctx.pageNumber !== undefined && ctx.pageCount !== undefined) {
-    await drawBatesOnPage(page, effBox.width, effBox.height, effBox.x, effBox.y, ctx.bates, ctx.pageNumber, ctx.pageCount, { rgb, degrees, pdfDoc, StandardFonts });
+    await drawBatesOnPage(page, effBox.width, effBox.height, effBox.x, effBox.y, ctx.bates, ctx.pageNumber, ctx.pageCount, { rgb, degrees, pdfDoc, StandardFonts }, totalRot);
   }
 
   // #G23 crop: clip the page to the user crop. Applied LAST — after overlays draw in
@@ -324,29 +339,10 @@ export async function rasterizePageWithRedactions(
   }
 
   // Draw overlay TextElements on top of redactions using canvas 2D API.
+  // Full attribute parity with the vector bake (alignment, opacity, background,
+  // bold/italic, color, stroke/Tc/Tz/sub-sup/justify, underline/strikethrough).
   for (const el of elements.filter(e => e.type === 'text')) {
-    const te = el as import('../elements/textElement').TextElement;
-    if (!te.text) continue;
-    ctx.save();
-    ctx.globalAlpha = te.opacity ?? 1;
-    if (te.backgroundColor) {
-      ctx.fillStyle = te.backgroundColor;
-      ctx.fillRect(
-        Math.round(te.x * SCALE),
-        Math.round(te.y * SCALE),
-        Math.round(te.width * SCALE),
-        Math.round(te.height * SCALE),
-      );
-    }
-    const fontPx = Math.round(te.fontSize * SCALE);
-    ctx.font = `${te.italic ? 'italic ' : ''}${te.bold ? 'bold ' : ''}${fontPx}px ${te.fontFamily || 'Arial'}, sans-serif`;
-    ctx.fillStyle = te.color || '#000000';
-    const lineHeight = te.fontSize * (te.lineHeight ?? 1.2) * SCALE;
-    te.text.split('\n').forEach((line, i) => {
-      if (!line) return;
-      ctx.fillText(line, Math.round(te.x * SCALE), Math.round((te.y + te.fontSize * 0.9) * SCALE + i * lineHeight));
-    });
-    ctx.restore();
+    drawTextElementToCanvas(ctx, el as import('../elements/textElement').TextElement, SCALE);
   }
 
   // #QA-2026-06-23 — apply the crop by clipping the rendered CANVAS (not via setCropBox before
