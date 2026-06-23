@@ -208,15 +208,18 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   const effBox = docPage.crop ? contentCropToPdfCropBox(docPage.crop, cropBox) : cropBox;
 
   const exportErrors: string[] = [];
+  const exportErrorTypes = new Set<string>();
   for (const element of elements) {
     try {
       await renderElementToPdfLib(element, { pdfDoc, page, libs: { rgb, StandardFonts, degrees }, h: h_eff, w: w_eff, W_orig, H_orig, totalRot, cropOriginX, cropOriginY } satisfies PdfRenderCtx);
     } catch {
       exportErrors.push(`${element.type} (id ${element.id})`);
+      exportErrorTypes.add(element.type);
     }
   }
   if (exportErrors.length > 0) {
-    reportError.warn('toast.elementRenderFailed', { count: exportErrors.length });
+    // Name the element type(s) so the user knows WHAT failed (not just a count).
+    reportError.warn('toast.elementRenderFailed', { count: exportErrors.length, types: [...exportErrorTypes].join(', ') });
     reportError.silent(undefined, `Export render failed: ${exportErrors.join(', ')}`);
   }
 

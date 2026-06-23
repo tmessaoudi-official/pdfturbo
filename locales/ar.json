@@ -524,7 +524,7 @@
     },
     "copied": "تم النسخ",
     "pastedUndo": "تم اللصق — Ctrl+Z للتراجع",
-    "elementRenderFailed": "تعذّر عرض {{count}} عنصر(عناصر)",
+    "elementRenderFailed": "تعذّر عرض {{count}} عنصر(عناصر) ({{types}})",
     "pdfDownloaded": "تم تنزيل ملف PDF!",
     "pdfSaved": "تم الحفظ في {{name}}",
     "extractDone": "تم استخراج {{count}} صفحة",

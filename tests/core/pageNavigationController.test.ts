@@ -58,7 +58,7 @@ describe('PageNavigationController.onPageStructureChange', () => {
     expect(ctx.autosave).toHaveBeenCalledOnce();
   });
 
-  it('is a no-op when a call is already in progress', async () => {
+  it('coalesces a concurrent call into a single trailing re-run', async () => {
     const ctx = makeCtx();
     let resolveFirst!: () => void;
     (ctx.renderCurrentPage as ReturnType<typeof vi.fn>).mockImplementationOnce(
@@ -69,7 +69,23 @@ describe('PageNavigationController.onPageStructureChange', () => {
     const second = ctrl.onPageStructureChange();
     resolveFirst();
     await Promise.all([first, second]);
-    expect(ctx.renderCurrentPage).toHaveBeenCalledTimes(1);
+    // The concurrent request is not dropped — it triggers exactly one re-run
+    // after the in-flight pass (so the latest structure state is rendered).
+    expect(ctx.renderCurrentPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('collapses MANY concurrent calls into one re-run (not one per call)', async () => {
+    const ctx = makeCtx();
+    let resolveFirst!: () => void;
+    (ctx.renderCurrentPage as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<void>(res => { resolveFirst = res; }),
+    );
+    const ctrl = new PageNavigationController(ctx);
+    const calls = [ctrl.onPageStructureChange()];
+    for (let i = 0; i < 5; i++) calls.push(ctrl.onPageStructureChange());
+    resolveFirst();
+    await Promise.all(calls);
+    expect(ctx.renderCurrentPage).toHaveBeenCalledTimes(2); // initial + one coalesced re-run
   });
 
   it('resets the guard after completion so a second call succeeds', async () => {

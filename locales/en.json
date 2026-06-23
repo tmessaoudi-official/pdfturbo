@@ -524,7 +524,7 @@
     },
     "copied": "Copied",
     "pastedUndo": "Pasted — Ctrl+Z to undo",
-    "elementRenderFailed": "{{count}} element(s) could not be rendered",
+    "elementRenderFailed": "{{count}} element(s) could not be rendered ({{types}})",
     "pdfDownloaded": "PDF downloaded!",
     "pdfSaved": "Saved to {{name}}",
     "extractDone": "Extracted {{count}} page(s)",

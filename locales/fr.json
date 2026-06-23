@@ -524,7 +524,7 @@
     },
     "copied": "Copié",
     "pastedUndo": "Collé — Ctrl+Z pour annuler",
-    "elementRenderFailed": "{{count}} élément(s) n'ont pas pu être rendus",
+    "elementRenderFailed": "{{count}} élément(s) n'ont pas pu être rendus ({{types}})",
     "pdfDownloaded": "PDF téléchargé !",
     "pdfSaved": "Enregistré dans {{name}}",
     "extractDone": "{{count}} page(s) extraite(s)",

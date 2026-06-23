@@ -77,7 +77,7 @@ export class FormFieldOverlay {
     return { unsupportedCount: unsupported.length };
   }
 
-  /** Convert a field's PDF rect to a viewport-positioned box; null if too small. */
+  /** Convert a field's PDF rect to a viewport-positioned box; null if unplaceable. */
   private _placeRect(
     field: PdfAnnotation,
     viewport: PageViewport,
@@ -88,12 +88,17 @@ export class FormFieldOverlay {
     const top = Math.min(vr[1], vr[3]);
     const w = Math.abs(vr[2] - vr[0]);
     const h = Math.abs(vr[3] - vr[1]);
-    if (w < 2 || h < 2) return null;
+    // A genuinely invalid rect (missing/NaN) can't be placed.
+    if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(w) || !Number.isFinite(h)) return null;
+    // Don't silently DROP a tiny widget (degenerate rect / low zoom) — that hides
+    // a field that may carry a stored value and makes it un-editable. Clamp to a
+    // minimum hit-target so it stays present and interactive.
+    const MIN = 2;
     return {
       left: canvasOffset.left + left,
       top: canvasOffset.top + top,
-      w,
-      h,
+      w: Math.max(MIN, w),
+      h: Math.max(MIN, h),
     };
   }
 
