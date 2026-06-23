@@ -124,7 +124,11 @@
     "size": "الحجم",
     "color": "لون الخط",
     "bulletList": "قائمة نقطية",
-    "orderedList": "قائمة مرقّمة"
+    "orderedList": "قائمة مرقّمة",
+    "addRow": "إضافة صف",
+    "deleteRow": "حذف الصف",
+    "addColumn": "إضافة عمود",
+    "deleteColumn": "حذف العمود"
   },
   "formatting": {
     "textLabel": "نص / شكل",

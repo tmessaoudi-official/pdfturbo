@@ -124,7 +124,11 @@
     "size": "Taille",
     "color": "Couleur du texte",
     "bulletList": "Liste à puces",
-    "orderedList": "Liste numérotée"
+    "orderedList": "Liste numérotée",
+    "addRow": "Ajouter une ligne",
+    "deleteRow": "Supprimer la ligne",
+    "addColumn": "Ajouter une colonne",
+    "deleteColumn": "Supprimer la colonne"
   },
   "formatting": {
     "textLabel": "Texte / Forme",

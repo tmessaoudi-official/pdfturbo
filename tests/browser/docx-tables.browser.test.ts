@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType } from 'docx';
 import { EditorView } from 'prosemirror-view';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, TextSelection } from 'prosemirror-state';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { parseDocModel } from '../../src/docx/docModel';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';
@@ -168,16 +168,10 @@ describe('DOCX table editing — real Chrome round-trip', () => {
     }
   });
 
-  it('exposes no structural (add row / add column) affordance in Slice 3a', () => {
-    // buildDocxToolbar only registers: bold, italic, underline, heading, font, size,
-    // bullet, ordered. Structural prosemirror-tables commands (addRowAfter, etc.) are
-    // intentionally NOT wired in Slice 3a (read-view only).
-    const forbiddenActs = [
-      'addRowAfter', 'addRowBefore', 'addColumnAfter', 'addColumnBefore',
-      'deleteRow', 'deleteColumn', 'mergeCells', 'splitCell',
-    ];
+  it('Slice 3b exposes the four structural toolbar acts (disabled outside a table)', () => {
+    // buildDocxToolbar now wires addRowAfter / deleteRow / addColumnAfter / deleteColumn.
+    const structuralActs = ['addRowAfter', 'deleteRow', 'addColumnAfter', 'deleteColumn'];
 
-    // Concrete DOM check: build a real EditorView and inspect the toolbar buttons.
     const mountEl = document.createElement('div');
     document.body.appendChild(mountEl);
     const minState = EditorState.create({
@@ -188,11 +182,13 @@ describe('DOCX table editing — real Chrome round-trip', () => {
     const toolbar = buildDocxToolbar(minView);
     const toolbarEl = toolbar.dom;
 
-    // No element with a forbidden data-act exists in the toolbar.
-    for (const act of forbiddenActs) {
-      expect(toolbarEl.querySelector(`[data-act="${act}"]`)).toBeNull();
+    for (const act of structuralActs) {
+      const b = toolbarEl.querySelector<HTMLButtonElement>(`[data-act="${act}"]`);
+      expect(b).not.toBeNull();
+      // Caret is in a plain paragraph (not a table) → the structural buttons are disabled.
+      expect(b?.disabled).toBe(true);
     }
-    // Confirm the legitimate acts ARE present (regression guard).
+    // The non-table acts are still present (regression guard).
     for (const act of ['bold', 'italic', 'underline', 'bullet', 'ordered']) {
       expect(toolbarEl.querySelector(`[data-act="${act}"]`)).not.toBeNull();
     }
@@ -200,5 +196,63 @@ describe('DOCX table editing — real Chrome round-trip', () => {
     toolbar.destroy();
     minView.destroy();
     mountEl.remove();
+  });
+
+  it('adds a row via the toolbar button — the new row survives save → reopen (3b in-place reconcile)', async () => {
+    const bytes = await makeDocxWithNestedTable();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const handle = mountDocxEditor(container, bytes);
+    const toolbar = buildDocxToolbar(handle.view);
+    document.body.appendChild(toolbar.dom);
+
+    // Count ALL table_row nodes (outer 2 + nested 1 = 3 to start).
+    const rowCount = (): number => {
+      let c = 0;
+      handle.view.state.doc.descendants(node => { if (node.type.name === 'table_row') c++; return true; });
+      return c;
+    };
+    const rowsBefore = rowCount();
+    expect(rowsBefore).toBe(3);
+
+    // Place the caret in the "Row2 text" cell, then click "add row".
+    let pos = -1;
+    handle.view.state.doc.descendants((node, p) => {
+      if (pos >= 0) return false;
+      if (node.isText && node.text?.includes('Row2 text')) { pos = p; return false; }
+      return true;
+    });
+    expect(pos).toBeGreaterThan(0);
+    handle.view.dispatch(handle.view.state.tr.setSelection(TextSelection.create(handle.view.state.doc, pos)));
+    toolbar.update();
+
+    const addRowBtn = toolbar.dom.querySelector<HTMLButtonElement>('[data-act="addRowAfter"]');
+    expect(addRowBtn).not.toBeNull();
+    expect(addRowBtn?.disabled).toBe(false); // enabled inside the table
+    addRowBtn?.click();
+    expect(rowCount()).toBe(rowsBefore + 1); // editor gained one row in the outer table
+
+    // Type into the new (3rd) row so we can assert it persists.
+    let newCellPos = -1;
+    handle.view.state.doc.descendants((node, p) => {
+      // last empty paragraph inside a table_cell
+      if (node.type.name === 'table_cell') newCellPos = p + 2; // cell → paragraph → text insert point
+      return true;
+    });
+    handle.view.dispatch(handle.view.state.tr.insertText('Row3 NEW', newCellPos));
+
+    const saved = handle.save();
+    toolbar.destroy();
+    handle.destroy();
+    container.remove();
+
+    const xml = getDocumentXml(openOpc(saved));
+    const model = parseDocModel(xml, buildNumberingMap(openOpc(saved)));
+    const tbl = model.blocks.find(b => b.kind === 'table');
+    expect(tbl?.kind).toBe('table');
+    if (tbl?.kind === 'table') {
+      expect(tbl.rows.length).toBe(3); // the added row round-tripped through the in-place save
+    }
+    expect(xml).toContain('Row3 NEW');
   });
 });

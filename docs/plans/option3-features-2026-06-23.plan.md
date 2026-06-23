@@ -46,6 +46,21 @@ is the separate true-edit tool; Replace skips them with a hint).
 5. Tests: `overlayReplace` (pure), `searchManager` (elementId), `findBarController` (replace/undo/source-skip)
    jsdom + a real-Chrome browser guard. One commit for Feature 1.
 
-## Feature 2 — DOCX table editing (3b–3d) — queued
+## Feature 2 — DOCX table editing (3b–3d)
+### Slice 3b — add/del row & column ✅ DONE (commit pending)
+- `docxToolbar.ts`: 4 buttons (addRowAfter/deleteRow/addColumnAfter/deleteColumn) via prosemirror-tables;
+  disabled outside a table (`isInTable`).
+- `docModel.ts` `writeTable`: in-place row & cell COUNT reconcile (clone last `w:tr`/`w:tc`, trim tail,
+  `syncTableGrid` for `w:gridCol`); **no-op → byte-identical for non-structural edits**. Cardinal rule kept.
+- REFUSE gate `tableHasMerges` (gridSpan/vMerge) → 3a text-only fallback (structure verbatim). The
+  merged-table restructure is **3c/3d**.
+- i18n docxToolbar.{addRow,deleteRow,addColumn,deleteColumn} (ar [Unverified]).
+- Guards: docModelTables (add/del row+col, grid sync, merged refusal, byte-identical), docxToolbar (4 acts),
+  docx-tables.browser (add-row via button → save → reopen → 3 rows; disabled outside table).
+- Visual: `qa-shots/f2-table-3b/` (before 2 rows / after 3 rows "Bob"; buttons enable inside table; 0 console errs).
+### Slice 3c/3d — merge/split — queued
+- Needs `DocCell.colspan?/rowspan?` + parse/emit `w:gridSpan` (horizontal) & `w:vMerge` (restart/continue,
+  vertical) + PM table_cell colspan/rowspan round-trip. Highest cardinal-rule risk → its own commit.
+
 ## Feature 3 — Arabic-RTL deepening — queued
 ## Feature 4 — true-edit F10–F16 + F3 — queued

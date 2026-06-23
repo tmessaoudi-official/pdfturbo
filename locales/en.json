@@ -124,7 +124,11 @@
     "size": "Size",
     "color": "Font color",
     "bulletList": "Bullet list",
-    "orderedList": "Numbered list"
+    "orderedList": "Numbered list",
+    "addRow": "Add row",
+    "deleteRow": "Delete row",
+    "addColumn": "Add column",
+    "deleteColumn": "Delete column"
   },
   "formatting": {
     "textLabel": "Text / Shape",

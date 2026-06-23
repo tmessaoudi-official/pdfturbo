@@ -430,16 +430,80 @@ function reconcileParagraphsOnly(dom: Document, container: Element, paras: DocPa
   reconcileSegment(dom, container, domParas, paras, null, ids, requireParagraph);
 }
 
-/** Rewrite a table's cell paragraphs from a DocTable; structure (tblPr/grid/tcPr) untouched. */
+/** True when this table's OWN cells carry a horizontal (w:gridSpan) or vertical
+ * (w:vMerge) merge. Scoped to direct rows/cells so a nested table's merges don't
+ * count. Structural row/column reconcile (3b) refuses merged tables — restructuring a
+ * spanned grid is deferred to 3c/3d; such a table keeps the 3a text-only behavior. */
+function tableHasMerges(tbl: Element): boolean {
+  for (const tr of Array.from(tbl.children).filter(c => c.tagName === 'w:tr')) {
+    for (const tc of Array.from(tr.children).filter(c => c.tagName === 'w:tc')) {
+      const tcPr = childEl(tc, 'w:tcPr');
+      if (childEl(tcPr, 'w:gridSpan') || childEl(tcPr, 'w:vMerge')) return true;
+    }
+  }
+  return false;
+}
+
+/** Reconcile a w:tr's w:tc children against a model row's cells. Content is always
+ * reconciled for the overlap; when `allowStructural`, extra cells are cloned from the
+ * row's last w:tc (preserving tcPr) and trailing cells removed. */
+function reconcileRowCells(dom: Document, tr: Element, cells: DocCell[], ids: DocApplyIds | undefined, allowStructural: boolean): void {
+  const domCells = Array.from(tr.children).filter(c => c.tagName === 'w:tc');
+  const n = Math.min(domCells.length, cells.length);
+  for (let c = 0; c < n; c++) reconcileContainer(dom, domCells[c], cells[c].blocks, ids, true);
+  if (!allowStructural) return;
+  const template = domCells.length ? domCells[domCells.length - 1] : null;
+  for (let c = n; c < cells.length; c++) {
+    const tc = template ? (template.cloneNode(true) as Element) : dom.createElementNS(W_NS, 'w:tc');
+    tr.appendChild(tc); // w:tc children follow w:trPr → append puts it after the last cell
+    reconcileContainer(dom, tc, cells[c].blocks, ids, true);
+  }
+  for (let c = domCells.length - 1; c >= cells.length; c--) domCells[c].remove();
+}
+
+/** Ensure w:tblGrid has exactly `cols` w:gridCol children (clone the last to add,
+ * trim to remove). No-op when the count already matches → byte-identical for
+ * non-structural edits and for tables whose grid omits gridCol. */
+function syncTableGrid(dom: Document, tbl: Element, cols: number): void {
+  const grid = Array.from(tbl.children).find(c => c.tagName === 'w:tblGrid');
+  if (!grid || cols <= 0) return;
+  const cur = Array.from(grid.children).filter(c => c.tagName === 'w:gridCol');
+  if (cur.length === cols || cur.length === 0) return; // matched, or no gridCol to template/trim
+  if (cur.length < cols) {
+    const template = cur[cur.length - 1];
+    for (let i = cur.length; i < cols; i++) grid.appendChild(template.cloneNode(true) as Element);
+  } else {
+    for (let i = cur.length - 1; i >= cols; i--) cur[i].remove();
+  }
+}
+
+/**
+ * Rewrite a table's cells from a DocTable IN PLACE. Cell text is always reconciled.
+ * For a simple (un-merged) table, row/column COUNT changes are also applied (3b):
+ * rows cloned from the last w:tr / removed at the tail, cells per row likewise, and
+ * w:tblGrid kept in sync. A merged table (gridSpan/vMerge) keeps the 3a text-only
+ * behavior — its structure stays verbatim. tblPr/grid/tcPr are otherwise untouched.
+ */
 function writeTable(dom: Document, tbl: Element, table: DocTable, ids: DocApplyIds | undefined): void {
   const domRows = Array.from(tbl.children).filter(c => c.tagName === 'w:tr');
+  const structural = !tableHasMerges(tbl);
   const n = Math.min(domRows.length, table.rows.length);
-  for (let r = 0; r < n; r++) {
-    const domCells = Array.from(domRows[r].children).filter(c => c.tagName === 'w:tc');
-    const cells = table.rows[r].cells;
-    const m = Math.min(domCells.length, cells.length);
-    for (let c = 0; c < m; c++) reconcileContainer(dom, domCells[c], cells[c].blocks, ids, true);
+  for (let r = 0; r < n; r++) reconcileRowCells(dom, domRows[r], table.rows[r].cells, ids, structural);
+  if (!structural) return;
+  // Add extra rows by cloning the last w:tr (inherits cell tcPr / column structure).
+  let lastRow = domRows.length ? domRows[domRows.length - 1] : null;
+  for (let r = n; r < table.rows.length; r++) {
+    const newRow = lastRow ? (lastRow.cloneNode(true) as Element) : dom.createElementNS(W_NS, 'w:tr');
+    if (lastRow && lastRow.nextSibling) tbl.insertBefore(newRow, lastRow.nextSibling);
+    else tbl.appendChild(newRow);
+    reconcileRowCells(dom, newRow, table.rows[r].cells, ids, true);
+    lastRow = newRow;
   }
+  // Remove extra rows at the tail.
+  for (let r = domRows.length - 1; r >= table.rows.length; r--) domRows[r].remove();
+  // Keep the grid column count in step with the (rectangular) model.
+  const maxCols = table.rows.reduce((mx, row) => Math.max(mx, row.cells.length), 0);
+  syncTableGrid(dom, tbl, maxCols);
 }
 
 /**

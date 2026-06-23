@@ -94,3 +94,75 @@ describe('docxToolbar (Task 7)', () => {
     expect(view.state.doc.firstChild?.type.name).toBe('ordered_list');
   });
 });
+
+describe('docxToolbar — table editing (Slice 3b)', () => {
+  function cellNode(text: string): ReturnType<typeof docxSchema.node> {
+    return docxSchema.node('table_cell', null, [docxSchema.node('paragraph', null, [docxSchema.text(text)])]);
+  }
+  /** A doc holding a 1×2 table (one row, two cells). */
+  function tableDoc(): ReturnType<typeof docxSchema.node> {
+    const r = docxSchema.node('table_row', null, [cellNode('A'), cellNode('B')]);
+    return docxSchema.node('doc', null, [docxSchema.node('table', null, [r])]);
+  }
+  function mountTable(): void {
+    const place = document.createElement('div');
+    document.body.appendChild(place);
+    view = new EditorView(place, { state: EditorState.create({ doc: tableDoc() }) });
+    tb = buildDocxToolbar(view);
+    document.body.appendChild(tb.dom);
+    // Put the caret inside the first cell's paragraph (doc>table>row>cell>paragraph>text).
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+  }
+  function countNodes(name: string): number {
+    let count = 0;
+    view.state.doc.descendants(node => { if (node.type.name === name) count++; return true; });
+    return count;
+  }
+
+  it('exposes the four structural acts', () => {
+    mountTable();
+    for (const act of ['addRowAfter', 'deleteRow', 'addColumnAfter', 'deleteColumn']) {
+      expect(ctrl(act)).not.toBeNull();
+    }
+  });
+
+  it('addRowAfter adds a table row', () => {
+    mountTable();
+    expect(countNodes('table_row')).toBe(1);
+    ctrl<HTMLElement>('addRowAfter').click();
+    expect(countNodes('table_row')).toBe(2);
+  });
+
+  it('addColumnAfter adds a column (a cell to the row)', () => {
+    mountTable();
+    expect(countNodes('table_cell')).toBe(2);
+    ctrl<HTMLElement>('addColumnAfter').click();
+    expect(countNodes('table_cell')).toBe(3);
+  });
+
+  it('deleteRow / deleteColumn shrink the table', () => {
+    mountTable();
+    ctrl<HTMLElement>('addRowAfter').click();   // 2 rows
+    ctrl<HTMLElement>('deleteRow').click();      // back to 1
+    expect(countNodes('table_row')).toBe(1);
+    ctrl<HTMLElement>('deleteColumn').click();   // 2 cells → 1
+    expect(countNodes('table_cell')).toBe(1);
+  });
+
+  it('disables the structural buttons inside a MERGED table (3b refuses to restructure merges)', () => {
+    // A 1-row table whose single cell spans 2 grid columns (colspan=2).
+    const place = document.createElement('div');
+    document.body.appendChild(place);
+    const merged = docxSchema.node('table_cell', { colspan: 2 }, [docxSchema.node('paragraph', null, [docxSchema.text('Merged')])]);
+    const r = docxSchema.node('table_row', null, [merged]);
+    const doc = docxSchema.node('doc', null, [docxSchema.node('table', null, [r])]);
+    view = new EditorView(place, { state: EditorState.create({ doc }) });
+    tb = buildDocxToolbar(view);
+    document.body.appendChild(tb.dom);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+    tb.update();
+    for (const act of ['addRowAfter', 'deleteRow', 'addColumnAfter', 'deleteColumn']) {
+      expect(ctrl<HTMLButtonElement>(act).disabled).toBe(true);
+    }
+  });
+});

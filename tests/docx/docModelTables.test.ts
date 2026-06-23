@@ -45,6 +45,95 @@ const cell = (text: string): string => `<w:tc><w:tcPr/><w:p><w:r><w:t>${text}</w
 const row = (...cells: string[]): string => `<w:tr>${cells.join('')}</w:tr>`;
 const table = (...rows: string[]): string => `<w:tbl><w:tblPr/><w:tblGrid/>${rows.join('')}</w:tbl>`;
 
+/** A w:tbl whose w:tblGrid declares `cols` gridCol children (each 100 twips). */
+const gridCols = (cols: number): string =>
+  Array.from({ length: cols }, () => `<w:gridCol w:w="100"/>`).join('');
+const tableG = (cols: number, ...rows: string[]): string =>
+  `<w:tbl><w:tblPr/><w:tblGrid>${gridCols(cols)}</w:tblGrid>${rows.join('')}</w:tbl>`;
+const countTag = (xml: string, tag: string): number => xml.split(`<${tag}`).length - 1;
+
+describe('docModel — table structural reconcile (Slice 3b: add/del row & column)', () => {
+  it('adds a new row in place (clones a w:tr, grid unchanged)', () => {
+    const xml = docXml(tableG(2, row(cell('A1'), cell('B1'))));
+    const model = parseDocModel(xml);
+    const t = model.blocks[0] as DocTable;
+    t.rows.push({ cells: [{ blocks: [{ runs: [{ text: 'A2' }] }] }, { blocks: [{ runs: [{ text: 'B2' }] }] }] });
+    const out = applyBlocks(xml, model.blocks);
+    expect(countTag(out, 'w:tr')).toBe(2);          // a row was added
+    expect(countTag(out, 'w:gridCol')).toBe(2);     // grid column count unchanged
+    expect(out).toContain('A2');
+    expect(out).toContain('B2');
+    const re = (parseDocModel(out).blocks[0] as DocTable).rows;
+    expect(re).toHaveLength(2);
+    expect((re[1].cells[1].blocks[0] as DocParagraph).runs[0].text).toBe('B2');
+  });
+
+  it('removes a row in place', () => {
+    const xml = docXml(tableG(2, row(cell('A1'), cell('B1')), row(cell('A2'), cell('B2'))));
+    const model = parseDocModel(xml);
+    (model.blocks[0] as DocTable).rows.pop(); // delete the 2nd row
+    const out = applyBlocks(xml, model.blocks);
+    expect(countTag(out, 'w:tr')).toBe(1);
+    expect(out).toContain('A1');
+    expect(out).not.toContain('A2');
+  });
+
+  it('adds a column in place (every row gains a cell; grid gains a gridCol)', () => {
+    const xml = docXml(tableG(2, row(cell('A1'), cell('B1')), row(cell('A2'), cell('B2'))));
+    const model = parseDocModel(xml);
+    const t = model.blocks[0] as DocTable;
+    for (const r of t.rows) r.cells.push({ blocks: [{ runs: [{ text: 'NEW' }] }] });
+    const out = applyBlocks(xml, model.blocks);
+    expect(countTag(out, 'w:gridCol')).toBe(3);     // grid widened
+    const re = (parseDocModel(out).blocks[0] as DocTable).rows;
+    expect(re[0].cells).toHaveLength(3);
+    expect(re[1].cells).toHaveLength(3);
+    expect((re[0].cells[2].blocks[0] as DocParagraph).runs[0].text).toBe('NEW');
+  });
+
+  it('removes a column in place (every row loses a cell; grid loses a gridCol)', () => {
+    const xml = docXml(tableG(2, row(cell('A1'), cell('B1')), row(cell('A2'), cell('B2'))));
+    const model = parseDocModel(xml);
+    const t = model.blocks[0] as DocTable;
+    for (const r of t.rows) r.cells.pop(); // drop the last column
+    const out = applyBlocks(xml, model.blocks);
+    expect(countTag(out, 'w:gridCol')).toBe(1);
+    const re = (parseDocModel(out).blocks[0] as DocTable).rows;
+    expect(re[0].cells).toHaveLength(1);
+    expect(out).toContain('A1');
+    expect(out).not.toContain('B1');
+  });
+
+  it('a NON-structural cell edit is byte-identical to the 3a min-reconcile (grid verbatim)', () => {
+    const xml = docXml(
+      `<w:tbl><w:tblPr><w:tblStyle w:val="Grid"/></w:tblPr><w:tblGrid><w:gridCol w:w="100"/><w:gridCol w:w="200"/></w:tblGrid>` +
+      row(cell('A1'), cell('B1')) + row(cell('A2'), cell('B2')) + `</w:tbl>`,
+    );
+    const model = parseDocModel(xml);
+    (model.blocks[0] as DocTable).rows[0].cells[0].blocks = [{ runs: [{ text: 'EDIT' }] }];
+    const out = applyBlocks(xml, model.blocks);
+    expect(out).toContain('<w:gridCol w:w="100"/>');
+    expect(out).toContain('<w:gridCol w:w="200"/>');  // grid untouched on a non-structural edit
+    expect(countTag(out, 'w:gridCol')).toBe(2);
+    expect(out).toContain('EDIT');
+  });
+
+  it('REFUSES structural row changes on a merged table (gridSpan present → 3a min-reconcile, structure verbatim)', () => {
+    // Row 0 has a single cell spanning 2 grid columns (gridSpan=2); row 1 has 2 cells.
+    const spanCell = `<w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>Merged</w:t></w:r></w:p></w:tc>`;
+    const xml = docXml(`<w:tbl><w:tblPr/><w:tblGrid>${gridCols(2)}</w:tblGrid>` +
+      row(spanCell) + row(cell('A2'), cell('B2')) + `</w:tbl>`);
+    const model = parseDocModel(xml);
+    // Attempt to add a 3rd row — must be IGNORED (merged tables are a 3b ceiling).
+    (model.blocks[0] as DocTable).rows.push({ cells: [{ blocks: [{ runs: [{ text: 'X' }] }] }] });
+    const out = applyBlocks(xml, model.blocks);
+    expect(countTag(out, 'w:tr')).toBe(2);                 // row NOT added
+    expect(out).toContain('<w:gridSpan w:val="2"/>');      // merge preserved verbatim
+    expect(out).toContain('Merged');
+    expect(out).not.toContain('>X<');
+  });
+});
+
 describe('docModel — table parsing', () => {
   it('parses a top-level table into a DocTable block in document order', () => {
     const xml = docXml(para('intro') + table(row(cell('A1'), cell('B1')), row(cell('A2'), cell('B2'))) + para('outro'));

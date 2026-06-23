@@ -8,6 +8,7 @@ import { type EditorView } from 'prosemirror-view';
 import { type EditorState, type Transaction, type Command } from 'prosemirror-state';
 import { toggleMark, setBlockType } from 'prosemirror-commands';
 import { wrapInList, liftListItem } from 'prosemirror-schema-list';
+import { addRowAfter, deleteRow, addColumnAfter, deleteColumn, isInTable } from 'prosemirror-tables';
 import { type MarkType, type NodeType } from 'prosemirror-model';
 import { docxSchema } from './docxSchema';
 import { t } from '../utils/i18n';
@@ -61,6 +62,27 @@ function inList(state: EditorState, listType: NodeType): boolean {
 function currentHeading(state: EditorState): number {
   const node = state.selection.$from.node(1);
   return node && node.type === n.heading ? Number(node.attrs.level) : 0;
+}
+
+/** True when the table containing the selection has any merged cell (colspan/rowspan
+ * > 1). Slice 3b refuses to restructure merged tables (the save keeps them verbatim),
+ * so the row/column buttons are disabled there to avoid a silent no-op on save. */
+function currentTableHasMerges(state: EditorState): boolean {
+  const $from = state.selection.$from;
+  let table = null;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === 'table') { table = $from.node(d); break; }
+  }
+  if (!table) return false;
+  let merged = false;
+  table.descendants(node => {
+    if (node.type.name === 'table_cell' && ((Number(node.attrs.colspan) || 1) > 1 || (Number(node.attrs.rowspan) || 1) > 1)) {
+      merged = true;
+      return false;
+    }
+    return true;
+  });
+  return merged;
 }
 
 export function buildDocxToolbar(view: EditorView): DocxToolbar {
@@ -154,7 +176,15 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   const bulletBtn = btn('bullet', t('docxToolbar.bulletList'), () => toggleList(n.bullet_list));
   const orderedBtn = btn('ordered', t('docxToolbar.orderedList'), () => toggleList(n.ordered_list));
 
-  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn);
+  // Table-editing controls (Slice 3b). prosemirror-tables commands no-op outside a
+  // table; update() also reflects their enabled state from isInTable.
+  const addRowBtn = btn('addRowAfter', t('docxToolbar.addRow'), () => addRowAfter);
+  const deleteRowBtn = btn('deleteRow', t('docxToolbar.deleteRow'), () => deleteRow);
+  const addColBtn = btn('addColumnAfter', t('docxToolbar.addColumn'), () => addColumnAfter);
+  const deleteColBtn = btn('deleteColumn', t('docxToolbar.deleteColumn'), () => deleteColumn);
+  const tableBtns = [addRowBtn, deleteRowBtn, addColBtn, deleteColBtn];
+
+  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn, ...tableBtns);
 
   const update = (): void => {
     boldBtn.classList.toggle('active', markActive(view.state, m.strong));
@@ -163,6 +193,8 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
     headingSel.value = String(currentHeading(view.state));
     bulletBtn.classList.toggle('active', inList(view.state, n.bullet_list));
     orderedBtn.classList.toggle('active', inList(view.state, n.ordered_list));
+    const structural = isInTable(view.state) && !currentTableHasMerges(view.state);
+    for (const b of tableBtns) b.disabled = !structural;
     const cMark = (view.state.storedMarks || view.state.selection.$from.marks()).find(mk => mk.type === m.color);
     if (cMark) colorInput.value = cMark.attrs.value as string;
   };
