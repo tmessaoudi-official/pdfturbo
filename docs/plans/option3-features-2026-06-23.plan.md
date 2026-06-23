@@ -12,6 +12,10 @@
   4. **true-edit F10–F16 + F3 byte-splice** — edge-case hardening; lowest user-visible value,
      lowest regression risk; do last when the feature surface above is settled.
 - One feature per commit (or per slice), TDD, gate after each, push MANUAL. NO Co-Authored-By.
+- [2026-06-23] DECISION (user): after Feature 1 shipped, **CHECKPOINT** — pause the session at this
+  clean boundary; Features 2–4 resume in a fresh window. State saved (this plan + handoff + memory).
+  Bypass sentinel left ARMED for the next session's autonomous continuation (remove when the whole
+  feature sequence is truly done).
 
 ## Feature 1 — PDF overlay find & replace ✅ DONE (commit pending)
 Shipped: pure `overlayReplace.applyReplacement`, `MatchResult.elementId` tagging, `FindBarController`
