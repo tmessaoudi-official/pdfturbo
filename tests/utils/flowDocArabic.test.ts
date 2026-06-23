@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { reverseRtlText, orderLineWords, isArabicText, reconstructPage, type RawTextItem, type FontInfoMap } from '../../src/utils/flowDoc';
 import { flowDocToDocxBase64 } from '../../src/utils/flowDocWriters';
+import { logicalToVisual } from '../../src/utils/bidi';
 
 type W = { text: string; x: number; y: number; width: number; size: number; fontName: string; rtl: boolean };
 const w = (text: string, x: number, rtl = true): W =>
@@ -25,6 +26,13 @@ describe('reverseRtlText', () => {
   });
   it('empty string → empty', () => {
     expect(reverseRtlText('')).toBe('');
+  });
+  it('keeps an embedded multi-char Latin run forward in a MIXED Arabic+Latin word', () => {
+    // A single word mixing Arabic + a multi-char Latin run: the Latin must stay "ABC",
+    // not "CBA" (the blanket reverse flips it). Build the visual form, expect logical back.
+    const logical = 'اABC'; // alef + ABC
+    const visual = logicalToVisual(logical, 'rtl');
+    expect(reverseRtlText(visual)).toBe('اABC'.normalize('NFKC'));
   });
 
   // P2 (2026-06-17): pdf.js delivers Arabic from many PDFs as Unicode PRESENTATION

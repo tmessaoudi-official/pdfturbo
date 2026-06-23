@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.7.1",
+    "bidi-js": "1.0.3",
     "bwip-js": "^4.11.1",
     "docx": "^9.7.1",
     "i18next": "^26.3.1",

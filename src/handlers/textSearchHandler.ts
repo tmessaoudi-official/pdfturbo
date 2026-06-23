@@ -1,4 +1,5 @@
 import { isArabicText, reverseRtlText } from '../utils/flowDoc';
+import { logicalItemOrder } from '../utils/bidi';
 
 export interface MatchResult {
   pageId: string;
@@ -76,7 +77,9 @@ export function buildLogicalLines(
     const byX = [...row].sort((a, b) => a.it.transform[4] - b.it.transform[4]); // visual L→R
     const rtlVotes = byX.reduce((n, c) => n + (isArabicText(c.it.str) ? 1 : 0), 0);
     const rtl = rtlVotes * 2 > byX.length;
-    const order = rtl ? [...byX].reverse() : byX; // logical reading order
+    // Logical reading order at ITEM granularity (UAX#9 L2): RTL-item runs reversed,
+    // embedded LTR-item runs kept forward. Items stay atomic → the token→item map is valid.
+    const order = rtl ? logicalItemOrder(byX, (c) => isArabicText(c.it.str)) : byX;
     let text = '';
     const tokens: LogicalLineToken[] = [];
     for (let k = 0; k < order.length; k++) {

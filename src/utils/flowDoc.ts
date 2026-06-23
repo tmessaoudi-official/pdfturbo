@@ -14,6 +14,7 @@
 
 import { redactionRectToContent } from './geometry';
 import { buildTableGrid, clusterPositions, type TableGrid, type TableTextItem } from './tableExtract';
+import { visualToLogical } from './bidi';
 
 /** Shape of a pdf.js TextItem (subset we consume). */
 export interface RawTextItem {
@@ -478,6 +479,12 @@ export function isArabicText(s: string): boolean {
  * internal logical order correct (one visual unit → expands in place).
  */
 export function reverseRtlText(s: string): string {
+  // A genuinely MIXED-script word (Arabic + Latin/digits) gets char-level bidi so an
+  // embedded multi-char Latin/number sub-run stays in logical (forward) order; a
+  // single-script word keeps the established simple visual→logical char reversal.
+  if (isArabicText(s) && /[A-Za-z0-9]/.test(s)) {
+    return visualToLogical(s, 'rtl').normalize('NFKC');
+  }
   return [...s].reverse().join('').normalize('NFKC');
 }
 

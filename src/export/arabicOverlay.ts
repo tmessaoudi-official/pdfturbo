@@ -24,11 +24,12 @@
  * own drawText fails identically, so this is the font container, not RTL code).
  * The equivalent TTF embeds cleanly. Do NOT switch this back to a .woff/.woff2.
  *
- * Mixed Arabic + Latin/digit lines get word/run-level bidi (segmentBidiRuns +
- * drawBidiLine): each run is drawn with its own font (Noto vs Helvetica) and runs
- * are ordered by base direction. Known limits (documented ceiling): char-level bidi
- * (a digit nested INSIDE an Arabic word) is not reordered; tashkeel/diacritic GPOS
- * positioning is fontkit's weak spot; rotated Arabic elements are drawn upright.
+ * Mixed Arabic + Latin/digit lines get char-level bidi via the shared UAX#9 engine
+ * (visualRuns in utils/bidi → drawBidiLine): the engine resolves embedding levels and
+ * returns runs already in visual L→R order, each drawn with its own font (Noto vs
+ * Helvetica). Known limits (documented ceiling): bracket display-mirroring inside the
+ * overlay (fontkit draws the logical glyph); tashkeel/diacritic GPOS positioning is
+ * fontkit's weak spot; rotated Arabic elements are drawn upright.
  */
 import {
   PDFHexString,
@@ -49,6 +50,7 @@ import {
 // Vite resolves ?url to the bundled asset URL. MUST be a TTF/OTF (see header note):
 // the WOFF of this font is mis-embedded by fontkit/pdf-lib (glyphs render blank).
 import notoNaskhUrl from '../assets/fonts/NotoNaskhArabic-Regular.ttf?url';
+import { visualRuns } from '../utils/bidi';
 
 const _fontCache = new WeakMap<PDFDocument, Promise<PDFFont>>();
 let _notoBytes: Promise<Uint8Array> | null = null;
@@ -105,59 +107,6 @@ function getLatinFont(pdfDoc: PDFDocument): Promise<PDFFont> {
   return p;
 }
 
-export interface BidiRun {
-  text: string;
-  /** True → render via the Arabic font (Noto, RTL-shaped); false → Latin font (Helvetica, LTR). */
-  arabic: boolean;
-}
-
-/**
- * Split a line into maximal same-script runs (Arabic vs everything else). Western
- * digits and ASCII punctuation join the non-Arabic run; Arabic-Indic digits
- * (U+0660–0669, in the Arabic block) stay Arabic. Per-codepoint (surrogate-safe).
- *
- * Leading/trailing whitespace of a non-Arabic run is peeled into its own neutral run
- * so a boundary space between an Arabic run and a Latin/digit run lands BETWEEN them
- * after the visual reorder — otherwise the space clings to the Latin run's outer edge
- * and the two runs render flush ("مرحباWorld"). Internal spaces stay in the run so a
- * multi-word LTR run keeps its word order. Pure → jsdom-testable.
- */
-export function segmentBidiRuns(text: string): BidiRun[] {
-  const grouped: BidiRun[] = [];
-  for (const ch of text) {
-    const arabic = isArabicChar(ch);
-    const last = grouped[grouped.length - 1];
-    if (last && last.arabic === arabic) last.text += ch;
-    else grouped.push({ text: ch, arabic });
-  }
-  const runs: BidiRun[] = [];
-  for (const run of grouped) {
-    if (run.arabic) { runs.push(run); continue; }
-    const [, lead, core, trail] = run.text.match(/^(\s*)([\s\S]*?)(\s*)$/) ?? ['', '', run.text, ''];
-    if (lead) runs.push({ text: lead, arabic: false });
-    if (core) runs.push({ text: core, arabic: false });
-    if (trail) runs.push({ text: trail, arabic: false });
-  }
-  return runs;
-}
-
-const _ARABIC_CHAR_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
-function isArabicChar(ch: string): boolean {
-  return _ARABIC_CHAR_RE.test(ch);
-}
-
-/**
- * Base paragraph direction by the UAX#9 P2/P3 rule: the first STRONG character
- * (Arabic → RTL, Latin letter → LTR). Neutrals/digits are skipped. Defaults RTL
- * (callers only invoke the bidi path for lines that already contain Arabic).
- */
-export function baseIsRtl(text: string): boolean {
-  for (const ch of text) {
-    if (isArabicChar(ch)) return true;
-    if (/[A-Za-z]/.test(ch)) return false;
-  }
-  return true;
-}
 
 export interface ArabicLineOpts {
   text: string;
@@ -212,22 +161,23 @@ export async function drawArabicLine(
 }
 
 /**
- * Draw a mixed Arabic + Latin/digit line with per-script fonts and word/run-level
- * bidi ordering (#3b). For a base-RTL line the logical run order is reversed (first
- * logical run rightmost); each Arabic run is shaped RTL via Noto, each Latin/digit
- * run drawn LTR via Helvetica.
+ * Draw a mixed Arabic + Latin/digit line with per-script fonts, ordered by the shared
+ * UAX#9 bidi engine. `visualRuns(text)` resolves embedding levels and returns runs
+ * ALREADY in visual L→R order (each run's text in LOGICAL order); an RTL run is shaped
+ * RTL via Noto (fontkit emits visual glyphs from logical input), an LTR run drawn via
+ * Helvetica. No local reversal — the engine owns ordering.
  *
  * A Latin run that Helvetica can't encode (a non-WinAnsi neutral) falls back to the
- * Arabic font so the whole line never throws: pdf-lib base-14 fonts reject
- * non-WinAnsi codepoints (WinAnsiEncoding throws) — an inherent base-14 limit, not a
- * maskable defect. Char-level bidi (e.g. a digit nested inside an Arabic word) and
- * tashkeel positioning remain documented partials.
+ * Arabic font so the whole line never throws: pdf-lib base-14 fonts reject non-WinAnsi
+ * codepoints (WinAnsiEncoding throws) — an inherent base-14 limit, not a maskable
+ * defect. Bracket display-mirroring inside the overlay and tashkeel GPOS positioning
+ * remain documented partials.
  */
 async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLineOpts): Promise<void> {
   const arFont = await getArabicFont(pdfDoc);
   const latFont = await getLatinFont(pdfDoc);
-  const measured = segmentBidiRuns(opts.text).map((r) => {
-    if (!r.arabic) {
+  const measured = visualRuns(opts.text).map((r) => {
+    if (!r.rtl) {
       try {
         return { text: r.text, useLatin: true, width: latFont.widthOfTextAtSize(r.text, opts.size) };
       } catch {
@@ -239,9 +189,8 @@ async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLine
   });
   const total = measured.reduce((s, r) => s + r.width, 0);
   let cx = Math.max(opts.x, opts.right - total);
-  const visual = baseIsRtl(opts.text) ? [...measured].reverse() : measured;
   const arKey = page.node.newFontDictionary(arFont.name, arFont.ref);
-  for (const r of visual) {
+  for (const r of measured) { // ALREADY in visual L→R order — no reverse
     if (r.useLatin) {
       page.drawText(r.text, {
         x: cx, y: opts.y, size: opts.size, font: latFont,

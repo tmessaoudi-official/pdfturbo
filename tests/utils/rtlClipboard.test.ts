@@ -65,4 +65,14 @@ describe('reconstructLogicalText (#6 Arabic copy)', () => {
     const spans = [g('ب', 0, 8), g('PDF', 12, 24), g('ا', 40, 8)];
     expect(reconstructLogicalText(spans)).toBe('ا PDF ب');
   });
+
+  it('keeps an embedded PER-GLYPH LTR run forward in an RTL line', () => {
+    // pdf.js often emits Latin per-glyph too: visual L→R "M a i n" then Arabic "ا ب ح ر م".
+    // Logical reading: "مرحبا Main" — "Main" forward, NOT "niaM" (the blanket span-reverse bug).
+    const spans = [
+      g('M', 0), g('a', 10), g('i', 20), g('n', 30),
+      g('ا', 60), g('ب', 70), g('ح', 80), g('ر', 90), g('م', 100),
+    ];
+    expect(reconstructLogicalText(spans)).toBe('مرحبا Main');
+  });
 });

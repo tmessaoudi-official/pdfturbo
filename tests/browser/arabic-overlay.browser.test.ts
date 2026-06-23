@@ -217,4 +217,30 @@ describe('drawArabicLine (real Chrome)', () => {
     expect(extracted).toContain('USD'); // Latin word present & readable
     expect(isArabicText(extracted)).toBe(true); // Arabic still present
   });
+
+  // Slice-1 bidi engine: drawBidiLine now orders runs via the shared UAX#9 engine
+  // (utils/bidi visualRuns). An embedded Latin WORD must render in correct L→R order
+  // ("World", not "dlroW") AND sit left of the Arabic in a base-RTL line.
+  it('embedded Latin word renders forward and left of the Arabic (engine run order)', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([420, 120]);
+    await drawArabicLine(doc, page, {
+      text: 'مرحبا World', x: 20, y: 60, right: 400, size: 28, color: { r: 0, g: 0, b: 0 },
+    });
+    const bytes = await doc.save();
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const p = await pdf.getPage(1);
+    const items = (await p.getTextContent()).items as { str: string; transform: number[] }[];
+    const all = items.map((i) => i.str).join('');
+    expect(all).toContain('World'); // forward (Helvetica draws the logical run), not "dlroW"
+    expect(isArabicText(all)).toBe(true);
+    // The Latin run sits to the LEFT of the Arabic (base-RTL): min x of a Latin item
+    // is less than min x of an Arabic item.
+    const xOf = (pred: (s: string) => boolean) =>
+      Math.min(...items.filter((i) => pred(i.str) && i.str.trim()).map((i) => i.transform[4]));
+    const latinX = xOf((s) => /[A-Za-z]/.test(s));
+    const arabicX = xOf((s) => isArabicText(s));
+    expect(latinX).toBeLessThan(arabicX);
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { PDFPageProxy, PageViewport } from 'pdfjs-dist';
-import { TextSearchHandler } from '../../src/handlers/textSearchHandler';
+import { TextSearchHandler, buildLogicalLines } from '../../src/handlers/textSearchHandler';
 
 function makePage(text: string) {
   return {
@@ -190,5 +190,23 @@ describe('TextSearchHandler rotated page scale (BUG-37)', () => {
     const correct = Math.hypot(vt2[0], vt2[1]) || 1.0; // hypot(0, -2.0) = 2.0 (correct)
     expect(wrong).toBe(1.0);    // demonstrates the bug
     expect(correct).toBe(2.0);  // demonstrates the fix
+  });
+});
+
+describe('buildLogicalLines — embedded LTR run order (Arabic)', () => {
+  const it_ = (str: string, x: number) => ({ str, transform: [1, 0, 0, 1, x, 100], width: 8, height: 10 });
+  it('orders a per-glyph embedded LTR run forward in an RTL line (token map intact)', () => {
+    // visual L→R: M a i n  then Arabic ا ب ح ر م (rtl-dominant). Logical: "مرحبا Main".
+    const items = [
+      it_('M', 0), it_('a', 10), it_('i', 20), it_('n', 30),
+      it_('ا', 60), it_('ب', 70), it_('ح', 80), it_('ر', 90), it_('م', 100),
+    ];
+    const [line] = buildLogicalLines(items);
+    expect(line.rtl).toBe(true);
+    expect(line.text).toContain('Main'); // forward, NOT "niaM"
+    // token map stays valid: every token's [start,end) slices its source item's str
+    for (const tk of line.tokens) {
+      expect(line.text.slice(tk.start, tk.end)).toBe(items[tk.itemIndex].str.normalize('NFKC'));
+    }
   });
 });
