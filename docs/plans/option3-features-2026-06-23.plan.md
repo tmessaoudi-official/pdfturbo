@@ -126,5 +126,34 @@ is the separate true-edit tool; Replace skips them with a hint).
   `TextElement.direction?: 'auto'|'rtl'|'ltr'` (default auto) + a toolbar RTL toggle; applies to editor
   input `dir` + RTL-defaults-right-align; **export stays content-auto-detected** (no override — declined the
   risky force-RTL-on-Latin path).
-## Feature 3 Slice 3 — queued (ligature/tashkeel evaluate-defer)
-## Feature 4 — true-edit F10–F16 + F3 — queued
+## Feature 3 Slice 3 — DEFERRED (structural ceiling)
+- [2026-06-23] DECISION (user): EVAL verdict = defer. Ligature reorder (`الله`) + tashkeel GPOS are a
+  genuine client-side structural ceiling (subset CID fonts lack glyph outlines; fontkit GPOS weak spot;
+  already documented). Very low value / high difficulty. NOT built. Move to Feature 4.
+## Feature 4 — true-edit F10–F13 + F3 byte-splice — IN PROGRESS (brainstorming)
+- [2026-06-23] FINDING: most of F10–F16 already resolved — F14 DONE, F11 WON'T-FIX, F15/F16 ACCEPTED
+  (fail-safe). Actionable: F10 (Tm-shear/rotation inflates derived font size → refuse gate), F13 (q/Q
+  underflow CTM drift → refuse), F3 byte-splice (subsumes F4+F12; root-cause write-back rewrite — splice
+  target op's byte range, leave inline images/other streams untouched; "blast-radius hardening, not active
+  bug" per audit). DECISION (user): **full scope — F10 + F13 + F3 byte-splice**. Audit:
+  `docs/reviews/2026-06-20-trueedit-edgecase-audit.md`.
+- [2026-06-23] **DESIGN APPROVED (user)** — three parts, NO spec written yet (resume = write spec→plan→build):
+  - **F10** (Tm-shear/rotation): add a `tmTilted` flag to `TextOpInfo` in `locateTextOps` (set when `Tm` has
+    rotation/shear/non-uniform scale beyond Tz: `Tm[1]≠0 || Tm[2]≠0 || |Tm[0]|≠|Tm[3]|`), and REFUSE
+    decoration-resize in `prepareDecorationResize` when set (mirrors the F6 `textRise` gate). Defensive refuse.
+  - **F13** (q/Q underflow): track an `unbalanced` flag in the CTM walk (`Q` on empty stack); when set, REFUSE
+    decoration-resize for the page (the text edit still proceeds; only CTM-dependent decoration geometry is
+    skipped). Defensive refuse.
+  - **F3 HYBRID byte-splice (NOT a full rewrite — the key decision):** the tokenizer already does
+    `src.slice(start,i)`, so record `start`/`end` byte offsets on each token → propagate `byteStart`/`byteEnd`
+    to each `CsOp`. At `writeBack`: snapshot original op raws+offsets BEFORE mutations; after the existing
+    in-place mutations run, DIFF mutated vs original ops — if exactly ONE op changed and any additions are
+    APPENDED at end (the Path-3 redraw) → **splice** that op's byte range in the original decoded bytes + append
+    the redraw (everything else byte-identical; inline images/binary untouched); anything more complex (multiple
+    ops changed, mid-stream insert/remove, decoration operand rewrites) → **fall back to today's `serializeOps`
+    re-serialize** (zero regression). Single-stream write-back unchanged; F12 multi-stream PRESERVATION stays a
+    documented bound, but non-edited bytes are now preserved verbatim (closes F3/F4 "any tokenizer imperfection
+    corrupts the whole page" for the common single-op edit). Touch points: `contentStreamEditor.ts` tokenizer +
+    `types/contentStream.ts` token/op types, `groupOps`, `writeBack`, `serializeOps` (kept as the fallback).
+    Strong test net: round-trip fixtures incl. an inline-image / binary stream that survives byte-identical
+    through a one-word edit. **Gate MUST include the FULL `test:browser` + `npm run build`** (the CI-red lesson).
