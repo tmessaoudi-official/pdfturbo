@@ -180,6 +180,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   handleElementClick(el: PDFElement): void { this.selectElement(el); }
   handleCodeElementEdit(el: CodeElement): void { this.openCodeModal(el); }
   handleTextInput(element: TextElement | CommentElement, input: HTMLInputElement | HTMLTextAreaElement): void { this._undoRedoController.handleTextInput(element, input); }
+  handleFormInput(sourcePdfId: string, fieldName: string, value: string): void { this._undoRedoController.handleFormInput(sourcePdfId, fieldName, value); }
 
   // ── IExportContext accessors ───────────────────────────────────────────────
   get exportPassword(): { user: string; owner: string } | null { return this._exportPassword; }

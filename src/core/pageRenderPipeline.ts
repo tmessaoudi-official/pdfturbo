@@ -22,6 +22,8 @@ export interface IPageRenderContext {
   // Form values
   getFormValues(sourcePdfId: string): Record<string, string>;
   setFormValue(sourcePdfId: string, fieldName: string, value: string): void;
+  /** Debounced, undoable form-fill (sets value live + records a SetFormValueCmd on idle). */
+  handleFormInput(sourcePdfId: string, fieldName: string, value: string): void;
   // Warn flag
   getWarnedUnsupportedFields(): boolean;
   setWarnedUnsupportedFields(v: boolean): void;
@@ -148,8 +150,9 @@ export class PageRenderPipeline {
     const { unsupportedCount } = await this._ctx.formFieldOverlay.render(
       page, viewport, canvasOffset, values,
       (fieldName, value) => {
-        this._ctx.setFormValue(docPage.sourcePdfId, fieldName, value);
-        this._ctx.autosave();
+        // #QA-2026-06-23 P1 — route through the debounced, undoable form-fill path
+        // (sets the value live + autosaves on flush) instead of a direct mutation.
+        this._ctx.handleFormInput(docPage.sourcePdfId, fieldName, value);
       }
     );
     if (!this._ctx.isCurrentFormFieldGen(myGen)) return;

@@ -8,6 +8,7 @@ export * from './commands/pageCmds';
 export * from './commands/inkCmds';
 export * from './commands/sourcePdfCmds';
 export * from './commands/macroCmds';
+export * from './commands/formCmds';
 
 export class HistoryManager {
   private undoStack: Command[] = [];

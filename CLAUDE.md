@@ -114,6 +114,12 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `main.ts` removes the button when off). The app's own overlay annotations are already baked by `buildPageOverlays`;
   source **markup** annotations (notes/stamps authored elsewhere) = ceiling **#62b** — pdf-lib has no generic
   markup-flatten, and the redaction-rasterize path + PNG export already cover that nuclear case.
+  **Form FILLS are undoable (#QA-2026-06-23 P1 fix):** the form-overlay change callback routes through
+  `app.handleFormInput` → `UndoRedoController.handleFormInput`, which sets `_formValues` live AND coalesces a
+  burst of edits to one field into a single `SetFormValueCmd` (`src/core/commands/formCmds.ts`) recorded after a
+  500ms idle (mirrors `handleTextInput`); `undo()`/`redo()` **flush** the in-flight edit (record, not discard).
+  Undo reverts the stored value and the existing `renderCurrentPage` re-render repaints the overlay input. The
+  old direct `setFormValue` mutation in the callback is gone (it stays on the app only for bulk session restore).
 - **XFDF import/export (#57)**: `src/utils/xfdf.ts` is a **pure** codec (`buildXfdf`/`parseXfdf` via the platform
   `DOMParser`, no dep) over a normalized `XfdfAnnot` record in **PDF user space** (points, y-UP, bottom-left,
   0-based page). `src/export/xfdfMapping.ts` does the editor-display(top-left,y-DOWN)↔user-space flip

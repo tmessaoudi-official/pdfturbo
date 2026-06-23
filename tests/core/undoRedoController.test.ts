@@ -21,6 +21,7 @@ function makeCtx(): IUndoRedoContext & {
   const ctx = {
     elements,
     historyManager,
+    formValues: {} as Record<string, Record<string, string>>,
     reportError: makeReporter(),
     setSelectedElement: vi.fn(),
     renderCurrentPage: vi.fn().mockResolvedValue(undefined),
@@ -245,6 +246,72 @@ describe('UndoRedoController.redo', () => {
     const autosaveCalls = (ctx.autosave as ReturnType<typeof vi.fn>).mock.calls.length;
     vi.advanceTimersByTime(500);
     expect(ctx.autosave).toHaveBeenCalledTimes(autosaveCalls);
+    vi.useRealTimers();
+  });
+});
+
+// ── handleFormInput (QA-2026-06-23 P1: form fills must be undoable) ──────────
+
+describe('UndoRedoController.handleFormInput', () => {
+  it('sets the form value immediately (live), before the debounce', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    new UndoRedoController(ctx).handleFormInput('s1', 'Name', 'Alice');
+    expect(ctx.formValues.s1.Name).toBe('Alice');
+    vi.useRealTimers();
+  });
+
+  it('records ONE command after the 500ms debounce and undo restores the original', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    const ctrl = new UndoRedoController(ctx);
+    // simulate typing keystrokes into the same field
+    ctrl.handleFormInput('s1', 'Name', 'A');
+    ctrl.handleFormInput('s1', 'Name', 'Al');
+    ctrl.handleFormInput('s1', 'Name', 'Ali');
+    expect(ctx.historyManager.canUndo()).toBe(false); // not yet recorded
+    vi.advanceTimersByTime(500);
+    expect(ctx.historyManager.canUndo()).toBe(true);
+    ctx.historyManager.undo();
+    expect(ctx.formValues.s1?.Name ?? '').toBe(''); // back to original (empty)
+    ctx.historyManager.redo();
+    expect(ctx.formValues.s1.Name).toBe('Ali');
+    vi.useRealTimers();
+  });
+
+  it('does NOT record when the value is unchanged', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    ctx.formValues.s1 = { Name: 'same' };
+    new UndoRedoController(ctx).handleFormInput('s1', 'Name', 'same');
+    vi.advanceTimersByTime(500);
+    expect(ctx.historyManager.canUndo()).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('undo() FLUSHES an in-flight form edit (not silently discarded) and then reverts it', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    const ctrl = new UndoRedoController(ctx);
+    ctrl.handleFormInput('s1', 'Name', 'typed'); // pending, timer not yet fired
+    ctrl.undo(); // should flush (record) then undo → value reverts to original
+    expect(ctx.formValues.s1?.Name ?? '').toBe('');
+    vi.useRealTimers();
+  });
+
+  it('switching to a different field flushes the previous field as its own command', () => {
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    const ctrl = new UndoRedoController(ctx);
+    ctrl.handleFormInput('s1', 'First', 'Ann');
+    ctrl.handleFormInput('s1', 'Last', 'Bee'); // different field → flush First
+    vi.advanceTimersByTime(500); // flush Last
+    // two independent undoable commands
+    ctx.historyManager.undo();
+    expect(ctx.formValues.s1.Last).toBe('');
+    expect(ctx.formValues.s1.First).toBe('Ann');
+    ctx.historyManager.undo();
+    expect(ctx.formValues.s1.First).toBe('');
     vi.useRealTimers();
   });
 });
