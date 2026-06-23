@@ -1,6 +1,14 @@
 export type Point = { x: number; y: number };
 export type Bbox  = { x: number; y: number; w: number; h: number };
 
+/**
+ * Eraser half-width in element-space units. The eraser is modelled as its
+ * pointer polyline dilated by this radius (a union of capsules); a stroke point
+ * is erased iff it lies within this distance of the eraser path. Matches the
+ * 10-unit-wide preview stroke (`eraserHandler._updatePreview`).
+ */
+export const DEFAULT_ERASE_RADIUS = 6;
+
 export function segmentsIntersect(
   a1: Point, a2: Point,
   b1: Point, b2: Point,
@@ -40,73 +48,115 @@ export function bboxIntersectsPolyline(bbox: Bbox, polyline: Point[]): boolean {
   return polyline.some(p => p.x >= x && p.x <= x+w && p.y >= y && p.y <= y+h);
 }
 
+/** Shortest distance from point `p` to the line segment `a`–`b`. */
+export function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-12) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** Shortest distance from point `p` to a polyline (min over its segments). */
+export function pointToPolylineDistance(p: Point, polyline: Point[]): number {
+  if (polyline.length === 0) return Infinity;
+  if (polyline.length === 1) return Math.hypot(p.x - polyline[0].x, p.y - polyline[0].y);
+  let min = Infinity;
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const d = pointToSegmentDistance(p, polyline[i], polyline[i + 1]);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+function _lerp(a: Point, b: Point, t: number): Point {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/**
+ * Binary-refine the point where the erased predicate flips between `pa`
+ * (erased = `paErased`) and `pb` (erased = `!paErased`). Returns a point on the
+ * boundary of the erase region, accurate enough for a clean visual cut.
+ */
+function _refineCut(
+  pa: Point, pb: Point, paErased: boolean,
+  radius: number, erase: Point[],
+): Point {
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    const erasedHere = pointToPolylineDistance(_lerp(pa, pb, mid), erase) <= radius;
+    if (erasedHere === paErased) lo = mid; else hi = mid;
+  }
+  return _lerp(pa, pb, (lo + hi) / 2);
+}
+
+/**
+ * Clip a freehand stroke against the eraser's swept region (the eraser polyline
+ * dilated by `radius`). Returns the surviving sub-strokes — each a run of the
+ * stroke that stays OUTSIDE the region — preserving the original vertices and
+ * inserting interpolated cut points at the region boundary.
+ *
+ * - no overlap      → `[strokePoints]` (unchanged)
+ * - fully swept     → `[]` (caller deletes the element)
+ * - partial overlap → one entry per surviving run (each ≥ 2 points)
+ *
+ * Distance-based, so a long/diagonal erase only removes what it physically
+ * swept — never whole segments that merely fall inside its bounding box.
+ */
 export function splitFreehandAtErase(
   strokePoints: Point[],
   erasePoints:  Point[],
+  radius: number = DEFAULT_ERASE_RADIUS,
 ): Point[][] {
   if (strokePoints.length < 2 || erasePoints.length < 2) return [strokePoints];
 
-  type Crossing = { tStroke: number; point: Point };
-  const crossings: Crossing[] = [];
+  const isErased = (p: Point) => pointToPolylineDistance(p, erasePoints) <= radius;
 
-  for (let i = 0; i < strokePoints.length - 1; i++) {
-    const a1 = strokePoints[i], a2 = strokePoints[i + 1];
-    for (let j = 0; j < erasePoints.length - 1; j++) {
-      const b1 = erasePoints[j], b2 = erasePoints[j + 1];
-      const r = segmentsIntersect(a1, a2, b1, b2);
-      if (r.intersects && r.point) {
-        crossings.push({ tStroke: i + (r.t ?? 0), point: r.point });
-      }
-    }
-  }
-
-  if (crossings.length === 0) return [strokePoints];
-
-  const augmented: Array<Point & { isCrossing?: boolean }> = [];
-  const crossingSet = new Set<number>();
-
-  let ci = 0;
-  const sorted = crossings.slice().sort((a, b) => a.tStroke - b.tStroke);
-  for (let i = 0; i < strokePoints.length - 1; i++) {
-    augmented.push(strokePoints[i]);
-    while (ci < sorted.length && Math.floor(sorted[ci].tStroke) === i) {
-      const idx = augmented.length;
-      augmented.push({ ...sorted[ci].point, isCrossing: true });
-      crossingSet.add(idx);
-      ci++;
-    }
-  }
-  augmented.push(strokePoints[strokePoints.length - 1]);
-
-  const segments: Point[][] = [];
+  const runs: Point[][] = [];
   let current: Point[] = [];
-  for (let k = 0; k < augmented.length; k++) {
-    current.push({ x: augmented[k].x, y: augmented[k].y });
-    if (crossingSet.has(k) && k > 0) {
-      if (current.length >= 2) segments.push(current);
-      current = [{ x: augmented[k].x, y: augmented[k].y }];
+  let anyErased = false;
+
+  const endRun = () => {
+    if (current.length >= 2) runs.push(current);
+    current = [];
+  };
+
+  let prevErased = isErased(strokePoints[0]);
+  if (prevErased) anyErased = true;
+  else current.push({ ...strokePoints[0] });
+
+  for (let i = 0; i < strokePoints.length - 1; i++) {
+    const a = strokePoints[i], b = strokePoints[i + 1];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    // Sub-sample finely enough to catch a segment that dips into the region
+    // between two outside endpoints. Sub-samples drive DETECTION only; output
+    // keeps original vertices + cut points so untouched strokes are unchanged.
+    const steps = Math.min(256, Math.max(1, Math.ceil(segLen / Math.max(0.5, radius / 4))));
+    for (let s = 1; s <= steps; s++) {
+      const cur = s === steps ? b : _lerp(a, b, s / steps);
+      const e = isErased(cur);
+      if (e !== prevErased) {
+        const cut = _refineCut(
+          s === 1 ? a : _lerp(a, b, (s - 1) / steps),
+          cur, prevErased, radius, erasePoints,
+        );
+        if (prevErased) {
+          current = [cut];          // exiting region → open a new run
+        } else {
+          current.push(cut);        // entering region → close the run
+          endRun();
+        }
+        prevErased = e;
+        if (e) anyErased = true;
+      }
+      // Record original vertices that survive (the segment endpoint `b`).
+      if (s === steps && !prevErased) current.push({ ...b });
     }
   }
-  if (current.length >= 2) segments.push(current);
+  endRun();
 
-  if (segments.length <= 1) return segments;
-  const eraseBbox = _polylineBbox(erasePoints);
-  const surviving = segments.filter(seg => {
-    // Use centroid to avoid false-positive matches at the crossing boundary itself.
-    const cx = seg.reduce((s, p) => s + p.x, 0) / seg.length;
-    const cy = seg.reduce((s, p) => s + p.y, 0) / seg.length;
-    return !_pointInBbox({ x: cx, y: cy }, eraseBbox);
-  });
-
-  return surviving.length > 0 ? surviving : [strokePoints];
-}
-
-function _polylineBbox(pts: Point[]): Bbox {
-  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-  const x = Math.min(...xs), y = Math.min(...ys);
-  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
-}
-
-function _pointInBbox(p: Point, bb: Bbox): boolean {
-  return p.x >= bb.x && p.x <= bb.x + bb.w && p.y >= bb.y && p.y <= bb.y + bb.h;
+  if (!anyErased) return [strokePoints];
+  return runs;
 }

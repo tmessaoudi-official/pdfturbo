@@ -4,6 +4,9 @@ import { ShapeElement } from '../elements/shapeElement';
 import { BulkDeleteCmd, SplitStrokeCmd, MacroCmd, type Command } from '../core/historyManager';
 import { bboxIntersectsPolyline, splitFreehandAtErase, type Point } from '../utils/eraserGeometry';
 
+/** Eraser half-width in element space — matches the 10-unit preview stroke. */
+const ERASE_VISUAL_RADIUS = 5;
+
 export class EraserHandler {
   private _drawing = false;
   private _points: Point[] = [];
@@ -84,7 +87,11 @@ export class EraserHandler {
         const s = el as ShapeElement;
         if (s.points.length < 2) { toDelete.push(el); continue; }
 
-        const surviving = splitFreehandAtErase(s.points, erasePoints);
+        // Effective radius = the visible eraser half-width plus the target
+        // stroke's own half-width, so a thick stroke is cut when the eraser
+        // touches its edge (not only its centreline).
+        const radius = ERASE_VISUAL_RADIUS + (s.strokeWidth ?? 0) / 2;
+        const surviving = splitFreehandAtErase(s.points, erasePoints, radius);
         if (surviving.length === 0) {
           toDelete.push(el);
         } else if (surviving.length === 1 && surviving[0].length === s.points.length) {
