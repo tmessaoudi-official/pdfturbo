@@ -3,6 +3,8 @@ import type { FormattingService } from '../core/formattingService';
 import type { TextElement } from '../elements/textElement';
 import type { TextCaseMode } from '../utils/textCase';
 import { trapFocus } from '../utils/focusTrap';
+import { COLOR_PRESETS, getRecentColors, pushRecentColor } from '../utils/recentColors';
+import { t } from '../utils/i18n';
 
 /**
  * "Text ⋮" options popover (#formattingGroup).  Wires advanced text-formatting
@@ -39,10 +41,18 @@ export class TextOptionsPopover {
     ui.textOpacity.addEventListener('input', () =>
       svc.setTextOpacity(floatOr(ui.textOpacity.value, 1)),
     );
+    // #QA-2026-06-23 P3 #26 — the background color reuses the SHARED presets+recent palette
+    // (same recentColors store as the toolbar), not a lone picker. The native input stays as
+    // the full-spectrum "custom color" entry. Live-apply on input; record recent on commit.
     ui.textBgColor.addEventListener('input', () =>
       svc.setTextBackground(ui.textBgColor.value),
     );
+    ui.textBgColor.addEventListener('change', () => {
+      pushRecentColor(ui.textBgColor.value);
+      this._renderBgSwatches();
+    });
     ui.textBgNoneBtn.addEventListener('click', () => svc.clearTextBackground());
+    this._renderBgSwatches();
 
     const caseBtn = (el: HTMLButtonElement, mode: TextCaseMode) =>
       el.addEventListener('click', () => svc.transformCase(mode));
@@ -93,6 +103,7 @@ export class TextOptionsPopover {
       if (ui.charSpacingInput) ui.charSpacingInput.value = String(te.charSpacing ?? 0);
       if (ui.horizontalScaleInput) ui.horizontalScaleInput.value = String(te.horizontalScale ?? 100);
     }
+    this._renderBgSwatches(); // refresh recent colors that may have changed since last open
     ui.textOptionsModal.classList.add('active');
     this._trapCleanup?.();
     this._trapCleanup = trapFocus(
@@ -105,5 +116,40 @@ export class TextOptionsPopover {
     this._ctx.ui.textOptionsModal.classList.remove('active');
     this._trapCleanup?.();
     this._trapCleanup = null;
+  }
+
+  /**
+   * Render the shared color palette (presets + recently-used) into #textBgSwatchRow — the same
+   * `recentColors` store the toolbar uses (#QA P3 #26). A swatch click applies the background and
+   * records it as recent; the trailing "custom" swatch opens the native full-spectrum picker.
+   */
+  private _renderBgSwatches(): void {
+    const { ui, svc } = this._ctx;
+    const row = ui.textBgSwatchRow;
+    if (!row) return;
+    row.innerHTML = '';
+    const seen = new Set<string>();
+    for (const hex of [...COLOR_PRESETS, ...getRecentColors()]) {
+      const norm = hex.toLowerCase();
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      const btn = document.createElement('button');
+      btn.className = 'color-swatch';
+      btn.style.background = norm;
+      btn.title = norm;
+      btn.addEventListener('click', () => {
+        ui.textBgColor.value = norm;
+        svc.setTextBackground(norm);
+        pushRecentColor(norm);
+        this._renderBgSwatches();
+      });
+      row.appendChild(btn);
+    }
+    const custom = document.createElement('button');
+    custom.className = 'color-swatch color-swatch-custom';
+    custom.title = t('toolbar.customColorTitle');
+    custom.setAttribute('aria-label', t('toolbar.customColorTitle'));
+    custom.addEventListener('click', () => ui.textBgColor.click());
+    row.appendChild(custom);
   }
 }

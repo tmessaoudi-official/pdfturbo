@@ -23,6 +23,7 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
         <input type="range"  id="textOpacity"   value="1" />
         <input type="color"  id="textBgColor"   value="#ffff00" />
         <button id="textBgNoneBtn">None</button>
+        <span id="textBgSwatchRow"></span>
         <button id="clearFmtBtn">Clear formatting</button>
         <button id="formatPainterBtn">Format painter</button>
         <button id="textOptionsCloseBtn">Close</button>
@@ -60,6 +61,7 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
     alignRightBtn:       g('alignRightBtn')       as HTMLButtonElement,
     alignJustifyBtn:     g('alignJustifyBtn')     as HTMLButtonElement,
     colorSwatchRow:      g('colorSwatchRow')      as HTMLElement,
+    textBgSwatchRow:     g('textBgSwatchRow')     as HTMLElement,
     // Slice 2
     textStrokeWidth:       g('textStrokeWidth')       as HTMLInputElement,
     charSpacingInput:      g('charSpacingInput')      as HTMLInputElement,
@@ -108,6 +110,31 @@ describe('TextOptionsPopover', () => {
     expect(modal.classList.contains('active')).toBe(true);
     pop.close();
     expect(modal.classList.contains('active')).toBe(false);
+  });
+
+  // #QA-2026-06-23 P3 #26 — the background color reuses the shared presets+recent palette.
+  it('renders the shared bg-color swatch palette (presets + a custom-color swatch)', () => {
+    const { pop, ui } = makePopover();
+    pop.setupListeners();
+    const swatches = ui.textBgSwatchRow.querySelectorAll('.color-swatch');
+    expect(swatches.length).toBeGreaterThan(1); // ≥1 preset + the custom swatch
+    expect(ui.textBgSwatchRow.querySelector('.color-swatch-custom')).not.toBeNull();
+  });
+
+  it('clicking a bg swatch applies that background via svc.setTextBackground', () => {
+    const { pop, ui, svc } = makePopover();
+    pop.setupListeners();
+    const firstPreset = ui.textBgSwatchRow.querySelector('.color-swatch:not(.color-swatch-custom)') as HTMLButtonElement;
+    firstPreset.click();
+    expect(svc.setTextBackground).toHaveBeenCalledWith(firstPreset.title);
+  });
+
+  it('the custom bg swatch opens the native color picker', () => {
+    const { pop, ui } = makePopover();
+    pop.setupListeners();
+    const clickSpy = vi.spyOn(ui.textBgColor as HTMLInputElement, 'click').mockImplementation(() => {});
+    (ui.textBgSwatchRow.querySelector('.color-swatch-custom') as HTMLButtonElement).click();
+    expect(clickSpy).toHaveBeenCalled();
   });
 
   it('line-height input change calls svc.setLineHeight with the parsed value', () => {

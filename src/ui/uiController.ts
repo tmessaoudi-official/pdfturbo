@@ -246,6 +246,7 @@ export interface AppDOMRefs {
   superscriptBtn:        HTMLButtonElement;
   subscriptBtn:          HTMLButtonElement;
   colorSwatchRow:        HTMLElement;
+  textBgSwatchRow:       HTMLElement;
 }
 
 export class UIController {
@@ -491,6 +492,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       superscriptBtn:        document.getElementById('superscriptBtn')        as HTMLButtonElement,
       subscriptBtn:          document.getElementById('subscriptBtn')          as HTMLButtonElement,
       colorSwatchRow:        document.getElementById('colorSwatchRow')        as HTMLElement,
+      textBgSwatchRow:       document.getElementById('textBgSwatchRow')       as HTMLElement,
     };
   }
 
