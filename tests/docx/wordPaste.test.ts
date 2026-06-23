@@ -80,4 +80,16 @@ describe('cleanWordHtml', () => {
     const huge = 'data:image/png;base64,' + 'A'.repeat(5_000_001);
     expect(cleanWordHtml(`<p><img src="${huge}"></p>`)).not.toMatch(/<img/);
   });
+
+  // ── QA-2026-06-23 P3 (#15) — anchor href scheme allowlist ──
+  it('keeps http(s)/mailto anchor hrefs', () => {
+    expect(cleanWordHtml('<a href="https://x.test">L</a>')).toMatch(/href="https:\/\/x\.test"/);
+    expect(cleanWordHtml('<a href="mailto:a@b.test">M</a>')).toMatch(/href="mailto:a@b\.test"/);
+  });
+  it('drops javascript:/data: anchor hrefs but keeps the link text', () => {
+    const js = cleanWordHtml('<a href="javascript:alert(1)">Click</a>');
+    expect(js).not.toMatch(/href=/);
+    expect(js).toMatch(/Click/);
+    expect(cleanWordHtml('<a href="data:text/html,x">D</a>')).not.toMatch(/href=/);
+  });
 });

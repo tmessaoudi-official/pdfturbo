@@ -93,6 +93,12 @@ export class TextSearchHandler {
   // Cache raw text items per pageId (viewport-independent)
   private _cache = new Map<string, RawTextItem[]>();
   private static readonly MAX_CACHE_SIZE = 20;
+  // Upper bound on highlights returned for one page (#QA-2026-06-23 P3 #17). A match-everything
+  // regex (`.`, `\s`, a lone letter) over a dense page would otherwise build tens of thousands of
+  // result rects + DOM highlights and freeze the tab. (Catastrophic backtracking INSIDE a single
+  // re.exec() stays undefended — uninterruptible in synchronous JS without a Worker/RE2, both
+  // excluded by the no-new-dep rule; same documented stance as the DOCX find/replace path.)
+  private static readonly MAX_RESULTS = 5000;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async buildIndex(page: any, pageId: string): Promise<void> {
@@ -147,6 +153,7 @@ export class TextSearchHandler {
     const vt = viewport.transform as number[];
 
     for (const item of items) {
+      if (results.length >= TextSearchHandler.MAX_RESULTS) break;
       const canvasPt  = applyTransform([item.transform[4], item.transform[5]], vt);
       const scaleInVp = Math.hypot(vt[0], vt[1]) || currentScale;
       const totalW    = item.width * scaleInVp;
@@ -169,6 +176,7 @@ export class TextSearchHandler {
           height: h      / currentScale,
         });
         if (m[0].length === 0) { pattern.lastIndex++; } // guard against zero-length match infinite loop
+        if (results.length >= TextSearchHandler.MAX_RESULTS) break;
       }
 
       // Arabic / ligature fallback — only when the raw (visual/presentation-form) pass found
@@ -210,10 +218,12 @@ export class TextSearchHandler {
       const scaleInVp = Math.hypot(vt[0], vt[1]) || currentScale;
       if (lineRe) {
         for (const line of buildLogicalLines(items)) {
+          if (results.length >= TextSearchHandler.MAX_RESULTS) break;
           if (!line.rtl || !line.text) continue;
           lineRe.lastIndex = 0;
           let lm: RegExpExecArray | null;
           while ((lm = lineRe.exec(line.text)) !== null) {
+            if (results.length >= TextSearchHandler.MAX_RESULTS) break;
             const s = lm.index, e = lm.index + lm[0].length;
             if (lm[0].length === 0) { lineRe.lastIndex++; continue; }
             let minX = Infinity, minY = Infinity, maxR = -Infinity, maxB = -Infinity, found = false;

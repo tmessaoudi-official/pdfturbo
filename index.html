@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!--
+    CSP (#QA-2026-06-23 P3 #16 — assessed): script-src has NO 'unsafe-inline' (the XSS-critical
+    directive) and is the tight one. style-src KEEPS 'unsafe-inline' because the markup uses many
+    literal style="" attributes (display:none toggles, sizing) which are governed by
+    style-src-attr → style-src; removing it would require migrating every inline style attribute to
+    CSS classes + nonces/hashes — a large, regression-prone refactor disproportionate to the risk
+    (style injection alone cannot run script here: object-src 'none', base-uri 'none', no inline
+    script). Retained deliberately; revisit if the inline style attributes are ever eliminated.
+  -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#2563eb">

@@ -9,6 +9,8 @@
  * cleaned fragment and never throws.
  */
 
+import { isAllowedUrlScheme } from '../utils/urlScheme';
+
 // CSS style declarations the schema's parseDOM rules actually read.
 const _KEEP_STYLE = /^(font-family|font-size|font-weight|font-style|text-decoration)$/;
 // Office-namespaced or metadata elements removed wholesale (content dropped).
@@ -86,11 +88,18 @@ export function cleanWordHtml(html: string): string {
     }
   });
 
-  // Pass 2: drop unusable images; clean styles + noise attributes.
+  // Pass 2: drop unusable images; sanitize anchor href schemes; clean styles + noise attributes.
   body.querySelectorAll('*').forEach(el => {
-    if (el.tagName.toLowerCase() === 'img' && !_imgIsUsable(el)) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'img' && !_imgIsUsable(el)) {
       el.remove();
       return;
+    }
+    // #QA-2026-06-23 P3 (#15): keep the link TEXT but drop a javascript:/data:/etc. href so a
+    // pasted anchor can't smuggle a script URL into the editor (and through the OPC save).
+    if (tag === 'a') {
+      const href = el.getAttribute('href');
+      if (href !== null && !isAllowedUrlScheme(href)) el.removeAttribute('href');
     }
     _cleanStyle(el);
     el.removeAttribute('class');

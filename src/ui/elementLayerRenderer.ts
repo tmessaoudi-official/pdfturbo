@@ -88,8 +88,9 @@ export class ElementLayerRenderer {
    * Expose a placed annotation element to assistive tech (WCAG 2.1.1, 4.1.2):
    * a role appropriate to its type, keyboard focusability, and a translated
    * accessible name. The label text content (if any) is passed as a plain
-   * string via setAttribute — never injected as HTML — so it is safe even
-   * though i18next runs with escapeValue:false.
+   * string via setAttribute — never injected as HTML — so it is safe; i18next
+   * additionally runs with escapeValue:true (see i18n.ts), HTML-escaping any
+   * interpolated value as a second layer of defence.
    */
   private _applyA11y(div: HTMLDivElement, element: PDFElement): void {
     div.setAttribute('role', _ELEMENT_ROLE[element.type] ?? 'group');

@@ -53,6 +53,18 @@ describe('TextSearchHandler LRU cache', () => {
   });
 });
 
+describe('TextSearchHandler result cap (#QA-2026-06-23 P3 #17 — match-explosion guard)', () => {
+  it('caps results for a catastrophic match-everything regex', async () => {
+    const handler = new TextSearchHandler();
+    // One item, 20 000 chars — a `.` global regex would otherwise push 20 000 results.
+    await handler.buildIndex(makePage('a'.repeat(20000)), 'p1');
+    const vp = { transform: [1, 0, 0, -1, 0, 842] } as unknown as PageViewport;
+    const res = handler.search('.', 'p1', vp, 1, { useRegex: true });
+    expect(res.length).toBeGreaterThan(0);
+    expect(res.length).toBeLessThanOrEqual(5000); // TextSearchHandler.MAX_RESULTS
+  });
+});
+
 describe('TextSearchHandler word-level highlights', () => {
   it('match width is narrower than full item width', async () => {
     const handler = new TextSearchHandler();

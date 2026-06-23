@@ -5,6 +5,7 @@
  */
 
 import type { FlowDoc, FlowParagraph, FlowRun, FlowImage, FlowTable, ListFormat } from './flowDoc';
+import { isAllowedUrlScheme } from './urlScheme';
 
 // Word-safe font mapping — when a run's real face is unknown we fall back to the
 // closest universally-available family by serif/sans/mono classification.
@@ -233,8 +234,7 @@ function mdEscapeInline(text: string): string {
  */
 export function safeMdUrl(url: string): string | null {
   const trimmed = url.trim();
-  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
-  if (scheme && !/^(https?|mailto)$/i.test(scheme[1])) return null;
+  if (!isAllowedUrlScheme(trimmed)) return null; // shared allowlist (#QA-2026-06-23 P3 #14/#15)
   // encodeURIComponent leaves ()!*'~ untouched, but ( ) break ](url) syntax — encode explicitly.
   const PCT: Record<string, string> = { '(': '%28', ')': '%29', '<': '%3C', '>': '%3E' };
   return trimmed.replace(/[()<>\s]/g, c => PCT[c] ?? encodeURIComponent(c));

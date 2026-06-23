@@ -2,6 +2,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFPageProxy, PageViewport } from 'pdfjs-dist';
 import { isArabicText } from './flowDoc';
 import { reconstructLogicalText, type SpanGeom } from './rtlClipboard';
+import { isAllowedUrlScheme } from './urlScheme';
 
 type AnnRecord = { subtype: string; url?: string; rect: [number, number, number, number] };
 
@@ -109,7 +110,10 @@ export class TextLayerManager {
     });
 
     for (const ann of annotations) {
-      if (ann.subtype !== 'Link' || !ann.url) continue;
+      // Scheme allowlist (#QA-2026-06-23 P3 #14): the URL comes from an untrusted PDF Link
+      // annotation. Skip rendering a clickable <a> for javascript:/data:/file:/etc. — only
+      // http/https/mailto (and schemeless) become links; anything else is dropped silently.
+      if (ann.subtype !== 'Link' || !ann.url || !isAllowedUrlScheme(ann.url)) continue;
 
       const vr = viewport.convertToViewportRectangle(ann.rect);
       const left = Math.min(vr[0], vr[2]);
