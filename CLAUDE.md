@@ -718,9 +718,16 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   The drawn rect arrives in editor DISPLAY space; `PageService.cropPage` maps it via `redactionRectToContent`
   (the SAME tested helper redactions use) + `clampContentRect`. Export: `buildPageOverlays` draws every overlay
   in source-box space FIRST, then `page.setCropBox(effBox)` **last** (via `contentCropToPdfCropBox`) — so
-  element/ink coords are unaffected and the redaction rasterizer + thumbnail + export-preview all inherit the
-  crop (they re-read `getPageCropBox`). Bates/watermark switch to the crop's **effective box** (else they'd
-  anchor in the now-clipped original corner); `effBox === cropBox` when no crop → **byte-identical export**.
+  element/ink coords are unaffected and the thumbnail + export-preview inherit the crop (they re-read
+  `getPageCropBox`). **The redaction rasterizer does NOT use setCropBox** (#QA-2026-06-23 leak fix): it passes
+  `buildPageOverlays({ skipCropBox: true })`, renders the FULL page, draws the burn at full-page coords (the
+  already-correct path), then **clips the rendered CANVAS** to the crop window LAST (effBox corners → canvas px
+  via `viewport.convertToViewportPoint`, rotation-correct). Burn and content thus share ONE coordinate space, so
+  a non-zero crop offset can no longer drift the burn off the secret (the old `setCropBox`-before-render path
+  rendered a cropped canvas but drew the burn at full-page coords → **misplaced burn = redaction LEAK** on a
+  cropped page). Guard: `tests/browser/redaction-crop.browser.test.ts`. Bates/watermark switch to the crop's
+  **effective box** (else they'd anchor in the now-clipped original corner); `effBox === cropBox` when no crop →
+  **byte-identical export** (the rasterizer's no-crop path embeds the full canvas unchanged).
   Undoable via `SetPageCropCmd` (clone of `RotatePageCmd`); apply-to-all = a `MacroCmd` whose canvas re-render
   rides the CURRENT page's command (fires on execute AND undo). Live editor preview is a **dimmed-margin SVG
   frame** (`pageRenderPipeline._renderCropFrame`, mapped via `contentRectToDisplay`), NOT a pdf.js sub-region

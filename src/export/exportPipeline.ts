@@ -36,6 +36,13 @@ export interface BuildPageCtx {
   pageNumber?: number;
   /** Full-document page count (for "N / total"). */
   pageCount?: number;
+  /**
+   * #QA-2026-06-23 — when true, skip the final `page.setCropBox` call only. The redaction
+   * rasterizer sets this so it renders the FULL (uncropped) page and clips the canvas to the
+   * crop window LAST — keeping the burn and content in one coordinate space so the burn can
+   * never drift off the secret. All other overlay drawing is unchanged.
+   */
+  skipCropBox?: boolean;
 }
 
 // ── Pure geometry helper ─────────────────────────────────────────────────────
@@ -215,9 +222,10 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   }
 
   // #G23 crop: clip the page to the user crop. Applied LAST — after overlays draw in
-  // source-box space — so element/ink positions are unaffected; the viewer (and the
-  // redaction rasterizer, which re-reads getPageCropBox) then shows only the crop window.
-  if (docPage.crop) {
+  // source-box space — so element/ink positions are unaffected; the viewer then shows only
+  // the crop window. The redaction rasterizer passes skipCropBox=true and clips the CANVAS
+  // instead (so its full-page burn coords stay correct — #QA-2026-06-23).
+  if (docPage.crop && !ctx.skipCropBox) {
     page.setCropBox(effBox.x, effBox.y, effBox.width, effBox.height);
   }
 }
@@ -263,6 +271,9 @@ export async function rasterizePageWithRedactions(
     inkLayer,
     reportError,
     bates, pageNumber, pageCount,
+    // Render the FULL (uncropped) page; the crop is applied as a canvas clip below so the
+    // redaction/text burn coords stay in full-page space (#QA-2026-06-23 leak fix).
+    skipCropBox: true,
   });
 
   const totalRot = ((srcRot + userRot) % 360 + 360) % 360;
@@ -338,14 +349,40 @@ export async function rasterizePageWithRedactions(
     ctx.restore();
   }
 
+  // #QA-2026-06-23 — apply the crop by clipping the rendered CANVAS (not via setCropBox before
+  // render). The burn above is drawn in full-page coords matching the full render, so it can
+  // never drift off its target; here we extract only the crop window. No crop → embed the full
+  // canvas (byte-identical to the pre-fix uncropped path).
+  let outCanvas: HTMLCanvasElement = offscreen;
+  let outW = w_eff, outH = h_eff;
+  if (docPage.crop) {
+    const effBox = contentCropToPdfCropBox(docPage.crop, cropBoxR);
+    // Map the crop window's user-space corners to canvas pixels — convertToViewportPoint
+    // applies the viewport's rotation + scale, so this is correct for /Rotate'd pages too.
+    const [ax, ay] = vp.convertToViewportPoint(effBox.x, effBox.y);
+    const [bx, by] = vp.convertToViewportPoint(effBox.x + effBox.width, effBox.y + effBox.height);
+    const clipX = Math.round(Math.min(ax, bx));
+    const clipY = Math.round(Math.min(ay, by));
+    const clipW = Math.max(1, Math.round(Math.abs(bx - ax)));
+    const clipH = Math.max(1, Math.round(Math.abs(by - ay)));
+    const clip = document.createElement('canvas');
+    clip.width = clipW;
+    clip.height = clipH;
+    const cctx = clip.getContext('2d') as CanvasRenderingContext2D;
+    cctx.drawImage(offscreen, -clipX, -clipY);
+    outCanvas = clip;
+    outW = clipW / SCALE;
+    outH = clipH / SCALE;
+  }
+
   const pngBytes = await new Promise<Uint8Array>((resolve, reject) => {
-    offscreen.toBlob((blob) => {
+    outCanvas.toBlob((blob) => {
       if (!blob) { reject(new Error('canvas toBlob failed')); return; }
       blob.arrayBuffer().then(ab => resolve(new Uint8Array(ab)), reject);
     }, 'image/png');
   });
 
   const pngImg  = await targetPdfDoc.embedPng(pngBytes);
-  const newPage = targetPdfDoc.addPage([w_eff, h_eff]);
-  newPage.drawImage(pngImg, { x: 0, y: 0, width: w_eff, height: h_eff });
+  const newPage = targetPdfDoc.addPage([outW, outH]);
+  newPage.drawImage(pngImg, { x: 0, y: 0, width: outW, height: outH });
 }
