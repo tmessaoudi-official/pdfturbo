@@ -18,6 +18,9 @@
   feature sequence is truly done).
 - [2026-06-23] Slice 3b (row/col add+del) shipped `c08d31c`. DECISION (user): "Option 2 and 3" →
   continue to **Slice 3c/3d (merge/split) now**, THEN **Feature 3 (Arabic-RTL)**. Keep going in order.
+- [2026-06-23] Slice 3c/3d shipped `db24f01` → **Feature 2 (DOCX table editing) FULLY DONE** (3b+3c/3d).
+  DECISION (user): **CHECKPOINT** — start Feature 3 (Arabic-RTL) in a FRESH window (hard/partly-ceiling,
+  heavy context this session). Bypass sentinel left ARMED. 2 commits unpushed (`c08d31c`,`db24f01`); push MANUAL.
 - [2026-06-23] DESIGN (3c/3d): model the **PM shape** — `DocCell.colspan?/rowspan?` on the surviving
   cell, covered grid positions ABSENT (matches prosemirror-tables AND docToDocModel). `parseTable` reads
   `w:gridSpan`→colspan and resolves `w:vMerge restart`+continuation runs→rowspan (dropping continuation
@@ -80,5 +83,12 @@ is the separate true-edit tool; Replace skips them with a hint).
   round-trip), docxToolbar (merge/split via CellSelection + probes), docx-tables.browser (merge→save→reopen).
 - Visual: `qa-shots/f2-merge-3cd/` (2 header cells → 1 colspan-2 cell; Split enabled after; 0 console errs).
 
-## Feature 3 — Arabic-RTL deepening — queued
+## Feature 3 — Arabic-RTL deepening — IN PROGRESS (brainstorming)
+- [2026-06-23] DECISION (user): F3 is a cluster; sequence = **(1) char-level bidi engine → (2) RTL-aware
+  toolbar controls → (3) ligature/tashkeel (evaluate-then-likely-defer)**. Each is its OWN spec→plan→impl
+  cycle. Start with #1 NOW. Rationale: the SAME char-level-bidi ceiling is documented in 4 surfaces
+  (copy `rtlClipboard.ts`, search `textSearchHandler.ts`, DOCX export `flowDoc.ts`, overlay export
+  `arabicOverlay.ts`); one shared utility retires all four. `bidi-js@1.0.3` (MIT, full UAX#9) is already
+  vendored (transitive via jsdom) → adopt, don't hand-roll; promote to a direct prod dependency.
+- Spec (slice 1): `docs/superpowers/specs/2026-06-23-arabic-rtl-bidi-engine-design.md` (brainstorming WIP).
 ## Feature 4 — true-edit F10–F16 + F3 — queued
