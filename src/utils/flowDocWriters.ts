@@ -225,6 +225,21 @@ function mdEscapeInline(text: string): string {
   return text.replace(/([*\\])/g, '\\$1');
 }
 
+/**
+ * Sanitise a hyperlink URL for Markdown output (#QA-2026-06-23 P2). The URL comes from a PDF
+ * Link annotation (untrusted): reject any explicit scheme other than http/https/mailto (drops
+ * `javascript:`/`data:` injection → returns null so the caller emits plain text), and
+ * percent-encode characters that break `](url)` syntax. Schemeless (relative/anchor) URLs pass.
+ */
+export function safeMdUrl(url: string): string | null {
+  const trimmed = url.trim();
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
+  if (scheme && !/^(https?|mailto)$/i.test(scheme[1])) return null;
+  // encodeURIComponent leaves ()!*'~ untouched, but ( ) break ](url) syntax — encode explicitly.
+  const PCT: Record<string, string> = { '(': '%28', ')': '%29', '<': '%3C', '>': '%3E' };
+  return trimmed.replace(/[()<>\s]/g, c => PCT[c] ?? encodeURIComponent(c));
+}
+
 export function flowDocToMarkdown(doc: FlowDoc): string {
   const ordinals = computeOrderedOrdinals(doc);
   const blocks: string[] = [];
@@ -242,7 +257,10 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
           if (r.bold && r.italic) styled = `***${core}***`;
           else if (r.bold) styled = `**${core}**`;
           else if (r.italic) styled = `*${core}*`;
-          if (r.linkUrl) styled = `[${styled}](${r.linkUrl})`;
+          if (r.linkUrl) {
+            const safe = safeMdUrl(r.linkUrl);
+            if (safe) styled = `[${styled}](${safe})`; // disallowed scheme → plain text, no link
+          }
           return lead + styled + trail;
         })
         .join('');

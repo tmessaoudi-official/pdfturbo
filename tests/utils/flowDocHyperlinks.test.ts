@@ -4,6 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { reconstructPage, type RawTextItem, type FontInfoMap, type FlowLinkRect } from '../../src/utils/flowDoc';
+import { safeMdUrl } from '../../src/utils/flowDocWriters';
 
 const FONTS: FontInfoMap = { f1: { name: 'Helvetica', family: 'sans-serif' } };
 const PAGE_W = 600;
@@ -45,5 +46,26 @@ describe('reconstructPage — hyperlink tagging (Gap 2)', () => {
   it('leaves all runs unlinked when no links are passed', () => {
     const page = reconstructPage([mkItem('Hello', 100, 700)], FONTS, PAGE_W, PAGE_H);
     expect(page.paragraphs.flatMap(p => p.runs).every(r => !r.linkUrl)).toBe(true);
+  });
+});
+
+describe('safeMdUrl (QA-2026-06-23 P2 — scheme allowlist + MD escaping)', () => {
+  it('allows http/https/mailto', () => {
+    expect(safeMdUrl('https://example.com')).toBe('https://example.com');
+    expect(safeMdUrl('http://x.io/a')).toBe('http://x.io/a');
+    expect(safeMdUrl('mailto:a@b.com')).toBe('mailto:a@b.com');
+  });
+  it('rejects javascript: and data: schemes (returns null → caller emits plain text)', () => {
+    expect(safeMdUrl('javascript:alert(1)')).toBeNull();
+    expect(safeMdUrl('JavaScript:alert(1)')).toBeNull();
+    expect(safeMdUrl('data:text/html,<script>x</script>')).toBeNull();
+    expect(safeMdUrl('  vbscript:foo')).toBeNull();
+  });
+  it('percent-encodes parens/whitespace/angle brackets that break ](url) syntax', () => {
+    expect(safeMdUrl('https://x.io/a(b) c')).toBe('https://x.io/a%28b%29%20c');
+  });
+  it('allows schemeless (relative/anchor) URLs', () => {
+    expect(safeMdUrl('#section')).toBe('#section');
+    expect(safeMdUrl('/path/page')).toBe('/path/page');
   });
 });

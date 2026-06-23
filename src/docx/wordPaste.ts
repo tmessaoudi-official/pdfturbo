@@ -46,9 +46,20 @@ function _isEmptyBlock(el: Element): boolean {
   return (el.textContent ?? '').replace(/ /g, ' ').trim() === '';
 }
 
+/** ~5 MB ceiling on inline data: image payloads (a base64 char ≈ 0.75 raw bytes). */
+const MAX_DATA_IMG_LEN = 5_000_000;
+
+/**
+ * Whether a pasted <img> src is safe to keep (#QA-2026-06-23 P2). Remote http(s) images pass
+ * (Word-like; fetched by the browser on render). For `data:` URLs only RASTER image types are
+ * allowed and below a size ceiling — this rejects `data:image/svg+xml` (a script vector),
+ * `data:text/html`, non-image data:, and oversized base64 payloads.
+ */
 function _imgIsUsable(el: Element): boolean {
-  const src = el.getAttribute('src') ?? '';
-  return /^(https?:|data:)/i.test(src);
+  const src = (el.getAttribute('src') ?? '').trim();
+  if (/^https?:/i.test(src)) return true;
+  if (!/^data:image\/(png|jpe?g|gif|webp)[;,]/i.test(src)) return false;
+  return src.length <= MAX_DATA_IMG_LEN;
 }
 
 export function cleanWordHtml(html: string): string {

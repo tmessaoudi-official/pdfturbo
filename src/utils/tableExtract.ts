@@ -97,9 +97,14 @@ export function buildTableGrid(
   return { rows, cols: keep.length, cells: cells.map(row => keep.map(c => row[c])) };
 }
 
-/** One RFC 4180 CSV field: quote when it contains a comma, quote, or newline. */
+/**
+ * One RFC 4180 CSV field. Cells come from an arbitrary opened PDF (untrusted), so a value
+ * beginning with `= + - @` or a tab/CR is neutralised against spreadsheet formula injection
+ * (#QA-2026-06-23 P2) by prefixing a single quote before the normal RFC-4180 quoting.
+ */
 function csvField(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const v = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
 /** Serialize a grid to CSV (comma-separated fields, newline-separated rows). */

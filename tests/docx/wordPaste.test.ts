@@ -66,4 +66,18 @@ describe('cleanWordHtml', () => {
     expect(cleanWordHtml('just text')).toMatch(/just text/);
     expect(() => cleanWordHtml('<p><b>unclosed')).not.toThrow();
   });
+
+  // ── QA-2026-06-23 P2 — image src allowlist ──
+  it('keeps raster data: images and remote http(s) images', () => {
+    expect(cleanWordHtml('<p><img src="data:image/png;base64,iVBORw0K"></p>')).toMatch(/<img/);
+    expect(cleanWordHtml('<p><img src="https://cdn.example.com/a.png"></p>')).toMatch(/<img/);
+  });
+  it('drops data:image/svg+xml (script vector) and non-image data: URLs', () => {
+    expect(cleanWordHtml('<p><img src="data:image/svg+xml,<svg onload=alert(1)>"></p>')).not.toMatch(/<img/);
+    expect(cleanWordHtml('<p><img src="data:text/html,plain"></p>')).not.toMatch(/<img/);
+  });
+  it('drops oversized data: image payloads', () => {
+    const huge = 'data:image/png;base64,' + 'A'.repeat(5_000_001);
+    expect(cleanWordHtml(`<p><img src="${huge}"></p>`)).not.toMatch(/<img/);
+  });
 });

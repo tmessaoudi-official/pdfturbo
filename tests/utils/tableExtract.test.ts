@@ -86,4 +86,16 @@ describe('gridToCsv', () => {
   it('leaves plain cells unquoted', () => {
     expect(gridToCsv({ rows: 1, cols: 2, cells: [['plain', 'text']] })).toBe('plain,text');
   });
+  it('neutralises spreadsheet formula injection (QA-2026-06-23 P2)', () => {
+    const csv = gridToCsv({ rows: 1, cols: 4, cells: [['=HYPERLINK(0)', '+1', '-2', '@cmd']] });
+    // each dangerous cell is prefixed with ' (and the one with a paren-only stays — only the
+    // leading char matters); formulas no longer evaluate when opened in Excel/Sheets.
+    expect(csv).toBe("'=HYPERLINK(0),'+1,'-2,'@cmd");
+  });
+  it('quotes a neutralised cell that also contains a comma', () => {
+    expect(gridToCsv({ rows: 1, cols: 1, cells: [['=A1,B1']] })).toBe('"\'=A1,B1"');
+  });
+  it('does not touch a cell where the dangerous char is not leading', () => {
+    expect(gridToCsv({ rows: 1, cols: 1, cells: [['a=b']] })).toBe('a=b');
+  });
 });
