@@ -106,5 +106,14 @@ is the separate true-edit tool; Replace skips them with a hint).
   `arabicOverlay.ts`); one shared utility retires all four. `bidi-js@1.0.3` (MIT, full UAX#9) is already
   vendored (transitive via jsdom) → adopt, don't hand-roll; promote to a direct prod dependency.
 - Spec (slice 1): `docs/superpowers/specs/2026-06-23-arabic-rtl-bidi-engine-design.md` (brainstorming WIP).
-## Feature 3 slices 2/3 — queued (RTL toolbar; ligature/tashkeel evaluate-defer)
+## Feature 3 Slice 2 — RTL-aware toolbar controls — IN PROGRESS (brainstorming)
+- [2026-06-23] DECISION (user): after Slice 1 shipped, proceed to **Slice 2 (RTL-aware toolbar)** now.
+  Own brainstorm→spec→plan→build cycle. Goal: right-align default + RTL direction toggle when editing
+  Arabic overlay text. Builds on the Slice-1 bidi engine.
+- [2026-06-23] FINDING: export bake ALREADY auto-RTLs Arabic (`renderText`→`drawArabicLine`); the gap is
+  the EDITOR (input has no `dir`) + no explicit control. DECISION (user): **Full scope** — add
+  `TextElement.direction?: 'auto'|'rtl'|'ltr'` (default auto) + a toolbar RTL toggle; applies to editor
+  input `dir` + RTL-defaults-right-align; **export stays content-auto-detected** (no override — declined the
+  risky force-RTL-on-Latin path).
+## Feature 3 Slice 3 — queued (ligature/tashkeel evaluate-defer)
 ## Feature 4 — true-edit F10–F16 + F3 — queued
