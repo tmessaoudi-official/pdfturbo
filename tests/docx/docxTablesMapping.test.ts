@@ -100,6 +100,29 @@ describe('docModel ⇄ PM — table mapping', () => {
     expect((bt.rows[1].cells[1].blocks[0] as DocParagraph).runs[0].text).toBe('B2');
   });
 
+  it('round-trips a horizontally-merged cell (colspan) through PM', () => {
+    const table: DocTable = { kind: 'table', rows: [
+      { cells: [{ blocks: [p('AB')], colspan: 2 }] },
+      { cells: [{ blocks: [p('C')] }, { blocks: [p('D')] }] },
+    ] };
+    const back = rt({ blocks: [table], paragraphs: [] });
+    const bt = back.blocks[0] as DocTable;
+    expect(bt.rows[0].cells).toHaveLength(1);
+    expect(bt.rows[0].cells[0].colspan).toBe(2);
+    expect(bt.rows[1].cells).toHaveLength(2);
+  });
+
+  it('round-trips a vertically-merged cell (rowspan) through PM', () => {
+    const table: DocTable = { kind: 'table', rows: [
+      { cells: [{ blocks: [p('A')], rowspan: 2 }, { blocks: [p('B')] }] },
+      { cells: [{ blocks: [p('D')] }] },
+    ] };
+    const back = rt({ blocks: [table], paragraphs: [] });
+    const bt = back.blocks[0] as DocTable;
+    expect(bt.rows[0].cells[0].rowspan).toBe(2);
+    expect(bt.rows[1].cells).toHaveLength(1);
+  });
+
   it('round-trips a nested table', () => {
     const inner: DocTable = { kind: 'table', rows: [{ cells: [{ blocks: [p('inner')] }] }] };
     const outer: DocTable = { kind: 'table', rows: [{ cells: [{ blocks: [p('lead'), inner] }] }] };

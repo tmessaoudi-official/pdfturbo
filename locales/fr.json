@@ -128,7 +128,9 @@
     "addRow": "Ajouter une ligne",
     "deleteRow": "Supprimer la ligne",
     "addColumn": "Ajouter une colonne",
-    "deleteColumn": "Supprimer la colonne"
+    "deleteColumn": "Supprimer la colonne",
+    "mergeCells": "Fusionner les cellules",
+    "splitCell": "Scinder la cellule"
   },
   "formatting": {
     "textLabel": "Texte / Forme",

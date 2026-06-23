@@ -119,8 +119,11 @@ function tableToNode(table: DocTable): PMNode {
 }
 function cellToNode(cell: DocCell): PMNode {
   const content = blocksToNodes(cell.blocks);
+  const attrs: { colspan?: number; rowspan?: number } = {};
+  if (cell.colspan && cell.colspan > 1) attrs.colspan = cell.colspan;
+  if (cell.rowspan && cell.rowspan > 1) attrs.rowspan = cell.rowspan;
   // cellContent is block+ → guarantee at least one paragraph.
-  return n.table_cell.create(null, content.length ? content : [n.paragraph.create()]);
+  return n.table_cell.create(attrs, content.length ? content : [n.paragraph.create()]);
 }
 
 /** DocModel → a ProseMirror document (flat paragraphs → nested headings/lists). */
@@ -184,7 +187,12 @@ function emitBlock(node: PMNode, depth: number, out: DocParagraph[]): void {
 function cellOf(cellNode: PMNode): DocCell {
   const blocks: DocBlock[] = [];
   cellNode.forEach(child => emitBlockTo(child, 0, blocks));
-  return { blocks: blocks.length ? blocks : [{ runs: [] }] };
+  const cell: DocCell = { blocks: blocks.length ? blocks : [{ runs: [] }] };
+  const colspan = Number(cellNode.attrs.colspan);
+  const rowspan = Number(cellNode.attrs.rowspan);
+  if (colspan > 1) cell.colspan = colspan;
+  if (rowspan > 1) cell.rowspan = rowspan;
+  return cell;
 }
 /** Like emitBlock but writes into a DocBlock[] and recognizes table nodes. */
 function emitBlockTo(node: PMNode, depth: number, out: DocBlock[]): void {

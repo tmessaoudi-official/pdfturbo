@@ -118,19 +118,121 @@ describe('docModel — table structural reconcile (Slice 3b: add/del row & colum
     expect(out).toContain('EDIT');
   });
 
-  it('REFUSES structural row changes on a merged table (gridSpan present → 3a min-reconcile, structure verbatim)', () => {
+  it('adds a row to a merged table AND preserves the merge (3c/3d rebuild supersedes the 3b refusal)', () => {
     // Row 0 has a single cell spanning 2 grid columns (gridSpan=2); row 1 has 2 cells.
     const spanCell = `<w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>Merged</w:t></w:r></w:p></w:tc>`;
     const xml = docXml(`<w:tbl><w:tblPr/><w:tblGrid>${gridCols(2)}</w:tblGrid>` +
       row(spanCell) + row(cell('A2'), cell('B2')) + `</w:tbl>`);
     const model = parseDocModel(xml);
-    // Attempt to add a 3rd row — must be IGNORED (merged tables are a 3b ceiling).
+    // Add a 3rd row — 3c/3d now handles merged tables via the rebuild path.
     (model.blocks[0] as DocTable).rows.push({ cells: [{ blocks: [{ runs: [{ text: 'X' }] }] }] });
     const out = applyBlocks(xml, model.blocks);
-    expect(countTag(out, 'w:tr')).toBe(2);                 // row NOT added
-    expect(out).toContain('<w:gridSpan w:val="2"/>');      // merge preserved verbatim
+    expect(countTag(out, 'w:tr')).toBe(3);                 // row added
+    expect(out).toContain('<w:gridSpan w:val="2"/>');      // row-0 merge preserved
     expect(out).toContain('Merged');
-    expect(out).not.toContain('>X<');
+    expect(out).toContain('X');
+    const re = parseDocModel(out).blocks[0] as DocTable;
+    expect(re.rows).toHaveLength(3);
+    expect(re.rows[0].cells[0].colspan).toBe(2);
+  });
+});
+
+describe('docModel — merge parsing (Slice 3c/3d: gridSpan + vMerge → colspan/rowspan)', () => {
+  const spanCell = (text: string, n: number): string =>
+    `<w:tc><w:tcPr><w:gridSpan w:val="${n}"/></w:tcPr><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:tc>`;
+  const vRestart = (text: string): string =>
+    `<w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:tc>`;
+  const vCont = (): string => `<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc>`;
+
+  it('reads a horizontal merge (gridSpan) as colspan; the covered position is absent', () => {
+    const xml = docXml(tableG(2, row(spanCell('AB', 2)), row(cell('C'), cell('D'))));
+    const t = parseDocModel(xml).blocks[0] as DocTable;
+    expect(t.rows[0].cells).toHaveLength(1);
+    expect(t.rows[0].cells[0].colspan).toBe(2);
+    expect((t.rows[0].cells[0].blocks[0] as DocParagraph).runs[0].text).toBe('AB');
+    expect(t.rows[1].cells).toHaveLength(2); // un-merged row keeps both cells
+  });
+
+  it('reads a vertical merge (vMerge restart+continue) as rowspan; the continuation cell is dropped', () => {
+    // col 0 spans 2 rows (restart in row0, continue in row1); col 1 has normal cells.
+    const xml = docXml(tableG(2, row(vRestart('A'), cell('B')), row(vCont(), cell('D'))));
+    const t = parseDocModel(xml).blocks[0] as DocTable;
+    expect(t.rows[0].cells).toHaveLength(2);
+    expect(t.rows[0].cells[0].rowspan).toBe(2);
+    expect((t.rows[0].cells[0].blocks[0] as DocParagraph).runs[0].text).toBe('A');
+    expect(t.rows[1].cells).toHaveLength(1); // continuation placeholder dropped → only col-1 cell
+    expect((t.rows[1].cells[0].blocks[0] as DocParagraph).runs[0].text).toBe('D');
+  });
+
+  it('leaves an un-merged cell with colspan/rowspan undefined (1)', () => {
+    const xml = docXml(tableG(2, row(cell('A'), cell('B'))));
+    const t = parseDocModel(xml).blocks[0] as DocTable;
+    expect(t.rows[0].cells[0].colspan).toBeUndefined();
+    expect(t.rows[0].cells[0].rowspan).toBeUndefined();
+  });
+});
+
+describe('docModel — merge EMIT (Slice 3c/3d: colspan/rowspan → gridSpan/vMerge, in place)', () => {
+  const spanCell = (text: string, n: number): string =>
+    `<w:tc><w:tcPr><w:gridSpan w:val="${n}"/></w:tcPr><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:tc>`;
+
+  it('emits a horizontal merge (colspan=2) as w:gridSpan on a previously-simple table', () => {
+    const xml = docXml(tableG(2, row(cell('A'), cell('B')), row(cell('C'), cell('D'))));
+    const model = parseDocModel(xml);
+    const t = model.blocks[0] as DocTable;
+    // merge row0's two cells → one cell colspan 2
+    t.rows[0] = { cells: [{ blocks: [{ runs: [{ text: 'A' }] }], colspan: 2 }] };
+    const out = applyBlocks(xml, model.blocks);
+    expect(out).toContain('<w:gridSpan w:val="2"/>');
+    const re = (parseDocModel(out).blocks[0] as DocTable);
+    expect(re.rows[0].cells).toHaveLength(1);
+    expect(re.rows[0].cells[0].colspan).toBe(2);
+    expect(re.rows[1].cells).toHaveLength(2); // un-merged row intact
+  });
+
+  it('emits a vertical merge (rowspan=2) as w:vMerge restart + continuation placeholder', () => {
+    const xml = docXml(tableG(2, row(cell('A'), cell('B')), row(cell('C'), cell('D'))));
+    const model = parseDocModel(xml);
+    const t = model.blocks[0] as DocTable;
+    // merge col0 across both rows: row0 col0 rowspan 2; row1 loses its col0 cell
+    t.rows[0] = { cells: [{ blocks: [{ runs: [{ text: 'A' }] }], rowspan: 2 }, { blocks: [{ runs: [{ text: 'B' }] }] }] };
+    t.rows[1] = { cells: [{ blocks: [{ runs: [{ text: 'D' }] }] }] };
+    const out = applyBlocks(xml, model.blocks);
+    expect(out).toContain('<w:vMerge w:val="restart"/>');
+    expect(out).toContain('<w:vMerge/>'); // continuation placeholder fabricated
+    const re = (parseDocModel(out).blocks[0] as DocTable);
+    expect(re.rows[0].cells[0].rowspan).toBe(2);
+    expect(re.rows[1].cells).toHaveLength(1);
+  });
+
+  it('SPLIT: removing a colspan re-expands the row to full cells (no gridSpan)', () => {
+    const xml = docXml(tableG(2, row(spanCell('AB', 2)), row(cell('C'), cell('D'))));
+    const model = parseDocModel(xml);
+    const t = model.blocks[0] as DocTable;
+    expect(t.rows[0].cells[0].colspan).toBe(2); // sanity: parsed as merged
+    // split: row0 becomes two normal cells
+    t.rows[0] = { cells: [{ blocks: [{ runs: [{ text: 'A' }] }] }, { blocks: [{ runs: [{ text: 'B' }] }] }] };
+    const out = applyBlocks(xml, model.blocks);
+    expect(out).not.toContain('w:gridSpan');
+    const re = (parseDocModel(out).blocks[0] as DocTable);
+    expect(re.rows[0].cells).toHaveLength(2);
+    expect(re.rows[0].cells[0].colspan).toBeUndefined();
+  });
+
+  it('a TEXT edit on a merged table (structure unchanged) keeps the merge structure verbatim', () => {
+    const xml = docXml(
+      `<w:tbl><w:tblPr/><w:tblGrid>${gridCols(2)}</w:tblGrid>` +
+      row(spanCell('AB', 2)) + row(cell('C'), cell('D')) + `</w:tbl>`,
+    );
+    const model = parseDocModel(xml);
+    const t = model.blocks[0] as DocTable;
+    (t.rows[0].cells[0].blocks[0] as DocParagraph).runs = [{ text: 'EDITED' }];
+    const out = applyBlocks(xml, model.blocks);
+    expect(out).toContain('<w:gridSpan w:val="2"/>'); // merge preserved
+    expect(out).toContain('EDITED');
+    const re = (parseDocModel(out).blocks[0] as DocTable);
+    expect(re.rows[0].cells[0].colspan).toBe(2);
+    expect((re.rows[0].cells[0].blocks[0] as DocParagraph).runs[0].text).toBe('EDITED');
   });
 });
 

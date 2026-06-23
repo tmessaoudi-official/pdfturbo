@@ -31,7 +31,13 @@ export interface DocParagraph {
   /** List membership (w:numPr): ordered=decimal vs bullet; level = w:ilvl. */
   list?: { ordered: boolean; level: number };
 }
-export interface DocCell { blocks: DocBlock[]; }        // recursive → nested tables
+export interface DocCell {
+  blocks: DocBlock[];                                   // recursive → nested tables
+  /** Horizontal merge span (OOXML w:gridSpan ↔ PM colspan). Absent/1 = no h-merge. */
+  colspan?: number;
+  /** Vertical merge span (OOXML w:vMerge restart run ↔ PM rowspan). Absent/1 = no v-merge. */
+  rowspan?: number;
+}
 export interface DocRow { cells: DocCell[]; }
 export interface DocTable { kind: 'table'; rows: DocRow[]; }
 export type DocBlock = DocParagraph | DocTable;
@@ -156,13 +162,46 @@ function parseContainerBlocks(container: Element, numberingMap?: NumberingMap): 
   }
   return out;
 }
-/** Parse a w:tbl element into a DocTable (rows → cells → recursive blocks). */
+/** The w:gridSpan value of a w:tc (horizontal span), default 1. */
+function cellGridSpan(tc: Element): number {
+  const v = Number(childEl(childEl(tc, 'w:tcPr'), 'w:gridSpan')?.getAttribute('w:val') ?? '1');
+  return Number.isFinite(v) && v > 1 ? v : 1;
+}
+/** The w:vMerge state of a w:tc: 'restart' (top of a v-merge), 'continue' (placeholder), or null. */
+function cellVMerge(tc: Element): 'restart' | 'continue' | null {
+  const el = childEl(childEl(tc, 'w:tcPr'), 'w:vMerge');
+  if (!el) return null;
+  return el.getAttribute('w:val') === 'restart' ? 'restart' : 'continue';
+}
+
+/**
+ * Parse a w:tbl into a DocTable in the PM shape: w:gridSpan → DocCell.colspan,
+ * a w:vMerge restart+continue run → rowspan on the restart cell with the continuation
+ * placeholders DROPPED (covered grid positions are simply absent, matching
+ * prosemirror-tables). Cells tile the grid left-to-right; colCursor sums gridSpans so a
+ * 'continue' is matched to the restart open at the same start column.
+ */
 function parseTable(tbl: Element, numberingMap?: NumberingMap): DocTable {
   const rows: DocRow[] = [];
+  const openRestart = new Map<number, DocCell>(); // startCol → the restart cell to grow
   for (const tr of Array.from(tbl.children).filter(c => c.tagName === 'w:tr')) {
     const cells: DocCell[] = [];
+    let colCursor = 0;
     for (const tc of Array.from(tr.children).filter(c => c.tagName === 'w:tc')) {
-      cells.push({ blocks: parseContainerBlocks(tc, numberingMap) });
+      const span = cellGridSpan(tc);
+      const vm = cellVMerge(tc);
+      const startCol = colCursor;
+      if (vm === 'continue' && openRestart.has(startCol)) {
+        const rc = openRestart.get(startCol);
+        if (rc) rc.rowspan = (rc.rowspan ?? 1) + 1; // absorb the placeholder → grow the restart
+      } else {
+        const cell: DocCell = { blocks: parseContainerBlocks(tc, numberingMap) };
+        if (span > 1) cell.colspan = span;
+        if (vm === 'restart') { cell.rowspan = 1; openRestart.set(startCol, cell); }
+        else openRestart.delete(startCol); // a normal cell here ends any open v-merge
+        cells.push(cell);
+      }
+      colCursor += span;
     }
     rows.push({ cells });
   }
@@ -430,18 +469,17 @@ function reconcileParagraphsOnly(dom: Document, container: Element, paras: DocPa
   reconcileSegment(dom, container, domParas, paras, null, ids, requireParagraph);
 }
 
-/** True when this table's OWN cells carry a horizontal (w:gridSpan) or vertical
- * (w:vMerge) merge. Scoped to direct rows/cells so a nested table's merges don't
- * count. Structural row/column reconcile (3b) refuses merged tables — restructuring a
- * spanned grid is deferred to 3c/3d; such a table keeps the 3a text-only behavior. */
-function tableHasMerges(tbl: Element): boolean {
-  for (const tr of Array.from(tbl.children).filter(c => c.tagName === 'w:tr')) {
-    for (const tc of Array.from(tr.children).filter(c => c.tagName === 'w:tc')) {
-      const tcPr = childEl(tc, 'w:tcPr');
-      if (childEl(tcPr, 'w:gridSpan') || childEl(tcPr, 'w:vMerge')) return true;
-    }
-  }
-  return false;
+/** Any cell with a horizontal (colspan>1) or vertical (rowspan>1) span. */
+function hasAnyMerge(rows: DocRow[]): boolean {
+  return rows.some(r => r.cells.some(c => (c.colspan ?? 1) > 1 || (c.rowspan ?? 1) > 1));
+}
+/** Sum of colspans of a row's cells (the grid width contributed by explicit cells). */
+function sumColspans(cells: DocCell[]): number {
+  return cells.reduce((s, c) => s + Math.max(1, c.colspan ?? 1), 0);
+}
+/** A compact per-row span signature — used to detect whether a merge layout changed. */
+function gridSignature(rows: DocRow[]): string {
+  return rows.map(r => r.cells.map(c => `${c.colspan ?? 1}x${c.rowspan ?? 1}`).join(',')).join('|');
 }
 
 /** Reconcile a w:tr's w:tc children against a model row's cells. Content is always
@@ -477,19 +515,120 @@ function syncTableGrid(dom: Document, tbl: Element, cols: number): void {
   }
 }
 
+/** Build a fresh w:tc with the given span/merge tcPr (gridSpan before vMerge per
+ * CT_TcPr) and one empty w:p (reconcileContainer fills the content). */
+function makeMergeCell(dom: Document, opts: { colspan?: number; vMerge?: 'restart' | 'continue' }): Element {
+  const tc = dom.createElementNS(W_NS, 'w:tc');
+  const tcPr = dom.createElementNS(W_NS, 'w:tcPr');
+  if (opts.colspan && opts.colspan > 1) {
+    const gs = dom.createElementNS(W_NS, 'w:gridSpan');
+    gs.setAttribute('w:val', String(opts.colspan));
+    tcPr.appendChild(gs);
+  }
+  if (opts.vMerge) {
+    const vm = dom.createElementNS(W_NS, 'w:vMerge');
+    if (opts.vMerge === 'restart') vm.setAttribute('w:val', 'restart'); // continue = no val
+    tcPr.appendChild(vm);
+  }
+  tc.appendChild(tcPr);
+  tc.appendChild(dom.createElementNS(W_NS, 'w:p'));
+  return tc;
+}
+
+/** Content-only reconcile for a merged table whose layout is UNCHANGED: rewrite each
+ * non-continuation w:tc's content from the model (cells line up 1:1 because parse
+ * drops continuation placeholders identically), leaving the merge structure verbatim. */
+function reconcileMergedContent(dom: Document, tbl: Element, table: DocTable, ids: DocApplyIds | undefined): void {
+  const domRows = Array.from(tbl.children).filter(c => c.tagName === 'w:tr');
+  const n = Math.min(domRows.length, table.rows.length);
+  for (let r = 0; r < n; r++) {
+    const cells = Array.from(domRows[r].children).filter(c => c.tagName === 'w:tc' && cellVMerge(c) !== 'continue');
+    const m = Math.min(cells.length, table.rows[r].cells.length);
+    for (let c = 0; c < m; c++) reconcileContainer(dom, cells[c], table.rows[r].cells[c].blocks, ids, true);
+  }
+}
+
 /**
- * Rewrite a table's cells from a DocTable IN PLACE. Cell text is always reconciled.
- * For a simple (un-merged) table, row/column COUNT changes are also applied (3b):
- * rows cloned from the last w:tr / removed at the tail, cells per row likewise, and
- * w:tblGrid kept in sync. A merged table (gridSpan/vMerge) keeps the 3a text-only
- * behavior — its structure stays verbatim. tblPr/grid/tcPr are otherwise untouched.
+ * Rebuild a table's w:tr/w:tc skeleton from a PM-shape model whose merge LAYOUT
+ * changed (a merge or split happened). Walks the grid row-by-row: model cells emit a
+ * w:tc with gridSpan (colspan) / vMerge restart (rowspan); columns covered by a rowspan
+ * from above emit a fabricated <w:vMerge/> continuation placeholder. Cell CONTENT is
+ * carried over from the model (reconcileContainer); per-cell box styling (tcPr shading/
+ * width) is regenerated minimal — the documented merge/split ceiling. w:tblPr is
+ * untouched; w:tblGrid is resized. Scoped in-DOM surgery, never a docx-writer rebuild.
+ */
+function rebuildMergedTable(dom: Document, tbl: Element, table: DocTable, ids: DocApplyIds | undefined): void {
+  const totalCols = table.rows.length ? sumColspans(table.rows[0].cells) : 0;
+  if (totalCols <= 0) return;
+  // Match the w:tr count to the model (clone last to add, remove the tail).
+  let domRows = Array.from(tbl.children).filter(c => c.tagName === 'w:tr');
+  let lastRow = domRows.length ? domRows[domRows.length - 1] : null;
+  for (let r = domRows.length; r < table.rows.length; r++) {
+    const nr = lastRow ? (lastRow.cloneNode(true) as Element) : dom.createElementNS(W_NS, 'w:tr');
+    if (lastRow && lastRow.nextSibling) tbl.insertBefore(nr, lastRow.nextSibling);
+    else tbl.appendChild(nr);
+    lastRow = nr;
+  }
+  for (let r = domRows.length - 1; r >= table.rows.length; r--) domRows[r].remove();
+  domRows = Array.from(tbl.children).filter(c => c.tagName === 'w:tr');
+
+  const remaining = new Array<number>(totalCols).fill(0); // rows still covered from above, per col
+  const spanOf = new Array<number>(totalCols).fill(1);    // colspan of the covering cell, per col
+  for (let r = 0; r < table.rows.length; r++) {
+    const tr = domRows[r];
+    const modelCells = table.rows[r].cells;
+    const newCells: Element[] = [];
+    let col = 0;
+    let ci = 0;
+    while (col < totalCols) {
+      if (remaining[col] > 0) {
+        const span = spanOf[col];
+        newCells.push(makeMergeCell(dom, { colspan: span, vMerge: 'continue' }));
+        for (let k = col; k < col + span && k < totalCols; k++) remaining[k]--;
+        col += span;
+        continue;
+      }
+      const cell = modelCells[ci++];
+      if (!cell) { newCells.push(makeMergeCell(dom, {})); col += 1; continue; } // defensive pad
+      const cs = Math.max(1, cell.colspan ?? 1);
+      const rs = Math.max(1, cell.rowspan ?? 1);
+      const tc = makeMergeCell(dom, { colspan: cs, vMerge: rs > 1 ? 'restart' : undefined });
+      reconcileContainer(dom, tc, cell.blocks, ids, true);
+      newCells.push(tc);
+      if (rs > 1) for (let k = col; k < col + cs && k < totalCols; k++) { remaining[k] = rs - 1; spanOf[k] = cs; }
+      col += cs;
+    }
+    for (const old of Array.from(tr.children).filter(c => c.tagName === 'w:tc')) old.remove();
+    for (const nc of newCells) tr.appendChild(nc); // appended after w:trPr
+  }
+  syncTableGrid(dom, tbl, totalCols);
+}
+
+/**
+ * Rewrite a table's cells from a DocTable IN PLACE. Three paths:
+ *  - Simple table (no merges in model OR DOM): the 3b path — cell text reconciled and
+ *    row/column COUNT changes applied (clone/trim w:tr·w:tc, w:tblGrid synced).
+ *  - Merged table, layout UNCHANGED: content-only reconcile, merge structure verbatim.
+ *  - Merged table, layout CHANGED (merge/split): rebuild the w:tr/w:tc skeleton from the
+ *    PM-shape model (gridSpan/vMerge emitted, continuation placeholders fabricated).
+ * tblPr is never touched; the cardinal in-place rule holds (no docx-writer rebuild).
  */
 function writeTable(dom: Document, tbl: Element, table: DocTable, ids: DocApplyIds | undefined): void {
+  const domTable = parseTable(tbl); // PM-shape snapshot of the current DOM
+  const merged = hasAnyMerge(table.rows) || hasAnyMerge(domTable.rows);
+  if (!merged) {
+    writeSimpleTable(dom, tbl, table, ids);
+    return;
+  }
+  if (gridSignature(domTable.rows) === gridSignature(table.rows)) reconcileMergedContent(dom, tbl, table, ids);
+  else rebuildMergedTable(dom, tbl, table, ids);
+}
+
+/** The 3b in-place reconcile for a simple (un-merged) table: content + row/column COUNT. */
+function writeSimpleTable(dom: Document, tbl: Element, table: DocTable, ids: DocApplyIds | undefined): void {
   const domRows = Array.from(tbl.children).filter(c => c.tagName === 'w:tr');
-  const structural = !tableHasMerges(tbl);
   const n = Math.min(domRows.length, table.rows.length);
-  for (let r = 0; r < n; r++) reconcileRowCells(dom, domRows[r], table.rows[r].cells, ids, structural);
-  if (!structural) return;
+  for (let r = 0; r < n; r++) reconcileRowCells(dom, domRows[r], table.rows[r].cells, ids, true);
   // Add extra rows by cloning the last w:tr (inherits cell tcPr / column structure).
   let lastRow = domRows.length ? domRows[domRows.length - 1] : null;
   for (let r = n; r < table.rows.length; r++) {

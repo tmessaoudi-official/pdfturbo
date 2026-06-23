@@ -128,7 +128,9 @@
     "addRow": "إضافة صف",
     "deleteRow": "حذف الصف",
     "addColumn": "إضافة عمود",
-    "deleteColumn": "حذف العمود"
+    "deleteColumn": "حذف العمود",
+    "mergeCells": "دمج الخلايا",
+    "splitCell": "تقسيم الخلية"
   },
   "formatting": {
     "textLabel": "نص / شكل",

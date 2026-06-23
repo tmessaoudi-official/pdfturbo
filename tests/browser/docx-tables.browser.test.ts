@@ -255,4 +255,49 @@ describe('DOCX table editing — real Chrome round-trip', () => {
     }
     expect(xml).toContain('Row3 NEW');
   });
+
+  it('merges two cells via the toolbar — the colspan survives save → reopen (3c/3d)', async () => {
+    const { CellSelection } = await import('prosemirror-tables');
+    // A simple 2×2 table.
+    const cell = (txt: string): TableCell => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: txt })] })] });
+    const doc = new Document({ sections: [{ children: [
+      new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
+        new TableRow({ children: [cell('R0C0'), cell('R0C1')] }),
+        new TableRow({ children: [cell('R1C0'), cell('R1C1')] }),
+      ] }),
+    ] }] });
+    const bytes = new Uint8Array(await (await Packer.toBlob(doc)).arrayBuffer());
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const handle = mountDocxEditor(container, bytes);
+    const toolbar = buildDocxToolbar(handle.view);
+    document.body.appendChild(toolbar.dom);
+
+    // Select row-0's two cells (a CellSelection) and click Merge.
+    const cellPos: number[] = [];
+    handle.view.state.doc.descendants((node, pos) => { if (node.type.name === 'table_cell') cellPos.push(pos); return true; });
+    handle.view.dispatch(handle.view.state.tr.setSelection(
+      new CellSelection(handle.view.state.doc.resolve(cellPos[0]), handle.view.state.doc.resolve(cellPos[1])),
+    ));
+    toolbar.update();
+    const mergeBtn = toolbar.dom.querySelector<HTMLButtonElement>('[data-act="mergeCells"]');
+    expect(mergeBtn?.disabled).toBe(false);
+    mergeBtn?.click();
+
+    const saved = handle.save();
+    toolbar.destroy();
+    handle.destroy();
+    container.remove();
+
+    const xml = getDocumentXml(openOpc(saved));
+    expect(xml).toContain('<w:gridSpan'); // the merge was emitted in place
+    const model = parseDocModel(xml, buildNumberingMap(openOpc(saved)));
+    const tbl = model.blocks.find(b => b.kind === 'table');
+    if (tbl?.kind === 'table') {
+      expect(tbl.rows[0].cells).toHaveLength(1);     // row 0 collapsed to one merged cell
+      expect(tbl.rows[0].cells[0].colspan).toBe(2);
+      expect(tbl.rows[1].cells).toHaveLength(2);     // row 1 intact
+    }
+  });
 });

@@ -8,7 +8,7 @@ import { type EditorView } from 'prosemirror-view';
 import { type EditorState, type Transaction, type Command } from 'prosemirror-state';
 import { toggleMark, setBlockType } from 'prosemirror-commands';
 import { wrapInList, liftListItem } from 'prosemirror-schema-list';
-import { addRowAfter, deleteRow, addColumnAfter, deleteColumn, isInTable } from 'prosemirror-tables';
+import { addRowAfter, deleteRow, addColumnAfter, deleteColumn, mergeCells, splitCell, isInTable } from 'prosemirror-tables';
 import { type MarkType, type NodeType } from 'prosemirror-model';
 import { docxSchema } from './docxSchema';
 import { t } from '../utils/i18n';
@@ -184,7 +184,13 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   const deleteColBtn = btn('deleteColumn', t('docxToolbar.deleteColumn'), () => deleteColumn);
   const tableBtns = [addRowBtn, deleteRowBtn, addColBtn, deleteColBtn];
 
-  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn, ...tableBtns);
+  // Merge / split (3c/3d). Their enabled state mirrors the command's own applicability
+  // (mergeCells → a multi-cell CellSelection; splitCell → a spanned cell), probed by
+  // calling the command with no dispatch.
+  const mergeBtn = btn('mergeCells', t('docxToolbar.mergeCells'), () => mergeCells);
+  const splitBtn = btn('splitCell', t('docxToolbar.splitCell'), () => splitCell);
+
+  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn, ...tableBtns, mergeBtn, splitBtn);
 
   const update = (): void => {
     boldBtn.classList.toggle('active', markActive(view.state, m.strong));
@@ -195,6 +201,8 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
     orderedBtn.classList.toggle('active', inList(view.state, n.ordered_list));
     const structural = isInTable(view.state) && !currentTableHasMerges(view.state);
     for (const b of tableBtns) b.disabled = !structural;
+    mergeBtn.disabled = !mergeCells(view.state);
+    splitBtn.disabled = !splitCell(view.state);
     const cMark = (view.state.storedMarks || view.state.selection.$from.marks()).find(mk => mk.type === m.color);
     if (cMark) colorInput.value = cMark.attrs.value as string;
   };

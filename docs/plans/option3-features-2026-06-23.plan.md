@@ -16,6 +16,15 @@
   clean boundary; Features 2–4 resume in a fresh window. State saved (this plan + handoff + memory).
   Bypass sentinel left ARMED for the next session's autonomous continuation (remove when the whole
   feature sequence is truly done).
+- [2026-06-23] Slice 3b (row/col add+del) shipped `c08d31c`. DECISION (user): "Option 2 and 3" →
+  continue to **Slice 3c/3d (merge/split) now**, THEN **Feature 3 (Arabic-RTL)**. Keep going in order.
+- [2026-06-23] DESIGN (3c/3d): model the **PM shape** — `DocCell.colspan?/rowspan?` on the surviving
+  cell, covered grid positions ABSENT (matches prosemirror-tables AND docToDocModel). `parseTable` reads
+  `w:gridSpan`→colspan and resolves `w:vMerge restart`+continuation runs→rowspan (dropping continuation
+  placeholder cells). `writeTable` for a merged table reconstructs each row's `w:tc` sequence from the
+  model via a running grid map — places `w:gridSpan`/`w:vMerge restart` on spanning cells, fabricates
+  `<w:vMerge/>` continuation placeholders — while PRESERVING each surviving cell's `w:tcPr`+content
+  (matched by grid position). Scoped table-grid surgery, NOT a docx-writer rebuild (cardinal rule).
 
 ## Feature 1 — PDF overlay find & replace ✅ DONE (commit pending)
 Shipped: pure `overlayReplace.applyReplacement`, `MatchResult.elementId` tagging, `FindBarController`
@@ -58,9 +67,18 @@ is the separate true-edit tool; Replace skips them with a hint).
 - Guards: docModelTables (add/del row+col, grid sync, merged refusal, byte-identical), docxToolbar (4 acts),
   docx-tables.browser (add-row via button → save → reopen → 3 rows; disabled outside table).
 - Visual: `qa-shots/f2-table-3b/` (before 2 rows / after 3 rows "Bob"; buttons enable inside table; 0 console errs).
-### Slice 3c/3d — merge/split — queued
-- Needs `DocCell.colspan?/rowspan?` + parse/emit `w:gridSpan` (horizontal) & `w:vMerge` (restart/continue,
-  vertical) + PM table_cell colspan/rowspan round-trip. Highest cardinal-rule risk → its own commit.
+### Slice 3c/3d — merge/split ✅ DONE (commit pending)
+- `DocCell.colspan?/rowspan?` (PM shape); `parseTable` reads gridSpan→colspan + resolves vMerge restart/continue
+  run→rowspan (drops continuation placeholders). PM bridge passes colspan/rowspan through table_cell attrs.
+- Toolbar `mergeCells`/`splitCell` buttons (disabled-state = command's own applicability probe).
+- `writeTable` 3 paths: simple→3b; merged-unchanged→`reconcileMergedContent` (verbatim structure);
+  merged-changed (gridSignature diverges)→`rebuildMergedTable` (emits gridSpan/vMerge + fabricates `<w:vMerge/>`
+  continuations; content via reconcileContainer; cell-box tcPr reset = ceiling). Cardinal rule kept.
+- Supersedes the 3b merged-REFUSE at the save layer; toolbar still disables row/col on merged tables (v1).
+- i18n docxToolbar.{mergeCells,splitCell} (ar [Unverified]).
+- Guards: docModelTables (parse+emit+split+unchanged-verbatim+add-row-on-merged), docxTablesMapping (colspan/rowspan
+  round-trip), docxToolbar (merge/split via CellSelection + probes), docx-tables.browser (merge→save→reopen).
+- Visual: `qa-shots/f2-merge-3cd/` (2 header cells → 1 colspan-2 cell; Split enabled after; 0 console errs).
 
 ## Feature 3 — Arabic-RTL deepening — queued
 ## Feature 4 — true-edit F10–F16 + F3 — queued

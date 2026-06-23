@@ -149,6 +149,48 @@ describe('docxToolbar — table editing (Slice 3b)', () => {
     expect(countNodes('table_cell')).toBe(1);
   });
 
+  it('mergeCells merges a CellSelection into one cell (colspan grows)', async () => {
+    const { CellSelection } = await import('prosemirror-tables');
+    mountTable(); // 1×2
+    const cellPos: number[] = [];
+    view.state.doc.descendants((node, pos) => { if (node.type.name === 'table_cell') cellPos.push(pos); return true; });
+    const sel = new CellSelection(view.state.doc.resolve(cellPos[0]), view.state.doc.resolve(cellPos[1]));
+    view.dispatch(view.state.tr.setSelection(sel));
+    tb.update();
+    const mergeBtn = ctrl<HTMLButtonElement>('mergeCells');
+    expect(mergeBtn.disabled).toBe(false);
+    mergeBtn.click();
+    expect(countNodes('table_cell')).toBe(1);
+    let colspan = 1;
+    view.state.doc.descendants(node => { if (node.type.name === 'table_cell') colspan = Number(node.attrs.colspan); return true; });
+    expect(colspan).toBe(2);
+  });
+
+  it('splitCell splits a merged cell back into two', async () => {
+    const { CellSelection } = await import('prosemirror-tables');
+    mountTable();
+    const cellPos: number[] = [];
+    view.state.doc.descendants((node, pos) => { if (node.type.name === 'table_cell') cellPos.push(pos); return true; });
+    view.dispatch(view.state.tr.setSelection(new CellSelection(view.state.doc.resolve(cellPos[0]), view.state.doc.resolve(cellPos[1]))));
+    ctrl<HTMLElement>('mergeCells').click();
+    expect(countNodes('table_cell')).toBe(1);
+    // caret in the merged cell → split
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+    tb.update();
+    const splitBtn = ctrl<HTMLButtonElement>('splitCell');
+    expect(splitBtn.disabled).toBe(false);
+    splitBtn.click();
+    expect(countNodes('table_cell')).toBe(2);
+  });
+
+  it('disables merge with a plain caret (no multi-cell selection) and split on an un-merged cell', () => {
+    mountTable();
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+    tb.update();
+    expect(ctrl<HTMLButtonElement>('mergeCells').disabled).toBe(true);
+    expect(ctrl<HTMLButtonElement>('splitCell').disabled).toBe(true);
+  });
+
   it('disables the structural buttons inside a MERGED table (3b refuses to restructure merges)', () => {
     // A 1-row table whose single cell spans 2 grid columns (colspan=2).
     const place = document.createElement('div');
