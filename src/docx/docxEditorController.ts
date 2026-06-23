@@ -12,9 +12,26 @@
  * jsdom suite drive the full open→edit→save→download flow deterministically.
  */
 import type { DocxEditorHandle } from './docxProseMirror';
+import type { DocModel, DocBlock } from './docModel';
+import { trapFocus } from '../utils/focusTrap';
 import { t } from '../utils/i18n';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/** Recursively count DocTable nodes (incl. nested tables inside cells). */
+function countTables(model: DocModel): number {
+  let n = 0;
+  const walk = (blocks: DocBlock[]): void => {
+    for (const b of blocks) {
+      if (b.kind === 'table') {
+        n++;
+        for (const row of b.rows) for (const cell of row.cells) walk(cell.blocks);
+      }
+    }
+  };
+  walk(model.blocks);
+  return n;
+}
 
 export interface DocxEditorControllerOptions {
   /** Lazy-load + mount the editor. Defaults to importing ./docxProseMirror. */
@@ -120,6 +137,8 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
 
   let handle: DocxEditorHandle | null = null;
   let currentName = 'document.docx';
+  let originalTableCount = 0;
+  let releaseFocusTrap: (() => void) | null = null;
 
   const teardownHandle = (): void => {
     handle?.destroy();
@@ -128,13 +147,17 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
   };
 
   async function loadBytes(bytes: Uint8Array, filename: string): Promise<void> {
+    const prevFocus = document.activeElement as HTMLElement | null;
     teardownHandle();
     currentName = filename || 'document.docx';
     try {
       handle = await loadEditor(mount, bytes);
+      originalTableCount = countTables(handle.getModel()); // #QA-2026-06-23 P1-2 baseline
       if (handle.toolbarDom) panel.insertBefore(handle.toolbarDom, mount); // toolbar above the editor
       if (handle.findReplaceBar) panel.insertBefore(handle.findReplaceBar, mount); // bar below the toolbar
       modal.style.display = 'flex';
+      releaseFocusTrap?.();
+      releaseFocusTrap = trapFocus(panel, prevFocus ?? undefined); // #QA-2026-06-23 P1-3
     } catch (err) {
       notify('docxEditor.openFailed', 'error');
       throw err;
@@ -155,7 +178,14 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
     if (!handle) return;
     try {
       download(handle.save(), editedName(currentName));
-      notify('docxEditor.saved', 'info');
+      // #QA-2026-06-23 P1-2: structural table edits are not persisted by the in-place save
+      // (reconcile keeps the original tables when the count diverges). Surface that instead of
+      // a misleading "saved" — otherwise the downloaded file silently differs from the editor.
+      if (countTables(handle.getModel()) !== originalTableCount) {
+        notify('docxEditor.tableStructureUnsupported', 'warn');
+      } else {
+        notify('docxEditor.saved', 'info');
+      }
     } catch {
       notify('docxEditor.saveFailed', 'error');
     }
@@ -175,13 +205,22 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
   };
 
   const onClose = (): void => { close(); };
+  // #QA-2026-06-23 P1-3 — Esc closes; clicking the backdrop (outside the panel) closes.
+  const onModalKeydown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && modal.style.display !== 'none') { e.stopPropagation(); close(); }
+  };
+  const onModalClick = (e: MouseEvent): void => { if (e.target === modal) close(); };
 
   input.addEventListener('change', onInputChange);
   exportPdfBtn.addEventListener('click', onExportPdf);
   saveBtn.addEventListener('click', onSave);
   closeBtn.addEventListener('click', onClose);
+  modal.addEventListener('keydown', onModalKeydown);
+  modal.addEventListener('click', onModalClick);
 
   function close(): void {
+    releaseFocusTrap?.();
+    releaseFocusTrap = null;
     teardownHandle();
     modal.style.display = 'none';
   }
@@ -196,6 +235,10 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
       exportPdfBtn.removeEventListener('click', onExportPdf);
       saveBtn.removeEventListener('click', onSave);
       closeBtn.removeEventListener('click', onClose);
+      modal.removeEventListener('keydown', onModalKeydown);
+      modal.removeEventListener('click', onModalClick);
+      releaseFocusTrap?.();
+      releaseFocusTrap = null;
       input.remove();
       modal.remove();
     },

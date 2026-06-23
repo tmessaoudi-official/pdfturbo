@@ -109,7 +109,8 @@
     "exportPdf": "تصدير PDF",
     "pdfExported": "تم تصدير PDF",
     "pdfUnsupportedChars": "بعض الأحرف غير مدعومة في خطوط PDF وتم استبدالها بـ «؟»",
-    "pdfFailed": "تعذّر تصدير PDF"
+    "pdfFailed": "تعذّر تصدير PDF",
+    "tableStructureUnsupported": "تم الحفظ — لكن تغييرات بنية الجدول (مثل حذف جدول أو صف) لا تُحفظ بعد؛ يُحتفظ بالجدول كما فُتح"
   },
   "docxToolbar": {
     "bold": "غامق",

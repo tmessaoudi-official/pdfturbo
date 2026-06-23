@@ -112,6 +112,74 @@ describe('createDocxEditorController', () => {
     c.destroy();
   });
 
+  // ── QA-2026-06-23 P1-2: structural table edits must NOT be silently discarded ──
+  it('warns (not silent) when a table the user removed is dropped from the save', async () => {
+    let tables: { kind: 'table'; rows: never[] }[] = [{ kind: 'table', rows: [] }];
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]),
+      getModel: () => ({ blocks: [...tables], paragraphs: [] }),
+      view: {} as never,
+      destroy: vi.fn(),
+    };
+    const notify = vi.fn();
+    const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download: vi.fn(), notify });
+    await c.loadBytes(new Uint8Array([9]), 'tbl.docx'); // captured: 1 table
+
+    tables = []; // user deletes the table in the editor → save() keeps the original (in-place)
+    document.querySelector<HTMLButtonElement>('.docx-editor-save')?.click();
+    expect(notify).toHaveBeenCalledWith('docxEditor.tableStructureUnsupported', 'warn');
+    expect(notify).not.toHaveBeenCalledWith('docxEditor.saved', 'info'); // the warn replaces the success
+    c.destroy();
+  });
+
+  it('a normal save (no table-count change) reports success, not the table warning', async () => {
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]),
+      getModel: () => ({ blocks: [{ kind: 'table', rows: [] }], paragraphs: [] }),
+      view: {} as never,
+      destroy: vi.fn(),
+    };
+    const notify = vi.fn();
+    const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download: vi.fn(), notify });
+    await c.loadBytes(new Uint8Array([9]), 'tbl.docx');
+    document.querySelector<HTMLButtonElement>('.docx-editor-save')?.click();
+    expect(notify).toHaveBeenCalledWith('docxEditor.saved', 'info');
+    expect(notify).not.toHaveBeenCalledWith('docxEditor.tableStructureUnsupported', 'warn');
+    c.destroy();
+  });
+
+  // ── QA-2026-06-23 P1-3: modal a11y — Esc + backdrop dismiss ──
+  it('Escape closes the modal', async () => {
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]), getModel: () => ({ blocks: [], paragraphs: [] }),
+      view: {} as never, destroy: vi.fn(),
+    };
+    const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download: vi.fn() });
+    await c.loadBytes(new Uint8Array([9]), 'd.docx');
+    const modal = document.querySelector<HTMLElement>('.docx-editor-modal');
+    expect(modal?.style.display).toBe('flex');
+    modal?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(modal?.style.display).toBe('none');
+    expect(handle.destroy).toHaveBeenCalled();
+    c.destroy();
+  });
+
+  it('clicking the backdrop (outside the panel) closes the modal; clicking the panel does not', async () => {
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]), getModel: () => ({ blocks: [], paragraphs: [] }),
+      view: {} as never, destroy: vi.fn(),
+    };
+    const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download: vi.fn() });
+    await c.loadBytes(new Uint8Array([9]), 'd.docx');
+    const modal = document.querySelector<HTMLElement>('.docx-editor-modal');
+    const panel = document.querySelector<HTMLElement>('.docx-editor-panel');
+    panel?.dispatchEvent(new MouseEvent('click', { bubbles: true })); // inside → stays open
+    expect(modal?.style.display).toBe('flex');
+    modal?.dispatchEvent(new MouseEvent('click', { bubbles: true })); // on the backdrop → closes
+    expect(modal?.style.display).toBe('none');
+    c.destroy();
+  });
+
   it('destroy() removes the input and modal from the DOM', () => {
     const c = createDocxEditorController();
     expect(document.querySelector('input[data-docx-editor-input]')).not.toBeNull();

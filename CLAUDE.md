@@ -760,7 +760,14 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `createDocxEditorController` (lazy-imported on first click; `main.ts` removes the menu item when the flag
   is off). The controller is **self-contained** — it creates its OWN hidden file input + modal overlay
   (`.docx-editor-*` in `modals.css`), never touching `documentModel`/`uiController`, so opening a Word doc
-  can't disturb PDF editing. **Cardinal rule (spike verdict
+  can't disturb PDF editing. **Modal a11y (#QA-2026-06-23 P1):** the controller ships its OWN Esc-to-close,
+  backdrop-click-close (target===modal), and `trapFocus(panel, prevFocus)` (initial focus + Tab trap + focus
+  restoration) — it is NOT in the central `keyboardBinder` Esc chain (self-contained by design). **Silent
+  table-discard guard (#QA-2026-06-23 P1):** keyboard table/row deletion is possible (prosemirror-tables nodes
+  are editable, no transaction-filter) but the in-place reconcile keeps the ORIGINAL tables on a count
+  divergence — so the controller counts tables (`countTables`, recursive) at load vs save and warns
+  `docxEditor.tableStructureUnsupported` instead of the misleading "saved" toast (the save still succeeds with
+  the original tables; genuine block-on-delete is deferred). **Cardinal rule (spike verdict
   `docs/reviews/2026-06-20-docx-phase0-spike-verdict.md`):** edit `word/document.xml` IN PLACE in the
   unzipped OPC and re-zip — NEVER rebuild via the `docx` writer (it drops every unmodeled part:
   tables/styles/numbering/headers). `opcEdit.ts` = fflate(MIT) unzip + platform DOMParser edit + re-zip;

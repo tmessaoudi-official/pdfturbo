@@ -109,7 +109,8 @@
     "exportPdf": "Export PDF",
     "pdfExported": "PDF exported",
     "pdfUnsupportedChars": "Some characters aren’t supported by the PDF fonts and were replaced with “?”",
-    "pdfFailed": "Couldn’t export the PDF"
+    "pdfFailed": "Couldn’t export the PDF",
+    "tableStructureUnsupported": "Saved — but table structure changes (e.g. deleting a table or row) aren’t kept yet; the table is preserved as it was opened"
   },
   "docxToolbar": {
     "bold": "Bold",
