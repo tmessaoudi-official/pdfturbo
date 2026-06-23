@@ -572,6 +572,29 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     reorder, multi-token LTR run order. Guards: `tests/handlers/textSearchHandler.test.ts` (per-glyph spanning),
     `tests/utils/rtlClipboard.test.ts` (multi-char span + embedded-LTR), `tests/browser/arabic-search.browser.test.ts`
     + `tests/browser/arabic-copy.browser.test.ts` (real pdf.js items). Fixture+gen: `scripts/gen-arabic-fixture.mjs`.
+  - **Shared char-level bidi engine (Feature 3 Slice 1, `11a3253`)**: `src/utils/bidi.ts` adopts
+    **bidi-js@1.0.3 (MIT, full UAX#9)** — promoted transitive(jsdom)→**direct prod dep**; `src/types/bidi-js.d.ts`
+    supplies types (none upstream). FOUR functions: `logicalToVisual(text,base)` (typed/user text → display order,
+    brackets mirrored via `getReorderedString`); `visualToLogical(text,base)` (pdf.js visual order → logical;
+    BOUNDED inverse: reverse line + re-reverse maximal LTR-type runs *trimming boundary WHITESPACE* + un-mirror
+    RTL-context brackets — LTR-base input is identity); `visualRuns(text,base)` (logical → runs in visual L→R
+    order, each run's text LOGICAL so fontkit shapes Arabic / Helvetica draws Latin); `logicalItemOrder<T>(itemsLToR,
+    isRtl)` (item-level UAX#9 L2 — RTL-item runs reversed, embedded LTR-item runs forward, item internals untouched).
+    **All four Arabic surfaces now route through it:** overlay `drawBidiLine`→`visualRuns` (the OLD hand-rolled
+    `segmentBidiRuns`/`baseIsRtl` are DELETED — do not reintroduce); copy `reconstructLogicalText`→`logicalItemOrder`
+    (SPAN-level); search `buildLogicalLines`→`logicalItemOrder` (ITEM-level, token→item map preserved); DOCX
+    `reverseRtlText`→`visualToLogical` **only when the word is mixed-script** (pure-Arabic incl. presentation
+    forms/ligatures keeps the blanket char-reverse — its contract). **Non-obvious (TDD-discovered):** (1) bidi-js is
+    logical→visual ONLY — the 3 read surfaces need the inverse, which is an APPROXIMATION (perfect inversion from
+    visual order alone is impossible). (2) a char-level reorder SCRAMBLES pdf.js multi-char tokens (`لام`/`PDF` arrive
+    as ONE logical-order span) and breaks search's char offsets → copy/search MUST reorder at ITEM granularity, never
+    char. (3) boundary whitespace must stay put when re-reversing an LTR run (else an inter-word space migrates →
+    `مرحباWorld `). Every engine call falls back to the raw string on a bidi-js throw (never regress below prior
+    behavior). **Ceiling:** overlay bracket display-mirroring (fontkit draws the logical glyph; the string surfaces
+    DO mirror), tashkeel GPOS, shaped-ligature reorder → Feature 3 Slice 3 (evaluate-then-defer). Guards:
+    `tests/utils/bidi.test.ts` (13) + the per-surface guards (`rtlClipboard`/`flowDocArabic`/`textSearchHandler`) +
+    the extended `tests/browser/arabic-overlay.browser.test.ts`. Spec/plan:
+    `docs/superpowers/{specs,plans}/2026-06-23-arabic-rtl-bidi-engine*`.
   - **Multi-language DOCX (#2 `9cfc38a`)**: Cyrillic + CJK source text is preserved verbatim through
     PDF→DOCX/MD/TXT — they're LTR like Latin, so they take the same reconstructPage + writer path and the only
     script branch (`isArabicText` RTL reorder) must not fire. CONTENT is intact (verified, no prod change).

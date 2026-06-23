@@ -83,7 +83,22 @@ is the separate true-edit tool; Replace skips them with a hint).
   round-trip), docxToolbar (merge/split via CellSelection + probes), docx-tables.browser (merge→save→reopen).
 - Visual: `qa-shots/f2-merge-3cd/` (2 header cells → 1 colspan-2 cell; Split enabled after; 0 console errs).
 
-## Feature 3 — Arabic-RTL deepening — IN PROGRESS (brainstorming)
+## Feature 3 — Arabic-RTL deepening — Slice 1 DONE; slices 2/3 queued
+- [2026-06-23] **Slice 1 (char-level bidi engine) SHIPPED `11a3253`** (UNPUSHED, push MANUAL). Spec
+  `docs/superpowers/specs/2026-06-23-arabic-rtl-bidi-engine-design.md`; plan
+  `docs/superpowers/plans/2026-06-23-arabic-rtl-bidi-engine.md`. `src/utils/bidi.ts` (bidi-js@1.0.3 MIT,
+  promoted transitive→prod): `logicalToVisual` / `visualToLogical` (bounded inverse) / `visualRuns` /
+  `logicalItemOrder`. Wired ALL 4 surfaces: overlay (`drawBidiLine`→visualRuns; dead segmentBidiRuns/
+  baseIsRtl removed), copy (`reconstructLogicalText`→span-level logicalItemOrder), search
+  (`buildLogicalLines`→item-level, token map preserved), DOCX (`reverseRtlText`→visualToLogical for
+  mixed-script words only). **Plan refinements (TDD-discovered):** copy/search use ITEM-level reorder
+  (not char-level) so multi-char pdf.js tokens aren't scrambled + search token map stays valid; DOCX
+  guarded to mixed-script words to preserve reverseRtlText contract tests; overlay browser guard EXTENDS
+  the existing `arabic-overlay.browser.test.ts` (DRY) instead of a new file. Gate GREEN: tsc · oxlint ·
+  jsdom **2026+2/173** · real-Chrome overlay 4/4 · npm audit 0. Eyes-on: live in-browser engine eval
+  (all transforms + round-trips correct; `qa-shots/f3-bidi/`). **Ceiling:** bracket display-mirror inside
+  the overlay (fontkit draws logical glyph); tashkeel GPOS; perfect visual→logical inversion impossible.
+- Next: **Slice 2 (RTL-aware toolbar controls)** then **Slice 3 (ligature/tashkeel — evaluate-then-defer)**.
 - [2026-06-23] DECISION (user): F3 is a cluster; sequence = **(1) char-level bidi engine → (2) RTL-aware
   toolbar controls → (3) ligature/tashkeel (evaluate-then-likely-defer)**. Each is its OWN spec→plan→impl
   cycle. Start with #1 NOW. Rationale: the SAME char-level-bidi ceiling is documented in 4 surfaces
@@ -91,4 +106,5 @@ is the separate true-edit tool; Replace skips them with a hint).
   `arabicOverlay.ts`); one shared utility retires all four. `bidi-js@1.0.3` (MIT, full UAX#9) is already
   vendored (transitive via jsdom) → adopt, don't hand-roll; promote to a direct prod dependency.
 - Spec (slice 1): `docs/superpowers/specs/2026-06-23-arabic-rtl-bidi-engine-design.md` (brainstorming WIP).
+## Feature 3 slices 2/3 — queued (RTL toolbar; ligature/tashkeel evaluate-defer)
 ## Feature 4 — true-edit F10–F16 + F3 — queued
