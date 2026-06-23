@@ -63,6 +63,8 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
   app.ui.findNext.addEventListener('click', () => guard(app._nextMatch()));
   app.ui.findPrev.addEventListener('click', () => guard(app._prevMatch()));
   app.ui.findHighlight.addEventListener('click', () => app._highlightCurrentMatch());
+  app.ui.replaceBtn.addEventListener('click', () => app._replaceCurrentMatch());
+  app.ui.replaceAllBtn.addEventListener('click', () => app._replaceAllMatches());
   app.ui.findClose.addEventListener('click', () => app._closeFindBar());
   app.ui.findCaseSensitive.addEventListener('click', () => {
     app._searchManager.caseSensitive = !app._searchManager.caseSensitive;

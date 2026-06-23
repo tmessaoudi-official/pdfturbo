@@ -1,0 +1,47 @@
+# Option 3 — feature backlog / ceilings (2026-06-23)
+
+## Decisions Log
+- [2026-06-23] AGREED: after the P3 backlog (DONE, `a2255f6..561f540`), do **Option 3 — feature work**.
+- [2026-06-23] User: "All of them" + asked for recommended order. AGREED order (value-first,
+  risk-ascending, dependency-aware):
+  1. **PDF overlay find & replace** — reuses the warm DOCX findReplace core; high value, low risk.
+  2. **DOCX table editing (3b–3d)** — add/del row+col, merge/split; builds on 3a; medium risk
+     (stresses the in-place OPC reconcile cardinal rule).
+  3. **Arabic-RTL deepening** — mixed LTR+RTL single-line bidi + ligature reorder; unblocks the
+     gated RTL-direction-aware toolbar controls; hard (partly a ceiling).
+  4. **true-edit F10–F16 + F3 byte-splice** — edge-case hardening; lowest user-visible value,
+     lowest regression risk; do last when the feature surface above is settled.
+- One feature per commit (or per slice), TDD, gate after each, push MANUAL. NO Co-Authored-By.
+
+## Feature 1 — PDF overlay find & replace ✅ DONE (commit pending)
+Shipped: pure `overlayReplace.applyReplacement`, `MatchResult.elementId` tagging, `FindBarController`
+`replaceCurrent`/`replaceAll`, app `replaceOverlayText` (TextEditCmd/MacroCmd, undoable), find-bar UI
+(`#replaceInput`/`#replaceBtn`/`#replaceAllBtn`) + i18n en/fr/ar (ar [Unverified]). Source-text matches
+stay find-only (hint). Gate: tsc/oxlint clean, jsdom 1994+2/173. Visual+undo confirmed in real Chrome
+(`qa-shots/f1-find-replace/` — "hello world hello"→"HI world HI", undo restores, 0 console errors).
+
+
+**Key finding (Phase 2):** the FIND side already exists — `SearchManager.run()` matches overlay
+`TextElement` + `CommentElement` text on every page (searchManager.ts:86–100). The new work is
+**REPLACE**, scoped to OVERLAY elements only (source-PDF-text matches stay find-only — editing those
+is the separate true-edit tool; Replace skips them with a hint).
+
+**Plan (Phase 4):**
+1. Pure `src/core/overlayReplace.ts` `applyReplacement(text, query, replacement, {caseSensitive, regex})`
+   → new text with ALL occurrences replaced (string or regex with $1; reuses the `_isSafeRegex` ReDoS guard).
+2. `MatchResult` gains optional `elementId?: number` (set for overlay matches in `searchManager.run`,
+   absent for source-text matches → those are not replaceable).
+3. `FindBarController.replaceCurrent()` / `replaceAll()`:
+   - current: if the active match is an overlay element, replace all occurrences in THAT element,
+     then re-run search + advance.
+   - all: replace across ALL matched overlay elements in ONE MacroCmd; re-run search.
+   - delegate execution to a new `ctx.replaceOverlayText(edits)` on the app (owns historyManager)
+     → TextEditCmd / MacroCmd (undoable) + autosave + re-render.
+   - source-text-only / no overlay matches → toast hint, no-op.
+4. UI: `#replaceInput` + `#replaceBtn` + `#replaceAllBtn` in the find bar (index.html), i18n en/fr/ar.
+5. Tests: `overlayReplace` (pure), `searchManager` (elementId), `findBarController` (replace/undo/source-skip)
+   jsdom + a real-Chrome browser guard. One commit for Feature 1.
+
+## Feature 2 — DOCX table editing (3b–3d) — queued
+## Feature 3 — Arabic-RTL deepening — queued
+## Feature 4 — true-edit F10–F16 + F3 — queued

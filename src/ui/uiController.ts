@@ -70,6 +70,9 @@ export interface AppDOMRefs {
   findPrev: HTMLButtonElement;
   findNext: HTMLButtonElement;
   findHighlight: HTMLButtonElement;
+  replaceInput: HTMLInputElement;
+  replaceBtn: HTMLButtonElement;
+  replaceAllBtn: HTMLButtonElement;
   findClose: HTMLButtonElement;
   findCount: HTMLElement;
   findCaseSensitive: HTMLButtonElement;
@@ -319,6 +322,9 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       findPrev:         document.getElementById('findPrev')         as HTMLButtonElement,
       findNext:         document.getElementById('findNext')         as HTMLButtonElement,
       findHighlight:    document.getElementById('findHighlight')    as HTMLButtonElement,
+      replaceInput:     document.getElementById('replaceInput')     as HTMLInputElement,
+      replaceBtn:       document.getElementById('replaceBtn')       as HTMLButtonElement,
+      replaceAllBtn:    document.getElementById('replaceAllBtn')    as HTMLButtonElement,
       findClose:          document.getElementById('findClose')          as HTMLButtonElement,
       findCount:          document.getElementById('findCount')          as HTMLElement,
       findCaseSensitive:  document.getElementById('findCaseSensitive')  as HTMLButtonElement,

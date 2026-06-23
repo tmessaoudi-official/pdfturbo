@@ -4,6 +4,7 @@ import type { DocumentModel } from '../core/documentModel';
 import type { SearchManager } from '../core/searchManager';
 import type { TextSearchHandler } from '../handlers/textSearchHandler';
 import type { IErrorReporter } from '../core/errorReporter';
+import { applyReplacement } from '../core/overlayReplace';
 
 export interface IFindBarContext {
   readonly ui: AppDOMRefs;
@@ -22,6 +23,8 @@ export interface IFindBarContext {
    */
   navigateToMatchPage(pageId: string): Promise<void>;
   readonly reportError: IErrorReporter;
+  /** Apply find&replace edits to overlay text/comment elements (undoable). Returns the count changed. */
+  replaceOverlayText(edits: { elementId: number; newText: string }[]): number;
 }
 
 export class FindBarController {
@@ -71,6 +74,52 @@ export class FindBarController {
     await this._goToCurrentMatchPage();
     this._showMatches();
     this._updateCount();
+  }
+
+  /** Read the current text of an overlay element by id (text/comment carry `.text`). */
+  private _overlayText(elementId: number): string | null {
+    const el = this._ctx.elements.find(e => e.id === elementId);
+    const raw = (el as { text?: unknown } | undefined)?.text;
+    return typeof raw === 'string' ? raw : null;
+  }
+
+  /**
+   * Replace within the CURRENT match's overlay element (all occurrences of the query in that
+   * element's text), then re-run the search. Source-PDF-text matches are not editable here — the
+   * Edit-text tool handles those — so they no-op with a hint.
+   */
+  replaceCurrent(): void {
+    const sm = this._ctx.searchManager;
+    const match = sm.currentMatch;
+    if (!match) return;
+    if (match.elementId === undefined) { this._ctx.reportError.info('toast.replaceSourceSkipped'); return; }
+    const text = this._overlayText(match.elementId);
+    if (text === null) return;
+    const newText = applyReplacement(text, this._ctx.ui.findInput.value, this._ctx.ui.replaceInput.value,
+      { caseSensitive: sm.caseSensitive, regex: sm.regex });
+    const n = this._ctx.replaceOverlayText([{ elementId: match.elementId, newText }]);
+    if (n > 0) this._ctx.reportError.info('toast.replaceDone');
+    void this.search();
+  }
+
+  /** Replace across ALL matched overlay elements in one undoable step, then re-run the search. */
+  replaceAll(): void {
+    const sm = this._ctx.searchManager;
+    const query = this._ctx.ui.findInput.value;
+    const replacement = this._ctx.ui.replaceInput.value;
+    const seen = new Set<number>();
+    const edits: { elementId: number; newText: string }[] = [];
+    for (const m of sm.matches) {
+      if (m.elementId === undefined || seen.has(m.elementId)) continue;
+      seen.add(m.elementId);
+      const text = this._overlayText(m.elementId);
+      if (text === null) continue;
+      edits.push({ elementId: m.elementId, newText: applyReplacement(text, query, replacement, { caseSensitive: sm.caseSensitive, regex: sm.regex }) });
+    }
+    if (edits.length === 0) { this._ctx.reportError.info('toast.replaceNoOverlay'); return; }
+    const n = this._ctx.replaceOverlayText(edits);
+    if (n > 0) this._ctx.reportError.info('toast.replaceAllDone', { count: n });
+    void this.search();
   }
 
   highlightCurrentMatch(): void {

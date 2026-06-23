@@ -6,6 +6,12 @@ export interface MatchResult {
   y: number;
   width: number;
   height: number;
+  /**
+   * Set ONLY for an overlay-element match (TextElement/CommentElement) — the id of the element
+   * whose text matched. Absent for source-PDF text-layer matches (which are find-only; replacing
+   * those is the separate true-edit tool). Used by find & replace to target replaceable matches.
+   */
+  elementId?: number;
 }
 
 interface RawTextItem {

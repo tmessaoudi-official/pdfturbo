@@ -90,11 +90,11 @@ export class SearchManager {
         if (el.type === 'text') {
           const te = el as TextElement;
           if (te.text && this._matchesQuery(te.text, query))
-            this._matches.push({ pageId: docPage.id, x: te.x, y: te.y, width: te.width, height: te.height });
+            this._matches.push({ pageId: docPage.id, x: te.x, y: te.y, width: te.width, height: te.height, elementId: te.id });
         } else if (el.type === 'comment') {
           const ce = el as CommentElement;
           if (ce.text && this._matchesQuery(ce.text, query))
-            this._matches.push({ pageId: docPage.id, x: ce.x, y: ce.y, width: ce.width, height: ce.height });
+            this._matches.push({ pageId: docPage.id, x: ce.x, y: ce.y, width: ce.width, height: ce.height, elementId: ce.id });
         }
       }
     }
@@ -105,7 +105,7 @@ export class SearchManager {
 
   private _matchesQuery(text: string, query: string): boolean {
     if (this.regex) {
-      if (!_isSafeRegex(query)) return false;
+      if (!isSafeSearchRegex(query)) return false;
       try { return new RegExp(query, this.caseSensitive ? '' : 'i').test(text); } catch { return false; }
     }
     const haystack = this.caseSensitive ? text : text.toLowerCase();
@@ -115,8 +115,8 @@ export class SearchManager {
 
 /** Guard against catastrophic backtracking (ReDoS). Rejects patterns that are
  *  too long or contain nested quantifier structures known to cause exponential
- *  backtracking in V8's non-backtracking NFA. */
-function _isSafeRegex(pattern: string): boolean {
+ *  backtracking in V8's non-backtracking NFA. Shared with overlay find&replace. */
+export function isSafeSearchRegex(pattern: string): boolean {
   if (pattern.length > 200) return false;
   // Nested quantifiers: (a+)+ / (a*)* / (a+)? etc.
   if (/\([^)]*[+*][^)]*\)[+*?]/.test(pattern)) return false;

@@ -12,8 +12,9 @@ import { UIController, type AppDOMRefs } from '../ui/uiController';
 import { DrawingHandler } from '../handlers/drawingHandler';
 import { EraserHandler } from '../handlers/eraserHandler';
 import {
-  HistoryManager, AddElementCmd, MacroCmd,
+  HistoryManager, AddElementCmd, MacroCmd, TextEditCmd,
   ReplaceSourcePdfBytesCmd,
+  type Command,
 } from './historyManager';
 import { parseXfdf } from '../utils/xfdf';
 import { xfdfAnnotToElement, pageHeightPt } from '../export/xfdfMapping';
@@ -242,6 +243,27 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     this.historyManager.execute(new AddElementCmd(this.elements, hlEl));
   }
 
+  /**
+   * Apply find & replace edits to overlay text/comment elements (PDF overlay find & replace,
+   * Option 3 #1). Each edit replaces the element's whole `text` with the pre-computed `newText`
+   * via an undoable `TextEditCmd` (a `MacroCmd` when more than one → one undo step for Replace All).
+   * Returns the number of elements actually changed. Re-renders the overlay layer + autosaves.
+   */
+  replaceOverlayText(edits: { elementId: number; newText: string }[]): number {
+    const cmds: Command[] = [];
+    for (const { elementId, newText } of edits) {
+      const el = this.elements.find(e => e.id === elementId) as (TextElement | CommentElement) | undefined;
+      const before = el && typeof (el as { text?: unknown }).text === 'string' ? (el as { text: string }).text : null;
+      if (before === null || before === newText) continue;
+      cmds.push(new TextEditCmd(this.elements, elementId, before, newText));
+    }
+    if (cmds.length === 0) return 0;
+    this.historyManager.execute(cmds.length === 1 ? cmds[0] : new MacroCmd(cmds));
+    this.autosave();
+    this.rebuildElementLayer();
+    return cmds.length;
+  }
+
   // ── IWatermarkContext accessors ──────────────────────────────────────────
   get watermark() { return this.documentModel.watermark; }
   setWatermark(wm: import('./documentModel').WatermarkSettings): void { this.documentModel.watermark = wm; }
@@ -457,6 +479,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _nextMatch(): Promise<void> { return this._findBarController.nextMatch(); }
   _prevMatch(): Promise<void> { return this._findBarController.prevMatch(); }
   _highlightCurrentMatch(): void { this._findBarController.highlightCurrentMatch(); }
+  _replaceCurrentMatch(): void { this._findBarController.replaceCurrent(); }
+  _replaceAllMatches(): void { this._findBarController.replaceAll(); }
 
   // G13 — switch the displayed page to a cross-page search match WITHOUT touching
   // the active search results/index (unlike goToPageIndex, which clears + re-runs

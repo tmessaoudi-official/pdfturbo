@@ -11,17 +11,20 @@ function makeUI() {
     container,
     findBar: Object.assign(document.createElement('div'), { style: { display: 'none' } }),
     findInput: document.createElement('input'),
+    replaceInput: document.createElement('input'),
     findCount: document.createElement('span'),
     canvas: document.createElement('canvas'),
-  } as unknown as Pick<AppDOMRefs, 'container' | 'findBar' | 'findInput' | 'findCount' | 'canvas'>;
+  } as unknown as Pick<AppDOMRefs, 'container' | 'findBar' | 'findInput' | 'replaceInput' | 'findCount' | 'canvas'>;
 }
 
-function makeSearchManager(matches: Array<{ x: number; y: number; width: number; height: number }> = [], currentIndex = 0) {
+function makeSearchManager(matches: Array<{ x: number; y: number; width: number; height: number; elementId?: number }> = [], currentIndex = 0) {
   return {
     matches,
     count: matches.length,
     currentIndex,
     currentMatch: matches[currentIndex] ?? null,
+    caseSensitive: false,
+    regex: false,
     clear: vi.fn(),
     run: vi.fn().mockResolvedValue(true),
     next: vi.fn(),
@@ -43,6 +46,7 @@ function makeCtx(overrides: Partial<IFindBarContext> = {}): IFindBarContext {
     rebuildElementLayer: vi.fn(),
     navigateToMatchPage: vi.fn().mockResolvedValue(undefined),
     reportError: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), silent: vi.fn() },
+    replaceOverlayText: vi.fn().mockReturnValue(1),
     ...overrides,
   };
 }
@@ -202,5 +206,67 @@ describe('FindBarController.clearMatches', () => {
     const ctrl = new FindBarController(ctx);
     ctrl.clearMatches();
     expect(ctx.ui.container.querySelectorAll('.search-match').length).toBe(0);
+  });
+});
+
+describe('FindBarController find & replace (Option 3 #1)', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('replaceCurrent replaces in the current overlay element and re-runs the search', () => {
+    const sm = makeSearchManager([{ x: 0, y: 0, width: 10, height: 10, elementId: 7 }], 0);
+    const replaceOverlayText = vi.fn().mockReturnValue(1);
+    const ctx = makeCtx({
+      searchManager: sm as unknown as IFindBarContext['searchManager'],
+      elements: [{ id: 7, text: 'foo foo' } as unknown as IFindBarContext['elements'][number]],
+      replaceOverlayText,
+    });
+    ctx.ui.findInput.value = 'foo';
+    ctx.ui.replaceInput.value = 'bar';
+    new FindBarController(ctx).replaceCurrent();
+    expect(replaceOverlayText).toHaveBeenCalledWith([{ elementId: 7, newText: 'bar bar' }]);
+    expect(sm.run).toHaveBeenCalled(); // re-ran search
+  });
+
+  it('replaceCurrent on a SOURCE-text match (no elementId) is a no-op with a hint', () => {
+    const sm = makeSearchManager([{ x: 0, y: 0, width: 10, height: 10 }], 0); // no elementId
+    const replaceOverlayText = vi.fn();
+    const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'], replaceOverlayText });
+    ctx.ui.findInput.value = 'x'; ctx.ui.replaceInput.value = 'y';
+    new FindBarController(ctx).replaceCurrent();
+    expect(replaceOverlayText).not.toHaveBeenCalled();
+    expect(ctx.reportError.info).toHaveBeenCalledWith('toast.replaceSourceSkipped');
+  });
+
+  it('replaceAll edits every distinct overlay element once, skipping source matches', () => {
+    const sm = makeSearchManager([
+      { x: 0, y: 0, width: 10, height: 10, elementId: 1 },
+      { x: 0, y: 0, width: 10, height: 10 },          // source match — skipped
+      { x: 0, y: 0, width: 10, height: 10, elementId: 2 },
+    ], 0);
+    const replaceOverlayText = vi.fn().mockReturnValue(2);
+    const ctx = makeCtx({
+      searchManager: sm as unknown as IFindBarContext['searchManager'],
+      elements: [
+        { id: 1, text: 'a A' } as unknown as IFindBarContext['elements'][number],
+        { id: 2, text: 'AA' } as unknown as IFindBarContext['elements'][number],
+      ],
+      replaceOverlayText,
+    });
+    ctx.ui.findInput.value = 'a'; ctx.ui.replaceInput.value = 'z';
+    new FindBarController(ctx).replaceAll();
+    expect(replaceOverlayText).toHaveBeenCalledWith([
+      { elementId: 1, newText: 'z z' },
+      { elementId: 2, newText: 'zz' },
+    ]);
+  });
+
+  it('replaceAll with no overlay matches warns and does not edit', () => {
+    const sm = makeSearchManager([{ x: 0, y: 0, width: 10, height: 10 }], 0); // source only
+    const replaceOverlayText = vi.fn();
+    const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'], replaceOverlayText });
+    ctx.ui.findInput.value = 'x'; ctx.ui.replaceInput.value = 'y';
+    new FindBarController(ctx).replaceAll();
+    expect(replaceOverlayText).not.toHaveBeenCalled();
+    expect(ctx.reportError.info).toHaveBeenCalledWith('toast.replaceNoOverlay');
   });
 });
