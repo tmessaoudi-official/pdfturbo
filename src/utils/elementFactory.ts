@@ -32,6 +32,7 @@ export class ElementFactory {
         bold: data['bold'] || false, italic: data['italic'] || false,
         underline: data['underline'] || false, strikethrough: data['strikethrough'] || false,
         align: data['align'] || 'left',
+        direction: data['direction'] === 'rtl' || data['direction'] === 'ltr' ? data['direction'] : 'auto',
         multiline: data['multiline'],
         backgroundColor: data['backgroundColor'],
         lineHeight: typeof data['lineHeight'] === 'number' ? data['lineHeight'] : undefined,

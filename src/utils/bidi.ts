@@ -129,6 +129,15 @@ export function logicalItemOrder<T>(itemsLToR: readonly T[], isRtl: (t: T) => bo
   return out;
 }
 
+/** Base paragraph direction (UAX#9 P2/P3 first-strong); defaults 'rtl' when no strong char. */
+export function baseDirection(text: string): 'rtl' | 'ltr' {
+  try {
+    return _baseRtl(text, 'auto', _api()) ? 'rtl' : 'ltr';
+  } catch {
+    return 'ltr';
+  }
+}
+
 export interface BidiVisualRun {
   /** The run's LOGICAL substring (RTL runs are NOT pre-reversed — fontkit shapes them). */
   text: string;

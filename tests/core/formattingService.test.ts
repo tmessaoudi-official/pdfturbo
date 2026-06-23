@@ -779,3 +779,42 @@ describe('FormattingService Slice-2 setters', () => {
     expect(() => svc.setCharSpacing(2)).not.toThrow();
   });
 });
+
+// ── direction (Slice 2 RTL) ──────────────────────────────────────────────────
+
+describe('FormattingService direction', () => {
+  it('toggleDirection overrides auto-resolved RTL (Arabic) to explicit ltr', () => {
+    const { svc, te } = makeTextCtx();
+    te.text = 'مرحبا';
+    svc.toggleDirection();
+    expect(te.direction).toBe('ltr');
+  });
+  it('toggling an LTR element to rtl also defaults left align to right', () => {
+    const { svc, te } = makeTextCtx();
+    te.text = 'Hello';
+    expect(te.align).toBe('left');
+    svc.toggleDirection();
+    expect(te.direction).toBe('rtl');
+    expect(te.align).toBe('right');
+  });
+  it('setDirection does not change a non-default align', () => {
+    const { svc, te } = makeTextCtx({ align: 'center' });
+    te.text = 'Hello';
+    svc.setDirection('rtl');
+    expect(te.align).toBe('center');
+  });
+  it('toggleDirection is a no-op without a selected text element', () => {
+    const { svc, ctx } = makeTextCtx();
+    (ctx as { selectedElement: PDFElement | null }).selectedElement = null;
+    expect(() => svc.toggleDirection()).not.toThrow();
+  });
+  it('undo restores direction and align', () => {
+    const { svc, te, history } = makeTextCtx();
+    te.text = 'Hello';
+    svc.toggleDirection();
+    expect(te.direction).toBe('rtl');
+    history.undo();
+    expect(te.direction).toBe('auto');
+    expect(te.align).toBe('left');
+  });
+});

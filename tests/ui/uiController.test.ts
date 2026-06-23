@@ -76,7 +76,7 @@ function seedDOM(): void {
     'textLineHeight', 'textOpacity', 'textBgColor', 'textBgNoneBtn',
     'textCaseUpperBtn', 'textCaseLowerBtn', 'textCaseTitleBtn',
     'clearFmtBtn', 'formatPainterBtn',
-    'alignLeftBtn', 'alignCenterBtn', 'alignRightBtn', 'alignJustifyBtn',
+    'alignLeftBtn', 'alignCenterBtn', 'alignRightBtn', 'alignJustifyBtn', 'rtlBtn',
     // Slice 2 — popover controls
     'textStrokeWidth', 'charSpacingInput', 'horizontalScaleInput',
     'superscriptBtn', 'subscriptBtn',

@@ -1,5 +1,5 @@
 import type { PDFElement } from '../elements/annotationElement';
-import type { TextElement } from '../elements/textElement';
+import { resolveDirection, type TextElement } from '../elements/textElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import type { RedactionElement } from '../elements/redactionElement';
 import type { ToolMode } from '../core/pdfTurboApp';
@@ -242,6 +242,7 @@ export interface AppDOMRefs {
   alignCenterBtn:      HTMLButtonElement;
   alignRightBtn:       HTMLButtonElement;
   alignJustifyBtn:     HTMLButtonElement;
+  rtlBtn:              HTMLButtonElement;
   // Slice 2 — stroke / spacing / scale / super-sub
   textStrokeWidth:       HTMLInputElement;
   charSpacingInput:      HTMLInputElement;
@@ -491,6 +492,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       alignCenterBtn:      document.getElementById('alignCenterBtn')      as HTMLButtonElement,
       alignRightBtn:       document.getElementById('alignRightBtn')       as HTMLButtonElement,
       alignJustifyBtn:     document.getElementById('alignJustifyBtn')     as HTMLButtonElement,
+      rtlBtn:              document.getElementById('rtlBtn')              as HTMLButtonElement,
       // Slice 2 — stroke / spacing / scale / super-sub
       textStrokeWidth:       document.getElementById('textStrokeWidth')       as HTMLInputElement,
       charSpacingInput:      document.getElementById('charSpacingInput')      as HTMLInputElement,
@@ -648,6 +650,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.alignCenterBtn.disabled  = !isText;
     r.alignRightBtn.disabled   = !isText;
     r.alignJustifyBtn.disabled = !isText;
+    r.rtlBtn.disabled          = !isText;
     r.superscriptBtn.disabled  = !isText;
     r.subscriptBtn.disabled    = !isText;
     if (isText) {
@@ -666,6 +669,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.alignCenterBtn.classList.toggle('btn-active-fmt',  te.align === 'center');
       r.alignRightBtn.classList.toggle('btn-active-fmt',   te.align === 'right');
       r.alignJustifyBtn.classList.toggle('btn-active-fmt', te.align === 'justify');
+      r.rtlBtn.classList.toggle('btn-active-fmt', resolveDirection(te.direction, te.text) === 'rtl');
       r.superscriptBtn.classList.toggle('btn-active-fmt',  te.baselineShift === 'super');
       r.subscriptBtn.classList.toggle('btn-active-fmt',    te.baselineShift === 'sub');
       if (r.textStrokeWidth) r.textStrokeWidth.value = String(te.strokeWidth ?? 0);

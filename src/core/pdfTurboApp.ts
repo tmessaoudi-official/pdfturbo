@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFRenderer } from '../infra/pdfRenderer';
-import { TextElement, type TextAlign } from '../elements/textElement';
+import { TextElement, type TextAlign, type TextDirection } from '../elements/textElement';
 import type { CommentElement } from '../elements/commentElement';
 import { HighlightElement } from '../elements/highlightElement';
 import { TextSearchHandler } from '../handlers/textSearchHandler';
@@ -870,6 +870,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   toggleStrikethrough(): void { this._formattingService.toggleStrikethrough(); }
   cycleAlign(): void { this._formattingService.cycleAlign(); }
   setAlign(value: TextAlign): void { this._formattingService.setAlign(value); this._formattingService.updateFormattingToolbar(); }
+  setDirection(dir: TextDirection): void { this._formattingService.setDirection(dir); this._formattingService.updateFormattingToolbar(); }
+  toggleDirection(): void { this._formattingService.toggleDirection(); this._formattingService.updateFormattingToolbar(); }
   transformCase(mode: TextCaseMode): void { this._formattingService.transformCase(mode); }
   clearFormatting(): void { this._formattingService.clearFormatting(); }
   setFontSize(size: number): void { this._formattingService.setFontSize(size); }

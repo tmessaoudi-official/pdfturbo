@@ -162,6 +162,7 @@
     "clearFmt": "Effacer la mise en forme",
     "formatPainter": "🖌 Reproduire la mise en forme",
     "justify": "Justifier",
+    "rtlTitle": "De droite à gauche (RTL)",
     "stroke": "Contour",
     "charSpacing": "Interlettrage",
     "horizontalScale": "Largeur %",

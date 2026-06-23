@@ -1,6 +1,13 @@
 import { PDFElement, type ElementJSON } from './annotationElement';
+import { baseDirection } from '../utils/bidi';
 
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
+export type TextDirection = 'auto' | 'rtl' | 'ltr';
+
+/** Resolve a text element's effective direction: 'auto' → first-strong of its content. */
+export function resolveDirection(direction: TextDirection, text: string): 'rtl' | 'ltr' {
+  return direction === 'auto' ? baseDirection(text) : direction;
+}
 
 export interface TextOptions {
   width?: number;
@@ -21,6 +28,7 @@ export interface TextOptions {
   charSpacing?: number;
   horizontalScale?: number;
   baselineShift?: 'super' | 'sub';
+  direction?: TextDirection;
 }
 
 export class TextElement extends PDFElement {
@@ -41,6 +49,7 @@ export class TextElement extends PDFElement {
   charSpacing?: number;
   horizontalScale?: number;
   baselineShift?: 'super' | 'sub';
+  direction: TextDirection;
 
   constructor(x: number, y: number, pageId: string, options: TextOptions = {}) {
     super('text', x, y, options.width ?? 200, options.height ?? 30, pageId);
@@ -60,6 +69,7 @@ export class TextElement extends PDFElement {
     this.charSpacing = options.charSpacing;
     this.horizontalScale = options.horizontalScale;
     this.baselineShift = options.baselineShift;
+    this.direction = options.direction ?? 'auto';
   }
 
   render(_container: HTMLElement, canvasOffset: { left: number; top: number }, scale = 1): HTMLDivElement {
@@ -92,6 +102,7 @@ export class TextElement extends PDFElement {
     const deco = [this.underline ? 'underline' : '', this.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ');
     input.style.textDecoration = deco || 'none';
     input.style.textAlign = this.align;
+    input.dir = resolveDirection(this.direction, this.text);
     input.style.lineHeight = this.lineHeight !== undefined ? String(this.lineHeight) : '';
     // Slice 2 previews — outline uses the element's own fill color (palette-chosen)
     const strokeW = this.strokeWidth ?? 0;
@@ -141,6 +152,7 @@ export class TextElement extends PDFElement {
       ...(this.strokeWidth !== undefined ? { strokeWidth: this.strokeWidth } : {}),
       ...(this.charSpacing !== undefined ? { charSpacing: this.charSpacing } : {}),
       ...(this.horizontalScale !== undefined ? { horizontalScale: this.horizontalScale } : {}),
-      ...(this.baselineShift !== undefined ? { baselineShift: this.baselineShift } : {}) };
+      ...(this.baselineShift !== undefined ? { baselineShift: this.baselineShift } : {}),
+      ...(this.direction !== 'auto' ? { direction: this.direction } : {}) };
   }
 }

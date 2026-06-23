@@ -90,3 +90,30 @@ describe('TextElement Slice-2 fields', () => {
     expect(round.align).toBe('left');
   });
 });
+
+describe('TextElement direction (Slice 2 RTL)', () => {
+  const inputOf = (el: HTMLDivElement) => el.querySelector('textarea, input') as HTMLElement;
+  it('defaults direction to auto and omits it from toJSON', () => {
+    const el = new TextElement(0, 0, 'p1', {});
+    expect(el.direction).toBe('auto');
+    expect('direction' in el.toJSON()).toBe(false);
+  });
+  it('sets input dir=rtl for auto direction with Arabic content', () => {
+    const te = new TextElement(0, 0, 'p1', {});
+    te.text = 'مرحبا';
+    expect(inputOf(te.render(document.createElement('div'), { left: 0, top: 0 }, 1)).dir).toBe('rtl');
+  });
+  it('explicit ltr direction overrides Arabic content', () => {
+    const te = new TextElement(0, 0, 'p1', { direction: 'ltr' });
+    te.text = 'مرحبا';
+    expect(inputOf(te.render(document.createElement('div'), { left: 0, top: 0 }, 1)).dir).toBe('ltr');
+  });
+  it('round-trips direction and defaults legacy to auto', () => {
+    const te = new TextElement(0, 0, 'p1', { direction: 'rtl' });
+    te.text = 'x';
+    expect((ElementFactory.fromJSON(te.toJSON()) as TextElement).direction).toBe('rtl');
+    const legacy = te.toJSON();
+    delete (legacy as Record<string, unknown>)['direction'];
+    expect((ElementFactory.fromJSON(legacy) as TextElement).direction).toBe('auto');
+  });
+});

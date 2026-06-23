@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { logicalToVisual, visualToLogical, visualRuns, logicalItemOrder } from '../../src/utils/bidi';
+import { logicalToVisual, visualToLogical, visualRuns, logicalItemOrder, baseDirection } from '../../src/utils/bidi';
 
 describe('logicalToVisual', () => {
   it('LTR-only text is returned unchanged', () => {
@@ -55,6 +55,13 @@ describe('visualRuns', () => {
     expect(arabicIdx).toBeGreaterThanOrEqual(0);
     expect(latinIdx).toBeLessThan(arabicIdx); // Latin drawn first (leftmost)
   });
+});
+
+describe('baseDirection', () => {
+  it('Arabic-first → rtl', () => expect(baseDirection('مرحبا World')).toBe('rtl'));
+  it('Latin-first → ltr', () => expect(baseDirection('Hello مرحبا')).toBe('ltr'));
+  it('leading digits are not strong → rtl when Arabic follows', () => expect(baseDirection('100 مرحبا')).toBe('rtl'));
+  it('no strong char → rtl default', () => expect(baseDirection('123 ...')).toBe('rtl'));
 });
 
 describe('logicalItemOrder', () => {

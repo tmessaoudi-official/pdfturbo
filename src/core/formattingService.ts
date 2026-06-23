@@ -1,4 +1,4 @@
-import { TextElement, type TextAlign } from '../elements/textElement';
+import { TextElement, resolveDirection, type TextAlign, type TextDirection } from '../elements/textElement';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd, type HistoryManager } from './historyManager';
@@ -223,6 +223,26 @@ export class FormattingService {
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { align: value }));
     this._ctx.rebuildElementLayer();
     this._ctx.autosave();
+  }
+
+  /** Set text direction. When the result resolves RTL and align is still the default
+   *  'left', default it to 'right' (the RTL right-align convention) in the same command. */
+  setDirection(dir: TextDirection): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const before = { direction: te.direction, align: te.align };
+    te.direction = dir;
+    if (resolveDirection(dir, te.text) === 'rtl' && te.align === 'left') te.align = 'right';
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { direction: te.direction, align: te.align }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  /** Override the resolved direction to the opposite explicit value (RTL↔LTR). */
+  toggleDirection(): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    this.setDirection(resolveDirection(te.direction, te.text) === 'rtl' ? 'ltr' : 'rtl');
   }
 
   setLineHeight(mult: number): void {

@@ -13,6 +13,7 @@ export function bindFormattingEvents(app: PDFTurboApp): void {
   app.ui.alignCenterBtn.addEventListener('click', () => app.setAlign('center'));
   app.ui.alignRightBtn.addEventListener('click', () => app.setAlign('right'));
   app.ui.alignJustifyBtn.addEventListener('click', () => app.setAlign('justify'));
+  app.ui.rtlBtn.addEventListener('click', () => app.toggleDirection());
   app.ui.fontSizeInput.addEventListener('change', (e) => {
     const size = Math.max(8, Math.min(72, parseInt((e.target as HTMLInputElement).value, 10) || 14));
     app.setFontSize(size);

@@ -162,6 +162,7 @@
     "clearFmt": "Clear formatting",
     "formatPainter": "🖌 Format painter",
     "justify": "Justify",
+    "rtlTitle": "Right-to-left (RTL)",
     "stroke": "Outline",
     "charSpacing": "Letter spacing",
     "horizontalScale": "Width %",
