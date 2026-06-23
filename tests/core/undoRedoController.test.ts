@@ -315,3 +315,20 @@ describe('UndoRedoController.handleFormInput', () => {
     vi.useRealTimers();
   });
 });
+
+// ── QA-2026-06-23 P2: an in-flight text edit must be flushed (not discarded) on undo ──
+describe('UndoRedoController.undo flushes a pending text edit', () => {
+  it('typing then Ctrl+Z before the debounce reverts the typed text (not silently stranded)', () => {
+    vi.useFakeTimers();
+    const te = new TextElement(0, 0, 'p1');
+    te.text = 'orig';
+    const ctx = makeCtx();
+    ctx.elements.push(te);
+    const ctrl = new UndoRedoController(ctx);
+    ctrl.handleTextInput(te, { value: 'typed' } as HTMLInputElement); // pending, timer not fired
+    expect(te.text).toBe('typed');
+    ctrl.undo(); // pre-fix: discarded → undo no-ops, text stays 'typed'. post-fix: flush+undo → 'orig'
+    expect(te.text).toBe('orig');
+    vi.useRealTimers();
+  });
+});

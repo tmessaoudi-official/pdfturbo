@@ -34,18 +34,26 @@ export class ClearAllCmd implements Command {
 }
 
 export class BulkDeleteCmd implements Command {
-  private _deleted: PDFElement[];
+  // Capture each element's ORIGINAL index so undo restores z-order (array order = paint order),
+  // not append order (#QA-2026-06-23 P2). Sorted ascending for a stable re-insert.
+  private _deleted: { el: PDFElement; index: number }[];
   constructor(private arr: PDFElement[], elements: PDFElement[]) {
-    this._deleted = [...elements];
+    this._deleted = elements
+      .map(el => ({ el, index: arr.indexOf(el) }))
+      .sort((a, b) => a.index - b.index);
   }
   execute(): void {
-    this._deleted.forEach(el => {
+    for (const { el } of this._deleted) {
       const i = this.arr.findIndex(e => e.id === el.id);
       if (i !== -1) this.arr.splice(i, 1);
-    });
+    }
   }
   undo(): void {
-    this.arr.push(...this._deleted);
+    // Re-insert at original indices, ascending — each earlier insert keeps later indices valid.
+    for (const { el, index } of this._deleted) {
+      const at = Math.min(Math.max(0, index), this.arr.length);
+      this.arr.splice(at, 0, el);
+    }
   }
 }
 

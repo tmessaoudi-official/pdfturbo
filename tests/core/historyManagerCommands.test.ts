@@ -159,6 +159,17 @@ describe('BulkDeleteCmd', () => {
     mgr.undo();
     expect(arr).toHaveLength(3);
   });
+
+  it('undo restores the ORIGINAL z-order, not append order (QA-2026-06-23 P2)', () => {
+    const e1 = mkEl(), e2 = mkEl(), e3 = mkEl(), e4 = mkEl(), e5 = mkEl();
+    const arr = [e1, e2, e3, e4, e5];
+    const cmd = new BulkDeleteCmd(arr, [e2, e4]); // delete middle elements
+    cmd.execute();
+    expect(arr).toEqual([e1, e3, e5]);
+    cmd.undo();
+    // paint order = array order; e2/e4 must return to their original slots, not the end
+    expect(arr).toEqual([e1, e2, e3, e4, e5]);
+  });
 });
 
 // ── SplitStrokeCmd ─────────────────────────────────────────────────────────────
@@ -230,6 +241,25 @@ describe('MacroCmd', () => {
     mgr.undo();
     expect(arr1).toHaveLength(0);
     expect(arr2).toHaveLength(0);
+  });
+
+  it('rolls back already-applied children when a child throws on execute (QA-2026-06-23 P2)', () => {
+    const log: string[] = [];
+    const cmd1 = { execute: () => log.push('do1'), undo: () => log.push('undo1') };
+    const cmd2 = { execute: () => { throw new Error('boom'); }, undo: vi.fn() };
+    const macro = new MacroCmd([cmd1, cmd2]);
+    expect(() => macro.execute()).toThrow('boom'); // error propagates
+    expect(log).toEqual(['do1', 'undo1']); // cmd1 applied then rolled back → no partial state
+  });
+
+  it('rolls back already-undone children when a child throws on undo', () => {
+    const log: string[] = [];
+    const cmd1 = { execute: vi.fn(), undo: () => { throw new Error('boom'); } };
+    const cmd2 = { execute: () => log.push('redo2'), undo: () => log.push('undo2') };
+    const macro = new MacroCmd([cmd1, cmd2]);
+    // undo runs reversed: cmd2.undo ok, then cmd1.undo throws → cmd2 re-executed
+    expect(() => macro.undo()).toThrow('boom');
+    expect(log).toEqual(['undo2', 'redo2']);
   });
 });
 
