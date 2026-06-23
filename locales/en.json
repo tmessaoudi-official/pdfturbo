@@ -537,6 +537,7 @@
     "compressFailed": "Compression failed",
     "xfdfExported": "Exported {{count}} annotation(s) to XFDF",
     "xfdfNoAnnots": "No exportable annotations on this document",
+    "redactionPlaced": "Redaction added — content is hidden on export",
     "xfdfImported": "Imported {{count}} annotation(s) from XFDF",
     "xfdfImportEmpty": "No importable annotations found in the file",
     "xfdfImportFailed": "Couldn't import the XFDF file",

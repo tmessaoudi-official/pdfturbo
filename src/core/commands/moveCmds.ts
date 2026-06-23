@@ -9,13 +9,24 @@ export class MoveResizeCmd implements Command {
     private after: Record<string, unknown>
   ) {}
   execute() {
-    const live = this.elements.find(e => e.id === this.el.id) ?? this.el;
+    const live = this.elements.find(e => e.id === this.el.id) ?? _warnMissing('MoveResizeCmd', this.el.id, this.el);
     Object.assign(live, this.after);
   }
   undo() {
-    const live = this.elements.find(e => e.id === this.el.id) ?? this.el;
+    const live = this.elements.find(e => e.id === this.el.id) ?? _warnMissing('MoveResizeCmd', this.el.id, this.el);
     Object.assign(live, this.before);
   }
+}
+
+/**
+ * Log (don't silently ignore) a command targeting an element no longer in the live array
+ * (#QA-2026-06-23 P3 #20). Returns the fallback so callers keep their prior behavior — the
+ * warning just surfaces the stale-target condition for diagnosis instead of a silent no-op.
+ */
+function _warnMissing<T>(cmd: string, id: number, fallback: T): T {
+  // eslint-disable-next-line no-console -- low-level command has no errorReporter; surface the stale target
+  console.warn(`[history] ${cmd}: element #${id} not found in live array (stale target)`);
+  return fallback;
 }
 
 export class TextEditCmd implements Command {
@@ -29,13 +40,13 @@ export class TextEditCmd implements Command {
   execute(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const el = this.elements.find(e => e.id === this.elementId) as any;
-    if (el) el.text = this.after;
+    if (el) el.text = this.after; else _warnMissing('TextEditCmd', this.elementId, null);
   }
 
   undo(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const el = this.elements.find(e => e.id === this.elementId) as any;
-    if (el) el.text = this.before;
+    if (el) el.text = this.before; else _warnMissing('TextEditCmd', this.elementId, null);
   }
 }
 
@@ -50,13 +61,13 @@ export class FillColorCmd implements Command {
   execute(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const el = this.elements.find(e => e.id === this.elementId) as any;
-    if (el) el.fillColor = this.after;
+    if (el) el.fillColor = this.after; else _warnMissing('FillColorCmd', this.elementId, null);
   }
 
   undo(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const el = this.elements.find(e => e.id === this.elementId) as any;
-    if (el) el.fillColor = this.before;
+    if (el) el.fillColor = this.before; else _warnMissing('FillColorCmd', this.elementId, null);
   }
 }
 

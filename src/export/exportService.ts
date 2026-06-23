@@ -456,7 +456,9 @@ export class ExportService {
       const data = await this._extractPageTableData(docPage);
       const grid = data ? buildTableGrid(data.hRules, data.vRules, data.items) : null;
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
-      const blob = new Blob([gridToCsv(grid)], { type: 'text/csv;charset=utf-8' });
+      // Prepend a UTF-8 BOM (#QA-2026-06-23 P3 #28) so Excel auto-detects UTF-8 and renders
+      // accented/non-ASCII cells correctly instead of mojibake.
+      const blob = new Blob(['﻿' + gridToCsv(grid)], { type: 'text/csv;charset=utf-8' });
       await this._saveOrDownload(target, blob, filename, 'text/csv;charset=utf-8');
       if (target === 'download') reportError.info('toast.tableExtracted', { rows: grid.rows, cols: grid.cols });
       else reportError.info('toast.pdfSaved', { name: target.name });

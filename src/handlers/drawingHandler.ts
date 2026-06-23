@@ -238,6 +238,8 @@ export class DrawingHandler {
       this.app.autosave();
       this.app.setMode('select');
       this.app.selectElement(redEl);
+      // #QA-2026-06-23 P3 #22 — confirm placement + remind the box only hides content on export.
+      this.app.reportError.info('toast.redactionPlaced');
       return;
 
     } else if (this.app.mode === 'crop') {

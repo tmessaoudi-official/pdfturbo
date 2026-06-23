@@ -537,6 +537,7 @@
     "compressFailed": "فشل الضغط",
     "xfdfExported": "تم تصدير {{count}} تعليق توضيحي إلى XFDF",
     "xfdfNoAnnots": "لا توجد تعليقات توضيحية قابلة للتصدير في هذا المستند",
+    "redactionPlaced": "تمت إضافة التعتيم — يُخفى المحتوى عند التصدير",
     "xfdfImported": "تم استيراد {{count}} تعليق توضيحي من XFDF",
     "xfdfImportEmpty": "لم يتم العثور على تعليقات توضيحية قابلة للاستيراد في الملف",
     "xfdfImportFailed": "تعذّر استيراد ملف XFDF",

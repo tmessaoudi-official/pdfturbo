@@ -45,6 +45,22 @@ const SIGNATURE_CAPACITY_BYTES = 8192;
 const HEX_SLOT_CAPACITY = SIGNATURE_CAPACITY_BYTES * 2;
 
 /**
+ * Split a signature-appearance rect height between the embedded image (top) and the caption
+ * text band (bottom). Naively reserving 60% for the image (#QA-2026-06-23 P3 #24) could shrink
+ * the text band to ~0 on a short rect, silently dropping the signer/date lines. This clamps the
+ * image band so the text band keeps at least the room a minimum-size font needs for every line
+ * (signer/date legibility wins over image size); on a rect too small for even that, the image
+ * band collapses to 0 and the text gets the whole rect.
+ */
+export function appearanceImageBandHeight(rectHeight: number, padding: number, lineCount: number): number {
+  const imgBand = rectHeight * 0.6;
+  if (lineCount <= 0) return imgBand;
+  const minLineH = 6 * 1.25; // minimum font size × line gap
+  const minTextBand = padding + lineCount * minLineH;
+  return Math.max(0, Math.min(imgBand, rectHeight - minTextBand));
+}
+
+/**
  * Whether a PDF already carries a signature. A signature dictionary always pairs
  * a `/ByteRange [` with a known signature `/SubFilter` (or `/Type /Sig`); an
  * unsigned PDF has neither. Requiring BOTH avoids false positives from those byte
@@ -183,7 +199,7 @@ export class PdfSigner {
     if (opts.appearanceImage && opts.appearanceImage.length) {
       try {
         const png = await doc.embedPng(opts.appearanceImage);
-        const imgBandH = rect.height * 0.6;
+        const imgBandH = appearanceImageBandHeight(rect.height, padding, lines.length);
         const availW = rect.width - padding * 2;
         const availH = imgBandH - padding;
         const scale = Math.min(availW / png.width, availH / png.height, 1);

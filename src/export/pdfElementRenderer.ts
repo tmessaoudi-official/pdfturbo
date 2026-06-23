@@ -12,6 +12,13 @@ import { isArabicText } from '../utils/flowDoc';
 import { drawArabicLine } from './arabicOverlay';
 import { drawStyledTextLine, hasAdvancedText, effectiveLineWidth, justifyWordSpacing } from './styledText';
 
+/** Hard cap on baked comment text (#QA-2026-06-23 P3 #11) — raised from 200; when the text
+ *  exceeds the cap it is truncated WITH a trailing ellipsis so the loss is visible, not silent. */
+export const COMMENT_TEXT_CAP = 2000;
+export function clampCommentText(text: string, cap = COMMENT_TEXT_CAP): string {
+  return text.length > cap ? text.slice(0, cap - 1) + '…' : text;
+}
+
 export interface PdfRenderCtx {
   // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFDocument internals are untyped here
   pdfDoc: any;
@@ -379,7 +386,7 @@ async function renderComment(element: PDFElement, ctx: PdfRenderCtx, hlp: Render
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     // Text starts at top of box with 4px padding + ~10pt ascent (matches canvas textarea layout)
     const anchor2 = tp(ce.x + 4, ce.y + 4 + 10);
-    page.drawText(ce.text.slice(0, 200), { x: anchor2.x, y: anchor2.y, size: 10, font, color: rgb(0, 0, 0), maxWidth: swapDims ? ce.height - 8 : ce.width - 8, lineHeight: 14, opacity: 0.9, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+    page.drawText(clampCommentText(ce.text), { x: anchor2.x, y: anchor2.y, size: 10, font, color: rgb(0, 0, 0), maxWidth: swapDims ? ce.height - 8 : ce.width - 8, lineHeight: 14, opacity: 0.9, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
   }
 }
 

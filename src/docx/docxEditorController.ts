@@ -70,9 +70,13 @@ async function defaultLoadEditor(container: HTMLElement, bytes: Uint8Array): Pro
   return mountDocxEditor(container, bytes);
 }
 
-/** `foo.docx` → `foo-edited.docx`; anything else gets the suffix before any extension. */
-function editedName(filename: string): string {
-  return filename.replace(/(\.docx)?$/i, '') + '-edited.docx';
+/**
+ * `foo.docx` → `foo-edited.docx`. Strips ANY trailing extension before the suffix
+ * (#QA-2026-06-23 P3 #19) so a non-.docx source no longer keeps its old extension in
+ * the stem (`foo.txt` → `foo-edited.docx`, not `foo.txt-edited.docx`).
+ */
+export function editedName(filename: string): string {
+  return filename.replace(/\.[^.\\/]+$/, '') + '-edited.docx';
 }
 
 /** `foo.docx` → `foo.pdf`. */

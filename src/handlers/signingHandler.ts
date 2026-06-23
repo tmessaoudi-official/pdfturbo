@@ -87,9 +87,13 @@ export function buildSignOptions(form: SignFormInput): SignOptions {
  */
 export function dataUrlToBytes(dataUrl: string | null): Uint8Array | undefined {
   if (!dataUrl) return undefined;
-  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  // #QA-2026-06-23 P3 #25 — accept PNG data URLs robustly: case-insensitive mime, optional
+  // media-type params (e.g. `;charset=…`), and whitespace inside the base64 payload. Still
+  // PNG-only (pdf-lib's appearance path embeds PNG); a non-PNG drawn signature returns
+  // undefined → caller falls back to text-only, never a corrupt embed.
+  const m = /^data:image\/png\b[^,;]*(?:;[^,]*?)?;base64,([A-Za-z0-9+/=\s]+)$/i.exec(dataUrl.trim());
   if (!m) return undefined;
-  const bin = atob(m[1]);
+  const bin = atob(m[1].replace(/\s+/g, ''));
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
