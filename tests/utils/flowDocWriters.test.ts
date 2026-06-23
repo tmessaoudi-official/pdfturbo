@@ -236,6 +236,25 @@ describe('flowDocToDocxBase64 — image embedding', () => {
     expect(files['word/document.xml']).not.toContain('w:drawing');
   });
 
+  it('a malformed base64 image is skipped, not fatal to the export (QA-2026-06-23 P2)', async () => {
+    const docWithBadImage: FlowDoc = {
+      pages: [{
+        width: 612, height: 792,
+        paragraphs: [para([run('Survives a broken image')])],
+        // '@@@' is not valid base64 → atob throws; the export must still succeed with the text.
+        images: [
+          { x: 10, y: 400, width: 100, height: 80, base64: '@@@not-base64@@@', mimeType: 'image/png' },
+          { x: 200, y: 400, width: 100, height: 80, base64: TINY_PNG_B64, mimeType: 'image/png' },
+        ],
+      }],
+    };
+    let b64 = '';
+    await expect((async () => { b64 = await flowDocToDocxBase64(docWithBadImage); })()).resolves.toBeUndefined();
+    const files = await unpackDocx(b64);
+    expect(files['word/document.xml']).toContain('Survives a broken image'); // text intact
+    expect(files['word/document.xml']).toContain('w:drawing'); // the one GOOD image still embeds
+  });
+
   it('rotated FlowImage emits a rot attribute (degrees × 60000) in document.xml', async () => {
     const docWithRot: FlowDoc = {
       pages: [{

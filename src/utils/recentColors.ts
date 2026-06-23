@@ -19,7 +19,11 @@ let _mem: string[] = [];
 function read(): string[] {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as string[]) : _mem;
+    if (!raw) return _mem;
+    // #QA-2026-06-23 P2: a corrupted value (e.g. `{}` or `"x"`) must not crash the startup
+    // swatch-row spread (`[...COLOR_PRESETS, ...getRecentColors()]`). Validate the shape.
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : _mem;
   } catch {
     return _mem;
   }

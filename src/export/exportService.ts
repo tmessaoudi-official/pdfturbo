@@ -719,6 +719,12 @@ export class ExportService {
       const ctx = offscreen.getContext('2d');
       if (!ctx) { reportError.error('toast.canvasUnavailable'); _prog.failed(); return; }
       await renderPage.render({ canvas: offscreen, viewport: vp }).promise;
+      // #QA-2026-06-23 P2: release the pdf.js worker doc now that the canvas is rasterized
+      // (the async toBlob below works on the canvas, not the doc).
+      {
+        const task = (renderDoc as { loadingTask?: { destroy?: () => Promise<void> } }).loadingTask;
+        if (task && typeof task.destroy === 'function') void task.destroy().catch(() => {});
+      }
 
       offscreen.toBlob((blob) => {
         if (!blob) { reportError.error('toast.imageExportFailed'); _prog.failed(); return; }

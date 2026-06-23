@@ -27,4 +27,13 @@ describe('recentColors', () => {
   it('exposes a non-empty preset palette', () => {
     expect(COLOR_PRESETS.length).toBeGreaterThan(0);
   });
+
+  it('survives a corrupted localStorage value without throwing (QA-2026-06-23 P2)', () => {
+    for (const bad of ['{}', '"hello"', '42', 'null', '[1,2,{"x":1}]', 'not-json']) {
+      localStorage.setItem('pdfturbo.recentColors', bad);
+      expect(() => getRecentColors()).not.toThrow();
+      // every returned entry is a string, so the startup swatch-row spread can't crash
+      expect(getRecentColors().every(c => typeof c === 'string')).toBe(true);
+    }
+  });
 });

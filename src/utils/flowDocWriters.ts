@@ -441,7 +441,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     // rather than dumping it centered after all text. The image still lands in
     // word/media/ (ISSUE-3/4 guard) — only placement changes.
     const imageChildren = (page.images ?? []).map((img: FlowImage) => {
-      const bin = atob(img.base64);
+      try {
+      const bin = atob(img.base64); // #QA-2026-06-23 P2: a malformed image must not abort the whole export
       const data = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
       // Flip PDF y-up (bottom-left origin) to DOCX top-left page offset.
@@ -472,7 +473,10 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
           },
         })],
       });
-    });
+      } catch {
+        return null; // skip a malformed/undecodable image; text + other images still export
+      }
+    }).filter((p): p is NonNullable<typeof p> => p !== null);
 
     // B-2: emit page margins (twips) from the text-block bbox when available.
     const margin = page.margins

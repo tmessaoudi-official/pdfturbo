@@ -385,4 +385,9 @@ export async function rasterizePageWithRedactions(
   const pngImg  = await targetPdfDoc.embedPng(pngBytes);
   const newPage = targetPdfDoc.addPage([outW, outH]);
   newPage.drawImage(pngImg, { x: 0, y: 0, width: outW, height: outH });
+
+  // #QA-2026-06-23 P2: release the pdf.js worker doc (doc.destroy() is a v6 no-op — the
+  // loadingTask owns the worker). Matches the _compressLossy cleanup in exportService.
+  const task = (renderDoc as { loadingTask?: { destroy?: () => Promise<void> } }).loadingTask;
+  if (task && typeof task.destroy === 'function') void task.destroy().catch(() => {});
 }
