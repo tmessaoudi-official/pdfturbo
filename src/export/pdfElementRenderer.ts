@@ -211,6 +211,8 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
       await drawArabicLine(pdfDoc, page, {
         text: line, x: a.x, y: a.y, right: Math.max(a.x, rightAnchor.x),
         size: te.fontSize, color: col,
+        // Slice-2 advanced attrs now honoured on the Arabic overlay (Feature 4).
+        charSpacing: te.charSpacing, horizontalScale: te.horizontalScale, strokeWidth: te.strokeWidth,
       });
     } else {
       // Measure width using the effective size (drawSize accounts for sub/superscript shrink).

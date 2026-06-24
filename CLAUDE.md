@@ -513,16 +513,16 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   color — uses fill), letter-spacing, width%, x²/x₂); `uiController.updateFormattingToolbar` toggles `btn-active-fmt` + reflects values;
   i18n `formatting.{justify,stroke,charSpacing,horizontalScale,baseline,superscript,subscript}` in en/fr/ar (ar
   [Unverified]). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
-  (attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path does NOT apply Tc/Tz/
-  stroke (Latin/WinAnsi only — documented); the **raster export path** (`exportPipeline.ts`, redaction pages +
+  (attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path NOW applies stroke/Tc/Tz
+  too (Feature 4, 2026-06-24 — see below); the **raster export path** (`exportPipeline.ts`, redaction pages +
   thumbnails) is code-reviewed for these attrs, NOT pixel-guarded — the vector bake IS. Spec/plan:
   `docs/superpowers/{specs,plans}/2026-06-21-rich-pdf-text-toolbar-slice2*`. Guards: `tests/export/styledText.test.ts`
   (pure `hasAdvancedText`/`effectiveLineWidth`), `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,
   uiController}.test.ts`, `tests/browser/text-toolbar-slice2.browser.test.ts` (real Chrome: pdf.js OPS-38
   `setTextRenderingMode` present in styled / ABSENT in plain → catches a silent regression to `drawText`).
-  **Backlog (Slice 3+):** stroke/Tc/Tz on Arabic overlay, RTL direction-aware controls, per-run/multi-run rich text
-  (ceiling), true-edit of these attrs. (find&replace on overlay text DONE `3b24c99`; bullet/numbered lists +
-  overlay links DONE — see below.)
+  **Backlog (Slice 3+):** RTL direction-aware controls, per-run/multi-run rich text (ceiling), true-edit of these
+  attrs. (find&replace on overlay text DONE `3b24c99`; bullet/numbered lists + overlay links + stroke/Tc/Tz on the
+  Arabic overlay DONE — see below.)
   **Overlay bullet / numbered lists (Feature 2, 2026-06-24):** `TextElement.list?: 'bullet' | 'ordered'`
   (OPTIONAL, **no `SCHEMA_VERSION` bump**; `toJSON` omits when unset, `elementFactory` reads with a type
   guard → legacy blobs restore). One `\n`-line = one item (the overlay bake never auto-wraps). Pure
@@ -567,6 +567,22 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/ui/textOptionsPopover.test.ts`, `tests/browser/text-link.browser.test.ts` (real Chrome: export → pdf.js
   `getAnnotations` has a Link with the sanitized `url`; a `javascript:` URL set directly → no annotation).
   Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-overlay-text-links*`.
+  **Stroke / Tc / Tz on the Arabic overlay (Feature 4, 2026-06-24):** the Slice-2 advanced attrs `strokeWidth`,
+  `charSpacing` (Tc), `horizontalScale` (Tz) — previously Latin/WinAnsi-only — now apply to shaped RTL Arabic text
+  in the export. `arabicOverlay.ts` gains a PURE `buildArabicRunOps(fontKey, hex, x, y, size, color, style)` that
+  builds the per-run operator list mirroring `styledText.drawStyledTextLine`'s ordering — `q · BT · rg · [RG · w ·
+  Tr(FillAndOutline)] · Tf · [Tc] · [Tz] · Tm · Tj · ET · Q` — so the **no-style path is byte-identical** to the
+  prior CID emission (stroke colour = fill colour, the Slice-2 rule). PURE `effectiveArabicWidth(baseWidth,
+  glyphCount, charSpacing, horizontalScale)` does RTL right-alignment from the shaped **glyph count**
+  (`cidHex.length / 4`, the real 2-byte CID units — NOT `text.length`). Both `drawArabicLine` (pure-Arabic) and the
+  RTL runs of `drawBidiLine` (mixed line) route through these; `renderText` passes `te.{charSpacing,horizontalScale,
+  strokeWidth}` into `drawArabicLine`. **Ceiling:** `baselineShift`(super/sub) + `justify` stay Latin-only for
+  Arabic; in a mixed line the **Latin runs** keep `page.drawText` (no Tc/Tz/stroke — documented partial, consistent
+  with the Noto-vs-Helvetica per-run split); Tc width is approximated from the glyph count. Guards:
+  `tests/export/arabicOverlay.test.ts` (jsdom: `buildArabicRunOps` op-sequence — no-style q/BT/rg/Tf/Tm/Tj/ET/Q,
+  stroke→RG+w+Tr, Tc, Tz; `effectiveArabicWidth` math), `tests/browser/arabic-overlay.browser.test.ts` (real Chrome:
+  stroke→pdf.js `setTextRenderingMode`, Tz→`setHScale`, Tc→`setCharSpacing` present, ABSENT for a plain control).
+  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-arabic-overlay-attrs*`.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order

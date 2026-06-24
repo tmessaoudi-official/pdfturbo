@@ -244,3 +244,39 @@ describe('drawArabicLine (real Chrome)', () => {
     expect(latinX).toBeLessThan(arabicX);
   });
 });
+
+// Feature 4 — stroke / Tc / Tz on the Arabic overlay. Strong regression signal: the
+// stroke path emits setTextRenderingMode (FillAndOutline) and the Tz path emits setHScale;
+// a plain Arabic control emits neither (catches a silent revert to the no-attr CID path).
+describe('drawArabicLine advanced attrs (real Chrome)', () => {
+  async function opsFor(opts: Parameters<typeof drawArabicLine>[2]): Promise<number[]> {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([300, 120]);
+    await drawArabicLine(doc, page, opts);
+    const bytes = await doc.save();
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const p = await pdf.getPage(1);
+    const list = await p.getOperatorList();
+    return Array.from(list.fnArray as number[]);
+  }
+  const base = { text: 'مرحبا', x: 20, y: 60, right: 280, size: 28, color: { r: 0, g: 0, b: 0 } };
+
+  it('strokeWidth emits setTextRenderingMode; plain control does not', async () => {
+    const TR = pdfjsLib.OPS.setTextRenderingMode;
+    expect(await opsFor({ ...base, strokeWidth: 1.5 })).toContain(TR);
+    expect(await opsFor({ ...base })).not.toContain(TR);
+  });
+
+  it('horizontalScale emits setHScale; plain control does not', async () => {
+    const HS = pdfjsLib.OPS.setHScale;
+    expect(await opsFor({ ...base, horizontalScale: 160 })).toContain(HS);
+    expect(await opsFor({ ...base })).not.toContain(HS);
+  });
+
+  it('charSpacing emits setCharSpacing; plain control does not', async () => {
+    const TC = pdfjsLib.OPS.setCharSpacing;
+    expect(await opsFor({ ...base, charSpacing: 3 })).toContain(TC);
+    expect(await opsFor({ ...base })).not.toContain(TC);
+  });
+});

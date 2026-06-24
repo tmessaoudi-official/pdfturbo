@@ -32,9 +32,12 @@
       `/Link` URI annotation baked in `renderText` + editor 🔗 badge/dotted-underline +
       `FormattingService.setLinkUrl` + Text-popover URL input + i18n. Full gate green;
       visual+functional confirmed `qa-shots/f3-links/` — real clickable annotation in the export).
-- [ ] Feature 4 — Arabic overlay stroke/Tc/Tz  ← **NEXT**
+- [x] Feature 4 — Arabic overlay stroke/Tc/Tz — **DONE** (`buildArabicRunOps`/`effectiveArabicWidth`
+      pure helpers in `arabicOverlay.ts`; stroke/Tc/Tz applied to shaped RTL Arabic in both the
+      pure-Arabic and mixed-bidi paths; byte-identical no-attr path. Full gate green; visual-confirmed
+      `qa-shots/f4-arabic/` — stroke/wide/spaced Arabic all render).
 - [ ] Feature 5 — DOCX→PDF fidelity (tables/images/fonts) — partial today (headings/lists/colors done;
-      tables/images/font-faces are the ceiling to push)
+      tables/images/font-faces are the ceiling to push)  ← **NEXT (largest)**
 - [ ] User manual test
 - [ ] Deep QA sweep
 

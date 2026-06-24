@@ -33,18 +33,27 @@
  */
 import {
   PDFHexString,
+  PDFNumber,
+  PDFOperator,
+  PDFOperatorNames,
   StandardFonts,
+  TextRenderingMode,
   beginText,
   endText,
   popGraphicsState,
   pushGraphicsState,
   rgb,
+  setCharacterSpacing,
   setFillingRgbColor,
   setFontAndSize,
+  setLineWidth,
+  setStrokingRgbColor,
   setTextMatrix,
+  setTextRenderingMode,
   showText,
   type PDFDocument,
   type PDFFont,
+  type PDFName,
   type PDFPage,
 } from '@cantoo/pdf-lib';
 // Vite resolves ?url to the bundled asset URL. MUST be a TTF/OTF (see header note):
@@ -118,6 +127,71 @@ export interface ArabicLineOpts {
   right: number;
   size: number;
   color: { r: number; g: number; b: number };
+  /** Slice-2 advanced attrs, applied to the shaped Arabic (Noto) runs (Feature 4). */
+  charSpacing?: number;
+  horizontalScale?: number;
+  strokeWidth?: number;
+}
+
+/** Advanced text style applied to a single shaped Arabic run (Feature 4). */
+export interface ArabicRunStyle {
+  charSpacing?: number;
+  horizontalScale?: number;
+  strokeWidth?: number;
+}
+
+/**
+ * Operator list for ONE shaped Arabic run, mirroring `styledText.drawStyledTextLine`'s
+ * ordering so the no-style path is byte-identical to the prior CID emission:
+ *   q · BT · rg · [RG · w · Tr] · Tf · [Tc] · [Tz] · Tm · Tj · ET · Q
+ * The outline (stroke) is painted in the element's own fill colour (the Slice-2 rule).
+ */
+export function buildArabicRunOps(
+  fontKey: PDFName,
+  hex: string,
+  x: number,
+  y: number,
+  size: number,
+  color: { r: number; g: number; b: number },
+  style: ArabicRunStyle = {},
+): PDFOperator[] {
+  const ops: PDFOperator[] = [
+    pushGraphicsState(),
+    beginText(),
+    setFillingRgbColor(color.r, color.g, color.b),
+  ];
+  const strokeWidth = style.strokeWidth ?? 0;
+  if (strokeWidth > 0) {
+    ops.push(
+      setStrokingRgbColor(color.r, color.g, color.b), // outline = fill colour
+      setLineWidth(strokeWidth),
+      setTextRenderingMode(TextRenderingMode.FillAndOutline),
+    );
+  }
+  ops.push(setFontAndSize(fontKey, size));
+  const charSpacing = style.charSpacing ?? 0;
+  if (charSpacing !== 0) ops.push(setCharacterSpacing(charSpacing));
+  const horizontalScale = style.horizontalScale ?? 100;
+  if (horizontalScale !== 100) {
+    ops.push(PDFOperator.of(PDFOperatorNames.SetTextHorizontalScaling, [PDFNumber.of(horizontalScale)]));
+  }
+  ops.push(
+    setTextMatrix(1, 0, 0, 1, x, y),
+    showText(PDFHexString.of(hex)),
+    endText(),
+    popGraphicsState(),
+  );
+  return ops;
+}
+
+/**
+ * On-page width of a shaped Arabic run accounting for char spacing (Tc) and horizontal
+ * scale (Tz). `glyphCount` is the number of shaped 2-byte CIDs (the real glyph units),
+ * NOT `text.length`. Used for RTL right-alignment.
+ */
+export function effectiveArabicWidth(baseWidth: number, glyphCount: number, charSpacing = 0, horizontalScale = 100): number {
+  const base = baseWidth + charSpacing * Math.max(0, glyphCount - 1);
+  return base * (horizontalScale / 100);
 }
 
 /**
@@ -143,21 +217,16 @@ export async function drawArabicLine(
   const cidHex = font.encodeText(opts.text).toString().replace(/^<|>$/g, '');
   if (!cidHex) return;
 
-  const textWidth = font.widthOfTextAtSize(opts.text, opts.size);
+  const style: ArabicRunStyle = {
+    charSpacing: opts.charSpacing, horizontalScale: opts.horizontalScale, strokeWidth: opts.strokeWidth,
+  };
+  const baseWidth = font.widthOfTextAtSize(opts.text, opts.size);
+  const textWidth = effectiveArabicWidth(baseWidth, cidHex.length / 4, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
   // Right-align within the element box (RTL convention); never overflow left.
   const startX = Math.max(opts.x, opts.right - textWidth);
 
   const fontKey = page.node.newFontDictionary(font.name, font.ref);
-  page.pushOperators(
-    pushGraphicsState(),
-    beginText(),
-    setFillingRgbColor(opts.color.r, opts.color.g, opts.color.b),
-    setFontAndSize(fontKey, opts.size),
-    setTextMatrix(1, 0, 0, 1, startX, opts.y),
-    showText(PDFHexString.of(cidHex)),
-    endText(),
-    popGraphicsState(),
-  );
+  page.pushOperators(...buildArabicRunOps(fontKey, cidHex, startX, opts.y, opts.size, opts.color, style));
 }
 
 /**
@@ -176,16 +245,25 @@ export async function drawArabicLine(
 async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLineOpts): Promise<void> {
   const arFont = await getArabicFont(pdfDoc);
   const latFont = await getLatinFont(pdfDoc);
+  // Slice-2 attrs apply to the shaped Arabic (Noto) runs; the Latin runs keep drawText
+  // (no Tc/Tz/stroke — documented partial), so their width stays unscaled.
+  const style: ArabicRunStyle = {
+    charSpacing: opts.charSpacing, horizontalScale: opts.horizontalScale, strokeWidth: opts.strokeWidth,
+  };
+  const cs = opts.charSpacing ?? 0;
+  const hs = opts.horizontalScale ?? 100;
   const measured = visualRuns(opts.text).map((r) => {
     if (!r.rtl) {
       try {
-        return { text: r.text, useLatin: true, width: latFont.widthOfTextAtSize(r.text, opts.size) };
+        return { text: r.text, useLatin: true, hex: '', width: latFont.widthOfTextAtSize(r.text, opts.size) };
       } catch {
         // non-WinAnsi neutral → render via Noto instead of throwing the whole line.
-        return { text: r.text, useLatin: false, width: arFont.widthOfTextAtSize(r.text, opts.size) };
+        const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
+        return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, opts.size), hex.length / 4, cs, hs) };
       }
     }
-    return { text: r.text, useLatin: false, width: arFont.widthOfTextAtSize(r.text, opts.size) };
+    const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
+    return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, opts.size), hex.length / 4, cs, hs) };
   });
   const total = measured.reduce((s, r) => s + r.width, 0);
   let cx = Math.max(opts.x, opts.right - total);
@@ -196,20 +274,8 @@ async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLine
         x: cx, y: opts.y, size: opts.size, font: latFont,
         color: rgb(opts.color.r, opts.color.g, opts.color.b),
       });
-    } else {
-      const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
-      if (hex) {
-        page.pushOperators(
-          pushGraphicsState(),
-          beginText(),
-          setFillingRgbColor(opts.color.r, opts.color.g, opts.color.b),
-          setFontAndSize(arKey, opts.size),
-          setTextMatrix(1, 0, 0, 1, cx, opts.y),
-          showText(PDFHexString.of(hex)),
-          endText(),
-          popGraphicsState(),
-        );
-      }
+    } else if (r.hex) {
+      page.pushOperators(...buildArabicRunOps(arKey, r.hex, cx, opts.y, opts.size, opts.color, style));
     }
     cx += r.width;
   }
