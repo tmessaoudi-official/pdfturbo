@@ -37,6 +37,15 @@ async function renderOne(element: PDFElement): Promise<Uint8Array> {
 
 interface Img { data: Uint8ClampedArray; width: number; height: number; }
 
+interface LinkAnnot { subtype?: string; url?: string; unsafeUrl?: string }
+
+/** Load the baked PDF and return page-1 annotations (for /Link assertions). */
+async function getAnnots(bytes: Uint8Array): Promise<LinkAnnot[]> {
+  const doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+  const page = await doc.getPage(1);
+  return (await page.getAnnotations()) as LinkAnnot[];
+}
+
 async function rasterize(bytes: Uint8Array): Promise<Img> {
   const doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
   const page = await doc.getPage(1);
@@ -134,6 +143,48 @@ describe('renderElementToPdfLib — pixel-region export (M1 #13, closes the P0)'
     // The text box is element (20,80)..(170,?) → canvas x 40..340 at scale 2; its
     // mid-x is 180. RTL right-alignment puts the centroid past the middle.
     expect(ink.x).toBeGreaterThan(180);
+  });
+
+  it('prefixes a bullet/numbered list and draws underlined, centered Latin text (F2)', async () => {
+    // Exercises the `te.list ? applyListMarkers(...)` branch + the non-advanced
+    // drawText path with center align + underline. Two non-empty lines → markers.
+    const bytes = await renderOne(el({
+      type: 'text', x: 20, y: 40, width: 160, height: 60, text: 'Alpha\nBeta',
+      fontFamily: 'Helvetica', fontSize: 18, color: '#000000', bold: false, italic: false,
+      rotation: 0, list: 'bullet', align: 'center', underline: true,
+    }));
+    const img = await rasterize(bytes);
+    // Visible dark ink (the markers + text + underline rules), not a blank box.
+    const ink = centroid(img, (r, g, b) => r < 100 && g < 100 && b < 100);
+    expect(ink.n).toBeGreaterThan(60);
+  });
+
+  it('drives the advanced styled path: stroke + char-spacing + justify (Slice-2)', async () => {
+    // Exercises `advanced` → drawStyledTextLine, justify word-spacing on a non-last
+    // line, and the strokeWidth/charSpacing/horizontalScale operands.
+    const bytes = await renderOne(el({
+      type: 'text', x: 20, y: 40, width: 160, height: 60, text: 'one two three\nlast',
+      fontFamily: 'Helvetica', fontSize: 16, color: '#000000', bold: false, italic: false,
+      rotation: 0, align: 'justify', strokeWidth: 1, charSpacing: 1, horizontalScale: 110,
+    }));
+    const img = await rasterize(bytes);
+    const ink = centroid(img, (r, g, b) => r < 100 && g < 100 && b < 100);
+    expect(ink.n).toBeGreaterThan(60);
+  });
+
+  it('bakes a /Link annotation for a sanitized URL, and none for a blocked scheme (F3)', async () => {
+    const base = {
+      type: 'text', x: 20, y: 80, width: 150, height: 30, text: 'click me',
+      fontFamily: 'Helvetica', fontSize: 18, color: '#0000ee', bold: false, italic: false, rotation: 0,
+    };
+    const good = await getAnnots(await renderOne(el({ ...base, linkUrl: 'https://example.com/x' })));
+    const link = good.find((a) => a.subtype === 'Link');
+    expect(link).toBeTruthy();
+    expect(link?.url ?? link?.unsafeUrl).toBe('https://example.com/x');
+
+    // A javascript: URL is sanitized to null → the `safeUrl` falsy branch, no annotation.
+    const blocked = await getAnnots(await renderOne(el({ ...base, linkUrl: 'javascript:alert(1)' })));
+    expect(blocked.find((a) => a.subtype === 'Link')).toBeFalsy();
   });
 
   it('rotates a filled shape around its center (rotation anchor)', async () => {
