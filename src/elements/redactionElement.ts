@@ -36,7 +36,11 @@ export class RedactionElement extends PDFElement {
       background: this.color,
       border:     isBlack ? '2px dashed #c00' : '1px dashed #888',
       boxSizing:  'border-box',
-      zIndex:     '15',
+      // No explicit z-index: redactions stack by placement/DOM order like every other
+      // .pdf-element (shared default z-index:2), so a signature/shape placed ON TOP of a
+      // redaction renders above the burn instead of being buried under it. The redaction
+      // still obscures the SOURCE content beneath it (it sits above the page canvas), and
+      // export still burns/destroys that source (rasterized opaque rect, rotation-correct).
     });
 
     const burnLabel = document.createElement('span');

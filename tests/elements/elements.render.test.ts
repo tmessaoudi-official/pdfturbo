@@ -237,6 +237,15 @@ describe('RedactionElement render', () => {
     const json = el.toJSON() as Record<string, unknown>;
     expect(json['color']).toBe('#000000');
   });
+
+  it('does NOT force a high inline z-index — stacks by placement order so annotations can sit on top', () => {
+    const el = new RedactionElement(0, 0, 100, 30, 'p1', '#000000');
+    const div = el.render(document.createElement('div'), offset, scale);
+    // A hard-coded z-index:15 buried every later-placed element (z-index:2) under the
+    // burn. With no inline z-index it falls back to the shared .pdf-element default, so
+    // a shape/signature placed after a redaction renders above it.
+    expect(div.style.zIndex).toBe('');
+  });
 });
 
 // ── CommentElement render ─────────────────────────────────────────────────────

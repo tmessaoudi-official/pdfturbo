@@ -8,7 +8,6 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
-import { drawTextElementToCanvas } from './rasterText';
 import { transformPoint, hexToRgbValues, contentCropToPdfCropBox } from '../utils/geometry';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import type { PDFElement } from '../elements/annotationElement';
@@ -212,7 +211,11 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   for (const element of elements) {
     try {
       await renderElementToPdfLib(element, { pdfDoc, page, libs: { rgb, StandardFonts, degrees }, h: h_eff, w: w_eff, W_orig, H_orig, totalRot, cropOriginX, cropOriginY } satisfies PdfRenderCtx);
-    } catch {
+    } catch (e) {
+      // Fail-CLOSED for redactions: a swallowed redaction render would leave the
+      // source content it must destroy visible in the export (a security leak).
+      // Better to abort the export than to ship an un-redacted page.
+      if (element.type === 'redaction') throw e;
       exportErrors.push(`${element.type} (id ${element.id})`);
       exportErrorTypes.add(element.type);
     }
@@ -273,15 +276,18 @@ export async function rasterizePageWithRedactions(
   const userRot  = docPage.rotation ?? 0;
   const srcRot   = tempPage.getRotation().angle as number;
 
-  // Exclude TextElement overlays from the pdf-lib pass — they are drawn on canvas AFTER
-  // redaction fillRects so they appear on top of redactions in the final raster image.
-  // The Bates stamp rides this same pre-raster pass, so it's baked into the flattened image.
-  const nonRedactionNonText = elements.filter(e => e.type !== 'redaction' && e.type !== 'text');
+  // Draw ALL elements (redactions included) in array/stacking order through the vector bake,
+  // then rasterize the whole page. Array order == on-screen stacking, so an overlay placed ON
+  // TOP of a redaction renders above the burn (the user-requested behavior) while one placed
+  // under it stays under. The redaction is an OPAQUE filled rect (renderRedaction), so it still
+  // destroys the SOURCE content beneath it once flattened — and renderRedaction now anchors via
+  // the rotation-correct rectAnchor (see pdfElementRenderer), so the burn covers its target on
+  // rotated pages too. A redaction render failure is fail-CLOSED in buildPageOverlays (re-throws).
   await buildPageOverlays({
     pdfDoc: tempDoc,
     page: tempPage,
     docPage,
-    elements: nonRedactionNonText,
+    elements,
     pdfLib: libs,
     userRot,
     sourceRot: srcRot,
@@ -290,7 +296,7 @@ export async function rasterizePageWithRedactions(
     reportError,
     bates, pageNumber, pageCount,
     // Render the FULL (uncropped) page; the crop is applied as a canvas clip below so the
-    // redaction/text burn coords stay in full-page space (#QA-2026-06-23 leak fix).
+    // overlay/burn coords stay in full-page space (#QA-2026-06-23 leak fix).
     skipCropBox: true,
   });
 
@@ -309,47 +315,14 @@ export async function rasterizePageWithRedactions(
   const offscreen = document.createElement('canvas');
   offscreen.width  = Math.round(vp.width);
   offscreen.height = Math.round(vp.height);
-  const ctx = offscreen.getContext('2d') as CanvasRenderingContext2D;
   await renderPage.render({ canvas: offscreen, viewport: vp }).promise;
 
-  for (const el of elements.filter(e => e.type === 'redaction')) {
-    ctx.save();
-    ctx.fillStyle = (el as { color?: string }).color ?? '#000000';
-    const rot = el.rotation ?? 0;
-    if (rot) {
-      // Honour the element's OWN rotation: rotate the burn rect about its center, mirroring
-      // the on-screen overlay (elementLayerRenderer: CSS `rotate(${rotation}deg)` with
-      // transform-origin center). CSS rotate and canvas ctx.rotate are both clockwise in
-      // y-down space, so the angle needs no sign flip. (This is the element rotation — the
-      // page-rotation handling above stays untouched.)
-      ctx.translate((el.x + el.width / 2) * SCALE, (el.y + el.height / 2) * SCALE);
-      ctx.rotate(rot * Math.PI / 180);
-      ctx.fillRect(
-        Math.round(-el.width / 2 * SCALE),
-        Math.round(-el.height / 2 * SCALE),
-        Math.round(el.width * SCALE),
-        Math.round(el.height * SCALE),
-      );
-    } else {
-      ctx.fillRect(
-        Math.round(el.x * SCALE),
-        Math.round(el.y * SCALE),
-        Math.round(el.width  * SCALE),
-        Math.round(el.height * SCALE),
-      );
-    }
-    ctx.restore();
-  }
-
-  // Draw overlay TextElements on top of redactions using canvas 2D API.
-  // Full attribute parity with the vector bake (alignment, opacity, background,
-  // bold/italic, color, stroke/Tc/Tz/sub-sup/justify, underline/strikethrough).
-  for (const el of elements.filter(e => e.type === 'text')) {
-    drawTextElementToCanvas(ctx, el as import('../elements/textElement').TextElement, SCALE);
-  }
+  // Redactions, text, and every other overlay were drawn (in array/stacking order) into the
+  // page above and flattened by this rasterization — no separate post-raster burn/text pass is
+  // needed. Source content under each opaque redaction rect is destroyed in these pixels.
 
   // #QA-2026-06-23 — apply the crop by clipping the rendered CANVAS (not via setCropBox before
-  // render). The burn above is drawn in full-page coords matching the full render, so it can
+  // render). Everything above is drawn in full-page coords matching the full render, so it can
   // never drift off its target; here we extract only the crop window. No crop → embed the full
   // canvas (byte-identical to the pre-fix uncropped path).
   let outCanvas: HTMLCanvasElement = offscreen;

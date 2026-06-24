@@ -31,7 +31,16 @@
   touch-action auto→none; full rebuilds/8-move drag 8→1; 8 single-node rerenders; element moves.
   Gate: type-check ✓ · oxlint ✓ · jsdom (targeted + full 2046+2) ✓ · full test:browser 137/137 ✓ ·
   build ✓. Screenshots `qa-shots/mobile-drag-2026-06-24/`.
-- **Increments 2 (editor z-index) + 3 (export reorder) — REVERTED / DEFERRED.** The full browser
+- **Increments 2 (editor z-index) + 3 (export reorder) — NOW DONE (2026-06-24, after the rotation
+  root-cause fix `4ad9811`).** The rect-anchor AABB fix made `renderRedaction` rotation-correct, so
+  routing the redaction through the vector bake in array/stacking order no longer leaks on rotated
+  pages. Re-applied: z-index removed (editor layering), rasterizer draws ALL elements in array order
+  (overlays on top of the burn), redaction render is fail-closed, dead `rasterText` removed. Guards:
+  `redaction-overlay-ontop.browser.test.ts` (shape on top of burn + source destroyed, at 0° AND 90°),
+  `blockers-redaction`/`redaction-crop`/`redaction-rotation` all still green. Full suites: jsdom
+  2046+2, real-Chrome 137, build. The original (first-attempt) revert note is kept below for history.
+
+- **(historical, superseded above) Increments 2+3 — first attempt REVERTED.** The full browser
   suite caught a SECURITY regression: routing the redaction through `renderRedaction`
   (content-space transform) LEAKS on page-rotated pages (90/180/270 → 28800 red px), because the
   proven canvas burn draws in displayed/canvas space and `renderRedaction`'s rotation mapping does
