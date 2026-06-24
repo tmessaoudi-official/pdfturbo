@@ -157,3 +157,10 @@ is the separate true-edit tool; Replace skips them with a hint).
     `types/contentStream.ts` token/op types, `groupOps`, `writeBack`, `serializeOps` (kept as the fallback).
     Strong test net: round-trip fixtures incl. an inline-image / binary stream that survives byte-identical
     through a one-word edit. **Gate MUST include the FULL `test:browser` + `npm run build`** (the CI-red lesson).
+- [2026-06-24] **SPEC APPROVED (user)** → `docs/superpowers/specs/2026-06-24-trueedit-f10-f13-f3-bytesplice-design.md`.
+  Two refinements approved during code-read: (1) **F10 reuses the existing `TextOpInfo.tilted` flag** (lines
+  516–519 already compute the exact `textMatrix×CTM` shear/rotation/non-uniform condition; `addDecorationAt`
+  already gates on it) — `tmTilted` is NOT added; F10 is a one-line gate in `prepareDecorationResize` beside the
+  F6 textRise gate. (2) **F3 fast-path B** — `addDecorationAt`'s zero-op-change append also routes through the
+  new `buildStreamContent` (`source + tail`), closing the same corruption surface for new underlines. Next:
+  writing-plans → build, FULL `test:browser` + `npm run build` gated, one commit per task.
