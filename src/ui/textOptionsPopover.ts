@@ -87,6 +87,10 @@ export class TextOptionsPopover {
       const cur = this._ctx.selectedText?.baselineShift;
       svc.setBaselineShift(cur === 'sub' ? null : 'sub');
     });
+
+    // Feature 2 — bullet / numbered lists (toggle: re-click the active kind clears it).
+    ui.bulletListBtn?.addEventListener('click', () => svc.toggleList('bullet'));
+    ui.numberedListBtn?.addEventListener('click', () => svc.toggleList('ordered'));
   }
 
   open(): void {

@@ -33,6 +33,8 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
         <input type="number" id="horizontalScaleInput" value="100" />
         <button id="superscriptBtn" class="fmt-btn">x²</button>
         <button id="subscriptBtn"   class="fmt-btn">x₂</button>
+        <button id="bulletListBtn"   class="fmt-btn">• List</button>
+        <button id="numberedListBtn" class="fmt-btn">1. List</button>
       </div>
     </div>
   `;
@@ -68,6 +70,8 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
     horizontalScaleInput:  g('horizontalScaleInput')  as HTMLInputElement,
     superscriptBtn:        g('superscriptBtn')        as HTMLButtonElement,
     subscriptBtn:          g('subscriptBtn')          as HTMLButtonElement,
+    bulletListBtn:         g('bulletListBtn')         as HTMLButtonElement,
+    numberedListBtn:       g('numberedListBtn')       as HTMLButtonElement,
   };
 
   const svc = {
@@ -84,6 +88,7 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
     setCharSpacing:      vi.fn(),
     setHorizontalScale:  vi.fn(),
     setBaselineShift:    vi.fn(),
+    toggleList:          vi.fn(),
   };
 
   const ctx: ITextOptionsContext = {
@@ -283,6 +288,20 @@ describe('TextOptionsPopover', () => {
       (ui.subscriptBtn as HTMLButtonElement).click();
       // Toggle-off: should call setBaselineShift(null)
       expect(svc.setBaselineShift).toHaveBeenCalledWith(null);
+    });
+
+    it('bulletListBtn click calls toggleList(bullet)', () => {
+      const { pop, ui, svc } = makePopover();
+      pop.setupListeners();
+      (ui.bulletListBtn as HTMLButtonElement).click();
+      expect(svc.toggleList).toHaveBeenCalledWith('bullet');
+    });
+
+    it('numberedListBtn click calls toggleList(ordered)', () => {
+      const { pop, ui, svc } = makePopover();
+      pop.setupListeners();
+      (ui.numberedListBtn as HTMLButtonElement).click();
+      expect(svc.toggleList).toHaveBeenCalledWith('ordered');
     });
 
     it('open() syncs textStrokeWidth and charSpacingInput from selected TextElement', () => {

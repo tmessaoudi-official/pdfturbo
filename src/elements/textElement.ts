@@ -1,5 +1,6 @@
 import { PDFElement, type ElementJSON } from './annotationElement';
 import { baseDirection } from '../utils/bidi';
+import { listMarker, type ListType } from '../utils/listMarkers';
 
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 export type TextDirection = 'auto' | 'rtl' | 'ltr';
@@ -29,6 +30,7 @@ export interface TextOptions {
   horizontalScale?: number;
   baselineShift?: 'super' | 'sub';
   direction?: TextDirection;
+  list?: ListType;
 }
 
 export class TextElement extends PDFElement {
@@ -50,6 +52,7 @@ export class TextElement extends PDFElement {
   horizontalScale?: number;
   baselineShift?: 'super' | 'sub';
   direction: TextDirection;
+  list?: ListType;
 
   constructor(x: number, y: number, pageId: string, options: TextOptions = {}) {
     super('text', x, y, options.width ?? 200, options.height ?? 30, pageId);
@@ -70,6 +73,7 @@ export class TextElement extends PDFElement {
     this.horizontalScale = options.horizontalScale;
     this.baselineShift = options.baselineShift;
     this.direction = options.direction ?? 'auto';
+    this.list = options.list;
   }
 
   render(_container: HTMLElement, canvasOffset: { left: number; top: number }, scale = 1): HTMLDivElement {
@@ -84,13 +88,58 @@ export class TextElement extends PDFElement {
     if (!this.multiline) (input as HTMLInputElement).type = 'text';
     input.value = this.text;
     this._applyInputFormatting(input, scale);
-    input.addEventListener('input', (e) => { this.text = (e.target as HTMLInputElement).value; });
+
+    // List marker gutter (Feature 2): a non-editable column of markers at the box's left
+    // edge, kept out of `this.text` (no fragile prefix-and-strip that could eat user content).
+    // The input is padded to make room; the gutter shares the input's font metrics.
+    const gutter = this.list ? this._buildListGutter(scale) : null;
+    if (gutter) {
+      input.style.paddingLeft = (this.list === 'ordered' ? 2.0 : 1.4) + 'em';
+    }
+    input.addEventListener('input', (e) => {
+      this.text = (e.target as HTMLInputElement).value;
+      if (gutter) this._fillListGutter(gutter);
+    });
 
     div.appendChild(input);
+    if (gutter) div.appendChild(gutter);
     div.appendChild(this.createRotationHandle());
     div.appendChild(this.createControls());
     div.appendChild(this.createResizeHandle());
     return div;
+  }
+
+  /** Create the list-marker gutter element with the input's font metrics, then fill it. */
+  private _buildListGutter(scale: number): HTMLDivElement {
+    const gutter = document.createElement('div');
+    gutter.className = 'text-list-gutter';
+    gutter.style.position = 'absolute';
+    gutter.style.left = '0';
+    gutter.style.top = '0';
+    gutter.style.pointerEvents = 'none';
+    gutter.style.whiteSpace = 'pre';
+    // Width matches the input's padding-left so markers sit in the reserved column,
+    // right-aligned against the text (a trailing 0.3em keeps the marker off the glyphs).
+    gutter.style.width = ((this.list === 'ordered' ? 2.0 : 1.4) - 0.3) + 'em';
+    gutter.style.fontSize = (this.fontSize * scale) + 'px';
+    gutter.style.fontFamily = this.fontFamily;
+    gutter.style.color = this.color;
+    gutter.style.lineHeight = this.lineHeight !== undefined ? String(this.lineHeight) : '';
+    this._fillListGutter(gutter);
+    return gutter;
+  }
+
+  /** (Re)compute the per-line markers shown in the gutter from the current text. */
+  private _fillListGutter(gutter: HTMLDivElement): void {
+    if (!this.list) { gutter.textContent = ''; return; }
+    const kind = this.list;
+    let ord = 0;
+    const markers = this.text.split('\n').map((line) => {
+      if (line.length === 0) return '';
+      ord += 1;
+      return listMarker(kind, ord).trimEnd();
+    });
+    gutter.textContent = markers.join('\n');
   }
 
   _applyInputFormatting(input: HTMLInputElement | HTMLTextAreaElement, scale = 1): void {
@@ -153,6 +202,7 @@ export class TextElement extends PDFElement {
       ...(this.charSpacing !== undefined ? { charSpacing: this.charSpacing } : {}),
       ...(this.horizontalScale !== undefined ? { horizontalScale: this.horizontalScale } : {}),
       ...(this.baselineShift !== undefined ? { baselineShift: this.baselineShift } : {}),
-      ...(this.direction !== 'auto' ? { direction: this.direction } : {}) };
+      ...(this.direction !== 'auto' ? { direction: this.direction } : {}),
+      ...(this.list ? { list: this.list } : {}) };
   }
 }

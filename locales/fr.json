@@ -168,7 +168,10 @@
     "horizontalScale": "Largeur %",
     "baseline": "Ligne de base",
     "superscript": "Exposant",
-    "subscript": "Indice"
+    "subscript": "Indice",
+    "list": "Liste",
+    "bulletList": "Liste à puces",
+    "numberedList": "Liste numérotée"
   },
   "findbar": {
     "placeholder": "Rechercher dans la page…",

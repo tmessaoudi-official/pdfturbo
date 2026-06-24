@@ -24,7 +24,10 @@
 - [x] Feature 1 — overlay-text find & replace — **ALREADY DONE** (`3b24c99`, `src/core/overlayReplace.ts`;
       find-bar Replace/Replace-all, undoable, visual-confirmed). Discovered on the 2026-06-24-#2 resume —
       the row was stale; no work needed.
-- [ ] Feature 2 — overlay-text bullet/numbered lists  ← **STARTING HERE**
+- [x] Feature 2 — overlay-text bullet/numbered lists — **DONE** (`listMarkers.ts` pure core +
+      `TextElement.list` + bake in `renderText` + editor marker gutter + `FormattingService`
+      setListType/toggleList + Text-popover buttons + i18n. Full gate green; visual-confirmed
+      `qa-shots/f2-lists/`).
 - [ ] Feature 3 — overlay-text links
 - [ ] Feature 4 — Arabic overlay stroke/Tc/Tz
 - [ ] Feature 5 — DOCX→PDF fidelity (tables/images/fonts) — partial today (headings/lists/colors done;

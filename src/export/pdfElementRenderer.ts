@@ -11,6 +11,7 @@ import { transformPoint, hexToRgbValues } from '../utils/geometry';
 import { isArabicText } from '../utils/flowDoc';
 import { drawArabicLine } from './arabicOverlay';
 import { drawStyledTextLine, hasAdvancedText, effectiveLineWidth, justifyWordSpacing } from './styledText';
+import { applyListMarkers } from '../utils/listMarkers';
 
 /** Hard cap on baked comment text (#QA-2026-06-23 P3 #11) — raised from 200; when the text
  *  exceeds the cap it is truncated WITH a trailing ellipsis so the loss is visible, not silent. */
@@ -168,7 +169,10 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
   const drawSize = subSup ? te.fontSize * 0.65 : te.fontSize;
   const rise = subSup === 'super' ? te.fontSize * 0.33 : subSup === 'sub' ? -(te.fontSize * 0.15) : 0;
 
-  const lines = te.text.split('\n');
+  // List markers (Feature 2): prefix each non-empty line with its bullet/number. Markers
+  // become part of the drawn line, so alignment, decoration, and the advanced-operator path
+  // all account for them. Byte-identical when `te.list` is unset.
+  const lines = te.list ? applyListMarkers(te.text, te.list) : te.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;

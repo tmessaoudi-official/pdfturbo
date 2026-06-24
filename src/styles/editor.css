@@ -94,6 +94,17 @@ input[type="file"] {
      movement) still focuses the field, so tap-to-edit is unaffected. */
   touch-action: none;
 }
+/* List-marker gutter (Feature 2): non-editable column of bullets/numbers at the box's
+   left edge. Font metrics (size/family/line-height/color) are set inline to match the
+   input; this rule only handles layout. */
+.text-list-gutter {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  text-align: right;
+  box-sizing: border-box;
+  width: 1.4em;
+}
 .element-controls {
   position: absolute;
   top: -30px;

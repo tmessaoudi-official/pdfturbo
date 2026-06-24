@@ -80,6 +80,7 @@ function seedDOM(): void {
     // Slice 2 — popover controls
     'textStrokeWidth', 'charSpacingInput', 'horizontalScaleInput',
     'superscriptBtn', 'subscriptBtn',
+    'bulletListBtn', 'numberedListBtn',
     'colorSwatchRow',
   ];
   ids.forEach(id => el('div', id));
@@ -203,6 +204,28 @@ describe('UIController', () => {
       ctrl.updateFormattingToolbar(null, 'select');
       const alignJustify = document.getElementById('alignJustifyBtn') as HTMLElement;
       expect(alignJustify.classList.contains('btn-active-fmt')).toBe(false);
+    });
+  });
+
+  // Feature 2 — list button active-state
+  describe('updateFormattingToolbar() list active-state (Feature 2)', () => {
+    const active = (id: string) =>
+      (document.getElementById(id) as HTMLElement).classList.contains('btn-active-fmt');
+    it('marks the bullet button active when list=bullet', () => {
+      ctrl.updateFormattingToolbar(new TextElement(0, 0, 'p1', { list: 'bullet' }), 'select');
+      expect(active('bulletListBtn')).toBe(true);
+      expect(active('numberedListBtn')).toBe(false);
+    });
+    it('marks the numbered button active when list=ordered', () => {
+      ctrl.updateFormattingToolbar(new TextElement(0, 0, 'p1', { list: 'ordered' }), 'select');
+      expect(active('numberedListBtn')).toBe(true);
+      expect(active('bulletListBtn')).toBe(false);
+    });
+    it('clears both list buttons when no text element is selected', () => {
+      ctrl.updateFormattingToolbar(new TextElement(0, 0, 'p1', { list: 'bullet' }), 'select');
+      ctrl.updateFormattingToolbar(null, 'select');
+      expect(active('bulletListBtn')).toBe(false);
+      expect(active('numberedListBtn')).toBe(false);
     });
   });
 });

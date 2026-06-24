@@ -1,4 +1,5 @@
 import { TextElement, resolveDirection, type TextAlign, type TextDirection } from '../elements/textElement';
+import type { ListType } from '../utils/listMarkers';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd, type HistoryManager } from './historyManager';
@@ -343,6 +344,25 @@ export class FormattingService {
     this._ctx.autosave();
   }
 
+  /** Set the list type on the selected text element (null clears it). Undoable. */
+  setListType(kind: ListType | null): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const next = kind ?? undefined;
+    const before = { list: te.list };
+    te.list = next;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { list: next }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
+  }
+
+  /** Toggle a list kind: re-clicking the active kind clears it; otherwise switch to it. */
+  toggleList(kind: ListType): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    this.setListType(te.list === kind ? null : kind);
+  }
+
   transformCase(mode: TextCaseMode): void {
     if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
     const te = this._ctx.selectedElement as TextElement;
@@ -374,6 +394,7 @@ export class FormattingService {
       charSpacing: te.charSpacing,
       horizontalScale: te.horizontalScale,
       baselineShift: te.baselineShift,
+      list: te.list,
     };
     const after = {
       bold: false,
@@ -391,6 +412,7 @@ export class FormattingService {
       charSpacing: undefined,
       horizontalScale: undefined,
       baselineShift: undefined,
+      list: undefined,
     };
     Object.assign(te, after);
     this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, after));
@@ -417,6 +439,7 @@ export class FormattingService {
       charSpacing: te.charSpacing,
       horizontalScale: te.horizontalScale,
       baselineShift: te.baselineShift,
+      list: te.list,
     };
     return true;
   }

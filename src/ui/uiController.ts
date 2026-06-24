@@ -249,6 +249,8 @@ export interface AppDOMRefs {
   horizontalScaleInput:  HTMLInputElement;
   superscriptBtn:        HTMLButtonElement;
   subscriptBtn:          HTMLButtonElement;
+  bulletListBtn:         HTMLButtonElement;
+  numberedListBtn:       HTMLButtonElement;
   colorSwatchRow:        HTMLElement;
   textBgSwatchRow:       HTMLElement;
 }
@@ -499,6 +501,8 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       horizontalScaleInput:  document.getElementById('horizontalScaleInput')  as HTMLInputElement,
       superscriptBtn:        document.getElementById('superscriptBtn')        as HTMLButtonElement,
       subscriptBtn:          document.getElementById('subscriptBtn')          as HTMLButtonElement,
+      bulletListBtn:         document.getElementById('bulletListBtn')         as HTMLButtonElement,
+      numberedListBtn:       document.getElementById('numberedListBtn')       as HTMLButtonElement,
       colorSwatchRow:        document.getElementById('colorSwatchRow')        as HTMLElement,
       textBgSwatchRow:       document.getElementById('textBgSwatchRow')       as HTMLElement,
     };
@@ -653,6 +657,8 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.rtlBtn.disabled          = !isText;
     r.superscriptBtn.disabled  = !isText;
     r.subscriptBtn.disabled    = !isText;
+    if (r.bulletListBtn) r.bulletListBtn.disabled = !isText;
+    if (r.numberedListBtn) r.numberedListBtn.disabled = !isText;
     if (isText) {
       const te = el as TextElement;
       r.fontFamily.value = te.fontFamily || 'Arial';
@@ -672,6 +678,8 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.rtlBtn.classList.toggle('btn-active-fmt', resolveDirection(te.direction, te.text) === 'rtl');
       r.superscriptBtn.classList.toggle('btn-active-fmt',  te.baselineShift === 'super');
       r.subscriptBtn.classList.toggle('btn-active-fmt',    te.baselineShift === 'sub');
+      r.bulletListBtn?.classList.toggle('btn-active-fmt',   te.list === 'bullet');
+      r.numberedListBtn?.classList.toggle('btn-active-fmt', te.list === 'ordered');
       if (r.textStrokeWidth) r.textStrokeWidth.value = String(te.strokeWidth ?? 0);
       if (r.charSpacingInput) r.charSpacingInput.value = String(te.charSpacing ?? 0);
       if (r.horizontalScaleInput) r.horizontalScaleInput.value = String(te.horizontalScale ?? 100);
@@ -692,6 +700,8 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       r.alignJustifyBtn.classList.remove('btn-active-fmt');
       r.superscriptBtn.classList.remove('btn-active-fmt');
       r.subscriptBtn.classList.remove('btn-active-fmt');
+      r.bulletListBtn?.classList.remove('btn-active-fmt');
+      r.numberedListBtn?.classList.remove('btn-active-fmt');
     }
 
     // Unified color picker: always enabled, syncs value to context

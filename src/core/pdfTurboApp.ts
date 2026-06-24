@@ -61,6 +61,7 @@ import type { SignatureCaption } from '../elements/signatureElement';
 import type { CompressOptions } from '../export/compress';
 import { TextOptionsPopover } from '../ui/textOptionsPopover';
 import type { TextCaseMode } from '../utils/textCase';
+import type { ListType } from '../utils/listMarkers';
 
 import { FindBarController, type IFindBarContext } from '../ui/findBarController';
 import { DocumentLoader, type IDocumentLoaderContext } from '../ui/documentLoader';
@@ -872,6 +873,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   setAlign(value: TextAlign): void { this._formattingService.setAlign(value); this._formattingService.updateFormattingToolbar(); }
   setDirection(dir: TextDirection): void { this._formattingService.setDirection(dir); this._formattingService.updateFormattingToolbar(); }
   toggleDirection(): void { this._formattingService.toggleDirection(); this._formattingService.updateFormattingToolbar(); }
+  toggleListType(kind: ListType): void { this._formattingService.toggleList(kind); this._formattingService.updateFormattingToolbar(); }
   transformCase(mode: TextCaseMode): void { this._formattingService.transformCase(mode); }
   clearFormatting(): void { this._formattingService.clearFormatting(); }
   setFontSize(size: number): void { this._formattingService.setFontSize(size); }

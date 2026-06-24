@@ -168,7 +168,10 @@
     "horizontalScale": "Width %",
     "baseline": "Baseline",
     "superscript": "Superscript",
-    "subscript": "Subscript"
+    "subscript": "Subscript",
+    "list": "List",
+    "bulletList": "Bullet list",
+    "numberedList": "Numbered list"
   },
   "findbar": {
     "placeholder": "Search in page…",

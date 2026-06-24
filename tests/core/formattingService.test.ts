@@ -818,3 +818,58 @@ describe('FormattingService direction', () => {
     expect(te.align).toBe('left');
   });
 });
+
+// ── lists (Feature 2) ────────────────────────────────────────────────────────
+
+describe('FormattingService lists', () => {
+  it('setListType sets and clears the list, undoable', () => {
+    const { svc, te, history } = makeTextCtx();
+    svc.setListType('bullet');
+    expect(te.list).toBe('bullet');
+    svc.setListType(null);
+    expect(te.list).toBeUndefined();
+    history.undo();
+    expect(te.list).toBe('bullet');
+    history.undo();
+    expect(te.list).toBeUndefined();
+  });
+
+  it('toggleList turns a kind on, then off when re-clicked', () => {
+    const { svc, te } = makeTextCtx();
+    svc.toggleList('ordered');
+    expect(te.list).toBe('ordered');
+    svc.toggleList('ordered');
+    expect(te.list).toBeUndefined();
+  });
+
+  it('toggleList switches from one kind to the other', () => {
+    const { svc, te } = makeTextCtx({ list: 'bullet' });
+    svc.toggleList('ordered');
+    expect(te.list).toBe('ordered');
+  });
+
+  it('clearFormatting resets the list', () => {
+    const { svc, te } = makeTextCtx({ list: 'ordered' });
+    te.text = 'x';
+    svc.clearFormatting();
+    expect(te.list).toBeUndefined();
+  });
+
+  it('is a no-op without a text selection', () => {
+    const ctx = makeCtx(null);
+    const svc = new FormattingService(ctx);
+    expect(() => svc.setListType('bullet')).not.toThrow();
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+
+  it('format painter carries the list', () => {
+    const src = new TextElement(0, 0, 'p', { list: 'ordered' });
+    const dst = new TextElement(0, 0, 'p');
+    const { svc, setSelected } = makeSelectableCtx([src, dst]);
+    setSelected(src);
+    svc.copyTextStyle();
+    setSelected(dst);
+    svc.pasteTextStyle();
+    expect(dst.list).toBe('ordered');
+  });
+});

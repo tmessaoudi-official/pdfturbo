@@ -521,7 +521,30 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   uiController}.test.ts`, `tests/browser/text-toolbar-slice2.browser.test.ts` (real Chrome: pdf.js OPS-38
   `setTextRenderingMode` present in styled / ABSENT in plain → catches a silent regression to `drawText`).
   **Backlog (Slice 3+):** stroke/Tc/Tz on Arabic overlay, RTL direction-aware controls, per-run/multi-run rich text
-  (ceiling), find&replace on overlay text, links, bullet/numbered lists, true-edit of these attrs.
+  (ceiling), links, true-edit of these attrs. (find&replace on overlay text DONE `3b24c99`;
+  bullet/numbered lists DONE — see below.)
+  **Overlay bullet / numbered lists (Feature 2, 2026-06-24):** `TextElement.list?: 'bullet' | 'ordered'`
+  (OPTIONAL, **no `SCHEMA_VERSION` bump**; `toJSON` omits when unset, `elementFactory` reads with a type
+  guard → legacy blobs restore). One `\n`-line = one item (the overlay bake never auto-wraps). Pure
+  `src/utils/listMarkers.ts` (`listMarker(kind,ordinal)` → `'• '` / `'N. '`; `applyListMarkers(text,kind)`
+  prefixes each NON-EMPTY line, ordered ordinals count non-empty lines 1-based, blanks pass through). The
+  EXPORT is a single edit in `pdfElementRenderer.renderText` — `const lines = te.list ?
+  applyListMarkers(te.text, te.list) : te.text.split('\n')` — so markers ride through alignment/decoration/
+  the advanced-operator path AND the redaction-raster path (both go through `buildPageOverlays`→`renderText`);
+  **byte-identical when `list` unset**. The editor preview is a non-editable **marker gutter** (`.text-list-gutter`
+  in `editor.css`, built in `textElement.render()` with the input's font metrics, `pointer-events:none`, input
+  gets `padding-left`) — markers are kept OUT of `this.text` (no fragile prefix-and-strip that could eat a line
+  the user typed as "3. foo"). Mutations: `FormattingService.setListType(kind|null)`/`toggleList(kind)`
+  (`MoveResizeCmd`, undoable, in `clearFormatting` + format-painter set); UI = two toggle buttons in the Text ⋮
+  popover (`#bulletListBtn`/`#numberedListBtn`), `uiController.updateFormattingToolbar` reflects `te.list`.
+  i18n `formatting.{list,bulletList,numberedList}` (ar [Unverified]). No feature flag (additive). **Ceiling
+  (v1):** nested/multi-level lists, custom marker styles (a/A/i, start-at-N), RTL/Arabic marker placement
+  (the ASCII marker still prefixes the logical Arabic line → drawn within the RTL shaping), and DOCX export of
+  overlay-text markers (overlay annotations aren't in the PDF→DOCX path). Guards:
+  `tests/utils/listMarkers.test.ts`, `tests/elements/textElement.test.ts` (model + gutter),
+  `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,uiController}.test.ts`,
+  `tests/browser/text-list.browser.test.ts` (real Chrome: bullet/ordered export → pdf.js text has `•`/`1.`/`2.`,
+  plain control has none). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-overlay-text-lists*`.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order

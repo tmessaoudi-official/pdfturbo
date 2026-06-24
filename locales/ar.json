@@ -168,7 +168,10 @@
     "horizontalScale": "العرض %",
     "baseline": "خط الأساس",
     "superscript": "مرتفع",
-    "subscript": "منخفض"
+    "subscript": "منخفض",
+    "list": "قائمة",
+    "bulletList": "قائمة نقطية",
+    "numberedList": "قائمة مرقمة"
   },
   "findbar": {
     "placeholder": "البحث في الصفحة…",

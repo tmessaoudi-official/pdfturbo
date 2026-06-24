@@ -116,4 +116,46 @@ describe('TextElement direction (Slice 2 RTL)', () => {
     delete (legacy as Record<string, unknown>)['direction'];
     expect((ElementFactory.fromJSON(legacy) as TextElement).direction).toBe('auto');
   });
+
+  describe('list (Feature 2)', () => {
+    it('omits list from toJSON when unset', () => {
+      const te = new TextElement(0, 0, 'p1', {});
+      expect('list' in te.toJSON()).toBe(false);
+    });
+    it('includes list in toJSON when set and round-trips through the factory', () => {
+      const te = new TextElement(0, 0, 'p1', { list: 'ordered' });
+      te.text = 'a\nb';
+      expect(te.toJSON()['list']).toBe('ordered');
+      expect((ElementFactory.fromJSON(te.toJSON()) as TextElement).list).toBe('ordered');
+    });
+    it('ignores a bogus persisted list value', () => {
+      const te = new TextElement(0, 0, 'p1', {});
+      te.text = 'x';
+      const json = te.toJSON() as Record<string, unknown>;
+      json['list'] = 'garbage';
+      expect((ElementFactory.fromJSON(json) as TextElement).list).toBeUndefined();
+    });
+    it('renders a marker gutter with bullets when list=bullet', () => {
+      const te = new TextElement(0, 0, 'p1', { list: 'bullet' });
+      te.text = 'a\nb';
+      const div = te.render(document.createElement('div'), { left: 0, top: 0 }, 1);
+      const gutter = div.querySelector('.text-list-gutter') as HTMLElement;
+      expect(gutter).toBeTruthy();
+      expect(gutter.textContent).toContain('•');
+    });
+    it('numbers the gutter for ordered lists', () => {
+      const te = new TextElement(0, 0, 'p1', { list: 'ordered' });
+      te.text = 'a\nb';
+      const div = te.render(document.createElement('div'), { left: 0, top: 0 }, 1);
+      const gutter = div.querySelector('.text-list-gutter') as HTMLElement;
+      expect(gutter.textContent).toContain('1.');
+      expect(gutter.textContent).toContain('2.');
+    });
+    it('renders no gutter when list is unset', () => {
+      const te = new TextElement(0, 0, 'p1', {});
+      te.text = 'a\nb';
+      const div = te.render(document.createElement('div'), { left: 0, top: 0 }, 1);
+      expect(div.querySelector('.text-list-gutter')).toBeNull();
+    });
+  });
 });
