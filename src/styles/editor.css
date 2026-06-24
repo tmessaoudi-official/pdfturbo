@@ -87,6 +87,12 @@ input[type="file"] {
   font-size: 14px;
   resize: none;
   font-family: inherit;
+  /* touch-action is NOT inherited, so without this the inner control stays
+     `auto` while .pdf-element is `none` — on touch the browser then claims a
+     single-finger drag-over-the-textbox as a native scroll instead of moving
+     the element. `none` hands the gesture to our pointer handlers; a tap (no
+     movement) still focuses the field, so tap-to-edit is unaffected. */
+  touch-action: none;
 }
 .element-controls {
   position: absolute;

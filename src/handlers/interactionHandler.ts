@@ -163,7 +163,24 @@ export class InteractionHandler {
         shape.points = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
       }
     }
-    this.app.rebuildElementLayer();
+    this._applyLiveUpdate();
+  }
+
+  /**
+   * Re-render ONLY the active element's node in place (not the whole layer) and
+   * re-acquire pointer capture on the fresh node. Called on every drag/resize/
+   * rotate move: avoids the O(n) DOM teardown that lagged on mobile, and — because
+   * a full rebuild removes the captured node and releases capture mid-gesture —
+   * keeps the capture held so the browser never reclaims the touch as a scroll.
+   */
+  private _applyLiveUpdate(): void {
+    const el = this.currentElement;
+    if (!el) return;
+    const fresh = this.app.rerenderElement(el);
+    if (!fresh) return;
+    if (this._activePointerId !== null) {
+      try { fresh.setPointerCapture(this._activePointerId); } catch { /* pointer already released */ }
+    }
   }
 
   private resize(e: PointerEvent): void {
@@ -186,7 +203,7 @@ export class InteractionHandler {
       el.width  = Math.min(Math.max(minW, this.startWidth  + deltaX), maxW);
       el.height = Math.min(Math.max(minH, this.startHeight + deltaY), maxH);
     }
-    this.app.rebuildElementLayer();
+    this._applyLiveUpdate();
   }
 
   handlePointerUp(e: PointerEvent): void {
@@ -216,7 +233,7 @@ export class InteractionHandler {
     if (e.shiftKey)     rot = Math.round(rot / 45) * 45 % 360;
     else if (e.ctrlKey) rot = Math.round(rot / 5)  * 5  % 360;
     el.rotation = rot;
-    this.app.rebuildElementLayer();
+    this._applyLiveUpdate();
   }
 
   private _finish(): void {
@@ -228,6 +245,9 @@ export class InteractionHandler {
     this.isDragging = false; this.isResizing = false; this.isRotating = false;
     this.currentElement = null; this._activePointerId = null;
     this._beforeState = null;
+    // Per-move updates re-rendered only the active node; do one full rebuild now to
+    // reconcile the layer (z-order, selection state) after the gesture completes.
+    if (wasDragging || wasResizing || wasRotating) this.app.rebuildElementLayer();
 
     if (wasRotating && movedEl && before) {
       const beforeRot = before['rotation'] as number;

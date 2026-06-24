@@ -45,43 +45,68 @@ export class ElementLayerRenderer {
     this._ctx.ui.container.querySelectorAll('.pdf-element').forEach(el => el.remove());
     const currentPageId = this._ctx.documentModel.currentPage?.id;
     if (!currentPageId) return;
+    this._ctx.elements
+      .filter(el => el.pageId === currentPageId)
+      .forEach(element => {
+        this._ctx.ui.container.appendChild(this._renderOne(element));
+      });
+  }
+
+  /**
+   * Re-render ONLY one element's DOM node in place — used during an active
+   * drag/resize/rotate so we don't tear down and rebuild the entire element
+   * layer on every pointermove (the O(n) DOM churn that lagged on mobile AND
+   * released the dragged node's pointer capture, see InteractionHandler). The
+   * fresh node is inserted at the SAME position as the old one (so stacking
+   * order is stable mid-gesture) and the old node is removed. Returns the new
+   * node, or null when the element currently has no node on this page.
+   */
+  rerenderElement(element: PDFElement): HTMLDivElement | null {
+    const old = this._ctx.ui.container.querySelector(
+      `.pdf-element[data-element-id="${element.id}"]`,
+    ) as HTMLElement | null;
+    if (!old) return null;
+    const fresh = this._renderOne(element);
+    old.replaceWith(fresh);
+    return fresh;
+  }
+
+  /** Build the fully-wired DOM node for one element (shared by rebuild + rerender). */
+  private _renderOne(element: PDFElement): HTMLDivElement {
     const canvasOffset = {
       left: this._ctx.ui.canvas.offsetLeft,
       top:  this._ctx.ui.canvas.offsetTop,
     };
     const interactable = this._ctx.mode === 'select';
-    this._ctx.elements
-      .filter(el => el.pageId === currentPageId)
-      .forEach(element => {
-        const div = element.render(this._ctx.ui.container, canvasOffset, this._ctx.zoomScale);
-        this._applyA11y(div, element);
-        div.style.pointerEvents = interactable ? 'auto' : 'none';
-        if (element.rotation) {
-          div.style.transform = `rotate(${element.rotation}deg)`;
-          div.style.transformOrigin = 'center center';
-        }
-        if (this._ctx.selectedElement?.id === element.id) div.classList.add('selected');
-        div.addEventListener('click', e => { e.stopPropagation(); this._ctx.handleElementClick(element); });
-        div.addEventListener('pointerdown', e => { this._ctx.handleElementPointerDown(e, element, div); });
-        if (element.type === 'code') {
-          div.addEventListener('code-element-edit', e => {
-            const id = (e as CustomEvent<{ id: number }>).detail.id;
-            const el = this._ctx.elements.find(x => x.id === id) as CodeElement | undefined;
-            if (el) this._ctx.handleCodeElementEdit(el);
-          });
-        }
-        if (element.type === 'text' || element.type === 'comment') {
-          const input = div.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement | null;
-          if (input) {
-            const isSelected = this._ctx.selectedElement?.id === element.id;
-            if (!isSelected) (input as HTMLElement).style.pointerEvents = 'none';
-            input.addEventListener('input', () => {
-              this._ctx.handleTextInput(element as TextElement | CommentElement, input);
-            });
-          }
-        }
-        this._ctx.ui.container.appendChild(div);
+    const div = element.render(this._ctx.ui.container, canvasOffset, this._ctx.zoomScale);
+    div.dataset.elementId = String(element.id);
+    this._applyA11y(div, element);
+    div.style.pointerEvents = interactable ? 'auto' : 'none';
+    if (element.rotation) {
+      div.style.transform = `rotate(${element.rotation}deg)`;
+      div.style.transformOrigin = 'center center';
+    }
+    if (this._ctx.selectedElement?.id === element.id) div.classList.add('selected');
+    div.addEventListener('click', e => { e.stopPropagation(); this._ctx.handleElementClick(element); });
+    div.addEventListener('pointerdown', e => { this._ctx.handleElementPointerDown(e, element, div); });
+    if (element.type === 'code') {
+      div.addEventListener('code-element-edit', e => {
+        const id = (e as CustomEvent<{ id: number }>).detail.id;
+        const el = this._ctx.elements.find(x => x.id === id) as CodeElement | undefined;
+        if (el) this._ctx.handleCodeElementEdit(el);
       });
+    }
+    if (element.type === 'text' || element.type === 'comment') {
+      const input = div.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement | null;
+      if (input) {
+        const isSelected = this._ctx.selectedElement?.id === element.id;
+        if (!isSelected) (input as HTMLElement).style.pointerEvents = 'none';
+        input.addEventListener('input', () => {
+          this._ctx.handleTextInput(element as TextElement | CommentElement, input);
+        });
+      }
+    }
+    return div;
   }
 
   /**

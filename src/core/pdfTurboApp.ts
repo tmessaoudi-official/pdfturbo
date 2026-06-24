@@ -889,6 +889,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   removeElement(id: number): void { this._annotationService.removeElement(id); }
 
   rebuildElementLayer(): void { this._elementLayerRenderer.rebuildElementLayer(); }
+  rerenderElement(element: PDFElement): HTMLDivElement | null { return this._elementLayerRenderer.rerenderElement(element); }
 
   // ── Ink layer ─────────────────────────────────────────────────
   renderInkLayer(): void { this._elementLayerRenderer.renderInkLayer(); }

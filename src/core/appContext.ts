@@ -48,6 +48,8 @@ export interface IAppContext {
   setMode(mode: ToolMode): void;
   selectElement(element: PDFElement | null): void;
   rebuildElementLayer(): void;
+  /** Re-render only one element's node in place (used during an active drag/resize). */
+  rerenderElement(element: PDFElement): HTMLDivElement | null;
   renderInkLayer(): void;
   renderInkLayerWithLive(points: Array<{ x: number; y: number }>, type: 'ink' | 'erase'): void;
   applyZoom(newScale: number): Promise<void>;

@@ -12,9 +12,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import { DrawingHandler } from '../../src/handlers/drawingHandler';
+import { InteractionHandler } from '../../src/handlers/interactionHandler';
 import { AddElementCmd } from '../../src/core/historyManager';
 import type { IAppContext } from '../../src/core/appContext';
 import type { PDFElement } from '../../src/elements/annotationElement';
+// The element-drag fix is CSS-driven (touch-action on the inner control); load the real
+// stylesheet so getComputedStyle reflects it (jsdom can't compute CSS at all).
+import '../../src/styles/editor.css';
 
 function buildCtx() {
   const container = document.createElement('div');
@@ -93,6 +97,78 @@ describe('F-A — pointer drag draws under touch-action:none (real Chrome)', () 
       expect(canvas.style.touchAction).toBe('pan-x pan-y');
     } finally {
       cleanup();
+    }
+  });
+});
+
+describe('element drag on mobile — Fix 1 (touch-action) + Fix 2 (single-node re-render + capture)', () => {
+  it('the inner text control computes touch-action:none so a touch-drag is NOT stolen as a scroll', () => {
+    // The bug: .pdf-element is touch-action:none, but touch-action is NOT inherited, so the
+    // inner <textarea>/<input> stayed `auto` and the browser claimed the drag as a page scroll.
+    const wrap = document.createElement('div');
+    wrap.className = 'pdf-element';
+    const ta = document.createElement('textarea');
+    wrap.appendChild(ta);
+    const input = document.createElement('input');
+    wrap.appendChild(input);
+    document.body.appendChild(wrap);
+    try {
+      expect(getComputedStyle(ta).touchAction).toBe('none');
+      expect(getComputedStyle(input).touchAction).toBe('none');
+    } finally {
+      wrap.remove();
+    }
+  });
+
+  it('a touch-drag re-renders only the active node, re-acquires real pointer capture, and moves the element', () => {
+    const container = document.createElement('div');
+    Object.assign(container.style, { position: 'fixed', top: '0', left: '0', width: '600px', height: '600px' });
+    const canvas = document.createElement('canvas');
+    canvas.width = 600; canvas.height = 600;
+    Object.assign(canvas.style, { position: 'absolute', top: '0', left: '0', width: '600px', height: '600px' });
+    container.appendChild(canvas);
+    document.body.appendChild(container);
+
+    const el = { id: 1, type: 'image', x: 100, y: 100, width: 60, height: 40, rotation: 0, pageId: 'p1' } as unknown as PDFElement;
+    let captureThrew = false;
+    let captureCalls = 0;
+    const makeNode = (): HTMLDivElement => {
+      const d = document.createElement('div');
+      d.className = 'pdf-element';
+      d.dataset.elementId = '1';
+      const realCap = d.setPointerCapture.bind(d);
+      d.setPointerCapture = (id: number): void => { captureCalls++; try { realCap(id); } catch { captureThrew = true; } };
+      container.appendChild(d);
+      return d;
+    };
+    let liveNode = makeNode();
+    const app = {
+      renderer: { canvas },
+      zoomScale: 1,
+      elements: [el],
+      rerenderElement: (_e: PDFElement) => { liveNode.remove(); liveNode = makeNode(); return liveNode; },
+      rebuildElementLayer: () => {},
+      historyManager: { record: () => {} },
+      autosave: () => {},
+    } as unknown as IAppContext;
+
+    try {
+      const h = new InteractionHandler(app);
+      const down = new PointerEvent('pointerdown', { pointerId: 1, pointerType: 'touch', clientX: 130, clientY: 120, bubbles: true });
+      Object.defineProperty(down, 'target', { value: liveNode });
+      const realCap0 = liveNode.setPointerCapture.bind(liveNode);
+      liveNode.setPointerCapture = (id: number): void => { captureCalls++; try { realCap0(id); } catch { captureThrew = true; } };
+      h.handlePointerDown(down, el, liveNode);
+      h.handlePointerMove(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'touch', clientX: 220, clientY: 200, bubbles: true }));
+      h.handlePointerMove(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'touch', clientX: 260, clientY: 240, bubbles: true }));
+      h.handlePointerUp(new PointerEvent('pointerup', { pointerId: 1, pointerType: 'touch', clientX: 260, clientY: 240, bubbles: true }));
+
+      expect(el.x).not.toBe(100);          // element actually moved
+      expect(el.y).not.toBe(100);
+      expect(captureCalls).toBeGreaterThan(1); // captured on start + re-captured on each fresh node
+      expect(captureThrew).toBe(false);        // real setPointerCapture across re-renders never threw
+    } finally {
+      container.remove();
     }
   });
 });
