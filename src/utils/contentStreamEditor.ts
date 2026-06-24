@@ -681,6 +681,23 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
 }
 
 /**
+ * True if any `Q` operator pops an empty graphics-state stack (unbalanced q/Q).
+ * When true, the CTM is stale from that point on, so CTM-dependent decoration
+ * geometry on the stream is unreliable and a resize is refused (F13). Pure.
+ */
+export function ctmStackUnderflows(ops: CsOp[]): boolean {
+  let depth = 0;
+  for (const op of ops) {
+    if (op.operator === 'q') depth++;
+    else if (op.operator === 'Q') {
+      if (depth === 0) return true;
+      depth--;
+    }
+  }
+  return false;
+}
+
+/**
  * Pick the SINGLE decoration rule that belongs to a text op (origin = baseline,
  * extent = [origin.x, origin.x + textWidth]). Reuses the export-path classifier so
  * the baseline-band + ≥50%-overlap thresholds match exactly. Returns null when
@@ -2036,6 +2053,10 @@ function prepareDecorationResize(
   if (!adjust) return null;
   const { ops, target } = found;
   if (locateDecorationRects(ops).length === 0) return null;
+  // F13: an unbalanced q/Q (a `Q` popping an empty stack) leaves the CTM stale, so
+  // every decoration's user-space geometry on this stream is unreliable. Refuse the
+  // resize (the text edit itself does not depend on the CTM-stack balance).
+  if (ctmStackUnderflows(ops)) return null;
   // F6: a super/subscript run carries a text rise (Ts); its reported baseline
   // (origin.y, with no rise applied) makes the band-match low-confidence and could
   // match an unrelated nearby rule. Refuse to mutate geometry — leave the rule as-is

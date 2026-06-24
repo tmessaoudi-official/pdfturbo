@@ -38,6 +38,7 @@ import {
   buildStandaloneDecoration,
   addDecorationAt,
   stringToContentBytes,
+  ctmStackUnderflows,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -2522,5 +2523,55 @@ describe('F10 — tilted text refuses decoration-resize', () => {
     });
     expect(r).not.toBe(false); // the text edit still proceeds
     expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBe(28); // NOT resized
+  });
+});
+
+// ── F13 — q/Q stack underflow refuses decoration-resize ─────────────────────────
+// A `Q` that pops an empty graphics-state stack leaves the CTM stale, so every
+// CTM-dependent decoration geometry on the stream is unreliable → refuse the resize.
+describe('ctmStackUnderflows', () => {
+  it('false for balanced q/Q', () => {
+    expect(ctmStackUnderflows(ops('q 1 0 0 1 0 0 cm Q'))).toBe(false);
+  });
+  it('false for nested balanced q/Q', () => {
+    expect(ctmStackUnderflows(ops('q q Q Q'))).toBe(false);
+  });
+  it('true when a Q pops an empty stack', () => {
+    expect(ctmStackUnderflows(ops('q Q Q'))).toBe(true);
+  });
+  it('true for a leading unmatched Q', () => {
+    expect(ctmStackUnderflows(ops('Q 50 297 28 1 re f'))).toBe(true);
+  });
+});
+
+describe('F13 — q/Q underflow refuses decoration-resize', () => {
+  /** "Hello" + underline rect, prefixed with a stray `Q` that underflows the stack. */
+  async function makeUnbalancedUnderlinedPdf(): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 400]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText('seed', { x: 0, y: 0, size: 1, font });
+    const ctx = doc.context;
+    const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+    const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+    const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+    if (!helvVal) throw new Error('font missing');
+    fontDict.set(PDFName.of('F1'), helvVal);
+    const content =
+      `Q BT /F1 12 Tf 1 0 0 1 50 300 Tm (Hello) Tj ET\n` +
+      `0 0 0 rg 50 297 28 1.2 re f`;
+    const cb = new Uint8Array(content.length);
+    for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+    page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+    return doc.save();
+  }
+
+  it('leaves the underline rect width unchanged on q/Q underflow', async () => {
+    const doc = await PDFDocument.load(await makeUnbalancedUnderlinedPdf());
+    const r = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Hi', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(r).not.toBe(false);
+    expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBe(28);
   });
 });
