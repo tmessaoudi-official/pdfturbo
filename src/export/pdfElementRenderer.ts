@@ -110,6 +110,14 @@ interface RenderHelpers {
   pdfRotVal: any;
   /** Shift a corner anchor so element rotation pivots around its center. */
   anchorForCenter: (cornerX: number, cornerY: number, ew: number, eh: number) => { x: number; y: number };
+  /**
+   * Map a DISPLAYED-space rect (top-left origin, editor coords) to its content-space
+   * bottom-left anchor (the pdf-lib draw origin) as the AABB-min of all four mapped
+   * corners. At rot=0 this equals `tp(x, y+h)` (byte-identical to the old single-corner
+   * anchor); under a 90°/270° page rotation the single corner mapped to the WRONG side
+   * and shifted the rect by its own width/height — using the AABB min fixes that.
+   */
+  rectAnchor: (x: number, y: number, w: number, h: number) => { x: number; y: number };
   /** Unrotated content height (for freehand SVG y-flip). */
   Ho: number;
 }
@@ -122,7 +130,7 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
   if (!te.text) return;
   const { pdfDoc, page, libs } = ctx;
   const { rgb, StandardFonts } = libs;
-  const { tp, swapDims, elemRot, pdfRotVal, anchorForCenter } = hlp;
+  const { tp, swapDims, elemRot, pdfRotVal, anchorForCenter, rectAnchor } = hlp;
   const col = hexToRgbValues(te.color);
   const alpha = te.opacity ?? 1;
   const fontName = getStandardFont(te.fontFamily, te.bold, te.italic);
@@ -139,7 +147,7 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
     const bg = hexToRgbValues(te.backgroundColor);
     const ew = swapDims ? (te.height || 0) : (te.width || 0);
     const eh = swapDims ? (te.width || 0) : (te.height || 0);
-    const corner = tp(te.x, te.y + (te.height || 0));
+    const corner = rectAnchor(te.x, te.y, te.width, te.height || 0);
     const a = anchorForCenter(corner.x, corner.y, ew, eh);
     page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(bg.r, bg.g, bg.b), opacity: alpha, borderWidth: 0 });
   }
@@ -230,7 +238,7 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
 async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const se = element as SignatureElement;
   const { pdfDoc, page, libs: { rgb, StandardFonts } } = ctx;
-  const { tp, swapDims, pdfRotVal, anchorForCenter } = hlp;
+  const { tp, swapDims, pdfRotVal, anchorForCenter, rectAnchor } = hlp;
   const img = await pdfDoc.embedPng(dataUrlToUint8Array(se.data));
 
   // F-D D1 — when an approval caption is attached, reserve a bottom band (in the
@@ -243,7 +251,7 @@ async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: Rend
 
   const ew = swapDims ? imgDispH : element.width;
   const eh = swapDims ? element.width : imgDispH;
-  const corner = tp(element.x, element.y + imgDispH);
+  const corner = rectAnchor(element.x, element.y, element.width, imgDispH);
   const a = anchorForCenter(corner.x, corner.y, ew, eh);
   page.drawImage(img, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
 
@@ -270,11 +278,11 @@ async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: Rend
 async function renderImage(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const ie = element as ImageElement;
   const { pdfDoc, page } = ctx;
-  const { tp, swapDims, pdfRotVal, anchorForCenter } = hlp;
+  const { rectAnchor, swapDims, pdfRotVal, anchorForCenter } = hlp;
   const pdfImg = await embedImage(pdfDoc, ie.src);
   const ew = swapDims ? element.height : element.width;
   const eh = swapDims ? element.width : element.height;
-  const corner = tp(element.x, element.y + element.height);
+  const corner = rectAnchor(element.x, element.y, element.width, element.height);
   const a = anchorForCenter(corner.x, corner.y, ew, eh);
   page.drawImage(pdfImg, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
 }
@@ -282,11 +290,11 @@ async function renderImage(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHe
 async function renderCode(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const ce = element as CodeElement;
   const { pdfDoc, page } = ctx;
-  const { tp, swapDims, pdfRotVal, anchorForCenter } = hlp;
+  const { rectAnchor, swapDims, pdfRotVal, anchorForCenter } = hlp;
   const codePdfImg = await embedImage(pdfDoc, ce.cachedDataUrl);
   const ew = swapDims ? element.height : element.width;
   const eh = swapDims ? element.width : element.height;
-  const corner = tp(element.x, element.y + element.height);
+  const corner = rectAnchor(element.x, element.y, element.width, element.height);
   const a = anchorForCenter(corner.x, corner.y, ew, eh);
   page.drawImage(codePdfImg, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
 }
@@ -295,11 +303,11 @@ function renderHighlight(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelp
   const he = element as HighlightElement;
   const { page, libs } = ctx;
   const { rgb } = libs;
-  const { tp, swapDims, pdfRotVal, anchorForCenter } = hlp;
+  const { rectAnchor, swapDims, pdfRotVal, anchorForCenter } = hlp;
   const col = hexToRgbValues(he.color);
   const ew = swapDims ? element.height : element.width;
   const eh = swapDims ? element.width : element.height;
-  const corner = tp(element.x, element.y + element.height);
+  const corner = rectAnchor(element.x, element.y, element.width, element.height);
   const a = anchorForCenter(corner.x, corner.y, ew, eh);
   page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(col.r, col.g, col.b), opacity: he.opacity, borderWidth: 0, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
   return Promise.resolve();
@@ -309,7 +317,7 @@ function renderShape(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers)
   const she = element as ShapeElement;
   const { page, libs } = ctx;
   const { rgb } = libs;
-  const { tp, swapDims, pdfRotVal, anchorForCenter, elemRot, Ho } = hlp;
+  const { tp, swapDims, pdfRotVal, anchorForCenter, elemRot, Ho, rectAnchor } = hlp;
   const col = hexToRgbValues(she.strokeColor);
   const shapeColor = rgb(col.r, col.g, col.b);
   const lw = she.strokeWidth;
@@ -322,7 +330,7 @@ function renderShape(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers)
     case 'rect': {
       const ew = swapDims ? element.height : element.width;
       const eh = swapDims ? element.width : element.height;
-      const corner = tp(element.x, element.y + element.height);
+      const corner = rectAnchor(element.x, element.y, element.width, element.height);
       const a = anchorForCenter(corner.x, corner.y, ew, eh);
       const fillClr = she.fillColor;
       const fillOpts = fillClr ? { color: (() => { const fc = hexToRgbValues(fillClr); return rgb(fc.r, fc.g, fc.b); })() } : {};
@@ -375,11 +383,11 @@ async function renderComment(element: PDFElement, ctx: PdfRenderCtx, hlp: Render
   const ce = element as CommentElement;
   const { pdfDoc, page, libs } = ctx;
   const { rgb, StandardFonts } = libs;
-  const { tp, swapDims, pdfRotVal, anchorForCenter } = hlp;
+  const { tp, swapDims, pdfRotVal, anchorForCenter, rectAnchor } = hlp;
   const col = hexToRgbValues(ce.color);
   const ew = swapDims ? ce.height : ce.width;
   const eh = swapDims ? ce.width : ce.height;
-  const corner = tp(ce.x, ce.y + ce.height);
+  const corner = rectAnchor(ce.x, ce.y, ce.width, ce.height);
   const a = anchorForCenter(corner.x, corner.y, ew, eh);
   page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(col.r, col.g, col.b), opacity: 0.85, borderColor: rgb(0.5, 0.5, 0.5), borderWidth: 1, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
   if (ce.text) {
@@ -393,10 +401,10 @@ async function renderComment(element: PDFElement, ctx: PdfRenderCtx, hlp: Render
 function renderRedaction(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const { page, libs } = ctx;
   const { rgb } = libs;
-  const { tp, swapDims, pdfRotVal, anchorForCenter } = hlp;
+  const { swapDims, pdfRotVal, anchorForCenter, rectAnchor } = hlp;
   const ew = swapDims ? element.height : element.width;
   const eh = swapDims ? element.width : element.height;
-  const corner = tp(element.x, element.y + element.height);
+  const corner = rectAnchor(element.x, element.y, element.width, element.height);
   const a = anchorForCenter(corner.x, corner.y, ew, eh);
   const redCol = hexToRgbValues((element as { color?: string }).color ?? '#000000');
   page.drawRectangle({ x: a.x, y: a.y, width: ew, height: eh, color: rgb(redCol.r, redCol.g, redCol.b), borderWidth: 0, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
@@ -450,5 +458,16 @@ export function renderElementToPdfLib(element: PDFElement, ctx: PdfRenderCtx): P
     };
   };
 
-  return RENDERERS[element.type](element, ctx, { tp, swapDims, elemRot, pdfRotVal, anchorForCenter, Ho });
+  // Content-space bottom-left anchor = AABB-min of the displayed rect's 4 mapped corners.
+  // Rotation by a 90° multiple keeps the rect axis-aligned, so the AABB is exact. At rot=0
+  // this is exactly tp(x, y+h) — byte-identical to the prior single-corner anchor.
+  const rectAnchor = (x: number, y: number, wd: number, ht: number) => {
+    const c0 = tp(x, y), c1 = tp(x + wd, y), c2 = tp(x, y + ht), c3 = tp(x + wd, y + ht);
+    return {
+      x: Math.min(c0.x, c1.x, c2.x, c3.x),
+      y: Math.min(c0.y, c1.y, c2.y, c3.y),
+    };
+  };
+
+  return RENDERERS[element.type](element, ctx, { tp, swapDims, elemRot, pdfRotVal, anchorForCenter, rectAnchor, Ho });
 }
