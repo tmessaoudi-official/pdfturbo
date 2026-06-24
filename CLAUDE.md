@@ -347,9 +347,24 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   in-band rule (double underline); a SLANTED line (m/l y differ) or POLYLINE (≥2 `l`); `s` (closepath+stroke,
   ambiguous closing segment) — only plain `S`; and a rect/line whose painter ALSO closes an `m/l/c/v/y/h`
   subpath (neutralising it would erase that vector art), refused via `sawOtherPath` + the single-segment
-  counts. **Edge-case hardening F5–F8 (2026-06-20, audit `docs/reviews/2026-06-20-trueedit-edgecase-audit.md`;
-  F3 byte-splice rewrite DEFERRED — round-trip is lossless for bytes 0–255 so it's a blast-radius hardening, not
-  an active bug):** F5 — `locateDecorationRects` now also refuses a **mirror / negative-scale CTM** (`ctm[0]<0 ||
+  counts. **F10 + F13 + F3 byte-splice DONE (2026-06-24, `docs/superpowers/specs/2026-06-24-trueedit-f10-f13-f3-bytesplice-design.md`):**
+  **F10** — `prepareDecorationResize` now refuses (returns the null mutator) when the target run is `tilted`
+  (sheared/rotated/non-uniformly-scaled `textMatrix×CTM`; reuses the existing flag — NOT a new `tmTilted` — that
+  `addDecorationAt` already gates on), beside the F6 text-rise gate; the text edit still proceeds, only the
+  decoration geometry is left untouched. **F13** — new pure `ctmStackUnderflows(ops)` (a `Q` popping an empty
+  graphics-state stack) gates the same function (stale CTM ⇒ decoration geometry unreliable). **F3 hybrid
+  byte-splice (the deferred rewrite, now SHIPPED):** the tokenizer stamps `byteStart`/`byteEnd` on every `CsToken`
+  and `groupOps` stamps the op span on every `CsOp`; `findTarget` snapshots `source` + `origSerialized` (per-op
+  `serializeOp`) onto `EditTarget` pre-mutation; new `buildStreamContent(found, appendedTail)` diffs mutated-vs-snapshot
+  ops — **exactly ONE op changed (valid span) → splice that op's bytes into the original `source`, every other byte
+  (incl. inline-image/binary) verbatim + append the tail; ZERO ops changed + a tail (addDecorationAt) → keep `source`
+  verbatim + append; else → today's `serializeOps` (zero regression)**. `writeBack` (delete/size/color/Path1/Path2),
+  Path 3 (`+redraw`), and `addDecorationAt` (`+block`) all route through it; `redraw`/`block` already start with `\n`
+  so the fallback is byte-identical to the old `serializeOps(ops)+tail`. The F12 multi-stream PRESERVATION bound is
+  unchanged (an XObject edit writes that one stream via the builder). Guards: `tests/utils/contentStreamEditor.test.ts`
+  (F10 tilted-refuse, F13 `ctmStackUnderflows`+gate, byte-offset slice-back, `serializeOp`, `buildStreamContent`
+  splice/fallback/inline-image) + `tests/browser/trueedit-bytesplice.browser.test.ts` (real Chrome: inline image
+  survives a one-word edit byte-identical AND pdf.js renders the spliced stream). **Edge-case hardening F5–F8 (2026-06-20, audit `docs/reviews/2026-06-20-trueedit-edgecase-audit.md`):** F5 — `locateDecorationRects` now also refuses a **mirror / negative-scale CTM** (`ctm[0]<0 ||
   ctm[3]<0`; flip-X/flip-Y/180°) for BOTH rect and stroked line (the line path uses `abs()` so a mirror silently
   flipped resize direction; the `re` path was safe-by-luck only). F6 — `prepareDecorationResize` refuses when the
   target run carries a non-zero **text rise (`Ts`, super/subscript)**: its reported baseline (origin.y, no rise
