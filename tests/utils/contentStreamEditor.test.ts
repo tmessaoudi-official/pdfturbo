@@ -40,6 +40,7 @@ import {
   stringToContentBytes,
   ctmStackUnderflows,
   serializeOp,
+  buildStreamContent,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -2620,5 +2621,70 @@ describe('byte offsets + serializeOp', () => {
     const grouped = groupOps(tokens);
     const op = grouped.find(o => o.operator === 'INLINE_IMAGE');
     expect(serializeOp(op as NonNullable<typeof op>)).toBe(img?.raw);
+  });
+});
+
+// ── F3 (Task 4) — hybrid byte-splice write-back ─────────────────────────────────
+describe('buildStreamContent — hybrid byte-splice', () => {
+  /** Minimal EditTarget around a source string (snapshot captured pre-mutation). */
+  function targetFor(src: string) {
+    const opsArr = groupOps(tokenizeContentStream(src));
+    return {
+      ops: opsArr,
+      target: {} as unknown,
+      textOps: [],
+      source: src,
+      origSerialized: opsArr.map(serializeOp),
+    } as unknown as Parameters<typeof buildStreamContent>[0];
+  }
+  const lastStr = (op: { operands: { raw: string }[] }) => op.operands[op.operands.length - 1];
+
+  it('splices a single changed op, leaving all other bytes verbatim (incl. an inline image)', () => {
+    const src = 'BI /W 2 /H 2 ID  ÿþ EI\n(Hello) Tj';
+    const t = targetFor(src);
+    const tj = t.ops.find(o => o.operator === 'Tj');
+    if (!tj) throw new Error('Tj missing');
+    lastStr(tj).raw = '(Hi)';
+    const out = buildStreamContent(t, '');
+    expect(out).toContain('BI /W 2 /H 2 ID  ÿþ EI'); // inline image byte-identical
+    expect(out).toContain('(Hi) Tj');
+    expect(out).not.toContain('(Hello)');
+  });
+
+  it('appends the Path-3 tail after the spliced (blanked) op', () => {
+    const src = '(Hello) Tj';
+    const t = targetFor(src);
+    lastStr(t.ops[0]).raw = '()'; // blanked (Path 3)
+    const out = buildStreamContent(t, '\nq BT /F1 12 Tf 1 0 0 1 5 5 Tm (Hi) Tj ET Q');
+    expect(out.startsWith('() Tj')).toBe(true);
+    expect(out).toContain('(Hi) Tj ET Q');
+  });
+
+  it('zero ops changed + a tail keeps the WHOLE source verbatim + appends', () => {
+    const src = 'BI /W 1 /H 1 ID   EI\n(Hi) Tj';
+    const t = targetFor(src);
+    const out = buildStreamContent(t, '\n50 297 28 1.2 re f');
+    expect(out).toBe(src + '\n50 297 28 1.2 re f');
+  });
+
+  it('falls back to serializeOps when TWO ops changed', () => {
+    const src = '(Hello) Tj 50 297 28 1.2 re f';
+    const t = targetFor(src);
+    const tj = t.ops.find(o => o.operator === 'Tj');
+    const re = t.ops.find(o => o.operator === 're');
+    if (!tj || !re) throw new Error('ops missing');
+    lastStr(tj).raw = '(Hi)';
+    re.operands[2].raw = '12'; // decoration resize → 2nd changed op
+    const out = buildStreamContent(t, '');
+    expect(out).toBe(serializeOps(t.ops)); // fallback path
+  });
+
+  it('falls back when the changed op has no byte span', () => {
+    const src = '(Hello) Tj';
+    const t = targetFor(src);
+    t.ops[0].byteStart = undefined;
+    t.ops[0].byteEnd = undefined;
+    lastStr(t.ops[0]).raw = '(Hi)';
+    expect(buildStreamContent(t, '')).toBe(serializeOps(t.ops));
   });
 });

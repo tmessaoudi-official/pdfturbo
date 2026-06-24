@@ -1094,11 +1094,43 @@ interface EditTarget {
   textOps: TextOpInfo[];
   /** Set when the target lives inside a Form XObject rather than the page stream. */
   xObjectName?: string;
+  /** The ORIGINAL decoded stream the ops were parsed from (F3 byte-splice source). */
+  source: string;
+  /** serializeOp(op) for each op, captured BEFORE any mutation — the diff baseline. */
+  origSerialized: string[];
+}
+
+/**
+ * Compute the new content stream for a write-back. Hybrid byte-splice (F3):
+ *  - exactly ONE op changed (vs the pre-mutation snapshot) with a valid byte span →
+ *    splice that op's bytes in the ORIGINAL source, keep every other byte verbatim;
+ *  - ZERO ops changed but an appended tail (addDecorationAt) → keep source verbatim;
+ *  - otherwise → today's full re-serialize (`serializeOps`), zero regression.
+ * `appendedTail` (the Path-3 redraw / decoration block) is always concatenated last.
+ * Preserves inline images and any byte the tokenizer mis-models, for the common edit.
+ */
+export function buildStreamContent(found: EditTarget, appendedTail = ''): string {
+  const { ops, source, origSerialized } = found;
+  const changed: number[] = [];
+  for (let k = 0; k < ops.length; k++) {
+    if (serializeOp(ops[k]) !== origSerialized[k]) changed.push(k);
+  }
+  if (changed.length === 1) {
+    const op = ops[changed[0]];
+    if (
+      typeof op.byteStart === 'number' && typeof op.byteEnd === 'number' &&
+      op.byteStart >= 0 && op.byteEnd <= source.length && op.byteStart <= op.byteEnd
+    ) {
+      return source.slice(0, op.byteStart) + serializeOp(op) + source.slice(op.byteEnd) + appendedTail;
+    }
+  }
+  if (changed.length === 0 && appendedTail) return source + appendedTail;
+  return serializeOps(ops) + appendedTail;
 }
 
 /** Write modified ops back to either the page stream or an XObject stream. */
 function writeBack(doc: PDFDocument, pageIndex: number, found: EditTarget): void {
-  const content = serializeOps(found.ops);
+  const content = buildStreamContent(found, '');
   if (found.xObjectName) {
     setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
   } else {
@@ -1131,10 +1163,15 @@ function findTarget(
     const dist = Math.hypot(t.origin.x - point.x, t.origin.y - point.y);
     if (dist <= tolerance && dist < bestDist) { bestDist = dist; best = t; }
   }
-  if (best) return { ops: pageOps, target: best, textOps: directTextOps };
+  if (best) {
+    return {
+      ops: pageOps, target: best, textOps: directTextOps,
+      source: pageContent, origSerialized: pageOps.map(serializeOp),
+    };
+  }
 
   // Fall back: search Form XObjects referenced by Do operators in the page stream.
-  interface XCandidate { dist: number; target: TextOpInfo; ops: CsOp[]; textOps: TextOpInfo[]; xObjectName: string }
+  interface XCandidate { dist: number; target: TextOpInfo; ops: CsOp[]; textOps: TextOpInfo[]; xObjectName: string; source: string }
   let bestX: XCandidate | null = null;
   for (const op of pageOps) {
     if (op.operator !== 'Do') continue;
@@ -1152,11 +1189,17 @@ function findTarget(
       if (dist <= tolerance && dist < (bestX?.dist ?? Infinity)) {
         // Flag the target as XObject-sourced so callers (textEditHandler) can
         // treat it as not-truly-editable and fall back to an overlay (A1).
-        bestX = { dist, target: { ...t, inXObject: true }, ops: xOps, textOps: xTextOps, xObjectName: raw.replace(/^\//, '') };
+        bestX = { dist, target: { ...t, inXObject: true }, ops: xOps, textOps: xTextOps, xObjectName: raw.replace(/^\//, ''), source: xContent };
       }
     }
   }
-  if (bestX) return { ops: bestX.ops, target: bestX.target, textOps: bestX.textOps, xObjectName: bestX.xObjectName };
+  if (bestX) {
+    return {
+      ops: bestX.ops, target: bestX.target, textOps: bestX.textOps,
+      xObjectName: bestX.xObjectName, source: bestX.source,
+      origSerialized: bestX.ops.map(serializeOp),
+    };
+  }
 
   return null;
 }
@@ -1830,7 +1873,9 @@ export async function addDecorationAt(
   const color = resolveRedrawColor(undefined, target.fillColor, undefined);
 
   const block = buildStandaloneDecoration({ x0, x1, y, thickness, color });
-  const content = serializeOps(ops) + block;
+  // F3: no op is mutated (pure append) → buildStreamContent keeps the source verbatim
+  // and appends the decoration (fast path B). `block` already starts with '\n'.
+  const content = buildStreamContent(found, block);
   if (found.xObjectName) {
     setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
   } else {
@@ -2003,7 +2048,11 @@ export async function replaceTextAt(
   // Redraw is guaranteed; now it is safe to remove the original.
   blankShowOp(ops[target.opIndex]);
   blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
-  setPageContent(doc, pageIndex, serializeOps(ops) + redraw);
+  // F3: when only the target op was blanked (no shadow duplicates) the byte-splice
+  // preserves the rest of the stream verbatim and appends the redraw; if blankAllNearby
+  // touched more ops, buildStreamContent falls back to serializeOps (today's output).
+  // `redraw` already starts with '\n'. Path 3 is page-stream only (XObject refused above).
+  setPageContent(doc, pageIndex, buildStreamContent(found, redraw));
 
   // Slice B — honest substitution signal. Path 3 redraws in a base-14 standard
   // font. That is a genuine, lossy substitution ONLY when the ORIGINAL font was
