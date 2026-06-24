@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PDFDocument } from '@cantoo/pdf-lib';
-import { sanitizeWinAnsi, docModelToPdfBytes, headingFontSize, listMarkerText } from '../../src/docx/docxToPdf';
+import { sanitizeWinAnsi, docModelToPdfBytes, headingFontSize, listMarkerText, resolveStandardFontFamily, buildCellGrid } from '../../src/docx/docxToPdf';
 import type { DocModel, DocTable, DocRow, DocCell } from '../../src/docx/docModel';
 
 const para = (text: string, bold = false, italic = false): DocModel['paragraphs'][number] => ({
@@ -196,5 +196,53 @@ describe('docModelToPdfBytes — tables (#1d table rendering)', () => {
       paragraphs: [],
     });
     expect(hadUnsupportedChars).toBe(true);
+  });
+});
+
+describe('resolveStandardFontFamily (Feature 5)', () => {
+  it('maps serif faces to Times', () => {
+    for (const f of ['Times New Roman', 'Georgia', 'Garamond', 'Cambria', 'Book Antiqua', 'PT Serif'])
+      expect(resolveStandardFontFamily(f)).toBe('Times');
+  });
+  it('maps monospace faces to Courier', () => {
+    for (const f of ['Courier New', 'Consolas', 'Menlo', 'Lucida Console', 'Roboto Mono'])
+      expect(resolveStandardFontFamily(f)).toBe('Courier');
+  });
+  it('maps sans / unknown / undefined to Helvetica', () => {
+    for (const f of ['Arial', 'Calibri', 'Segoe UI', 'Verdana', 'Comic Sans MS', 'Wingdings', undefined, ''])
+      expect(resolveStandardFontFamily(f)).toBe('Helvetica');
+  });
+});
+
+describe('buildCellGrid (Feature 5 — merged cells)', () => {
+  const C = (text: string, colspan?: number, rowspan?: number): DocCell => ({
+    blocks: [para(text)], ...(colspan ? { colspan } : {}), ...(rowspan ? { rowspan } : {}),
+  });
+
+  it('places a plain 2×2 grid at unit offsets', () => {
+    const t: DocTable = { kind: 'table', rows: [{ cells: [C('a'), C('b')] }, { cells: [C('c'), C('d')] }] };
+    const g = buildCellGrid(t);
+    expect(g.gridWidth).toBe(2);
+    expect(g.placements.map(p => [p.row, p.col, p.colspan, p.rowspan])).toEqual([
+      [0, 0, 1, 1], [0, 1, 1, 1], [1, 0, 1, 1], [1, 1, 1, 1],
+    ]);
+  });
+
+  it('spans a colspan=2 header across both columns', () => {
+    const t: DocTable = { kind: 'table', rows: [{ cells: [C('head', 2)] }, { cells: [C('a'), C('b')] }] };
+    const g = buildCellGrid(t);
+    expect(g.gridWidth).toBe(2);
+    const head = g.placements.find(p => p.row === 0);
+    expect([head?.col, head?.colspan]).toEqual([0, 2]);
+    expect(g.placements.filter(p => p.row === 1).map(p => p.col)).toEqual([0, 1]);
+  });
+
+  it('skips columns occupied by a rowspan from above', () => {
+    // row0: X(rowspan2) Y ; row1: Z → Z lands in col1 (col0 held by X)
+    const t: DocTable = { kind: 'table', rows: [{ cells: [C('X', 1, 2), C('Y')] }, { cells: [C('Z')] }] };
+    const g = buildCellGrid(t);
+    expect(g.gridWidth).toBe(2);
+    const z = g.placements.find(p => p.row === 1);
+    expect(z?.col).toBe(1);
   });
 });

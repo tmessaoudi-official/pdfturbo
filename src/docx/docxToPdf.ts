@@ -19,7 +19,8 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, type Color, type PDFFont, type PDFPage } from '@cantoo/pdf-lib';
-import { isDocTable, type DocModel, type DocBlock, type DocParagraph, type DocTable } from './docModel';
+import { isDocTable, type DocModel, type DocBlock, type DocParagraph, type DocTable, type DocCell } from './docModel';
+import type { DocImage } from './docxImages';
 
 /** Point size for a heading level relative to the body `base` size (H1>H2>H3>base). */
 export function headingFontSize(level: 1 | 2 | 3, base: number): number {
@@ -57,6 +58,55 @@ export function listMarkerText(ordered: boolean, ordinal: number, level: number)
   return `${ordinal}.`;
 }
 
+/** The three StandardFonts families we render with (each has 4 bold/italic variants). */
+export type StdFontFamily = 'Helvetica' | 'Times' | 'Courier';
+
+const _SERIF = /times|georgia|garamond|cambria|serif|minion|antiqua|book antiqua|palatino|caslon/i;
+const _MONO = /courier|consolas|menlo|monaco|mono|lucida console|fixed|terminal/i;
+
+/**
+ * Map a Word `w:rFonts` family name to the closest StandardFonts family. Serif → Times,
+ * monospace → Courier, everything else (sans / unknown / undefined) → Helvetica. The 14
+ * StandardFonts can't embed arbitrary faces, so this is a best-effort family match (the
+ * documented ceiling — true face embedding would need the font bytes, which DOCX rarely ships).
+ */
+export function resolveStandardFontFamily(family?: string): StdFontFamily {
+  const f = (family ?? '').toLowerCase();
+  if (!f) return 'Helvetica';
+  if (_MONO.test(f)) return 'Courier';
+  if (_SERIF.test(f)) return 'Times';
+  return 'Helvetica';
+}
+
+/** A cell placed on the table grid at (row,col) spanning colspan×rowspan grid units. */
+export interface CellPlacement { row: number; col: number; colspan: number; rowspan: number; cell: DocCell; }
+export interface CellGrid { gridWidth: number; placements: CellPlacement[]; }
+
+/**
+ * Resolve a DocTable's cells onto a grid honouring colspan/rowspan (the PM/OOXML shape where
+ * continuation cells are ABSENT). Walks rows top-down, skipping columns still occupied by a
+ * rowspan from above. `gridWidth` is the total column count. Pure — used by both the renderer
+ * and tests. (Per-column `w:tblGrid` widths are not in the model → equal columns.)
+ */
+export function buildCellGrid(t: DocTable): CellGrid {
+  const placements: CellPlacement[] = [];
+  const rowspanRem: number[] = []; // per grid column: rows still occupied by a rowspan from above
+  for (let r = 0; r < t.rows.length; r++) {
+    let col = 0;
+    for (const cell of t.rows[r].cells) {
+      while ((rowspanRem[col] ?? 0) > 0) col++; // skip columns held by an active rowspan
+      const colspan = Math.max(1, cell.colspan ?? 1);
+      const rowspan = Math.max(1, cell.rowspan ?? 1);
+      placements.push({ row: r, col, colspan, rowspan, cell });
+      if (rowspan > 1) for (let k = 0; k < colspan; k++) rowspanRem[col + k] = rowspan;
+      col += colspan;
+    }
+    for (let c = 0; c < rowspanRem.length; c++) if ((rowspanRem[c] ?? 0) > 0) rowspanRem[c]--;
+  }
+  const gridWidth = placements.reduce((m, p) => Math.max(m, p.col + p.colspan), 1);
+  return { gridWidth, placements };
+}
+
 /** Parse a #rrggbb hex string into a pdf-lib Color, or undefined (→ default black). */
 function _hexColor(hex?: string): Color | undefined {
   if (!hex) return undefined;
@@ -75,6 +125,16 @@ export interface DocxToPdfOptions {
   lineHeight?: number;
   /** Points of vertical space after each paragraph. */
   paragraphGap?: number;
+  /** Inline images (extracted from the OPC, see {@link DocImage}), drawn after their block index. */
+  images?: DocImage[];
+}
+
+/** base64 → bytes (export path runs in the browser/jsdom; both have atob). */
+function _b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 export interface DocxToPdfResult {
@@ -151,12 +211,28 @@ export async function docModelToPdfBytes(
   const maxRowH = pageHeight - 2 * margin; // a row taller than this can't be paginated cleanly
 
   const doc = await PDFDocument.create();
-  const reg = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const ital = await doc.embedFont(StandardFonts.HelveticaOblique);
-  const boldItal = await doc.embedFont(StandardFonts.HelveticaBoldOblique);
-  const fontFor = (b?: boolean, i?: boolean): PDFFont =>
-    b && i ? boldItal : b ? bold : i ? ital : reg;
+  // Embed the 4 bold/italic variants of each of the 3 StandardFonts families up-front.
+  const E = (f: StandardFonts): Promise<PDFFont> => doc.embedFont(f);
+  const families: Record<StdFontFamily, [PDFFont, PDFFont, PDFFont, PDFFont]> = {
+    Helvetica: [
+      await E(StandardFonts.Helvetica), await E(StandardFonts.HelveticaBold),
+      await E(StandardFonts.HelveticaOblique), await E(StandardFonts.HelveticaBoldOblique),
+    ],
+    Times: [
+      await E(StandardFonts.TimesRoman), await E(StandardFonts.TimesRomanBold),
+      await E(StandardFonts.TimesRomanItalic), await E(StandardFonts.TimesRomanBoldItalic),
+    ],
+    Courier: [
+      await E(StandardFonts.Courier), await E(StandardFonts.CourierBold),
+      await E(StandardFonts.CourierOblique), await E(StandardFonts.CourierBoldOblique),
+    ],
+  };
+  const reg = families.Helvetica[0]; // default for markers / non-run text
+  /** Pick the variant: 0=regular 1=bold 2=italic 3=bold-italic, within the run's family. */
+  const fontFor = (family?: string, b?: boolean, i?: boolean): PDFFont => {
+    const v = families[resolveStandardFontFamily(family)];
+    return b && i ? v[3] : b ? v[1] : i ? v[2] : v[0];
+  };
 
   let hadUnsupportedChars = false;
   let page: PDFPage = doc.addPage([pageWidth, pageHeight]);
@@ -187,7 +263,7 @@ export async function docModelToPdfBytes(
     for (const run of p.runs) {
       const { text, replaced } = sanitizeWinAnsi(run.text ?? '');
       if (replaced) hadUnsupportedChars = true;
-      const font = fontFor(run.bold || headingBold, run.italic);
+      const font = fontFor(run.fontFamily, run.bold || headingBold, run.italic);
       const color = _hexColor(run.color);
       const underline = run.underline === true;
       const spaceW = font.widthOfTextAtSize(' ', ps);
@@ -247,9 +323,6 @@ export async function docModelToPdfBytes(
     return lines;
   };
 
-  const colCount = (t: DocTable): number =>
-    Math.max(1, ...t.rows.map(r => r.cells.length));
-
   /** Height a list of blocks occupies within `width` (no drawing) — for cell sizing. */
   const measureBlocks = (blocks: DocBlock[], width: number): number => {
     let h = 0;
@@ -260,17 +333,48 @@ export async function docModelToPdfBytes(
     return h;
   };
 
-  const measureTable = (t: DocTable, width: number): number => {
-    const colW = width / colCount(t);
-    let h = 0;
-    for (const row of t.rows) {
-      let rowH = minRowH;
-      for (const cell of row.cells) {
-        rowH = Math.max(rowH, measureBlocks(cell.blocks, colW - 2 * CELL_PAD) + 2 * CELL_PAD);
-      }
-      h += rowH;
+  /**
+   * Resolve a table's grid (colspan/rowspan), equal column width, and per-row heights. Pass 1
+   * sizes rows from the rowspan=1 cells; pass 2 tops up a rowspan cell's LAST spanned row when
+   * its content exceeds the spanned rows' summed height (taller content overflows — ceiling).
+   */
+  const tableLayout = (t: DocTable, width: number): { grid: CellGrid; colW: number; rowHeights: number[] } => {
+    const grid = buildCellGrid(t);
+    const colW = width / grid.gridWidth;
+    const rowHeights = t.rows.map(() => minRowH);
+    const cellH = (p: CellPlacement): number =>
+      measureBlocks(p.cell.blocks, p.colspan * colW - 2 * CELL_PAD) + 2 * CELL_PAD;
+    for (const p of grid.placements) {
+      if (p.rowspan === 1) rowHeights[p.row] = Math.max(rowHeights[p.row], cellH(p));
     }
-    return h;
+    for (const p of grid.placements) {
+      if (p.rowspan <= 1) continue;
+      let span = 0;
+      const last = Math.min(p.row + p.rowspan - 1, rowHeights.length - 1);
+      for (let r = p.row; r <= last; r++) span += rowHeights[r];
+      const need = cellH(p);
+      if (need > span) rowHeights[last] += need - span;
+    }
+    return { grid, colW, rowHeights };
+  };
+
+  const measureTable = (t: DocTable, width: number): number =>
+    tableLayout(t, width).rowHeights.reduce((s, h) => s + h, 0);
+
+  /** Draw all cell placements of a table whose row 0 top sits at absolute `topY`. */
+  const drawTablePlacements = (lay: { grid: CellGrid; colW: number; rowHeights: number[] }, xLeft: number, topY: number): void => {
+    const rowTop: number[] = [];
+    let cy = topY;
+    for (let r = 0; r < lay.rowHeights.length; r++) { rowTop[r] = cy; cy -= lay.rowHeights[r]; }
+    for (const p of lay.grid.placements) {
+      const x = xLeft + p.col * lay.colW;
+      const w = p.colspan * lay.colW;
+      let h = 0;
+      for (let k = 0; k < p.rowspan && p.row + k < lay.rowHeights.length; k++) h += lay.rowHeights[p.row + k];
+      const yTop = rowTop[p.row];
+      page.drawRectangle({ x, y: yTop - h, width: w, height: h, borderWidth: CELL_BORDER, borderColor: CELL_BORDER_COLOR });
+      drawBlocksInBand(p.cell.blocks, x + CELL_PAD, yTop - CELL_PAD, w - 2 * CELL_PAD);
+    }
   };
 
   /** Draw one wrapped line; its baseline sits at lineTopY−lineSize. Per-token color + underline. */
@@ -326,26 +430,9 @@ export async function docModelToPdfBytes(
 
   /** Draw a table within a band at absolute `topY` (cell-internal: no pagination). Returns end y. */
   const drawTableInBand = (t: DocTable, xLeft: number, topY: number, width: number): number => {
-    const cols = colCount(t);
-    const colW = width / cols;
-    let cy = topY;
-    for (const row of t.rows) {
-      let rowH = minRowH;
-      for (const cell of row.cells) {
-        rowH = Math.max(rowH, measureBlocks(cell.blocks, colW - 2 * CELL_PAD) + 2 * CELL_PAD);
-      }
-      for (let c = 0; c < cols; c++) {
-        const cx = xLeft + c * colW;
-        page.drawRectangle({
-          x: cx, y: cy - rowH, width: colW, height: rowH,
-          borderWidth: CELL_BORDER, borderColor: CELL_BORDER_COLOR,
-        });
-        const cell = row.cells[c];
-        if (cell) drawBlocksInBand(cell.blocks, cx + CELL_PAD, cy - CELL_PAD, colW - 2 * CELL_PAD);
-      }
-      cy -= rowH;
-    }
-    return cy;
+    const lay = tableLayout(t, width);
+    drawTablePlacements(lay, xLeft, topY);
+    return topY - lay.rowHeights.reduce((s, h) => s + h, 0);
   };
 
   /** Top-level paragraph: paginate per line. `marker` (or null) comes from the shared list state. */
@@ -362,35 +449,66 @@ export async function docModelToPdfBytes(
     y -= paraGap;
   };
 
-  /** Top-level table: paginate per ROW (a row that won't fit moves to a fresh page). */
+  /**
+   * Top-level table: paginate per ROW (a row that won't fit moves to a fresh page). Cells are
+   * placed via the colspan/rowspan grid. A rowspan cell is anchored at its START row with the
+   * precomputed summed height; a rowspan that straddles a page break is the documented ceiling
+   * (uncommon — most merged tables fit on a page or a fresh page).
+   */
   const drawTableFlow = (t: DocTable): void => {
-    const cols = colCount(t);
-    const colW = contentW / cols;
-    for (const row of t.rows) {
-      let rowH = minRowH;
-      for (const cell of row.cells) {
-        rowH = Math.max(rowH, measureBlocks(cell.blocks, colW - 2 * CELL_PAD) + 2 * CELL_PAD);
+    const { grid, colW, rowHeights } = tableLayout(t, contentW);
+    const byRow: CellPlacement[][] = t.rows.map(() => []);
+    for (const p of grid.placements) byRow[p.row].push(p);
+    for (let r = 0; r < t.rows.length; r++) {
+      // Move the row to a new page if it won't fit and CAN fit on a blank page.
+      if (y - rowHeights[r] < margin && rowHeights[r] <= maxRowH) newPage();
+      const yTop = y;
+      for (const p of byRow[r]) {
+        const x = margin + p.col * colW;
+        const w = p.colspan * colW;
+        let h = 0;
+        for (let k = 0; k < p.rowspan && r + k < rowHeights.length; k++) h += rowHeights[r + k];
+        page.drawRectangle({ x, y: yTop - h, width: w, height: h, borderWidth: CELL_BORDER, borderColor: CELL_BORDER_COLOR });
+        drawBlocksInBand(p.cell.blocks, x + CELL_PAD, yTop - CELL_PAD, w - 2 * CELL_PAD);
       }
-      // Move the whole row to a new page if it won't fit and CAN fit on a blank page.
-      if (y - rowH < margin && rowH <= maxRowH) newPage();
-      for (let c = 0; c < cols; c++) {
-        const cx = margin + c * colW;
-        page.drawRectangle({
-          x: cx, y: y - rowH, width: colW, height: rowH,
-          borderWidth: CELL_BORDER, borderColor: CELL_BORDER_COLOR,
-        });
-        const cell = row.cells[c];
-        if (cell) drawBlocksInBand(cell.blocks, cx + CELL_PAD, y - CELL_PAD, colW - 2 * CELL_PAD);
-      }
-      y -= rowH;
+      y -= rowHeights[r];
     }
     y -= paraGap;
   };
 
+  /** Embed + draw one inline image, scaled to fit the content width, paginated like a tall line. */
+  const drawImage = async (img: DocImage): Promise<void> => {
+    let embedded;
+    try {
+      const data = _b64ToBytes(img.dataB64);
+      embedded = img.mime === 'image/png' ? await doc.embedPng(data) : await doc.embedJpg(data);
+    } catch {
+      return; // a corrupt/unsupported image is skipped, never fatal to the export
+    }
+    let w = img.widthPt > 0 ? img.widthPt : embedded.width;
+    let h = img.heightPt > 0 ? img.heightPt : embedded.height;
+    if (w > contentW) { h *= contentW / w; w = contentW; } // never overflow the text column
+    const maxH = pageHeight - 2 * margin;
+    if (h > maxH) { w *= maxH / h; h = maxH; }
+    if (y - h < margin) newPage();
+    page.drawImage(embedded, { x: margin, y: y - h, width: w, height: h });
+    y -= h + paraGap;
+  };
+
+  // Index inline images by the block they follow (default []).
+  const imagesByBlock = new Map<number, DocImage[]>();
+  for (const im of opts.images ?? []) {
+    const arr = imagesByBlock.get(im.blockIndex) ?? [];
+    arr.push(im);
+    imagesByBlock.set(im.blockIndex, arr);
+  }
+
   const topList = makeListState();
-  for (const block of model.blocks) {
+  for (let bi = 0; bi < model.blocks.length; bi++) {
+    const block = model.blocks[bi];
     if (isDocTable(block)) drawTableFlow(block);
     else drawParagraphFlow(block, topList.markerFor(block));
+    for (const im of imagesByBlock.get(bi) ?? []) await drawImage(im);
   }
 
   const bytes = await doc.save();

@@ -96,5 +96,7 @@ describe('SigningHandler.sign (real Chrome)', () => {
 
     // The .p12 bytes must be scrubbed (zeroed) after signing.
     expect(p12.every((b) => b === 0)).toBe(true);
-  });
+    // 60s: node-forge RSA-2048 keygen + CMS is CPU-bound and flakes past the default 30s under
+    // full-suite contention (passes in isolation; mirrors the jsdom node-forge timeout bump).
+  }, 60_000);
 });

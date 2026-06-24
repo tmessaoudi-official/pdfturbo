@@ -34,6 +34,7 @@ describe('createDocxEditorController', () => {
     const handle: DocxEditorHandle = {
       save: () => saved,
       getModel: () => ({ blocks: [], paragraphs: [] }),
+      getImages: () => [],
       view: {} as never,
       destroy: vi.fn(),
     };
@@ -61,6 +62,7 @@ describe('createDocxEditorController', () => {
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]),
       getModel: () => ({ blocks: paras, paragraphs: paras }),
+      getImages: () => [],
       view: {} as never,
       destroy: vi.fn(),
     };
@@ -96,6 +98,7 @@ describe('createDocxEditorController', () => {
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]),
       getModel: () => ({ blocks: [], paragraphs: [] }),
+      getImages: () => [],
       view: {} as never,
       toolbarDom,
       destroy: vi.fn(() => toolbarDom.remove()),
@@ -118,6 +121,7 @@ describe('createDocxEditorController', () => {
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]),
       getModel: () => ({ blocks: [...tables], paragraphs: [] }),
+      getImages: () => [],
       view: {} as never,
       destroy: vi.fn(),
     };
@@ -136,6 +140,7 @@ describe('createDocxEditorController', () => {
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]),
       getModel: () => ({ blocks: [{ kind: 'table', rows: [] }], paragraphs: [] }),
+      getImages: () => [],
       view: {} as never,
       destroy: vi.fn(),
     };
@@ -152,6 +157,7 @@ describe('createDocxEditorController', () => {
   it('Escape closes the modal', async () => {
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]), getModel: () => ({ blocks: [], paragraphs: [] }),
+      getImages: () => [],
       view: {} as never, destroy: vi.fn(),
     };
     const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download: vi.fn() });
@@ -167,6 +173,7 @@ describe('createDocxEditorController', () => {
   it('clicking the backdrop (outside the panel) closes the modal; clicking the panel does not', async () => {
     const handle: DocxEditorHandle = {
       save: () => new Uint8Array([1]), getModel: () => ({ blocks: [], paragraphs: [] }),
+      getImages: () => [],
       view: {} as never, destroy: vi.fn(),
     };
     const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download: vi.fn() });

@@ -198,8 +198,9 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
   const onExportPdf = (): void => {
     if (!handle) return;
     const model = handle.getModel();
+    const images = handle.getImages();
     import('./docxToPdf')
-      .then(({ docModelToPdfBytes }) => docModelToPdfBytes(model))
+      .then(({ docModelToPdfBytes }) => docModelToPdfBytes(model, { images }))
       .then(({ bytes, hadUnsupportedChars }) => {
         download(bytes, pdfName(currentName));
         notify('docxEditor.pdfExported', 'info');

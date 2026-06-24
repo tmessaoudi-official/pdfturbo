@@ -92,3 +92,53 @@ describe('docModelToPdfBytes (real Chrome, #1d)', () => {
     expect(text.indexOf('Widget')).toBeLessThan(text.indexOf('After table'));
   });
 });
+
+// Feature 5 — fonts + merged cells + images.
+describe('docModelToPdfBytes fidelity (Feature 5, real Chrome)', () => {
+  // 2×2 opaque red PNG (base64).
+  const dataB64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD8GO2jAAAAD0lEQVR42mP8z8BQz0AEAAUDAQGc8sJEAAAAAElFTkSuQmCC';
+
+  async function page1Ops(bytes: Uint8Array): Promise<number[]> {
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+    const p = await doc.getPage(1);
+    const list = await p.getOperatorList();
+    return Array.from(list.fnArray as number[]);
+  }
+
+  it('embeds an inline image passed via { images } (paintImageXObject)', async () => {
+    const para = { runs: [{ text: 'Figure below:' }] };
+    const { bytes } = await docModelToPdfBytes(
+      { blocks: [para], paragraphs: [para] },
+      { images: [{ blockIndex: 0, dataB64, mime: 'image/png', widthPt: 80, heightPt: 80 }] },
+    );
+    const ops = await page1Ops(bytes);
+    const painted = ops.includes(pdfjsLib.OPS.paintImageXObject)
+      || ops.includes(pdfjsLib.OPS.paintImageXObjectRepeat)
+      || ops.includes(pdfjsLib.OPS.paintInlineImageXObject);
+    expect(painted).toBe(true);
+  });
+
+  it('renders a colspan=2 header spanning both columns (reading order preserved)', async () => {
+    const headerCell = { blocks: [{ runs: [{ text: 'Merged Header' }] }], colspan: 2 };
+    const t = {
+      kind: 'table' as const,
+      rows: [
+        { cells: [headerCell] },
+        { cells: [{ blocks: [{ runs: [{ text: 'Left' }] }] }, { blocks: [{ runs: [{ text: 'Right' }] }] }] },
+      ],
+    };
+    const { bytes } = await docModelToPdfBytes({ blocks: [t], paragraphs: [] });
+    const text = await textOf(bytes);
+    expect(text).toContain('Merged Header');
+    expect(text).toContain('Left');
+    expect(text).toContain('Right');
+    expect(text.indexOf('Merged Header')).toBeLessThan(text.indexOf('Left'));
+  });
+
+  it('renders a serif run without error and stays selectable', async () => {
+    const para = { runs: [{ text: 'Serif sample', fontFamily: 'Times New Roman' }] };
+    const { bytes } = await docModelToPdfBytes({ blocks: [para], paragraphs: [para] });
+    expect(await textOf(bytes)).toContain('Serif sample');
+  });
+});

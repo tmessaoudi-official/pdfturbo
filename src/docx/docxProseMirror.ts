@@ -27,6 +27,7 @@ import { buildFindReplaceBar, type FindReplaceBar } from './findReplaceBar';
 import { cleanWordHtml } from './wordPaste';
 import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, isDocTable, parseDocModel, applyBlocks, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
+import { extractDocImages, type DocImage } from './docxImages';
 import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
 
 const m = docxSchema.marks;
@@ -224,6 +225,8 @@ export interface DocxEditorHandle {
   save(): Uint8Array;
   /** The current editable model — used by PDF export. */
   getModel(): DocModel;
+  /** Inline images extracted from the OPC (read-only, for PDF export — NOT in the editable model). */
+  getImages(): DocImage[];
   /** The underlying ProseMirror view (for wiring toolbars). */
   view: EditorView;
   /** The rich-text toolbar element (the controller mounts it above the editor). */
@@ -252,6 +255,9 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
   const opc = openOpc(bytes);
   const originalXml = getDocumentXml(opc);
   const model = parseDocModel(originalXml, buildNumberingMap(opc));
+  // Inline images are extracted once from the OPC, kept OUT of the editable model (the in-place
+  // save would corrupt the w:drawing), and exposed read-only for the PDF export.
+  const images = extractDocImages(opc.files);
 
   // Forward-declared so the Mod-f/Mod-h keymap (built at state creation, before the
   // view+bar exist) can open the bar once it's wired up.
@@ -340,6 +346,9 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     },
     getModel(): DocModel {
       return docToDocModel(view.state.doc);
+    },
+    getImages(): DocImage[] {
+      return images;
     },
     destroy(): void {
       view.dom.removeEventListener('keydown', _onKeydown);

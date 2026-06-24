@@ -32,5 +32,7 @@ describe('certGen (real Chrome)', () => {
     });
     expect(res.signerCommonName).toBe('Browser Signer');
     expect(res.bytes.byteLength).toBeGreaterThan(pdf.byteLength);
-  });
+    // 60s: in-browser RSA-2048 keygen + sign is CPU-bound; the default 30s flakes under
+    // full-suite contention (passes in isolation). Mirrors the jsdom node-forge bump.
+  }, 60_000);
 });

@@ -928,11 +928,27 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   per-run **color**. Color is a full vertical slice: `DocRun.color?` (`#rrggbb`) ↔ OPC `w:color@w:val`
   (`docModel.ts` parse/`buildRun`, added to `MANAGED_RPR`) ↔ ProseMirror `color` mark (`docxSchema.ts`
   `cssColorToHex` + `docxProseMirror.ts` map) ↔ a color picker in `docxToolbar.ts` ↔ `_hexColor` in the PDF render.
-  **Ceiling / deferred:** per-run formatting beyond b/i/u/size/color, tables/lists EDITING, styles UI; the PDF
-  export still renders ONLY the editable model — tables/images/font-faces/headers/doc-page-size are NOT rendered
-  (they survive the `.docx` save path as opaque XML but aren't in the model); non-WinAnsi scripts → `?`
-  (font-embedding is the future path); Approach B (docx-preview raster, high-fidelity image PDF) is the
-  documented future alternative. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-20-docx-to-pdf*`. Guards:
+  **DOCX→PDF fidelity (Feature 5, 2026-06-24) — fonts + merged cells + images NOW rendered:**
+  (a) **Real font faces** — `resolveStandardFontFamily(family)` maps `DocRun.fontFamily` → Times (serif) /
+  Courier (mono) / Helvetica (sans/unknown); all 12 non-symbol StandardFonts embedded up-front, `fontFor(family,
+  bold,italic)` picks the 4-way variant (was: everything Helvetica). (b) **Merged-cell tables** — pure
+  `buildCellGrid(t)` resolves the existing `DocCell.colspan`/`rowspan` (the 3c/3d shape, continuation cells
+  ABSENT) onto a grid (walks rows skipping rowspan-occupied columns); `tableLayout` computes equal column widths
+  + per-row heights (rowspan cells top up their LAST spanned row), and the renderer draws colspan cells `N*colW`
+  wide and rowspan cells spanning the summed row heights (was: equal `max(cells)` columns → merged tables
+  misrendered). (c) **Images** — `src/docx/docxImages.ts` `extractDocImages(opc.files)` reads `word/media` via
+  `w:drawing`→`a:blip/@r:embed`→rels, sniffs PNG/JPEG, base64s + reads `wp:extent` EMU→pt; **kept DECOUPLED from
+  the editable model** (the in-place `buildRun` save rewrites runs as text `w:r` — routing image bytes through
+  the model would corrupt the `w:drawing`), exposed read-only via `DocxEditorHandle.getImages()` and passed to
+  `docModelToPdfBytes(model, { images })`, which embeds (`embedPng`/`embedJpg`) + interleaves each image after its
+  top-level `blockIndex`. **The save path + PM round-trip are UNTOUCHED → zero cardinal-rule regression.** Default
+  `images:[]` → byte-identical for image-less docs. **Ceiling:** per-column `w:tblGrid` widths (equal columns
+  only), a rowspan cell straddling a page break, images nested in table cells / inline-with-text / non-PNG-JPEG,
+  per-run formatting beyond b/i/u/size/color/font-family, image positional drift after heavy editing (index-based),
+  non-WinAnsi scripts → `?` (true face embedding is the future path); Approach B (docx-preview raster) remains the
+  documented high-fidelity future alternative. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-docx-to-pdf-fidelity*`.
+  Guards: `tests/docx/docxImages.test.ts` + the `resolveStandardFontFamily`/`buildCellGrid` cases in
+  `docxToPdf.test.ts` + the image/colspan/serif cases in `tests/browser/docx-to-pdf.browser.test.ts`. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-20-docx-to-pdf*`. Guards:
   `tests/docx/{docxEditor,docxEditorController,docModelRichText,opcParts,docxSchema,docxMapping,docxToolbar,docxToPdf}.test.ts`
   (jsdom), `tests/browser/docx-editor.browser.test.ts` + `tests/browser/docx-to-pdf.browser.test.ts`
   + `tests/browser/docx-toolbar.browser.test.ts` (real Chrome: toolbar drives bold+H1+bullet via genuine

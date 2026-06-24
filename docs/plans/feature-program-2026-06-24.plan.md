@@ -20,6 +20,12 @@
   design fork with no clear answer (→ AskUserQuestion).
 - [2026-06-24] AGREED (user): after all 5 are built → **user tests manually → then a fresh deep QA sweep.**
 
+## Decisions Log (continued)
+- [2026-06-24] AGREED (user): **Feature 5 = FULL scope incl. images.** Real font faces (Times/Courier/
+  Helvetica mapping) + merged-cell (colspan/rowspan) table rendering + **image rendering** — which needs a
+  DocModel expansion (parse `word/media` + `w:drawing`→`r:embed`, carry image bytes on the model, embed in
+  pdf-lib). Bigger/riskier single feature; user accepted the cost.
+
 ## Sequence / status
 - [x] Feature 1 — overlay-text find & replace — **ALREADY DONE** (`3b24c99`, `src/core/overlayReplace.ts`;
       find-bar Replace/Replace-all, undoable, visual-confirmed). Discovered on the 2026-06-24-#2 resume —
@@ -36,9 +42,12 @@
       pure helpers in `arabicOverlay.ts`; stroke/Tc/Tz applied to shaped RTL Arabic in both the
       pure-Arabic and mixed-bidi paths; byte-identical no-attr path. Full gate green; visual-confirmed
       `qa-shots/f4-arabic/` — stroke/wide/spaced Arabic all render).
-- [ ] Feature 5 — DOCX→PDF fidelity (tables/images/fonts) — partial today (headings/lists/colors done;
-      tables/images/font-faces are the ceiling to push)  ← **NEXT (largest)**
-- [ ] User manual test
+- [x] Feature 5 — DOCX→PDF fidelity (fonts + merged cells + images) — **DONE** (FULL scope per user).
+      `resolveStandardFontFamily` (Times/Courier/Helvetica) + `buildCellGrid` colspan/rowspan tables +
+      `docxImages.extractDocImages` decoupled image channel → `docModelToPdfBytes({ images })`. Save path
+      UNTOUCHED (cardinal rule). Full gate green; flaky signing-keygen timeout bumped to 60s; visual-confirmed
+      `qa-shots/f5-docx-pdf/` (heading + serif/mono fonts + colspan header + rowspan cell + embedded image).
+- [ ] User manual test  ← **ALL 5 FEATURES DONE; over to the user**
 - [ ] Deep QA sweep
 
 ## Resume (after compact)
