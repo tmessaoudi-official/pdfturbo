@@ -15,11 +15,19 @@ export interface CsToken {
   value?: number;
   /** Parsed children (array tokens only). */
   items?: CsToken[];
+  /** Offset into the decoded source where this token begins (F3 byte-splice). */
+  byteStart?: number;
+  /** Offset just past this token's last byte in the decoded source (F3). */
+  byteEnd?: number;
 }
 
 export interface CsOp {
   operator: string;
   operands: CsToken[];
+  /** Byte span of the whole op (first operand → operator) in the original source (F3).
+   *  Used by the hybrid byte-splice write-back to replace exactly this op's bytes. */
+  byteStart?: number;
+  byteEnd?: number;
 }
 
 export interface TextOpInfo {

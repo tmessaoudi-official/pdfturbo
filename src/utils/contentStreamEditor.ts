@@ -175,28 +175,31 @@ export function tokenizeContentStream(src: string): CsToken[] {
     if (ch === '%') {
       const start = i;
       while (i < src.length && src[i] !== '\n' && src[i] !== '\r') i++;
-      tokens.push({ type: 'comment', raw: src.slice(start, i) });
+      tokens.push({ type: 'comment', raw: src.slice(start, i), byteStart: start, byteEnd: i });
       continue;
     }
 
     if (ch === '(') {
-      tokens.push({ type: 'string', raw: readLiteralString() });
+      const s = i;
+      tokens.push({ type: 'string', raw: readLiteralString(), byteStart: s, byteEnd: i });
       continue;
     }
 
     if (ch === '<') {
       if (src[i + 1] === '<') {
-        tokens.push({ type: 'dict', raw: readUntilBalanced('<<', '>>') });
+        const s = i;
+        tokens.push({ type: 'dict', raw: readUntilBalanced('<<', '>>'), byteStart: s, byteEnd: i });
       } else {
         const start = i;
         while (i < src.length && src[i] !== '>') i++;
         i++; // consume '>'
-        tokens.push({ type: 'hexstring', raw: src.slice(start, i) });
+        tokens.push({ type: 'hexstring', raw: src.slice(start, i), byteStart: start, byteEnd: i });
       }
       continue;
     }
 
     if (ch === '[') {
+      const arrStart = i;
       i++; // consume '['
       const items: CsToken[] = [];
       // Recursive parse until matching ']' at this level
@@ -213,6 +216,8 @@ export function tokenizeContentStream(src: string): CsToken[] {
         type: 'array',
         raw: `[${items.map(t => t.raw).join(' ')}]`,
         items,
+        byteStart: arrStart,
+        byteEnd: i,
       });
       continue;
     }
@@ -221,7 +226,7 @@ export function tokenizeContentStream(src: string): CsToken[] {
       const start = i;
       i++;
       while (i < src.length && isRegular(src[i])) i++;
-      tokens.push({ type: 'name', raw: src.slice(start, i) });
+      tokens.push({ type: 'name', raw: src.slice(start, i), byteStart: start, byteEnd: i });
       continue;
     }
 
@@ -230,7 +235,7 @@ export function tokenizeContentStream(src: string): CsToken[] {
       i++;
       consumeNumberBody();
       const raw = src.slice(start, i);
-      tokens.push({ type: 'number', raw, value: parseFloat(raw) });
+      tokens.push({ type: 'number', raw, value: parseFloat(raw), byteStart: start, byteEnd: i });
       continue;
     }
 
@@ -242,41 +247,45 @@ export function tokenizeContentStream(src: string): CsToken[] {
       // Inline image: pass through raw up to and including the whitespace-delimited
       // 'EI' terminator (F7 — a bare indexOf would match "EI" inside binary data).
       const end = findInlineImageEnd(src, i);
-      tokens.push({ type: 'inline-image', raw: src.slice(start, end) });
+      tokens.push({ type: 'inline-image', raw: src.slice(start, end), byteStart: start, byteEnd: end });
       i = end;
     } else {
-      tokens.push({ type: 'operator', raw: word });
+      tokens.push({ type: 'operator', raw: word, byteStart: start, byteEnd: i });
     }
   }
 
   // Inner single-token parser used by array parsing (shares `i` via closure)
   function tokenizeOne(): CsToken | null {
     const c = src[i];
-    if (c === '(') return { type: 'string', raw: readLiteralString() };
+    if (c === '(') {
+      const s = i;
+      const raw = readLiteralString();
+      return { type: 'string', raw, byteStart: s, byteEnd: i };
+    }
     if (c === '<') {
       const start = i;
       while (i < src.length && src[i] !== '>') i++;
       i++;
-      return { type: 'hexstring', raw: src.slice(start, i) };
+      return { type: 'hexstring', raw: src.slice(start, i), byteStart: start, byteEnd: i };
     }
     if (c === '/') {
       const start = i;
       i++;
       while (i < src.length && isRegular(src[i])) i++;
-      return { type: 'name', raw: src.slice(start, i) };
+      return { type: 'name', raw: src.slice(start, i), byteStart: start, byteEnd: i };
     }
     if (/[0-9+\-.]/.test(c)) {
       const start = i;
       i++;
       consumeNumberBody();
       const raw = src.slice(start, i);
-      return { type: 'number', raw, value: parseFloat(raw) };
+      return { type: 'number', raw, value: parseFloat(raw), byteStart: start, byteEnd: i };
     }
     // operator-like word inside an array (rare) — consume to stay safe
     const start = i;
     i++;
     while (i < src.length && isRegular(src[i])) i++;
-    return { type: 'operator', raw: src.slice(start, i) };
+    return { type: 'operator', raw: src.slice(start, i), byteStart: start, byteEnd: i };
   }
 
   return tokens;
@@ -291,29 +300,39 @@ export function serializeTokens(tokens: CsToken[]): string {
 export function groupOps(tokens: CsToken[]): CsOp[] {
   const ops: CsOp[] = [];
   let operands: CsToken[] = [];
+  let spanStart: number | undefined;
   for (const tok of tokens) {
     if (tok.type === 'operator') {
-      ops.push({ operator: tok.raw, operands });
+      ops.push({
+        operator: tok.raw,
+        operands,
+        byteStart: operands.length ? spanStart : tok.byteStart,
+        byteEnd: tok.byteEnd,
+      });
       operands = [];
+      spanStart = undefined;
     } else if (tok.type === 'inline-image') {
-      ops.push({ operator: 'INLINE_IMAGE', operands: [tok] });
+      ops.push({ operator: 'INLINE_IMAGE', operands: [tok], byteStart: tok.byteStart, byteEnd: tok.byteEnd });
       operands = [];
+      spanStart = undefined;
     } else if (tok.type !== 'comment') {
+      if (operands.length === 0) spanStart = tok.byteStart;
       operands.push(tok);
     }
   }
   return ops;
 }
 
+/** Serialize a single grouped op back to a content-stream fragment. */
+export function serializeOp(op: CsOp): string {
+  return op.operator === 'INLINE_IMAGE'
+    ? op.operands[0].raw
+    : [...op.operands.map(t => t.raw), op.operator].join(' ');
+}
+
 /** Serialize a grouped ops list back to a content stream string. */
 export function serializeOps(ops: CsOp[]): string {
-  return ops
-    .map(op =>
-      op.operator === 'INLINE_IMAGE'
-        ? op.operands[0].raw
-        : [...op.operands.map(t => t.raw), op.operator].join(' ')
-    )
-    .join('\n');
+  return ops.map(serializeOp).join('\n');
 }
 
 export type Matrix = [number, number, number, number, number, number];

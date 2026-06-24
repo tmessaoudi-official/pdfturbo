@@ -39,6 +39,7 @@ import {
   addDecorationAt,
   stringToContentBytes,
   ctmStackUnderflows,
+  serializeOp,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -2573,5 +2574,51 @@ describe('F13 — q/Q underflow refuses decoration-resize', () => {
     });
     expect(r).not.toBe(false);
     expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBe(28);
+  });
+});
+
+// ── F3 (Task 3) — token/op byte offsets + serializeOp extraction ────────────────
+describe('byte offsets + serializeOp', () => {
+  it('number/string/hexstring/name/operator tokens slice back to their raw', () => {
+    const src = '10 5 100 2 re f BT /F1 12 Tf (Hi) Tj <48656C> Tj ET';
+    for (const t of tokenizeContentStream(src)) {
+      expect(typeof t.byteStart).toBe('number');
+      expect(typeof t.byteEnd).toBe('number');
+      expect(src.slice(t.byteStart, t.byteEnd)).toBe(t.raw);
+    }
+  });
+
+  it('ops carry a byte span covering operands + operator', () => {
+    const src = '50 297 28 1.2 re f';
+    const grouped = groupOps(tokenizeContentStream(src));
+    const re = grouped.find(o => o.operator === 're');
+    expect(re).toBeDefined();
+    expect(re?.byteStart).toBe(0);
+    expect(src.slice(re?.byteStart, re?.byteEnd)).toBe('50 297 28 1.2 re');
+  });
+
+  it('an operator with no operands spans just the operator', () => {
+    const src = 'BT (Hi) Tj ET';
+    const grouped = groupOps(tokenizeContentStream(src));
+    const et = grouped.find(o => o.operator === 'ET');
+    expect(src.slice(et?.byteStart, et?.byteEnd)).toBe('ET');
+  });
+
+  it('serializeOp equals the per-op piece of serializeOps', () => {
+    const grouped = groupOps(tokenizeContentStream('(Hi) Tj 1 0 0 1 5 5 cm'));
+    expect(serializeOp(grouped[0])).toBe('(Hi) Tj');
+    expect(serializeOp(grouped[1])).toBe('1 0 0 1 5 5 cm');
+    expect(grouped.map(serializeOp).join('\n')).toBe(serializeOps(grouped));
+  });
+
+  it('an inline-image token slices back to its raw and serializeOp round-trips it', () => {
+    const src = 'BI /W 2 /H 2 /CS /G /BPC 8 ID  EI';
+    const tokens = tokenizeContentStream(src);
+    const img = tokens.find(t => t.type === 'inline-image');
+    expect(img).toBeDefined();
+    expect(src.slice(img?.byteStart, img?.byteEnd)).toBe(img?.raw);
+    const grouped = groupOps(tokens);
+    const op = grouped.find(o => o.operator === 'INLINE_IMAGE');
+    expect(serializeOp(op as NonNullable<typeof op>)).toBe(img?.raw);
   });
 });
