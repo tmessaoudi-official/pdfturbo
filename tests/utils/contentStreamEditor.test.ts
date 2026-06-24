@@ -2483,3 +2483,44 @@ describe('stringToContentBytes (#9 latent-corruption guard)', () => {
     spy.mockRestore();
   });
 });
+
+// ── F10 — tilted text refuses decoration-resize ─────────────────────────────────
+// A sheared/rotated text matrix makes the reported baseline + derived size
+// unreliable, so an axis-aligned underline would be mis-matched/mis-sized. The
+// edit itself still proceeds; only the decoration geometry is left untouched.
+describe('F10 — tilted text refuses decoration-resize', () => {
+  /** "Hello" + thin underline rect, but drawn with a SHEARED text matrix (b = 0.3). */
+  async function makeTiltedUnderlinedPdf(): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 400]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText('seed', { x: 0, y: 0, size: 1, font });
+    const ctx = doc.context;
+    const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+    const fontDict = ctx.lookup(pageRes.get(PDFName.of('Font'))) as PDFDict;
+    const helvVal = fontDict.get([...fontDict.entries()][0][0]);
+    if (!helvVal) throw new Error('font missing');
+    fontDict.set(PDFName.of('F1'), helvVal);
+    const content =
+      `BT /F1 12 Tf 1 0.3 0 1 50 300 Tm (Hello) Tj ET\n` +
+      `0 0 0 rg 50 297 28 1.2 re f`;
+    const cb = new Uint8Array(content.length);
+    for (let i = 0; i < content.length; i++) cb[i] = content.charCodeAt(i) & 0xff;
+    page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(cb)));
+    return doc.save();
+  }
+
+  it('flags a sheared text matrix as tilted (the gate trigger)', () => {
+    const found = locateTextOps(ops('BT /F1 12 Tf 1 0.3 0 1 50 300 Tm (Hello) Tj ET'));
+    expect(found.find(t => t.operator === 'Tj')?.tilted).toBe(true);
+  });
+
+  it('leaves the underline rect width unchanged when the text matrix is tilted', async () => {
+    const doc = await PDFDocument.load(await makeTiltedUnderlinedPdf());
+    const r = await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Hi', 5, undefined, undefined, {
+      adjustDecorations: true,
+    });
+    expect(r).not.toBe(false); // the text edit still proceeds
+    expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBe(28); // NOT resized
+  });
+});

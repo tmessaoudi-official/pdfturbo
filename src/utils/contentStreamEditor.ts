@@ -2041,6 +2041,12 @@ function prepareDecorationResize(
   // match an unrelated nearby rule. Refuse to mutate geometry — leave the rule as-is
   // (safe no-op) rather than resize/erase the wrong one.
   if (target.textRise) return null;
+  // F10: a sheared/rotated/non-uniformly-scaled text matrix (textMatrix × CTM) makes the
+  // reported baseline + derived font size unreliable, so an axis-aligned decoration rule
+  // would be mis-matched/mis-sized. Refuse to touch geometry (the text edit still
+  // proceeds). Mirrors the F5 mirror + F6 text-rise gates; reuses the already-set
+  // `tilted` flag (locateTextOps) that addDecorationAt already gates on.
+  if (target.tilted) return null;
   // Decode the original text now (before any path mutates the op) to measure its width.
   const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
   const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
