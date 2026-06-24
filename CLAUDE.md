@@ -18,8 +18,13 @@ npm run test:browser # vitest run in REAL Chrome (@vitest/browser + Playwright) 
 npm run test:watch   # vitest watch mode
 ```
 
-**Before every commit**: `npm run type-check && npm run lint && npm run test` — this is
-exactly what CI runs; a failure pushed to `master` blocks the deploy.
+**Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
+PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here
+goes green-local / red-CI (it has happened): `npm audit --audit-level=high` → `npm run ocr:assets`
+→ type-check → lint → `npm run test` (jsdom) → `npm run test:browser` (real Chrome) →
+**`npm run test:coverage:export`** (the M1 #14 branch-coverage gate on `src/export/pdfElementRenderer.ts`,
+threshold 25% — adding an uncovered branch to `renderText` can drop below it and FAIL the build even
+when every test passes) → `npm run build`. Any of these failing on `master` blocks the deploy.
 
 **Browser harness** (`vitest.browser.config.ts`): real-browser regression tests for things jsdom
 cannot exercise — canvas/pdf.js rasterization, pointer drag, image (`commonObjs`/`VideoFrame`)
