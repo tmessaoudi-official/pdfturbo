@@ -42,6 +42,36 @@
   displayed/canvas space, which conflicts with vector-overlays-on-top without canvas renderers for
   every overlay type, OR requires a verified content-space redaction transform for rotated pages).
 
+## Redaction redesign — root-cause CONFIRMED (2026-06-24, understand phase)
+[Verified via temp browser probe, since deleted] The rasterizer's VECTOR overlay path
+(`buildPageOverlays`→`renderElementToPdfLib`) mis-places **every** overlay type on rotated pages —
+a green test shape at the secret's displayed-AABB coords fully covers at 0° (red=0) but MISSES at
+90° (red=28560); content-space coords also miss. So it is NOT redaction-specific — it's a
+**pre-existing latent bug**: shapes/images/highlights on a rotated page that also has a redaction
+are already mis-placed in export today. The OLD canvas burn (displayed space, `el.x*SCALE` on the
+rotated viewport) was the ONLY rotation-correct renderer in the rasterizer.
+
+**Mechanism — CORRECTED [Verified, probe2]:** the earlier "rasterizer double-rotation" hypothesis is
+WRONG. A second probe rendered the SAME green shape (at the secret's `inverseTransformPoint`
+displayed-AABB) through the NORMAL `buildPageOverlays` path AND the rasterizer at 90° — BOTH gave
+**identical** mis-placement (green=12648, red=28560). So the rasterizer is not the culprit;
+`buildPageOverlays` itself mis-places. `transformPoint`/`inverseTransformPoint` ARE clean inverses
+at 90° (both swap x/y), so the error is in `anchorForCenter` / the swapDims dimension handling for a
+rotated rect — and it affects EVERY export path, suggesting a **general pre-existing "overlay on a
+rotated page" placement bug**, not redaction-specific. (The old canvas burn sidestepped it by drawing
+in displayed/canvas space directly.)
+
+**Open question blocking the fix:** does the EDITOR's own export actually mis-place a shape a user
+draws on a genuinely-rotated page, or is the `inverseTransformPoint`-based test placement an artifact
+that only the canvas burn matched? `blockers-redaction` + `bates-rotation` pass, so SOME rotated
+placement is correct. RESUME (dedicated session): establish ground truth — in the real app, load a
+multi-page PDF (blank-page rotation didn't visibly apply), rotate a page, draw a shape over a known
+mark, export via `assemblePdfBytes`, and check whether it lands where the editor showed it. If the
+editor mis-places → fix `anchorForCenter`/swapDims in the shared path (broad rotation pixel guards).
+If the editor is correct → the redaction reorder is production-correct and only `blockers-redaction`'s
+placement convention (tuned to the old canvas burn) needs updating to match. Then re-apply the
+reverted Increment-3 array-order reorder. Touches the shared path used by EVERY export — guard widely.
+
 ## Formal Plan
 
 ### Increment 1 — mobile drag fix (Fix 1 + Fix 2) — ONE commit
