@@ -171,7 +171,9 @@
     "subscript": "Indice",
     "list": "Liste",
     "bulletList": "Liste à puces",
-    "numberedList": "Liste numérotée"
+    "numberedList": "Liste numérotée",
+    "linkLabel": "URL du lien",
+    "linkPlaceholder": "https://…"
   },
   "findbar": {
     "placeholder": "Rechercher dans la page…",

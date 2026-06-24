@@ -171,7 +171,9 @@
     "subscript": "منخفض",
     "list": "قائمة",
     "bulletList": "قائمة نقطية",
-    "numberedList": "قائمة مرقمة"
+    "numberedList": "قائمة مرقمة",
+    "linkLabel": "رابط URL",
+    "linkPlaceholder": "https://…"
   },
   "findbar": {
     "placeholder": "البحث في الصفحة…",

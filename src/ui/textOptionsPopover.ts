@@ -91,6 +91,11 @@ export class TextOptionsPopover {
     // Feature 2 — bullet / numbered lists (toggle: re-click the active kind clears it).
     ui.bulletListBtn?.addEventListener('click', () => svc.toggleList('bullet'));
     ui.numberedListBtn?.addEventListener('click', () => svc.toggleList('ordered'));
+
+    // Feature 3 — hyperlink. Empty input clears the link (setLinkUrl sanitises the value).
+    ui.textLinkInput?.addEventListener('change', () =>
+      svc.setLinkUrl(ui.textLinkInput?.value ?? null),
+    );
   }
 
   open(): void {
@@ -106,6 +111,7 @@ export class TextOptionsPopover {
       if (ui.textStrokeWidth) ui.textStrokeWidth.value = String(te.strokeWidth ?? 0);
       if (ui.charSpacingInput) ui.charSpacingInput.value = String(te.charSpacing ?? 0);
       if (ui.horizontalScaleInput) ui.horizontalScaleInput.value = String(te.horizontalScale ?? 100);
+      if (ui.textLinkInput) ui.textLinkInput.value = te.linkUrl ?? '';
     }
     this._renderBgSwatches(); // refresh recent colors that may have changed since last open
     ui.textOptionsModal.classList.add('active');

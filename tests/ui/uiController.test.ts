@@ -80,7 +80,7 @@ function seedDOM(): void {
     // Slice 2 — popover controls
     'textStrokeWidth', 'charSpacingInput', 'horizontalScaleInput',
     'superscriptBtn', 'subscriptBtn',
-    'bulletListBtn', 'numberedListBtn',
+    'bulletListBtn', 'numberedListBtn', 'textLinkInput',
     'colorSwatchRow',
   ];
   ids.forEach(id => el('div', id));

@@ -873,3 +873,41 @@ describe('FormattingService lists', () => {
     expect(dst.list).toBe('ordered');
   });
 });
+
+// ── links (Feature 3) ────────────────────────────────────────────────────────
+
+describe('FormattingService links', () => {
+  it('setLinkUrl sets a sanitized URL and clears on empty/null, undoable', () => {
+    const { svc, te, history } = makeTextCtx();
+    svc.setLinkUrl('example.com');
+    expect(te.linkUrl).toBe('https://example.com');
+    svc.setLinkUrl(null);
+    expect(te.linkUrl).toBeUndefined();
+    history.undo();
+    expect(te.linkUrl).toBe('https://example.com');
+  });
+
+  it('setLinkUrl rejects a javascript: URL (leaves no link)', () => {
+    const { svc, te } = makeTextCtx();
+    svc.setLinkUrl('javascript:alert(1)');
+    expect(te.linkUrl).toBeUndefined();
+  });
+
+  it('is a no-op without a text selection', () => {
+    const ctx = makeCtx(null);
+    const svc = new FormattingService(ctx);
+    expect(() => svc.setLinkUrl('https://x.com')).not.toThrow();
+    expect(ctx.rebuildElementLayer).not.toHaveBeenCalled();
+  });
+
+  it('format painter does NOT carry the link (URL is per-element data)', () => {
+    const src = new TextElement(0, 0, 'p', { linkUrl: 'https://a.com' });
+    const dst = new TextElement(0, 0, 'p');
+    const { svc, setSelected } = makeSelectableCtx([src, dst]);
+    setSelected(src);
+    svc.copyTextStyle();
+    setSelected(dst);
+    svc.pasteTextStyle();
+    expect(dst.linkUrl).toBeUndefined();
+  });
+});

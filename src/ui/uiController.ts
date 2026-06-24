@@ -251,6 +251,7 @@ export interface AppDOMRefs {
   subscriptBtn:          HTMLButtonElement;
   bulletListBtn:         HTMLButtonElement;
   numberedListBtn:       HTMLButtonElement;
+  textLinkInput:         HTMLInputElement;
   colorSwatchRow:        HTMLElement;
   textBgSwatchRow:       HTMLElement;
 }
@@ -503,6 +504,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       subscriptBtn:          document.getElementById('subscriptBtn')          as HTMLButtonElement,
       bulletListBtn:         document.getElementById('bulletListBtn')         as HTMLButtonElement,
       numberedListBtn:       document.getElementById('numberedListBtn')       as HTMLButtonElement,
+      textLinkInput:         document.getElementById('textLinkInput')         as HTMLInputElement,
       colorSwatchRow:        document.getElementById('colorSwatchRow')        as HTMLElement,
       textBgSwatchRow:       document.getElementById('textBgSwatchRow')       as HTMLElement,
     };

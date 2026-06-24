@@ -28,8 +28,11 @@
       `TextElement.list` + bake in `renderText` + editor marker gutter + `FormattingService`
       setListType/toggleList + Text-popover buttons + i18n. Full gate green; visual-confirmed
       `qa-shots/f2-lists/`).
-- [ ] Feature 3 — overlay-text links
-- [ ] Feature 4 — Arabic overlay stroke/Tc/Tz
+- [x] Feature 3 — overlay-text links — **DONE** (`linkUrl.ts` sanitiser + `TextElement.linkUrl` +
+      `/Link` URI annotation baked in `renderText` + editor 🔗 badge/dotted-underline +
+      `FormattingService.setLinkUrl` + Text-popover URL input + i18n. Full gate green;
+      visual+functional confirmed `qa-shots/f3-links/` — real clickable annotation in the export).
+- [ ] Feature 4 — Arabic overlay stroke/Tc/Tz  ← **NEXT**
 - [ ] Feature 5 — DOCX→PDF fidelity (tables/images/fonts) — partial today (headings/lists/colors done;
       tables/images/font-faces are the ceiling to push)
 - [ ] User manual test

@@ -12,12 +12,37 @@ import { isArabicText } from '../utils/flowDoc';
 import { drawArabicLine } from './arabicOverlay';
 import { drawStyledTextLine, hasAdvancedText, effectiveLineWidth, justifyWordSpacing } from './styledText';
 import { applyListMarkers } from '../utils/listMarkers';
+import { sanitizeLinkUrl } from '../utils/linkUrl';
+import { PDFName, PDFArray, PDFNumber, PDFString } from '@cantoo/pdf-lib';
 
 /** Hard cap on baked comment text (#QA-2026-06-23 P3 #11) — raised from 200; when the text
  *  exceeds the cap it is truncated WITH a trailing ellipsis so the loss is visible, not silent. */
 export const COMMENT_TEXT_CAP = 2000;
 export function clampCommentText(text: string, cap = COMMENT_TEXT_CAP): string {
   return text.length > cap ? text.slice(0, cap - 1) + '…' : text;
+}
+
+/**
+ * Append a borderless `/Link` annotation with a `/URI` action over `rect` (PDF page coords,
+ * bottom-left origin) to the page's `/Annots`. Mirrors the `incrementalSigner.ts` idiom.
+ * The URL is assumed already sanitised by the caller (see `sanitizeLinkUrl`).
+ */
+// oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFPage/PDFContext internals are untyped here
+function addUriLinkAnnotation(page: any, ctx: any, rect: { x: number; y: number; w: number; h: number }, url: string): void {
+  const action = ctx.obj({ S: PDFName.of('URI'), URI: PDFString.of(url) });
+  const rectArr = PDFArray.withContext(ctx);
+  for (const n of [rect.x, rect.y, rect.x + rect.w, rect.y + rect.h]) rectArr.push(PDFNumber.of(n));
+  const border = PDFArray.withContext(ctx);
+  for (const n of [0, 0, 0]) border.push(PDFNumber.of(n));
+  const annot = ctx.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('Link') });
+  annot.set(PDFName.of('Rect'), rectArr);
+  annot.set(PDFName.of('Border'), border);
+  annot.set(PDFName.of('A'), action);
+  const ref = ctx.register(annot);
+  const annotsKey = PDFName.of('Annots');
+  const existing = page.node.get(annotsKey);
+  if (existing instanceof PDFArray) existing.push(ref);
+  else { const arr = PDFArray.withContext(ctx); arr.push(ref); page.node.set(annotsKey, arr); }
 }
 
 export interface PdfRenderCtx {
@@ -236,6 +261,18 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
         }
       }
     }
+  }
+
+  // Hyperlink (Feature 3): add a borderless /Link annotation over the box. The URL is
+  // re-sanitised here (defence-in-depth — a crafted saved blob could bypass the UI service).
+  // The rect uses the same rotation-safe AABB anchor as the background fill; element self-
+  // rotation falls back to the axis-aligned bbox (PDF /Link rects can't rotate — ceiling).
+  const safeUrl = te.linkUrl ? sanitizeLinkUrl(te.linkUrl) : null;
+  if (safeUrl) {
+    const lew = swapDims ? (te.height || 0) : (te.width || 0);
+    const leh = swapDims ? (te.width || 0) : (te.height || 0);
+    const lc = rectAnchor(te.x, te.y, te.width, te.height || 0);
+    addUriLinkAnnotation(page, pdfDoc.context, { x: lc.x, y: lc.y, w: lew, h: leh }, safeUrl);
   }
 }
 

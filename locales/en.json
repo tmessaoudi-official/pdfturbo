@@ -171,7 +171,9 @@
     "subscript": "Subscript",
     "list": "List",
     "bulletList": "Bullet list",
-    "numberedList": "Numbered list"
+    "numberedList": "Numbered list",
+    "linkLabel": "Link URL",
+    "linkPlaceholder": "https://…"
   },
   "findbar": {
     "placeholder": "Search in page…",

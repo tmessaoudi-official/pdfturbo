@@ -31,6 +31,7 @@ export interface TextOptions {
   baselineShift?: 'super' | 'sub';
   direction?: TextDirection;
   list?: ListType;
+  linkUrl?: string;
 }
 
 export class TextElement extends PDFElement {
@@ -53,6 +54,7 @@ export class TextElement extends PDFElement {
   baselineShift?: 'super' | 'sub';
   direction: TextDirection;
   list?: ListType;
+  linkUrl?: string;
 
   constructor(x: number, y: number, pageId: string, options: TextOptions = {}) {
     super('text', x, y, options.width ?? 200, options.height ?? 30, pageId);
@@ -74,6 +76,7 @@ export class TextElement extends PDFElement {
     this.baselineShift = options.baselineShift;
     this.direction = options.direction ?? 'auto';
     this.list = options.list;
+    this.linkUrl = options.linkUrl;
   }
 
   render(_container: HTMLElement, canvasOffset: { left: number; top: number }, scale = 1): HTMLDivElement {
@@ -103,6 +106,18 @@ export class TextElement extends PDFElement {
 
     div.appendChild(input);
     if (gutter) div.appendChild(gutter);
+
+    // Link affordance (Feature 3): mark the box as a hyperlink with a 🔗 badge + tooltip.
+    // The text is not auto-restyled — the user controls colour/underline via the toolbar.
+    if (this.linkUrl) {
+      div.classList.add('text-element--linked');
+      div.title = this.linkUrl;
+      const badge = document.createElement('span');
+      badge.className = 'text-link-badge';
+      badge.textContent = '🔗';
+      badge.style.pointerEvents = 'none';
+      div.appendChild(badge);
+    }
     div.appendChild(this.createRotationHandle());
     div.appendChild(this.createControls());
     div.appendChild(this.createResizeHandle());
@@ -203,6 +218,7 @@ export class TextElement extends PDFElement {
       ...(this.horizontalScale !== undefined ? { horizontalScale: this.horizontalScale } : {}),
       ...(this.baselineShift !== undefined ? { baselineShift: this.baselineShift } : {}),
       ...(this.direction !== 'auto' ? { direction: this.direction } : {}),
-      ...(this.list ? { list: this.list } : {}) };
+      ...(this.list ? { list: this.list } : {}),
+      ...(this.linkUrl ? { linkUrl: this.linkUrl } : {}) };
   }
 }

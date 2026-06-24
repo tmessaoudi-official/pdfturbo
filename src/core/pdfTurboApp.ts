@@ -874,6 +874,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   setDirection(dir: TextDirection): void { this._formattingService.setDirection(dir); this._formattingService.updateFormattingToolbar(); }
   toggleDirection(): void { this._formattingService.toggleDirection(); this._formattingService.updateFormattingToolbar(); }
   toggleListType(kind: ListType): void { this._formattingService.toggleList(kind); this._formattingService.updateFormattingToolbar(); }
+  setLinkUrl(raw: string | null): void { this._formattingService.setLinkUrl(raw); this._formattingService.updateFormattingToolbar(); }
   transformCase(mode: TextCaseMode): void { this._formattingService.transformCase(mode); }
   clearFormatting(): void { this._formattingService.clearFormatting(); }
   setFontSize(size: number): void { this._formattingService.setFontSize(size); }

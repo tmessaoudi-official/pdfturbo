@@ -42,6 +42,7 @@ export class ElementFactory {
         horizontalScale: typeof data['horizontalScale'] === 'number' ? data['horizontalScale'] : undefined,
         baselineShift: data['baselineShift'] === 'super' || data['baselineShift'] === 'sub' ? data['baselineShift'] : undefined,
         list: data['list'] === 'bullet' || data['list'] === 'ordered' ? data['list'] : undefined,
+        linkUrl: typeof data['linkUrl'] === 'string' ? data['linkUrl'] : undefined,
       });
       el.text = data['text'] || '';
       return applyBase(el);

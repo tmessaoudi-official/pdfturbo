@@ -1,5 +1,6 @@
 import { TextElement, resolveDirection, type TextAlign, type TextDirection } from '../elements/textElement';
 import type { ListType } from '../utils/listMarkers';
+import { sanitizeLinkUrl } from '../utils/linkUrl';
 import { ShapeElement } from '../elements/shapeElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd, type HistoryManager } from './historyManager';
@@ -361,6 +362,22 @@ export class FormattingService {
     if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
     const te = this._ctx.selectedElement as TextElement;
     this.setListType(te.list === kind ? null : kind);
+  }
+
+  /**
+   * Set (or clear) the hyperlink URL on the selected text element. The raw input is
+   * sanitised — only http/https/mailto (or a bare domain upgraded to https) survives;
+   * an empty input or an unsafe scheme clears the link. Undoable.
+   */
+  setLinkUrl(raw: string | null): void {
+    if (!this._ctx.selectedElement || this._ctx.selectedElement.type !== 'text') return;
+    const te = this._ctx.selectedElement as TextElement;
+    const next = raw === null ? undefined : (sanitizeLinkUrl(raw) ?? undefined);
+    const before = { linkUrl: te.linkUrl };
+    te.linkUrl = next;
+    this._ctx.historyManager.record(new MoveResizeCmd(this._ctx.elements, te, before, { linkUrl: next }));
+    this._ctx.rebuildElementLayer();
+    this._ctx.autosave();
   }
 
   transformCase(mode: TextCaseMode): void {

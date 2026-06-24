@@ -35,6 +35,7 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
         <button id="subscriptBtn"   class="fmt-btn">x₂</button>
         <button id="bulletListBtn"   class="fmt-btn">• List</button>
         <button id="numberedListBtn" class="fmt-btn">1. List</button>
+        <input type="url" id="textLinkInput" />
       </div>
     </div>
   `;
@@ -72,6 +73,7 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
     subscriptBtn:          g('subscriptBtn')          as HTMLButtonElement,
     bulletListBtn:         g('bulletListBtn')         as HTMLButtonElement,
     numberedListBtn:       g('numberedListBtn')       as HTMLButtonElement,
+    textLinkInput:         g('textLinkInput')         as HTMLInputElement,
   };
 
   const svc = {
@@ -89,6 +91,7 @@ function makePopover(): { pop: TextOptionsPopover; modal: HTMLElement; ui: Recor
     setHorizontalScale:  vi.fn(),
     setBaselineShift:    vi.fn(),
     toggleList:          vi.fn(),
+    setLinkUrl:          vi.fn(),
   };
 
   const ctx: ITextOptionsContext = {
@@ -302,6 +305,14 @@ describe('TextOptionsPopover', () => {
       pop.setupListeners();
       (ui.numberedListBtn as HTMLButtonElement).click();
       expect(svc.toggleList).toHaveBeenCalledWith('ordered');
+    });
+
+    it('textLinkInput change calls setLinkUrl with the entered value', () => {
+      const { pop, ui, svc } = makePopover();
+      pop.setupListeners();
+      (ui.textLinkInput as HTMLInputElement).value = 'https://example.com';
+      ui.textLinkInput.dispatchEvent(new Event('change'));
+      expect(svc.setLinkUrl).toHaveBeenCalledWith('https://example.com');
     });
 
     it('open() syncs textStrokeWidth and charSpacingInput from selected TextElement', () => {

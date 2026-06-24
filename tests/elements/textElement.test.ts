@@ -158,4 +158,39 @@ describe('TextElement direction (Slice 2 RTL)', () => {
       expect(div.querySelector('.text-list-gutter')).toBeNull();
     });
   });
+
+  describe('linkUrl (Feature 3)', () => {
+    it('omits linkUrl from toJSON when unset', () => {
+      const te = new TextElement(0, 0, 'p1', {});
+      expect('linkUrl' in te.toJSON()).toBe(false);
+    });
+    it('includes linkUrl in toJSON when set and round-trips through the factory', () => {
+      const te = new TextElement(0, 0, 'p1', { linkUrl: 'https://example.com' });
+      te.text = 'go';
+      expect(te.toJSON()['linkUrl']).toBe('https://example.com');
+      expect((ElementFactory.fromJSON(te.toJSON()) as TextElement).linkUrl).toBe('https://example.com');
+    });
+    it('ignores a non-string persisted linkUrl', () => {
+      const te = new TextElement(0, 0, 'p1', {});
+      te.text = 'x';
+      const json = te.toJSON() as Record<string, unknown>;
+      json['linkUrl'] = 42;
+      expect((ElementFactory.fromJSON(json) as TextElement).linkUrl).toBeUndefined();
+    });
+    it('renders a link badge and a title when linkUrl is set', () => {
+      const te = new TextElement(0, 0, 'p1', { linkUrl: 'https://example.com' });
+      te.text = 'go';
+      const div = te.render(document.createElement('div'), { left: 0, top: 0 }, 1);
+      expect(div.classList.contains('text-element--linked')).toBe(true);
+      expect(div.title).toBe('https://example.com');
+      expect(div.querySelector('.text-link-badge')).toBeTruthy();
+    });
+    it('renders no link badge when linkUrl is unset', () => {
+      const te = new TextElement(0, 0, 'p1', {});
+      te.text = 'x';
+      const div = te.render(document.createElement('div'), { left: 0, top: 0 }, 1);
+      expect(div.querySelector('.text-link-badge')).toBeNull();
+      expect(div.classList.contains('text-element--linked')).toBe(false);
+    });
+  });
 });

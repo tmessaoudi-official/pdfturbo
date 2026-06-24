@@ -521,8 +521,8 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   uiController}.test.ts`, `tests/browser/text-toolbar-slice2.browser.test.ts` (real Chrome: pdf.js OPS-38
   `setTextRenderingMode` present in styled / ABSENT in plain → catches a silent regression to `drawText`).
   **Backlog (Slice 3+):** stroke/Tc/Tz on Arabic overlay, RTL direction-aware controls, per-run/multi-run rich text
-  (ceiling), links, true-edit of these attrs. (find&replace on overlay text DONE `3b24c99`;
-  bullet/numbered lists DONE — see below.)
+  (ceiling), true-edit of these attrs. (find&replace on overlay text DONE `3b24c99`; bullet/numbered lists +
+  overlay links DONE — see below.)
   **Overlay bullet / numbered lists (Feature 2, 2026-06-24):** `TextElement.list?: 'bullet' | 'ordered'`
   (OPTIONAL, **no `SCHEMA_VERSION` bump**; `toJSON` omits when unset, `elementFactory` reads with a type
   guard → legacy blobs restore). One `\n`-line = one item (the overlay bake never auto-wraps). Pure
@@ -545,6 +545,28 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,uiController}.test.ts`,
   `tests/browser/text-list.browser.test.ts` (real Chrome: bullet/ordered export → pdf.js text has `•`/`1.`/`2.`,
   plain control has none). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-overlay-text-lists*`.
+  **Overlay text links (Feature 3, 2026-06-24):** `TextElement.linkUrl?: string` (OPTIONAL, **no
+  `SCHEMA_VERSION` bump**; `toJSON` omits when unset, `elementFactory` reads `typeof === 'string'`). The whole
+  text box becomes a clickable hyperlink. **Security:** `src/utils/linkUrl.ts` `sanitizeLinkUrl(raw)` allows ONLY
+  `http:`/`https:`/`mailto:` (a bare domain → `https://`); `javascript:`/`data:`/`vbscript:`/`file:`/empty → null
+  (blocks `/URI`-action injection). Sanitised at BOTH the service (`FormattingService.setLinkUrl`) AND the bake
+  (defence-in-depth vs a crafted saved blob). EXPORT: `pdfElementRenderer.renderText` appends a borderless `/Link`
+  annotation (`/A << /S /URI /URI (url) >>`, the `incrementalSigner.ts` `/Annots` idiom via a static
+  `@cantoo/pdf-lib` `PDFName`/`PDFArray`/`PDFNumber`/`PDFString` import + `addUriLinkAnnotation`) over the box rect
+  (same rotation-safe `rectAnchor`+swap-dims AABB as the background fill). Survives BOTH export paths (raster path
+  runs the same `renderText` on the same page object); byte-identical when unset/invalid; `pdfSanitizer` preserves
+  `/URI` so a link survives sanitize-and-download. Editor: a 🔗 badge (`.text-link-badge`) + dotted-underline
+  (`.text-element--linked` in `editor.css`) + the URL as the box `title`; text is NOT auto-restyled (user controls
+  colour/underline). `setLinkUrl` is a `MoveResizeCmd` (undoable); it is **NOT** in the format painter or
+  `clearFormatting` (a URL is per-element data, like `text`) — cleared via the popover's empty input. UI = a URL
+  input (`#textLinkInput`) in the Text ⋮ popover; i18n `formatting.{linkLabel,linkPlaceholder}` (ar [Unverified]).
+  No feature flag. **Ceiling (v1):** per-run/partial-text links (needs multi-run rich text), internal GoTo links,
+  rotated-element link rect is the axis-aligned bbox (PDF `/Link` rects can't rotate), and the lossy
+  "flatten-to-images" compress path drops the annotation (it drops text too). Guards: `tests/utils/linkUrl.test.ts`,
+  `tests/elements/textElement.test.ts` (model + badge/title), `tests/core/formattingService.test.ts`,
+  `tests/ui/textOptionsPopover.test.ts`, `tests/browser/text-link.browser.test.ts` (real Chrome: export → pdf.js
+  `getAnnotations` has a Link with the sanitized `url`; a `javascript:` URL set directly → no annotation).
+  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-overlay-text-links*`.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order
