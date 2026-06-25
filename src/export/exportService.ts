@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
@@ -1126,6 +1126,19 @@ export class ExportService {
       flowDoc.pages.push(flowPage);
     }
     assignHeadings(flowDoc);
+    // B3: attach the source PDF outline (bookmarks) so the DOCX writer can emit a
+    // Word TOC field. v1 uses the FIRST source PDF carrying a non-empty outline
+    // (multi-source merge = v1b). No outline → field stays unset → byte-identical.
+    try {
+      for (const [, src] of documentModel.sourcePdfs) {
+        const raw = (await src.doc.getOutline()) as Array<{ title?: string; items?: unknown[] }> | null;
+        const items = raw?.length ? flattenOutline(raw as Parameters<typeof flattenOutline>[0]) : [];
+        if (items.length) { flowDoc.outline = items; break; }
+      }
+    } catch { /* no outline available → no TOC, export unchanged */ }
+    // B5: hoist a running header/footer (repeated top/bottom band across pages)
+    // into doc.header/footer and drop the inline duplicates. No band → no-op.
+    applyRepeatedBands(flowDoc);
     return flowDoc;
   }
 

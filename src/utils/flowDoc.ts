@@ -238,8 +238,41 @@ export interface FlowPage {
   tables?: FlowTable[];
 }
 
+/** A flattened PDF outline (bookmark) entry: title + 1-based nesting level. */
+export interface FlowOutlineItem {
+  title: string;
+  level: number;
+}
+
 export interface FlowDoc {
   pages: FlowPage[];
+  /**
+   * B3 — the source PDF's document outline (bookmarks), flattened. Present only
+   * when the source carries a non-empty outline; the DOCX writer then emits a Word
+   * Table-of-Contents field (referencing the detected headings). Absent → no TOC →
+   * byte-identical export.
+   */
+  outline?: FlowOutlineItem[];
+  /** B5 — running header text hoisted from a repeated top-band paragraph (Word Header). */
+  header?: string;
+  /** B5 — running footer text hoisted from a repeated bottom-band paragraph (Word Footer). */
+  footer?: string;
+}
+
+/**
+ * B3 — flatten pdf.js's nested `getOutline()` tree into `{title, level}[]` in
+ * document order, 1-based level. Whitespace-only titles are skipped (their
+ * children are still recursed, one level deeper). Pure → jsdom-testable.
+ */
+interface RawOutlineNode { title?: string; items?: RawOutlineNode[] }
+export function flattenOutline(raw: RawOutlineNode[], level = 1): FlowOutlineItem[] {
+  const out: FlowOutlineItem[] = [];
+  for (const node of raw ?? []) {
+    const title = (node.title ?? '').trim();
+    if (title) out.push({ title, level });
+    if (node.items?.length) out.push(...flattenOutline(node.items, level + 1));
+  }
+  return out;
 }
 
 /**
@@ -353,6 +386,11 @@ export function extractPsName(internalId: string): string {
 export function detectColumnSplit(
   words: ReadonlyArray<{ x: number; width: number; y?: number }>,
   pageWidth: number,
+  // B6: restrict the gutter search to a sub-column region [min,max]. Default
+  // {0,pageWidth} → byte-identical to the original full-page single cut. The
+  // inner-20–80% zone and the 5%-min-gap threshold are taken relative to the
+  // region width, so recursion on a narrower column scales correctly.
+  bounds: { min: number; max: number } = { min: 0, max: pageWidth },
 ): number | null {
   if (words.length < 4) return null;
 
@@ -368,9 +406,10 @@ export function detectColumnSplit(
     const e = Math.min(bins - 1, Math.ceil((w.x + w.width) / BIN));
     for (let i = s; i <= e; i++) covered[i] = 1;
   }
-  // Search only in the inner 20–80% zone to avoid false positives at page margins.
-  const left = Math.floor(pageWidth * 0.2 / BIN);
-  const right = Math.ceil(pageWidth * 0.8 / BIN);
+  const regionW = bounds.max - bounds.min;
+  // Search only in the inner 20–80% zone (of the region) to avoid margin false positives.
+  const left = Math.floor((bounds.min + regionW * 0.2) / BIN);
+  const right = Math.ceil((bounds.min + regionW * 0.8) / BIN);
   let bestLen = 0, bestMid = -1, gapStart = -1;
   for (let i = left; i <= right; i++) {
     if (covered[i] === 0) {
@@ -385,12 +424,114 @@ export function detectColumnSplit(
     const len = right - gapStart + 1;
     if (len > bestLen) { bestLen = len; bestMid = Math.round((gapStart + right) / 2) * BIN; }
   }
-  if (bestLen * BIN < pageWidth * 0.05) return null;
+  if (bestLen * BIN < regionW * 0.05) return null;
 
   // Require words on both sides of the split — a gap with nothing on one side is a margin, not a column.
   const leftCount = words.filter(w => w.x + w.width / 2 < bestMid).length;
   const rightCount = words.filter(w => w.x + w.width / 2 >= bestMid).length;
   return leftCount > 0 && rightCount > 0 ? bestMid : null;
+}
+
+/** Depth cap for recursive column splitting: depth-0 cut + one further cut per
+ * half → up to ~4 columns (covers the common 3-column case). Higher depths
+ * over-split magazine layouts, so we stop here. */
+const COLUMN_MAX_DEPTH = 2;
+
+/**
+ * B6 — recursively split words into columns in left-to-right reading order.
+ * Applies {@link detectColumnSplit} to each region; a region that yields no
+ * clean gutter (or the depth cap) becomes one column group. A 1- or 2-column
+ * page returns exactly what the prior single-cut path did (the depth-0 cut is
+ * byte-identical with the default bounds), so output is unchanged unless a
+ * genuine additional gutter exists. Pure → jsdom-testable.
+ */
+export function splitColumns<T extends { x: number; width: number; y?: number }>(
+  words: T[],
+  pageWidth: number,
+  bounds: { min: number; max: number } = { min: 0, max: pageWidth },
+  depth = 0,
+): T[][] {
+  const split = depth < COLUMN_MAX_DEPTH ? detectColumnSplit(words, pageWidth, bounds) : null;
+  if (split === null) return [words];
+  const leftWords = words.filter(w => w.x + w.width / 2 < split);
+  const rightWords = words.filter(w => w.x + w.width / 2 >= split);
+  return [
+    ...splitColumns(leftWords, pageWidth, { min: bounds.min, max: split }, depth + 1),
+    ...splitColumns(rightWords, pageWidth, { min: split, max: bounds.max }, depth + 1),
+  ];
+}
+
+/**
+ * B5 — detect a running header/footer: a paragraph that recurs in the top
+ * (header) or bottom (footer) y-band across most pages. Returns the
+ * representative text to hoist into a Word Header/Footer, or {} if none.
+ *
+ * Conservative on purpose (the no-false-positive guard — hoisting genuine body
+ * text would DELETE content): needs ≥3 pages, ≥60% recurrence, a tight band
+ * (top/bottom 12%), and digit-normalized matching so per-page page numbers still
+ * collapse to one band. Pure → jsdom-testable.
+ */
+const _BAND_HEADER = 0.88, _BAND_FOOTER = 0.12, _BAND_MIN_FRAC = 0.6;
+const _normBand = (s: string) => s.normalize('NFKC').replace(/\d+/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const _inHeaderBand = (y: number, h: number) => y >= h * _BAND_HEADER;
+const _inFooterBand = (y: number, h: number) => y <= h * _BAND_FOOTER;
+const _paraText = (par: FlowParagraph) => par.runs.map(r => r.text).join('');
+
+export function detectRepeatedBands(pages: FlowPage[]): { header?: string; footer?: string } {
+  if (pages.length < 3) return {};
+  const need = Math.ceil(pages.length * _BAND_MIN_FRAC);
+  const norm = _normBand;
+  const scan = (inBand: (y: number, h: number) => boolean, isMoreExtreme: (y: number, best: number) => boolean): string | undefined => {
+    const counts = new Map<string, number>();
+    const repr = new Map<string, string>();
+    for (const p of pages) {
+      let best: FlowParagraph | undefined;
+      for (const par of p.paragraphs) {
+        if (par.y === undefined || !inBand(par.y, p.height)) continue;
+        if (!best || isMoreExtreme(par.y, best.y ?? 0)) best = par;
+      }
+      if (!best) continue;
+      const text = _paraText(best);
+      const key = norm(text);
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      if (!repr.has(key)) repr.set(key, text);
+    }
+    let bestKey: string | undefined, bestN = 0;
+    for (const [k, n] of counts) if (n >= need && n > bestN) { bestKey = k; bestN = n; }
+    return bestKey ? repr.get(bestKey) : undefined;
+  };
+  const header = scan(_inHeaderBand, (y, b) => y > b); // topmost
+  const footer = scan(_inFooterBand, (y, b) => y < b); // bottommost
+  const res: { header?: string; footer?: string } = {};
+  if (header) res.header = header;
+  if (footer) res.footer = footer;
+  return res;
+}
+
+/**
+ * B5 — detect running header/footer (via {@link detectRepeatedBands}), set
+ * `doc.header`/`doc.footer`, AND remove the hoisted band paragraph from each page
+ * so it is not also repeated inline. Mutates `doc`. No band found → no-op →
+ * byte-identical export. Only the band paragraph whose normalized text matches the
+ * detected header/footer is removed (minimal scope — never touches body text).
+ */
+export function applyRepeatedBands(doc: FlowDoc): void {
+  const bands = detectRepeatedBands(doc.pages);
+  if (!bands.header && !bands.footer) return;
+  const hKey = bands.header ? _normBand(bands.header) : null;
+  const fKey = bands.footer ? _normBand(bands.footer) : null;
+  if (bands.header) doc.header = bands.header;
+  if (bands.footer) doc.footer = bands.footer;
+  for (const p of doc.pages) {
+    p.paragraphs = p.paragraphs.filter(par => {
+      if (par.y === undefined) return true;
+      const key = _normBand(_paraText(par));
+      if (hKey && key === hKey && _inHeaderBand(par.y, p.height)) return false;
+      if (fKey && key === fKey && _inFooterBand(par.y, p.height)) return false;
+      return true;
+    });
+  }
 }
 
 // Matches leading list markers: unambiguous unicode bullets or dash/asterisk, then whitespace.
@@ -461,6 +602,28 @@ const _ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 /** True when the string contains any Arabic-script codepoint. */
 export function isArabicText(s: string): boolean {
   return _ARABIC_RE.test(s);
+}
+
+/**
+ * B7 — expand the Latin presentation-form ligatures (U+FB00–U+FB06: ﬀ ﬁ ﬂ ﬃ ﬄ
+ * ﬅ ﬆ) that many PDFs encode as single glyphs back to their ASCII letters, so the
+ * DOCX renders normally and word-search matches ("file", not "ﬁle").
+ *
+ * Deliberately a TARGETED map, NOT `normalize('NFKC')`: blanket NFKC also folds
+ * CJK full-width forms, superscript/subscript digits, and other compatibility
+ * characters we must NOT alter on the Latin path. A string with no FB0x codepoint
+ * is returned byte-identical (the byte-identical-when-inactive invariant). The
+ * long-s ligatures (ﬅ/ﬆ) fold to "st" for searchability rather than the strict
+ * U+017F long-s NFKC form.
+ */
+const _LATIN_LIGATURES: Record<string, string> = {
+  'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl',
+  'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st',
+};
+export function foldLatinLigatures(s: string): string {
+  // Fast path: no Latin-ligature codepoint → return the original reference.
+  if (!/[ﬀ-ﬆ]/.test(s)) return s;
+  return s.replace(/[ﬀ-ﬆ]/g, m => _LATIN_LIGATURES[m]);
 }
 
 /**
@@ -1057,7 +1220,7 @@ export function reconstructPage(
         if (cx >= ln.x0 && cx <= ln.x1 && cy >= ln.y0 && cy <= ln.y1) { linkUrl = ln.url; break; }
       }
     }
-    words.push({ text: it.str, x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl, underline, strikethrough });
+    words.push({ text: foldLatinLigatures(it.str), x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl, underline, strikethrough });
   }
 
   // G9: lattice-table detection. Only when BOTH axes carry grid rules. The text
@@ -1072,19 +1235,10 @@ export function reconstructPage(
   const regions = detected.map(d => d.region);
   const flowWords = regions.length ? words.filter(w => !regions.some(r => _itemInRegion(w, r))) : words;
 
-  const split = detectColumnSplit(flowWords, pageWidth);
-  let paragraphs: FlowParagraph[];
-  if (split !== null) {
-    const mid = split;
-    const leftWords  = flowWords.filter(w => w.x + w.width / 2 < mid);
-    const rightWords = flowWords.filter(w => w.x + w.width / 2 >= mid);
-    paragraphs = [
-      ...reconstructColumn(leftWords, fonts, pageWidth),
-      ...reconstructColumn(rightWords, fonts, pageWidth),
-    ];
-  } else {
-    paragraphs = reconstructColumn(flowWords, fonts, pageWidth);
-  }
+  // B6: recursive column split (≤2 columns is byte-identical to the prior single
+  // cut; a genuine 3rd gutter now yields a 3rd column in reading order).
+  const columns = splitColumns(flowWords, pageWidth);
+  const paragraphs: FlowParagraph[] = columns.flatMap(colWords => reconstructColumn(colWords, fonts, pageWidth));
 
   const margins = computeMargins(flowWords, pageWidth, pageHeight);
   const page: FlowPage = { width: pageWidth, height: pageHeight, paragraphs };

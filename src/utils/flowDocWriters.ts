@@ -291,8 +291,13 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun, HeadingLevel, AlignmentType,
     LevelFormat, LineRuleType, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom,
     TextWrappingType, UnderlineType,
-    Table, TableRow, TableCell, WidthType, BorderStyle,
+    Table, TableRow, TableCell, WidthType, BorderStyle, TableOfContents, Header, Footer,
   } = docx;
+
+  // B5: running header/footer hoisted from repeated page bands. Built once, applied
+  // to every section. Undefined when no band was detected → sections unchanged.
+  const docHeaders = doc.header ? { default: new Header({ children: [new Paragraph({ children: [new TextRun({ text: doc.header })] })] }) } : undefined;
+  const docFooters = doc.footer ? { default: new Footer({ children: [new Paragraph({ children: [new TextRun({ text: doc.footer })] })] }) } : undefined;
 
   // Visible single-line border for ruled tables (G9). 4 = quarter-point units →
   // ~0.5pt hairline; SINGLE style auto on all sides + insideH/insideV.
@@ -516,6 +521,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
         },
       },
       children: [...bodyChildren, ...imageChildren],
+      ...(docHeaders ? { headers: docHeaders } : {}),
+      ...(docFooters ? { footers: docFooters } : {}),
     };
   });
 
@@ -540,7 +547,24 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
       }
     : undefined;
 
-  const document = new Document({ sections, numbering: numberingConfig });
+  // B3: prepend a Word Table-of-Contents FIELD when the source PDF carried an
+  // outline AND ≥1 heading was detected for it to reference. It's a field (not
+  // copied text) → non-duplicating, page-numbered, clickable after Word updates
+  // fields. No outline or no heading → no extra section → byte-identical export.
+  const hasHeading = doc.pages.some(p => p.paragraphs.some(par => par.heading > 0));
+  const sectionsWithToc = doc.outline?.length && hasHeading
+    ? [
+        {
+          children: [
+            new Paragraph({ children: [new TextRun({ text: 'Contents', bold: true, size: 32 })] }),
+            new TableOfContents('Contents', { hyperlink: true, headingStyleRange: '1-6' }),
+          ],
+        },
+        ...sections,
+      ]
+    : sections;
+
+  const document = new Document({ sections: sectionsWithToc, numbering: numberingConfig });
   return Packer.toBase64String(document);
 }
 
