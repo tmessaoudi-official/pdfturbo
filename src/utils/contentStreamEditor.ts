@@ -396,6 +396,9 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let strokeColor: string | undefined;
   let lineWidth: number | undefined;
   let extGStateName: string | undefined;
+  let dashPattern: string | undefined;
+  let lineCap: number | undefined;
+  let lineJoin: number | undefined;
   let tfOpIndex: number | undefined;
   let colorOpIndex: number | undefined;
   // CTM stack — tracks q/Q nesting and cm transforms
@@ -432,6 +435,19 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         // its fill/stroke alpha. Last-seen wins (mirrors fill/stroke-color tracking,
         // which is likewise not q/Q-restored — a documented Path-3 limitation).
         extGStateName = op.operands[0]?.raw?.replace(/^\//, '') || undefined;
+        break;
+      case 'd': {
+        // A6a: dash array + phase for outline text. An EMPTY array ('[]') is the
+        // solid default → leave undefined so plain text stays byte-identical.
+        const arr = op.operands[0]?.raw ?? '';
+        dashPattern = arr.replace(/\s/g, '') === '[]' ? undefined : op.operands.map(t => t.raw).join(' ');
+        break;
+      }
+      case 'J':
+        lineCap = num(op.operands[0]) || undefined; // cap 0 (butt) is the default
+        break;
+      case 'j':
+        lineJoin = num(op.operands[0]) || undefined; // join 0 (miter) is the default
         break;
       case 'Tf':
         fontKey = op.operands[0]?.raw ?? '';
@@ -572,6 +588,9 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         ...(extGStateName !== undefined ? { extGStateName } : {}),
         baseFontSize: fontSize,
         ...(matrixIsIdentity ? {} : { textMatrix: [trm[0], trm[1], trm[2], trm[3]] as [number, number, number, number] }),
+        ...(dashPattern !== undefined ? { dashPattern } : {}),
+        ...(lineCap !== undefined ? { lineCap } : {}),
+        ...(lineJoin !== undefined ? { lineJoin } : {}),
       });
     }
   });
@@ -1969,7 +1988,7 @@ export async function replaceTextAt(
   // Decoration prep (captures the ORIGINAL text width BEFORE Path 1/2 mutate the op);
   // the returned mutator resizes the matched underline/strike rule, applied just
   // before each path's writeBack so it rides the SAME atomic SourcePdf.bytes swap.
-  const applyDeco = prepareDecorationResize(doc, pageIndex, found, opts?.adjustDecorations ?? false);
+  const applyDeco = prepareDecorationResize(doc, pageIndex, found, opts?.adjustDecorations ?? false, style?.fontSize);
 
   // Path 1: ASCII literal in-stream replacement (only safe for standard,
   // non-embedded fonts where byte code == ASCII).
@@ -2079,6 +2098,7 @@ export async function replaceTextAt(
       hScale: target.hScale, textRise: target.textRise,
       renderMode: target.renderMode, strokeColor: target.strokeColor,
       lineWidth: target.lineWidth, gsName, textMatrix: target.textMatrix,
+      dashPattern: target.dashPattern, lineCap: target.lineCap, lineJoin: target.lineJoin,
     });
     // Path 3 redraws in a STANDARD font → measure the decoration in the proxy (forceProxy).
     if (applyDeco) await applyDeco(newText, ops, true);
@@ -2140,9 +2160,16 @@ export function buildPath3Redraw(p: {
   // orientation; absent → identity (upright). The `size` MUST be the base Tf size
   // (pre-scale) when this is set, or the scale double-applies.
   textMatrix?: [number, number, number, number];
+  // A6a: stroke dash array+phase / cap / join for outline text; absent → solid.
+  dashPattern?: string;
+  lineCap?: number;
+  lineJoin?: number;
 }): string {
   const state =
     (p.gsName ? `/${p.gsName} gs\n` : '') +
+    (p.dashPattern ? `${p.dashPattern} d\n` : '') +
+    (p.lineCap ? `${fmtNum(p.lineCap)} J\n` : '') +
+    (p.lineJoin ? `${fmtNum(p.lineJoin)} j\n` : '') +
     (p.charSpacing !== undefined ? `${fmtNum(p.charSpacing)} Tc\n` : '') +
     (p.wordSpacing !== undefined ? `${fmtNum(p.wordSpacing)} Tw\n` : '') +
     (p.hScale !== undefined ? `${fmtNum(p.hScale)} Tz\n` : '') +
@@ -2175,6 +2202,11 @@ function prepareDecorationResize(
   pageIndex: number,
   found: EditTarget,
   adjust: boolean,
+  // A6b: the NEW on-page font size when the edit also changes size. The new text's
+  // width is measured at THIS size (the old text stays at the original), so a
+  // size-change Path-3 edit resizes the underline to the redrawn width. Absent → no
+  // size change → both measured at the original size (byte-identical).
+  newSize?: number,
 ): null | ((newText: string, opsArr: CsOp[], forceProxy?: boolean) => Promise<void>) {
   if (!adjust) return null;
   const { ops, target } = found;
@@ -2216,10 +2248,14 @@ function prepareDecorationResize(
     const rules = locateDecorationRects(opsArr);
     if (rules.length === 0) return;
     const size = target.fontSize || 12;
+    // A6b: the new text renders at `newSize` when the edit changed size; the old text
+    // keeps the original size. Their ratio (or the forceProxy absolute width) then
+    // reflects the redrawn extent. No size change → newMeasureSize === size.
+    const newMeasureSize = newSize ?? size;
     let oldW: number | undefined, newW: number | undefined;
     if (!forceProxy && glyphWidths && reverseMap.size > 0) {
       const eo = embeddedTextWidth(oldText, size, reverseMap, glyphWidths);
-      const en = embeddedTextWidth(newText, size, reverseMap, glyphWidths);
+      const en = embeddedTextWidth(newText, newMeasureSize, reverseMap, glyphWidths);
       if (eo !== null && en !== null && eo > 1e-3) {
         oldW = eo;
         newW = en;
@@ -2233,7 +2269,7 @@ function prepareDecorationResize(
       const proxy = await doc.embedFont(matchStandardFont(baseName, flags));
       try {
         oldW = proxy.widthOfTextAtSize(oldText, size);
-        newW = proxy.widthOfTextAtSize(newText, size);
+        newW = proxy.widthOfTextAtSize(newText, newMeasureSize);
       } catch {
         return; // proxy can't encode the text → leave the decoration unchanged
       }

@@ -1987,6 +1987,16 @@ describe('replaceTextAt — decoration resize (opt-in)', () => {
     await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'HelloWorld'); // no opts
     expect(paintedReWidths(await pageContentText(await doc.save()))[0]).toBeCloseTo(28);
   });
+
+  it('A6b: resizes the underline to the NEW font size on a size-change Path-3 edit', async () => {
+    const doc = await PDFDocument.load(await makeUnderlinedTextPdf(28));
+    // SAME text, double the size via a restyle (forces Path 3). The redrawn "Hello"
+    // is ~2× wider, so the rule must grow ~2× (≈56). Pre-A6b the new width was
+    // measured at the OLD size → ratio 1 → the rule stayed ~28 (the bug).
+    await replaceTextAt(doc, 0, { x: 52, y: 300 }, 'Hello', 5, { fontSize: 24 }, undefined, { adjustDecorations: true });
+    const w = paintedReWidths(await pageContentText(await doc.save()))[0];
+    expect(w).toBeGreaterThan(45);
+  });
 });
 
 /**
@@ -2804,5 +2814,38 @@ describe('locateTextOps — transform capture (A1)', () => {
     const [info] = locateTextOps(ops('BT /F0 10 Tf 1 0 0 1 50 50 Tm (x) Tj ET'));
     expect(info.textMatrix).toBeUndefined();
     expect(info.baseFontSize).toBeCloseTo(10);
+  });
+});
+
+// ── A6a: stroke dash / cap / join on Path-3 ──────────────────────────────────────
+
+describe('buildPath3Redraw — stroke style (A6a)', () => {
+  const base = { resName: 'F0', size: 10, color: { r: 0, g: 0, b: 0 }, originX: 5, originY: 7, showOperand: '(x)' };
+  it('omits dash/cap/join when none are given (byte-identical)', () => {
+    const out = buildPath3Redraw(base);
+    expect(out).not.toContain(' d\n');
+    expect(out).not.toContain(' J\n');
+    expect(out).not.toContain(' j\n');
+  });
+  it('emits dash pattern, line cap and join when given', () => {
+    const out = buildPath3Redraw({ ...base, dashPattern: '[3 2] 0', lineCap: 2, lineJoin: 1 });
+    expect(out).toContain('[3 2] 0 d');
+    expect(out).toContain('2 J');
+    expect(out).toContain('1 j');
+  });
+});
+
+describe('locateTextOps — stroke style capture (A6a)', () => {
+  it('captures a non-empty dash array, line cap and join on the show op', () => {
+    const [info] = locateTextOps(ops('[3 2] 0 d 2 J 1 j BT /F0 10 Tf (x) Tj ET'));
+    expect(info.dashPattern).toBe('[3 2] 0');
+    expect(info.lineCap).toBe(2);
+    expect(info.lineJoin).toBe(1);
+  });
+  it('leaves them undefined at defaults (solid dash / cap 0 / join 0)', () => {
+    const [info] = locateTextOps(ops('[] 0 d 0 J 0 j BT /F0 10 Tf (x) Tj ET'));
+    expect(info.dashPattern).toBeUndefined();
+    expect(info.lineCap).toBeUndefined();
+    expect(info.lineJoin).toBeUndefined();
   });
 });

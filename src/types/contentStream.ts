@@ -107,6 +107,15 @@ export interface TextOpInfo {
    * THIS size in `Tf`, or the scale applies twice.
    */
   baseFontSize?: number;
+  /**
+   * A6a — stroke dash array + phase (raw operand text, e.g. `[3 2] 0`), line cap
+   * (`J`) and line join (`j`) active when the op was shown. Re-emitted by a Path-3
+   * redraw so stroked/outline text (render mode 1/2) keeps its dashed/round outline.
+   * Absent at defaults (solid / cap 0 / join 0) → byte-identical.
+   */
+  dashPattern?: string;
+  lineCap?: number;
+  lineJoin?: number;
 }
 
 /**

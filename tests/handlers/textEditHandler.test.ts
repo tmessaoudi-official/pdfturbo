@@ -269,6 +269,25 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect(calls[0][2]).toMatchObject({ x: 100, y: 600 });
   });
 
+  it('A6c: anchors the inline-input at the click point on a rotated page (TE-3 guard)', async () => {
+    const item = makeItem('Rotated', 100, 600);
+    mockFindTextOpAt.mockImplementation((_doc: unknown, _idx: unknown, origin: { x: number; y: number }) =>
+      Math.abs(origin.x - 100) < 1 && Math.abs(origin.y - 600) < 1
+        ? { fontKey: 'F1', fontSize: 12, fillColor: undefined }
+        : null);
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], 800, 90, 500));
+    app.documentModel.currentPage.rotation = 90;
+
+    await handler.handleCanvasClick(click(600, 100), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    // On a rotated page the box is anchored at the CLICK point (e.clientX), not the
+    // unrotated content-space top/left math (which would mis-place it post-rotation).
+    expect(input?.style.left).toBe('600px');
+  });
+
   it('falls back to overlay when no nearby item matches the content stream', async () => {
     mockFindTextOpAt.mockResolvedValue(null);
 
