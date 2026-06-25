@@ -424,6 +424,31 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   the clip side-effect (the appended redraw is past all page content, so nothing downstream is clipped) — modes
   3/7 (invisible/clip-only) are refused → overlay. F1/F2 (restyle + stroke/width/Tr) shipped `9d67b84`; common-case
   edits (Path 1/2 + the Path-3 attrs above) are fully covered.
+  **Max-fidelity Sub-project A (2026-06-25, spec `docs/superpowers/specs/2026-06-25-trueedit-subproject-a-design.md`,
+  plan `docs/superpowers/plans/2026-06-25-trueedit-subproject-a.md`):** five fidelity gains, all gated/additive →
+  byte-identical at defaults. **A2 (`14f5a55`) Path-3 alpha:** `locateTextOps` records the active ExtGState resource
+  name; a Path-3 redraw of semi-transparent (watermark/faded) text recovers its `ca`/`CA` via `lookupExtGStateAlpha`
+  and, when alpha<1, `addPageExtGStateResource` adds a fresh ExtGState that `buildPath3Redraw` re-emits via `/GSx gs`
+  (was redrawn opaque). **A3a (`a5bc8f3`) XObject Path-1/2 true-edit:** font introspection is now XObject-aware — a
+  shared `getFontResourceDict` + optional `xObjectName` on `getPageFontEntry`/`isByteSwapUnsafeFont`/
+  `getPageFontToUnicode`/`getPageFontBaseName`/`getPageFontDescriptor`, so an XObject target's REAL font is seen
+  (else the page lookup misses it and defaults byte-swap-SAFE → Path-1 would corrupt an XObject CID font — the key
+  trap). New `isPath3OnlyTarget` gates `getEditableTextAt` + the `textEditHandler` hit: a Path-1/2-safe XObject target
+  edits in place (`writeBack`→`setFormXObjectContent`), a Path-3-only one overlays. `TextOpInfo.xObjectName` is
+  stamped by `findTarget`. **A1 (`6586c23`) Path-3 full affine:** `locateTextOps` captures the text→user linear
+  matrix (`textMatrix×CTM`) when non-identity + the BASE `Tf` size; `buildPath3Redraw` emits that matrix as the Tm
+  (was hard-coded identity) using the base size (or the scale double-applies) → rotated/scaled/sheared text redraws
+  in place instead of upright. **A3b (`5d0cb2e`) XObject Path-3:** the Path-3-in-XObject refuse is lifted — the
+  target's origin/textMatrix are XObject-LOCAL (the `Do` re-applies the page CTM at render), so the redraw writes the
+  XObject's own stream via `setFormXObjectContent` with the substitute font/gs added to the XObject's `/Resources`
+  (`getResourcesDict`/`ensureResourceSubDict`, XObject-aware `addPageFontResource`/`addPageExtGStateResource`); an
+  unresolvable XObject dict refuses → overlay. **A6 (`3b9a553`) polish:** A6a re-emits stroke dash/cap/join (`d`/`J`/
+  `j`) on a Path-3 outline redraw; A6b measures the decoration resize's new width at the NEW font size on a
+  size-change edit; A6c is a guard test for the already-correct rotated-page inline-input placement (anchored at the
+  click point). **Audit dropped A4 (Path-3 bold/italic face — already wired via `matchStandardFont :2027`) and A5
+  (non-WinAnsi/ligature refuse — already `hasNonWinAnsi :2004`) as ALREADY SHIPPED** (stale scorecards; code is
+  truth). Guards: the A1/A2/A3a/A6 cases in `tests/utils/contentStreamEditor.test.ts` + the rotated/XObject cases in
+  `tests/handlers/textEditHandler.test.ts` + `tests/browser/{trueedit-alpha,trueedit-xobject,trueedit-transform}.browser.test.ts`.
   **Embedded-advance width (#text-decoration-width, 2026-06-19, fixes the "underline trails past the added text"
   overshoot):** the resize scales the old rule by `newTextWidth/oldTextWidth`. Path 1/2 keep the EMBEDDED font, but
   the widths used to be measured in a base-14 PROXY whose per-glyph metrics differ (measured: a real invoice font's
