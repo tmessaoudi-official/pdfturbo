@@ -21,6 +21,9 @@ export interface DocRun {
   fontSize?: number;
   /** Run color as a #rrggbb hex string (w:color@w:val, which stores RRGGBB without '#'). */
   color?: string;
+  /** External hyperlink target (http/https/mailto). Maps to the PM `link` mark; on save,
+   * consecutive runs sharing a linkUrl are wrapped in one `w:hyperlink` (C3). */
+  linkUrl?: string;
 }
 export interface DocParagraph {
   /** Discriminates DocBlock; optional (absent ⇒ paragraph) to keep existing literals valid. */
@@ -74,6 +77,9 @@ export interface DocApplyIds {
   heading: { 1: string; 2: string; 3: string };
   bulletNumId: number;
   orderedNumId: number;
+  /** url → rId for external hyperlinks (C3): consecutive runs sharing a linkUrl are wrapped
+   * in a `w:hyperlink r:id`. Resolved (reuse-or-create) by the caller via opcParts. */
+  links?: Map<string, string>;
 }
 
 /** numId → list format, used to resolve a paragraph's `ordered` on read. */
@@ -124,32 +130,54 @@ function toggleOn(rPr: Element | undefined, tag: string): boolean {
   return v === null || !OFF_VALS.has(v.toLowerCase());
 }
 
-/** Parse one `w:p` element into a DocParagraph (runs + heading/list). */
-function parseParagraph(p: Element, numberingMap?: NumberingMap): DocParagraph {
+/** Parse a single `w:r` element into a DocRun (or null when it has no text), optionally
+ * tagging it with an external hyperlink target. */
+function parseRunEl(r: Element, linkUrl?: string): DocRun | null {
+  const ts = r.getElementsByTagName('w:t');
+  let text = '';
+  for (let j = 0; j < ts.length; j++) text += ts[j].textContent ?? '';
+  if (!text) return null;
+  const rPr = childEl(r, 'w:rPr');
+  const fonts = childEl(rPr, 'w:rFonts');
+  const sz = childEl(rPr, 'w:sz');
+  const szVal = sz ? Number(sz.getAttribute('w:val')) : NaN;
+  const family = fonts?.getAttribute('w:ascii') ?? fonts?.getAttribute('w:hAnsi') ?? undefined;
+  const colorVal = childEl(rPr, 'w:color')?.getAttribute('w:val') ?? '';
+  const color = /^[0-9a-f]{6}$/i.test(colorVal) ? `#${colorVal.toLowerCase()}` : undefined;
+  return {
+    text,
+    bold: toggleOn(rPr, 'w:b') || undefined,
+    italic: toggleOn(rPr, 'w:i') || undefined,
+    underline: toggleOn(rPr, 'w:u') || undefined,
+    fontFamily: family || undefined,
+    fontSize: Number.isFinite(szVal) && szVal > 0 ? szVal / 2 : undefined,
+    color,
+    linkUrl: linkUrl || undefined,
+  };
+}
+
+/** The `r:id` of a `w:hyperlink` (external relationship), or null for an internal-anchor link. */
+function hyperlinkRelId(hl: Element): string | null {
+  return hl.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')
+    ?? hl.getAttribute('r:id');
+}
+
+/** Parse one `w:p` element into a DocParagraph (runs + heading/list). Walks DIRECT children in
+ * order so an external `w:hyperlink`'s runs are read ONCE and tagged with the resolved URL. */
+function parseParagraph(p: Element, numberingMap?: NumberingMap, linkMap?: Map<string, string>): DocParagraph {
   const runs: DocRun[] = [];
-  const rs = p.getElementsByTagName('w:r');
-  for (let i = 0; i < rs.length; i++) {
-    const r = rs[i];
-    const ts = r.getElementsByTagName('w:t');
-    let text = '';
-    for (let j = 0; j < ts.length; j++) text += ts[j].textContent ?? '';
-    if (!text) continue;
-    const rPr = childEl(r, 'w:rPr');
-    const fonts = childEl(rPr, 'w:rFonts');
-    const sz = childEl(rPr, 'w:sz');
-    const szVal = sz ? Number(sz.getAttribute('w:val')) : NaN;
-    const family = fonts?.getAttribute('w:ascii') ?? fonts?.getAttribute('w:hAnsi') ?? undefined;
-    const colorVal = childEl(rPr, 'w:color')?.getAttribute('w:val') ?? '';
-    const color = /^[0-9a-f]{6}$/i.test(colorVal) ? `#${colorVal.toLowerCase()}` : undefined;
-    runs.push({
-      text,
-      bold: toggleOn(rPr, 'w:b') || undefined,
-      italic: toggleOn(rPr, 'w:i') || undefined,
-      underline: toggleOn(rPr, 'w:u') || undefined,
-      fontFamily: family || undefined,
-      fontSize: Number.isFinite(szVal) && szVal > 0 ? szVal / 2 : undefined,
-      color,
-    });
+  for (const child of Array.from(p.children)) {
+    if (child.tagName === 'w:r') {
+      const run = parseRunEl(child);
+      if (run) runs.push(run);
+    } else if (child.tagName === 'w:hyperlink') {
+      const url = (() => { const id = hyperlinkRelId(child); return id ? linkMap?.get(id) : undefined; })();
+      for (const r of Array.from(child.children)) {
+        if (r.tagName !== 'w:r') continue;
+        const run = parseRunEl(r, url);
+        if (run) runs.push(run);
+      }
+    }
   }
   const para: DocParagraph = { runs };
   const pPr = childEl(p, 'w:pPr');
@@ -169,14 +197,23 @@ function parseParagraph(p: Element, numberingMap?: NumberingMap): DocParagraph {
   return para;
 }
 
+/** A `w:hyperlink` that is an INTERNAL anchor only (a `w:anchor` bookmark/GoTo target with
+ * NO external `r:id`). These cannot round-trip as a URL link, so they stay opaque (C3 ceiling). */
+export function isInternalOnlyHyperlink(hl: Element): boolean {
+  return !hyperlinkRelId(hl) && hl.getAttribute('w:anchor') !== null;
+}
+
 /**
- * A `w:p` is an OPAQUE ANCHOR (preserved verbatim, never reconciled) iff it deeply
- * contains a `w:drawing` (inline OR floating — both wrap `w:drawing`) or a `w:hyperlink`.
+ * A `w:p` is an OPAQUE ANCHOR (preserved verbatim, never reconciled) iff it deeply contains a
+ * `w:drawing` (inline OR floating) OR a `w:hyperlink` that is internal-anchor-only. EXTERNAL
+ * hyperlinks (with an `r:id`) are NOT opaque (C3): they parse into editable linkUrl runs.
  * Detection is purely structural so it holds in both the parse and reconcile passes.
  */
 export function isAnchorParagraphEl(p: Element): boolean {
-  return p.getElementsByTagName('w:drawing').length > 0
-    || p.getElementsByTagName('w:hyperlink').length > 0;
+  if (p.getElementsByTagName('w:drawing').length > 0) return true;
+  const hls = p.getElementsByTagName('w:hyperlink');
+  for (let i = 0; i < hls.length; i++) if (isInternalOnlyHyperlink(hls[i])) return true;
+  return false;
 }
 
 /** Build the display-only DocImageBlock for an anchor `w:p` (image bytes are merged later
@@ -196,12 +233,12 @@ function parseAnchorBlock(p: Element): DocImageBlock {
 }
 
 /** Parse the ordered w:p / w:tbl children of a container (body or cell) into DocBlocks. */
-function parseContainerBlocks(container: Element, numberingMap?: NumberingMap): DocBlock[] {
+function parseContainerBlocks(container: Element, numberingMap?: NumberingMap, linkMap?: Map<string, string>): DocBlock[] {
   const out: DocBlock[] = [];
   for (const el of Array.from(container.children)) {
     if (el.tagName === 'w:p') {
-      out.push(isAnchorParagraphEl(el) ? parseAnchorBlock(el) : parseParagraph(el, numberingMap));
-    } else if (el.tagName === 'w:tbl') out.push(parseTable(el, numberingMap));
+      out.push(isAnchorParagraphEl(el) ? parseAnchorBlock(el) : parseParagraph(el, numberingMap, linkMap));
+    } else if (el.tagName === 'w:tbl') out.push(parseTable(el, numberingMap, linkMap));
   }
   return out;
 }
@@ -224,7 +261,7 @@ function cellVMerge(tc: Element): 'restart' | 'continue' | null {
  * prosemirror-tables). Cells tile the grid left-to-right; colCursor sums gridSpans so a
  * 'continue' is matched to the restart open at the same start column.
  */
-function parseTable(tbl: Element, numberingMap?: NumberingMap): DocTable {
+function parseTable(tbl: Element, numberingMap?: NumberingMap, linkMap?: Map<string, string>): DocTable {
   const rows: DocRow[] = [];
   const openRestart = new Map<number, DocCell>(); // startCol → the restart cell to grow
   for (const tr of Array.from(tbl.children).filter(c => c.tagName === 'w:tr')) {
@@ -238,7 +275,7 @@ function parseTable(tbl: Element, numberingMap?: NumberingMap): DocTable {
         const rc = openRestart.get(startCol);
         if (rc) rc.rowspan = (rc.rowspan ?? 1) + 1; // absorb the placeholder → grow the restart
       } else {
-        const cell: DocCell = { blocks: parseContainerBlocks(tc, numberingMap) };
+        const cell: DocCell = { blocks: parseContainerBlocks(tc, numberingMap, linkMap) };
         if (span > 1) cell.colspan = span;
         if (vm === 'restart') { cell.rowspan = 1; openRestart.set(startCol, cell); }
         else openRestart.delete(startCol); // a normal cell here ends any open v-merge
@@ -252,12 +289,13 @@ function parseTable(tbl: Element, numberingMap?: NumberingMap): DocTable {
 }
 
 /** Parse the main document XML into the editable top-level-paragraph model.
- * `numberingMap` (numId→format) resolves each list paragraph's `ordered`. */
-export function parseDocModel(documentXml: string, numberingMap?: NumberingMap): DocModel {
+ * `numberingMap` (numId→format) resolves each list paragraph's `ordered`;
+ * `linkMap` (rId→external Target) resolves each external hyperlink's `linkUrl`. */
+export function parseDocModel(documentXml: string, numberingMap?: NumberingMap, linkMap?: Map<string, string>): DocModel {
   const dom = new DOMParser().parseFromString(documentXml, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length > 0) throw new Error('document.xml not well-formed');
   const body = dom.getElementsByTagName('w:body')[0];
-  const blocks: DocBlock[] = body ? parseContainerBlocks(body, numberingMap) : [];
+  const blocks: DocBlock[] = body ? parseContainerBlocks(body, numberingMap, linkMap) : [];
   const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b) && !isDocImageBlock(b));
   return { blocks, paragraphs };
 }
@@ -429,16 +467,48 @@ function applyParagraphProps(dom: Document, p: Element, para: DocParagraph, ids:
   }
 }
 
-/** Rewrite a w:p element's runs from a DocParagraph in place (rPr base reused; props via ids). */
+/** The first `w:r` directly under `p` OR inside a direct-child `w:hyperlink` (for the base rPr). */
+function firstRunEl(p: Element): Element | undefined {
+  for (const c of Array.from(p.children)) {
+    if (c.tagName === 'w:r') return c;
+    if (c.tagName === 'w:hyperlink') {
+      const r = Array.from(c.children).find(x => x.tagName === 'w:r');
+      if (r) return r;
+    }
+  }
+  return undefined;
+}
+
+/** Rewrite a w:p element's runs from a DocParagraph in place (rPr base reused; props via ids).
+ * Removes existing direct-child `w:r` AND `w:hyperlink` (we rebuild the run sequence, re-emitting
+ * external hyperlinks from run linkUrls — so a previously-linked paragraph never duplicates). */
 function setRunsOn(dom: Document, p: Element, para: DocParagraph, ids?: DocApplyIds): void {
-  const existing = Array.from(p.children).filter(c => c.tagName === 'w:r');
-  const baseRPr = existing.length
-    ? (Array.from(existing[0].children).find(c => c.tagName === 'w:rPr') as Element | undefined)
+  const existing = Array.from(p.children).filter(c => c.tagName === 'w:r' || c.tagName === 'w:hyperlink');
+  const firstRun = firstRunEl(p);
+  const baseRPr = firstRun
+    ? (Array.from(firstRun.children).find(c => c.tagName === 'w:rPr') as Element | undefined)
     : undefined;
-  for (const r of existing) r.remove();
+  for (const e of existing) e.remove();
   if (ids) applyParagraphProps(dom, p, para, ids);
   const runs = para.runs.length ? para.runs : [{ text: '' }];
-  for (const run of runs) p.appendChild(buildRun(dom, baseRPr, run));
+  // Re-emit, grouping maximal consecutive runs that share an external linkUrl (with a resolved
+  // rId) into one `w:hyperlink`. Runs with no linkUrl (or no resolved rId) append directly.
+  let i = 0;
+  while (i < runs.length) {
+    const url = runs[i].linkUrl;
+    const rId = url ? ids?.links?.get(url) : undefined;
+    if (url && rId) {
+      const hl = dom.createElementNS(W_NS, 'w:hyperlink');
+      hl.setAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'r:id', rId);
+      let j = i;
+      while (j < runs.length && runs[j].linkUrl === url) { hl.appendChild(buildRun(dom, baseRPr, runs[j])); j += 1; }
+      p.appendChild(hl);
+      i = j;
+    } else {
+      p.appendChild(buildRun(dom, baseRPr, runs[i]));
+      i += 1;
+    }
+  }
 }
 
 /** Direct w:p / w:tbl children of a container, in document order. */

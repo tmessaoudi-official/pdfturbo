@@ -37,8 +37,10 @@ describe('anchor detection in parse', () => {
     expect(m.paragraphs).toHaveLength(1); // image block excluded from the paragraphs view
   });
 
-  it('parses a hyperlink paragraph as a DocImageBlock carrying its link text', () => {
-    const m = parseDocModel(doc(`<w:p><w:hyperlink r:id="rId9"><w:r><w:t>click here</w:t></w:r></w:hyperlink></w:p>`));
+  // C3 note: an EXTERNAL (r:id) hyperlink is now editable (see docModelLinks.test.ts). An
+  // INTERNAL-anchor hyperlink (w:anchor, no r:id) stays an opaque preserved anchor.
+  it('parses an internal-anchor hyperlink paragraph as a DocImageBlock carrying its link text', () => {
+    const m = parseDocModel(doc(`<w:p><w:hyperlink w:anchor="_Toc1"><w:r><w:t>click here</w:t></w:r></w:hyperlink></w:p>`));
     expect(m.blocks).toHaveLength(1);
     const b = m.blocks[0];
     expect(isDocImageBlock(b)).toBe(true);
@@ -57,8 +59,8 @@ describe('reconciler preservation (the P0 fix)', () => {
     expect(saved).toContain('rId1');
   });
 
-  it('does not duplicate hyperlink text on save', () => {
-    const xml = doc(`<w:p><w:hyperlink r:id="rId9"><w:r><w:t>click here</w:t></w:r></w:hyperlink></w:p>`);
+  it('does not duplicate an internal-anchor hyperlink text on save (opaque preserved)', () => {
+    const xml = doc(`<w:p><w:hyperlink w:anchor="_Toc1"><w:r><w:t>click here</w:t></w:r></w:hyperlink></w:p>`);
     const saved = applyBlocks(xml, parseDocModel(xml).blocks);
     expect(saved).toContain('w:hyperlink');
     expect((saved.match(/click here/g) || []).length).toBe(1);
