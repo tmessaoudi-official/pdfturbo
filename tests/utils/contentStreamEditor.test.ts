@@ -41,6 +41,8 @@ import {
   ctmStackUnderflows,
   serializeOp,
   buildStreamContent,
+  addPageExtGStateResource,
+  lookupExtGStateAlpha,
 } from '../../src/utils/contentStreamEditor';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -2686,5 +2688,49 @@ describe('buildStreamContent — hybrid byte-splice', () => {
     t.ops[0].byteEnd = undefined;
     lastStr(t.ops[0]).raw = '(Hi)';
     expect(buildStreamContent(t, '')).toBe(serializeOps(t.ops));
+  });
+});
+
+// ── A2: Path-3 alpha (ca/CA) preservation ───────────────────────────────────────
+
+describe('buildPath3Redraw — alpha (A2)', () => {
+  const base = { resName: 'F0', size: 12, color: { r: 0, g: 0, b: 0 }, originX: 10, originY: 20, showOperand: '(hi)' };
+  it('omits a gs operator when no gsName is given (byte-identical)', () => {
+    expect(buildPath3Redraw(base)).not.toContain(' gs');
+  });
+  it('emits /GSx gs (before the draw) when gsName is set', () => {
+    const out = buildPath3Redraw({ ...base, gsName: 'GSAlpha0' });
+    expect(out).toContain('/GSAlpha0 gs');
+    expect(out.indexOf('/GSAlpha0 gs')).toBeLessThan(out.indexOf(' Tj'));
+  });
+});
+
+describe('locateTextOps — ExtGState name capture (A2)', () => {
+  it('stamps the active gs resource name on a text op', () => {
+    const [info] = locateTextOps(ops('/GS0 gs BT /F1 12 Tf 100 200 Td (Hi) Tj ET'));
+    expect(info.extGStateName).toBe('GS0');
+  });
+  it('leaves extGStateName undefined when no gs op precedes the text', () => {
+    const [info] = locateTextOps(ops('BT /F1 12 Tf 100 200 Td (Hi) Tj ET'));
+    expect(info.extGStateName).toBeUndefined();
+  });
+});
+
+describe('addPageExtGStateResource / lookupExtGStateAlpha (A2)', () => {
+  it('writes an ExtGState with ca/CA and reads it back', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage();
+    const name = addPageExtGStateResource(doc, 0, { ca: 0.4, CA: 0.6 });
+    expect(name).toMatch(/^GSAlpha\d+$/);
+    const a = lookupExtGStateAlpha(doc, 0, name);
+    expect(a.ca).toBeCloseTo(0.4);
+    expect(a.CA).toBeCloseTo(0.6);
+  });
+  it('returns {} for an unknown ExtGState name', () => {
+    // built lazily so the doc exists; unknown name → empty
+    return PDFDocument.create().then(doc => {
+      doc.addPage();
+      expect(lookupExtGStateAlpha(doc, 0, 'NoSuchGS')).toEqual({});
+    });
   });
 });

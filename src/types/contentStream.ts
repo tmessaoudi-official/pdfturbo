@@ -84,6 +84,13 @@ export interface TextOpInfo {
    * Absent (falsy) for upright, uniformly-scaled text — the common case.
    */
   tilted?: true;
+  /**
+   * Name of the active ExtGState resource (last `gs` operand, no leading slash) when
+   * this op was shown — used by a Path-3 redraw to recover the fill/stroke alpha
+   * (`ca`/`CA`) so semi-transparent (watermark/faded) text is not redrawn opaque (A2).
+   * Absent when no `gs` preceded the show op.
+   */
+  extGStateName?: string;
 }
 
 /**

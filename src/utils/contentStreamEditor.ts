@@ -394,6 +394,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
   let fillColor: string | undefined;
   let strokeColor: string | undefined;
   let lineWidth: number | undefined;
+  let extGStateName: string | undefined;
   let tfOpIndex: number | undefined;
   let colorOpIndex: number | undefined;
   // CTM stack — tracks q/Q nesting and cm transforms
@@ -424,6 +425,12 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
       case 'BT':
         textMatrix = [...IDENTITY];
         lineMatrix = [...IDENTITY];
+        break;
+      case 'gs':
+        // A2: remember the active ExtGState resource so a Path-3 redraw can recover
+        // its fill/stroke alpha. Last-seen wins (mirrors fill/stroke-color tracking,
+        // which is likewise not q/Q-restored — a documented Path-3 limitation).
+        extGStateName = op.operands[0]?.raw?.replace(/^\//, '') || undefined;
         break;
       case 'Tf':
         fontKey = op.operands[0]?.raw ?? '';
@@ -554,6 +561,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         ...(strokeColor !== undefined ? { strokeColor } : {}),
         ...(lineWidth !== undefined ? { lineWidth } : {}),
         ...(tilted ? { tilted: true as const } : {}),
+        ...(extGStateName !== undefined ? { extGStateName } : {}),
       });
     }
   });
@@ -2031,13 +2039,23 @@ export async function replaceTextAt(
     // Encode through the embedded font so its (WinAnsi) encoding is honoured —
     // handles accented Latin text, not just pure ASCII.
     const showOperand = font.encodeText(newText).toString();
+    // A2: recover the original fill/stroke alpha from the active ExtGState so
+    // semi-transparent (watermark/faded) text is not redrawn opaque. Only emit a
+    // `gs` when alpha is actually < 1 → opaque/no-gs text stays byte-identical.
+    let gsName: string | undefined;
+    if (target.extGStateName) {
+      const a = lookupExtGStateAlpha(doc, pageIndex, target.extGStateName);
+      if ((a.ca !== undefined && a.ca < 1) || (a.CA !== undefined && a.CA < 1)) {
+        gsName = addPageExtGStateResource(doc, pageIndex, { ca: a.ca, CA: a.CA });
+      }
+    }
     redraw = buildPath3Redraw({
       resName, size, color: { r: cr, g: cg, b: cb },
       originX: target.origin.x, originY: target.origin.y, showOperand,
       charSpacing: target.charSpacing, wordSpacing: target.wordSpacing,
       hScale: target.hScale, textRise: target.textRise,
       renderMode: target.renderMode, strokeColor: target.strokeColor,
-      lineWidth: target.lineWidth,
+      lineWidth: target.lineWidth, gsName,
     });
     // Path 3 redraws in a STANDARD font → measure the decoration in the proxy (forceProxy).
     if (applyDeco) await applyDeco(newText, ops, true);
@@ -2087,8 +2105,12 @@ export function buildPath3Redraw(p: {
   renderMode?: number;
   strokeColor?: string;
   lineWidth?: number;
+  // A2: name of an ExtGState resource carrying the original fill/stroke alpha;
+  // emitted first so the redraw inherits the same transparency. Absent → opaque.
+  gsName?: string;
 }): string {
   const state =
+    (p.gsName ? `/${p.gsName} gs\n` : '') +
     (p.charSpacing !== undefined ? `${fmtNum(p.charSpacing)} Tc\n` : '') +
     (p.wordSpacing !== undefined ? `${fmtNum(p.wordSpacing)} Tw\n` : '') +
     (p.hScale !== undefined ? `${fmtNum(p.hScale)} Tz\n` : '') +
@@ -2451,6 +2473,71 @@ function addPageFontResource(doc: PDFDocument, pageIndex: number, fontRef: PDFRe
   while (fontDict.get(PDFName.of(name))) name = `GSEdit${++i}`;
   fontDict.set(PDFName.of(name), fontRef);
   return name;
+}
+
+/**
+ * A2 — add (or reuse) a page `/ExtGState` resource holding fill/stroke alpha and
+ * return its name. Mirrors {@link addPageFontResource}'s resource-dict insertion so a
+ * Path-3 redraw can re-apply the original text's transparency via `/<name> gs`.
+ */
+export function addPageExtGStateResource(
+  doc: PDFDocument, pageIndex: number, alpha: { ca?: number; CA?: number },
+): string {
+  const node = doc.getPage(pageIndex).node;
+  const resources = node.get(PDFName.of('Resources'));
+  let resDict: PDFDict;
+  if (resources) {
+    resDict = doc.context.lookup(resources) as PDFDict;
+  } else {
+    resDict = PDFDict.fromMapWithContext(new Map(), doc.context);
+    node.set(PDFName.of('Resources'), resDict);
+  }
+  const egRaw = resDict.get(PDFName.of('ExtGState'));
+  let egDict: PDFDict;
+  if (egRaw) {
+    egDict = doc.context.lookup(egRaw) as PDFDict;
+  } else {
+    egDict = PDFDict.fromMapWithContext(new Map(), doc.context);
+    resDict.set(PDFName.of('ExtGState'), egDict);
+  }
+  let i = 0;
+  let name = `GSAlpha${i}`;
+  while (egDict.get(PDFName.of(name))) name = `GSAlpha${++i}`;
+  const gs = PDFDict.fromMapWithContext(new Map(), doc.context);
+  if (alpha.ca !== undefined) gs.set(PDFName.of('ca'), doc.context.obj(alpha.ca));
+  if (alpha.CA !== undefined) gs.set(PDFName.of('CA'), doc.context.obj(alpha.CA));
+  egDict.set(PDFName.of(name), gs);
+  return name;
+}
+
+/**
+ * A2 — read the fill (`ca`) / stroke (`CA`) alpha from a page's named ExtGState
+ * resource. Returns `{}` on any miss (no resource, no such name, no alpha keys) so
+ * the caller treats it as fully opaque. Pure read; never throws.
+ */
+export function lookupExtGStateAlpha(
+  doc: PDFDocument, pageIndex: number, name: string,
+): { ca?: number; CA?: number } {
+  try {
+    const node = doc.getPage(pageIndex).node;
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped here
+    const resources = doc.context.lookup(node.get(PDFName.of('Resources'))) as any;
+    if (!resources?.get) return {};
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped here
+    const egDict = doc.context.lookup(resources.get(PDFName.of('ExtGState'))) as any;
+    if (!egDict?.get) return {};
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped here
+    const gs = doc.context.lookup(egDict.get(PDFName.of(name))) as any;
+    if (!gs?.get) return {};
+    const out: { ca?: number; CA?: number } = {};
+    const ca = gs.get(PDFName.of('ca'))?.value?.();
+    const CA = gs.get(PDFName.of('CA'))?.value?.();
+    if (typeof ca === 'number') out.ca = ca;
+    if (typeof CA === 'number') out.CA = CA;
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 /**
