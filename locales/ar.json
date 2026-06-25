@@ -221,7 +221,7 @@
       "opacityLabel": "الشفافية",
       "angleLabel": "الزاوية",
       "densityLabel": "الكثافة",
-      "densityHint": "1 متناثر → 5 كثيف",
+      "densityHint": "1 متناثر → 10 كثيف",
       "cancel": "إلغاء",
       "apply": "تطبيق",
       "textPlaceholder": "نص العلامة المائية"

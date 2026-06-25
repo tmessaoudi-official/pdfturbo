@@ -221,7 +221,7 @@
       "opacityLabel": "Opacity",
       "angleLabel": "Angle",
       "densityLabel": "Density",
-      "densityHint": "1 sparse → 5 dense",
+      "densityHint": "1 sparse → 10 dense",
       "cancel": "Cancel",
       "apply": "Apply",
       "textPlaceholder": "Watermark text"

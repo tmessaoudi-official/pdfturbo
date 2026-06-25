@@ -47,6 +47,7 @@ function makeCtx(wm = defaultWm()): IWatermarkContext & { watermark: WatermarkSe
     reportError: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), silent: vi.fn() },
     exportPreviewOpen: false,
     showExportPreview: vi.fn(),
+    renderCurrentPage: vi.fn(),
   };
   return ctx;
 }
@@ -115,6 +116,14 @@ describe('WatermarkPanel.apply', () => {
     panel.open();
     panel.apply();
     expect(ctx.autosave).toHaveBeenCalled();
+  });
+
+  it('re-renders the current page so the live watermark overlay updates immediately', () => {
+    const ctx = makeCtx();
+    const panel = new WatermarkPanel(ctx);
+    panel.open();
+    panel.apply();
+    expect(ctx.renderCurrentPage).toHaveBeenCalled();
   });
 
   it('closes modal after applying', () => {

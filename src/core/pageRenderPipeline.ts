@@ -30,6 +30,10 @@ export interface IPageRenderContext {
   // Side effects
   autosave(): void;
   renderInkLayer(): void;
+  /** Tile the document watermark onto a 2D context (shared with the export-preview panel). */
+  drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number): void;
+  /** When the export-preview ghost is open it draws its OWN watermark — suppress the live one to avoid doubling. */
+  readonly exportPreviewOpen: boolean;
 }
 
 export class PageRenderPipeline {
@@ -49,6 +53,47 @@ export class PageRenderPipeline {
     if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
     this._ctx.renderInkLayer();
     await this._renderCropFrame(myGen);
+    this._renderWatermarkOverlay();
+  }
+
+  /**
+   * Live watermark — draw the document watermark onto a dedicated overlay canvas above the
+   * page raster so it's visible WHILE editing (it was previously export-only, which read as
+   * "watermark not working"). Mirrors the export-preview ghost: a separate canvas (NOT the
+   * pdf.js page canvas, so true-edit colour sampling / thumbnails stay clean), pointer-events
+   * none, z-index 1 (above the page, below annotations). Removed + recreated every render, so
+   * toggling the watermark or switching page/doc never leaves a stale tile. The exported PDF
+   * is unaffected — export tiling stays in `buildPageOverlays` via pdf-lib.
+   */
+  private _renderWatermarkOverlay(): void {
+    const container = this._ctx.ui.container;
+    if (!container || typeof container.querySelector !== 'function') return;
+    container.querySelector('#watermarkOverlay')?.remove();
+
+    // In export-preview mode the ghost draws its own watermark canvas — skip the live one
+    // so the two don't stack (which would darken the watermark).
+    if (this._ctx.exportPreviewOpen) return;
+
+    const wm = this._ctx.documentModel.watermark;
+    if (!wm.enabled || !wm.text) return;
+
+    const canvas = this._ctx.ui.canvas;
+    const overlay = document.createElement('canvas');
+    overlay.id = 'watermarkOverlay';
+    overlay.width = canvas.width;
+    overlay.height = canvas.height;
+    Object.assign(overlay.style, {
+      position: 'absolute',
+      left: canvas.offsetLeft + 'px',
+      top: canvas.offsetTop + 'px',
+      width: canvas.width + 'px',
+      height: canvas.height + 'px',
+      pointerEvents: 'none',
+      zIndex: '1',
+    });
+    const ctx = overlay.getContext('2d');
+    if (ctx) this._ctx.drawWatermark(ctx, canvas.width, canvas.height);
+    container.appendChild(overlay);
   }
 
   /**

@@ -221,7 +221,7 @@
       "opacityLabel": "Opacité",
       "angleLabel": "Angle",
       "densityLabel": "Densité",
-      "densityHint": "1 clairsemé → 5 dense",
+      "densityHint": "1 clairsemé → 10 dense",
       "cancel": "Annuler",
       "apply": "Appliquer",
       "textPlaceholder": "Texte du filigrane"

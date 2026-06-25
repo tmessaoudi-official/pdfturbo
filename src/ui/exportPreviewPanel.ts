@@ -11,6 +11,8 @@ export interface IExportPreviewContext {
   readonly elements: PDFElement[];
   readonly zoomScale: number;
   drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number): void;
+  /** Re-render the page so the live watermark overlay is restored when the preview closes. */
+  renderCurrentPage(): void | Promise<void>;
 }
 
 export class ExportPreviewPanel {
@@ -56,6 +58,11 @@ export class ExportPreviewPanel {
       ghost.appendChild(div);
     }
 
+    // The ghost (above) now owns the watermark in preview mode — remove the live editor
+    // overlay so the two don't stack into a darker double watermark. show() doesn't trigger a
+    // re-render, so clear it directly here; hide() re-renders to bring it back.
+    this._ctx.ui.container.querySelector('#watermarkOverlay')?.remove();
+
     this._open = true;
     this._ctx.ui.previewExportBtn.classList.add('active');
     this._ctx.ui.previewExportBtn.setAttribute('aria-pressed', 'true');
@@ -68,5 +75,7 @@ export class ExportPreviewPanel {
     this._ctx.ui.previewExportBtn.setAttribute('aria-pressed', 'false');
     this._ctx.ui.exportPreviewOverlay.style.display = 'none';
     this._ctx.ui.exportPreviewGhost.innerHTML = '';
+    // Restore the live watermark overlay (suppressed while the preview was open).
+    void this._ctx.renderCurrentPage();
   }
 }

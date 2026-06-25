@@ -70,6 +70,22 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   lives once in `src/export/exportPipeline.ts` (`buildPageOverlays`) + `exportService.ts`
   helpers (`_applyOverlaysToPage`, `_saveOrDownload`). Apply export fixes in
   `exportService`/`exportPipeline`, not in three places.
+- **Watermark renders LIVE on the editor canvas (2026-06-25)**: the watermark was historically
+  export-only (only `exportPreviewPanel` called `drawWatermark`), so enabling it showed *nothing*
+  while editing — read as "watermark not working." `PageRenderPipeline._renderWatermarkOverlay()`
+  now paints it onto a dedicated `#watermarkOverlay` canvas (z-index 1, pointer-events none, NOT the
+  pdf.js page canvas — keeps true-edit colour sampling / thumbnails clean), removed+recreated every
+  `renderCurrentPage`; `WatermarkPanel.apply()` re-renders so toggling is immediate. **De-dup
+  invariant**: the export-preview ghost draws its OWN watermark, so `_renderWatermarkOverlay` SKIPS
+  when `exportPreviewOpen`, `ExportPreviewPanel.show()` removes the live overlay, and `hide()`
+  re-renders to restore it — exactly one watermark in every mode (guarded by
+  `tests/core/pageRenderPipeline.test.ts` + `tests/ui/exportPreviewPanel.test.ts` +
+  `tests/browser/watermark-live.browser.test.ts`). The exported PDF is unchanged (pdf-lib
+  `drawWatermark` in `buildPageOverlays`, no double-bake). **Density is now 1–10 (0.5 steps),
+  font-size max 400** (angle ±180 and opacity 1–100 were already full); the export spacing uses the
+  shared pure `src/utils/watermarkDensity.ts` `densitySpacingFactor` (interpolated table preserving
+  the old integer-1..5 factors EXACTLY → byte-stable at integer densities). `apply()`/`_updatePreview()`
+  parse density with `parseFloat` (NOT `parseInt`, which truncated 1.5→1).
 - **`renderElements()` destroys and recreates every element DOM node** on each call.
   Focus-restoration hacks depend on this; keyed identity is NOT preserved.
 - **i18n**: every user-visible string goes through `t()`; `escapeValue: true` is set

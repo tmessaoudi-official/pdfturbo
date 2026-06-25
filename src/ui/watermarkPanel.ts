@@ -3,6 +3,7 @@ import type { WatermarkSettings } from '../core/documentModel';
 import type { IErrorReporter } from '../core/errorReporter';
 import { trapFocus } from '../utils/focusTrap';
 import { hexToRgbValues } from '../utils/geometry';
+import { MIN_WM_DENSITY, MAX_WM_DENSITY } from '../utils/watermarkDensity';
 
 export interface IWatermarkContext {
   readonly ui: AppDOMRefs;
@@ -13,6 +14,8 @@ export interface IWatermarkContext {
   readonly reportError: IErrorReporter;
   readonly exportPreviewOpen: boolean;
   showExportPreview(): void;
+  /** Re-render the current page so the live watermark overlay reflects the new settings. */
+  renderCurrentPage(): void | Promise<void>;
 }
 
 export class WatermarkPanel {
@@ -83,13 +86,15 @@ export class WatermarkPanel {
       fontSize: parseInt(ui.wmFontSize.value, 10) || 60,
       opacity: parseInt(ui.wmOpacity.value, 10) / 100,
       angle: parseInt(ui.wmAngle.value, 10),
-      density: parseInt(ui.wmDensity.value, 10) || 3,
+      density: parseFloat(ui.wmDensity.value) || 3,
     };
     this._ctx.setWatermark(wm);
     this.close();
     this.syncBtn();
     this._ctx.autosave();
     this._ctx.reportError.info(wm.enabled ? 'toast.watermarkEnabled' : 'toast.watermarkDisabled');
+    // Repaint the editor page so the live watermark overlay appears/disappears immediately.
+    void this._ctx.renderCurrentPage();
     if (this._ctx.exportPreviewOpen) this._ctx.showExportPreview();
   }
 
@@ -103,7 +108,7 @@ export class WatermarkPanel {
     const fontSize = wm.fontSize * effectiveScale;
     ctx.font = `${fontSize}px Helvetica, Arial, sans-serif`;
     const textWidth = ctx.measureText(wm.text).width;
-    const count = Math.max(1, Math.min(5, wm.density ?? 3));
+    const count = Math.max(MIN_WM_DENSITY, Math.min(MAX_WM_DENSITY, wm.density ?? 3));
     const stepX = Math.max(textWidth * 1.2, screenW / (count + 0.5));
     const stepY = Math.max(fontSize * 2.5, screenH / (count + 0.5));
     const col = hexToRgbValues(wm.color);
@@ -139,7 +144,7 @@ export class WatermarkPanel {
       fontSize: realFontSize,
       opacity: parseInt(this._ctx.ui.wmOpacity.value, 10) / 100,
       angle: parseInt(this._ctx.ui.wmAngle.value, 10),
-      density: parseInt(this._ctx.ui.wmDensity.value, 10) || 3,
+      density: parseFloat(this._ctx.ui.wmDensity.value) || 3,
     };
     this.drawOnCanvas(ctx, w, h, liveWm, previewScale);
   }

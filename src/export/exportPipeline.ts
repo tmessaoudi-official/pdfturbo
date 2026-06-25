@@ -10,6 +10,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
 import { transformPoint, hexToRgbValues, contentCropToPdfCropBox } from '../utils/geometry';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
+import { densitySpacingFactor } from '../utils/watermarkDensity';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentPage, WatermarkSettings } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
@@ -123,8 +124,7 @@ export async function drawWatermarkOnPage(
   const col = hexToRgbValues(watermark.color);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const textWidth = font.widthOfTextAtSize(watermark.text, watermark.fontSize);
-  const densityFactors = [0, 2.0, 1.5, 1.0, 0.7, 0.5];
-  const spacingFactor = densityFactors[Math.max(1, Math.min(5, watermark.density ?? 3))];
+  const spacingFactor = densitySpacingFactor(watermark.density ?? 3);
   const stepX = Math.max(textWidth + watermark.fontSize * 0.8, W_orig / 5) * spacingFactor;
   const stepY = Math.max(watermark.fontSize * 2, H_orig / 4) * spacingFactor;
   for (let y = cropOriginY - (stepY / 2); y < cropOriginY + H_orig + stepY; y += stepY) {
