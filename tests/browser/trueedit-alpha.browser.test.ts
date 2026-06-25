@@ -31,9 +31,10 @@ async function makePdf(alpha: number | null): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const helv = await pdf.embedFont(StandardFonts.Helvetica);
   const page = pdf.addPage([PAGE_W, PAGE_H]);
-  const resObj: Record<string, unknown> = { Font: { Helv: helv.ref } };
-  if (alpha !== null) resObj.ExtGState = { GS0: { ca: alpha, CA: alpha } };
-  page.node.set(PDFName.of('Resources'), pdf.context.register(pdf.context.obj(resObj)));
+  const res = alpha !== null
+    ? pdf.context.obj({ Font: { Helv: helv.ref }, ExtGState: { GS0: { ca: alpha, CA: alpha } } })
+    : pdf.context.obj({ Font: { Helv: helv.ref } });
+  page.node.set(PDFName.of('Resources'), pdf.context.register(res));
   const gsPrefix = alpha !== null ? '/GS0 gs ' : '';
   const content = `${gsPrefix}0 0 0 rg BT /Helv 44 Tf 20 ${BASELINE} Td (${ORIGINAL}) Tj ET`;
   const bytes = new Uint8Array(content.length);
