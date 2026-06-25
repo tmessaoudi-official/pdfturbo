@@ -19,7 +19,7 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, type Color, type PDFFont, type PDFPage } from '@cantoo/pdf-lib';
-import { isDocTable, type DocModel, type DocBlock, type DocParagraph, type DocTable, type DocCell } from './docModel';
+import { isDocTable, isDocImageBlock, type DocModel, type DocBlock, type DocParagraph, type DocTable, type DocCell } from './docModel';
 import type { DocImage } from './docxImages';
 
 /** Point size for a heading level relative to the body `base` size (H1>H2>H3>base). */
@@ -328,6 +328,7 @@ export async function docModelToPdfBytes(
     let h = 0;
     for (const b of blocks) {
       if (isDocTable(b)) h += measureTable(b, width);
+      else if (isDocImageBlock(b)) continue; // opaque image/hyperlink anchor — no text-flow height
       else h += layoutParagraph(b, width).length * effLineH(b) + paraGap;
     }
     return h;
@@ -412,6 +413,8 @@ export async function docModelToPdfBytes(
     for (const b of blocks) {
       if (isDocTable(b)) {
         cy = drawTableInBand(b, xLeft, cy, width);
+      } else if (isDocImageBlock(b)) {
+        continue; // opaque image/hyperlink anchor — not drawn in the cell text flow
       } else {
         const marker = list.markerFor(b);
         const ps = effSize(b);
@@ -507,6 +510,7 @@ export async function docModelToPdfBytes(
   for (let bi = 0; bi < model.blocks.length; bi++) {
     const block = model.blocks[bi];
     if (isDocTable(block)) drawTableFlow(block);
+    else if (isDocImageBlock(block)) { /* image drawn via imagesByBlock below */ }
     else drawParagraphFlow(block, topList.markerFor(block));
     for (const im of imagesByBlock.get(bi) ?? []) await drawImage(im);
   }

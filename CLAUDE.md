@@ -1107,6 +1107,34 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `docxToolbar.test.ts` (merge via CellSelection, split, enabled-probes), `docx-tables.browser.test.ts` (real Chrome:
   merge via toolbar → save → reopen → gridSpan/colspan survive). Verified live (`qa-shots/f2-merge-3cd/`: 2 header
   cells → 1 colspan-2 cell; 0 console errs).
+  **Image & hyperlink preservation + display (Sub-project C Phase 1, 2026-06-26):** the DOCX editor's `save()`
+  was **data-lossy** — verified by probe: an image-bearing top-level `w:p` parsed to `{runs:[]}` and `setRunsOn`
+  wiped its `w:drawing` (image DESTROYED); a `w:hyperlink` survived but `parseParagraph`'s DEEP
+  `getElementsByTagName('w:r')` counted its nested run, so save APPENDED a duplicate plain run (link text TWICE).
+  Fix = a third OPAQUE `DocBlock` variant `DocImageBlock {kind:'image', image?, linkText?}` (sibling of `DocTable`).
+  **The preservation guarantee is DOM-structural, NOT model-based:** `isAnchorParagraphEl(p)` (deeply contains
+  `w:drawing` OR `w:hyperlink`) is checked at reconcile time, and `reconcileContainer` treats anchor `w:p` as
+  immutable BOUNDARIES (like tables) — segmenting around them and NEVER passing them to `setRunsOn`, in BOTH the
+  main path AND the count-mismatch fallback (`reconcileParagraphsOnly` now filters `&& !isAnchorParagraphEl(c)`).
+  So an anchor `w:p` is preserved byte-exact even if the PM doc diverges (e.g. user "deletes" the read-only atom →
+  it persists on save; true delete is Phase-2 C2). `parseContainerBlocks` emits `DocImageBlock` for anchors
+  (linkText read from XML; image bytes MERGED later in `mountDocxEditor` by block index from the existing
+  read-only `extractDocImages` channel — indices align: both walk `body` children filtering `w:p`/`w:tbl` in order).
+  `docxSchema` gains read-only atom nodes `docx_image` (renders the real PNG/JPEG via a `data:` URI) + `docx_link`
+  (shows link text); the PM bridge maps `DocImageBlock`↔atom (`imageBlockToNode`/`emitBlockTo`). `docxToPdf` SKIPS
+  image blocks in its text-flow loops (the image is drawn via its own `imagesByBlock` channel — never as a
+  paragraph). **Byte-identical when no drawing/hyperlink present** (the boundary set is then just tables, as before
+  — guarded by a no-regression control test). `parseDocModel`'s `paragraphs` view excludes image blocks too
+  (`!isDocTable && !isDocImageBlock`). **Ceiling (Phase 1):** a paragraph mixing flowing text + an inline
+  image/link is read-only (whole anchor is opaque); anchors are non-deletable/non-reorderable; an image INSIDE a
+  table cell is still PRESERVED byte-exact (cell anchor `w:p` skipped during cell recursion) but renders as an empty
+  atom, not the picture (image bytes are merged only for TOP-LEVEL blocks — `extractDocImages` skips nested-in-table,
+  the same ceiling as the PDF export); image EDITING (move/resize/delete) + EDITABLE links (`w:hyperlink`↔link-mark+rels
+  round-trip) are Phase 2 (C2/C3). Spec/plan:
+  `docs/superpowers/{specs/2026-06-25-docx-editor-subproject-c-design,plans/2026-06-26-docx-editor-subproject-c-phase1}.md`.
+  Guards: `tests/docx/{docModelImagePreserve,docxImageBridge}.test.ts` (jsdom: parse→block, drawing survives,
+  hyperlink single-occurrence, byte-identical control, atom round-trip) + `tests/browser/docx-image-preserve.browser.test.ts`
+  (real Chrome: img renders inline, link shown once, save round-trips drawing+blip+single hyperlink, plain para intact).
 
 ## Git & CI
 

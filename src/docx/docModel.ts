@@ -40,7 +40,18 @@ export interface DocCell {
 }
 export interface DocRow { cells: DocCell[]; }
 export interface DocTable { kind: 'table'; rows: DocRow[]; }
-export type DocBlock = DocParagraph | DocTable;
+/**
+ * An OPAQUE anchor block (third DocBlock variant, sibling of DocTable): a top-level
+ * `w:p` that contains a `w:drawing` or a `w:hyperlink`. It carries ONLY display data
+ * (image bytes / link text); the source `w:p` is preserved verbatim by the reconciler's
+ * DOM-structural anchor skip — so the model and DOM cannot drift into data loss.
+ */
+export interface DocImageBlock {
+  kind: 'image';
+  image?: { dataB64: string; mime: 'image/png' | 'image/jpeg'; widthPt: number; heightPt: number };
+  linkText?: string;
+}
+export type DocBlock = DocParagraph | DocTable | DocImageBlock;
 export interface DocModel {
   /** Full ordered body content (top-level paragraphs + tables). */
   blocks: DocBlock[];
@@ -51,6 +62,11 @@ export interface DocModel {
 /** Narrow a DocBlock to DocTable. */
 export function isDocTable(b: DocBlock): b is DocTable {
   return (b as DocTable).kind === 'table';
+}
+
+/** Narrow a DocBlock to DocImageBlock (opaque image/hyperlink anchor). */
+export function isDocImageBlock(b: DocBlock): b is DocImageBlock {
+  return (b as DocImageBlock).kind === 'image';
 }
 
 /** Resolved style/numbering ids for writing paragraph-level props (from opcParts). */
@@ -153,12 +169,39 @@ function parseParagraph(p: Element, numberingMap?: NumberingMap): DocParagraph {
   return para;
 }
 
+/**
+ * A `w:p` is an OPAQUE ANCHOR (preserved verbatim, never reconciled) iff it deeply
+ * contains a `w:drawing` (inline OR floating — both wrap `w:drawing`) or a `w:hyperlink`.
+ * Detection is purely structural so it holds in both the parse and reconcile passes.
+ */
+export function isAnchorParagraphEl(p: Element): boolean {
+  return p.getElementsByTagName('w:drawing').length > 0
+    || p.getElementsByTagName('w:hyperlink').length > 0;
+}
+
+/** Build the display-only DocImageBlock for an anchor `w:p` (image bytes are merged later
+ * by the caller via the extractDocImages channel; hyperlink text is read here directly). */
+function parseAnchorBlock(p: Element): DocImageBlock {
+  const block: DocImageBlock = { kind: 'image' };
+  if (p.getElementsByTagName('w:drawing').length === 0) {
+    const hls = p.getElementsByTagName('w:hyperlink');
+    if (hls.length > 0) {
+      let text = '';
+      const ts = hls[0].getElementsByTagName('w:t');
+      for (let i = 0; i < ts.length; i++) text += ts[i].textContent ?? '';
+      block.linkText = text;
+    }
+  }
+  return block;
+}
+
 /** Parse the ordered w:p / w:tbl children of a container (body or cell) into DocBlocks. */
 function parseContainerBlocks(container: Element, numberingMap?: NumberingMap): DocBlock[] {
   const out: DocBlock[] = [];
   for (const el of Array.from(container.children)) {
-    if (el.tagName === 'w:p') out.push(parseParagraph(el, numberingMap));
-    else if (el.tagName === 'w:tbl') out.push(parseTable(el, numberingMap));
+    if (el.tagName === 'w:p') {
+      out.push(isAnchorParagraphEl(el) ? parseAnchorBlock(el) : parseParagraph(el, numberingMap));
+    } else if (el.tagName === 'w:tbl') out.push(parseTable(el, numberingMap));
   }
   return out;
 }
@@ -215,7 +258,7 @@ export function parseDocModel(documentXml: string, numberingMap?: NumberingMap):
   if (dom.getElementsByTagName('parsererror').length > 0) throw new Error('document.xml not well-formed');
   const body = dom.getElementsByTagName('w:body')[0];
   const blocks: DocBlock[] = body ? parseContainerBlocks(body, numberingMap) : [];
-  const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b));
+  const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b) && !isDocImageBlock(b));
   return { blocks, paragraphs };
 }
 
@@ -411,34 +454,44 @@ function containerBlockEls(container: Element): Element[] {
  */
 function reconcileContainer(dom: Document, container: Element, blocks: DocBlock[], ids: DocApplyIds | undefined, requireParagraph: boolean): void {
   const domEls = containerBlockEls(container);
-  const domTables = domEls.filter(e => e.tagName === 'w:tbl');
-  const modelTables = blocks.filter(isDocTable);
-  // Structure is read-only in 3a → counts must match. If not, bail (leave tables verbatim,
-  // reconcile only the paragraph blocks against the DOM paragraphs) to avoid corruption.
-  if (domTables.length !== modelTables.length) {
-    reconcileParagraphsOnly(dom, container, blocks.filter((b): b is DocParagraph => !isDocTable(b)), ids, requireParagraph);
+  // Opaque boundaries = tables AND anchor paragraphs (drawing/hyperlink). They delimit the
+  // editable paragraph segments and are NEVER reconciled — tables recurse into cells; image/
+  // hyperlink anchors are left byte-exact (the preservation fix). Detection is DOM-structural.
+  const isBoundaryEl = (e: Element): boolean => e.tagName === 'w:tbl' || (e.tagName === 'w:p' && isAnchorParagraphEl(e));
+  const isBoundaryBlk = (b: DocBlock): boolean => isDocTable(b) || isDocImageBlock(b);
+  const domBoundaries = domEls.filter(isBoundaryEl);
+  const modelBoundaries = blocks.filter(isBoundaryBlk);
+  // Boundary counts must line up 1:1. If not, bail (leave every boundary verbatim, reconcile
+  // only the plain paragraph blocks against the non-anchor DOM paragraphs) to avoid corruption.
+  if (domBoundaries.length !== modelBoundaries.length) {
+    reconcileParagraphsOnly(dom, container, blocks.filter((b): b is DocParagraph => !isBoundaryBlk(b)), ids, requireParagraph);
     return;
   }
-  // Segment both sides by tables.
+  // Segment both sides by boundaries.
   const modelSegs: DocParagraph[][] = [];
   let seg: DocParagraph[] = [];
   for (const b of blocks) {
-    if (isDocTable(b)) { modelSegs.push(seg); seg = []; } else seg.push(b);
+    if (isBoundaryBlk(b)) { modelSegs.push(seg); seg = []; } else seg.push(b as DocParagraph);
   }
   modelSegs.push(seg);
   const domSegs: Element[][] = [];
   let dseg: Element[] = [];
   for (const e of domEls) {
-    if (e.tagName === 'w:tbl') { domSegs.push(dseg); dseg = []; } else dseg.push(e);
+    if (isBoundaryEl(e)) { domSegs.push(dseg); dseg = []; } else dseg.push(e);
   }
   domSegs.push(dseg);
-  // Reconcile each paragraph segment with the following table as its insert anchor.
+  // Reconcile each paragraph segment with the following boundary as its insert anchor.
   for (let k = 0; k < modelSegs.length; k++) {
-    const anchor = k < domTables.length ? domTables[k] : null; // null → append at container end
+    const anchor = k < domBoundaries.length ? domBoundaries[k] : null; // null → append at container end
     reconcileSegment(dom, container, domSegs[k], modelSegs[k], anchor, ids, requireParagraph && k === modelSegs.length - 1);
   }
-  // Recurse into each table's cells.
-  for (let t = 0; t < domTables.length; t++) writeTable(dom, domTables[t], modelTables[t], ids);
+  // Recurse into TABLE boundaries only; opaque image/hyperlink anchors are skipped (verbatim).
+  // Guard on both sides so a type divergence leaves the DOM element untouched rather than corrupt.
+  for (let t = 0; t < domBoundaries.length; t++) {
+    const e = domBoundaries[t];
+    const mb = modelBoundaries[t];
+    if (e.tagName === 'w:tbl' && isDocTable(mb)) writeTable(dom, e, mb, ids);
+  }
 }
 
 /** Reconcile one run of paragraphs (a segment) against existing w:p elements. */
@@ -463,9 +516,11 @@ function reconcileSegment(dom: Document, container: Element, domParas: Element[]
   }
 }
 
-/** Reconcile only paragraph blocks against DOM paragraphs (fallback when table counts diverge). */
+/** Reconcile only paragraph blocks against DOM paragraphs (fallback when boundary counts
+ * diverge). Anchor paragraphs (drawing/hyperlink) are EXCLUDED so they are never reconciled —
+ * the robustness invariant: an anchor `w:p` is skipped in every path, never reaching setRunsOn. */
 function reconcileParagraphsOnly(dom: Document, container: Element, paras: DocParagraph[], ids: DocApplyIds | undefined, requireParagraph: boolean): void {
-  const domParas = Array.from(container.children).filter(c => c.tagName === 'w:p');
+  const domParas = Array.from(container.children).filter(c => c.tagName === 'w:p' && !isAnchorParagraphEl(c));
   reconcileSegment(dom, container, domParas, paras, null, ids, requireParagraph);
 }
 

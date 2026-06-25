@@ -247,3 +247,6 @@
 .docx-editor-mount .ProseMirror th { border: 1px solid var(--border, #ccc); padding: 4px 6px; vertical-align: top; }
 .docx-editor-mount .ProseMirror .selectedCell { background: rgba(80, 130, 255, 0.18); }
 .docx-editor-mount .ProseMirror .column-resize-handle { display: none; } /* resize not enabled in 3a */
+/* Sub-project C Phase 1 — opaque image/hyperlink anchors (read-only). */
+.docx-editor-mount .ProseMirror img[data-docx-image] { display: block; margin: 0.5em 0; }
+.docx-editor-mount .ProseMirror .docx-link-ro { color: #0563c1; text-decoration: underline; cursor: default; }

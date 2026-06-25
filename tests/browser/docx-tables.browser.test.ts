@@ -162,7 +162,7 @@ describe('DOCX table editing — real Chrome round-trip', () => {
       // Cell [1,0] text survived.
       const cell10 = tableBlock.rows[1].cells[0];
       const cell10Text = cell10.blocks
-        .flatMap(b => b.kind === 'table' ? [] : b.runs.map(r => r.text))
+        .flatMap(b => (b.kind === 'table' || b.kind === 'image') ? [] : b.runs.map(r => r.text))
         .join('');
       expect(cell10Text).toContain('Row2 text');
     }

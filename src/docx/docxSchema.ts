@@ -6,7 +6,7 @@
  *   - an `underline` mark and `fontFamily` / `fontSize` attribute-marks
  * Everything maps cleanly to OOXML run/paragraph properties on save (docxProseMirror).
  */
-import { Schema, type DOMOutputSpec, type Mark } from 'prosemirror-model';
+import { Schema, type DOMOutputSpec, type Mark, type Node as PMNode } from 'prosemirror-model';
 import { schema as basicSchema } from 'prosemirror-schema-basic';
 import { addListNodes } from 'prosemirror-schema-list';
 import { tableNodes } from 'prosemirror-tables';
@@ -21,6 +21,41 @@ nodes = nodes.append(
     cellAttributes: {},      // 3a models no extra cell attrs (colspan/rowspan/colwidth are built in)
   }),
 );
+// Read-only opaque ANCHOR atoms (Sub-project C Phase 1): a docx_image renders the real
+// extracted picture; a docx_link shows a hyperlink's text. Both are leaf atoms — they round-trip
+// the underlying w:p verbatim via the docModel reconciler's anchor skip (no editing in Phase 1).
+nodes = nodes.append({
+  docx_image: {
+    group: 'block',
+    atom: true,
+    selectable: true,
+    draggable: false,
+    attrs: {
+      dataB64: { default: '' },
+      mime: { default: 'image/png' },
+      widthPt: { default: 0 },
+      heightPt: { default: 0 },
+    },
+    toDOM(node: PMNode): DOMOutputSpec {
+      const a = node.attrs;
+      const dims = `${a.widthPt ? `width:${a.widthPt as number}pt;` : ''}${a.heightPt ? `height:${a.heightPt as number}pt;` : ''}`;
+      return ['img', {
+        src: `data:${a.mime as string};base64,${a.dataB64 as string}`,
+        style: `max-width:100%;${dims}`,
+        'data-docx-image': '1',
+      }];
+    },
+  },
+  docx_link: {
+    group: 'block',
+    atom: true,
+    selectable: true,
+    attrs: { text: { default: '' } },
+    toDOM(node: PMNode): DOMOutputSpec {
+      return ['p', ['a', { class: 'docx-link-ro' }, node.attrs.text as string]];
+    },
+  },
+});
 
 const marks = basicSchema.spec.marks.append({
   underline: {

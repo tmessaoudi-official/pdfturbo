@@ -25,7 +25,7 @@ import { buildDocxToolbar } from './docxToolbar';
 import { findReplacePlugin } from './findReplacePlugin';
 import { buildFindReplaceBar, type FindReplaceBar } from './findReplaceBar';
 import { cleanWordHtml } from './wordPaste';
-import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, isDocTable, parseDocModel, applyBlocks, type DocApplyIds } from './docModel';
+import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, type DocImageBlock, isDocTable, isDocImageBlock, parseDocModel, applyBlocks, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { extractDocImages, type DocImage } from './docxImages';
 import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
@@ -95,17 +95,31 @@ function buildListRun(items: DocParagraph[]): PMNode[] {
   return nodes;
 }
 
-/** Emit a list of DocBlocks (paragraphs + tables) into PM block nodes. Shared by body+cells. */
+/** An opaque image/hyperlink anchor block → a read-only atom node (image or link). */
+function imageBlockToNode(b: DocImageBlock): PMNode {
+  if (b.image) {
+    return n.docx_image.create({
+      dataB64: b.image.dataB64,
+      mime: b.image.mime,
+      widthPt: b.image.widthPt,
+      heightPt: b.image.heightPt,
+    });
+  }
+  return n.docx_link.create({ text: b.linkText ?? '' });
+}
+
+/** Emit a list of DocBlocks (paragraphs + tables + image anchors) into PM block nodes. Shared by body+cells. */
 function blocksToNodes(blocks: DocBlock[]): PMNode[] {
   const out: PMNode[] = [];
   let i = 0;
   while (i < blocks.length) {
     const b = blocks[i];
     if (isDocTable(b)) { out.push(tableToNode(b)); i += 1; continue; }
+    if (isDocImageBlock(b)) { out.push(imageBlockToNode(b)); i += 1; continue; }
     if (!b.list) { out.push(blockFor(b)); i += 1; continue; }
     // gather a maximal run of list paragraphs (existing buildListRun logic)
     const runItems: DocParagraph[] = [];
-    while (i < blocks.length && !isDocTable(blocks[i]) && (blocks[i] as DocParagraph).list) {
+    while (i < blocks.length && !isDocTable(blocks[i]) && !isDocImageBlock(blocks[i]) && (blocks[i] as DocParagraph).list) {
       runItems.push(blocks[i] as DocParagraph); i += 1;
     }
     out.push(...buildListRun(runItems));
@@ -195,9 +209,25 @@ function cellOf(cellNode: PMNode): DocCell {
   if (rowspan > 1) cell.rowspan = rowspan;
   return cell;
 }
-/** Like emitBlock but writes into a DocBlock[] and recognizes table nodes. */
+/** Like emitBlock but writes into a DocBlock[] and recognizes table + image/link atom nodes. */
 function emitBlockTo(node: PMNode, depth: number, out: DocBlock[]): void {
   const name = node.type.name;
+  if (name === 'docx_image') {
+    out.push({
+      kind: 'image',
+      image: {
+        dataB64: node.attrs.dataB64 as string,
+        mime: node.attrs.mime as 'image/png' | 'image/jpeg',
+        widthPt: Number(node.attrs.widthPt),
+        heightPt: Number(node.attrs.heightPt),
+      },
+    });
+    return;
+  }
+  if (name === 'docx_link') {
+    out.push({ kind: 'image', linkText: node.attrs.text as string });
+    return;
+  }
   if (name === 'table') {
     const rows: DocRow[] = [];
     node.forEach(rowNode => {
@@ -216,7 +246,7 @@ function emitBlockTo(node: PMNode, depth: number, out: DocBlock[]): void {
 export function docToDocModel(doc: PMNode): DocModel {
   const blocks: DocBlock[] = [];
   doc.forEach(block => emitBlockTo(block, 0, blocks));
-  const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b));
+  const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b) && !isDocImageBlock(b));
   return { blocks, paragraphs };
 }
 
@@ -242,7 +272,7 @@ function anyParagraph(blocks: DocBlock[], pred: (p: DocParagraph) => boolean): b
   return blocks.some(b =>
     isDocTable(b)
       ? b.rows.some(r => r.cells.some(c => anyParagraph(c.blocks, pred)))
-      : pred(b),
+      : isDocImageBlock(b) ? false : pred(b),
   );
 }
 
@@ -255,9 +285,17 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
   const opc = openOpc(bytes);
   const originalXml = getDocumentXml(opc);
   const model = parseDocModel(originalXml, buildNumberingMap(opc));
-  // Inline images are extracted once from the OPC, kept OUT of the editable model (the in-place
-  // save would corrupt the w:drawing), and exposed read-only for the PDF export.
+  // Inline images are extracted once from the OPC and exposed read-only for the PDF export. They
+  // are ALSO merged (by block index) into the matching image-anchor blocks so the editor can render
+  // them inline read-only — the source w:p is still preserved verbatim by the reconciler's anchor
+  // skip, so the image bytes here are display-only and never re-serialized through the run model.
   const images = extractDocImages(opc.files);
+  for (const img of images) {
+    const blk = model.blocks[img.blockIndex];
+    if (blk && isDocImageBlock(blk)) {
+      blk.image = { dataB64: img.dataB64, mime: img.mime, widthPt: img.widthPt, heightPt: img.heightPt };
+    }
+  }
 
   // Forward-declared so the Mod-f/Mod-h keymap (built at state creation, before the
   // view+bar exist) can open the bar once it's wired up.
