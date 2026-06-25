@@ -78,4 +78,17 @@ describe('true-edit — Path-1/2 text inside a Form XObject (A3a)', () => {
     expect(after).toContain('World');
     expect(after).not.toContain('Hello');
   });
+
+  it('A3b: Path-3 redraw inside an XObject (non-ASCII forces Path 3) renders in place', async () => {
+    const original = await makeXObjectPdf();
+    const doc = await PDFDocument.load(original.slice(0));
+    // `é` is non-ASCII → Path-1 byte-swap skipped; standard Helvetica has no
+    // ToUnicode → Path-2 skipped; `é` is WinAnsi → not refused → Path 3. Pre-A3b a
+    // Path-3 edit inside an XObject refused (returned false); A3b writes the redraw
+    // into the XObject stream.
+    expect(await replaceTextAt(doc, 0, ORIGIN, 'Héllo', 5)).toBe(true);
+    const after = await extractText(await doc.save());
+    expect(after).toContain('Héllo');
+    expect(after).not.toContain('Hello');
+  });
 });

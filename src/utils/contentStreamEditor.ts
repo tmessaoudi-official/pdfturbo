@@ -22,6 +22,7 @@ import {
   PDFDocument,
   PDFName,
   PDFNumber,
+  PDFObject,
   PDFRawStream,
   PDFRef,
   StandardFonts,
@@ -2002,14 +2003,12 @@ export async function replaceTextAt(
   // already replaced the page /Contents, so pdf-lib's drawText appends to a
   // stream no longer referenced by the page — the new text renders nowhere and
   // is not even text-extractable. Verified on a real CID-font heading.)
-  if (found.xObjectName) {
-    // The target lives inside a Form XObject (its own coordinate space + subset
-    // font). A page-space redraw would misplace it, and re-encoding into the
-    // subset font isn't possible. Refuse WITHOUT blanking so the original text is
-    // preserved; the caller falls back to an overlay text box. Never delete
-    // without a visible replacement.
-    return false;
-  }
+  // A3b: a Path-3 redraw INSIDE a Form XObject is now supported. The target's
+  // origin + textMatrix are XObject-LOCAL (locateTextOps ran over the XObject's own
+  // ops from identity; the page-space transform is re-applied by the Do at render),
+  // so the redraw is written into the XObject stream in its own coordinates with the
+  // substitute font added to the XObject's /Resources. If the XObject's resource
+  // dict can't be resolved (addPageFontResource → ''), we refuse below → overlay.
 
   // Arabic (and other complex scripts) cannot be faithfully redrawn here: the
   // standard Latin fallback font substitutes '?' per codepoint, and pdf-lib
@@ -2042,14 +2041,19 @@ export async function replaceTextAt(
     const { r: cr, g: cg, b: cb } = resolveRedrawColor(style?.color, target.fillColor, fallbackColor);
 
     // Font: style bold/italic/fontFamily override font detection from PDF.
-    const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey).replace(/^\//, '');
-    const descriptor = getPageFontDescriptor(doc, pageIndex, target.fontKey);
+    // A3b: read the face from the XObject's own resources when the target is in one.
+    const baseName = getPageFontBaseName(doc, pageIndex, target.fontKey, found.xObjectName).replace(/^\//, '');
+    const descriptor = getPageFontDescriptor(doc, pageIndex, target.fontKey, found.xObjectName);
     const baseFlags = descriptor?.flags ?? 0;
     const effectiveName = style ? buildEffectiveFontName(baseName, style) : baseName;
     const effectiveFlags = style ? buildEffectiveFlags(baseFlags, style) : baseFlags;
     const stdFont = matchStandardFont(effectiveName, effectiveFlags);
     const font = await doc.embedFont(stdFont);
-    const resName = addPageFontResource(doc, pageIndex, font.ref);
+    // A3b: add the substitute font to the XObject's /Resources when editing inside one,
+    // so the redraw's /resName resolves there. '' ⇒ the XObject dict was unresolvable →
+    // refuse (overlay), never emit a redraw referencing a missing font.
+    const resName = addPageFontResource(doc, pageIndex, font.ref, found.xObjectName);
+    if (!resName) return false;
     // A1: a transformed run emits its full textMatrix as the redraw Tm, which already
     // carries the scale — so Tf must use the BASE size (raw Tf operand), or the scale
     // double-applies. A style fontSize override still wins (sets the new on-page size).
@@ -2065,7 +2069,7 @@ export async function replaceTextAt(
     if (target.extGStateName) {
       const a = lookupExtGStateAlpha(doc, pageIndex, target.extGStateName);
       if ((a.ca !== undefined && a.ca < 1) || (a.CA !== undefined && a.CA < 1)) {
-        gsName = addPageExtGStateResource(doc, pageIndex, { ca: a.ca, CA: a.CA });
+        gsName = addPageExtGStateResource(doc, pageIndex, { ca: a.ca, CA: a.CA }, found.xObjectName) || undefined;
       }
     }
     redraw = buildPath3Redraw({
@@ -2088,8 +2092,12 @@ export async function replaceTextAt(
   // F3: when only the target op was blanked (no shadow duplicates) the byte-splice
   // preserves the rest of the stream verbatim and appends the redraw; if blankAllNearby
   // touched more ops, buildStreamContent falls back to serializeOps (today's output).
-  // `redraw` already starts with '\n'. Path 3 is page-stream only (XObject refused above).
-  setPageContent(doc, pageIndex, buildStreamContent(found, redraw));
+  // `redraw` already starts with '\n'. A3b: write the XObject's own stream when the
+  // target lives in one (origin/textMatrix are XObject-local + the font was added to
+  // the XObject's /Resources); otherwise the page stream.
+  const newContent = buildStreamContent(found, redraw);
+  if (found.xObjectName) setFormXObjectContent(doc, pageIndex, found.xObjectName, newContent);
+  else setPageContent(doc, pageIndex, newContent);
 
   // Slice B — honest substitution signal. Path 3 redraws in a base-14 standard
   // font. That is a genuine, lossy substitution ONLY when the ORIGINAL font was
@@ -2500,24 +2508,46 @@ export function isVerticalWritingFont(doc: PDFDocument, pageIndex: number, fontK
  * Add a font ref to a page's /Resources/Font dict under a fresh name, creating
  * the Resources and Font dicts if absent. Returns the resource name (no slash).
  */
-function addPageFontResource(doc: PDFDocument, pageIndex: number, fontRef: PDFRef): string {
+/**
+ * A3b — the `/Resources` dict to add a Path-3 redraw resource into: the Form
+ * XObject's own (so a redraw written INTO its content stream resolves `/F`/`/GS`),
+ * or the page's. Creates the dict if absent. Returns null only when an XObject name
+ * is given but the XObject can't be found (caller then refuses → overlay).
+ */
+function getResourcesDict(doc: PDFDocument, pageIndex: number, xObjectName?: string): PDFDict | null {
   const node = doc.getPage(pageIndex).node;
-  const resources = node.get(PDFName.of('Resources'));
-  let resDict: PDFDict;
-  if (resources) {
-    resDict = doc.context.lookup(resources) as PDFDict;
-  } else {
-    resDict = PDFDict.fromMapWithContext(new Map(), doc.context);
-    node.set(PDFName.of('Resources'), resDict);
-  }
-  const fontRaw = resDict.get(PDFName.of('Font'));
-  let fontDict: PDFDict;
-  if (fontRaw) {
-    fontDict = doc.context.lookup(fontRaw) as PDFDict;
-  } else {
-    fontDict = PDFDict.fromMapWithContext(new Map(), doc.context);
-    resDict.set(PDFName.of('Font'), fontDict);
-  }
+  const ensure = (host: { get(k: PDFName): PDFObject | undefined; set(k: PDFName, v: PDFObject): void }): PDFDict => {
+    const r = host.get(PDFName.of('Resources'));
+    if (r) return doc.context.lookup(r) as PDFDict;
+    const d = PDFDict.fromMapWithContext(new Map(), doc.context);
+    host.set(PDFName.of('Resources'), d);
+    return d;
+  };
+  if (!xObjectName) return ensure(node);
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped
+  const pageRes = doc.context.lookup(node.get(PDFName.of('Resources'))) as any;
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped
+  const xobjDict = doc.context.lookup(pageRes?.get?.(PDFName.of('XObject'))) as any;
+  const xobj = xobjDict?.get
+    ? doc.context.lookup(xobjDict.get(PDFName.of(xObjectName.replace(/^\//, ''))))
+    : null;
+  const xdict = xobj instanceof PDFRawStream ? xobj.dict : null;
+  return xdict ? ensure(xdict) : null;
+}
+
+/** Get-or-create a named sub-dict (`Font`/`ExtGState`) of a /Resources dict. */
+function ensureResourceSubDict(doc: PDFDocument, resDict: PDFDict, subKey: string): PDFDict {
+  const raw = resDict.get(PDFName.of(subKey));
+  if (raw) return doc.context.lookup(raw) as PDFDict;
+  const d = PDFDict.fromMapWithContext(new Map(), doc.context);
+  resDict.set(PDFName.of(subKey), d);
+  return d;
+}
+
+function addPageFontResource(doc: PDFDocument, pageIndex: number, fontRef: PDFRef, xObjectName?: string): string {
+  const resDict = getResourcesDict(doc, pageIndex, xObjectName);
+  if (!resDict) return '';
+  const fontDict = ensureResourceSubDict(doc, resDict, 'Font');
   let i = 0;
   let name = `GSEdit${i}`;
   while (fontDict.get(PDFName.of(name))) name = `GSEdit${++i}`;
@@ -2531,25 +2561,11 @@ function addPageFontResource(doc: PDFDocument, pageIndex: number, fontRef: PDFRe
  * Path-3 redraw can re-apply the original text's transparency via `/<name> gs`.
  */
 export function addPageExtGStateResource(
-  doc: PDFDocument, pageIndex: number, alpha: { ca?: number; CA?: number },
+  doc: PDFDocument, pageIndex: number, alpha: { ca?: number; CA?: number }, xObjectName?: string,
 ): string {
-  const node = doc.getPage(pageIndex).node;
-  const resources = node.get(PDFName.of('Resources'));
-  let resDict: PDFDict;
-  if (resources) {
-    resDict = doc.context.lookup(resources) as PDFDict;
-  } else {
-    resDict = PDFDict.fromMapWithContext(new Map(), doc.context);
-    node.set(PDFName.of('Resources'), resDict);
-  }
-  const egRaw = resDict.get(PDFName.of('ExtGState'));
-  let egDict: PDFDict;
-  if (egRaw) {
-    egDict = doc.context.lookup(egRaw) as PDFDict;
-  } else {
-    egDict = PDFDict.fromMapWithContext(new Map(), doc.context);
-    resDict.set(PDFName.of('ExtGState'), egDict);
-  }
+  const resDict = getResourcesDict(doc, pageIndex, xObjectName);
+  if (!resDict) return '';
+  const egDict = ensureResourceSubDict(doc, resDict, 'ExtGState');
   let i = 0;
   let name = `GSAlpha${i}`;
   while (egDict.get(PDFName.of(name))) name = `GSAlpha${++i}`;

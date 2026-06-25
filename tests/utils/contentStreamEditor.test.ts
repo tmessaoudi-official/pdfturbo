@@ -615,10 +615,13 @@ describe('replaceTextAt', () => {
     expect(result).toBe('substituted');
   });
 
-  it('returns false (refused) for a Form-XObject target — no substitution claim', async () => {
+  it('A3b: a Path-3 (restyle) edit of a Form-XObject target now succeeds in place', async () => {
     const doc = await PDFDocument.load(await makeXObjectTextPdf());
+    // A bold restyle forces Path 3; the XObject font is standard Helvetica, so the
+    // redraw is written INTO the XObject stream (was refused → false pre-A3b). The
+    // original is a standard font → no substitution claim, plain truthy result.
     const result = await replaceTextAt(doc, 0, { x: 50, y: 300 }, 'Changed', 3, { bold: true });
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 });
 
