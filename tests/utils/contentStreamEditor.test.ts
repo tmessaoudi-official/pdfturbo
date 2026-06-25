@@ -2773,3 +2773,33 @@ describe('isByteSwapUnsafeFont — XObject-aware (A3a)', () => {
     expect(isByteSwapUnsafeFont(doc, 0, 'XF1')).toBe(false);
   });
 });
+
+// ── A1: Path-3 full-affine transform redraw ──────────────────────────────────────
+
+describe('buildPath3Redraw — transform (A1)', () => {
+  const base = { resName: 'F0', size: 10, color: { r: 0, g: 0, b: 0 }, originX: 5, originY: 7, showOperand: '(x)' };
+  it('emits identity Tm when no textMatrix is given (byte-identical)', () => {
+    expect(buildPath3Redraw(base)).toContain('1 0 0 1 5 7 Tm');
+  });
+  it('emits the affine matrix as Tm when textMatrix is given (90° rotation)', () => {
+    const out = buildPath3Redraw({ ...base, textMatrix: [0, 1, -1, 0] });
+    expect(out).toContain('0 1 -1 0 5 7 Tm');
+    expect(out).not.toContain('1 0 0 1 5 7 Tm');
+  });
+});
+
+describe('locateTextOps — transform capture (A1)', () => {
+  it('captures the non-identity text→user matrix and the base Tf size', () => {
+    const [info] = locateTextOps(ops('BT /F0 10 Tf 0 1 -1 0 100 100 Tm (x) Tj ET'));
+    expect(info.textMatrix).toBeDefined();
+    const m = info.textMatrix ?? [0, 0, 0, 0];
+    expect(m[0]).toBeCloseTo(0); expect(m[1]).toBeCloseTo(1);
+    expect(m[2]).toBeCloseTo(-1); expect(m[3]).toBeCloseTo(0);
+    expect(info.baseFontSize).toBeCloseTo(10);
+  });
+  it('leaves textMatrix undefined for upright, uniformly-scaled text (byte-identical)', () => {
+    const [info] = locateTextOps(ops('BT /F0 10 Tf 1 0 0 1 50 50 Tm (x) Tj ET'));
+    expect(info.textMatrix).toBeUndefined();
+    expect(info.baseFontSize).toBeCloseTo(10);
+  });
+});

@@ -94,6 +94,19 @@ export interface TextOpInfo {
    * Absent when no `gs` preceded the show op.
    */
   extGStateName?: string;
+  /**
+   * A1 — the text→user linear transform `[a,b,c,d]` (textMatrix × CTM) when the run
+   * is NOT upright-uniform (rotated / sheared / non-uniformly scaled). Emitted as the
+   * Path-3 redraw `Tm` so transformed text keeps its orientation. Absent for upright,
+   * uniformly-scaled text (the common case) → identity Tm → byte-identical.
+   */
+  textMatrix?: [number, number, number, number];
+  /**
+   * A1 — the RAW `Tf` font-size operand (before the `textMatrix` scale is folded into
+   * `fontSize`). A Path-3 redraw that emits the full `textMatrix` as its Tm must use
+   * THIS size in `Tf`, or the scale applies twice.
+   */
+  baseFontSize?: number;
 }
 
 /**

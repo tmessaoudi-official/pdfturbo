@@ -543,6 +543,13 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         Math.abs(trm[1]) > 1e-3 ||
         Math.abs(trm[2]) > 1e-3 ||
         (sy > 1e-6 && Math.abs(sx - sy) > 0.02 * sy);
+      // A1: capture the full text→user linear part [a,b,c,d] when it is NOT an
+      // upright unit matrix, so a Path-3 redraw can reproduce the orientation. The
+      // raw Tf size (`fontSize`, pre-vScale) is kept as `baseFontSize` — the redraw
+      // must use it when emitting the matrix, or the scale double-applies.
+      const matrixIsIdentity =
+        Math.abs(trm[0] - 1) < 1e-3 && Math.abs(trm[1]) < 1e-3 &&
+        Math.abs(trm[2]) < 1e-3 && Math.abs(trm[3] - 1) < 1e-3;
       found.push({
         opIndex,
         operator: op.operator,
@@ -562,6 +569,8 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
         ...(lineWidth !== undefined ? { lineWidth } : {}),
         ...(tilted ? { tilted: true as const } : {}),
         ...(extGStateName !== undefined ? { extGStateName } : {}),
+        baseFontSize: fontSize,
+        ...(matrixIsIdentity ? {} : { textMatrix: [trm[0], trm[1], trm[2], trm[3]] as [number, number, number, number] }),
       });
     }
   });
@@ -2041,7 +2050,11 @@ export async function replaceTextAt(
     const stdFont = matchStandardFont(effectiveName, effectiveFlags);
     const font = await doc.embedFont(stdFont);
     const resName = addPageFontResource(doc, pageIndex, font.ref);
-    const size = style?.fontSize ?? target.fontSize ?? 12;
+    // A1: a transformed run emits its full textMatrix as the redraw Tm, which already
+    // carries the scale — so Tf must use the BASE size (raw Tf operand), or the scale
+    // double-applies. A style fontSize override still wins (sets the new on-page size).
+    // Upright runs (no textMatrix) keep the effective size, byte-identical.
+    const size = style?.fontSize ?? (target.textMatrix ? (target.baseFontSize ?? target.fontSize) : target.fontSize) ?? 12;
     // Encode through the embedded font so its (WinAnsi) encoding is honoured —
     // handles accented Latin text, not just pure ASCII.
     const showOperand = font.encodeText(newText).toString();
@@ -2061,7 +2074,7 @@ export async function replaceTextAt(
       charSpacing: target.charSpacing, wordSpacing: target.wordSpacing,
       hScale: target.hScale, textRise: target.textRise,
       renderMode: target.renderMode, strokeColor: target.strokeColor,
-      lineWidth: target.lineWidth, gsName,
+      lineWidth: target.lineWidth, gsName, textMatrix: target.textMatrix,
     });
     // Path 3 redraws in a STANDARD font → measure the decoration in the proxy (forceProxy).
     if (applyDeco) await applyDeco(newText, ops, true);
@@ -2114,6 +2127,11 @@ export function buildPath3Redraw(p: {
   // A2: name of an ExtGState resource carrying the original fill/stroke alpha;
   // emitted first so the redraw inherits the same transparency. Absent → opaque.
   gsName?: string;
+  // A1: the original text→user linear transform [a,b,c,d] (rotation/scale/shear).
+  // When set, it is emitted as the redraw Tm so transformed text keeps its
+  // orientation; absent → identity (upright). The `size` MUST be the base Tf size
+  // (pre-scale) when this is set, or the scale double-applies.
+  textMatrix?: [number, number, number, number];
 }): string {
   const state =
     (p.gsName ? `/${p.gsName} gs\n` : '') +
@@ -2124,11 +2142,15 @@ export function buildPath3Redraw(p: {
     (p.renderMode ? `${p.renderMode} Tr\n` : '') +
     (p.strokeColor !== undefined ? `${p.strokeColor}\n` : '') +
     (p.lineWidth !== undefined ? `${fmtNum(p.lineWidth)} w\n` : '');
+  const m = p.textMatrix;
+  const tm = m
+    ? `${fmtNum(m[0])} ${fmtNum(m[1])} ${fmtNum(m[2])} ${fmtNum(m[3])} ${fmtNum(p.originX)} ${fmtNum(p.originY)} Tm\n`
+    : `1 0 0 1 ${fmtNum(p.originX)} ${fmtNum(p.originY)} Tm\n`;
   return (
     `\nq\n${fmtNum(p.color.r)} ${fmtNum(p.color.g)} ${fmtNum(p.color.b)} rg\nBT\n` +
     `/${p.resName} ${fmtNum(p.size)} Tf\n` +
     state +
-    `1 0 0 1 ${fmtNum(p.originX)} ${fmtNum(p.originY)} Tm\n` +
+    tm +
     `${p.showOperand} Tj\nET\nQ`
   );
 }
