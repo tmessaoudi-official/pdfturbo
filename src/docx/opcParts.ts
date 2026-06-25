@@ -18,6 +18,8 @@ const REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships';
 const CT_PATH = '[Content_Types].xml';
 const DOC_RELS = 'word/_rels/document.xml.rels';
 
+const HYPERLINK_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
+
 const STYLES_PATH = 'word/styles.xml';
 const STYLES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml';
 const STYLES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles';
@@ -92,6 +94,54 @@ function registerPart(opc: OpcPackage, partPath: string, contentType: string, re
       setPart(opc, DOC_RELS, serialize(dom));
     }
   }
+}
+
+/** Map of rId → external hyperlink Target, read from word/_rels/document.xml.rels.
+ * Only `Type=…/hyperlink` relationships with `TargetMode="External"` are included. */
+export function buildHyperlinkMap(opc: OpcPackage): Map<string, string> {
+  const map = new Map<string, string>();
+  const relsXml = getPart(opc, DOC_RELS);
+  if (!relsXml) return map;
+  const rels = parse(relsXml).getElementsByTagName('Relationship');
+  for (let i = 0; i < rels.length; i++) {
+    const rel = rels[i];
+    if (rel.getAttribute('Type') !== HYPERLINK_REL) continue;
+    if (rel.getAttribute('TargetMode') !== 'External') continue;
+    const id = rel.getAttribute('Id');
+    const target = rel.getAttribute('Target');
+    if (id && target) map.set(id, target);
+  }
+  return map;
+}
+
+/** Return the rId of an existing External hyperlink relationship whose Target equals `url`,
+ * else create one (`<Relationship Id rIdN Type=…/hyperlink Target=url TargetMode=External/>`)
+ * and return its new Id. Creates the rels part if absent. */
+export function ensureHyperlinkRel(opc: OpcPackage, url: string): string {
+  const relsXml = getPart(opc, DOC_RELS)
+    ?? `${XML_DECL}<Relationships xmlns="${REL_NS}"></Relationships>`;
+  const dom = parse(relsXml);
+  const rels = dom.getElementsByTagName('Relationship');
+  let maxId = 0;
+  for (let i = 0; i < rels.length; i++) {
+    const rel = rels[i];
+    if (rel.getAttribute('Type') === HYPERLINK_REL
+      && rel.getAttribute('TargetMode') === 'External'
+      && rel.getAttribute('Target') === url) {
+      return rel.getAttribute('Id') ?? '';
+    }
+    const m = /^rId(\d+)$/.exec(rel.getAttribute('Id') ?? '');
+    if (m) maxId = Math.max(maxId, Number(m[1]));
+  }
+  const id = `rId${maxId + 1}`;
+  const rel = dom.createElementNS(REL_NS, 'Relationship');
+  rel.setAttribute('Id', id);
+  rel.setAttribute('Type', HYPERLINK_REL);
+  rel.setAttribute('Target', url);
+  rel.setAttribute('TargetMode', 'External');
+  dom.documentElement.appendChild(rel);
+  setPart(opc, DOC_RELS, serialize(dom));
+  return id;
 }
 
 /** Heading level (1–3) implied by a paragraph style's id/name, else 0. */
