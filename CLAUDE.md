@@ -1135,6 +1135,24 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   Guards: `tests/docx/{docModelImagePreserve,docxImageBridge}.test.ts` (jsdom: parse→block, drawing survives,
   hyperlink single-occurrence, byte-identical control, atom round-trip) + `tests/browser/docx-image-preserve.browser.test.ts`
   (real Chrome: img renders inline, link shown once, save round-trips drawing+blip+single hyperlink, plain para intact).
+  **Editable external hyperlinks (Sub-project C Phase 2a, 2026-06-26):** EXTERNAL `w:hyperlink` (`r:id`→http/https/
+  mailto) are now EDITABLE — they SUPERSEDE the Phase-1 hyperlink-opaque rule. `DocRun.linkUrl?` ↔ the
+  prosemirror-schema-basic `link` mark (`href`). `isAnchorParagraphEl` now returns opaque ONLY for `w:drawing` OR a
+  `w:hyperlink` that `isInternalOnlyHyperlink` (has `w:anchor`, NO `r:id`) — so an external-link paragraph parses as
+  an editable `DocParagraph`. `parseParagraph` walks DIRECT children IN ORDER (not the old deep `getElementsByTagName`
+  that double-counted), reading a `w:hyperlink`'s runs ONCE with `linkUrl` resolved from a rId→Target `linkMap`
+  (`opcParts.buildHyperlinkMap`). On save, `setRunsOn` removes existing `w:r` AND `w:hyperlink` and re-emits, grouping
+  maximal consecutive same-`linkUrl` runs into ONE `w:hyperlink` whose `r:id` comes from `DocApplyIds.links` (url→rId,
+  resolved reuse-or-create by `opcParts.ensureHyperlinkRel`, `sanitizeLinkUrl`-gated in `mountDocxEditor.save()` — an
+  invalid scheme drops to plain text, no rel). **De-dup is now STRUCTURAL** (read once / emit once), not opaque-skip.
+  **Byte-identical when no run has a linkUrl** (`ids.links` empty → grouping no-ops). Toolbar 🔗 button (`docxToolbar`)
+  + inline URL input: caret-in-link removes; else reveal input, Enter sanitizes + applies the `link` mark.
+  INTERNAL-anchor (`w:anchor`) links stay opaque/preserved (Phase-1 `docx_link` atom) — editing them is the ceiling
+  (also: mixed external+internal paragraph stays opaque; Word `Hyperlink` char-style not re-applied; field-code
+  `HYPERLINK` instructions unhandled). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-editor-subproject-c-phase2a-links*`.
+  Guards: `tests/docx/{docModelLinks,opcPartsHyperlink,docxToolbar}.test.ts` + `tests/browser/docx-links.browser.test.ts`
+  (real Chrome: external link editable `<a href>`, internal read-only, save round-trips `w:hyperlink`+rels, toolbar
+  add-link creates a relationship). NB Phase-1 hyperlink fixtures were switched to internal-anchor (the now-opaque case).
 
 ## Git & CI
 

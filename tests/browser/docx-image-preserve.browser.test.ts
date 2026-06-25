@@ -49,7 +49,7 @@ const DOC_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <pic:pic><pic:blipFill><a:blip r:embed="rId1"/></pic:blipFill></pic:pic>
       </a:graphicData></a:graphic>
     </wp:inline></w:drawing></w:r></w:p>
-    <w:p><w:hyperlink r:id="rId2"><w:r><w:t>click here</w:t></w:r></w:hyperlink></w:p>
+    <w:p><w:hyperlink w:anchor="_Toc1"><w:r><w:t>click here</w:t></w:r></w:hyperlink></w:p>
   </w:body>
 </w:document>`;
 
