@@ -1197,7 +1197,7 @@ function findTarget(
       if (dist <= tolerance && dist < (bestX?.dist ?? Infinity)) {
         // Flag the target as XObject-sourced so callers (textEditHandler) can
         // treat it as not-truly-editable and fall back to an overlay (A1).
-        bestX = { dist, target: { ...t, inXObject: true }, ops: xOps, textOps: xTextOps, xObjectName: raw.replace(/^\//, ''), source: xContent };
+        bestX = { dist, target: { ...t, inXObject: true, xObjectName: raw.replace(/^\//, '') }, ops: xOps, textOps: xTextOps, xObjectName: raw.replace(/^\//, ''), source: xContent };
       }
     }
   }
@@ -1326,6 +1326,19 @@ function decodeShowOpText(
  * separate show ops is a structural limit — only the matched op is edited in place;
  * the whole-word path is the G7 clustered overlay.
  */
+/**
+ * A3a — true when an edit at this target could ONLY proceed via Path 3 (standard-font
+ * redraw): the font is not Path-1-safe (byte-swap-unsafe) AND has no Path-2 ToUnicode
+ * subset to reuse. Used to gate XObject editing: a Path-1/2-safe XObject target edits
+ * in place, a Path-3-only one overlays (Path-3-in-XObject is refused until A3b).
+ * `xObjectName` routes the font introspection into the XObject's own resources.
+ */
+export function isPath3OnlyTarget(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): boolean {
+  const byteSwapUnsafe = isByteSwapUnsafeFont(doc, pageIndex, fontKey, xObjectName);
+  const hasToUnicode = !!getPageFontToUnicode(doc, pageIndex, fontKey, xObjectName);
+  return byteSwapUnsafe && !hasToUnicode;
+}
+
 export function getEditableTextAt(
   doc: PDFDocument,
   pageIndex: number,
@@ -1334,21 +1347,26 @@ export function getEditableTextAt(
 ): string | null {
   const found = findTarget(doc, pageIndex, point, tolerance);
   if (!found) return null;
-  // XObject targets aren't truly editable (own coord space + subset font); the
-  // handler overlays instead, so there is no prefill to derive here.
-  if (found.xObjectName || found.target.inXObject) return null;
+  // A3a: an XObject target IS editable in place when the edit is Path-1/2-safe (a
+  // byte==ASCII standard font → Path 1, or a ToUnicode subset → Path 2; both write
+  // the XObject stream via writeBack→setFormXObjectContent). Only a Path-3-only
+  // XObject font refuses here — Path-3-in-XObject is not yet supported (→ overlay).
+  if ((found.xObjectName || found.target.inXObject) &&
+      isPath3OnlyTarget(doc, pageIndex, found.target.fontKey, found.xObjectName)) {
+    return null;
+  }
 
   const op = found.ops[found.target.opIndex];
   if (!op) return null;
 
   // Reuse the trusted ToUnicode machinery so hex operands decode exactly as Path-2
   // re-encodes them. Built once per call; null when the font carries no ToUnicode.
-  const cmapText = getPageFontToUnicode(doc, pageIndex, found.target.fontKey);
+  const cmapText = getPageFontToUnicode(doc, pageIndex, found.target.fontKey, found.xObjectName);
   const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
   const bytesPerCode = cmapText ? detectCMapBytesPerCode(cmapText) : 2;
   // For a hex op with no ToUnicode, only a standard byte==ASCII font (the Path-1
   // case) is safely decodable — gate on the SAME predicate Path-1 uses.
-  const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, found.target.fontKey);
+  const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, found.target.fontKey, found.xObjectName);
 
   const text = decodeShowOpText(op, forward, bytesPerCode, byteSwapSafe);
   return text.length > 0 ? text : null;
@@ -1625,18 +1643,12 @@ export function matchStandardFont(baseFontName: string, flags: number): Standard
 export function getPageFontDescriptor(
   doc: PDFDocument,
   pageIndex: number,
-  fontKey: string
+  fontKey: string,
+  xObjectName?: string
 ): { flags: number; name: string } | null {
   try {
-    const page = doc.getPage(pageIndex);
     const name = fontKey.replace(/^\//, '');
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const resources = doc.context.lookup((page.node as any).Resources()) as any;
-    if (!resources?.get) return null;
-    const fontDictRaw = resources.get(PDFName.of('Font'));
-    if (!fontDictRaw) return null;
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    const fontDict = getFontResourceDict(doc, pageIndex, xObjectName);
     if (!fontDict?.get) return null;
     const fontEntryRaw = fontDict.get(PDFName.of(name));
     if (!fontEntryRaw) return null;
@@ -1663,18 +1675,12 @@ export function getPageFontDescriptor(
 export function getPageFontToUnicode(
   doc: PDFDocument,
   pageIndex: number,
-  fontKey: string
+  fontKey: string,
+  xObjectName?: string
 ): string | null {
   try {
-    const page = doc.getPage(pageIndex);
     const name = fontKey.replace(/^\//, '');
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const resources = doc.context.lookup((page.node as any).Resources()) as any;
-    if (!resources?.get) return null;
-    const fontDictRaw = resources.get(PDFName.of('Font'));
-    if (!fontDictRaw) return null;
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    const fontDict = getFontResourceDict(doc, pageIndex, xObjectName);
     if (!fontDict?.get) return null;
     const fontEntryRaw = fontDict.get(PDFName.of(name));
     if (!fontEntryRaw) return null;
@@ -1936,7 +1942,7 @@ export async function replaceTextAt(
   // breaks text extraction — the heading "data loss" bug. For such fonts, skip
   // the literal byte-swap and rely on glyph reuse (Path 2) or a standard-font
   // redraw (Path 3).
-  const byteSwapUnsafe = isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
+  const byteSwapUnsafe = isByteSwapUnsafeFont(doc, pageIndex, target.fontKey, found.xObjectName);
 
   // F1: Path 1 (literal byte swap) and Path 2 (subset glyph reuse) mutate ONLY the
   // show-op payload — they cannot apply a restyle (bold/italic/family/color/size). When
@@ -1965,7 +1971,7 @@ export async function replaceTextAt(
   }
 
   // Path 2: Subset glyph reuse via ToUnicode CMap.
-  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
+  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey, found.xObjectName);
   if (!wantsRestyle && cmapText) {
     const forward = parseToUnicodeCMap(cmapText);
     const bytesPerCode = detectCMapBytesPerCode(cmapText);
@@ -2251,17 +2257,39 @@ export function isSubsetFontName(baseName: string): boolean {
 }
 
 /** Resolve a page's font resource entry dict for a given font key. */
-function getPageFontEntry(doc: PDFDocument, pageIndex: number, fontKey: string): PDFDict | null {
+/**
+ * A3a — resolve the `/Font` resource dict to introspect. With `xObjectName`, read
+ * the Form XObject's OWN `/Resources/Font` (where its fonts actually live), not the
+ * page's — so font-safety checks (byte-swap, ToUnicode) see an XObject target's real
+ * font instead of missing it and defaulting to "safe" (which would let Path-1
+ * corrupt an XObject CID font). Returns null on any miss. Never throws.
+ */
+// oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped
+function getFontResourceDict(doc: PDFDocument, pageIndex: number, xObjectName?: string): any | null {
   try {
     const page = doc.getPage(pageIndex);
-    const name = fontKey.replace(/^\//, '');
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const resources = doc.context.lookup((page.node as any).Resources()) as any;
+    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped
+    let resources = doc.context.lookup((page.node as any).Resources()) as any;
+    if (xObjectName) {
+      // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib dict internals are untyped
+      const xobjDict = doc.context.lookup(resources?.get?.(PDFName.of('XObject'))) as any;
+      const xobj = xobjDict?.get
+        ? doc.context.lookup(xobjDict.get(PDFName.of(xObjectName.replace(/^\//, ''))))
+        : null;
+      const xdict = xobj instanceof PDFRawStream ? xobj.dict : null;
+      resources = xdict ? doc.context.lookup(xdict.get(PDFName.of('Resources'))) : null;
+    }
     if (!resources?.get) return null;
-    const fontDictRaw = resources.get(PDFName.of('Font'));
-    if (!fontDictRaw) return null;
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    return doc.context.lookup(resources.get(PDFName.of('Font')));
+  } catch {
+    return null;
+  }
+}
+
+function getPageFontEntry(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): PDFDict | null {
+  try {
+    const name = fontKey.replace(/^\//, '');
+    const fontDict = getFontResourceDict(doc, pageIndex, xObjectName);
     if (!fontDict?.get) return null;
     const entryRaw = fontDict.get(PDFName.of(name));
     if (!entryRaw) return null;
@@ -2390,9 +2418,9 @@ export function embeddedTextWidth(
  * embedded program (its encoding may remap byte codes to arbitrary glyphs).
  * Such fonts must be edited via glyph reuse or a standard-font redraw instead.
  */
-export function isByteSwapUnsafeFont(doc: PDFDocument, pageIndex: number, fontKey: string): boolean {
-  if (isSubsetFontName(getPageFontBaseName(doc, pageIndex, fontKey))) return true;
-  const entry = getPageFontEntry(doc, pageIndex, fontKey);
+export function isByteSwapUnsafeFont(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): boolean {
+  if (isSubsetFontName(getPageFontBaseName(doc, pageIndex, fontKey, xObjectName))) return true;
+  const entry = getPageFontEntry(doc, pageIndex, fontKey, xObjectName);
   if (!entry?.get) return false;
   const subtype = entry.get(PDFName.of('Subtype'))?.toString() ?? '';
   if (subtype.includes('Type0')) return true; // CID fonts never use plain byte=ASCII
@@ -2545,17 +2573,10 @@ export function lookupExtGStateAlpha(
  * The BaseFont name (e.g. "/ABCDEF+MyriadPro-Bold") often contains the real font name
  * even when pdfjs assigns an opaque internal id. Returns empty string on any failure.
  */
-export function getPageFontBaseName(doc: PDFDocument, pageIndex: number, fontKey: string): string {
+export function getPageFontBaseName(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): string {
   try {
-    const page = doc.getPage(pageIndex);
     const name = fontKey.replace(/^\//, '');
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const resources = doc.context.lookup((page.node as any).Resources()) as any;
-    if (!resources?.get) return '';
-    const fontDictRaw = resources.get(PDFName.of('Font'));
-    if (!fontDictRaw) return '';
-    // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
-    const fontDict = doc.context.lookup(fontDictRaw) as any;
+    const fontDict = getFontResourceDict(doc, pageIndex, xObjectName);
     if (!fontDict?.get) return '';
     const fontEntryRaw = fontDict.get(PDFName.of(name));
     if (!fontEntryRaw) return '';

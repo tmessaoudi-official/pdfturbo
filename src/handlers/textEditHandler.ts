@@ -2,7 +2,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
-import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, addDecorationAt, fillColorToHex, getPageFontBaseName, getEditableTextAt, type TextStyle } from '../utils/contentStreamEditor';
+import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, addDecorationAt, fillColorToHex, getPageFontBaseName, getEditableTextAt, isPath3OnlyTarget, type TextStyle } from '../utils/contentStreamEditor';
 import { extractPsName, isArabicText } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import { isEnabled } from '../config/features';
@@ -256,11 +256,15 @@ export class TextEditHandler {
       for (const candidate of [best, ...fallbackCandidates]) {
         const o = { x: candidate.transform[4], y: candidate.transform[5] };
         const hit = await findTextOpAt(libDoc, docPage.sourcePageNum - 1, o, TRUE_EDIT_TOLERANCE);
-        // A target inside a Form XObject cannot be truly edited (its own coord
-        // space + subset font; replaceTextAt refuses without blanking to avoid
-        // delete-without-replacement). Treat it as a MISS so we fall through to
-        // the overlay path instead of opening an editor that would no-op (A1).
-        if (hit && !hit.inXObject) { target = hit; matchedOrigin = o; break; }
+        // A3a: text inside a Form XObject IS editable in place when the edit is
+        // Path-1/2-safe (the engine writes the XObject stream via writeBack). Only a
+        // Path-3-only XObject font is treated as a MISS → overlay (Path-3-in-XObject
+        // is refused until A3b). A page-stream hit is always accepted (as before).
+        const editableHit = hit && (
+          !hit.inXObject ||
+          !isPath3OnlyTarget(libDoc, docPage.sourcePageNum - 1, hit.fontKey, hit.xObjectName)
+        );
+        if (hit && editableHit) { target = hit; matchedOrigin = o; break; }
       }
 
       // #28 kill-switch: with true-edit disabled, treat a hit as a miss → overlay.

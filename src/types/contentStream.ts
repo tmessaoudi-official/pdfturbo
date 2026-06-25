@@ -52,6 +52,9 @@ export interface TextOpInfo {
   colorOpIndex?: number;
   /** Set when this op was found inside a Form XObject (not directly editable). */
   inXObject?: true;
+  /** Name (no leading slash) of the Form XObject this op was found in, when `inXObject`.
+   * Lets callers route font introspection into the XObject's own resources (A3a). */
+  xObjectName?: string;
   /**
    * Active text render mode (`Tr`) when this op was shown. 3 = invisible (the
    * classic OCR layer over a scanned image); 7 = invisible + clip. Editing such

@@ -752,10 +752,12 @@ describe('getEditableTextAt', () => {
     expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBe('Hi');
   });
 
-  it('returns null for a target inside a Form XObject (not editable in place)', async () => {
+  it('returns the prefill for a Path-1/2-safe target inside a Form XObject (A3a)', async () => {
     const doc = await PDFDocument.load(await makeXObjectTextPdf());
-    // The only text lives inside the XObject — the in-place editor cannot use it.
-    expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBeNull();
+    // The XObject text uses a STANDARD font (Helvetica /F1) → Path-1-safe → now
+    // editable in place (writeBack writes the XObject stream), so getEditableTextAt
+    // returns its decoded text. (Pre-A3a this refused → null for ALL XObjects.)
+    expect(await getEditableTextAt(doc, 0, { x: 50, y: 300 }, 3)).toBe('InsideXObj');
   });
 
   it('matches the exact text replaceTextAt would replace (single literal op)', async () => {
@@ -2732,5 +2734,42 @@ describe('addPageExtGStateResource / lookupExtGStateAlpha (A2)', () => {
       doc.addPage();
       expect(lookupExtGStateAlpha(doc, 0, 'NoSuchGS')).toEqual({});
     });
+  });
+});
+
+// ── A3a: XObject-aware font introspection (corruption guard) ─────────────────────
+
+/** A one-page PDF whose Form XObject /Resources/Font has a standard font (XF0,
+ * Helvetica) AND a hand-built Type0/CID font (XF1). */
+async function makeXObjectFontsPdf(): Promise<PDFDocument> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([200, 200]);
+  const helv = await doc.embedFont(StandardFonts.Helvetica);
+  const type0 = doc.context.obj({
+    Type: 'Font', Subtype: 'Type0', Encoding: 'Identity-H', BaseFont: 'ABCDEF+SubCID',
+    DescendantFonts: [{ Type: 'Font', Subtype: 'CIDFontType2', BaseFont: 'ABCDEF+SubCID' }],
+  });
+  const type0Ref = doc.context.register(type0);
+  const xobjRes = doc.context.obj({ Font: { XF0: helv.ref, XF1: type0Ref } });
+  const xstream = doc.context.stream('BT /XF0 10 Tf 10 100 Td (Hi) Tj ET', {
+    Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 200, 200], Resources: xobjRes,
+  });
+  const xRef = doc.context.register(xstream);
+  const pageRes = doc.context.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
+  pageRes.set(PDFName.of('XObject'), doc.context.obj({ X0: xRef }));
+  return doc;
+}
+
+describe('isByteSwapUnsafeFont — XObject-aware (A3a)', () => {
+  it('sees a Type0/CID font INSIDE a Form XObject as byte-swap-unsafe (no corruption)', async () => {
+    const doc = await makeXObjectFontsPdf();
+    expect(isByteSwapUnsafeFont(doc, 0, 'XF1', 'X0')).toBe(true);  // CID → unsafe
+    expect(isByteSwapUnsafeFont(doc, 0, 'XF0', 'X0')).toBe(false); // standard → safe
+  });
+  it('documents the gap: a PAGE-level lookup cannot see an XObject font (defaults safe)', async () => {
+    const doc = await makeXObjectFontsPdf();
+    // Without the xObjectName the CID font is invisible to the page lookup → false.
+    // This is exactly why the xObjectName arg is required to make Path-1 safe.
+    expect(isByteSwapUnsafeFont(doc, 0, 'XF1')).toBe(false);
   });
 });
