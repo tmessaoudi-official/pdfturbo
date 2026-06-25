@@ -236,6 +236,13 @@ export interface FlowPage {
    * excluded from {@link paragraphs} (dedup).
    */
   tables?: FlowTable[];
+  /**
+   * B1 — set when this page's paragraphs/tables were derived from a tagged-PDF
+   * struct tree (exact reading order + tag-given heading/list/table structure).
+   * {@link assignHeadings} skips tagged pages so the heuristic size pass does not
+   * clobber the tag-derived levels. Writers ignore this flag.
+   */
+  tagged?: boolean;
 }
 
 /** A flattened PDF outline (bookmark) entry: title + 1-based nesting level. */
@@ -769,15 +776,15 @@ export function groupLinesIntoParagraphs(lines: Line[]): Line[][] {
  * into runs, infer alignment/bidi/list type, and measure indent + spacing
  * relative to the column edges. Returns the paragraph plus its geometry.
  */
-function buildParagraph(
-  group: Line[],
-  gi: number,
-  paraLines: Line[][],
-  fonts: FontInfoMap,
-  pageWidth: number,
-  colLeft: number,
-  colRight: number,
-): { para: FlowParagraph; geom: ParaGeom } {
+/**
+ * Merge a line group's words into styled {@link FlowRun}s: per-word bold/italic/
+ * family/size/color sniffing, super/subscript detection, gap→space insertion
+ * (reading-order aware on RTL lines), and adjacent same-style coalescing; lines
+ * are joined with a single space. Extracted from {@link buildParagraph} so the
+ * tagged-PDF struct path ({@link structTreeToFlow}) reuses the identical run
+ * quality. Pure → jsdom-testable.
+ */
+export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[] {
   const runs: FlowRun[] = [];
   for (let li = 0; li < group.length; li++) {
     const line = group[li];
@@ -848,6 +855,19 @@ function buildParagraph(
       if (last && !/\s$/.test(last.text)) last.text += ' ';
     }
   }
+  return runs;
+}
+
+function buildParagraph(
+  group: Line[],
+  gi: number,
+  paraLines: Line[][],
+  fonts: FontInfoMap,
+  pageWidth: number,
+  colLeft: number,
+  colRight: number,
+): { para: FlowParagraph; geom: ParaGeom } {
+  const runs = buildRunsFromLines(group, fonts);
 
   const pageCenter = pageWidth / 2;
   const centerTol = pageWidth * 0.05;
@@ -1096,6 +1116,269 @@ function _itemInRegion(it: { x: number; y: number }, r: TableRegion): boolean {
   return it.x >= r.left && it.x <= r.right && it.y >= r.bottom && it.y <= r.top;
 }
 
+// ── B1: tagged-PDF struct-tree exact-replace ────────────────────────────────
+
+/**
+ * A marked-content boundary from `getTextContent({ includeMarkedContent: true })`.
+ * pdf.js interleaves these with regular text items; only `beginMarkedContentProps`
+ * carries an `id` (the MCID that struct-tree content leaves reference).
+ */
+export interface MarkedContentMarker {
+  type: 'beginMarkedContent' | 'beginMarkedContentProps' | 'endMarkedContent';
+  id?: string;
+  tag?: string;
+}
+
+/**
+ * Minimal shape of a pdf.js `getStructTree()` node. An ELEMENT carries a `role`
+ * (e.g. 'H1','P','L','LI','Table','TR','TD','TH') and `children`; a CONTENT LEAF
+ * carries `type:'content'` (or `'object'`) and an `id` matching a marked-content id.
+ */
+export interface StructTreeNodeLike {
+  role?: string;
+  type?: string;
+  id?: string;
+  children?: StructTreeNodeLike[];
+}
+
+/** A struct-tree leaf: a content/object node carrying an MCID. */
+function _isStructLeaf(n: StructTreeNodeLike): n is StructTreeNodeLike & { id: string } {
+  return typeof n.id === 'string' && (n.type === 'content' || n.type === 'object');
+}
+
+// A parent block's leaf collection stops at these roles so it never swallows a
+// nested list/table (each is emitted as its own block); a table cell stops only
+// at a nested Table (everything else inside a cell is its text).
+const _STRUCT_BLOCK_STOP = new Set(['L', 'TABLE', 'FIGURE']);
+const _STRUCT_CELL_STOP = new Set(['TABLE']);
+
+/**
+ * B1 — split a `getTextContent({ includeMarkedContent: true })` item stream into a
+ * map of marked-content id → its text items. Each text item is attributed to the
+ * INNERMOST enclosing MCID (the nearest non-null id on the marked-content stack); a
+ * marked region with no MCID (Artifact / untagged) pushes a null spacer so the
+ * stack stays balanced and its text is dropped (artifacts are not content). Pure →
+ * jsdom-testable.
+ */
+export function buildMarkedContentMap(
+  items: ReadonlyArray<RawTextItem | MarkedContentMarker>,
+): Map<string, RawTextItem[]> {
+  const map = new Map<string, RawTextItem[]>();
+  const stack: (string | null)[] = [];
+  for (const it of items) {
+    if ('type' in it) {
+      const m = it as MarkedContentMarker;
+      if (m.type === 'endMarkedContent') stack.pop();
+      else stack.push(m.id ?? null); // beginMarkedContent / beginMarkedContentProps
+      continue;
+    }
+    let id: string | null = null;
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (stack[i] !== null) { id = stack[i]; break; }
+    }
+    if (id === null) continue;
+    const arr = map.get(id);
+    if (arr) arr.push(it as RawTextItem);
+    else map.set(id, [it as RawTextItem]);
+  }
+  return map;
+}
+
+/** Collect content-leaf ids under a node in document order, NOT descending into
+ * nested separately-emitted blocks (per {@link _STRUCT_BLOCK_STOP}/cell stop). */
+function _collectLeafIds(node: StructTreeNodeLike, stopRoles: Set<string>): string[] {
+  const out: string[] = [];
+  const walk = (n: StructTreeNodeLike) => {
+    for (const c of n.children ?? []) {
+      if (_isStructLeaf(c)) { out.push(c.id); continue; }
+      if (stopRoles.has((c.role ?? '').toUpperCase())) continue;
+      walk(c);
+    }
+  };
+  walk(node);
+  return out;
+}
+
+/** Resolve the (redaction-filtered) text items for a list of MCIDs into Words. */
+function _structItemsToWords(
+  ids: string[],
+  mcMap: Map<string, RawTextItem[]>,
+  redactions: RedactionRect[] | undefined,
+  pageHeight: number,
+): Word[] {
+  const words: Word[] = [];
+  for (const id of ids) {
+    const arr = mcMap.get(id);
+    if (!arr) continue;
+    for (const it of arr) {
+      if (!it.str || !it.str.trim()) continue;
+      if (redactions?.length && redactions.some(r => isItemRedacted(it, r, pageHeight))) continue;
+      const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
+      words.push({
+        text: foldLatinLigatures(it.str),
+        x: it.transform[4], y: it.transform[5],
+        width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl',
+      });
+    }
+  }
+  return words;
+}
+
+/** Build one FlowParagraph for a block (heading/body/list item) from its MCIDs. */
+function _structBlockParagraph(
+  ids: string[],
+  mcMap: Map<string, RawTextItem[]>,
+  fonts: FontInfoMap,
+  heading: FlowParagraph['heading'],
+  listCtx: { depth: number } | null,
+  redactions: RedactionRect[] | undefined,
+  pageHeight: number,
+): FlowParagraph | null {
+  const words = _structItemsToWords(ids, mcMap, redactions, pageHeight);
+  if (!words.length) return null;
+  const lines = clusterWordsIntoLines(words);
+  const runs = buildRunsFromLines(lines, fonts);
+  if (!runs.some(r => r.text.trim())) return null;
+  const rtlChars = runs.reduce((n, r) => n + (r.rtl ? r.text.length : 0), 0);
+  const totalChars = runs.reduce((n, r) => n + r.text.length, 0);
+  const rtl = totalChars > 0 && rtlChars / totalChars > 0.5;
+  const para: FlowParagraph = {
+    runs,
+    heading,
+    alignment: rtl ? 'right' : 'left',
+    rtl,
+    y: lines.length ? lines[0].y : undefined,
+  };
+  if (listCtx) {
+    // The tag says this is a list item: strip an inline/Lbl marker and pick
+    // ordered vs bullet from it; default bullet when no recognizable marker.
+    const first = runs[0];
+    const trimmed = first.text.trimStart();
+    const match = detectListPrefix(trimmed);
+    if (match) {
+      const leading = first.text.length - trimmed.length;
+      first.text = first.text.slice(0, leading) + match.stripped;
+      para.listType = match.type;
+      if (match.format) { para.listFormat = match.format; para.listOrdinalText = match.ordinalText; }
+    } else {
+      para.listType = 'bullet';
+    }
+    para.listDepth = Math.max(0, Math.min(8, listCtx.depth));
+  }
+  return para;
+}
+
+/** Build a FlowTable from a Table struct node (TR rows of TH/TD cells). */
+function _structTable(
+  node: StructTreeNodeLike,
+  mcMap: Map<string, RawTextItem[]>,
+  fonts: FontInfoMap,
+  redactions: RedactionRect[] | undefined,
+  pageHeight: number,
+): FlowTable | null {
+  const rows: string[][] = [];
+  let topY = -Infinity;
+  const cellText = (cell: StructTreeNodeLike): string => {
+    const words = _structItemsToWords(_collectLeafIds(cell, _STRUCT_CELL_STOP), mcMap, redactions, pageHeight);
+    for (const w of words) topY = Math.max(topY, w.y);
+    if (!words.length) return '';
+    return buildRunsFromLines(clusterWordsIntoLines(words), fonts).map(r => r.text).join('').trim();
+  };
+  const collectRows = (n: StructTreeNodeLike) => {
+    for (const c of n.children ?? []) {
+      if (_isStructLeaf(c)) continue;
+      const role = (c.role ?? '').toUpperCase();
+      if (role === 'TR') {
+        const cells: string[] = [];
+        for (const cell of c.children ?? []) {
+          if (_isStructLeaf(cell)) continue;
+          const cr = (cell.role ?? '').toUpperCase();
+          if (cr === 'TH' || cr === 'TD') cells.push(cellText(cell));
+        }
+        rows.push(cells);
+      } else if (role === 'THEAD' || role === 'TBODY' || role === 'TFOOT') {
+        collectRows(c); // row groups wrap the TRs
+      }
+    }
+  };
+  collectRows(node);
+  const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  if (rows.length === 0 || cols === 0) return null;
+  const cells = rows.map(r => {
+    const row = [...r];
+    while (row.length < cols) row.push('');
+    return row;
+  });
+  if (!cells.some(r => r.some(c => c.length > 0))) return null; // all-empty grid → skip
+  return { grid: { rows: cells.length, cols, cells }, y: topY === -Infinity ? 0 : topY };
+}
+
+/**
+ * B1 — reconstruct a tagged PDF page's flow straight from its `getStructTree()`,
+ * using marked-content ids to tie struct leaves to text items. Walks the role tree
+ * in document reading order emitting H1–6 → heading, P/Note/Caption/Quote → body,
+ * L+LI → list items (depth + ordered/bullet from the marker), Table+TR+TH/TD →
+ * FlowTable. Figures are skipped (the raster image path handles them). Returns null
+ * when the tree is absent or resolves no text (caller falls back to the heuristic
+ * path → byte-identical for untagged PDFs). Pure → jsdom-testable.
+ *
+ * Alignment/indent/spacing are not tag-derived (left, or right for RTL); the value
+ * is the exact reading order + correct heading/list/table structure the heuristics
+ * can only guess. `redactions` are CONTENT-space rects (already un-rotated by the
+ * caller) so redacted text never leaks here either.
+ */
+export function structTreeToFlow(
+  tree: StructTreeNodeLike | null | undefined,
+  mcMap: Map<string, RawTextItem[]>,
+  fonts: FontInfoMap,
+  pageWidth: number,
+  pageHeight: number,
+  redactions?: RedactionRect[],
+): { paragraphs: FlowParagraph[]; tables: FlowTable[] } | null {
+  if (!tree) return null;
+  const paragraphs: FlowParagraph[] = [];
+  const tables: FlowTable[] = [];
+
+  const pushPara = (node: StructTreeNodeLike, heading: FlowParagraph['heading'], listCtx: { depth: number } | null) => {
+    const p = _structBlockParagraph(
+      _collectLeafIds(node, _STRUCT_BLOCK_STOP), mcMap, fonts, heading, listCtx, redactions, pageHeight,
+    );
+    if (p) paragraphs.push(p);
+  };
+
+  const walk = (node: StructTreeNodeLike, listDepth: number) => {
+    const role = (node.role ?? '').toUpperCase();
+    const hMatch = /^H([1-6])$/.exec(role);
+    if (hMatch) { pushPara(node, Number(hMatch[1]) as FlowParagraph['heading'], null); return; }
+    if (role === 'H' || role === 'TITLE') { pushPara(node, 1, null); return; }
+    if (role === 'P' || role === 'NOTE' || role === 'CAPTION' || role === 'BLOCKQUOTE' || role === 'QUOTE') {
+      pushPara(node, 0, null); return;
+    }
+    if (role === 'LI') {
+      pushPara(node, 0, { depth: listDepth });
+      for (const c of node.children ?? []) {
+        if (!_isStructLeaf(c) && (c.role ?? '').toUpperCase() === 'L') walk(c, listDepth + 1);
+      }
+      return;
+    }
+    if (role === 'L') {
+      for (const c of node.children ?? []) if (!_isStructLeaf(c)) walk(c, listDepth);
+      return;
+    }
+    if (role === 'TABLE') {
+      const t = _structTable(node, mcMap, fonts, redactions, pageHeight);
+      if (t) tables.push(t);
+      return;
+    }
+    if (role === 'FIGURE') return; // raster handled by the image extraction path
+    for (const c of node.children ?? []) if (!_isStructLeaf(c)) walk(c, listDepth); // container → recurse
+  };
+
+  walk(tree, 0);
+  if (paragraphs.length === 0 && tables.length === 0) return null;
+  return { paragraphs, tables };
+}
+
 /**
  * Normalize a pdf.js fill-color operator's args to an uppercase 6-hex color
  * string (no leading '#'), or `null` if it can't be resolved (e.g. a pattern
@@ -1181,7 +1464,11 @@ export function reconstructPage(
   links?: FlowLinkRect[],
   rules?: RuleRect[],
   pageRotation = 0,
-  vRules?: RuleRect[]
+  vRules?: RuleRect[],
+  // B1: when the page is tagged, `struct.tree` + the marked-content item stream
+  // drive an exact-replace flow (correct reading order + tag structure); a tree
+  // that resolves no text falls through to the heuristic path below.
+  struct?: { tree: StructTreeNodeLike | null; markedItems: ReadonlyArray<RawTextItem | MarkedContentMarker> }
 ): FlowPage {
   // Redaction rects arrive in editor DISPLAYED space; text items are reported in
   // UNROTATED content space. Un-rotate the rects once so the intersection test in
@@ -1221,6 +1508,25 @@ export function reconstructPage(
       }
     }
     words.push({ text: foldLatinLigatures(it.str), x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl, underline, strikethrough });
+  }
+
+  // B1: tagged-PDF struct-tree exact-replace. A usable tree yields paragraphs/
+  // tables straight from the tags (correct reading order + heading/list/table
+  // structure) and SKIPS the heuristic column/heading path. structTreeToFlow
+  // returns null when the tree resolves no text → heuristic fallback below
+  // (byte-identical for untagged PDFs). Redactions are applied via the same
+  // un-rotated contentRedactions the heuristic path uses.
+  if (struct?.tree) {
+    const flow = structTreeToFlow(
+      struct.tree, buildMarkedContentMap(struct.markedItems), fonts, pageWidth, pageHeight, contentRedactions,
+    );
+    if (flow) {
+      const taggedPage: FlowPage = { width: pageWidth, height: pageHeight, paragraphs: flow.paragraphs, tagged: true };
+      if (flow.tables.length) taggedPage.tables = flow.tables;
+      const taggedMargins = computeMargins(words, pageWidth, pageHeight);
+      if (taggedMargins) taggedPage.margins = taggedMargins;
+      return taggedPage;
+    }
   }
 
   // G9: lattice-table detection. Only when BOTH axes carry grid rules. The text
@@ -1303,6 +1609,7 @@ function computeMargins(words: Word[], pageWidth: number, pageHeight: number): P
 export function assignHeadings(doc: FlowDoc): void {
   const weight = new Map<number, number>();
   for (const page of doc.pages) {
+    if (page.tagged) continue; // B1: tag-derived headings; don't skew the body-size vote
     for (const p of page.paragraphs) {
       for (const r of p.runs) {
         weight.set(r.fontSize, (weight.get(r.fontSize) ?? 0) + r.text.length);
@@ -1317,6 +1624,7 @@ export function assignHeadings(doc: FlowDoc): void {
     .slice(0, 6);
 
   for (const page of doc.pages) {
+    if (page.tagged) continue; // B1: keep the tag-derived heading levels
     for (const p of page.paragraphs) {
       const sizes = p.runs.map(r => r.fontSize);
       const domSize = sizes.length ? Math.max(...sizes) : bodySize;
@@ -1354,6 +1662,7 @@ export function assignHeadings(doc: FlowDoc): void {
     | 5
     | 6;
   for (const page of doc.pages) {
+    if (page.tagged) continue; // B1: tagged pages carry their own heading levels
     for (const p of page.paragraphs) {
       if (p.heading !== 0 || p.listType || p.runs.length === 0) continue;
       const domSize = Math.max(...p.runs.map(r => r.fontSize));

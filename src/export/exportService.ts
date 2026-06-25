@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
@@ -1045,8 +1045,14 @@ export class ExportService {
         .filter(el => el.pageId === docPage.id && el.type === 'redaction')
         .map(el => ({ x: el.x, y: el.y, width: el.width, height: el.height }));
 
+      // B1: a tagged PDF carries a struct tree. When present, request the
+      // marked-content text variant (markers tie struct leaves to text items) so
+      // reconstructPage can take the exact-replace path. Untagged pages keep the
+      // plain getTextContent() call → byte-identical extraction (~85% of files).
+      const structTree = (await page.getStructTree().catch(() => null)) as StructTreeNodeLike | null;
+      const useStruct = !!structTree?.children?.length;
       const [content, opList, annotations] = await Promise.all([
-        page.getTextContent(),
+        page.getTextContent(useStruct ? { includeMarkedContent: true } : undefined),
         page.getOperatorList().catch(() => null),
         page.getAnnotations().catch(() => [] as unknown[]),
       ]);
@@ -1065,7 +1071,11 @@ export class ExportService {
           };
         });
 
-      const items = content.items as RawTextItem[];
+      // When the marked-content variant was requested, the stream interleaves
+      // boundary markers (carry `type`) with text items; the heuristic path + font
+      // map want text items only. markedItems keeps the full stream for the struct path.
+      const markedItems = content.items as unknown as Array<RawTextItem | MarkedContentMarker>;
+      const items = (useStruct ? markedItems.filter(it => !('type' in it)) : markedItems) as RawTextItem[];
       const styles = content.styles as Record<string, { fontFamily?: string }>;
 
       const fonts: FontInfoMap = {};
@@ -1114,7 +1124,7 @@ export class ExportService {
         }
       }
 
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined);
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined, useStruct ? { tree: structTree, markedItems } : undefined);
       if (pageImages.length > 0) flowPage.images = pageImages;
       // Interleave typed overlay text into the source paragraphs by reading order
       // (G12) instead of appending it at the end. The overlay paragraphs get a PDF

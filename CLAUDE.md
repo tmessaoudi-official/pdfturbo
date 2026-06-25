@@ -604,6 +604,35 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   stroke→RG+w+Tr, Tc, Tz; `effectiveArabicWidth` math), `tests/browser/arabic-overlay.browser.test.ts` (real Chrome:
   stroke→pdf.js `setTextRenderingMode`, Tz→`setHScale`, Tc→`setCharSpacing` present, ABSENT for a plain control).
   Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-arabic-overlay-attrs*`.
+- **Tagged-PDF struct-tree fast path (#B1, 2026-06-25)**: a tagged PDF (`page.getStructTree()` with
+  children) exports to DOCX/MD/TXT straight from the tags instead of the layout heuristics. `flowDoc.ts`
+  `buildMarkedContentMap(items)` splits a `getTextContent({includeMarkedContent:true})` stream into
+  `MCID→RawTextItem[]` (each text item attributed to the INNERMOST enclosing MCID; a no-MCID marked region
+  — `Artifact`/untagged — pushes a `null` stack spacer so its text is DROPPED, which is correct: PDF/UA
+  artifacts are non-content). `structTreeToFlow(tree, mcMap, fonts, w, h, redactions?)` walks the role tree in
+  document reading order → `H1`–`H6`→heading / `P`/`Note`/`Caption`/`Quote`→body / `L`+`LI`→list (depth from
+  nesting, ordered/bullet from the Lbl/inline marker via `detectListPrefix`) / `Table`+`TR`+`TH`/`TD`→`FlowTable`
+  grid (`THead`/`TBody`/`TFoot` row-groups recursed); `Figure` skipped (the raster image path handles it). It
+  **returns null** when the tree is absent or resolves ZERO text → caller falls through to the heuristic →
+  **byte-identical for untagged PDFs (~85% of files)**. Run quality is shared: `buildRunsFromLines` was
+  EXTRACTED from `buildParagraph` (same color/super-sub/underline/gap-space/coalesce logic) and is reused by
+  both paths. `reconstructPage` gained an optional `struct?: {tree, markedItems}` param: when set and the flow
+  resolves, it returns `{paragraphs, tables, tagged:true}` (margins still computed from `words`) and SKIPS the
+  column/heading heuristic; `assignHeadings` skips `page.tagged` pages (all 3 loops) so tag levels aren't
+  clobbered. `exportService._extractFlowDoc` fetches `getStructTree()` first, and ONLY when it has children
+  requests the marked-content text variant (filtering markers out for the heuristic/font path via `!('type' in
+  it)`) — an untagged page keeps the plain `getTextContent()` call (byte-identical extraction). **Non-obvious:**
+  (1) struct-tree leaves `{type:'content', id}` and `beginMarkedContentProps {id}` share the SAME id string
+  (verified 100% on the w3c fixture) — direct map lookup, no fuzzy correlation; (2) text items have NO `type`
+  key, markers do — that's the discriminator; (3) `FlowDoc`/`FlowPage` are export-transient (never persisted to
+  IndexedDB) so `tagged` needs no SCHEMA bump. **Ceiling:** a partially-tagged page drops its untagged
+  (artifact-classed) text by design (exact-replace contract); alignment/indent/spacing are NOT tag-derived
+  (left, or right for RTL); a multi-column tagged page's reading order rides the writer's y-sort (monotonic for
+  normal top-down docs). Gated purely by struct-tree PRESENCE (no feature flag). Guards:
+  `tests/utils/flowDocStructTree.test.ts` (10: map attribution/nesting, heading/body/list/ordered/table/null/
+  redaction, assignHeadings tagged-skip) + `tests/browser/docx-structtree.browser.test.ts` (2: real tagged PDF →
+  H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without the struct arg). Spec:
+  `docs/superpowers/specs/2026-06-25-docx-export-subproject-b-design.md`.
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order
