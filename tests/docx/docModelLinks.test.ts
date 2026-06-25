@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseDocModel, applyBlocks, isDocImageBlock, type DocApplyIds, type DocBlock } from '../../src/docx/docModel';
+import { parseDocModel, applyBlocks, isDocImageBlock, type DocApplyIds, type DocBlock, type DocModel } from '../../src/docx/docModel';
+import { docModelToDoc, docToDocModel } from '../../src/docx/docxProseMirror';
 
 const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://r"`;
 const doc = (body: string): string =>
@@ -51,5 +52,20 @@ describe('C3 save — group linkUrl runs into a single w:hyperlink', () => {
     const before = applyBlocks(xml, parseDocModel(xml).blocks);
     expect(applyBlocks(xml, parseDocModel(xml).blocks)).toBe(before);
     expect(before).not.toContain('w:hyperlink');
+  });
+});
+
+describe('C3 bridge — linkUrl <-> PM link mark', () => {
+  it('round-trips a linkUrl run through the PM link mark', () => {
+    const model: DocModel = {
+      blocks: [{ runs: [{ text: 'go', linkUrl: 'https://e.com' }] }],
+      paragraphs: [{ runs: [{ text: 'go', linkUrl: 'https://e.com' }] }],
+    };
+    const pmDoc = docModelToDoc(model);
+    const para = pmDoc.firstChild;
+    const textNode = para?.firstChild;
+    expect(textNode?.marks.some(mk => mk.type.name === 'link' && mk.attrs.href === 'https://e.com')).toBe(true);
+    const back = docToDocModel(pmDoc);
+    expect(back.paragraphs[0].runs[0].linkUrl).toBe('https://e.com');
   });
 });

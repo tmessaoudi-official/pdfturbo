@@ -28,7 +28,8 @@ import { cleanWordHtml } from './wordPaste';
 import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, type DocImageBlock, isDocTable, isDocImageBlock, parseDocModel, applyBlocks, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { extractDocImages, type DocImage } from './docxImages';
-import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap } from './opcParts';
+import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap, buildHyperlinkMap, ensureHyperlinkRel } from './opcParts';
+import { sanitizeLinkUrl } from '../utils/linkUrl';
 
 const m = docxSchema.marks;
 const n = docxSchema.nodes;
@@ -42,6 +43,7 @@ function inlineOf(run: DocRun): PMNode {
   if (run.fontFamily) marks.push(m.fontFamily.create({ family: run.fontFamily }));
   if (run.fontSize) marks.push(m.fontSize.create({ size: run.fontSize }));
   if (run.color) marks.push(m.color.create({ value: run.color }));
+  if (run.linkUrl) marks.push(m.link.create({ href: run.linkUrl }));
   return docxSchema.text(run.text, marks);
 }
 function inlineFor(para: DocParagraph): PMNode[] {
@@ -156,6 +158,7 @@ function runsOf(node: PMNode): DocRun[] {
       const family = attr('fontFamily', 'family');
       const size = attr('fontSize', 'size');
       const color = attr('color', 'value');
+      const href = attr('link', 'href');
       runs.push({
         text: inline.text,
         bold: has('strong') || undefined,
@@ -164,6 +167,7 @@ function runsOf(node: PMNode): DocRun[] {
         fontFamily: typeof family === 'string' ? family : undefined,
         fontSize: typeof size === 'number' ? size : undefined,
         color: typeof color === 'string' ? color : undefined,
+        linkUrl: typeof href === 'string' ? href : undefined,
       });
     }
   });
@@ -267,6 +271,14 @@ export interface DocxEditorHandle {
   destroy(): void;
 }
 
+/** Collect every external `linkUrl` used across a block tree (incl. table cells). */
+function collectLinkUrls(blocks: DocBlock[], out: Set<string>): void {
+  for (const b of blocks) {
+    if (isDocTable(b)) { for (const r of b.rows) for (const c of r.cells) collectLinkUrls(c.blocks, out); }
+    else if (!isDocImageBlock(b)) { for (const run of b.runs) if (run.linkUrl) out.add(run.linkUrl); }
+  }
+}
+
 /** Recursively check whether any paragraph in a block tree satisfies `pred`. */
 function anyParagraph(blocks: DocBlock[], pred: (p: DocParagraph) => boolean): boolean {
   return blocks.some(b =>
@@ -284,7 +296,7 @@ function anyParagraph(blocks: DocBlock[], pred: (p: DocParagraph) => boolean): b
 export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): DocxEditorHandle {
   const opc = openOpc(bytes);
   const originalXml = getDocumentXml(opc);
-  const model = parseDocModel(originalXml, buildNumberingMap(opc));
+  const model = parseDocModel(originalXml, buildNumberingMap(opc), buildHyperlinkMap(opc));
   // Inline images are extracted once from the OPC and exposed read-only for the PDF export. They
   // are ALSO merged (by block index) into the matching image-anchor blocks so the editor can render
   // them inline read-only — the source w:p is still preserved verbatim by the reconciler's anchor
@@ -373,11 +385,20 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
       const edited = docToDocModel(view.state.doc);
       const hasHeading = anyParagraph(edited.blocks, p => p.heading !== undefined);
       const hasList = anyParagraph(edited.blocks, p => p.list !== undefined);
+      // Resolve external links → rIds (reuse-or-create rels). Invalid schemes are dropped here,
+      // so the run keeps no rId → setRunsOn emits it as plain text (no relationship created).
+      const rawUrls = new Set<string>();
+      collectLinkUrls(edited.blocks, rawUrls);
+      const links = new Map<string, string>();
+      for (const raw of rawUrls) {
+        const safe = sanitizeLinkUrl(raw);
+        if (safe) links.set(raw, ensureHyperlinkRel(opc, safe));
+      }
       let ids: DocApplyIds | undefined;
-      if (hasHeading || hasList) {
+      if (hasHeading || hasList || links.size > 0) {
         const heading = hasHeading ? ensureHeadingStyles(opc) : { 1: 'Heading1', 2: 'Heading2', 3: 'Heading3' };
         const list = hasList ? ensureListNumbering(opc) : { bulletNumId: 0, orderedNumId: 0 };
-        ids = { heading, bulletNumId: list.bulletNumId, orderedNumId: list.orderedNumId };
+        ids = { heading, bulletNumId: list.bulletNumId, orderedNumId: list.orderedNumId, links: links.size ? links : undefined };
       }
       setDocumentXml(opc, applyBlocks(originalXml, edited.blocks, ids));
       return packOpc(opc);
