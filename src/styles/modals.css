@@ -250,3 +250,5 @@
 /* Sub-project C Phase 1 — opaque image/hyperlink anchors (read-only). */
 .docx-editor-mount .ProseMirror img[data-docx-image] { display: block; margin: 0.5em 0; }
 .docx-editor-mount .ProseMirror .docx-link-ro { color: #0563c1; text-decoration: underline; cursor: default; }
+/* Sub-project C Phase 2a — inline URL input for the toolbar link button. */
+.docx-toolbar .docx-tb-linkinput { min-width: 14em; padding: 2px 6px; font: inherit; }

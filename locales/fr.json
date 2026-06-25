@@ -130,7 +130,9 @@
     "addColumn": "Ajouter une colonne",
     "deleteColumn": "Supprimer la colonne",
     "mergeCells": "Fusionner les cellules",
-    "splitCell": "Scinder la cellule"
+    "splitCell": "Scinder la cellule",
+    "link": "🔗 Lien",
+    "linkPrompt": "Saisissez l'URL, puis appuyez sur Entrée"
   },
   "formatting": {
     "textLabel": "Texte / Forme",

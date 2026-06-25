@@ -11,6 +11,7 @@ import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { addRowAfter, deleteRow, addColumnAfter, deleteColumn, mergeCells, splitCell, isInTable } from 'prosemirror-tables';
 import { type MarkType, type NodeType } from 'prosemirror-model';
 import { docxSchema } from './docxSchema';
+import { sanitizeLinkUrl } from '../utils/linkUrl';
 import { t } from '../utils/i18n';
 
 const m = docxSchema.marks;
@@ -176,6 +177,42 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   const bulletBtn = btn('bullet', t('docxToolbar.bulletList'), () => toggleList(n.bullet_list));
   const orderedBtn = btn('ordered', t('docxToolbar.orderedList'), () => toggleList(n.ordered_list));
 
+  // Link control: a 🔗 button + an inline URL input (revealed on click; NOT a blocking
+  // window.prompt). With the caret inside a link the button removes it; otherwise it reveals
+  // the input, and Enter sanitizes + applies the `link` mark over the selection. C3.
+  const linkInput = document.createElement('input');
+  linkInput.type = 'url';
+  linkInput.className = 'docx-tb-linkinput';
+  linkInput.dataset.act = 'linkInput';
+  linkInput.placeholder = t('docxToolbar.linkPrompt');
+  linkInput.style.display = 'none';
+  const applyLink = (): void => {
+    const url = sanitizeLinkUrl(linkInput.value);
+    if (url) run(setMarkAttr(m.link, { href: url }));
+    linkInput.value = '';
+    linkInput.style.display = 'none';
+  };
+  linkInput.addEventListener('mousedown', e => e.stopPropagation());
+  linkInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
+    else if (e.key === 'Escape') { linkInput.value = ''; linkInput.style.display = 'none'; view.focus(); }
+  });
+  const linkBtn = document.createElement('button');
+  linkBtn.type = 'button';
+  linkBtn.className = 'docx-tb-btn';
+  linkBtn.dataset.act = 'link';
+  linkBtn.textContent = t('docxToolbar.link');
+  linkBtn.title = t('docxToolbar.link');
+  linkBtn.addEventListener('mousedown', e => e.preventDefault());
+  linkBtn.addEventListener('click', () => {
+    if (markActive(view.state, m.link)) {
+      run(setMarkAttr(m.link, null)); // caret in a link → remove it
+    } else if (!view.state.selection.empty) {
+      linkInput.style.display = '';
+      linkInput.focus();
+    }
+  });
+
   // Table-editing controls (Slice 3b). prosemirror-tables commands no-op outside a
   // table; update() also reflects their enabled state from isInTable.
   const addRowBtn = btn('addRowAfter', t('docxToolbar.addRow'), () => addRowAfter);
@@ -190,7 +227,7 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   const mergeBtn = btn('mergeCells', t('docxToolbar.mergeCells'), () => mergeCells);
   const splitBtn = btn('splitCell', t('docxToolbar.splitCell'), () => splitCell);
 
-  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn, ...tableBtns, mergeBtn, splitBtn);
+  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn, linkBtn, linkInput, ...tableBtns, mergeBtn, splitBtn);
 
   const update = (): void => {
     boldBtn.classList.toggle('active', markActive(view.state, m.strong));
@@ -199,6 +236,7 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
     headingSel.value = String(currentHeading(view.state));
     bulletBtn.classList.toggle('active', inList(view.state, n.bullet_list));
     orderedBtn.classList.toggle('active', inList(view.state, n.ordered_list));
+    linkBtn.classList.toggle('active', markActive(view.state, m.link));
     const structural = isInTable(view.state) && !currentTableHasMerges(view.state);
     for (const b of tableBtns) b.disabled = !structural;
     mergeBtn.disabled = !mergeCells(view.state);

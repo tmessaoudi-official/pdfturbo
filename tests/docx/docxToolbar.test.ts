@@ -50,6 +50,31 @@ describe('docxToolbar (Task 7)', () => {
     expect(view.state.doc.rangeHasMark(1, 6, docxSchema.marks.underline)).toBe(true);
   });
 
+  it('link button + URL input adds a link mark, and clicking again removes it', () => {
+    mount('hello');
+    selectAll();
+    const input = ctrl<HTMLInputElement>('linkInput');
+    ctrl<HTMLElement>('link').click();              // reveal the input
+    input.value = 'https://example.com';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(view.state.doc.rangeHasMark(1, 6, docxSchema.marks.link)).toBe(true);
+    tb.update();
+    expect(ctrl<HTMLElement>('link').classList.contains('active')).toBe(true);
+    selectAll();
+    ctrl<HTMLElement>('link').click();              // in-link → remove
+    expect(view.state.doc.rangeHasMark(1, 6, docxSchema.marks.link)).toBe(false);
+  });
+
+  it('link input rejects an unsafe scheme (no mark applied)', () => {
+    mount('hello');
+    selectAll();
+    const input = ctrl<HTMLInputElement>('linkInput');
+    ctrl<HTMLElement>('link').click();
+    input.value = 'javascript:alert(1)';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(view.state.doc.rangeHasMark(1, 6, docxSchema.marks.link)).toBe(false);
+  });
+
   it('heading select sets the block type and Normal resets it', () => {
     mount('Title');
     const sel = ctrl<HTMLSelectElement>('heading');

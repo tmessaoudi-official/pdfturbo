@@ -130,7 +130,9 @@
     "addColumn": "إضافة عمود",
     "deleteColumn": "حذف العمود",
     "mergeCells": "دمج الخلايا",
-    "splitCell": "تقسيم الخلية"
+    "splitCell": "تقسيم الخلية",
+    "link": "🔗 رابط",
+    "linkPrompt": "أدخل الرابط ثم اضغط Enter"
   },
   "formatting": {
     "textLabel": "نص / شكل",
