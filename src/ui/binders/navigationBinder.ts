@@ -39,6 +39,14 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
     app._isFitMode = false;
     guard(app.applyZoom(app.zoomScale + (e.deltaY < 0 ? 0.05 : -0.05)));
   }, { passive: false });
+  // QA-D F2 — re-fit on viewport resize/orientation change so the page doesn't keep a stale zoom and
+  // overflow (e.g. desktop→mobile). Only when fit-mode is active and a document is loaded. Debounced.
+  let _fitResizeTimer: ReturnType<typeof setTimeout> | undefined;
+  window.addEventListener('resize', () => {
+    if (!app._isFitMode || !app.documentModel.pageCount) return;
+    clearTimeout(_fitResizeTimer);
+    _fitResizeTimer = setTimeout(() => guard(app.fitToWidth()), 150);
+  });
 
   // ── Download ───────────────────────────────────────────────────
   app.ui.downloadBtn.addEventListener('click', () => app.downloadPDF());
