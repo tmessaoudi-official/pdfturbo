@@ -879,40 +879,57 @@ export function buildDrawingParagraph(dom: Document, rId: string, cx: number, cy
   return p;
 }
 
+/** True for a top-level image-anchor element (a w:p containing a w:drawing). */
+function isImageAnchorEl(el: Element): boolean {
+  return el.tagName === 'w:p' && el.getElementsByTagName('w:drawing').length > 0;
+}
+
 /**
- * Save pre-pass (AFTER reconcileImageAnchors, BEFORE reconcileContainer): insert a new DOM
- * `w:p` drawing anchor for every NEW image block (kind:'image', image defined, no anchorId),
- * minting its OPC media part via the `mintImage` callback (NOT opcParts directly — docModel must
- * not import opcParts, an import cycle). Placement is a parallel walk of `blocks` vs the body's
- * block children with a per-block DOM cursor: a new image is inserted before the cursor's DOM
- * child (or appended at end), so boundary order — and thus reconcileContainer's segment zip —
- * lines up. Runs AFTER reconcileImageAnchors so existing anchors' parse-time positions still
- * match their anchorIds when delete/resize keys on position (inserting first would shift them).
+ * Save pre-pass (AFTER reconcileImageAnchors, BEFORE reconcileContainer): place every image anchor at its
+ * MODEL position. Walk model blocks with a cursor over the body's NON-image-anchor block children (text +
+ * tables + hyperlink anchors — the fixed reference points); an existing image (numeric anchorId) is MOVED
+ * (its element relocated before the cursor's ref via insertBefore, which re-parents in place) and a new
+ * image (no anchorId) is INSERTED (minting via the callback — NOT opcParts directly: docModel must not
+ * import opcParts, an import cycle). Only image elements move — text/tables/hyperlink anchors are never
+ * touched → full fidelity, and the boundary order then matches the model so reconcileContainer's segment
+ * zip is all in-place. SAFETY GUARD: if the model image anchorIds aren't a dup-free subset of the map keys
+ * → skip entirely (verbatim, never corrupt). Absorbs the former materializeNewImageAnchors (the
+ * anchorId === undefined branch).
  */
-export function materializeNewImageAnchors(
-  mintImage: (bytes: Uint8Array, mime: 'image/png' | 'image/jpeg') => string,
+export function placeImageAnchors(
+  mintImage: ((bytes: Uint8Array, mime: 'image/png' | 'image/jpeg') => string) | undefined,
+  anchorEl: Map<number, Element>,
   body: Element,
   blocks: DocBlock[],
 ): void {
   const dom = body.ownerDocument;
   if (!dom) return;
-  const domChildren = containerBlockEls(body);
+  const existingIds = blocks
+    .filter((b): b is DocImageBlock => isDocImageBlock(b) && typeof b.anchorId === 'number')
+    .map(b => b.anchorId as number);
+  const uniq = new Set(existingIds);
+  if (uniq.size !== existingIds.length || existingIds.some(i => !anchorEl.has(i))) return; // guard → verbatim
+
+  const refs = containerBlockEls(body).filter(el => !isImageAnchorEl(el));
   let docPr = nextDocPrId(body);
-  let c = 0;
+  let r = 0;
   for (const b of blocks) {
-    if (isDocImageBlock(b) && b.image && b.anchorId === undefined) {
-      const img = b.image;
-      const rId = mintImage(b64ToBytes(img.dataB64), img.mime);
-      const cx = Math.round(img.widthPt * EMU_PER_PT_M);
-      const cy = Math.round(img.heightPt * EMU_PER_PT_M);
-      const newP = buildDrawingParagraph(dom, rId, cx, cy, docPr);
-      docPr += 1;
-      const ref = c < domChildren.length ? domChildren[c] : null;
-      body.insertBefore(newP, ref);
-      domChildren.splice(c, 0, newP);
-      c += 1;
-    } else if (c < domChildren.length) {
-      c += 1;
+    if (isDocImageBlock(b) && b.image) {
+      const ref = r < refs.length ? refs[r] : null;
+      if (b.anchorId === undefined) {
+        if (!mintImage) continue;                       // can't mint a new image without the callback
+        const rId = mintImage(b64ToBytes(b.image.dataB64), b.image.mime);
+        const cx = Math.round(b.image.widthPt * EMU_PER_PT_M);
+        const cy = Math.round(b.image.heightPt * EMU_PER_PT_M);
+        body.insertBefore(buildDrawingParagraph(dom, rId, cx, cy, docPr), ref);
+        docPr += 1;
+      } else {
+        const el = anchorEl.get(b.anchorId);
+        if (el) body.insertBefore(el, ref);             // MOVE: insertBefore re-parents in place
+      }
+      // image placed BETWEEN refs → do NOT advance r
+    } else if (r < refs.length) {
+      r += 1;                                           // text / table / hyperlink-anchor block → advance
     }
   }
 }
@@ -960,11 +977,10 @@ function reconcileImageAnchors(anchorEl: Map<number, Element>, blocks: DocBlock[
 /**
  * Write a full block model back into the ORIGINAL document XML IN PLACE. Generalizes
  * applyParagraphRuns: top-level paragraphs AND tables (cells rewritten, structure verbatim).
- * `opts.editImages` (editor save only) runs the C2 image delete/resize pre-pass, then — when
- * `opts.mintImage` is given — materializes new image anchors (B insert). Legacy callers
- * (applyParagraphRuns, paragraphs-only) omit both → images preserved verbatim (byte-identical).
- * Ordering is load-bearing: reconcileImageAnchors keys on parse-time anchor POSITIONS, so it must
- * run before any new anchor is inserted (which would shift those positions).
+ * `opts.editImages` (editor save only) runs the image pre-passes, which share a once-built `anchorEl`
+ * identity map: reconcileImageAnchors (delete/resize) → placeImageAnchors (move existing by anchorId +
+ * insert new via opts.mintImage) → reconcileContainer (unchanged). Legacy callers (applyParagraphRuns,
+ * paragraphs-only) omit editImages → images preserved verbatim (byte-identical).
  */
 export function applyBlocks(
   documentXml: string,
@@ -979,7 +995,7 @@ export function applyBlocks(
   if (opts?.editImages) {
     const anchorEl = buildAnchorElMap(body);
     reconcileImageAnchors(anchorEl, blocks);
-    if (opts.mintImage) materializeNewImageAnchors(opts.mintImage, body, blocks);
+    placeImageAnchors(opts.mintImage, anchorEl, body, blocks);
   }
   reconcileContainer(dom, body, blocks, ids, false);
   return new XMLSerializer().serializeToString(dom);
