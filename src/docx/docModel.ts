@@ -917,32 +917,43 @@ export function materializeNewImageAnchors(
   }
 }
 
+/** anchorId → its original DOM w:p, built ONCE pre-mutation (DOM is parse order, so D[i] has anchorId i).
+ * Shared by reconcileImageAnchors (delete/resize) and placeImageAnchors (move) so both key on identity,
+ * not position — element references survive both DOM deletion and reordering. */
+function buildAnchorElMap(body: Element): Map<number, Element> {
+  const map = new Map<number, Element>();
+  drawingAnchorParas(body).forEach((el, i) => map.set(i, el));
+  return map;
+}
+
 /**
  * C2 image edit (save pre-pass, BEFORE reconcileContainer): delete top-level drawing anchors whose
- * anchorId no longer survives in the model, and resize the rest in place. Identity is anchorId
- * (parse-time index among top-level drawing anchors). SAFETY GUARD: if the surviving anchorIds aren't
- * a duplicate-free subset of {0..m-1}, leave every image verbatim (never corrupt). The surviving set
- * is identity-only (any block with a numeric anchorId) — this INCLUDES an unsupported-format image that
- * round-tripped as a docx_link fallback, so it is preserved rather than treated as deleted.
+ * anchorId no longer survives in the model, and resize the rest in place. Keyed by the shared `anchorEl`
+ * identity map (NOT position) so it composes with a MOVE (B slice 2) that reorders elements — behavior is
+ * identical to the prior positional version (anchorEl.get(i) === the old D[i]). SAFETY GUARD: if the
+ * surviving anchorIds aren't a duplicate-free subset of {0..m-1}, leave every image verbatim (never
+ * corrupt). The surviving set is identity-only (any block with a numeric anchorId) — this INCLUDES an
+ * unsupported-format image that round-tripped as a docx_link fallback, so it is preserved not deleted.
  */
-function reconcileImageAnchors(body: Element, blocks: DocBlock[]): void {
-  const D = drawingAnchorParas(body);
-  const m = D.length;
+function reconcileImageAnchors(anchorEl: Map<number, Element>, blocks: DocBlock[]): void {
+  const m = anchorEl.size;
   if (m === 0) return;
   const drawBlocks = blocks.filter((b): b is DocImageBlock => isDocImageBlock(b) && typeof b.anchorId === 'number');
   const ids = drawBlocks.map(b => b.anchorId as number);
   const S = new Set(ids);
   if (S.size !== ids.length || ids.some(i => i < 0 || i >= m)) return; // guard → verbatim
   for (let i = 0; i < m; i++) {
-    if (!S.has(i)) { D[i].remove(); continue; }     // user-deleted (no surviving anchor for id i)
+    const el = anchorEl.get(i);
+    if (!el) continue;
+    if (!S.has(i)) { el.remove(); continue; }        // user-deleted (no surviving anchor for id i)
     const blk = drawBlocks.find(b => b.anchorId === i);
     if (!blk || !blk.image) continue;                // unextracted image → preserve verbatim, no resize
     const cx = Math.round(blk.image.widthPt * EMU_PER_PT_M);
     const cy = Math.round(blk.image.heightPt * EMU_PER_PT_M);
-    const ext = D[i].getElementsByTagName('wp:extent')[0];
+    const ext = el.getElementsByTagName('wp:extent')[0];
     const curCx = Number(ext?.getAttribute('cx'));
     const curCy = Number(ext?.getAttribute('cy'));
-    if (cx > 0 && cy > 0 && (cx !== curCx || cy !== curCy)) rewriteExtent(D[i], cx, cy);
+    if (cx > 0 && cy > 0 && (cx !== curCx || cy !== curCy)) rewriteExtent(el, cx, cy);
   }
 }
 
@@ -966,7 +977,8 @@ export function applyBlocks(
   const body = dom.getElementsByTagName('w:body')[0];
   if (!body) return documentXml;
   if (opts?.editImages) {
-    reconcileImageAnchors(body, blocks);
+    const anchorEl = buildAnchorElMap(body);
+    reconcileImageAnchors(anchorEl, blocks);
     if (opts.mintImage) materializeNewImageAnchors(opts.mintImage, body, blocks);
   }
   reconcileContainer(dom, body, blocks, ids, false);
