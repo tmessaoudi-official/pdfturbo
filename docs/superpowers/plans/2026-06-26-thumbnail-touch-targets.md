@@ -301,7 +301,7 @@ git commit -m "feat(thumbnails): mobile CSS — hide overlays, show ⋮, 44px me
 
 Run: `npm run dev` (background) → wait for `http://localhost:5173/pdfturbo/` (or note the fallback port 5174/5175).
 
-- [ ] **Step 2: Live mobile check via Playwright MCP.** `browser_navigate` to the dev URL, `browser_resize` 375×812, upload a multi-page PDF (`browser_file_upload`). Then via `browser_evaluate`:
+- [ ] **Step 2: Live mobile check via Playwright MCP.** `browser_navigate` to the dev URL, `browser_resize` 375×812, upload a **≥2-page** PDF (`browser_file_upload`) — verify the page count first so the delete-count assertion below doesn't empty a 1-page doc; if no 2-page fixture is handy, open `public/test.pdf` then use "Add PDF" to reach 2 pages. Then via `browser_evaluate`:
   - assert each `.thumb-rotate/.thumb-dl/.thumb-delete` computes `getComputedStyle(el).display === 'none'`;
   - assert `.thumb-more` is visible (`display !== 'none'`);
   - tap a `.thumb-more`; assert `.thumb-action-menu-item` rows each have `getBoundingClientRect().height >= 44`;

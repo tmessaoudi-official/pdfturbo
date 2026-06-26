@@ -64,6 +64,19 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
 
 ## Gotchas (verified by the 2026-06-11 craftsmanship review, refreshed 2026-06-14 — docs/reviews/)
 
+- **Mobile thumbnail controls = a single ⋮ action menu (F2b, 2026-06-26)**: the per-thumbnail controls
+  (↺↻ rotate / 📄🖼 export / × delete) reveal on `:hover` on **desktop only**. On `≤640px` a 50×74px tile
+  can't host five 44px touch targets, so the media query in `pdf-layers.css` **hides** `.thumb-rotate`/
+  `.thumb-dl`/`.thumb-delete` (they stay in the DOM — desktop uses them) and **shows** a single `.thumb-more`
+  ⋮ button that opens `_openActionMenu` — a body-anchored popup (`.thumb-action-menu` / `.thumb-action-menu-item`,
+  ≥44px rows) with Rotate L/R, Export PDF, Export image (→ the existing format submenu), Delete. Both popups
+  share ONE open-menu state (`_openMenu`/`_closeMenu`/`_onMenu*`) and the shared `_positionMenu(menu, anchor)`,
+  which **flips the menu upward** when there's no room below (the thumbnail strip sits at the viewport bottom,
+  so it almost always opens up) + clamps horizontally. Guarded by the F2b jsdom tests in
+  `tests/ui/pageThumbnailPanel.test.ts` (wiring) + live @375px evidence (`qa-shots/f2b/`: overlays `display:none`,
+  rows measured 44px, menu fully in-viewport). i18n: one new key `thumbnail.moreActions` (ar [Unverified]);
+  row labels reuse the existing `thumbnail.*` keys. Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-06-26-thumbnail-touch-targets*`.
 - **Export paths are consolidated** (the historic triplication is RESOLVED): `downloadPDF`,
   `downloadPage`, `downloadPageAsImage` on `pdfTurboApp.ts` are now thin
   one-line delegators to `_exportService`; the shared rotation/cropbox/watermark/ink logic
