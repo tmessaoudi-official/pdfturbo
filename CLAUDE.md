@@ -1192,6 +1192,36 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   painted image, all real pdf.js) + the jsdom no-throw case in `tests/docx/docxToPdf.test.ts`. Live eyes-on:
   `qa-shots/c-export-resized.pdf` (resized image baked into the exported PDF). Spec/plan:
   `docs/superpowers/{specs,plans}/2026-06-26-docx-pdf-export-staleness*`.
+  **New-image INSERT (Sub-project B, sub-slice 1 of 4, 2026-06-26):** the DOCX editor can now INSERT a
+  PNG/JPEG (📷 toolbar button → hidden file input → sniff magic bytes → `createImageBitmap` for natural
+  px → `widthPt = min(px×0.75, 468pt)` proportional → a `docx_image` PM node with `anchorId: -1`). It
+  renders inline immediately (the C2 NodeView) and survives `save()` as a brand-new `w:drawing` + `word/media`
+  part + Content-Types Default + image rel. **Engine:** `opcParts.ensureImagePart(opc, bytes, mime) → {rId,
+  target}` mints a fresh `word/media/imageN.png|jpg` (N = 1 + max existing), adds the Content-Types `Default`
+  for the extension **once** (images are typed by Default, not Override), and a `…/relationships/image` rel.
+  `docModel.materializeNewImageAnchors(mintImage, body, blocks)` is a save pre-pass that inserts a DOM `w:p`
+  anchor (`buildDrawingParagraph` → minimal spec-valid inline pic) for every NEW image block (`kind:'image'`,
+  `image` defined, **no** `anchorId`), placed by a per-block parallel walk of `blocks` vs the body's block
+  children so boundary order lines up and `reconcileContainer`'s segment-zip stays aligned. **Minting is a
+  CALLBACK** (`opts.mintImage?: (bytes, mime) => string`), NOT `opcParts` directly — `docModel` must not
+  import `opcParts` (cycle); the editor save passes `mintImage: (b, m) => ensureImagePart(opc, b, m).rId`.
+  **Ordering is load-bearing (deviates from the original spec):** `reconcileImageAnchors` runs FIRST (it keys
+  on parse-time anchor POSITIONS — inserting a new anchor before an existing one would shift those positions
+  and make it delete/resize the wrong anchor = data loss), THEN `materializeNewImageAnchors`, THEN
+  `reconcileContainer`. **Byte-identical when no image is inserted** (materialize no-ops without a new image;
+  legacy `applyBlocks` callers omit `mintImage`). A new image carries no `anchorId`, so `reconcileImageAnchors`
+  (identity-only on numeric `anchorId`) never touches it during the same save; on the NEXT open it parses as
+  an existing anchor with a fresh parse-time `anchorId`. **Ceiling (later sub-slices):** image MOVE/reorder
+  (slice 2 ▲▼+Alt), cut&paste (3), drag (4) — all sharing one save-side reorder built in slice 2; inline-
+  with-text insert, cell-nested insert, non-PNG/JPEG, dedup-by-content all out of scope. The toolbar exposes
+  `insertImage(bytes, mime, widthPt, heightPt)` for tests; an undecodable image (`createImageBitmap` throws,
+  caught) still inserts at 0 dims. i18n `docxToolbar.insertImage` (en/fr/ar, ar [Unverified]). No new feature
+  flag (rides `VITE_FEATURE_DOCX_EDIT`); no `SCHEMA_VERSION` bump. Guards: `tests/docx/opcImagePart.test.ts`,
+  `tests/docx/docImageInsert.test.ts` (incl. the insert-BEFORE-existing data-loss case that proves the
+  ordering), the insertImage cases in `tests/docx/docxToolbar.test.ts`, and
+  `tests/browser/docx-image-insert.browser.test.ts` (real Chrome: file-pick → render → save mints
+  `w:drawing` + media part + Default + rel into a doc that had none). Live eyes-on: `qa-shots/b-insert/`.
+  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-image-insert*`.
 
 ## Git & CI
 
