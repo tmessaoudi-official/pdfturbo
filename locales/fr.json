@@ -100,6 +100,7 @@
     "fillNoneTitle": "Sans remplissage / transparent"
   },
   "docxEditor": {
+    "deleteImage": "Supprimer l'image",
     "title": "Éditer le document Word",
     "save": "Enregistrer .docx",
     "close": "Fermer",

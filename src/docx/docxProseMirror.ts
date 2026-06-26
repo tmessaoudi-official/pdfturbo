@@ -12,6 +12,7 @@
 import { type Node as PMNode } from 'prosemirror-model';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { createDocxImageView } from './docxImageView';
 // ProseMirror's own stylesheet (sets `white-space: pre-wrap` etc.) — silences the
 // "expects the CSS white-space property to be set" console warning and fixes wrapping.
 import 'prosemirror-view/style/prosemirror.css';
@@ -355,6 +356,7 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
 
   const view = new EditorView(container, {
     state,
+    nodeViews: { docx_image: (node, v, getPos) => createDocxImageView(node, v, getPos) },
     transformPastedHTML: (html: string): string => cleanWordHtml(html),
     handlePaste: (v, event): boolean => {
       if (!_plainPasteArmed) return false;

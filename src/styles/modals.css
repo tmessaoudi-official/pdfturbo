@@ -252,3 +252,18 @@
 .docx-editor-mount .ProseMirror .docx-link-ro { color: #0563c1; text-decoration: underline; cursor: default; }
 /* Sub-project C Phase 2a — inline URL input for the toolbar link button. */
 .docx-toolbar .docx-tb-linkinput { min-width: 14em; padding: 2px 6px; font: inherit; }
+/* Sub-project C Phase 2b — image resize/delete chrome (shown only when the atom is selected). */
+.docx-editor-mount .ProseMirror .docx-image-wrap { position: relative; display: inline-block; line-height: 0; }
+.docx-editor-mount .ProseMirror .docx-image-wrap.selected { outline: 2px solid var(--accent, #2563eb); }
+.docx-editor-mount .ProseMirror .docx-image-handle,
+.docx-editor-mount .ProseMirror .docx-image-del { display: none; position: absolute; }
+.docx-editor-mount .ProseMirror .docx-image-wrap.selected .docx-image-handle,
+.docx-editor-mount .ProseMirror .docx-image-wrap.selected .docx-image-del { display: block; }
+.docx-editor-mount .ProseMirror .docx-image-handle.se {
+  width: 12px; height: 12px; right: -6px; bottom: -6px; background: var(--accent, #2563eb);
+  border: 2px solid #fff; border-radius: 50%; cursor: nwse-resize;
+}
+.docx-editor-mount .ProseMirror .docx-image-del {
+  top: -10px; right: -10px; width: 20px; height: 20px; border-radius: 50%; border: none;
+  background: #dc2626; color: #fff; font-size: 11px; line-height: 1; cursor: pointer; padding: 0;
+}
