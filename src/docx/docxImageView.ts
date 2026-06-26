@@ -1,5 +1,6 @@
 import type { EditorView, NodeView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
+import { moveImageAt } from './docxImageMove';
 import { t } from '../utils/i18n';
 
 /**
@@ -35,8 +36,32 @@ export function createDocxImageView(node: PMNode, view: EditorView, getPos: () =
   del.title = t('docxEditor.deleteImage');
   del.setAttribute('aria-label', t('docxEditor.deleteImage'));
 
+  // ▲/▼ move controls (B slice 2): relocate this image one top-level block up/down. A move past a bound
+  // returns null → silent no-op. Move keeps the node selected so the user can move again immediately.
+  const mkMoveBtn = (cls: string, glyph: string, key: string, dir: -1 | 1): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `docx-image-move ${cls}`;
+    b.textContent = glyph;
+    b.title = t(key);
+    b.setAttribute('aria-label', t(key));
+    b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    b.addEventListener('click', e => {
+      e.preventDefault();
+      const pos = getPos();
+      if (pos === undefined) return;
+      const tr = moveImageAt(view.state, pos, dir);
+      if (tr) { view.dispatch(tr); view.focus(); }
+    });
+    return b;
+  };
+  const upBtn = mkMoveBtn('up', '▲', 'docxEditor.moveImageUp', -1);
+  const downBtn = mkMoveBtn('down', '▼', 'docxEditor.moveImageDown', 1);
+
   dom.appendChild(se);
   dom.appendChild(del);
+  dom.appendChild(upBtn);
+  dom.appendChild(downBtn);
 
   let cur = node;
   const ratio = (): number => {
@@ -103,7 +128,7 @@ export function createDocxImageView(node: PMNode, view: EditorView, getPos: () =
     },
     selectNode(): void { dom.classList.add('selected'); },
     deselectNode(): void { dom.classList.remove('selected'); },
-    stopEvent(e: Event): boolean { return e.target === se || e.target === del; },
+    stopEvent(e: Event): boolean { return e.target === se || e.target === del || e.target === upBtn || e.target === downBtn; },
     ignoreMutation(): boolean { return true; },
     destroy(): void {
       document.removeEventListener('pointermove', onMove);

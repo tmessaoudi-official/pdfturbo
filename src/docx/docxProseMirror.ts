@@ -13,6 +13,7 @@ import { type Node as PMNode } from 'prosemirror-model';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { createDocxImageView } from './docxImageView';
+import { moveImage } from './docxImageMove';
 // ProseMirror's own stylesheet (sets `white-space: pre-wrap` etc.) — silences the
 // "expects the CSS white-space property to be set" console warning and fixes wrapping.
 import 'prosemirror-view/style/prosemirror.css';
@@ -327,6 +328,8 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
       // single-transaction replace-all (one undo step) and tableEditing.
       history(),
       keymap({ 'Mod-z': undo, 'Mod-y': redo, 'Mod-Shift-z': redo }),
+      // Move the selected image one top-level block up/down (B slice 2); no-op when no image is selected.
+      keymap({ 'Alt-ArrowUp': moveImage(-1), 'Alt-ArrowDown': moveImage(1) }),
       tableEditing(),
       findReplacePlugin(),
       // Mod-f / Mod-h open the in-app find/replace bar. This intentionally overrides the

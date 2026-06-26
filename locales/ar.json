@@ -101,6 +101,8 @@
   },
   "docxEditor": {
     "deleteImage": "حذف الصورة",
+    "moveImageUp": "تحريك الصورة لأعلى",
+    "moveImageDown": "تحريك الصورة لأسفل",
     "title": "تحرير مستند Word",
     "save": "حفظ .docx",
     "close": "إغلاق",

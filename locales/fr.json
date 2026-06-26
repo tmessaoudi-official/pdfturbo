@@ -101,6 +101,8 @@
   },
   "docxEditor": {
     "deleteImage": "Supprimer l'image",
+    "moveImageUp": "Monter l'image",
+    "moveImageDown": "Descendre l'image",
     "title": "Éditer le document Word",
     "save": "Enregistrer .docx",
     "close": "Fermer",
