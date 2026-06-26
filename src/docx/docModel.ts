@@ -780,15 +780,66 @@ function writeSimpleTable(dom: Document, tbl: Element, table: DocTable, ids: Doc
   syncTableGrid(dom, tbl, maxCols);
 }
 
+/** Top-level w:p that contain a w:drawing, in document order (C2 image-edit anchors). */
+function drawingAnchorParas(container: Element): Element[] {
+  return Array.from(container.children).filter(
+    (e): e is Element => e.tagName === 'w:p' && e.getElementsByTagName('w:drawing').length > 0,
+  );
+}
+
+/** Set cx/cy on the drawing's wp:extent and (when present) the inner pic a:ext. In-place. */
+function rewriteExtent(drawingPara: Element, cx: number, cy: number): void {
+  const drawing = drawingPara.getElementsByTagName('w:drawing')[0];
+  if (!drawing) return;
+  const ext = drawing.getElementsByTagName('wp:extent')[0];
+  if (ext) { ext.setAttribute('cx', String(cx)); ext.setAttribute('cy', String(cy)); }
+  const aExt = drawing.getElementsByTagName('a:ext')[0];
+  if (aExt) { aExt.setAttribute('cx', String(cx)); aExt.setAttribute('cy', String(cy)); }
+}
+
+const EMU_PER_PT_M = 12700;
+
+/**
+ * C2 image edit (save pre-pass, BEFORE reconcileContainer): delete top-level drawing anchors whose
+ * anchorId no longer survives in the model, and resize the rest in place. Identity is anchorId
+ * (parse-time index among top-level drawing anchors). SAFETY GUARD: if the surviving anchorIds aren't
+ * a duplicate-free subset of {0..m-1}, leave every image verbatim (never corrupt). The surviving set
+ * is identity-only (any block with a numeric anchorId) — this INCLUDES an unsupported-format image that
+ * round-tripped as a docx_link fallback, so it is preserved rather than treated as deleted.
+ */
+function reconcileImageAnchors(body: Element, blocks: DocBlock[]): void {
+  const D = drawingAnchorParas(body);
+  const m = D.length;
+  if (m === 0) return;
+  const drawBlocks = blocks.filter((b): b is DocImageBlock => isDocImageBlock(b) && typeof b.anchorId === 'number');
+  const ids = drawBlocks.map(b => b.anchorId as number);
+  const S = new Set(ids);
+  if (S.size !== ids.length || ids.some(i => i < 0 || i >= m)) return; // guard → verbatim
+  for (let i = 0; i < m; i++) {
+    if (!S.has(i)) { D[i].remove(); continue; }     // user-deleted (no surviving anchor for id i)
+    const blk = drawBlocks.find(b => b.anchorId === i);
+    if (!blk || !blk.image) continue;                // unextracted image → preserve verbatim, no resize
+    const cx = Math.round(blk.image.widthPt * EMU_PER_PT_M);
+    const cy = Math.round(blk.image.heightPt * EMU_PER_PT_M);
+    const ext = D[i].getElementsByTagName('wp:extent')[0];
+    const curCx = Number(ext?.getAttribute('cx'));
+    const curCy = Number(ext?.getAttribute('cy'));
+    if (cx > 0 && cy > 0 && (cx !== curCx || cy !== curCy)) rewriteExtent(D[i], cx, cy);
+  }
+}
+
 /**
  * Write a full block model back into the ORIGINAL document XML IN PLACE. Generalizes
  * applyParagraphRuns: top-level paragraphs AND tables (cells rewritten, structure verbatim).
+ * `opts.editImages` (editor save only) runs the C2 image delete/resize pre-pass; legacy callers
+ * (applyParagraphRuns, paragraphs-only) omit it → images preserved verbatim (byte-identical).
  */
-export function applyBlocks(documentXml: string, blocks: DocBlock[], ids?: DocApplyIds): string {
+export function applyBlocks(documentXml: string, blocks: DocBlock[], ids?: DocApplyIds, opts?: { editImages?: boolean }): string {
   const dom = new DOMParser().parseFromString(documentXml, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length > 0) return documentXml;
   const body = dom.getElementsByTagName('w:body')[0];
   if (!body) return documentXml;
+  if (opts?.editImages) reconcileImageAnchors(body, blocks);
   reconcileContainer(dom, body, blocks, ids, false);
   return new XMLSerializer().serializeToString(dom);
 }

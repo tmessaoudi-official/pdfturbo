@@ -404,7 +404,7 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
         const list = hasList ? ensureListNumbering(opc) : { bulletNumId: 0, orderedNumId: 0 };
         ids = { heading, bulletNumId: list.bulletNumId, orderedNumId: list.orderedNumId, links: links.size ? links : undefined };
       }
-      setDocumentXml(opc, applyBlocks(originalXml, edited.blocks, ids));
+      setDocumentXml(opc, applyBlocks(originalXml, edited.blocks, ids, { editImages: true }));
       return packOpc(opc);
     },
     getModel(): DocModel {
