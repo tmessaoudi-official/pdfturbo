@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { Slice, Fragment, DOMParser as PMDOMParser, type Node as PMNode } from 'prosemirror-model';
 import { docxSchema } from '../../src/docx/docxSchema';
+import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state';
 import { zipSync, strToU8 } from 'fflate';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
-import { resetPastedImageAnchors, firstImageFile } from '../../src/docx/docxImagePaste';
+import { resetPastedImageAnchors, firstImageFile, insertImageNode } from '../../src/docx/docxImagePaste';
 
 const n = docxSchema.nodes;
 function img(anchorId: number): ReturnType<typeof n.docx_image.create> {
@@ -100,5 +101,38 @@ describe('editor paste wiring (jsdom)', () => {
     expect(out.content.firstChild?.attrs.anchorId).toBe(-1);
     handle.destroy();
     host.remove();
+  });
+});
+
+describe('insertImageNode (F1 — insert after a selected image, never replace it)', () => {
+  function img(anchorId: number) {
+    return n.docx_image.create({ dataB64: 'AAA', mime: 'image/png', widthPt: 10, heightPt: 5, anchorId });
+  }
+  function stateWith(nodes: PMNode[]): EditorState {
+    return EditorState.create({ doc: docxSchema.node('doc', null, nodes) });
+  }
+  type Tr = Parameters<EditorState['apply']>[0];
+  function fakeView(state: EditorState): { state: EditorState; dispatch: (tr: Tr) => void; focus: () => void } {
+    const v = { state, dispatch(tr: Tr): void { v.state = v.state.apply(tr); }, focus(): void { /* no-op */ } };
+    return v;
+  }
+  function imgCount(state: EditorState): number {
+    let c = 0; state.doc.descendants(nd => { if (nd.type.name === 'docx_image') c++; }); return c;
+  }
+  it('inserts AFTER the selected image (does not replace it)', () => {
+    const state = stateWith([img(0), n.paragraph.create(null, docxSchema.text('A'))]);
+    const sel = NodeSelection.create(state.doc, 0); // select the image
+    const v = fakeView(state.apply(state.tr.setSelection(sel)));
+    insertImageNode(v as unknown as Parameters<typeof insertImageNode>[0], img(-1));
+    expect(imgCount(v.state)).toBe(2);             // added, not replaced
+    expect(v.state.doc.child(0).type.name).toBe('docx_image'); // original still first
+    expect(v.state.doc.child(1).type.name).toBe('docx_image'); // new one right after
+  });
+  it('replaces a (collapsed text) selection — normal cursor insert still adds', () => {
+    const state = stateWith([n.paragraph.create(null, docxSchema.text('A'))]);
+    const sel = TextSelection.create(state.doc, 1); // cursor in the paragraph
+    const v = fakeView(state.apply(state.tr.setSelection(sel)));
+    insertImageNode(v as unknown as Parameters<typeof insertImageNode>[0], img(-1));
+    expect(imgCount(v.state)).toBe(1);             // image added at the cursor
   });
 });

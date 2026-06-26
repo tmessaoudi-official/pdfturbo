@@ -5,6 +5,7 @@
  * dup-free anchor guard (which would silently bail the save to verbatim).
  */
 import { Slice, Fragment, type Node as PMNode } from 'prosemirror-model';
+import { NodeSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { docxSchema } from './docxSchema';
 
@@ -73,13 +74,29 @@ export function firstImageFile(dt: DataTransfer | null): File | null {
   return null;
 }
 
-/** Decode an image blob and insert it as a docx_image (anchorId -1) at the selection. */
+/**
+ * Insert a block image node. When an image (NodeSelection) is selected, insert AFTER it so a new
+ * image is ADDED, not replaced (F1 fix); otherwise replace the (text) selection at the cursor.
+ */
+export function insertImageNode(view: EditorView, node: PMNode): void {
+  const { state } = view;
+  const sel = state.selection;
+  if (sel instanceof NodeSelection) {
+    const tr = state.tr.insert(sel.to, node);
+    tr.setSelection(NodeSelection.create(tr.doc, sel.to));
+    view.dispatch(tr.scrollIntoView());
+  } else {
+    view.dispatch(state.tr.replaceSelectionWith(node).scrollIntoView());
+  }
+  view.focus();
+}
+
+/** Decode an image blob and insert it as a docx_image (anchorId -1) at/after the selection. */
 export async function insertImageBlob(view: EditorView, file: File): Promise<void> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const mime = sniffImageMime(bytes);
   if (mime === null) return;
   const { widthPt, heightPt } = await imageDimsPt(bytes, mime);
   const node = docxSchema.nodes.docx_image.create({ dataB64: imgBytesToB64(bytes), mime, widthPt, heightPt, anchorId: -1 });
-  view.dispatch(view.state.tr.replaceSelectionWith(node));
-  view.focus();
+  insertImageNode(view, node);
 }

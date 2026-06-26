@@ -11,7 +11,7 @@ import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { addRowAfter, deleteRow, addColumnAfter, deleteColumn, mergeCells, splitCell, isInTable } from 'prosemirror-tables';
 import { type MarkType, type NodeType } from 'prosemirror-model';
 import { docxSchema } from './docxSchema';
-import { sniffImageMime, imgBytesToB64, imageDimsPt } from './docxImagePaste';
+import { sniffImageMime, imgBytesToB64, imageDimsPt, insertImageNode } from './docxImagePaste';
 import { sanitizeLinkUrl } from '../utils/linkUrl';
 import { t } from '../utils/i18n';
 
@@ -236,8 +236,7 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   // and insert a docx_image node (anchorId -1) — the save then mints the OPC media part.
   const insertImage = (bytes: Uint8Array, mime: 'image/png' | 'image/jpeg', widthPt: number, heightPt: number): void => {
     const node = n.docx_image.create({ dataB64: imgBytesToB64(bytes), mime, widthPt, heightPt, anchorId: -1 });
-    view.dispatch(view.state.tr.replaceSelectionWith(node));
-    view.focus();
+    insertImageNode(view, node); // insert AFTER a selected image, never replace it (F1)
   };
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
