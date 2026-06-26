@@ -1286,6 +1286,32 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   **two** `w:drawing` after save = no verbatim-bail; cut→paste → one relocated; eyes-on before/after shot).
   Live eyes-on: `qa-shots/b-cutpaste/{before-one-image,after-two-images}.png`. Spec/plan:
   `docs/superpowers/{specs,plans}/2026-06-26-docx-image-cutpaste*`.
+  **Image drag-to-reorder (Sub-project B, sub-slice 4 of 4 — COMPLETES follow-up B, 2026-06-26):** drag an
+  image with the pointer to reorder it among the document's **top-level** blocks, with a live drop-indicator
+  line, persisted through the in-place `save()`. **Custom pointer drag** (NOT native HTML5 drag) on the
+  `<img>` body — the `.se` resize handle / ✕ / ▲▼ children keep their own events, so image-body=move vs
+  SE-handle=resize is a clean element-level hit-test. **No new save logic** — reuses the slice-2 path:
+  `placeImageAnchors` already relocates a top-level `w:drawing` by `anchorId`. Two new PURE helpers in
+  `docxImageMove.ts`: `moveImageToGap(state, pos, gap)` (generalizes `moveImageAt`'s ±1 to an arbitrary
+  top-level block gap ∈ [0, childCount]; null on the image's own gap `g===ci||g===ci+1` or a non-top-level
+  target; `moveImageAt` was **refactored to delegate** — `dir -1 → gap ci-1`, `dir +1 → gap ci+2` — so slice-2
+  ▲▼/Alt stay byte-green) + `dropTargetIndex(view, clientY)` (nearest top-level gap, counting block midpoints
+  above the pointer via `coordsAtPos` — top-level only, so a drop can never target a cell/inline position the
+  save can't represent). `docxImageView.ts`: pointerdown on the `<img>` records start X/Y but does NOT
+  preventDefault (a plain click must still select via PM); past a **5px threshold** it enters drag mode
+  (`.docx-image-dragging` dims the image) and renders a single reused `.docx-image-drop-line` (2px accent line,
+  `pointer-events:none`) at the gap; pointerup → `moveImageToGap(…, dropTargetIndex(…))` (no-op if it's the
+  image's own gap) or, below threshold, nothing (a click). The drop-line is appended to `view.dom.parentElement`,
+  which is set `position:relative` for the duration of the drag (restored on clear) so the absolute `top`
+  anchors correctly. One `prosemirror-history` undo step (same as ▲▼/resize). No new dep, no `SCHEMA_VERSION`
+  bump, rides `VITE_FEATURE_DOCX_EDIT`. **Ceiling:** drag into/out of a table cell (top-level only), drop at an
+  arbitrary inline position, touch-drag auto-scroll on very long docs (drop still computes; no auto-scroll),
+  multi-image drag-select. Guards: `tests/docx/docxImageMove.test.ts` (jsdom: `moveImageToGap` front/end/middle/
+  own-gap/clamp, `moveImageAt` slice-2 regression, `dropTargetIndex` above/below/between with stubbed coords,
+  NodeView sub-threshold-click no-move) + `tests/browser/docx-image-drag.browser.test.ts` (real Chrome: drag
+  below a table → `w:drawing` relocated after save; sub-threshold click → unmoved; eyes-on dim + drop-line shot).
+  Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`. Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-06-26-docx-image-drag*`.
 
 ## Git & CI
 
