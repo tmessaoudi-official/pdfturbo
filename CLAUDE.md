@@ -1153,6 +1153,33 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   Guards: `tests/docx/{docModelLinks,opcPartsHyperlink,docxToolbar}.test.ts` + `tests/browser/docx-links.browser.test.ts`
   (real Chrome: external link editable `<a href>`, internal read-only, save round-trips `w:hyperlink`+rels, toolbar
   add-link creates a relationship). NB Phase-1 hyperlink fixtures were switched to internal-anchor (the now-opaque case).
+  **Image DELETE + RESIZE + editor undo (Sub-project C Phase 2b, 2026-06-26):** a TOP-LEVEL image anchor is now
+  resizable + deletable; untouched images (and hyperlink anchors, tables, cell-nested images) stay byte-exact.
+  **Identity:** `DocImageBlock.anchorId?` (OPTIONAL, **no `SCHEMA_VERSION` bump** — the docx model isn't persisted)
+  = 0-based index among TOP-LEVEL drawing anchors, stamped at parse (`parseContainerBlocks(..., stampAnchorIds)` —
+  body level only, so cell images get none and stay opaque), carried on BOTH the `docx_image` AND `docx_link` node
+  (`anchorId` attr, default -1). **The link also carries it** because an unsupported-format / unextracted image
+  (`extractDocImages` skips EMF/WMF/missing-media) falls back to a `docx_link` node — keeping its `anchorId` means the
+  save pre-pass PRESERVES it instead of treating it as deleted (would have been a data-loss regression). **Save
+  pre-pass** `reconcileImageAnchors(body, blocks)` in `applyBlocks`, GATED behind `opts.editImages` (only the editor
+  save passes it; `applyParagraphRuns` and every other caller omit it → byte-identical, images verbatim — else the
+  paragraphs-only path would see `S=∅` and DELETE every image). It deletes the `w:p` for an absent anchorId and
+  rewrites `wp:extent` (+ inner `a:ext`) cx/cy ONLY when dims differ (byte-exact when unchanged; EMU=pt×12700).
+  **SAFETY GUARD:** if surviving anchorIds aren't a duplicate-free subset of `{0..m-1}` → skip the pre-pass entirely
+  (Phase-1 verbatim, never corrupt). `S` is identity-only (any block with a numeric anchorId); RESIZE additionally
+  requires `image` (dims). **UI:** `src/docx/docxImageView.ts` NodeView — corner SE drag handle (px→pt ×0.75; base
+  on the node's stored widthPt NOT getBoundingClientRect, which `max-width:100%` clamps; aspect-locked, Shift = free
+  tracks dy independently) dispatching `setNodeMarkup`, + a ✕ button (`docxEditor.deleteImage`, ar [Unverified]) and
+  Delete/Backspace on the selected atom. **Undo:** `prosemirror-history` (NEW dep, MIT) + `Mod-z`/`Mod-y` — the
+  editor had NO undo before; resize/delete (and now typing) are undoable, composing with findReplacePlugin's
+  single-tx replace-all. **Ceilings (v1):** image MOVE/reorder + new-image INSERT → v2; cell-nested images opaque;
+  a MIXED image+text paragraph deletes WHOLE (the Phase-1 atom = the whole `w:p`, hidden text too — undo recovers;
+  stripping just the drawing leaves a model-less text para the reconciler removes anyway); the editor's DOCX→PDF
+  export (`getImages`) uses originally-extracted images → an in-session edit shows in the DOCX save, in PDF only
+  after save+reopen. Guards: `tests/docx/{docModelImageEdit,docxImageBridge,docxUndo}.test.ts` +
+  `tests/browser/docx-image-edit.browser.test.ts` (real Chrome: handles render, drag resizes pixels, Shift=free,
+  ✕/Delete removes, save round-trips wp:extent/w:drawing, undo reverts). Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-06-26-docx-editor-subproject-c-phase2b-image-edit*`.
 
 ## Git & CI
 
