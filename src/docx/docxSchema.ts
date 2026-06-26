@@ -38,6 +38,19 @@ nodes = nodes.append({
       // C2 image-edit identity (index among top-level drawing anchors); -1 = none.
       anchorId: { default: -1 },
     },
+    // Cut&paste (B sub-slice 3): parse OUR OWN data-uri image back into a docx_image so it survives
+    // the HTML-clipboard path; anchorId -1 = treat as new (the save mints fresh media). Scoped to
+    // data:image/png|jpeg with the data-docx-image marker — an arbitrary web <img> never matches.
+    parseDOM: [{
+      tag: 'img[data-docx-image]',
+      priority: 60, // win over prosemirror-schema-basic's inline `image` rule (img[src], priority 50)
+      getAttrs(dom: HTMLElement): false | { mime: string; dataB64: string; anchorId: number; widthPt: number; heightPt: number } {
+        const src = dom.getAttribute('src') ?? '';
+        const m = /^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(src);
+        if (m === null) return false; // non-data: src (web image) → never match
+        return { mime: m[1], dataB64: m[2], anchorId: -1, widthPt: 0, heightPt: 0 };
+      },
+    }],
     toDOM(node: PMNode): DOMOutputSpec {
       const a = node.attrs;
       const dims = `${a.widthPt ? `width:${a.widthPt as number}pt;` : ''}${a.heightPt ? `height:${a.heightPt as number}pt;` : ''}`;

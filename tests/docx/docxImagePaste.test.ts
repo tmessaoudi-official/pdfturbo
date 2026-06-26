@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Slice, Fragment } from 'prosemirror-model';
+import { Slice, Fragment, DOMParser as PMDOMParser, type Node as PMNode } from 'prosemirror-model';
 import { docxSchema } from '../../src/docx/docxSchema';
 import { resetPastedImageAnchors } from '../../src/docx/docxImagePaste';
 
@@ -30,5 +30,31 @@ describe('resetPastedImageAnchors', () => {
     const para = n.paragraph.create(null);
     const out = resetPastedImageAnchors(new Slice(Fragment.fromArray([img(0), para]), 0, 0));
     expect(out.content.firstChild?.attrs.anchorId).toBe(-1);
+  });
+});
+
+describe('docx_image parseDOM', () => {
+  function parseHtml(html: string): PMNode {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return PMDOMParser.fromSchema(docxSchema).parse(div);
+  }
+  function imageNodes(doc: PMNode): PMNode[] {
+    const found: PMNode[] = [];
+    doc.descendants((node) => { if (node.type.name === 'docx_image') found.push(node); });
+    return found;
+  }
+  it('parses our own data-uri image into a docx_image with anchorId -1', () => {
+    const found = imageNodes(parseHtml('<img data-docx-image src="data:image/png;base64,QUJD">'));
+    expect(found.length).toBe(1);
+    expect(found[0].attrs.mime).toBe('image/png');
+    expect(found[0].attrs.dataB64).toBe('QUJD');
+    expect(found[0].attrs.anchorId).toBe(-1);
+  });
+  it('does NOT parse an external http image into a docx_image', () => {
+    expect(imageNodes(parseHtml('<img src="https://example.com/x.png">')).length).toBe(0);
+  });
+  it('does NOT parse a data-uri <img> lacking the data-docx-image attr', () => {
+    expect(imageNodes(parseHtml('<img src="data:image/png;base64,QUJD">')).length).toBe(0);
   });
 });
