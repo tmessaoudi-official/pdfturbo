@@ -48,7 +48,13 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Lock PDF** — AES-256 password encryption on export
 - **Sanitize** — download a copy with metadata (`/Info`, XMP), document-level JavaScript (`/OpenAction`, `/AA`), and embedded files stripped
 - **Native save dialog** — on Chromium, Download opens the OS "Save As" picker and writes the file directly (File System Access API); other browsers download as usual
-- **Export to DOCX / Markdown** — reconstruct a flow document (headings, lists, columns, images, RTL) from the PDF text (beta)
+- **Export to DOCX / Markdown / TXT** — reconstruct a flow document (headings, lists, tables, columns, images, hyperlinks, RTL) from the PDF text; uses the PDF's structure tags when present
+- **DOCX editor** — open a `.docx` and edit it: rich text, headings, fonts/colour, **tables** (add/remove rows & columns, merge/split cells), **images** (insert/move/resize/cut-paste/drag), **hyperlinks**, find & replace, paste-from-Word cleanup; export back to `.docx` or to PDF
+- **Per-page crop** — keep only a drawn region (rotation-safe)
+- **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
+- **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
+- **Form flatten** — bake AcroForm field values into the page on export
+- **XFDF** — import / export annotations
 - **Table → CSV** — extract a ruled (visible-grid) table from a page to a CSV file
 - **Watermark** — tiled repeating watermark on export with configurable text, opacity, angle, density
 - **Barcode / QR code** — generate and place 1D/2D barcodes or QR codes with custom content, format, and error-correction level
@@ -63,3 +69,13 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - Keyboard shortcuts for all major tools
 - PWA: installable, works offline for the app shell
 - Full EN / FR / AR (RTL) localisation
+
+## License
+
+PDFturbo is **proprietary** — © 2026 Takieddine Messaoudi, all rights reserved (see
+[`LICENSE`](LICENSE)). It is not open-source; the source is published for transparency, not for
+reuse or redistribution.
+
+The application bundles third-party open-source libraries, all under permissive licenses
+(MIT / Apache-2.0 / BSD-3-Clause) plus the Noto Naskh Arabic font (SIL OFL 1.1) — full
+attributions in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).

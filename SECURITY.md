@@ -22,7 +22,7 @@ You can expect an acknowledgment within 48 hours and a resolution within 14 days
 
 ## Scope
 
-This is a **client-side only** application — no server, no database, no user accounts. All PDF processing happens in your browser. All libraries (pdf.js, pdf-lib, and others) are bundled via npm — no CDN dependencies, no external network requests at runtime.
+This is a **client-side only** application — no server, no database, no user accounts. All PDF processing happens in your browser. All libraries (pdf.js, @cantoo/pdf-lib, and others) are bundled via npm — no CDN dependencies, no external network requests at runtime.
 
 Security concerns most relevant to this project:
 - XSS via malicious PDF content
