@@ -9,6 +9,10 @@
  */
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+const DML_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const PIC_NS = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
+const REL_R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 export interface DocRun {
   text: string;
@@ -799,6 +803,120 @@ function rewriteExtent(drawingPara: Element, cx: number, cy: number): void {
 
 const EMU_PER_PT_M = 12700;
 
+/** Decode a base64 string (no data: prefix) to raw bytes. */
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Next free wp:docPr id (1 + max existing across the body's drawings). */
+function nextDocPrId(body: Element): number {
+  let max = 0;
+  const docPrs = body.getElementsByTagName('wp:docPr');
+  for (let i = 0; i < docPrs.length; i++) max = Math.max(max, Number(docPrs[i].getAttribute('id')) || 0);
+  return max + 1;
+}
+
+/**
+ * Build a minimal spec-valid inline-image paragraph:
+ * `w:p > w:r > w:drawing > wp:inline > (wp:extent)(wp:docPr) a:graphic > a:graphicData >
+ * pic:pic > (pic:nvPicPr)(pic:blipFill > a:blip r:embed)(pic:spPr > a:xfrm > a:ext + a:prstGeom)`.
+ * cx/cy are EMU; `rId` is the image relationship id; `docPrId` must be unique in the document.
+ */
+export function buildDrawingParagraph(dom: Document, rId: string, cx: number, cy: number, docPrId: number): Element {
+  const mk = (ns: string, qname: string, attrs?: Record<string, string>): Element => {
+    const e = dom.createElementNS(ns, qname);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  };
+  const cxs = String(cx);
+  const cys = String(cy);
+  const name = `Picture ${docPrId}`;
+
+  const p = mk(W_NS, 'w:p');
+  const r = mk(W_NS, 'w:r');
+  const drawing = mk(W_NS, 'w:drawing');
+  const inline = mk(WP_NS, 'wp:inline', { distT: '0', distB: '0', distL: '0', distR: '0' });
+  inline.appendChild(mk(WP_NS, 'wp:extent', { cx: cxs, cy: cys }));
+  inline.appendChild(mk(WP_NS, 'wp:docPr', { id: String(docPrId), name }));
+
+  const graphic = mk(DML_NS, 'a:graphic');
+  const graphicData = mk(DML_NS, 'a:graphicData', { uri: `${DML_NS}/picture` });
+  const pic = mk(PIC_NS, 'pic:pic');
+
+  const nvPicPr = mk(PIC_NS, 'pic:nvPicPr');
+  nvPicPr.appendChild(mk(PIC_NS, 'pic:cNvPr', { id: String(docPrId), name }));
+  nvPicPr.appendChild(mk(PIC_NS, 'pic:cNvPicPr'));
+  pic.appendChild(nvPicPr);
+
+  const blipFill = mk(PIC_NS, 'pic:blipFill');
+  const blip = mk(DML_NS, 'a:blip');
+  blip.setAttributeNS(REL_R_NS, 'r:embed', rId);
+  blipFill.appendChild(blip);
+  const stretch = mk(DML_NS, 'a:stretch');
+  stretch.appendChild(mk(DML_NS, 'a:fillRect'));
+  blipFill.appendChild(stretch);
+  pic.appendChild(blipFill);
+
+  const spPr = mk(PIC_NS, 'pic:spPr');
+  const xfrm = mk(DML_NS, 'a:xfrm');
+  xfrm.appendChild(mk(DML_NS, 'a:off', { x: '0', y: '0' }));
+  xfrm.appendChild(mk(DML_NS, 'a:ext', { cx: cxs, cy: cys }));
+  spPr.appendChild(xfrm);
+  const prstGeom = mk(DML_NS, 'a:prstGeom', { prst: 'rect' });
+  prstGeom.appendChild(mk(DML_NS, 'a:avLst'));
+  spPr.appendChild(prstGeom);
+  pic.appendChild(spPr);
+
+  graphicData.appendChild(pic);
+  graphic.appendChild(graphicData);
+  inline.appendChild(graphic);
+  drawing.appendChild(inline);
+  r.appendChild(drawing);
+  p.appendChild(r);
+  return p;
+}
+
+/**
+ * Save pre-pass (AFTER reconcileImageAnchors, BEFORE reconcileContainer): insert a new DOM
+ * `w:p` drawing anchor for every NEW image block (kind:'image', image defined, no anchorId),
+ * minting its OPC media part via the `mintImage` callback (NOT opcParts directly — docModel must
+ * not import opcParts, an import cycle). Placement is a parallel walk of `blocks` vs the body's
+ * block children with a per-block DOM cursor: a new image is inserted before the cursor's DOM
+ * child (or appended at end), so boundary order — and thus reconcileContainer's segment zip —
+ * lines up. Runs AFTER reconcileImageAnchors so existing anchors' parse-time positions still
+ * match their anchorIds when delete/resize keys on position (inserting first would shift them).
+ */
+export function materializeNewImageAnchors(
+  mintImage: (bytes: Uint8Array, mime: 'image/png' | 'image/jpeg') => string,
+  body: Element,
+  blocks: DocBlock[],
+): void {
+  const dom = body.ownerDocument;
+  if (!dom) return;
+  const domChildren = containerBlockEls(body);
+  let docPr = nextDocPrId(body);
+  let c = 0;
+  for (const b of blocks) {
+    if (isDocImageBlock(b) && b.image && b.anchorId === undefined) {
+      const img = b.image;
+      const rId = mintImage(b64ToBytes(img.dataB64), img.mime);
+      const cx = Math.round(img.widthPt * EMU_PER_PT_M);
+      const cy = Math.round(img.heightPt * EMU_PER_PT_M);
+      const newP = buildDrawingParagraph(dom, rId, cx, cy, docPr);
+      docPr += 1;
+      const ref = c < domChildren.length ? domChildren[c] : null;
+      body.insertBefore(newP, ref);
+      domChildren.splice(c, 0, newP);
+      c += 1;
+    } else if (c < domChildren.length) {
+      c += 1;
+    }
+  }
+}
+
 /**
  * C2 image edit (save pre-pass, BEFORE reconcileContainer): delete top-level drawing anchors whose
  * anchorId no longer survives in the model, and resize the rest in place. Identity is anchorId
@@ -831,15 +949,26 @@ function reconcileImageAnchors(body: Element, blocks: DocBlock[]): void {
 /**
  * Write a full block model back into the ORIGINAL document XML IN PLACE. Generalizes
  * applyParagraphRuns: top-level paragraphs AND tables (cells rewritten, structure verbatim).
- * `opts.editImages` (editor save only) runs the C2 image delete/resize pre-pass; legacy callers
- * (applyParagraphRuns, paragraphs-only) omit it → images preserved verbatim (byte-identical).
+ * `opts.editImages` (editor save only) runs the C2 image delete/resize pre-pass, then — when
+ * `opts.mintImage` is given — materializes new image anchors (B insert). Legacy callers
+ * (applyParagraphRuns, paragraphs-only) omit both → images preserved verbatim (byte-identical).
+ * Ordering is load-bearing: reconcileImageAnchors keys on parse-time anchor POSITIONS, so it must
+ * run before any new anchor is inserted (which would shift those positions).
  */
-export function applyBlocks(documentXml: string, blocks: DocBlock[], ids?: DocApplyIds, opts?: { editImages?: boolean }): string {
+export function applyBlocks(
+  documentXml: string,
+  blocks: DocBlock[],
+  ids?: DocApplyIds,
+  opts?: { editImages?: boolean; mintImage?: (bytes: Uint8Array, mime: 'image/png' | 'image/jpeg') => string },
+): string {
   const dom = new DOMParser().parseFromString(documentXml, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length > 0) return documentXml;
   const body = dom.getElementsByTagName('w:body')[0];
   if (!body) return documentXml;
-  if (opts?.editImages) reconcileImageAnchors(body, blocks);
+  if (opts?.editImages) {
+    reconcileImageAnchors(body, blocks);
+    if (opts.mintImage) materializeNewImageAnchors(opts.mintImage, body, blocks);
+  }
   reconcileContainer(dom, body, blocks, ids, false);
   return new XMLSerializer().serializeToString(dom);
 }
