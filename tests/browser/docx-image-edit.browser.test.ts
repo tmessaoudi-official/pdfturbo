@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { page } from '@vitest/browser/context';
 import { zipSync, strToU8 } from 'fflate';
 import { NodeSelection } from 'prosemirror-state';
+import { undo } from 'prosemirror-history';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';
 
@@ -122,6 +123,27 @@ describe('DOCX editor — image resize/delete (real browser)', () => {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, imgPosOf(view))).deleteSelection());
     const xml = getDocumentXml(openOpc(handle.save()));
     expect(xml).not.toContain('w:drawing');
+    handle.destroy();
+    container.remove();
+  });
+
+  it('undo (history) reverts a resize and a delete', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const handle = mountDocxEditor(container, makeDocxOneImage());
+    const view = handle.view;
+    // resize via setNodeMarkup, then undo → width restored
+    const pos = imgPosOf(view);
+    const w0 = Number(view.state.doc.nodeAt(pos)?.attrs.widthPt);
+    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...view.state.doc.nodeAt(pos)?.attrs, widthPt: 300 }));
+    expect(Number(view.state.doc.nodeAt(pos)?.attrs.widthPt)).toBe(300);
+    undo(view.state, view.dispatch);
+    expect(Number(view.state.doc.nodeAt(pos)?.attrs.widthPt)).toBe(w0);
+    // delete, then undo → node restored
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, imgPosOf(view))).deleteSelection());
+    expect(imgPosOf(view)).toBe(-1);
+    undo(view.state, view.dispatch);
+    expect(imgPosOf(view)).toBeGreaterThanOrEqual(0);
     handle.destroy();
     container.remove();
   });

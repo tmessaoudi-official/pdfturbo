@@ -18,6 +18,7 @@ import { createDocxImageView } from './docxImageView';
 import 'prosemirror-view/style/prosemirror.css';
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap } from 'prosemirror-commands';
+import { history, undo, redo } from 'prosemirror-history';
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { tableEditing } from 'prosemirror-tables';
 
@@ -321,6 +322,11 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
   const state = EditorState.create({
     doc: docModelToDoc(model),
     plugins: [
+      // Editor-wide undo (C2): records every transaction so resize/delete AND typing are undoable.
+      // First in the list so it wraps all later keymaps' transactions. Composes with findReplacePlugin's
+      // single-transaction replace-all (one undo step) and tableEditing.
+      history(),
+      keymap({ 'Mod-z': undo, 'Mod-y': redo, 'Mod-Shift-z': redo }),
       tableEditing(),
       findReplacePlugin(),
       // Mod-f / Mod-h open the in-app find/replace bar. This intentionally overrides the
