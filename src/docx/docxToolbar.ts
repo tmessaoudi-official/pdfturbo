@@ -11,6 +11,7 @@ import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { addRowAfter, deleteRow, addColumnAfter, deleteColumn, mergeCells, splitCell, isInTable } from 'prosemirror-tables';
 import { type MarkType, type NodeType } from 'prosemirror-model';
 import { docxSchema } from './docxSchema';
+import { sniffImageMime, imgBytesToB64, imageDimsPt } from './docxImagePaste';
 import { sanitizeLinkUrl } from '../utils/linkUrl';
 import { t } from '../utils/i18n';
 
@@ -19,8 +20,6 @@ const n = docxSchema.nodes;
 
 const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana'];
 const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 24, 28, 32, 36, 48];
-const PT_PER_PX = 0.75;            // 96 DPI → 72 pt/in
-const CONTENT_WIDTH_PT = 468;      // usable width on a letter page (8.5in − 2×1in margins)
 
 export interface DocxToolbar {
   dom: HTMLElement;
@@ -32,18 +31,6 @@ export interface DocxToolbar {
 }
 
 /** PNG magic `89 50 4E 47`; JPEG `FF D8 FF`. null for anything we can't embed. */
-function sniffImageMime(bytes: Uint8Array): 'image/png' | 'image/jpeg' | null {
-  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
-  return null;
-}
-
-function imgBytesToB64(bytes: Uint8Array): string {
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
-}
-
 /** Set (or, with attrs=null, clear) an attribute-mark across the selection. */
 function setMarkAttr(markType: MarkType, attrs: Record<string, unknown> | null): Command {
   return (state: EditorState, dispatch?: (tr: Transaction) => void): boolean => {
@@ -260,18 +247,11 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   const handlePick = async (): Promise<void> => {
     const file = fileInput.files?.[0];
     fileInput.value = '';
-    if (!file) return;
+    if (file === undefined) return;
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mime = sniffImageMime(bytes);
-    if (!mime) return; // accept filter already restricts to png/jpeg; silently skip others
-    let widthPt = 0;
-    let heightPt = 0;
-    try {
-      const bmp = await createImageBitmap(new Blob([bytes], { type: mime }));
-      widthPt = Math.min(bmp.width * PT_PER_PX, CONTENT_WIDTH_PT);
-      heightPt = bmp.width > 0 ? widthPt * (bmp.height / bmp.width) : 0;
-      bmp.close();
-    } catch { /* dims stay 0 → image still inserts at natural-ish default */ }
+    if (mime === null) return; // accept filter already restricts to png/jpeg; silently skip others
+    const { widthPt, heightPt } = await imageDimsPt(bytes, mime);
     insertImage(bytes, mime, widthPt, heightPt);
   };
   fileInput.addEventListener('change', () => { void handlePick(); });

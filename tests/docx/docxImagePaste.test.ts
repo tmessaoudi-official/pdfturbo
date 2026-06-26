@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Slice, Fragment, DOMParser as PMDOMParser, type Node as PMNode } from 'prosemirror-model';
 import { docxSchema } from '../../src/docx/docxSchema';
-import { resetPastedImageAnchors } from '../../src/docx/docxImagePaste';
+import { resetPastedImageAnchors, firstImageFile } from '../../src/docx/docxImagePaste';
 
 const n = docxSchema.nodes;
 function img(anchorId: number): ReturnType<typeof n.docx_image.create> {
@@ -56,5 +56,23 @@ describe('docx_image parseDOM', () => {
   });
   it('does NOT parse a data-uri <img> lacking the data-docx-image attr', () => {
     expect(imageNodes(parseHtml('<img src="data:image/png;base64,QUJD">')).length).toBe(0);
+  });
+});
+
+describe('firstImageFile', () => {
+  // jsdom has no DataTransfer constructor; stub the shape firstImageFile reads (.files + .items).
+  function dtWith(files: File[]): DataTransfer {
+    return { files: files as unknown as FileList, items: [] as unknown as DataTransferItemList } as unknown as DataTransfer;
+  }
+  it('returns the first png/jpeg file', () => {
+    const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'a.png', { type: 'image/png' });
+    expect(firstImageFile(dtWith([png]))?.type).toBe('image/png');
+  });
+  it('returns null for a text-only DataTransfer', () => {
+    const txt = new File(['hi'], 'a.txt', { type: 'text/plain' });
+    expect(firstImageFile(dtWith([txt]))).toBeNull();
+  });
+  it('returns null for a null DataTransfer', () => {
+    expect(firstImageFile(null)).toBeNull();
   });
 });

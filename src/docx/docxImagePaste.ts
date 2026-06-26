@@ -5,7 +5,11 @@
  * dup-free anchor guard (which would silently bail the save to verbatim).
  */
 import { Slice, Fragment, type Node as PMNode } from 'prosemirror-model';
+import type { EditorView } from 'prosemirror-view';
 import { docxSchema } from './docxSchema';
+
+export const PT_PER_PX = 0.75;        // 96 DPI → 72 pt/in
+export const CONTENT_WIDTH_PT = 468;  // usable width on a letter page (8.5in − 2×1in margins)
 
 function mapFragment(frag: Fragment): Fragment {
   const out: PMNode[] = [];
@@ -24,4 +28,58 @@ function mapFragment(frag: Fragment): Fragment {
 /** Return a copy of the pasted slice with every docx_image's anchorId reset to -1 (new identity). */
 export function resetPastedImageAnchors(slice: Slice): Slice {
   return new Slice(mapFragment(slice.content), slice.openStart, slice.openEnd);
+}
+
+export function sniffImageMime(bytes: Uint8Array): 'image/png' | 'image/jpeg' | null {
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  return null;
+}
+
+export function imgBytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+/** Natural image size scaled to pt (width clamped to the content width); {0,0} on decode failure. */
+export async function imageDimsPt(bytes: Uint8Array, mime: 'image/png' | 'image/jpeg'): Promise<{ widthPt: number; heightPt: number }> {
+  try {
+    const bmp = await createImageBitmap(new Blob([bytes as BlobPart], { type: mime }));
+    const widthPt = Math.min(bmp.width * PT_PER_PX, CONTENT_WIDTH_PT);
+    const heightPt = bmp.width > 0 ? widthPt * (bmp.height / bmp.width) : 0;
+    bmp.close();
+    return { widthPt, heightPt };
+  } catch {
+    return { widthPt: 0, heightPt: 0 };
+  }
+}
+
+/** First png/jpeg blob on the clipboard (files first, then items), or null. */
+export function firstImageFile(dt: DataTransfer | null): File | null {
+  if (dt === null) return null;
+  for (let i = 0; i < dt.files.length; i++) {
+    const f = dt.files[i];
+    if (f.type === 'image/png' || f.type === 'image/jpeg') return f;
+  }
+  const items = dt.items;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.kind === 'file' && (it.type === 'image/png' || it.type === 'image/jpeg')) {
+      const f = it.getAsFile();
+      if (f !== null) return f;
+    }
+  }
+  return null;
+}
+
+/** Decode an image blob and insert it as a docx_image (anchorId -1) at the selection. */
+export async function insertImageBlob(view: EditorView, file: File): Promise<void> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = sniffImageMime(bytes);
+  if (mime === null) return;
+  const { widthPt, heightPt } = await imageDimsPt(bytes, mime);
+  const node = docxSchema.nodes.docx_image.create({ dataB64: imgBytesToB64(bytes), mime, widthPt, heightPt, anchorId: -1 });
+  view.dispatch(view.state.tr.replaceSelectionWith(node));
+  view.focus();
 }
