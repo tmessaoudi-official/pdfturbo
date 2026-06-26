@@ -1174,12 +1174,24 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   editor had NO undo before; resize/delete (and now typing) are undoable, composing with findReplacePlugin's
   single-tx replace-all. **Ceilings (v1):** image MOVE/reorder + new-image INSERT → v2; cell-nested images opaque;
   a MIXED image+text paragraph deletes WHOLE (the Phase-1 atom = the whole `w:p`, hidden text too — undo recovers;
-  stripping just the drawing leaves a model-less text para the reconciler removes anyway); the editor's DOCX→PDF
-  export (`getImages`) uses originally-extracted images → an in-session edit shows in the DOCX save, in PDF only
-  after save+reopen. Guards: `tests/docx/{docModelImageEdit,docxImageBridge,docxUndo}.test.ts` +
+  stripping just the drawing leaves a model-less text para the reconciler removes anyway). Guards:
+  `tests/docx/{docModelImageEdit,docxImageBridge,docxUndo}.test.ts` +
   `tests/browser/docx-image-edit.browser.test.ts` (real Chrome: handles render, drag resizes pixels, Shift=free,
   ✕/Delete removes, save round-trips wp:extent/w:drawing, undo reverts). Spec/plan:
   `docs/superpowers/{specs,plans}/2026-06-26-docx-editor-subproject-c-phase2b-image-edit*`.
+  **Export-PDF staleness FIXED (follow-up C, 2026-06-26):** `docxToPdf.docModelToPdfBytes` now renders each
+  `DocImageBlock` from its OWN live `image` data (`dataB64`/`mime`/`widthPt`/`heightPt`, round-tripped through the PM
+  node) in the `model.blocks` loop — so an in-session **resize** (live dims) and **delete** (block absent) show in
+  the exported PDF immediately, NOT only after save+reopen. The stale `getImages()`/`opts.images` second channel +
+  the positional `imagesByBlock` map are GONE (`DocxToPdfOptions.images` removed; controller calls
+  `docModelToPdfBytes(model)` with no images arg); `getImages()` stays on the handle, unused by export, for phase-B
+  insert/move. At mount, `extractDocImages` bytes are still merged into the model's image blocks, so an UNEDITED
+  export is byte-equivalent (every supported image still embedded, same place/size). A block with `image: undefined`
+  (unsupported format / link-fallback / cell-nested) draws nothing — unchanged ceiling. Guards:
+  `tests/browser/docx-to-pdf.browser.test.ts` (render-from-block / delete→no paintImageXObject / resize→wider
+  painted image, all real pdf.js) + the jsdom no-throw case in `tests/docx/docxToPdf.test.ts`. Live eyes-on:
+  `qa-shots/c-export-resized.pdf` (resized image baked into the exported PDF). Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-06-26-docx-pdf-export-staleness*`.
 
 ## Git & CI
 
