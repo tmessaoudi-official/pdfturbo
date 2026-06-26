@@ -96,6 +96,62 @@ function registerPart(opc: OpcPackage, partPath: string, contentType: string, re
   }
 }
 
+const IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+const EXT_CT: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+
+/** Mint a new `word/media/imageN.png|jpg` part: write the bytes, ensure a Content-Types
+ * `Default` for the extension (added once), add an internal image `Relationship` to
+ * `word/_rels/document.xml.rels`, and return its `rId` + the rels-relative `Target`.
+ * Each call mints a fresh part (no reuse-by-content). */
+export function ensureImagePart(opc: OpcPackage, bytes: Uint8Array, mime: 'image/png' | 'image/jpeg'): { rId: string; target: string } {
+  const ext = mime === 'image/png' ? 'png' : 'jpg';
+  let maxImg = 0;
+  for (const p of Object.keys(opc.files)) {
+    const m = /^word\/media\/image(\d+)\./.exec(p);
+    if (m) maxImg = Math.max(maxImg, Number(m[1]));
+  }
+  const name = `image${maxImg + 1}.${ext}`;
+  opc.files[`word/media/${name}`] = bytes;
+
+  // Content-Types Default for the extension (images are typed by Default, not Override).
+  const ctXml = getPart(opc, CT_PATH);
+  if (ctXml) {
+    const dom = parse(ctXml);
+    const defaults = dom.getElementsByTagName('Default');
+    let has = false;
+    for (let i = 0; i < defaults.length; i++) {
+      if ((defaults[i].getAttribute('Extension') ?? '').toLowerCase() === ext) has = true;
+    }
+    if (!has) {
+      const d = dom.createElementNS(CT_NS, 'Default');
+      d.setAttribute('Extension', ext);
+      d.setAttribute('ContentType', EXT_CT[ext]);
+      dom.documentElement.appendChild(d);
+      setPart(opc, CT_PATH, serialize(dom));
+    }
+  }
+
+  // Internal image relationship.
+  const relsXml = getPart(opc, DOC_RELS)
+    ?? `${XML_DECL}<Relationships xmlns="${REL_NS}"></Relationships>`;
+  const dom = parse(relsXml);
+  const rels = dom.getElementsByTagName('Relationship');
+  let maxId = 0;
+  for (let i = 0; i < rels.length; i++) {
+    const m = /^rId(\d+)$/.exec(rels[i].getAttribute('Id') ?? '');
+    if (m) maxId = Math.max(maxId, Number(m[1]));
+  }
+  const rId = `rId${maxId + 1}`;
+  const rel = dom.createElementNS(REL_NS, 'Relationship');
+  rel.setAttribute('Id', rId);
+  rel.setAttribute('Type', IMAGE_REL);
+  rel.setAttribute('Target', `media/${name}`);
+  dom.documentElement.appendChild(rel);
+  setPart(opc, DOC_RELS, serialize(dom));
+
+  return { rId, target: `media/${name}` };
+}
+
 /** Map of rId → external hyperlink Target, read from word/_rels/document.xml.rels.
  * Only `Type=…/hyperlink` relationships with `TargetMode="External"` are included. */
 export function buildHyperlinkMap(opc: OpcPackage): Map<string, string> {
