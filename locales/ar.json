@@ -132,6 +132,7 @@
     "deleteColumn": "حذف العمود",
     "mergeCells": "دمج الخلايا",
     "splitCell": "تقسيم الخلية",
+    "insertImage": "📷 صورة",
     "link": "🔗 رابط",
     "linkPrompt": "أدخل الرابط ثم اضغط Enter"
   },

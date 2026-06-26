@@ -132,6 +132,7 @@
     "deleteColumn": "Supprimer la colonne",
     "mergeCells": "Fusionner les cellules",
     "splitCell": "Scinder la cellule",
+    "insertImage": "📷 Image",
     "link": "🔗 Lien",
     "linkPrompt": "Saisissez l'URL, puis appuyez sur Entrée"
   },

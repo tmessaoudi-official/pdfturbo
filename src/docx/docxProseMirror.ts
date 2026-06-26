@@ -30,7 +30,7 @@ import { cleanWordHtml } from './wordPaste';
 import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, type DocImageBlock, isDocTable, isDocImageBlock, parseDocModel, applyBlocks, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { extractDocImages, type DocImage } from './docxImages';
-import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap, buildHyperlinkMap, ensureHyperlinkRel } from './opcParts';
+import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap, buildHyperlinkMap, ensureHyperlinkRel, ensureImagePart } from './opcParts';
 import { sanitizeLinkUrl } from '../utils/linkUrl';
 
 const m = docxSchema.marks;
@@ -412,7 +412,10 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
         const list = hasList ? ensureListNumbering(opc) : { bulletNumId: 0, orderedNumId: 0 };
         ids = { heading, bulletNumId: list.bulletNumId, orderedNumId: list.orderedNumId, links: links.size ? links : undefined };
       }
-      setDocumentXml(opc, applyBlocks(originalXml, edited.blocks, ids, { editImages: true }));
+      setDocumentXml(opc, applyBlocks(originalXml, edited.blocks, ids, {
+        editImages: true,
+        mintImage: (bytes, mime) => ensureImagePart(opc, bytes, mime).rId,
+      }));
       return packOpc(opc);
     },
     getModel(): DocModel {

@@ -118,6 +118,29 @@ describe('docxToolbar (Task 7)', () => {
     ctrl<HTMLElement>('ordered').click();
     expect(view.state.doc.firstChild?.type.name).toBe('ordered_list');
   });
+
+  it('exposes the Insert-image button + a hidden file input', () => {
+    mount('hello');
+    expect(ctrl<HTMLElement>('insertImage')).not.toBeNull();
+    const file = ctrl<HTMLInputElement>('insertImageFile');
+    expect(file.type).toBe('file');
+    expect(file.accept).toContain('image/png');
+  });
+
+  it('insertImage places a docx_image node (anchorId -1) at the selection', () => {
+    mount('hello');
+    const before = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    tb.insertImage(before, 'image/png', 75, 50);
+    let img: ReturnType<typeof docxSchema.node> | null = null;
+    view.state.doc.descendants(node => { if (node.type.name === 'docx_image') img = node; return true; });
+    expect(img).not.toBeNull();
+    const attrs = (img as unknown as { attrs: Record<string, unknown> }).attrs;
+    expect(attrs.mime).toBe('image/png');
+    expect(attrs.widthPt).toBe(75);
+    expect(attrs.heightPt).toBe(50);
+    expect(attrs.anchorId).toBe(-1);
+    expect(attrs.dataB64).toBe(btoa('\x89PNG'));
+  });
 });
 
 describe('docxToolbar — table editing (Slice 3b)', () => {

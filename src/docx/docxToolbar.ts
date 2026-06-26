@@ -19,12 +19,29 @@ const n = docxSchema.nodes;
 
 const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana'];
 const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 24, 28, 32, 36, 48];
+const PT_PER_PX = 0.75;            // 96 DPI → 72 pt/in
+const CONTENT_WIDTH_PT = 468;      // usable width on a letter page (8.5in − 2×1in margins)
 
 export interface DocxToolbar {
   dom: HTMLElement;
   /** Re-sync control state from the current selection. */
   update(): void;
+  /** Insert a new image at the selection (B insert): a docx_image node with anchorId -1. */
+  insertImage(bytes: Uint8Array, mime: 'image/png' | 'image/jpeg', widthPt: number, heightPt: number): void;
   destroy(): void;
+}
+
+/** PNG magic `89 50 4E 47`; JPEG `FF D8 FF`. null for anything we can't embed. */
+function sniffImageMime(bytes: Uint8Array): 'image/png' | 'image/jpeg' | null {
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  return null;
+}
+
+function imgBytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
 }
 
 /** Set (or, with attrs=null, clear) an attribute-mark across the selection. */
@@ -227,7 +244,47 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   const mergeBtn = btn('mergeCells', t('docxToolbar.mergeCells'), () => mergeCells);
   const splitBtn = btn('splitCell', t('docxToolbar.splitCell'), () => splitCell);
 
-  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn, linkBtn, linkInput, ...tableBtns, mergeBtn, splitBtn);
+  // Insert image (B insert): a 📷 button + a hidden file input. On pick: sniff PNG/JPEG,
+  // measure natural size via createImageBitmap, scale to pt (clamped to the content width),
+  // and insert a docx_image node (anchorId -1) — the save then mints the OPC media part.
+  const insertImage = (bytes: Uint8Array, mime: 'image/png' | 'image/jpeg', widthPt: number, heightPt: number): void => {
+    const node = n.docx_image.create({ dataB64: imgBytesToB64(bytes), mime, widthPt, heightPt, anchorId: -1 });
+    view.dispatch(view.state.tr.replaceSelectionWith(node));
+    view.focus();
+  };
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/png,image/jpeg';
+  fileInput.dataset.act = 'insertImageFile';
+  fileInput.style.display = 'none';
+  const handlePick = async (): Promise<void> => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const mime = sniffImageMime(bytes);
+    if (!mime) return; // accept filter already restricts to png/jpeg; silently skip others
+    let widthPt = 0;
+    let heightPt = 0;
+    try {
+      const bmp = await createImageBitmap(new Blob([bytes], { type: mime }));
+      widthPt = Math.min(bmp.width * PT_PER_PX, CONTENT_WIDTH_PT);
+      heightPt = bmp.width > 0 ? widthPt * (bmp.height / bmp.width) : 0;
+      bmp.close();
+    } catch { /* dims stay 0 → image still inserts at natural-ish default */ }
+    insertImage(bytes, mime, widthPt, heightPt);
+  };
+  fileInput.addEventListener('change', () => { void handlePick(); });
+  const insertImageBtn = document.createElement('button');
+  insertImageBtn.type = 'button';
+  insertImageBtn.className = 'docx-tb-btn';
+  insertImageBtn.dataset.act = 'insertImage';
+  insertImageBtn.textContent = t('docxToolbar.insertImage');
+  insertImageBtn.title = t('docxToolbar.insertImage');
+  insertImageBtn.addEventListener('mousedown', e => e.preventDefault());
+  insertImageBtn.addEventListener('click', () => fileInput.click());
+
+  dom.append(boldBtn, italicBtn, underlineBtn, headingSel, fontSel, sizeSel, colorInput, bulletBtn, orderedBtn, linkBtn, linkInput, ...tableBtns, mergeBtn, splitBtn, insertImageBtn, fileInput);
 
   const update = (): void => {
     boldBtn.classList.toggle('active', markActive(view.state, m.strong));
@@ -257,6 +314,7 @@ export function buildDocxToolbar(view: EditorView): DocxToolbar {
   return {
     dom,
     update,
+    insertImage,
     destroy(): void {
       dom.remove();
     },
