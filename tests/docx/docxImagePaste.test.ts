@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Slice, Fragment, DOMParser as PMDOMParser, type Node as PMNode } from 'prosemirror-model';
 import { docxSchema } from '../../src/docx/docxSchema';
+import { zipSync, strToU8 } from 'fflate';
+import { mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { resetPastedImageAnchors, firstImageFile } from '../../src/docx/docxImagePaste';
 
 const n = docxSchema.nodes;
@@ -74,5 +76,29 @@ describe('firstImageFile', () => {
   });
   it('returns null for a null DataTransfer', () => {
     expect(firstImageFile(null)).toBeNull();
+  });
+});
+
+describe('editor paste wiring (jsdom)', () => {
+  const MIN_DOC = '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>';
+  function tinyDocx(): Uint8Array {
+    return zipSync({
+      '[Content_Types].xml': strToU8('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'),
+      '_rels/.rels': strToU8('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'),
+      'word/document.xml': strToU8(MIN_DOC),
+      'word/_rels/document.xml.rels': strToU8('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>'),
+    });
+  }
+  it('transformPasted resets a pasted docx_image anchorId to -1', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const handle = mountDocxEditor(host, tinyDocx());
+    const slice = new Slice(Fragment.fromArray([n.docx_image.create({ dataB64: 'AAA', mime: 'image/png', widthPt: 10, heightPt: 5, anchorId: 7 })]), 0, 0);
+    const fn = handle.view.someProp('transformPasted') as ((s: Slice) => Slice) | undefined;
+    expect(fn).toBeDefined();
+    const out = (fn as (s: Slice) => Slice)(slice);
+    expect(out.content.firstChild?.attrs.anchorId).toBe(-1);
+    handle.destroy();
+    host.remove();
   });
 });

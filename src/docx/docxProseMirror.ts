@@ -28,6 +28,7 @@ import { buildDocxToolbar } from './docxToolbar';
 import { findReplacePlugin } from './findReplacePlugin';
 import { buildFindReplaceBar, type FindReplaceBar } from './findReplaceBar';
 import { cleanWordHtml } from './wordPaste';
+import { resetPastedImageAnchors, firstImageFile, insertImageBlob } from './docxImagePaste';
 import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocTable, type DocCell, type DocRow, type DocImageBlock, isDocTable, isDocImageBlock, parseDocModel, applyBlocks, type DocApplyIds } from './docModel';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { extractDocImages, type DocImage } from './docxImages';
@@ -367,13 +368,23 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
     state,
     nodeViews: { docx_image: (node, v, getPos) => createDocxImageView(node, v, getPos) },
     transformPastedHTML: (html: string): string => cleanWordHtml(html),
+    // Reset every pasted docx_image's anchorId → -1 so the save mints fresh media instead of
+    // tripping the dup-free anchor guard (which would bail the save to verbatim). Covers both the
+    // intra-editor slice path AND the HTML-parse path (transformPasted runs on the final slice).
+    transformPasted: (slice) => resetPastedImageAnchors(slice),
     handlePaste: (v, event): boolean => {
-      if (!_plainPasteArmed) return false;
-      _plainPasteArmed = false;
-      const text = event.clipboardData?.getData('text/plain') ?? '';
-      // Drop SOURCE formatting; inserted text inherits the destination context
-      // (true "paste and match style"). insertText is jsdom-safe; pasteText is not.
-      v.dispatch(v.state.tr.insertText(text));
+      if (_plainPasteArmed) {
+        _plainPasteArmed = false;
+        const text = event.clipboardData?.getData('text/plain') ?? '';
+        // Drop SOURCE formatting; inserted text inherits the destination context
+        // (true "paste and match style"). insertText is jsdom-safe; pasteText is not.
+        v.dispatch(v.state.tr.insertText(text));
+        return true;
+      }
+      // External image blob (OS "copy image" / screenshot) → insert as a new docx_image.
+      const file = firstImageFile(event.clipboardData);
+      if (file === null) return false; // let PM default handle text/html/slice paste
+      void insertImageBlob(v, file);
       return true;
     },
   });

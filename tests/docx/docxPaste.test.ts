@@ -64,8 +64,10 @@ describe('docx editor — Word paste', () => {
     document.body.appendChild(host);
     const handle = mountDocxEditor(host, await makeDocx('Start'));
     const handlePaste = handle.view.someProp('handlePaste');
+    // A real DataTransfer always exposes files + items (empty here = no image blob), so the
+    // no-shift path falls through to PM's default (returns false). getData covers the text path.
     const ev = {
-      clipboardData: { getData: (): string => 'x' },
+      clipboardData: { getData: (): string => 'x', files: [] as unknown as FileList, items: [] as unknown as DataTransferItemList },
     } as unknown as ClipboardEvent;
     expect((handlePaste as (v: typeof handle.view, e: ClipboardEvent) => boolean)(handle.view, ev)).toBe(false);
     handle.destroy();
