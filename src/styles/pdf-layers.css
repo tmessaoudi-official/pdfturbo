@@ -165,6 +165,30 @@
 .thumb-dl-pdf { inset-inline-start: 1px; }
 .thumb-dl-img { inset-inline-start: 17px; }
 .thumb-item:hover .thumb-dl { opacity: 1; }
+/* F2b — mobile-only "more actions" trigger. display:none on desktop (which keeps
+   its hover-reveal overlays); the media query below flips it to flex on ≤640px. */
+.thumb-more {
+  position: absolute; inset-block-start: 1px; inset-inline-end: 1px;
+  width: 30px; height: 30px; border-radius: 4px;
+  background: rgba(0,0,0,0.55); color: white;
+  border: none; cursor: pointer;
+  font-size: 18px; line-height: 1; font-weight: 700;
+  display: none; align-items: center; justify-content: center; padding: 0;
+}
+/* The action menu (body-anchored; position set inline). Rows are ≥44px touch targets. */
+.thumb-action-menu {
+  display: flex; flex-direction: column;
+  background: #fff; border: 1px solid #cbd5e1; border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 4px; gap: 2px; min-width: 180px;
+}
+.thumb-action-menu-item {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 44px; padding: 0 12px;
+  border: none; background: none; cursor: pointer;
+  font-size: 14px; color: #1e293b; text-align: start; border-radius: 4px;
+}
+.thumb-action-menu-item:hover { background: #f1f5f9; }
+.thumb-action-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
 .thumb-add-btn {
   flex-shrink: 0;
   width: 64px; min-height: 80px;
@@ -182,16 +206,11 @@
 .thumb-add-label { font-size: 10px; font-weight: 600; }
 @media (max-width: 640px) {
   .page-thumb-container { padding: 4px 6px; }
-  /* Extra height (64→74px) lets stacked downloads + rotate fit without collision */
   .thumb-item { width: 50px; height: 74px; }
   .thumb-add-btn { width: 50px; min-height: 74px; }
-  /* Rotate + delete: always visible on touch (hover never fires), larger tap area */
-  .thumb-rotate { width: 18px; height: 18px; opacity: 1; font-size: 10px; }
-  .thumb-rotate-cw { inset-inline-start: 21px; }
-  .thumb-delete { width: 20px; height: 20px; font-size: 12px; opacity: 1; }
-  /* Downloads stacked vertically at top-left — side-by-side + delete won't fit in 50px */
-  .thumb-dl { width: 18px; height: 18px; opacity: 1; font-size: 10px; }
-  .thumb-dl-pdf { inset-block-start: 1px;  inset-inline-start: 1px; }
-  .thumb-dl-img { inset-block-start: 21px; inset-inline-start: 1px; }
+  /* F2b: five 44px touch targets can't tile a 50×74 thumbnail — hide the overlaid
+     hover controls and surface a single ⋮ that opens a full-size action menu. */
+  .thumb-rotate, .thumb-dl, .thumb-delete { display: none; }
+  .thumb-more { display: flex; }
 }
 
