@@ -4,7 +4,7 @@ import { EditorView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
 import { docxSchema } from '../../src/docx/docxSchema';
 import { createDocxImageView } from '../../src/docx/docxImageView';
-import { moveImageAt, moveImage } from '../../src/docx/docxImageMove';
+import { moveImageAt, moveImage, moveImageToGap, dropTargetIndex } from '../../src/docx/docxImageMove';
 
 function imgNode(): PMNode { return docxSchema.nodes.docx_image.create({ dataB64: '', mime: 'image/png', widthPt: 10, heightPt: 10, anchorId: 0 }); }
 function para(t: string): PMNode { return docxSchema.node('paragraph', null, [docxSchema.text(t)]); }
@@ -61,6 +61,61 @@ describe('moveImage', () => {
     expect(dispatched).toBe(true);
     expect(state.selection).toBeInstanceOf(NodeSelection);
     expect(imgIndex(state.doc)).toBe(1);
+  });
+});
+
+describe('moveImageToGap', () => {
+  it('moves the image to the FRONT (gap 0)', () => {
+    const state = stateWith([para('A'), para('B'), imgNode()]); // [A, B, img], ci=2
+    const tr = moveImageToGap(state, imgPos(state), 0);
+    expect(imgIndex((tr as NonNullable<typeof tr>).doc)).toBe(0); // [img, A, B]
+  });
+  it('moves the image to the END (gap === childCount)', () => {
+    const state = stateWith([imgNode(), para('A'), para('B')]); // [img, A, B], ci=0
+    const tr = moveImageToGap(state, imgPos(state), 3);
+    expect(imgIndex((tr as NonNullable<typeof tr>).doc)).toBe(2); // [A, B, img]
+  });
+  it('moves the image to a MIDDLE gap', () => {
+    const state = stateWith([imgNode(), para('A'), para('B')]); // [img, A, B], ci=0
+    const tr = moveImageToGap(state, imgPos(state), 2); // before original child 2 (B)
+    expect(imgIndex((tr as NonNullable<typeof tr>).doc)).toBe(1); // [A, img, B]
+  });
+  it('returns null for the image OWN gap (g === ci and g === ci+1)', () => {
+    const state = stateWith([para('A'), imgNode(), para('B')]); // ci=1
+    expect(moveImageToGap(state, imgPos(state), 1)).toBeNull(); // g === ci
+    expect(moveImageToGap(state, imgPos(state), 2)).toBeNull(); // g === ci+1
+  });
+  it('clamps an out-of-range gap', () => {
+    const state = stateWith([imgNode(), para('A')]); // ci=0, childCount=2
+    expect(moveImageToGap(state, imgPos(state), 99)).not.toBeNull(); // clamps to end
+    expect(moveImageToGap(state, imgPos(state), -5)).toBeNull();     // clamps to 0 === ci → no-op
+  });
+});
+
+describe('dropTargetIndex', () => {
+  // Stub a view with 3 top-level blocks; coordsAtPos is hit twice per child (top, bottom) in doc order.
+  function fakeView(nodes: PMNode[], bands: Array<[number, number]>): Parameters<typeof dropTargetIndex>[0] {
+    const state = stateWith(nodes);
+    let call = 0;
+    return {
+      state,
+      coordsAtPos(_pos: number): { top: number; bottom: number; left: number; right: number } {
+        const band = bands[Math.floor(call / 2)];
+        call++;
+        return { top: band[0], bottom: band[1], left: 0, right: 0 };
+      },
+    } as unknown as Parameters<typeof dropTargetIndex>[0];
+  }
+  const bands: Array<[number, number]> = [[0, 20], [20, 40], [40, 60]];
+  it('returns gap 0 when the pointer is above all blocks', () => {
+    expect(dropTargetIndex(fakeView([para('A'), para('B'), para('C')], bands), -5)).toBe(0);
+  });
+  it('returns childCount when the pointer is below all blocks', () => {
+    expect(dropTargetIndex(fakeView([para('A'), para('B'), para('C')], bands), 100)).toBe(3);
+  });
+  it('returns the gap after the blocks whose midpoint is above the pointer', () => {
+    // midpoints = 10, 30, 50; clientY 35 → blocks 0 and 1 above → gap 2
+    expect(dropTargetIndex(fakeView([para('A'), para('B'), para('C')], bands), 35)).toBe(2);
   });
 });
 
