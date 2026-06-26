@@ -601,7 +601,8 @@
     "imgJpeg": "JPEG",
     "imgPngHi": "PNG (300 نقطة/بوصة)",
     "addPages": "إضافة PDF/صورة",
-    "addPagesTitle": "إضافة صفحات من PDF أو صورة"
+    "addPagesTitle": "إضافة صفحات من PDF أو صورة",
+    "moreActions": "إجراءات الصفحة"
   },
   "canvas": {
     "emptyState": "ارفع ملف PDF للبدء",

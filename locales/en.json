@@ -601,7 +601,8 @@
     "imgJpeg": "JPEG",
     "imgPngHi": "PNG (300 dpi)",
     "addPages": "Add PDF/Image",
-    "addPagesTitle": "Add pages from PDF or image"
+    "addPagesTitle": "Add pages from PDF or image",
+    "moreActions": "Page actions"
   },
   "canvas": {
     "emptyState": "Upload a PDF to get started",

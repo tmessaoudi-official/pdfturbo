@@ -33,9 +33,10 @@ export class PageThumbnailPanel {
   // innerHTML=''), restore keyboard focus to the thumbnail now occupying the deleted slot
   // instead of dropping it to <body>. Set by the × button, consumed at the end of render().
   private _focusSlotAfterRender: number | null = null;
-  // G20 — the open image-export preset menu (one at a time), so a second open or
-  // an outside click can dismiss it.
-  private _imgMenu: HTMLElement | null = null;
+  // G20 / F2b — the single currently-open popup (image-format preset menu OR the
+  // mobile action menu), so opening one closes the other and an outside click or
+  // Escape dismisses whichever is open.
+  private _openMenu: HTMLElement | null = null;
   private _thumbCache: Map<string, string> = new Map(); // pageId → dataURL
   // #46 — lazy rasterization: only generate a thumbnail when its item nears the
   // viewport. One shared observer; recreated/disconnected per render.
@@ -114,7 +115,7 @@ export class PageThumbnailPanel {
    */
   private _openImageMenu(anchor: HTMLElement, index: number): void {
     // Toggle: a second click on the same trigger closes the open menu.
-    if (this._imgMenu) { this._closeImageMenu(); return; }
+    if (this._openMenu) { this._closeMenu(); return; }
     const menu = document.createElement('div');
     menu.className = 'thumb-img-menu';
     menu.setAttribute('role', 'menu');
@@ -126,7 +127,7 @@ export class PageThumbnailPanel {
       btn.textContent = t(preset.labelKey);
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._closeImageMenu();
+        this._closeMenu();
         this.onDownloadImage(index, preset.opts);
       });
       menu.appendChild(btn);
@@ -148,27 +149,81 @@ export class PageThumbnailPanel {
       padding: '4px',
       gap: '2px',
     } as Partial<CSSStyleDeclaration>);
-    this._imgMenu = menu;
-    // Dismiss on outside click / Escape. Registered next tick so the click that
-    // opened the menu doesn't immediately close it.
+    this._openMenu = menu;
+    this._registerMenuDismiss();
+  }
+
+  /**
+   * F2b — mobile action menu. The five overlaid hover controls are hidden on narrow
+   * viewports (CSS); a single ⋮ button opens this popup of full-height (≥44px) rows
+   * so every page action gets a real touch target. Body-anchored + fixed-positioned
+   * (the narrow overflow-x strip would clip an in-strip popup). Reuses the shared
+   * single-open-menu state, so opening this closes any format menu and vice versa.
+   */
+  private _openActionMenu(anchor: HTMLElement, index: number, pageId: string): void {
+    if (this._openMenu) { this._closeMenu(); return; } // toggle
+    const menu = document.createElement('div');
+    menu.className = 'thumb-action-menu';
+    menu.setAttribute('role', 'menu');
+    const rows: { icon: string; labelKey: string; isExportImg?: boolean; run: () => void }[] = [
+      { icon: '↺', labelKey: 'thumbnail.rotateCcw', run: () => this.onRotate(pageId, 90) },
+      { icon: '↻', labelKey: 'thumbnail.rotateCw', run: () => this.onRotate(pageId, -90) },
+      { icon: '📄', labelKey: 'thumbnail.exportPagePdf', run: () => this.onDownload(index) },
+      { icon: '🖼', labelKey: 'thumbnail.exportPageImg', isExportImg: true, run: () => { this._closeMenu(); this._openImageMenu(anchor, index); } },
+      { icon: '×', labelKey: 'thumbnail.deletePage', run: () => { this._focusSlotAfterRender = index; this.onDelete(pageId); } },
+    ];
+    for (const row of rows) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('role', 'menuitem');
+      btn.className = 'thumb-action-menu-item';
+      const ic = document.createElement('span');
+      ic.className = 'thumb-action-icon';
+      ic.textContent = row.icon;
+      const lb = document.createElement('span');
+      lb.textContent = t(row.labelKey, { page: index + 1 });
+      btn.append(ic, lb);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // export-img closes inside run() before opening the format menu; others close here.
+        if (!row.isExportImg) this._closeMenu();
+        row.run();
+      });
+      menu.appendChild(btn);
+    }
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    Object.assign(menu.style, {
+      position: 'fixed',
+      top: `${rect.bottom + 2}px`,
+      left: `${rect.left}px`,
+      zIndex: '1000',
+    } as Partial<CSSStyleDeclaration>);
+    this._openMenu = menu;
+    this._registerMenuDismiss();
+  }
+
+  /** Register outside-click / Escape dismissal next tick (so the opening click
+   * doesn't immediately close the menu). Shared by both popups. */
+  private _registerMenuDismiss(): void {
     setTimeout(() => {
-      document.addEventListener('click', this._onImgMenuOutside, { once: true });
-      document.addEventListener('keydown', this._onImgMenuKey);
+      document.addEventListener('click', this._onMenuOutside, { once: true });
+      document.addEventListener('keydown', this._onMenuKey);
     }, 0);
   }
 
-  private _closeImageMenu(): void {
-    if (!this._imgMenu) return;
-    this._imgMenu.remove();
-    this._imgMenu = null;
-    document.removeEventListener('click', this._onImgMenuOutside);
-    document.removeEventListener('keydown', this._onImgMenuKey);
+  private _closeMenu(): void {
+    if (!this._openMenu) return;
+    this._openMenu.remove();
+    this._openMenu = null;
+    document.removeEventListener('click', this._onMenuOutside);
+    document.removeEventListener('keydown', this._onMenuKey);
   }
 
   // Arrow-bound so they keep `this` and can be removed by reference.
-  private _onImgMenuOutside = (): void => { this._closeImageMenu(); };
-  private _onImgMenuKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') this._closeImageMenu();
+  private _onMenuOutside = (): void => { this._closeMenu(); };
+  private _onMenuKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this._closeMenu();
   };
 
   /** Rasterize (or reuse the cached) thumbnail for one page into `img`. */
@@ -263,6 +318,17 @@ export class PageThumbnailPanel {
       // the bare-default preset (no opts) reproduces the historic export exactly.
       dlImgBtn.addEventListener('click', (e) => { e.stopPropagation(); this._openImageMenu(dlImgBtn, i); });
 
+      // F2b — mobile "more actions" trigger. Hidden on desktop via CSS (which keeps
+      // its hover-reveal overlays); on ≤640px the five overlaid controls above are
+      // hidden and this ⋮ opens the full-size action menu instead.
+      const moreBtn = document.createElement('button');
+      moreBtn.className = 'thumb-more';
+      moreBtn.type = 'button';
+      moreBtn.textContent = '⋮';
+      moreBtn.title = t('thumbnail.moreActions');
+      moreBtn.setAttribute('aria-haspopup', 'menu');
+      moreBtn.addEventListener('click', (e) => { e.stopPropagation(); this._openActionMenu(moreBtn, i, page.id); });
+
       item.appendChild(img);
       item.appendChild(label);
       item.appendChild(rotateCcw);
@@ -270,6 +336,7 @@ export class PageThumbnailPanel {
       item.appendChild(dlPdfBtn);
       item.appendChild(dlImgBtn);
       item.appendChild(del);
+      item.appendChild(moreBtn);
 
       // Navigate on click
       item.addEventListener('click', () => this.onNavigate(i));

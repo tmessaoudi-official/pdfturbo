@@ -273,3 +273,89 @@ describe('PageThumbnailPanel — overlay compositor (G17)', () => {
     expect(img?.getAttribute('src')).toBe('data:image/jpeg;base64,SOURCE');
   });
 });
+
+// F2b — on mobile the five overlaid hover controls are hidden (CSS); a single ⋮
+// button opens a full-size action menu (≥44px rows). These jsdom tests guard the
+// DOM + wiring; the mobile-CSS / 44px-row checks live in the real-Chrome evidence.
+describe('PageThumbnailPanel — mobile ⋮ action menu (F2b)', () => {
+  let container: HTMLElement;
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+  afterEach(() => {
+    document.querySelectorAll('.thumb-action-menu, .thumb-img-menu').forEach(el => el.remove());
+  });
+
+  function makePanelFull(model: DocumentModel) {
+    const cbs = {
+      onNavigate: vi.fn(), onDelete: vi.fn(), onReorder: vi.fn(), onRotate: vi.fn(),
+      onAddPdf: vi.fn(), onDownload: vi.fn(), onDownloadImage: vi.fn(),
+    };
+    const panel = new PageThumbnailPanel({ container, renderer: makeRenderer(), model, ...cbs });
+    return { panel, ...cbs };
+  }
+  const flush = (): Promise<void> => new Promise(r => { setTimeout(r, 0); });
+
+  it('renders a .thumb-more button per thumbnail', async () => {
+    const { panel } = makePanelFull(makeModel(3));
+    await panel.render();
+    const more = container.querySelectorAll('.thumb-more');
+    expect(more).toHaveLength(3);
+    expect((more[0] as HTMLElement).title).toBe('thumbnail.moreActions');
+  });
+
+  it('clicking ⋮ opens an action menu with 5 rows', async () => {
+    const { panel } = makePanelFull(makeModel(2));
+    await panel.render();
+    (container.querySelector('.thumb-more') as HTMLElement).click();
+    const menu = document.body.querySelector('.thumb-action-menu');
+    expect(menu).not.toBeNull();
+    expect(menu?.querySelectorAll('.thumb-action-menu-item')).toHaveLength(5);
+  });
+
+  it('rows invoke the correct callbacks (rotate L/R, export PDF, delete)', async () => {
+    const { panel, onRotate, onDownload, onDelete } = makePanelFull(makeModel(3));
+    await panel.render();
+    (container.querySelectorAll('.thumb-more')[1] as HTMLElement).click(); // page-1
+    document.body.querySelectorAll<HTMLElement>('.thumb-action-menu-item')[0].click();
+    expect(onRotate).toHaveBeenCalledWith('page-1', 90);
+    (container.querySelectorAll('.thumb-more')[1] as HTMLElement).click();
+    document.body.querySelectorAll<HTMLElement>('.thumb-action-menu-item')[1].click();
+    expect(onRotate).toHaveBeenLastCalledWith('page-1', -90);
+    (container.querySelectorAll('.thumb-more')[1] as HTMLElement).click();
+    document.body.querySelectorAll<HTMLElement>('.thumb-action-menu-item')[2].click();
+    expect(onDownload).toHaveBeenCalledWith(1);
+    (container.querySelectorAll('.thumb-more')[1] as HTMLElement).click();
+    document.body.querySelectorAll<HTMLElement>('.thumb-action-menu-item')[4].click();
+    expect(onDelete).toHaveBeenCalledWith('page-1');
+  });
+
+  it('the "export image" row closes the action menu and opens the format menu', async () => {
+    const { panel } = makePanelFull(makeModel(2));
+    await panel.render();
+    (container.querySelector('.thumb-more') as HTMLElement).click();
+    document.body.querySelectorAll<HTMLElement>('.thumb-action-menu-item')[3].click();
+    expect(document.body.querySelector('.thumb-action-menu')).toBeNull();
+    expect(document.body.querySelector('.thumb-img-menu')).not.toBeNull();
+  });
+
+  it('Escape closes the open menu', async () => {
+    const { panel } = makePanelFull(makeModel(1));
+    await panel.render();
+    (container.querySelector('.thumb-more') as HTMLElement).click();
+    await flush();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.body.querySelector('.thumb-action-menu')).toBeNull();
+  });
+
+  it('a second ⋮ click toggles the menu closed', async () => {
+    const { panel } = makePanelFull(makeModel(1));
+    await panel.render();
+    const more = container.querySelector('.thumb-more') as HTMLElement;
+    more.click();
+    expect(document.body.querySelector('.thumb-action-menu')).not.toBeNull();
+    more.click();
+    expect(document.body.querySelector('.thumb-action-menu')).toBeNull();
+  });
+});
