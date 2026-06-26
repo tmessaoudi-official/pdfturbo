@@ -53,7 +53,6 @@ src/
 
 tests/                      # mirrors src/ structure; vitest + jsdom + fake-indexeddb
 locales/                    # en.json / fr.json / ar.json — MUST stay key-identical
-docs/plans/                 # working plan files; docs/reviews/ — audit reports
 ```
 
 - Undo/redo: every mutation goes through a Command object pushed to `historyManager` —
@@ -62,7 +61,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   app-wide API. Adding handler↔app interactions widens this coupling — prefer extending
   an existing seam.
 
-## Gotchas (verified by the 2026-06-11 craftsmanship review, refreshed 2026-06-14 — docs/reviews/)
+## Gotchas (verified by the 2026-06-11 craftsmanship review, refreshed 2026-06-14)
 
 - **Mobile thumbnail controls = a single ⋮ action menu (F2b, 2026-06-26)**: the per-thumbnail controls
   (↺↻ rotate / 📄🖼 export / × delete) reveal on `:hover` on **desktop only**. On `≤640px` a 50×74px tile
@@ -76,7 +75,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/ui/pageThumbnailPanel.test.ts` (wiring) + live @375px evidence (`qa-shots/f2b/`: overlays `display:none`,
   rows measured 44px, menu fully in-viewport). i18n: one new key `thumbnail.moreActions` (ar [Unverified]);
   row labels reuse the existing `thumbnail.*` keys. Spec/plan:
-  `docs/superpowers/{specs,plans}/2026-06-26-thumbnail-touch-targets*`.
+  (see git history).
 - **Export paths are consolidated** (the historic triplication is RESOLVED): `downloadPDF`,
   `downloadPage`, `downloadPageAsImage` on `pdfTurboApp.ts` are now thin
   one-line delegators to `_exportService`; the shared rotation/cropbox/watermark/ink logic
@@ -199,7 +198,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   (inline floating input; Enter applies, empty deletes, Esc cancels) and falls back to the
   overlay approach when no content-stream match is found. The edit swaps `SourcePdf.bytes`
   + pdfjs doc via `ReplaceSourcePdfBytesCmd` (undoable; old pdfjs docs stay alive on the
-  history stack by design). See `docs/reviews/2026-06-11-pdf-text-editing-verdict.md` for
+  history stack by design). See (see git history) for
   remaining limitations (cm transforms, XObjects, Helvetica fallback font — Phase B/C).
   **ISSUE-2 fix (2026-06-14):** `replaceTextAt` has 3 paths — (1) literal byte-swap, now GATED by
   `isByteSwapUnsafeFont()` so it NEVER runs for subset/CID/embedded fonts (byte≠glyph there → was the
@@ -266,7 +265,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   DOCX writer — letters/roman/decimal per `listFormat`), list nesting (`'  '.repeat(listDepth)`),
   and images (data-URI `![]` in MD, `[image]` in TXT) — previously all three were dropped.
   Phase 2 (2026-06-13): added 2-column XY-cut (`detectColumnSplit`) and list detection
-  (`detectListPrefix`) — see `docs/reviews/2026-06-11-pdf-to-docx-verdict.md`.
+  (`detectListPrefix`) — see (see git history).
   Phase 3 (2026-06-13): native DOCX ordered-list numbering via `w:numPr` + instance-based
   restart (separate lists separated by body text restart at 1). Tests now unpack the DOCX
   ZIP with `fflate` and assert `w:numPr` presence and multi-instance `numId` divergence.
@@ -299,7 +298,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   to dodge author-initials), each carrying a docx `LevelFormat` (decimal/lowerLetter/upperLetter). The
   writer maps each distinct (format,text) to its own numbering reference — legacy decimal `%1.` keeps the
   `ordered-list` id — and restarts instances per-reference. `flowDocWriters.ts` `refKeyOf`/`usedRefs`.
-  **Fidelity scorecards** (honest done/reachable/ceiling): `docs/reviews/research-2026-06-15/scorecard-*.md`.
+  **Fidelity scorecards** (honest done/reachable/ceiling): (see git history).
   **Sprint 3 batch 2 (2026-06-14) — DONE:** (1) **DOCX hyperlinks** — `exportService` reads
   `page.getAnnotations()` (Link+url), passes `FlowLinkRect[]` to `reconstructPage`, which bbox-tags words
   (`FlowRun.linkUrl`, in the merge key); the writer wraps same-url runs in `ExternalHyperlink` (blue +
@@ -381,7 +380,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   in-band rule (double underline); a SLANTED line (m/l y differ) or POLYLINE (≥2 `l`); `s` (closepath+stroke,
   ambiguous closing segment) — only plain `S`; and a rect/line whose painter ALSO closes an `m/l/c/v/y/h`
   subpath (neutralising it would erase that vector art), refused via `sawOtherPath` + the single-segment
-  counts. **F10 + F13 + F3 byte-splice DONE (2026-06-24, `docs/superpowers/specs/2026-06-24-trueedit-f10-f13-f3-bytesplice-design.md`):**
+  counts. **F10 + F13 + F3 byte-splice DONE (2026-06-24, (see git history)):**
   **F10** — `prepareDecorationResize` now refuses (returns the null mutator) when the target run is `tilted`
   (sheared/rotated/non-uniformly-scaled `textMatrix×CTM`; reuses the existing flag — NOT a new `tmTilted` — that
   `addDecorationAt` already gates on), beside the F6 text-rise gate; the text edit still proceeds, only the
@@ -398,7 +397,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   unchanged (an XObject edit writes that one stream via the builder). Guards: `tests/utils/contentStreamEditor.test.ts`
   (F10 tilted-refuse, F13 `ctmStackUnderflows`+gate, byte-offset slice-back, `serializeOp`, `buildStreamContent`
   splice/fallback/inline-image) + `tests/browser/trueedit-bytesplice.browser.test.ts` (real Chrome: inline image
-  survives a one-word edit byte-identical AND pdf.js renders the spliced stream). **Edge-case hardening F5–F8 (2026-06-20, audit `docs/reviews/2026-06-20-trueedit-edgecase-audit.md`):** F5 — `locateDecorationRects` now also refuses a **mirror / negative-scale CTM** (`ctm[0]<0 ||
+  survives a one-word edit byte-identical AND pdf.js renders the spliced stream). **Edge-case hardening F5–F8 (2026-06-20, audit (see git history)):** F5 — `locateDecorationRects` now also refuses a **mirror / negative-scale CTM** (`ctm[0]<0 ||
   ctm[3]<0`; flip-X/flip-Y/180°) for BOTH rect and stroked line (the line path uses `abs()` so a mirror silently
   flipped resize direction; the `re` path was safe-by-luck only). F6 — `prepareDecorationResize` refuses when the
   target run carries a non-zero **text rise (`Ts`, super/subscript)**: its reported baseline (origin.y, no rise
@@ -437,8 +436,8 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   the clip side-effect (the appended redraw is past all page content, so nothing downstream is clipped) — modes
   3/7 (invisible/clip-only) are refused → overlay. F1/F2 (restyle + stroke/width/Tr) shipped `9d67b84`; common-case
   edits (Path 1/2 + the Path-3 attrs above) are fully covered.
-  **Max-fidelity Sub-project A (2026-06-25, spec `docs/superpowers/specs/2026-06-25-trueedit-subproject-a-design.md`,
-  plan `docs/superpowers/plans/2026-06-25-trueedit-subproject-a.md`):** five fidelity gains, all gated/additive →
+  **Max-fidelity Sub-project A (2026-06-25, spec (see git history),
+  plan (see git history)):** five fidelity gains, all gated/additive →
   byte-identical at defaults. **A2 (`14f5a55`) Path-3 alpha:** `locateTextOps` records the active ExtGState resource
   name; a Path-3 redraw of semi-transparent (watermark/faded) text recovers its `ca`/`CA` via `lookupExtGStateAlpha`
   and, when alpha<1, `addPageExtGStateResource` adds a fresh ExtGState that `buildPath3Redraw` re-emits via `/GSx gs`
@@ -538,7 +537,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   backgroundColor now (`globalAlpha` scoped inside the existing `ctx.save()/restore()`), but is **code-reviewed,
   NOT pixel-test-guarded** — the primary vector bake IS; (2) the editor `<textarea>` preview now sets
   `style.lineHeight` (`_applyInputFormatting`) for parity with the bake. No feature flag (additive core-toolbar
-  improvement). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-21-rich-pdf-text-toolbar-slice1*`. Guards:
+  improvement). Spec/plan: (see git history). Guards:
   `tests/core/formattingService.test.ts`, `tests/utils/{textCase,recentColors}.test.ts`,
   `tests/ui/{textOptionsPopover,uiController}.test.ts`, `tests/browser/{text-toolbar,text-toolbar-bake}.browser.test.ts`.
   **Backlog/ceiling (Slice 2+):** Tier-2 (stroke/outline, char-spacing `Tc`, horizontal-scale `Tz`, justify,
@@ -575,7 +574,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   (attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path NOW applies stroke/Tc/Tz
   too (Feature 4, 2026-06-24 — see below); the **raster export path** (`exportPipeline.ts`, redaction pages +
   thumbnails) is code-reviewed for these attrs, NOT pixel-guarded — the vector bake IS. Spec/plan:
-  `docs/superpowers/{specs,plans}/2026-06-21-rich-pdf-text-toolbar-slice2*`. Guards: `tests/export/styledText.test.ts`
+  (see git history). Guards: `tests/export/styledText.test.ts`
   (pure `hasAdvancedText`/`effectiveLineWidth`), `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,
   uiController}.test.ts`, `tests/browser/text-toolbar-slice2.browser.test.ts` (real Chrome: pdf.js OPS-38
   `setTextRenderingMode` present in styled / ABSENT in plain → catches a silent regression to `drawText`).
@@ -603,7 +602,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/utils/listMarkers.test.ts`, `tests/elements/textElement.test.ts` (model + gutter),
   `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,uiController}.test.ts`,
   `tests/browser/text-list.browser.test.ts` (real Chrome: bullet/ordered export → pdf.js text has `•`/`1.`/`2.`,
-  plain control has none). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-overlay-text-lists*`.
+  plain control has none). Spec/plan: (see git history).
   **Overlay text links (Feature 3, 2026-06-24):** `TextElement.linkUrl?: string` (OPTIONAL, **no
   `SCHEMA_VERSION` bump**; `toJSON` omits when unset, `elementFactory` reads `typeof === 'string'`). The whole
   text box becomes a clickable hyperlink. **Security:** `src/utils/linkUrl.ts` `sanitizeLinkUrl(raw)` allows ONLY
@@ -625,7 +624,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/elements/textElement.test.ts` (model + badge/title), `tests/core/formattingService.test.ts`,
   `tests/ui/textOptionsPopover.test.ts`, `tests/browser/text-link.browser.test.ts` (real Chrome: export → pdf.js
   `getAnnotations` has a Link with the sanitized `url`; a `javascript:` URL set directly → no annotation).
-  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-overlay-text-links*`.
+  Spec/plan: (see git history).
   **Stroke / Tc / Tz on the Arabic overlay (Feature 4, 2026-06-24):** the Slice-2 advanced attrs `strokeWidth`,
   `charSpacing` (Tc), `horizontalScale` (Tz) — previously Latin/WinAnsi-only — now apply to shaped RTL Arabic text
   in the export. `arabicOverlay.ts` gains a PURE `buildArabicRunOps(fontKey, hex, x, y, size, color, style)` that
@@ -641,7 +640,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/export/arabicOverlay.test.ts` (jsdom: `buildArabicRunOps` op-sequence — no-style q/BT/rg/Tf/Tm/Tj/ET/Q,
   stroke→RG+w+Tr, Tc, Tz; `effectiveArabicWidth` math), `tests/browser/arabic-overlay.browser.test.ts` (real Chrome:
   stroke→pdf.js `setTextRenderingMode`, Tz→`setHScale`, Tc→`setCharSpacing` present, ABSENT for a plain control).
-  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-arabic-overlay-attrs*`.
+  Spec/plan: (see git history).
 - **Tagged-PDF struct-tree fast path (#B1, 2026-06-25)**: a tagged PDF (`page.getStructTree()` with
   children) exports to DOCX/MD/TXT straight from the tags instead of the layout heuristics. `flowDoc.ts`
   `buildMarkedContentMap(items)` splits a `getTextContent({includeMarkedContent:true})` stream into
@@ -670,7 +669,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/utils/flowDocStructTree.test.ts` (10: map attribution/nesting, heading/body/list/ordered/table/null/
   redaction, assignHeadings tagged-skip) + `tests/browser/docx-structtree.browser.test.ts` (2: real tagged PDF →
   H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without the struct arg). Spec:
-  `docs/superpowers/specs/2026-06-25-docx-export-subproject-b-design.md`.
+  (see git history).
 - **Arabic support (Sprint Arabic, 2026-06-15)** — three parts:
   - **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
     Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order
@@ -758,7 +757,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     DO mirror), tashkeel GPOS, shaped-ligature reorder → Feature 3 Slice 3 (evaluate-then-defer). Guards:
     `tests/utils/bidi.test.ts` (13) + the per-surface guards (`rtlClipboard`/`flowDocArabic`/`textSearchHandler`) +
     the extended `tests/browser/arabic-overlay.browser.test.ts`. Spec/plan:
-    `docs/superpowers/{specs,plans}/2026-06-23-arabic-rtl-bidi-engine*`.
+    (see git history).
   - **RTL-aware text toolbar (Feature 3 Slice 2, `ebae519`)**: `TextElement.direction?: 'auto'|'rtl'|'ltr'`
     (default `'auto'`, OPTIONAL, **no `SCHEMA_VERSION` bump** — `toJSON` omits when auto, `elementFactory`
     reads `?? 'auto'`). `resolveDirection(direction, text)` (in `textElement.ts`) = `'auto'` → `baseDirection(text)`
@@ -773,7 +772,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
     (forcing the Arabic font path on non-Arabic text mis-renders — declined). **Gotcha:** any test that builds
     the uiController refs from a partial DOM must seed `'rtlBtn'` (else `getElementById` → null →
     `r.rtlBtn.disabled` throws). i18n `formatting.rtlTitle` (ar [Unverified]). Spec/plan:
-    `docs/superpowers/{specs,plans}/2026-06-23-arabic-rtl-toolbar*`.
+    (see git history).
   - **Multi-language DOCX (#2 `9cfc38a`)**: Cyrillic + CJK source text is preserved verbatim through
     PDF→DOCX/MD/TXT — they're LTR like Latin, so they take the same reconstructPage + writer path and the only
     script branch (`isArabicText` RTL reorder) must not fire. CONTENT is intact (verified, no prod change).
@@ -842,7 +841,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   tried + REJECTED: it traded the artifact for RTL order reversal in pdf.js `getTextContent`. Rotated
   pages: NOT yet supported (warn + skip). Guards: `tests/ocr/searchableTextLayer.test.ts` (14 jsdom:
   transform/partition/apply/rotation) + `tests/browser/searchable-ocr.browser.test.ts` (Latin exact +
-  Arabic honest contract + invisible-ink). Verdict: `docs/reviews/2026-06-15-searchable-ocr-spike-verdict.md`.
+  Arabic honest contract + invisible-ink). Verdict: (see git history).
 - **E-signing (Sprint 4, 2026-06-15)**: `src/signing/*` produces a single visible PKCS#12/CMS signature
   via **node-forge@1.3.1** (dynamically imported; pure-JS, runs in jsdom AND browser). `PdfSigner.sign`
   reserves a fixed `/Contents` hex slot + `/ByteRange`, serialises without object streams, then splices the
@@ -917,7 +916,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   two DISTINCT certs (each sig verifies against its own embedded cert), triple-sign N>2 (3 ByteRanges valid,
   append-only prefix preserved), multi-page. `beforeAll` gets 60s (two RSA-2048 keygens; hookTimeout ≠ the 30s
   testTimeout). Classic-xref + ASCII-object only remains the documented input contract. Verdict:
-  `docs/reviews/2026-06-18-incremental-multisign-spike-verdict.md`. **Approval model B (D1/D2) stays the default**
+  (see git history). **Approval model B (D1/D2) stays the default**
   for the no-backend tool; D3 is now an opt-in productionisation candidate. Editable free-text caption date = v1b.
   **Arabic `mentionDefault`/labels are [Unverified]** — need native review.
 - **Per-page crop (#G23)**: `DocumentPage.crop?` is a rect in **unrotated content space** (y-down, top-left,
@@ -970,7 +969,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   divergence — so the controller counts tables (`countTables`, recursive) at load vs save and warns
   `docxEditor.tableStructureUnsupported` instead of the misleading "saved" toast (the save still succeeds with
   the original tables; genuine block-on-delete is deferred). **Cardinal rule (spike verdict
-  `docs/reviews/2026-06-20-docx-phase0-spike-verdict.md`):** edit `word/document.xml` IN PLACE in the
+  (see git history)):** edit `word/document.xml` IN PLACE in the
   unzipped OPC and re-zip — NEVER rebuild via the `docx` writer (it drops every unmodeled part:
   tables/styles/numbering/headers). `opcEdit.ts` = fflate(MIT) unzip + platform DOMParser edit + re-zip;
   `docModel.ts` models TOP-LEVEL `w:body` paragraphs with per-run **bold/italic/underline/fontFamily/fontSize**
@@ -1034,9 +1033,9 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   only), a rowspan cell straddling a page break, images nested in table cells / inline-with-text / non-PNG-JPEG,
   per-run formatting beyond b/i/u/size/color/font-family, image positional drift after heavy editing (index-based),
   non-WinAnsi scripts → `?` (true face embedding is the future path); Approach B (docx-preview raster) remains the
-  documented high-fidelity future alternative. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-24-docx-to-pdf-fidelity*`.
+  documented high-fidelity future alternative. Spec/plan: (see git history).
   Guards: `tests/docx/docxImages.test.ts` + the `resolveStandardFontFamily`/`buildCellGrid` cases in
-  `docxToPdf.test.ts` + the image/colspan/serif cases in `tests/browser/docx-to-pdf.browser.test.ts`. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-20-docx-to-pdf*`. Guards:
+  `docxToPdf.test.ts` + the image/colspan/serif cases in `tests/browser/docx-to-pdf.browser.test.ts`. Spec/plan: (see git history). Guards:
   `tests/docx/{docxEditor,docxEditorController,docModelRichText,opcParts,docxSchema,docxMapping,docxToolbar,docxToPdf}.test.ts`
   (jsdom), `tests/browser/docx-editor.browser.test.ts` + `tests/browser/docx-to-pdf.browser.test.ts`
   + `tests/browser/docx-toolbar.browser.test.ts` (real Chrome: toolbar drives bold+H1+bullet via genuine
@@ -1144,7 +1143,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   atom, not the picture (image bytes are merged only for TOP-LEVEL blocks — `extractDocImages` skips nested-in-table,
   the same ceiling as the PDF export); image EDITING (move/resize/delete) + EDITABLE links (`w:hyperlink`↔link-mark+rels
   round-trip) are Phase 2 (C2/C3). Spec/plan:
-  `docs/superpowers/{specs/2026-06-25-docx-editor-subproject-c-design,plans/2026-06-26-docx-editor-subproject-c-phase1}.md`.
+  (see git history).
   Guards: `tests/docx/{docModelImagePreserve,docxImageBridge}.test.ts` (jsdom: parse→block, drawing survives,
   hyperlink single-occurrence, byte-identical control, atom round-trip) + `tests/browser/docx-image-preserve.browser.test.ts`
   (real Chrome: img renders inline, link shown once, save round-trips drawing+blip+single hyperlink, plain para intact).
@@ -1162,7 +1161,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   + inline URL input: caret-in-link removes; else reveal input, Enter sanitizes + applies the `link` mark.
   INTERNAL-anchor (`w:anchor`) links stay opaque/preserved (Phase-1 `docx_link` atom) — editing them is the ceiling
   (also: mixed external+internal paragraph stays opaque; Word `Hyperlink` char-style not re-applied; field-code
-  `HYPERLINK` instructions unhandled). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-editor-subproject-c-phase2a-links*`.
+  `HYPERLINK` instructions unhandled). Spec/plan: (see git history).
   Guards: `tests/docx/{docModelLinks,opcPartsHyperlink,docxToolbar}.test.ts` + `tests/browser/docx-links.browser.test.ts`
   (real Chrome: external link editable `<a href>`, internal read-only, save round-trips `w:hyperlink`+rels, toolbar
   add-link creates a relationship). NB Phase-1 hyperlink fixtures were switched to internal-anchor (the now-opaque case).
@@ -1191,7 +1190,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/docx/{docModelImageEdit,docxImageBridge,docxUndo}.test.ts` +
   `tests/browser/docx-image-edit.browser.test.ts` (real Chrome: handles render, drag resizes pixels, Shift=free,
   ✕/Delete removes, save round-trips wp:extent/w:drawing, undo reverts). Spec/plan:
-  `docs/superpowers/{specs,plans}/2026-06-26-docx-editor-subproject-c-phase2b-image-edit*`.
+  (see git history).
   **Export-PDF staleness FIXED (follow-up C, 2026-06-26):** `docxToPdf.docModelToPdfBytes` now renders each
   `DocImageBlock` from its OWN live `image` data (`dataB64`/`mime`/`widthPt`/`heightPt`, round-tripped through the PM
   node) in the `model.blocks` loop — so an in-session **resize** (live dims) and **delete** (block absent) show in
@@ -1204,7 +1203,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/browser/docx-to-pdf.browser.test.ts` (render-from-block / delete→no paintImageXObject / resize→wider
   painted image, all real pdf.js) + the jsdom no-throw case in `tests/docx/docxToPdf.test.ts`. Live eyes-on:
   `qa-shots/c-export-resized.pdf` (resized image baked into the exported PDF). Spec/plan:
-  `docs/superpowers/{specs,plans}/2026-06-26-docx-pdf-export-staleness*`.
+  (see git history).
   **New-image INSERT (Sub-project B, sub-slice 1 of 4, 2026-06-26):** the DOCX editor can now INSERT a
   PNG/JPEG (📷 toolbar button → hidden file input → sniff magic bytes → `createImageBitmap` for natural
   px → `widthPt = min(px×0.75, 468pt)` proportional → a `docx_image` PM node with `anchorId: -1`). It
@@ -1234,7 +1233,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   ordering), the insertImage cases in `tests/docx/docxToolbar.test.ts`, and
   `tests/browser/docx-image-insert.browser.test.ts` (real Chrome: file-pick → render → save mints
   `w:drawing` + media part + Default + rel into a doc that had none). Live eyes-on: `qa-shots/b-insert/`.
-  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-image-insert*`.
+  Spec/plan: (see git history).
   **Image MOVE/reorder (Sub-project B, sub-slice 2 of 4, 2026-06-26):** the DOCX editor can move an
   existing image up/down — **any distance, including crossing tables / other images** — persisted through
   the in-place `save()` with **full fidelity** (no other content rebuilt). UI = ▲/▼ buttons on the selected
@@ -1266,7 +1265,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   byte-identical, map-keyed delete/resize regression), `tests/docx/docxImageMove.test.ts` (command bounds +
   selection gate + undoable + NodeView ▲/▼ present), `tests/browser/docx-image-move.browser.test.ts` (real
   Chrome: move past a table round-trips through save). Live eyes-on: `qa-shots/b-move/move-controls.png`.
-  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-image-move*`.
+  Spec/plan: (see git history).
   **Image cut & paste (Sub-project B, sub-slice 3 of 4, 2026-06-26):** the DOCX editor supports
   Ctrl/Cmd+**X/C/V** on a selected image and **paste of an external image blob** (OS "copy image" /
   screenshot), persisted through the in-place `save()`. **Adds NO new save logic** — three small
@@ -1298,7 +1297,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `transformPasted` wired) + `tests/browser/docx-image-cutpaste.browser.test.ts` (real Chrome: copy→paste →
   **two** `w:drawing` after save = no verbatim-bail; cut→paste → one relocated; eyes-on before/after shot).
   Live eyes-on: `qa-shots/b-cutpaste/{before-one-image,after-two-images}.png`. Spec/plan:
-  `docs/superpowers/{specs,plans}/2026-06-26-docx-image-cutpaste*`.
+  (see git history).
   **Image drag-to-reorder (Sub-project B, sub-slice 4 of 4 — COMPLETES follow-up B, 2026-06-26):** drag an
   image with the pointer to reorder it among the document's **top-level** blocks, with a live drop-indicator
   line, persisted through the in-place `save()`. **Custom pointer drag** (NOT native HTML5 drag) on the
@@ -1324,7 +1323,7 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   NodeView sub-threshold-click no-move) + `tests/browser/docx-image-drag.browser.test.ts` (real Chrome: drag
   below a table → `w:drawing` relocated after save; sub-threshold click → unmoved; eyes-on dim + drop-line shot).
   Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`. Spec/plan:
-  `docs/superpowers/{specs,plans}/2026-06-26-docx-image-drag*`.
+  (see git history).
 
 ## Git & CI
 
