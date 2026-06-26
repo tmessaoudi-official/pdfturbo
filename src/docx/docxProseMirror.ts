@@ -105,9 +105,10 @@ function imageBlockToNode(b: DocImageBlock): PMNode {
       mime: b.image.mime,
       widthPt: b.image.widthPt,
       heightPt: b.image.heightPt,
+      anchorId: b.anchorId ?? -1,
     });
   }
-  return n.docx_link.create({ text: b.linkText ?? '' });
+  return n.docx_link.create({ text: b.linkText ?? '', anchorId: b.anchorId ?? -1 });
 }
 
 /** Emit a list of DocBlocks (paragraphs + tables + image anchors) into PM block nodes. Shared by body+cells. */
@@ -217,6 +218,7 @@ function cellOf(cellNode: PMNode): DocCell {
 function emitBlockTo(node: PMNode, depth: number, out: DocBlock[]): void {
   const name = node.type.name;
   if (name === 'docx_image') {
+    const aid = Number(node.attrs.anchorId);
     out.push({
       kind: 'image',
       image: {
@@ -225,11 +227,13 @@ function emitBlockTo(node: PMNode, depth: number, out: DocBlock[]): void {
         widthPt: Number(node.attrs.widthPt),
         heightPt: Number(node.attrs.heightPt),
       },
+      ...(aid >= 0 ? { anchorId: aid } : {}),
     });
     return;
   }
   if (name === 'docx_link') {
-    out.push({ kind: 'image', linkText: node.attrs.text as string });
+    const aid = Number(node.attrs.anchorId);
+    out.push({ kind: 'image', linkText: node.attrs.text as string, ...(aid >= 0 ? { anchorId: aid } : {}) });
     return;
   }
   if (name === 'table') {

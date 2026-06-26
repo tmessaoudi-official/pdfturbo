@@ -38,4 +38,21 @@ describe('image/link block <-> PM atom bridge', () => {
     expect(isDocImageBlock(b)).toBe(true);
     if (isDocImageBlock(b)) expect(b.linkText).toBe('click here');
   });
+
+  it('round-trips anchorId through the docx_image node (C2)', () => {
+    const model: DocModel = {
+      blocks: [{ kind: 'image', anchorId: 2, image: { dataB64: 'AAAA', mime: 'image/png', widthPt: 75, heightPt: 75 } }],
+      paragraphs: [],
+    };
+    const back = docToDocModel(docModelToDoc(model)).blocks.find(isDocImageBlock);
+    expect(back?.anchorId).toBe(2);
+  });
+
+  it('round-trips anchorId through a docx_link fallback (unextracted image, C2)', () => {
+    const model: DocModel = { blocks: [{ kind: 'image', anchorId: 3 }], paragraphs: [] }; // no image bytes
+    const doc = docModelToDoc(model);
+    expect(doc.firstChild?.type.name).toBe('docx_link');
+    const back = docToDocModel(doc).blocks.find(isDocImageBlock);
+    expect(back?.anchorId).toBe(3);
+  });
 });

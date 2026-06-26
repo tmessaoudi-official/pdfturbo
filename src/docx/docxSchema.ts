@@ -35,6 +35,8 @@ nodes = nodes.append({
       mime: { default: 'image/png' },
       widthPt: { default: 0 },
       heightPt: { default: 0 },
+      // C2 image-edit identity (index among top-level drawing anchors); -1 = none.
+      anchorId: { default: -1 },
     },
     toDOM(node: PMNode): DOMOutputSpec {
       const a = node.attrs;
@@ -50,7 +52,9 @@ nodes = nodes.append({
     group: 'block',
     atom: true,
     selectable: true,
-    attrs: { text: { default: '' } },
+    // anchorId carries the drawing identity for an UNEXTRACTED-format image that fell back to a link
+    // node (so the C2 save pre-pass preserves it instead of deleting it); -1 for a real hyperlink anchor.
+    attrs: { text: { default: '' }, anchorId: { default: -1 } },
     toDOM(node: PMNode): DOMOutputSpec {
       return ['p', ['a', { class: 'docx-link-ro' }, node.attrs.text as string]];
     },

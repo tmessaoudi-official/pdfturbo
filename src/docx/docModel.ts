@@ -53,6 +53,9 @@ export interface DocImageBlock {
   kind: 'image';
   image?: { dataB64: string; mime: 'image/png' | 'image/jpeg'; widthPt: number; heightPt: number };
   linkText?: string;
+  /** 0-based index among TOP-LEVEL drawing anchors (w:p with w:drawing), in document order.
+   * Stamped at parse; absent for hyperlink anchors and cell-nested anchors. C2 image-edit identity. */
+  anchorId?: number;
 }
 export type DocBlock = DocParagraph | DocTable | DocImageBlock;
 export interface DocModel {
@@ -232,12 +235,19 @@ function parseAnchorBlock(p: Element): DocImageBlock {
   return block;
 }
 
-/** Parse the ordered w:p / w:tbl children of a container (body or cell) into DocBlocks. */
-function parseContainerBlocks(container: Element, numberingMap?: NumberingMap, linkMap?: Map<string, string>): DocBlock[] {
+/** Parse the ordered w:p / w:tbl children of a container (body or cell) into DocBlocks.
+ * `stampAnchorIds` (body level only) numbers top-level drawing anchors so the C2 save pre-pass can
+ * map an edited image block back to its source w:p; cell parsing leaves it false (cell images opaque). */
+function parseContainerBlocks(container: Element, numberingMap?: NumberingMap, linkMap?: Map<string, string>, stampAnchorIds = false): DocBlock[] {
   const out: DocBlock[] = [];
+  let drawingCount = 0;
   for (const el of Array.from(container.children)) {
     if (el.tagName === 'w:p') {
-      out.push(isAnchorParagraphEl(el) ? parseAnchorBlock(el) : parseParagraph(el, numberingMap, linkMap));
+      if (isAnchorParagraphEl(el)) {
+        const blk = parseAnchorBlock(el);
+        if (stampAnchorIds && el.getElementsByTagName('w:drawing').length > 0) blk.anchorId = drawingCount++;
+        out.push(blk);
+      } else out.push(parseParagraph(el, numberingMap, linkMap));
     } else if (el.tagName === 'w:tbl') out.push(parseTable(el, numberingMap, linkMap));
   }
   return out;
@@ -295,7 +305,7 @@ export function parseDocModel(documentXml: string, numberingMap?: NumberingMap, 
   const dom = new DOMParser().parseFromString(documentXml, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length > 0) throw new Error('document.xml not well-formed');
   const body = dom.getElementsByTagName('w:body')[0];
-  const blocks: DocBlock[] = body ? parseContainerBlocks(body, numberingMap, linkMap) : [];
+  const blocks: DocBlock[] = body ? parseContainerBlocks(body, numberingMap, linkMap, true) : [];
   const paragraphs = blocks.filter((b): b is DocParagraph => !isDocTable(b) && !isDocImageBlock(b));
   return { blocks, paragraphs };
 }
