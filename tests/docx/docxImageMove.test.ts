@@ -145,4 +145,22 @@ describe('docx_image NodeView — move buttons', () => {
     view.destroy();
     place.remove();
   });
+
+  it('a sub-threshold click on the image body does NOT move it', () => {
+    const place = document.createElement('div');
+    document.body.appendChild(place);
+    const view = new EditorView(place, {
+      state: stateWith([imgNode(), para('A')]),
+      nodeViews: { docx_image: (node, v, getPos) => createDocxImageView(node, v, getPos) },
+    });
+    const img = place.querySelector('img[data-docx-image]') as HTMLImageElement;
+    const before = imgIndex(view.state.doc);
+    const ev = (type: string, x: number, y: number): MouseEvent => new MouseEvent(type, { clientX: x, clientY: y, bubbles: true });
+    img.dispatchEvent(ev('pointerdown', 10, 10));
+    document.dispatchEvent(ev('pointermove', 12, 12)); // < 5px → not a drag
+    document.dispatchEvent(ev('pointerup', 12, 12));
+    expect(imgIndex(view.state.doc)).toBe(before); // unchanged
+    view.destroy();
+    place.remove();
+  });
 });

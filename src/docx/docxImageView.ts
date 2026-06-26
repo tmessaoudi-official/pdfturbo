@@ -1,6 +1,6 @@
 import type { EditorView, NodeView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
-import { moveImageAt } from './docxImageMove';
+import { moveImageAt, moveImageToGap, dropTargetIndex } from './docxImageMove';
 import { t } from '../utils/i18n';
 
 /**
@@ -118,6 +118,67 @@ export function createDocxImageView(node: PMNode, view: EditorView, getPos: () =
     document.addEventListener('pointerup', onUp);
   });
 
+  // Image-body drag-to-reorder (B slice 4). The .se/✕/▲▼ children capture their own events; a plain
+  // click (< DRAG_THRESHOLD px) selects (PM default), a drag moves the image to the nearest top-level gap.
+  const DRAG_THRESHOLD = 5;
+  let dragStartX = 0, dragStartY = 0, dragging = false;
+  let dropLine: HTMLDivElement | null = null;
+  let rootPrevPosition: string | null = null; // restore the root's inline position after the drag
+  const editorRoot = (): HTMLElement => (view.dom.parentElement ?? view.dom) as HTMLElement;
+  const showDropLine = (clientY: number): void => {
+    const g = dropTargetIndex(view, clientY);
+    const root = editorRoot();
+    if (dropLine === null) {
+      // The absolutely-positioned line anchors to `root`, so root must be a positioned offset parent.
+      if (getComputedStyle(root).position === 'static') {
+        rootPrevPosition = root.style.position;
+        root.style.position = 'relative';
+      }
+      dropLine = document.createElement('div');
+      dropLine.className = 'docx-image-drop-line';
+      root.appendChild(dropLine);
+    }
+    const rootRect = root.getBoundingClientRect();
+    const doc = view.state.doc;
+    let p = 0;
+    for (let i = 0; i < g; i++) p += doc.child(i).nodeSize;
+    const y = g >= doc.childCount
+      ? view.coordsAtPos(doc.content.size).bottom
+      : view.coordsAtPos(p + 1).top;
+    dropLine.style.top = `${y - rootRect.top + root.scrollTop}px`;
+  };
+  const clearDropLine = (): void => {
+    if (dropLine !== null) { dropLine.remove(); dropLine = null; }
+    if (rootPrevPosition !== null) { editorRoot().style.position = rootPrevPosition; rootPrevPosition = null; }
+  };
+  const onImgMove = (e: PointerEvent): void => {
+    if (!dragging && Math.abs(e.clientX - dragStartX) + Math.abs(e.clientY - dragStartY) > DRAG_THRESHOLD) {
+      dragging = true;
+      dom.classList.add('docx-image-dragging');
+    }
+    if (dragging) showDropLine(e.clientY);
+  };
+  const onImgUp = (e: PointerEvent): void => {
+    document.removeEventListener('pointermove', onImgMove);
+    document.removeEventListener('pointerup', onImgUp);
+    dom.classList.remove('docx-image-dragging');
+    clearDropLine();
+    if (!dragging) return;                       // a plain click — PM already handled selection
+    dragging = false;
+    const pos = getPos();
+    if (pos === undefined) return;
+    const tr = moveImageToGap(view.state, pos, dropTargetIndex(view, e.clientY));
+    if (tr) { view.dispatch(tr); view.focus(); }
+  };
+  img.addEventListener('pointerdown', e => {
+    // Do NOT preventDefault — a plain click must still select the node (PM handles it).
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragging = false;
+    document.addEventListener('pointermove', onImgMove);
+    document.addEventListener('pointerup', onImgUp);
+  });
+
   return {
     dom,
     update(nn: PMNode): boolean {
@@ -133,6 +194,9 @@ export function createDocxImageView(node: PMNode, view: EditorView, getPos: () =
     destroy(): void {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointermove', onImgMove);
+      document.removeEventListener('pointerup', onImgUp);
+      clearDropLine();
     },
   };
 }

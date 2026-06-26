@@ -267,3 +267,9 @@
   top: -10px; right: -10px; width: 20px; height: 20px; border-radius: 50%; border: none;
   background: #dc2626; color: #fff; font-size: 11px; line-height: 1; cursor: pointer; padding: 0;
 }
+/* Drag-to-reorder (B slice 4): dim the dragged image; the drop-indicator line marks the landing gap. */
+.docx-editor-mount .ProseMirror .docx-image-wrap.docx-image-dragging img { opacity: 0.5; cursor: grabbing; }
+.docx-image-drop-line {
+  position: absolute; left: 0; right: 0; height: 2px;
+  background: var(--accent, #2563eb); pointer-events: none; z-index: 5;
+}
