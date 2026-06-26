@@ -1254,6 +1254,38 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   selection gate + undoable + NodeView ▲/▼ present), `tests/browser/docx-image-move.browser.test.ts` (real
   Chrome: move past a table round-trips through save). Live eyes-on: `qa-shots/b-move/move-controls.png`.
   Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-image-move*`.
+  **Image cut & paste (Sub-project B, sub-slice 3 of 4, 2026-06-26):** the DOCX editor supports
+  Ctrl/Cmd+**X/C/V** on a selected image and **paste of an external image blob** (OS "copy image" /
+  screenshot), persisted through the in-place `save()`. **Adds NO new save logic** — three small
+  ProseMirror-layer hooks (new `src/docx/docxImagePaste.ts`) route a pasted image into the *existing*
+  slice-1/2 `anchorId:-1 ⇒ mint-fresh` insert path. **The bug it fixes:** `docx_image` has a `toDOM`
+  but had no `parseDOM`, and PM's native copy preserves attrs → an intra-editor COPY duplicates
+  `anchorId` (two nodes both `anchorId:0`) → at save, `placeImageAnchors`' dup-free guard trips → the
+  save **bails to verbatim** → the pasted copy is silently dropped. **Fix = every PASTED image arrives
+  with `anchorId:-1`** so the save mints fresh OPC media instead. Three units: (1) `resetPastedImageAnchors(slice)`
+  wired as the `transformPasted` PM prop — walks the pasted fragment and rebuilds every `docx_image` with
+  `anchorId:-1`; PM runs `transformPasted` on the FINAL slice for BOTH the intra-editor slice path AND the
+  HTML-parse path, so one hook covers copy/paste AND cut/paste; (2) a scoped `parseDOM` on the `docx_image`
+  schema node — `img[data-docx-image]` with a `data:image/png|jpeg` src only (`priority:60` to win over
+  prosemirror-schema-basic's inline `image` rule `img[src]`; `getAttrs` returns `false` for any non-data
+  src so an arbitrary web `<img>` NEVER matches) → `{mime,dataB64,anchorId:-1}`; (3) a `handlePaste`
+  image-blob branch (AFTER the existing Ctrl+Shift+V plain-text check) — `firstImageFile(clipboardData)`
+  (files then items, png/jpeg) → `insertImageBlob` (slice-1 dims: `createImageBitmap`, `PT_PER_PX=0.75`,
+  `CONTENT_WIDTH_PT=468`, catch→0 dims) → insert `docx_image` `anchorId:-1`. **Cut needs no new wiring** —
+  it is PM-native copy+delete: the original's `w:drawing` is removed by `reconcileImageAnchors` (its anchorId
+  vanishes from the model), the pasted copy re-mints → move-via-clipboard (old media part orphaned, same as a
+  C2 delete). The shared image primitives (`sniffImageMime`/`imgBytesToB64`/`imageDimsPt` + the PT consts)
+  were LIFTED from `docxToolbar.ts` into `docxImagePaste.ts` (toolbar now imports them — behavior-identical,
+  the 📷 Insert button unchanged). No new dep, no `SCHEMA_VERSION` bump, rides `VITE_FEATURE_DOCX_EDIT`.
+  **Ceiling:** `http(s)` `<img src>` from web HTML (CORS — can't read the bytes client-side, never matched);
+  GIF/SVG/WebP (only PNG/JPEG minted, matches the slice-1 sniff); orphaned-media GC after a cut (no part GC
+  in v1); mixed text+image HTML fragments (an embedded image embeds only if it is a `data:`-uri
+  `<img data-docx-image>`). Guards: `tests/docx/docxImagePaste.test.ts` (jsdom: `resetPastedImageAnchors`
+  reset + non-image untouched, `parseDOM` data-uri parse + http/no-attr rejection, `firstImageFile`,
+  `transformPasted` wired) + `tests/browser/docx-image-cutpaste.browser.test.ts` (real Chrome: copy→paste →
+  **two** `w:drawing` after save = no verbatim-bail; cut→paste → one relocated; eyes-on before/after shot).
+  Live eyes-on: `qa-shots/b-cutpaste/{before-one-image,after-two-images}.png`. Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-06-26-docx-image-cutpaste*`.
 
 ## Git & CI
 
