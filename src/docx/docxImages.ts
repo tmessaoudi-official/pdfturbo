@@ -1,10 +1,11 @@
 /**
  * DOCX inline-image extraction for the DOCX→PDF export (Feature 5, Track B).
  *
- * Images are read DIRECTLY from the OPC package (document.xml + rels + word/media) and kept
- * SEPARATE from the editable DocModel — the in-place save path (`buildRun`) rebuilds every model
- * run as a text `w:r`, so routing image data through the model would corrupt the `w:drawing`.
- * This read-only channel feeds `docModelToPdfBytes({ images })` only; the save path is untouched.
+ * Images are read DIRECTLY from the OPC package (document.xml + rels + word/media). At mount,
+ * `mountDocxEditor` MERGES the extracted bytes/dims into the matching `DocImageBlock.image`
+ * fields (by block index) — so the live model carries each image and the DOCX→PDF export renders
+ * from the model (reflecting in-session resize/delete). The in-place SAVE path is untouched: it
+ * preserves each image's `w:p` verbatim via the DOM-structural anchor skip, never `buildRun`.
  *
  * Scope: top-level paragraphs' inline images (`w:drawing` → `a:blip/@r:embed`), PNG/JPEG only
  * (pdf-lib embeds those). Images nested inside table cells and non-PNG/JPEG media are skipped.

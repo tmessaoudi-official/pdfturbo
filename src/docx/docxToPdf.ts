@@ -20,7 +20,6 @@
 
 import { PDFDocument, StandardFonts, rgb, type Color, type PDFFont, type PDFPage } from '@cantoo/pdf-lib';
 import { isDocTable, isDocImageBlock, type DocModel, type DocBlock, type DocParagraph, type DocTable, type DocCell } from './docModel';
-import type { DocImage } from './docxImages';
 
 /** Point size for a heading level relative to the body `base` size (H1>H2>H3>base). */
 export function headingFontSize(level: 1 | 2 | 3, base: number): number {
@@ -125,8 +124,6 @@ export interface DocxToPdfOptions {
   lineHeight?: number;
   /** Points of vertical space after each paragraph. */
   paragraphGap?: number;
-  /** Inline images (extracted from the OPC, see {@link DocImage}), drawn after their block index. */
-  images?: DocImage[];
 }
 
 /** base64 → bytes (export path runs in the browser/jsdom; both have atob). */
@@ -480,7 +477,7 @@ export async function docModelToPdfBytes(
   };
 
   /** Embed + draw one inline image, scaled to fit the content width, paginated like a tall line. */
-  const drawImage = async (img: DocImage): Promise<void> => {
+  const drawImage = async (img: { dataB64: string; mime: 'image/png' | 'image/jpeg'; widthPt: number; heightPt: number }): Promise<void> => {
     let embedded;
     try {
       const data = _b64ToBytes(img.dataB64);
@@ -498,21 +495,14 @@ export async function docModelToPdfBytes(
     y -= h + paraGap;
   };
 
-  // Index inline images by the block they follow (default []).
-  const imagesByBlock = new Map<number, DocImage[]>();
-  for (const im of opts.images ?? []) {
-    const arr = imagesByBlock.get(im.blockIndex) ?? [];
-    arr.push(im);
-    imagesByBlock.set(im.blockIndex, arr);
-  }
-
   const topList = makeListState();
-  for (let bi = 0; bi < model.blocks.length; bi++) {
-    const block = model.blocks[bi];
+  for (const block of model.blocks) {
     if (isDocTable(block)) drawTableFlow(block);
-    else if (isDocImageBlock(block)) { /* image drawn via imagesByBlock below */ }
+    // An image anchor renders from its OWN live data (resize reflected; a deleted image's block
+    // is absent → not drawn). A block with no `image` (unsupported format / link-fallback /
+    // cell-nested) draws nothing — the documented ceiling.
+    else if (isDocImageBlock(block)) { if (block.image) await drawImage(block.image); }
     else drawParagraphFlow(block, topList.markerFor(block));
-    for (const im of imagesByBlock.get(bi) ?? []) await drawImage(im);
   }
 
   const bytes = await doc.save();

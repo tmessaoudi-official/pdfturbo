@@ -78,6 +78,17 @@ describe('docModelToPdfBytes', () => {
     const doc = await PDFDocument.load(bytes);
     expect(doc.getPageCount()).toBe(1);
   });
+
+  it('renders a model containing an image block without throwing (no { images } channel)', async () => {
+    // Image-XObject embedding is asserted in the real-Chrome suite; here we only guard that
+    // adding the image-block branch + removing opts.images didn't break the no-image render path.
+    // An empty dataB64 makes drawImage's embed throw → caught and skipped, so text still renders.
+    const capPara = { runs: [{ text: 'caption' }] };
+    const img = { kind: 'image' as const, image: { dataB64: '', mime: 'image/png' as const, widthPt: 50, heightPt: 50 }, anchorId: 0 };
+    const { bytes } = await docModelToPdfBytes({ blocks: [capPara, img], paragraphs: [capPara] });
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('headingFontSize (Workstream A: heading fidelity)', () => {

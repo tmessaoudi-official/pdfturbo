@@ -106,17 +106,59 @@ describe('docModelToPdfBytes fidelity (Feature 5, real Chrome)', () => {
     return Array.from(list.fnArray as number[]);
   }
 
-  it('embeds an inline image passed via { images } (paintImageXObject)', async () => {
+  function isPaintImage(fn: number): boolean {
+    return fn === pdfjsLib.OPS.paintImageXObject
+      || fn === pdfjsLib.OPS.paintImageXObjectRepeat
+      || fn === pdfjsLib.OPS.paintInlineImageXObject;
+  }
+  async function countPaintImage(bytes: Uint8Array): Promise<number> {
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+    let n = 0;
+    for (let i = 1; i <= doc.numPages; i++) {
+      const list = await (await doc.getPage(i)).getOperatorList();
+      n += Array.from(list.fnArray as number[]).filter(isPaintImage).length;
+    }
+    return n;
+  }
+  // On-page image width = the |a| component of the `transform` (cm) op pdf-lib emits before Do.
+  async function paintedImageWidth(bytes: Uint8Array): Promise<number> {
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+    const p = await doc.getPage(1);
+    const list = await p.getOperatorList();
+    const fns = list.fnArray as number[];
+    const args = list.argsArray as Array<unknown[]>;
+    let w = 0;
+    for (let i = 0; i < fns.length; i++) {
+      if (fns[i] === pdfjsLib.OPS.transform) {
+        const a = Math.abs(Number((args[i] as number[])[0]));
+        if (Number.isFinite(a)) w = Math.max(w, a);
+      }
+    }
+    return w;
+  }
+
+  // A DocImageBlock carrying the image data is now the source of truth (no { images } channel).
+  const imageBlock = (widthPt: number): { kind: 'image'; image: { dataB64: string; mime: 'image/png'; widthPt: number; heightPt: number }; anchorId: number } =>
+    ({ kind: 'image', image: { dataB64, mime: 'image/png', widthPt, heightPt: widthPt }, anchorId: 0 });
+
+  it('renders an image from a DocImageBlock (live model, no { images } channel)', async () => {
     const para = { runs: [{ text: 'Figure below:' }] };
-    const { bytes } = await docModelToPdfBytes(
-      { blocks: [para], paragraphs: [para] },
-      { images: [{ blockIndex: 0, dataB64, mime: 'image/png', widthPt: 80, heightPt: 80 }] },
-    );
+    const { bytes } = await docModelToPdfBytes({ blocks: [para, imageBlock(80)], paragraphs: [para] });
     const ops = await page1Ops(bytes);
-    const painted = ops.includes(pdfjsLib.OPS.paintImageXObject)
-      || ops.includes(pdfjsLib.OPS.paintImageXObjectRepeat)
-      || ops.includes(pdfjsLib.OPS.paintInlineImageXObject);
-    expect(painted).toBe(true);
+    expect(ops.some(isPaintImage)).toBe(true);
+  });
+
+  it('omits a deleted image (block absent → no paintImageXObject)', async () => {
+    const para = { runs: [{ text: 'Figure below:' }] };
+    const { bytes } = await docModelToPdfBytes({ blocks: [para], paragraphs: [para] });
+    expect(await countPaintImage(bytes)).toBe(0);
+  });
+
+  it('reflects a resized image block (larger widthPt → wider painted image)', async () => {
+    const para = { runs: [{ text: 'Figure below:' }] };
+    const small = await docModelToPdfBytes({ blocks: [para, imageBlock(60)], paragraphs: [para] });
+    const large = await docModelToPdfBytes({ blocks: [para, imageBlock(200)], paragraphs: [para] });
+    expect(await paintedImageWidth(large.bytes)).toBeGreaterThan(await paintedImageWidth(small.bytes));
   });
 
   it('renders a colspan=2 header spanning both columns (reading order preserved)', async () => {

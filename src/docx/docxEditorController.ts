@@ -198,9 +198,10 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
   const onExportPdf = (): void => {
     if (!handle) return;
     const model = handle.getModel();
-    const images = handle.getImages();
+    // The live model carries image data + dims (round-tripped through the PM node), so the export
+    // reflects in-session resize/delete. (`getImages()` stays on the handle for phase B insert/move.)
     import('./docxToPdf')
-      .then(({ docModelToPdfBytes }) => docModelToPdfBytes(model, { images }))
+      .then(({ docModelToPdfBytes }) => docModelToPdfBytes(model))
       .then(({ bytes, hadUnsupportedChars }) => {
         download(bytes, pdfName(currentName));
         notify('docxEditor.pdfExported', 'info');
