@@ -82,7 +82,10 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
-  overflow-x: auto;
+  /* QA-D F3 — wrap overflowing groups to a second row instead of hiding them behind a horizontal
+     scrollbar (every control stays reachable without scrolling). row-gap keeps wrapped rows legible. */
+  flex-wrap: wrap;
+  row-gap: 6px;
   flex-shrink: 0;
 }
 .toolbar-row1 {
