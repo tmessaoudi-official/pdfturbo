@@ -133,13 +133,9 @@ export class PageThumbnailPanel {
       menu.appendChild(btn);
     }
     document.body.appendChild(menu);
-    const rect = anchor.getBoundingClientRect();
-    // Inline-styled (no CSS-file dependency): a compact light popup at the button.
+    // Inline-styled visuals (no CSS-file dependency): a compact light popup. Position
+    // is computed separately so it flips above the anchor when there's no room below.
     Object.assign(menu.style, {
-      position: 'fixed',
-      top: `${rect.bottom + 2}px`,
-      left: `${rect.left}px`,
-      zIndex: '1000',
       display: 'flex',
       flexDirection: 'column',
       background: '#fff',
@@ -149,8 +145,33 @@ export class PageThumbnailPanel {
       padding: '4px',
       gap: '2px',
     } as Partial<CSSStyleDeclaration>);
+    this._positionMenu(menu, anchor);
     this._openMenu = menu;
     this._registerMenuDismiss();
+  }
+
+  /**
+   * Position a body-anchored popup at `anchor` with `position:fixed`. Opens BELOW the
+   * anchor by default, but flips ABOVE when there isn't room below — the thumbnail
+   * strip sits at the viewport bottom, so the action/format menus would otherwise spill
+   * into the footer. Also clamps horizontally so the menu stays fully on-screen.
+   */
+  private _positionMenu(menu: HTMLElement, anchor: HTMLElement): void {
+    const rect = anchor.getBoundingClientRect();
+    const menuH = menu.offsetHeight;
+    const menuW = menu.offsetWidth;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const openUp = rect.bottom + menuH + 4 > vh && rect.top - menuH - 4 >= 0;
+    const top = openUp ? rect.top - menuH - 2 : rect.bottom + 2;
+    let left = rect.left;
+    if (left + menuW + 4 > vw) left = Math.max(4, vw - menuW - 4);
+    Object.assign(menu.style, {
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`,
+      zIndex: '1000',
+    } as Partial<CSSStyleDeclaration>);
   }
 
   /**
@@ -192,13 +213,7 @@ export class PageThumbnailPanel {
       menu.appendChild(btn);
     }
     document.body.appendChild(menu);
-    const rect = anchor.getBoundingClientRect();
-    Object.assign(menu.style, {
-      position: 'fixed',
-      top: `${rect.bottom + 2}px`,
-      left: `${rect.left}px`,
-      zIndex: '1000',
-    } as Partial<CSSStyleDeclaration>);
+    this._positionMenu(menu, anchor);
     this._openMenu = menu;
     this._registerMenuDismiss();
   }
