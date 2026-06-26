@@ -1,5 +1,39 @@
 import type { PDFTurboApp } from '../../core/pdfTurboApp';
 
+/**
+ * Re-fit the page to width on viewport WIDTH changes only (rotation, desktop↔mobile) — the
+ * reason the QA-D F2 resize handler exists.
+ *
+ * Mobile keyboard fix: on Android the soft keyboard opening resizes the window, but only its
+ * HEIGHT (the layout viewport shrinks; `innerWidth` is unchanged). The previous handler re-fit on
+ * EVERY resize, and `fitToWidth → applyZoom → rebuildElementLayer` unconditionally tears down and
+ * recreates the element DOM — destroying the focused `<textarea>`/`<input>`. That dismissed the
+ * keyboard the instant it appeared, and looped (keyboard-hide grows the viewport → another resize
+ * → another rebuild), so the user could not type at all. Gating on a genuine WIDTH change ignores
+ * the keyboard entirely while preserving the orientation/desktop↔mobile re-fit. Verified via a
+ * real-browser repro: a width-unchanged resize destroyed the focused textarea (focus + DOM node
+ * both lost); with this guard it does not.
+ *
+ * Exported for unit testing; `win` is injectable so tests can drive a fake resize.
+ */
+export function installRefitOnResize(
+  app: Pick<PDFTurboApp, '_isFitMode' | 'documentModel' | 'fitToWidth'>,
+  guard: (p: unknown) => void,
+  win: Window = window,
+): void {
+  let lastWidth = win.innerWidth;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  win.addEventListener('resize', () => {
+    const width = win.innerWidth;
+    const widthChanged = width !== lastWidth;
+    lastWidth = width;
+    if (!widthChanged) return; // height-only resize (soft keyboard) — never re-fit
+    if (!app._isFitMode || !app.documentModel.pageCount) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => guard(app.fitToWidth()), 150);
+  });
+}
+
 export function bindNavigationEvents(app: PDFTurboApp): void {
   // M0 #9 — render/zoom/nav are fire-and-forget Promises. Route a rejection to a
   // specific render-failure toast (and the diagnostic ring buffer via reportError)
@@ -39,14 +73,9 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
     app._isFitMode = false;
     guard(app.applyZoom(app.zoomScale + (e.deltaY < 0 ? 0.05 : -0.05)));
   }, { passive: false });
-  // QA-D F2 — re-fit on viewport resize/orientation change so the page doesn't keep a stale zoom and
-  // overflow (e.g. desktop→mobile). Only when fit-mode is active and a document is loaded. Debounced.
-  let _fitResizeTimer: ReturnType<typeof setTimeout> | undefined;
-  window.addEventListener('resize', () => {
-    if (!app._isFitMode || !app.documentModel.pageCount) return;
-    clearTimeout(_fitResizeTimer);
-    _fitResizeTimer = setTimeout(() => guard(app.fitToWidth()), 150);
-  });
+  // QA-D F2 — re-fit on viewport resize/orientation change so the page doesn't keep a stale zoom
+  // and overflow (e.g. desktop→mobile). See installRefitOnResize for the width-only guard.
+  installRefitOnResize(app, guard);
 
   // ── Download ───────────────────────────────────────────────────
   app.ui.downloadBtn.addEventListener('click', () => app.downloadPDF());
