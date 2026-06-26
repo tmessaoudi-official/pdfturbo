@@ -1222,6 +1222,38 @@ docs/plans/                 # working plan files; docs/reviews/ — audit report
   `tests/browser/docx-image-insert.browser.test.ts` (real Chrome: file-pick → render → save mints
   `w:drawing` + media part + Default + rel into a doc that had none). Live eyes-on: `qa-shots/b-insert/`.
   Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-image-insert*`.
+  **Image MOVE/reorder (Sub-project B, sub-slice 2 of 4, 2026-06-26):** the DOCX editor can move an
+  existing image up/down — **any distance, including crossing tables / other images** — persisted through
+  the in-place `save()` with **full fidelity** (no other content rebuilt). UI = ▲/▼ buttons on the selected
+  image's NodeView (beside C2's ✕/resize) + **Alt+↑/↓** when an image is selected; each press moves it past
+  one adjacent top-level block. **PM side:** `src/docx/docxImageMove.ts` — `moveImageAt(state, pos, dir) →
+  Transaction | null` (delete the node, re-insert before the prev / after the next top-level block, keep it
+  NodeSelected; null at a bound → no-op) + `moveImage(dir): Command` (gated on a `docx_image` NodeSelection),
+  one undoable transaction via the wired `prosemirror-history`. **Save side (the engine):** `applyBlocks`'
+  `editImages` branch builds an `anchorEl: Map<anchorId, Element>` **once, pre-mutation** (the DOM is parse
+  order, so `D[i]` has `anchorId i`) and shares it across two passes: `reconcileImageAnchors` (C2 delete/resize,
+  **refactored from positional to map-keyed** — behavior-identical, removes the old "ordering is load-bearing"
+  footgun) → `placeImageAnchors` (move existing by `anchorId` + insert new — **absorbs the former
+  `materializeNewImageAnchors`**). `placeImageAnchors` walks the model blocks with a cursor over the body's
+  **non-image-anchor** block children (text + tables + hyperlink anchors = fixed reference points, never
+  touched); an existing image is **moved** (`body.insertBefore` re-parents the element in place), a new image
+  is **inserted** (mint via the `opts.mintImage` callback — `docModel` still must not import `opcParts`, the
+  cycle). Then `reconcileContainer` runs **unchanged**. **Why full fidelity:** only image `w:p` elements
+  relocate, so after placement the boundary order matches the model and the segment-zip is all in-place
+  `setRunsOn` — a displaced paragraph's unmodeled `pPr` is **not** rebuilt (a strict improvement over a
+  reorder-then-reconcile-shuffle approach). **`applyBlocks` always re-parses the pristine `originalXml`**, so
+  multiple session moves compose and there's no mid-session `anchorId` churn (on the next open the doc
+  re-parses and anchorIds are reassigned by the new order). **Byte-identical when nothing
+  moved/inserted/deleted** (all passes no-op; legacy `applyParagraphRuns` omits `editImages`). C2 SAFETY GUARD
+  (model image anchorIds ⊆ map keys, dup-free) still bails to verbatim. **Ceiling:** moving tables/paragraphs
+  themselves, move-to-top/bottom, multi-select move; cell-nested images stay opaque/non-movable; cut&paste
+  (slice 3) + drag (slice 4) reuse `placeImageAnchors`. No new dep, no `SCHEMA_VERSION` bump, rides
+  `VITE_FEATURE_DOCX_EDIT`. i18n `docxEditor.moveImageUp`/`moveImageDown` (ar [Unverified]). Guards:
+  `tests/docx/docImageMove.test.ts` (engine: move past text with `pPr` survival, cross-table, swap, move+insert,
+  byte-identical, map-keyed delete/resize regression), `tests/docx/docxImageMove.test.ts` (command bounds +
+  selection gate + undoable + NodeView ▲/▼ present), `tests/browser/docx-image-move.browser.test.ts` (real
+  Chrome: move past a table round-trips through save). Live eyes-on: `qa-shots/b-move/move-controls.png`.
+  Spec/plan: `docs/superpowers/{specs,plans}/2026-06-26-docx-image-move*`.
 
 ## Git & CI
 
