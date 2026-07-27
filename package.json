@@ -56,10 +56,10 @@
     "@vitest/ui": "^4.1.8",
     "axe-core": "^4.12.1",
     "fake-indexeddb": "^6.2.5",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.0",
     "oxlint": "^1.69.0",
     "playwright": "^1.60.0",
-    "typescript": "^6.0.0",
+    "typescript": "^7.0.2",
     "vite": "^8.0.0",
     "vite-plugin-pwa": "^1.0.0",
     "vitest": "^4.1.8"
