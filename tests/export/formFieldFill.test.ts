@@ -247,7 +247,7 @@ function fakePage(annots: Annot[]) {
 }
 function fakeViewport() {
   return {
-    convertToViewportRectangle: (r: number[]) => [r[0], r[1], r[2], r[3]],
+    convertToViewportPoint: (x: number, y: number) => [x, y],
   } as unknown as import('pdfjs-dist').PageViewport;
 }
 

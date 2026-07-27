@@ -115,7 +115,10 @@ export class TextLayerManager {
       // http/https/mailto (and schemeless) become links; anything else is dropped silently.
       if (ann.subtype !== 'Link' || !ann.url || !isAllowedUrlScheme(ann.url)) continue;
 
-      const vr = viewport.convertToViewportRectangle(ann.rect);
+      const vr = [
+        ...viewport.convertToViewportPoint(ann.rect[0], ann.rect[1]),
+        ...viewport.convertToViewportPoint(ann.rect[2], ann.rect[3])
+      ];
       const left = Math.min(vr[0], vr[2]);
       const top  = Math.min(vr[1], vr[3]);
       const w    = Math.abs(vr[2] - vr[0]);

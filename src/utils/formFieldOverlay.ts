@@ -83,7 +83,10 @@ export class FormFieldOverlay {
     viewport: PageViewport,
     canvasOffset: { left: number; top: number },
   ): { left: number; top: number; w: number; h: number } | null {
-    const vr: number[] = viewport.convertToViewportRectangle(field.rect);
+    const vr: number[] = [
+      ...viewport.convertToViewportPoint(field.rect[0], field.rect[1]),
+      ...viewport.convertToViewportPoint(field.rect[2], field.rect[3])
+    ];
     const left = Math.min(vr[0], vr[2]);
     const top = Math.min(vr[1], vr[3]);
     const w = Math.abs(vr[2] - vr[0]);
