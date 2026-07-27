@@ -5,6 +5,95 @@ browser — no backend, nothing uploaded. TypeScript + Vite + PWA, deployed to G
 Stack: pdfjs-dist (rendering), @cantoo/pdf-lib (export/encryption), i18next (EN/FR/AR with
 RTL), IndexedDB (session persistence), bwip-js + qr-code-styling (barcode/QR tool).
 
+## Routing
+
+Work here is handled with the **global reasoning framework** (`~/.claude/CLAUDE.md`) — the 8-phase
+workflow, the four-dimension Completion Gate, evidence grades, the anti-bandaid gate. A cloud session
+gets a fresh `~/.claude/` every time and never reads the developer's own, so the framework travels in
+this repo and is reinstalled at session start by `scripts/claude-bootstrap/install.sh` (a SessionStart
+hook). See `scripts/claude-bootstrap/README.md`. On any conflict, **this file wins**.
+
+Repo-native slash skills live in `.claude/skills/` and reviewer agents in `.claude/agents/`; both are
+read in place, nothing is installed. `ls .claude/skills/` is the authoritative list — a count written
+in prose drifts, so none is written here.
+
+## Questions are plain text — `AskUserQuestion` is FORBIDDEN
+
+`AskUserQuestion` **times out in the cloud container**, so a question asked that way can hang the turn
+and be lost — a gate that cannot fire is worse than no gate. Every question to the developer is
+ordinary prose: context, a minimal concrete example, numbered options, the **recommended option first
+with its reason**, and a visible *"none of these / challenge the premise"* escape — then STOP and wait.
+Protocol: `.claude/skills/ask-human/SKILL.md`.
+
+Partial mechanical backing: every skill in `.claude/skills/` declares
+`disallowed-tools: AskUserQuestion`, which removes the tool from the pool while that skill is active.
+The grant clears on the next user message, so outside a skill the discipline is yours.
+
+**Do not ask about routine work.** The standing directive for this repo is *no interrupts*: announce
+the task size and the plan, then build it. Asking is reserved for the cases in
+§ "When this protocol is mandatory" of that skill — chiefly a genuinely ambiguous request, or a change
+that would weaken a documented invariant, a declared ceiling, or bump `SCHEMA_VERSION`.
+
+## Certification ladder — governs every 3C/6C gate
+
+`advisor()` does not exist in this environment, so independent certification comes from
+**fresh-context, read-only, adversarial reviewer subagents** in `.claude/agents/` — that is the TOP
+rung here, not a fallback. Three lenses, one agent each:
+
+| Lens | Agent |
+|---|---|
+| correctness + regression | `export-fidelity-reviewer` |
+| security + safety-promises | `safety-promises-reviewer` |
+| completeness + blast-radius | `completeness-reviewer` |
+
+Each reviewer **reads the actual diff, code and tests itself** — never certify from the author's
+narrative — and is chartered to REFUTE, not approve. `/converge` runs the panel mechanically.
+
+**Tier: MAXIMAL by default** — all three lenses, **two consecutive fully-clean rounds**, any finding
+resets the counter, cap 5 rounds → then ask in plain text (never silently proceed). Rationale: this
+repo's severe bugs have not been confined to one subsystem — a destroyed `w:drawing` on DOCX save, an
+Android keyboard loop that made typing impossible, OCR dead in production for three reasons, an
+invisible watermark. A path allowlist would have to cover nearly everything, so a single rule is both
+safer and cheaper to follow.
+
+**The one carve-out is mechanical, not a judgement call:** if `git diff --name-only` touches no
+`src/`, STANDARD is enough — one reviewer, three lenses in a single pass, one clean round. Locale
+strings, docs and `CLAUDE.md` edits qualify. Anything touching `src/` does not.
+
+Availability chain: reviewer subagents → (if subagents are unavailable, e.g. inside a restricted
+agent) three distinct-lens self-passes **with mandatory disclosure that certification was
+self-graded**. Never silently skip a gate. The deploy gate below is the floor, never the certification.
+
+## Git autonomy — overrides global Rule 10
+
+Autonomous `git add`, `git commit` **and `git push`** are **authorised** for green, self-contained
+work (developer directive, 2026-07-27). Asking permission for them violates the no-interrupts
+directive. Limits:
+
+- **Author/committer**: `Takieddine Messaoudi <takieddine.messaoudi.official@gmail.com>` — matches
+  100% of history. The container's SessionStart hook sets the git identity to
+  `Claude <noreply@anthropic.com>`, so this must be set explicitly per commit or per repo.
+- **Never a `Co-Authored-By` trailer** (repo history has zero) and never the Claude email.
+- **NOT authorised**: `--force` / `--force-with-lease` push, rewriting published history,
+  `npm publish`. There is no `deny` list to stop you — the discipline is the control.
+- Commit only when the deploy gate is green and the change is self-contained; never a broken build.
+- Commit style: `feat:` / `fix:` / `refactor:` / `docs:` / `chore:`, imperative subject.
+- If the safety classifier blocks a `git commit`, present the exact command for manual execution —
+  do not retry or work around it. The same applies to `.claude/settings.json`, which Claude cannot
+  write: stage it as `scripts/claude-bootstrap/settings.json.pending` instead.
+
+## Plans live in the repo
+
+Every plan or spec produced here is persisted at **`docs/plans/<topic>.plan.md`**, each carrying its
+own `## Decisions Log` (`- [YYYY-MM-DD HH:MM] AGREED: <one-sentence decision>`), appended in the same
+change as the ruling. The container is reclaimed and only committed state survives, so an out-of-repo
+plan file is never the record of truth. There is no plan-location sentinel to ask about.
+
+There is no separate roadmap SSOT or decision register: the plan file is the plan, and a ruling that
+outlives it graduates into a **§ Gotchas** entry below — which is what makes that section this
+project's real decision register. Transient review output (reports, handoffs, memory) goes to
+`var/claude/**`, which is gitignored.
+
 ## Commands
 
 ```bash
