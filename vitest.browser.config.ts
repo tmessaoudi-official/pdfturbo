@@ -23,20 +23,34 @@ export default defineConfig({
   // pre-bundle so the real-browser OCR test's dynamic import isn't aborted by a
   // mid-run re-optimize.
   //
-  // @pdf-lib/fontkit + @cantoo/pdf-lib were ADDED 2026-07-28 after a CI failure that
-  // this comment had already predicted. `--coverage` changes the vite config, so the
-  // dep optimizer re-runs at start-up; fontkit (lazily imported by src/export/
-  // arabicOverlay.ts) was discovered mid-run and the reload aborted its import:
+  // ── 2026-07-28: pdf.worker.min.mjs is the load-bearing entry here ──────────────
+  // `npm run test:coverage:export` failed in CI with
   //     TypeError: Failed to fetch dynamically imported module: …/@pdf-lib_fontkit.js
-  // It only bit `npm run test:coverage:export` — the plain test:browser run passed all
-  // 68 files — which is exactly why it survived so long. @cantoo/pdf-lib is added with
-  // it: same `await import(...)` shape, same latent race, not yet triggered.
+  // but fontkit was the VICTIM, not the cause. The trigger, two lines earlier in the
+  // vite log:
+  //     [vite] dependency optimized: pdfjs-dist/build/pdf.worker.min.mjs
+  //     [vite] optimized dependencies changed. reloading
+  // The worker is loaded by pdf.js at runtime, so vite discovers it LATE, optimizes it
+  // mid-suite, and the reload re-hashes every pre-bundled dep URL — killing whichever
+  // dynamic import happens to be in flight. In the coverage run that is fontkit, because
+  // pdfElementRenderer's Arabic case is the only test running.
+  //
+  // Why only the coverage step, when plain `test:browser` passes all 68 files: the full
+  // suite happens to load the worker early, before any lazy import is airborne. Same
+  // latent bug, different timing — so this is a fix for the race, not for one test.
+  //
+  // @pdf-lib/fontkit and @cantoo/pdf-lib are listed for correctness (both are reached by
+  // `await import()` in src/), but neither one fixes the failure on its own — verified.
   //
   // INVARIANT: every npm package reached by `await import('<pkg>')` in src/ belongs in
-  // this list. Check with:
+  // this list, PLUS any module a dependency loads at runtime (the pdf.js worker is the
+  // one that bites). Check the first half with:
   //     grep -rhoE "await import\(['\"][^.'\"][^'\"]*['\"]\)" src/ | sort -u
+  // Reproduce the race (it needs BOTH steps, in this order — a lone coverage run passes):
+  //     rm -rf node_modules/.vite && npm run test:browser && npm run test:coverage:export
   optimizeDeps: {
-    include: ['docx', 'fflate', 'node-forge', 'tesseract.js', '@pdf-lib/fontkit', '@cantoo/pdf-lib'],
+    include: ['docx', 'fflate', 'node-forge', 'tesseract.js', '@pdf-lib/fontkit', '@cantoo/pdf-lib',
+      'pdfjs-dist/build/pdf.worker.min.mjs'],
   },
   test: {
     include: ['tests/browser/**/*.browser.test.ts'],

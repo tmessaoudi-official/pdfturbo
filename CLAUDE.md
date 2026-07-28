@@ -122,24 +122,36 @@ extraction, content-stream edits verified by pixels. Uses the system Google Chro
 build, using the runner's system Chrome). Run it locally for any editor/export/DnD change. Guards
 ISSUE-1..5 (see `KNOWN_ISSUES.md`).
 
-**`npm run test:browser` CANNOT run in the Claude cloud container (2026-07-28)** — two independent
-blockers, both environmental, neither a code fault: (1) the config uses Playwright
-`channel: 'chrome'`, and the container has no Google Chrome (only Chromium at
-`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`); (2) even pointed at that binary, Chromium-1194
-lacks `Map.prototype.getOrInsertComputed`, which `pdfjs-dist` v6 calls from
-`WorkerTransport.getOptionalContentConfig` — so **every** `page.render()` throws
-`TypeError: this[#methodPromises].getOrInsertComputed is not a function`. CI's Chrome is new enough
-and passes all 68 files. Consequence: in a cloud session the browser suite is **CI-verified only**.
-Say so explicitly rather than claiming a green browser run — and note this weakens Rule 6's
-visual-evidence row, so lean harder on the jsdom suite, `npm run build`, and delivered screenshots
-from `npm run dev`.
+**Running `npm run test:browser` in the Claude cloud container (2026-07-28)** — it works, but not
+out of the box. Two things bite in order: (1) the config uses Playwright `channel: 'chrome'` and the
+container has no Google Chrome; (2) the *preinstalled* Chromium-1194 at `/opt/pw-browsers` lacks
+`Map.prototype.getOrInsertComputed`, which `pdfjs-dist` v6 calls from
+`WorkerTransport.getOptionalContentConfig`, so **every** `page.render()` throws
+`TypeError: this[#methodPromises].getOrInsertComputed is not a function`. Fix both with one command
+plus a temporary config:
 
-**`optimizeDeps.include` is load-bearing** (`vitest.browser.config.ts`): every npm package reached by
-`await import('<pkg>')` in `src/` must be listed, or vite discovers it mid-run, re-optimizes, and the
-reload aborts the in-flight import with `Failed to fetch dynamically imported module`. It bites
-`test:coverage:export` first, because `--coverage` changes the vite config and forces a re-optimize
-that a plain `test:browser` run avoids — so the same test passes in one step and fails in the other.
-Verify the list with `grep -rhoE "await import\(['\"][^.'\"][^'\"]*['\"]\)" src/ | sort -u`.
+```bash
+npx playwright install chromium     # Chrome 151 / chromium-1234 (~115 MB, not persisted)
+# then run vitest with a throwaway config that sets
+#   playwright({ launchOptions: { executablePath: '/opt/pw-browsers/chromium-1234/chrome-linux64/chrome' } })
+# instead of channel:'chrome' — delete it afterwards, never commit it.
+```
+
+With that, the full suite passes in-container (68 files / 179 tests). **Do not claim a green browser
+run without doing this** — and note the preinstalled binary silently produces 7 uniform
+`getOrInsertComputed` failures that look like product bugs and are not.
+
+**`optimizeDeps.include` is load-bearing** (`vitest.browser.config.ts`): every npm package reached
+by `await import('<pkg>')` in `src/` must be listed — **plus `pdfjs-dist/build/pdf.worker.min.mjs`,
+which is the one that actually bites.** pdf.js loads its worker at runtime, so vite discovers it LATE,
+optimizes it mid-suite, and logs `optimized dependencies changed. reloading`; that reload re-hashes
+every pre-bundled dep URL and kills whichever dynamic import is in flight — surfacing as
+`TypeError: Failed to fetch dynamically imported module: …@pdf-lib_fontkit.js`. **The named module in
+that error is the victim, not the cause** — chase the `dependency optimized:` line above it instead.
+It bites `test:coverage:export` and not plain `test:browser` purely by timing: the full suite loads
+the worker early, before any lazy import is airborne. Reproduce with BOTH steps in order (a lone
+coverage run passes, which is how a wrong fix gets "verified"):
+`rm -rf node_modules/.vite && npm run test:browser && npm run test:coverage:export`.
 
 ## Architecture
 
