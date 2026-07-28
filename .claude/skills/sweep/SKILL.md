@@ -134,7 +134,8 @@ Run a Phase 6 Second Sweep on current uncommitted changes. **Never auto-applies 
 
 ```bash
 PROJECT_SLUG=$(echo "${CLAUDE_PROJECT_DIR:-$PWD}" | sed 's|^/|-|; s|/|-|g')
-SWEEP_DIR="$HOME/.claude/projects/$PROJECT_SLUG/sweeps"
+REPO_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
+SWEEP_DIR="$REPO_ROOT/var/claude/sweeps"
 mkdir -p "$SWEEP_DIR"
 SWEEP_PATH="$SWEEP_DIR/$(date +%Y-%m-%d-%H%M%S).md"
 ```

@@ -45,13 +45,21 @@ Save session state for clean continuation next session.
 
 Write a handoff note so the next session can continue cleanly. Use your knowledge of the current session — you were here. Write in first person ("I").
 
-**Path:** Derive it from the current project directory:
-`~/.claude/projects/{slug}/memory/sessions/handoff.md`
-where `{slug}` = the project directory with `/` replaced by `-`.
-Example: if working in `/path/to/your/project`, the slug is `-stack` and the path is `~/.claude/projects/-stack/memory/sessions/handoff.md`.
-Example: if working in `/home/user/myproject`, the slug is `-home-developer-myproject`.
+**Path:** `var/claude/handoff/latest.md`, in the repo — resolve it as
+`"${CLAUDE_PROJECT_DIR:-$PWD}"/var/claude/handoff/latest.md`. Create the directory if absent.
 
-Create the `memory/sessions/` directory if it doesn't exist.
+Upstream wrote to `~/.claude/projects/<slug>/memory/sessions/handoff.md`. **Do not.** That path is
+wiped when the container is reclaimed, so a handoff written there is lost precisely when it is
+needed. `var/claude/` is gitignored — it survives compaction *inside* a session and dies with the
+container, which is the correct lifetime for session state.
+
+Also append a timestamped copy at `var/claude/handoff/handoff-$(date +%Y-%m-%d-%H%M%S).md`, matching
+what the PreCompact hook (`scripts/claude-bootstrap/hooks/precompact-handoff.sh`) already writes, so
+manual and automatic handoffs land in one place and read the same way.
+
+**A handoff is never committed.** If something genuinely needs to survive the container, it belongs
+in `CLAUDE.md` § Gotchas or in `docs/plans/<topic>.plan.md` — both are real changes, proposed in
+plain text, not smuggled in as a note.
 
 Format:
 

@@ -131,7 +131,7 @@ asserts against leakage at build time).
 | Command | Hidden side effect | Dangerous context |
 |---------|--------------------|-------------------|
 | `make clean` | `CLEANFILES` may include generated files that are slow to recreate | Generated files aren't in version control |
-| `make hard-restart` (/path/to/your/project) | Wipes **all** images + volumes, full rebuild from scratch | Any persistent data or long build cache |
+| `npm ci` after a lockfile change | Blows away `node_modules`; a wrong lockfile silently changes every transitive dep | Mid-debug, or when the lockfile is the thing under test |
 
 ### Databases
 

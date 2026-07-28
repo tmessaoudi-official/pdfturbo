@@ -31,8 +31,8 @@ disallowed-tools: AskUserQuestion
 ═══════════════════════════════════════════════════════════════════════════════════════════════ -->
 
 ## Side effects
-- Creates: `$HOME/.claude/projects/<slug>/forge/raw/<A–I>.md` (intermediate, overwritten per run)
-- Creates: `$HOME/.claude/projects/<slug>/forge/YYYY-MM-DD-HHMM.md` (final report, new file per run)
+- Creates: `var/claude/forge/raw/<A–I>.md` (intermediate, overwritten per run; gitignored)
+- Creates: `var/claude/forge/YYYY-MM-DD-HHMM.md` (final report, new file per run; gitignored)
 - Reads: project source files, git log, ADR files (read-only)
 - Never modifies source files
 
@@ -86,8 +86,6 @@ PRIOR_REPORT=$(ls "$FORGE_DIR"/*.md 2>/dev/null | grep -v '/raw/' | sort -r | he
 
 Announce: "Forging: `$TARGET` → report: `$REPORT_PATH`"
 If `$PRIOR_REPORT` is non-empty, note its date for comparison.
-
-**No `--scope` handling** (adaptation): a single pass over `$TARGET`. If a caller passes `--scope=global` or `--scope=both`, say plainly that the flag was removed for this repo and why, then run the project pass.
 
 **Announce the cost, then run (pdfturbo adaptation — no stop).** Upstream halts here for confirmation;
 this repo's standing directive is no interrupts, and the developer invoking `/forge` has already

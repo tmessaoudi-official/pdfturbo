@@ -62,9 +62,11 @@ git diff --stat
 git log --oneline -10
 ```
 
-If git shows nothing (e.g. session worked on `~/.claude/` or other untracked paths), fall back to:
+If git shows nothing (e.g. the session only touched gitignored paths), fall back to:
 ```bash
-find ~/.claude -newer ~/.claude/projects -name "*.md" -o -name "*.sh" -o -name "*.json" 2>/dev/null | head -20
+find "${CLAUDE_PROJECT_DIR:-$PWD}" -newer "${CLAUDE_PROJECT_DIR:-$PWD}/package.json" \
+  \( -name '*.ts' -o -name '*.md' -o -name '*.sh' -o -name '*.json' \) \
+  -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/var/*' 2>/dev/null | head -20
 ```
 Also check the conversation context directly — it is the authoritative record of what was done.
 
@@ -99,7 +101,7 @@ CURRENT_SLUG=$(echo "${CLAUDE_PROJECT_DIR:-$PWD}" | sed 's|^/|-|; s|/|-|g')
 **Index scan** — read every other project's MEMORY.md index (text only, no full file reads):
 ```bash
 # All MEMORY.md files excluding current project
-ls ~/.claude/projects/*/memory/MEMORY.md | grep -v "$CURRENT_SLUG"
+ls "${CLAUDE_PROJECT_DIR:-$PWD}"/var/claude/memory/*.md 2>/dev/null
 ```
 
 For each proposed entry from Step 2, compare its description + key terms against the index lines of all other projects:

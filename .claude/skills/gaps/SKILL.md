@@ -52,7 +52,7 @@ Hunt for incomplete implementations, missing features, unfulfilled promises, and
 
 Differentiation from `/inspect`: `/inspect` finds *what's wrong with existing things*. `/gaps` finds *what's missing or unfinished* — features described but not implemented, code started but not completed, documentation that promises things the code doesn't deliver.
 
-Use `--quick` (agents A, F, H only — debt markers, test gaps, error handling; ~3 min), `--focus=<A|B|C|D|E|F|G|H|I|J>` (single agent), `--target=<path>` (analyze a specific directory; overrides `--scope`), `--scope=project|global|both` (project: `$CLAUDE_PROJECT_DIR` [default]; global: `~/.claude/`; both: run project then global, two separate reports), `--priority=high` (Now items only — skip Soon/Later).
+Use `--quick` (agents A, F, H only — debt markers, test gaps, error handling; ~3 min), `--focus=<A|B|C|D|E|F|G|H|I|J>` (single agent), `--target=<path>` (analyze a specific directory), `--priority=high` (Now items only — skip Soon/Later).
 
 ---
 
@@ -61,15 +61,13 @@ Use `--quick` (agents A, F, H only — debt markers, test gaps, error handling; 
 ```bash
 # --scope flag (--target overrides --scope when both are provided — explicit path wins):
 #   --scope=project (default when no --target): TARGET=$CLAUDE_PROJECT_DIR
-#   --scope=global:                             TARGET=~/.claude/
 #   --scope=both:                               run entire skill twice — project first, then global
 TARGET="${target_arg:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 if [[ -z "${target_arg:-}" ]]; then
-  [[ "$ARGUMENTS" =~ --scope=global ]] && TARGET="$HOME/.claude/"
-  # --scope=both: run a second pass with TARGET=~/.claude/ after completing the project pass
 fi
 PROJECT_SLUG=$(echo "$TARGET" | sed 's|^/|-|; s|/|-|g')
-GAPS_DIR="$HOME/.claude/projects/$PROJECT_SLUG/gaps"
+REPO_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
+GAPS_DIR="$REPO_ROOT/var/claude/gaps"
 mkdir -p "$GAPS_DIR"
 TODAY=$(date +%Y-%m-%d-%H%M)
 REPORT_PATH="${output_arg:-$GAPS_DIR/$TODAY.md}"
@@ -80,7 +78,7 @@ Announce: "Scanning gaps: `$TARGET` → saving to `$REPORT_PATH`"
 
 If a prior `/gaps` run exists: note its date. Agents will flag items that have been pending since the prior run as [STALE], helping prioritize chronic incompleteness over fresh debt.
 
-**`--scope=both` handling**: If `--scope=both` was passed and `--target` was NOT explicitly set, run the entire skill once for the project scope (`TARGET=$CLAUDE_PROJECT_DIR`), then automatically re-invoke the full skill a second time with `TARGET=~/.claude/` — two separate reports. Announce both paths at the end.
+**No `--scope` handling** (adaptation): a single pass over `$TARGET`. If a caller passes `--scope=global` or `--scope=both`, say plainly that the flag was removed for this repo and why, then run the project pass.
 
 ## Step 1: Detect Project Context
 

@@ -49,8 +49,9 @@ editor for months; a DOCX image was destroyed on save.
 4. **Blast radius — grep, don't reason.** For every changed symbol, flag, path, config key, feature
    flag or CSS class: `grep -rn` it across `src/`, `tests/`, `locales/`, `index.html`, `docs/`,
    `scripts/`, `.github/` and `CLAUDE.md`. Every hit is either updated in this diff or explicitly
-   accounted for. A hit that is neither is a stale reference — and this repo has shipped those
-   (`.gitignore` still points at `docs/plans/ocr-csp-fix.plan.md`, deleted in `ac4ef68`).
+   accounted for. A hit that is neither is a stale reference — and this repo has shipped those: after
+   `ac4ef68` deleted `docs/plans/`, a pointer to `docs/plans/ocr-csp-fix.plan.md` survived in
+   `.gitignore` through the `532a64f` scrub that was supposed to catch exactly that (fixed 2026-07-28).
 5. **Docs and config rows are real rows.** Did a public interface change (a feature flag, a toolbar
    control, a skill, a hook, an exported function, a persisted field)? Then `CLAUDE.md` / `README.md` /
    `FEATURES.md` / `KNOWN_ISSUES.md` must reflect it. `CLAUDE.md` § Gotchas is this project's decision
@@ -62,11 +63,13 @@ editor for months; a DOCX image was destroyed on save.
 7. **Deferred work must be labelled, not hidden.** This repo declares ceilings explicitly (`#57b`,
    `#60b`, `#62b`, the `KNOWN_ISSUES.md` entries). If the change leaves something undone, it must say
    so in that style. Silent partial implementation is the failure mode; a documented ceiling is fine.
-8. **The deploy gate, in full.** `CLAUDE.md` says a push runs: `npm audit --audit-level=high` →
-   `npm run ocr:assets` → `type-check` → `lint` → `test` → `test:browser` →
+8. **The deploy gate, in full.** `CLAUDE.md` says a push runs: `npm run ocr:assets` → `type-check` → `lint` → `test` → `test:browser` →
    **`test:coverage:export`** → `build`. The coverage-export step enforces a 25% branch floor on
    `pdfElementRenderer.ts` and **fails the build** when a new uncovered branch drops it. A change to
    that file with no coverage claim is a finding — green local tests do not prove the gate passes.
+   Note the `npm audit --audit-level=high` step is TEMPORARILY commented out in `deploy.yml`
+   (see CLAUDE.md § Git & CI). A diff that bumps a dependency should say whether it changes that
+   picture; a diff that silently re-enables or further weakens the gate is a finding.
 
 ## Evidence-grade angle
 

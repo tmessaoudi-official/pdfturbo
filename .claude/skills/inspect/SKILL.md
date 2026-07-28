@@ -81,7 +81,7 @@ If `$PRIOR_REPORT` is non-empty, note its date for drift comparison.
 ```bash
 # Vision mode setup (only when --vision flag is set)
 if [[ "${vision_flag:-}" == "true" ]]; then
-  VISION_DIR="$HOME/.claude/projects/$PROJECT_SLUG/visions"
+  VISION_DIR="$REPO_ROOT/var/claude/visions"
   mkdir -p "$VISION_DIR"
   PRIOR_VISION=$(ls "$VISION_DIR"/*.md 2>/dev/null | sort -r | head -1 || true)
 fi

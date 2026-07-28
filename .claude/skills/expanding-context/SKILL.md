@@ -46,7 +46,7 @@ disallowed-tools: AskUserQuestion
 You are about to commit to an approach. This skill ensures you see the full territory
 before you do.
 
-**What this skill does**: runs the `/expand` dimension framework internally. You do NOT
+**What this skill does**: runs the 23-dimension expansion framework internally (self-contained — the standalone `/expand` skill was not imported; the six groups below ARE the framework). You do NOT
 output the full expansion to the user — you use the findings to inform your Phase 1 and
 Phase 2 thinking. Produce only a brief internal summary (3-5 bullets) then proceed.
 
