@@ -22,7 +22,22 @@ export default defineConfig({
   // tesseract.js is the OCR engine (lazy literal import in src/ocr/ocrEngine.ts);
   // pre-bundle so the real-browser OCR test's dynamic import isn't aborted by a
   // mid-run re-optimize.
-  optimizeDeps: { include: ['docx', 'fflate', 'node-forge', 'tesseract.js'] },
+  //
+  // @pdf-lib/fontkit + @cantoo/pdf-lib were ADDED 2026-07-28 after a CI failure that
+  // this comment had already predicted. `--coverage` changes the vite config, so the
+  // dep optimizer re-runs at start-up; fontkit (lazily imported by src/export/
+  // arabicOverlay.ts) was discovered mid-run and the reload aborted its import:
+  //     TypeError: Failed to fetch dynamically imported module: …/@pdf-lib_fontkit.js
+  // It only bit `npm run test:coverage:export` — the plain test:browser run passed all
+  // 68 files — which is exactly why it survived so long. @cantoo/pdf-lib is added with
+  // it: same `await import(...)` shape, same latent race, not yet triggered.
+  //
+  // INVARIANT: every npm package reached by `await import('<pkg>')` in src/ belongs in
+  // this list. Check with:
+  //     grep -rhoE "await import\(['\"][^.'\"][^'\"]*['\"]\)" src/ | sort -u
+  optimizeDeps: {
+    include: ['docx', 'fflate', 'node-forge', 'tesseract.js', '@pdf-lib/fontkit', '@cantoo/pdf-lib'],
+  },
   test: {
     include: ['tests/browser/**/*.browser.test.ts'],
     // jsdom setup (fake-indexeddb etc.) is irrelevant here — real browser has real APIs.

@@ -24,7 +24,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 
 1. **Fork or push** to a repo named `pdfturbo` on your GitHub account.
 2. **Enable Pages:** repo Settings → Pages → Source: `GitHub Actions`.
-3. Push to the `master` branch — the workflow runs `type-check → lint → test → test:browser → build` and deploys the `dist/` folder to Pages.
+3. Push to the `master` branch — the workflow runs `npm audit → type-check → lint → test → test:browser → build` and deploys the `dist/` folder to Pages.
 4. Your app is live at `https://YOUR_USERNAME.github.io/pdfturbo/`
 
 > **Install on Android:** visit the URL in Chrome → three-dot menu → "Add to Home screen"
