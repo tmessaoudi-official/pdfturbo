@@ -60,11 +60,13 @@ mistake — each entry is a landmine that was tested, not a matter of taste.
 - **`refs/MODELS.md`.** Lists `opus-4-8`/`sonnet-4-6` as current with no Opus 5; importing it would
   make model advice propose downgrades.
 
-**Deferred, not rejected — `/qa-sweep`.** The highest-value remaining bundle item: this repo's
-`CLAUDE.md` credits it with finding the OCR CSP breakage that had made OCR dead in production for
-three reasons. It assumes the Playwright **MCP** server and needs rewiring onto the repo's own
-Playwright + `/opt/pw-browsers/chromium` (see CLAUDE.md § Commands for the in-container browser
-recipe). Deserves its own change — do not port it verbatim.
+**`/qa-sweep` — PORTED 2026-07-29** (it was the one deferred, not rejected, item). It assumed the
+Playwright **MCP** server and a link crawl, neither of which applies here; it now drives the repo's own
+Playwright via `scripts/qa-sweep.mjs` and crawls the **UI state space** instead of URLs. The
+`--target=cli` mode, the auth step and the GIF recorder were dropped as having no subject in this repo.
+Full adaptation table in `.claude/skills/qa-sweep/SKILL.md`.
+
+**Nothing from the bundle is now pending.** Every remaining item above is a deliberate rejection.
 
 ## The one file Claude cannot write: `.claude/settings.json`
 

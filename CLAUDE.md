@@ -122,6 +122,18 @@ npm run test:browser # vitest run in REAL Chrome (@vitest/browser + Playwright) 
 npm run test:watch   # vitest watch mode
 ```
 
+**Whole-app QA** (`/qa-sweep`, 2026-07-29): `node scripts/qa-sweep.mjs` boots the real app in real
+Chromium, loads a PDF, depth-first clicks every reachable control, and reports console errors, failed
+requests, axe-core WCAG 2.1 AA violations and a 375px overflow check — with before/after screenshots
+per control, into `var/claude/qa-sweep/<stamp>/`. Exit 1 on any FAIL, 2 if it could not run, so it
+works as a gate. Needs `npm run dev` serving and `npx playwright install chromium` (the preinstalled
+chromium-1194 is refused on purpose — see the container note below). It answers "does the product
+work?", which **neither** vitest suite does: jsdom has no canvas and the browser suite mounts
+components rather than booting the app. Two non-obvious constraints are baked into the driver:
+axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
+UI crawl is over **disclosure depth** (only 8 of 139 buttons are visible on a freshly loaded document)
+rather than links, since the app is a single page. Baseline: 147 checks / 94 pass / 0 fail in ~1m20s.
+
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here
 goes green-local / red-CI (it has happened): `npm audit --audit-level=high` → `npm run ocr:assets`
