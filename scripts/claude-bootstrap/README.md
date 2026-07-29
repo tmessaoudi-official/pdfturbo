@@ -30,6 +30,42 @@ git history. The upstream port this was adapted from did copy `/root/.claude` an
 into the repo on every session start (with a commented-out `git push --force-with-lease` beneath it);
 that block was removed here on purpose. **Do not reintroduce it.**
 
+## What was rejected from the bundle, and why
+
+The machine bundle held 48 skills, 39 hooks, 34 `bin/` scripts, 48 `mcp/` files and a
+`settings.json.template`. Almost none of it travels. This list exists so none of it is re-imported by
+mistake — each entry is a landmine that was tested, not a matter of taste.
+
+- **All 39 hooks — zero registered.** Every one is an interrupt (the three ask-human gates, the
+  question guard), a hard deadlock (`advisor-completion-guard` waits on a tool that does not exist in
+  this environment), terminal-only output nobody can see in a web session (statusline, banner,
+  context-bar, git-status, subagent-status — ~88 KB writing to stderr), or a write to a filesystem
+  that evaporates (`edit-log`, `session-remember` × 20 files).
+- **`settings.json.template` — rejected wholesale, not cherry-picked.** Its
+  `PreToolUse: rtk hook claude` would block *every* Bash call (`rtk` is absent here, and a non-zero
+  PreToolUse exit blocks before permission rules are even evaluated); its `deny: Bash(git push *)`
+  would revoke this repo's push authorisation; its `"model": "opus"` would override the session model;
+  its 16 `enabledPlugins` are user-scoped and do not transfer.
+- **31 of the 48 skills.** They operate on a *persistent* `~/.claude/` (`audit`, `cleanup`, `bundle`,
+  `install`, the seven `memory-*`, `lean*`, `model-audit`, `repair`, `sr-health`,
+  `pre-session-health`, `skill-extractor`, `templatize`, `consolidate`, `bootstrap`, `adapt-project`,
+  `command-audit`), or need absent tooling (`validate-infra` — no `shellcheck`/`yamllint`/`hadolint`),
+  or orchestrate skills that are themselves out (`mega-analysis`), or would **shadow a working
+  built-in** (`loop`).
+- **`bin/` — 34 files, ~190 KB.** Authoring/installing/pruning a persistent `~/.claude/`. Zero
+  applicability to an ephemeral container.
+- **`mcp/` — 48 files, ~420 KB.** A Python X11/Wayland GUI driver (no display here) plus
+  Jira/Confluence/GitLab/Trivy topology — irrelevant to a client-side PDF editor, and internal
+  service names/ports do not belong in this repo. The bundled `.env` files were deliberately not read.
+- **`refs/MODELS.md`.** Lists `opus-4-8`/`sonnet-4-6` as current with no Opus 5; importing it would
+  make model advice propose downgrades.
+
+**Deferred, not rejected — `/qa-sweep`.** The highest-value remaining bundle item: this repo's
+`CLAUDE.md` credits it with finding the OCR CSP breakage that had made OCR dead in production for
+three reasons. It assumes the Playwright **MCP** server and needs rewiring onto the repo's own
+Playwright + `/opt/pw-browsers/chromium` (see CLAUDE.md § Commands for the in-container browser
+recipe). Deserves its own change — do not port it verbatim.
+
 ## The one file Claude cannot write: `.claude/settings.json`
 
 Claude Code's safety classifier blocks Claude from editing its own permission surface. Verified in

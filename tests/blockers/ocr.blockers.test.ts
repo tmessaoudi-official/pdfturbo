@@ -1,6 +1,6 @@
 /**
  * OCR blockers — confirming tests. See ./README.md for the it.fails convention.
- * Source research: docs/reviews/research-2026-06-15-blockers/raw/ocr-signing.md
+ * Source research: research-2026-06-15-blockers/raw/ocr-signing.md (removed from the repo — see ./README.md)
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';

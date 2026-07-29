@@ -137,7 +137,11 @@ Three pdfturbo-specific rules for the Chesterton's Fence gate:
    than guess (sheared CTM, double underline, Type3, non-WinAnsi…). Proposing to "handle" one of these
    without addressing why it refuses is a P0-grade misread.
 
-Summarize in two lines: (1) tech stack sentence for `PROJECT_TYPE`; (2) ADR/design doc inventory for `ADR_CONTEXT` (e.g., "3 ADR files found at docs/adr/; relevant commits: …"). Pass both to every agent.
+Summarize in two lines: (1) tech stack sentence for `PROJECT_TYPE`; (2) design-decision inventory for
+`ADR_CONTEXT`. **This repo has no `docs/adr/`** — its decision register is `CLAUDE.md` § Gotchas, plus
+any live plan under `docs/plans/`. Design docs written before 2026-06-26 were removed by `ac4ef68` and
+live only in git history (`git show ac4ef68^ --stat -- docs/`). So `ADR_CONTEXT` reads e.g. *"decisions
+in CLAUDE.md § Gotchas (~1.2k lines, the register); relevant commits: …"*. Pass both to every agent.
 
 ## Step 2: Spawn Analysis Agents
 

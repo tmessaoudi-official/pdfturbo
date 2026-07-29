@@ -1,6 +1,6 @@
 /**
  * True-edit engine blockers — confirming tests. See ./README.md for the convention.
- * Source research: docs/reviews/research-2026-06-15-blockers/raw/trueedit.md
+ * Source research: research-2026-06-15-blockers/raw/trueedit.md (removed from the repo — see ./README.md)
  *
  * B-1 (exponent tokenizer) and B-3 (non-WinAnsi refusal) are now FIXED — these
  * assert the corrected behavior.

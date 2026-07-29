@@ -12,7 +12,8 @@
  * `src/export/arabicOverlay.ts`, with `setTextRenderingMode(Invisible)` added).
  * App/UI wiring (toggle, SourcePdf swap, undo, export) is a separate follow-up.
  *
- * Spec: docs/superpowers/specs/2026-06-15-searchable-ocr-spike-design.md
+ * Spec: the 2026-06-15 searchable-OCR spike design — removed by ac4ef68, recover with
+ * `git show ac4ef68^:docs/superpowers/specs/2026-06-15-searchable-ocr-spike-design.md`
  */
 import {
   PDFDocument,

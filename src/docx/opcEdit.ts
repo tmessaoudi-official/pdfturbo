@@ -1,8 +1,9 @@
 /**
  * opcEdit — in-place editing of a .docx OPC (Open Packaging Conventions) package.
  *
- * Phase 1 foundation for the DOCX editor. The cardinal rule (spike verdict
- * docs/reviews/2026-06-20-docx-phase0-spike-verdict.md): edit `word/document.xml`
+ * Phase 1 foundation for the DOCX editor. The cardinal rule (2026-06-20 spike verdict —
+ * removed by ac4ef68, recover with
+ * `git show ac4ef68^:docs/reviews/2026-06-20-docx-phase0-spike-verdict.md`): edit `word/document.xml`
  * IN PLACE inside the unzipped package and re-zip — NEVER rebuild the document via
  * the `docx` writer, which would drop every OOXML part the model doesn't represent
  * (tables, styles, numbering, headers, comments, drawings). Untouched parts pass

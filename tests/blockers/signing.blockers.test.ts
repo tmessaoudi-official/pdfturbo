@@ -1,6 +1,6 @@
 /**
  * E-signing blockers — confirming tests. See ./README.md for the convention.
- * Source research: docs/reviews/research-2026-06-15-blockers/raw/ocr-signing.md
+ * Source research: research-2026-06-15-blockers/raw/ocr-signing.md (removed from the repo — see ./README.md)
  *
  * Uses a runtime self-signed P12 (no fixtures, no secrets) — same approach as
  * tests/signing/pdfSigner.integration.test.ts.

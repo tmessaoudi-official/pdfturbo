@@ -1,6 +1,6 @@
 /**
  * DOCX/MD/TXT export blockers — confirming tests. See ./README.md for the convention.
- * Source research: docs/reviews/research-2026-06-15-blockers/raw/docx.md
+ * Source research: research-2026-06-15-blockers/raw/docx.md (removed from the repo — see ./README.md)
  *
  * Focus: the Markdown/TXT writers (the DOCX scorecard never covered them). These
  * blockers are now FIXED — the writers carry ordered-list ordinals, list nesting,

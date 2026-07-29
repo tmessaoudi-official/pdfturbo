@@ -2232,7 +2232,13 @@ describe('deleteTextAt — decoration removal (opt-in)', () => {
 });
 
 // ── True-edit edge-case hardening (F5–F9) ───────────────────────────────────────
-// Backlog: docs/reviews/2026-06-20-trueedit-edgecase-audit.md. F1/F2 fixed @ 130f5c0.
+// Source: the 2026-06-20 true-edit edge-case audit (F1–F16), removed by ac4ef68 —
+// recover with `git show ac4ef68^:docs/reviews/2026-06-20-trueedit-edgecase-audit.md`.
+// CLOSED as of 2026-06-24, verified 2026-07-29: F1/F2 fixed @130f5c0; F5–F9/F14 @5438e29;
+// F3 (byte-splice) + F4 + F10 + F13 shipped 2026-06-24; F11 WON'T FIX (block-scoped
+// shadow-dedup was implemented then reverted — it stops blanking legitimate drop-shadows);
+// F15/F16 ACCEPTED (both fail safe). Only F12 remains, recorded in CLAUDE.md as the
+// multi-stream preservation bound. No open work here — do not treat this as a backlog.
 
 /** Standard-font "Hello" with a SUPERSCRIPT text rise (Ts) and an underline rect. */
 async function makeSuperscriptUnderlinedPdf(): Promise<Uint8Array> {

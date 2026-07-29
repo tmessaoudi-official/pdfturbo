@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell } from 'docx';
 import { openOpc, getDocumentXml, setDocumentXml, packOpc, replaceTextInXml } from '../../src/docx/opcEdit';
-import { parseDocx } from '../../src/docx/docxSpike';
+import { readDocxParagraphs } from './readDocxText';
 
 /** A .docx containing a paragraph AND a table (a structure the docx-rebuild path can model, but which we must preserve WITHOUT rebuilding). */
 async function makeDocxWithTable(): Promise<Uint8Array> {
@@ -40,7 +40,7 @@ describe('opcEdit — in-place OPC editing (pass-through)', () => {
     expect(getDocumentXml(opc)).toContain('Edit me');
     const repacked = packOpc(opc);
     // Re-zipping without changes still yields a readable docx.
-    expect(parseDocx(repacked).paragraphs).toContain('Edit me');
+    expect(readDocxParagraphs(repacked).paragraphs).toContain('Edit me');
   });
 
   it('edits one paragraph IN PLACE while PRESERVING the untouched table (no docx-rebuild)', async () => {
@@ -54,7 +54,7 @@ describe('opcEdit — in-place OPC editing (pass-through)', () => {
     const repacked = packOpc(opc);
 
     // The edit applied …
-    const model = parseDocx(repacked);
+    const model = readDocxParagraphs(repacked);
     expect(model.paragraphs).toContain('EDITED');
     expect(model.paragraphs).not.toContain('Edit me');
     // … AND the table survived (pass-through — the whole point).

@@ -7,7 +7,7 @@ import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell } from
 import { parseDocModel, applyParagraphTexts, applyParagraphRuns, paragraphText, type DocModel } from '../../src/docx/docModel';
 import { docModelToDoc, docToDocModel, mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';
-import { parseDocx } from '../../src/docx/docxSpike';
+import { readDocxParagraphs } from './readDocxText';
 
 async function makeStyledDocx(): Promise<Uint8Array> {
   const doc = new Document({
@@ -139,7 +139,7 @@ describe('mountDocxEditor — editable view + in-place save', () => {
     const out = h.save();
     h.destroy();
     expect(getDocumentXml(openOpc(out))).toContain('<w:tbl');
-    const reopened = parseDocx(out); // reads ALL paragraphs incl. table cells
+    const reopened = readDocxParagraphs(out); // reads ALL paragraphs incl. table cells
     expect(reopened.paragraphs).toEqual(expect.arrayContaining(['Plain', 'BoldWord ital', 'Cell A']));
   });
 

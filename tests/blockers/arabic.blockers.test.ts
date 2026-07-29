@@ -1,6 +1,6 @@
 /**
  * Arabic DOCX-reorder blocker AR-1 — confirming test. See ./README.md.
- * Source research: docs/reviews/research-2026-06-15-blockers/raw/arabic.md
+ * Source research: research-2026-06-15-blockers/raw/arabic.md (removed from the repo — see ./README.md)
  *
  * FIXED: orderLineWords now applies the UAX#9 L2 run-reversal at word level, so an
  * embedded LTR run (Latin word / number) inside an RTL line keeps its forward

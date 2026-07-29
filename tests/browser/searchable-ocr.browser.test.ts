@@ -11,7 +11,8 @@
  *   (c) the page rasterizes with NO visible ink — the layer is truly invisible.
  *
  * jsdom can't run this (needs real pdf.js rasterization + text extraction).
- * Spec: docs/superpowers/specs/2026-06-15-searchable-ocr-spike-design.md
+ * Spec: the 2026-06-15 searchable-OCR spike design — removed by ac4ef68, recover with
+ * `git show ac4ef68^:docs/superpowers/specs/2026-06-15-searchable-ocr-spike-design.md`
  */
 import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';

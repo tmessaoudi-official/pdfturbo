@@ -1,6 +1,6 @@
 /**
  * Core security blockers — confirming tests. See ./README.md for the convention.
- * Source research: docs/reviews/research-2026-06-15-blockers/raw/core.md
+ * Source research: research-2026-06-15-blockers/raw/core.md (removed from the repo — see ./README.md)
  *
  * CORE-P0-2 is now FIXED: these exercise the REAL `encryptPdf` helper (the same
  * one exportService._applyExportPassword calls) and assert AES-256 + usable

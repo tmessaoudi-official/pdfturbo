@@ -27,7 +27,8 @@
  * equals its byte offset. True for PDFs this app produces; a PDF with binary
  * literal strings in the page/catalog dict would need byte-accurate offsets.
  *
- * See the verdict: docs/reviews/2026-06-18-incremental-multisign-spike-verdict.md
+ * See the 2026-06-18 spike verdict — removed by ac4ef68, recover with
+ * `git show ac4ef68^:docs/reviews/2026-06-18-incremental-multisign-spike-verdict.md`
  */
 
 import { SignError, type SignatureRect } from './types';
