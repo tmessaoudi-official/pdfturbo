@@ -244,8 +244,12 @@ reach these. Keep both gates; they answer different questions. Fixes:
    for free, so keeping it would fire `onNavigate` twice per Enter. Post-delete focus restoration now
    targets `.thumb-nav`; focusing the tile would silently drop focus to `<body>`. Native activation is
    **verified live** (2026-07-29): focusing the page-2 `.thumb-nav` and pressing Enter moves the page
-   indicator to 2. jsdom cannot show this — it does not synthesise click from keydown — so the jsdom
-   test asserts only the structural precondition (the control is a real `<button>`).
+   indicator to 2. jsdom cannot show this — it does not synthesise click from keydown, and a synthetic
+   `KeyboardEvent` never runs a default action — so the jsdom test asserts only the structural
+   precondition (the control is a real `<button>`) and the behaviour is guarded by
+   `tests/browser/thumbnail-activation.browser.test.ts` (real Enter/Space via `userEvent`, asserting
+   `onNavigate` fires **exactly once**). That guard is proven non-vacuous: reintroducing the deleted
+   keydown handler fails it with 2 calls.
 2. **`color-contrast` (2 nodes).** `.btn-success` `#10b981` on white was **2.53:1** — and its
    `:hover` `#059669` was **3.77:1**, never measured because axe does not test hover. Now `#0a855b`
    (4.65) / `#087d55` (5.15). `.toolbar-label` `#64748b` on `#f0f4f8` was **4.3:1** → `#616a78`

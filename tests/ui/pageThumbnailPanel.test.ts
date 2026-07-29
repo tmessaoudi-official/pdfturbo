@@ -151,7 +151,8 @@ describe('PageThumbnailPanel', () => {
   // preventDefault). A real <button> does both for free, so that handler was DELETED rather than
   // moved: keeping it alongside native activation would fire onNavigate TWICE per Enter press.
   // jsdom does not synthesise click from keydown, so the native path cannot be asserted here —
-  // it is covered in a real browser by tests/browser/g17-thumbnail-overlays.browser.test.ts.
+  // it is covered in a real browser by tests/browser/thumbnail-activation.browser.test.ts, which
+  // drives genuine Enter/Space via userEvent and asserts onNavigate fires exactly ONCE.
   // What is asserted here is the structural precondition: the nav control is a real button, so
   // the browser's own activation behaviour applies.
   it('activation is native: the nav control is a real button and its click navigates', async () => {
