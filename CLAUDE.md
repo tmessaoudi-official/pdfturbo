@@ -225,6 +225,43 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### Live-app a11y: 3 serious WCAG rules fixed, and why the static gate missed them (2026-07-29)
+
+`/qa-sweep` found three `serious` axe violations in the **running** app that
+`tests/browser/a11y-axe.browser.test.ts` cannot see. That test injects `index.html`'s static body with
+`<script>` stripped, so `main.ts` never runs: no document is loaded, so **no thumbnails are rendered
+and the canvas region does not scroll**, and the elements that fail are either absent or `display:none`
+(axe skips hidden nodes). It gates on zero critical/serious and passes truthfully — it just cannot
+reach these. Keep both gates; they answer different questions. Fixes:
+
+1. **`nested-interactive` (2 nodes) — the real defect.** `.thumb-item` carried `role="button"` +
+   `tabindex="0"` while also containing the rotate / export / delete buttons: a control inside a
+   control. Its hand-rolled Enter/Space competed with the children's, and a screen reader announced a
+   button within a button. Now the tile is a plain div (drag surface + positioning context only) and
+   the nav affordance is a real `<button class="thumb-nav">` wrapping the image. `.thumb-label` stays
+   a **direct child of the tile** so its `position:absolute` keeps anchoring there. **The Enter/Space
+   handler was DELETED, not moved** — a native button does activation *and* Space-scroll suppression
+   for free, so keeping it would fire `onNavigate` twice per Enter. Post-delete focus restoration now
+   targets `.thumb-nav`; focusing the tile would silently drop focus to `<body>`. Native activation is
+   **verified live** (2026-07-29): focusing the page-2 `.thumb-nav` and pressing Enter moves the page
+   indicator to 2. jsdom cannot show this — it does not synthesise click from keydown — so the jsdom
+   test asserts only the structural precondition (the control is a real `<button>`).
+2. **`color-contrast` (2 nodes).** `.btn-success` `#10b981` on white was **2.53:1** — and its
+   `:hover` `#059669` was **3.77:1**, never measured because axe does not test hover. Now `#0a855b`
+   (4.65) / `#087d55` (5.15). `.toolbar-label` `#64748b` on `#f0f4f8` was **4.3:1** → `#616a78`
+   (4.95). Both are the *lightest* values clearing 4.5:1, so the visual delta is minimal. `#64748b`
+   elsewhere sits on white (4.76:1) and is left alone.
+3. **`scrollable-region-focusable` (1 node).** `#canvasContainer` was `tabindex="-1"` — the classic
+   skip-nav idiom, but a keyboard-only user could not reach or arrow-scroll a region whose content
+   (a rendered page) is not focusable. Now `tabindex="0"`: the skip link still lands there, and the
+   accepted cost is one extra tab stop. `tests/ui/indexHtmlA11y.test.ts` asserts `0` and explains why.
+
+**Do not "fix" a contrast report without checking `opacity` has reached 1.** axe reads *composited*
+colour, so a control caught mid fade-in reports the blend over the toolbar: `#textModeBtn` at
+opacity 0.508 measured `#6f787f` (4.49, FAIL) when its real background is `#6c757d` (4.69, PASS) —
+8 phantom violations whose count drifted run to run with load timing. `scripts/qa-sweep.mjs` now waits
+for `document.getAnimations()` to settle before running axe.
+
 ### Mobile thumbnail controls = a single ⋮ action menu (F2b, 2026-06-26)
 
 The per-thumbnail controls

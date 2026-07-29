@@ -42,11 +42,19 @@ describe('index.html — accessibility landmarks', () => {
     expect(mains.length).toBe(1);
   });
 
-  it('exposes the canvas viewer as the main landmark and a focusable skip target', () => {
+  // tabindex is "0", not "-1" (changed 2026-07-29). Two a11y goals collide here and 0 satisfies both:
+  //   - Skip-nav target: `-1` is the classic idiom, but the skip link (href="#canvasContainer") lands
+  //     on the element with either value, so nothing is lost.
+  //   - WCAG 2.1.1 keyboard access: the canvas viewer is a SCROLLABLE region whose content (a
+  //     rendered page) is often not focusable, so with `-1` a keyboard-only user could not reach or
+  //     arrow-scroll it. axe flags exactly this as `scrollable-region-focusable` (serious) — found
+  //     by /qa-sweep against the live app, where the region actually scrolls.
+  // Cost, accepted deliberately: one extra tab stop before the page content.
+  it('exposes the canvas viewer as the main landmark, focusable and keyboard-scrollable', () => {
     const main = doc.querySelector('main, [role="main"]') as HTMLElement | null;
     expect(main).not.toBeNull();
     expect(main?.id).toBe('canvasContainer');
-    expect(main?.getAttribute('tabindex')).toBe('-1');
+    expect(main?.getAttribute('tabindex')).toBe('0');
   });
 
   it('has a skip-nav link pointing at the main landmark', () => {

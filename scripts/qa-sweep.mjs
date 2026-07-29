@@ -129,6 +129,15 @@ async function main() {
   await page.setInputFiles('#fileInput', fixture);
   const canvasUp = await page.locator('canvas').first().waitFor({ state: 'visible', timeout: 30_000 })
     .then(() => true).catch(() => false);
+  // #progress-overlay.active covers the whole toolbar and swallows pointer events. Measured
+  // 2026-07-29: it stays active for ~342ms AFTER the canvas becomes visible, so starting to click at
+  // canvas-visible lands inside that window and every click times out. Not a product defect — normal
+  // loading feedback — but the driver has to wait it out.
+  await page.waitForFunction(
+    () => !document.getElementById('progress-overlay')?.classList.contains('active'),
+    null, { timeout: 20_000 },
+  ).catch(() => {});
+
   const loadErrors = consoleErrors.splice(0);
   await page.screenshot({ path: join(OUT, '000-loaded.png') });
   record(canvasUp && !loadErrors.length ? 'PASS' : 'FAIL', `load ${FIXTURE}`,
@@ -171,6 +180,20 @@ async function main() {
     const el = page.locator(`#${id}`);
     if (!await el.isVisible().catch(() => false)) { record('SKIP', id, 'became hidden before click'); return; }
 
+    // Re-check DISABLED at click time, not at enumeration time. Playwright's click waits for an
+    // element to become enabled and then reports a bare TIMEOUT — it never says "disabled". Measured
+    // 2026-07-29: that turned four legitimate states into "not clickable" WARNs that read as product
+    // defects. A preceding click in this DFS routinely disables a sibling (navigate to the last page
+    // → #lastPage disables itself), so this is the normal case, not an edge case.
+    //
+    // Deliberately NOT pre-checking for a covering element: `elementFromPoint` returns the topmost
+    // node regardless of `pointer-events`, while Playwright's hit-testing respects it. This app has
+    // several transparent pass-through overlays (#watermarkOverlay is pointer-events:none by design),
+    // so a pre-check flagged ~10 perfectly clickable controls as covered. Diagnose AFTER a real
+    // failure instead — see the timeout branch below.
+    const disabledNow = await page.$eval(`#${id}`, e => e.disabled).catch(() => false);
+    if (disabledNow) { record('SKIP', id, 'became disabled before click (state changed by an earlier click)'); return; }
+
     const before = `${tag}-${id}-before.png`;
     await page.screenshot({ path: join(OUT, before) }).catch(() => {});
     consoleErrors.splice(0); netFailures.splice(0);
@@ -184,7 +207,18 @@ async function main() {
 
     const errs = consoleErrors.splice(0);
     const nets = netFailures.splice(0);
-    if (clickErr) record('WARN', id, `not clickable: ${clickErr}`, after);
+    // A timeout is not self-explanatory — say WHY, and only blame a cover that can actually
+    // intercept (pointer-events !== none). Anything else stays an honest bare WARN.
+    if (clickErr) {
+      const why = await page.$eval(`#${id}`, e => {
+        const r = e.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!top || top === e || e.contains(top) || top.contains(e)) return null;
+        if (getComputedStyle(top).pointerEvents === 'none') return null;
+        return `${top.tagName}#${top.id || '(no id)'}`;
+      }).catch(() => null);
+      record('WARN', id, why ? `blocked by ${why} — an earlier control left it open` : `not clickable: ${clickErr}`, after);
+    }
     else if (errs.length) record('FAIL', id, `console: ${errs.slice(0, 3).join(' | ')}`, after);
     else if (nets.length) record('FAIL', id, `network: ${nets.slice(0, 3).join(' | ')}`, after);
     else record('PASS', id, EXPORTERS.includes(id) ? 'no errors (export ran)' : 'no console/network errors', after);
@@ -198,9 +232,23 @@ async function main() {
       }
     }
 
-    // Unwind this subtree so a sibling is reachable.
-    await page.keyboard.press('Escape').catch(() => {});
-    await page.waitForTimeout(120);
+    // Unwind this subtree so a sibling is reachable. ONE Escape is not enough: a nested popup
+    // consumes it, and some modals do not close on Escape at all, which leaves them covering the
+    // toolbar for the rest of the sweep (observed: #helpModal blocking 12 later controls). Press up
+    // to three times and stop as soon as nothing modal-ish is on top of the page centre.
+    for (let k = 0; k < 3; k++) {
+      const blocked = await page.evaluate(() => {
+        const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        for (let n = top; n; n = n.parentElement) {
+          if (n.className && /modal|overlay|popup|menu/i.test(String(n.className))) return true;
+        }
+        return false;
+      }).catch(() => false);
+      if (!blocked) break;
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.waitForTimeout(120);
+    }
+    await page.waitForTimeout(80);
   }
 
   let top = [...new Set(await visible())];
@@ -232,6 +280,18 @@ async function main() {
       record('WARN', 'a11y', 'axe-core not installed — skipped (npm i -D axe-core to enable)');
     } else {
       try {
+        // SETTLE FIRST. axe reads COMPOSITED colour, so a control caught mid fade-in reports the
+        // blend of its half-transparent background over the toolbar as a contrast failure. Measured
+        // 2026-07-29: #textModeBtn at opacity 0.508 read as #6f787f (4.49, FAIL) when its real
+        // background is #6c757d (4.69, PASS) — 8 phantom violations, and the count drifted run to run
+        // with load timing. Waiting for every running animation removes them and leaves only the real
+        // failures. Do NOT "fix" a contrast report without confirming opacity has reached 1.
+        await page.waitForFunction(
+          () => Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))).then(() => true),
+          null, { timeout: 15_000 },
+        ).catch(() => {});
+        await page.waitForTimeout(800);
+
         const src = readFileSync(axePath, 'utf8');
         await page.evaluate(src);
         const res = await page.evaluate(async () => await window.axe.run(document, {

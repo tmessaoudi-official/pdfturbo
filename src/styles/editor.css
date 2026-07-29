@@ -24,11 +24,11 @@
   background: #5a6268;
 }
 .btn-success {
-  background: #10b981;
+  background: #0a855b;
   color: white;
 }
 .btn-success:hover {
-  background: #059669;
+  background: #087d55;
 }
 .btn.active {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);

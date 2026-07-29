@@ -90,7 +90,7 @@ describe('PageThumbnailPanel', () => {
     await panel.render();
     const items = container.querySelectorAll<HTMLElement>('.thumb-item');
     expect(items).toHaveLength(2);
-    expect(document.activeElement).toBe(items[1]); // slot 1 still exists → focus it
+    expect(document.activeElement).toBe(items[1].querySelector('.thumb-nav')); // slot 1 exists → focus its nav button
   });
 
   it('clamps post-delete focus to the last thumbnail when the end page was removed', async () => {
@@ -103,7 +103,7 @@ describe('PageThumbnailPanel', () => {
     await panel.render();
     const items = container.querySelectorAll<HTMLElement>('.thumb-item');
     expect(items).toHaveLength(2);
-    expect(document.activeElement).toBe(items[1]); // clamped from 2 → 1
+    expect(document.activeElement).toBe(items[1].querySelector('.thumb-nav')); // clamped from 2 → 1
   });
 
   it('click on thumbnail triggers onNavigate with correct index', async () => {
@@ -116,43 +116,54 @@ describe('PageThumbnailPanel', () => {
   });
 
   // M0 #8 — keyboard accessibility of the navigation thumbnails.
-  it('each thumbnail is keyboard-focusable with a button role and aria-label', async () => {
+  //
+  // The nav affordance is a REAL <button> nested inside the tile, NOT role="button" on the tile
+  // itself. The tile also holds the rotate/export/delete buttons, so a button-role tile was an
+  // axe `nested-interactive` violation (serious): a control containing controls, where the tile's
+  // Enter/Space competed with its children and a screen reader announced a button inside a button.
+  // Caught by /qa-sweep against the live app 2026-07-29 — the static a11y test could not see it,
+  // because thumbnails only exist once a document is loaded.
+  it('each thumbnail exposes a real nav BUTTON with an aria-label, and the tile is not interactive', async () => {
     const model = makeModel(2);
     const { panel } = makePanel(container, model);
     await panel.render();
     const items = container.querySelectorAll<HTMLElement>('.thumb-item');
+    expect(items).toHaveLength(2);
     items.forEach((item, i) => {
-      expect(item.getAttribute('role')).toBe('button');
-      expect(item.getAttribute('tabindex')).toBe('0');
-      const label = item.getAttribute('aria-label') ?? '';
+      // The tile must NOT be an interactive control any more.
+      expect(item.getAttribute('role')).toBeNull();
+      expect(item.getAttribute('tabindex')).toBeNull();
+
+      const nav = item.querySelector<HTMLButtonElement>('.thumb-nav');
+      expect(nav).not.toBeNull();
+      expect(nav?.tagName).toBe('BUTTON'); // native Enter/Space, no hand-rolled keydown
+      const label = nav?.getAttribute('aria-label') ?? '';
       expect(label.length).toBeGreaterThan(0);
-      // aria-label carries the 1-based page number.
-      expect(label).toContain(String(i + 1));
+      expect(label).toContain(String(i + 1)); // 1-based page number
+      // The image lives inside the nav button; the overlay controls stay siblings of it.
+      expect(nav?.querySelector('img.thumb-img')).not.toBeNull();
+      expect(nav?.querySelector('.thumb-delete')).toBeNull();
     });
   });
 
-  it('Enter and Space on a thumbnail trigger onNavigate', async () => {
+  // Keyboard activation is now NATIVE. The two tests this replaces dispatched keydown at a
+  // role="button" DIV and asserted a hand-rolled Enter/Space handler (and its Space-scroll
+  // preventDefault). A real <button> does both for free, so that handler was DELETED rather than
+  // moved: keeping it alongside native activation would fire onNavigate TWICE per Enter press.
+  // jsdom does not synthesise click from keydown, so the native path cannot be asserted here —
+  // it is covered in a real browser by tests/browser/g17-thumbnail-overlays.browser.test.ts.
+  // What is asserted here is the structural precondition: the nav control is a real button, so
+  // the browser's own activation behaviour applies.
+  it('activation is native: the nav control is a real button and its click navigates', async () => {
     const model = makeModel(3);
     const { panel, onNavigate } = makePanel(container, model);
     await panel.render();
-    const third = container.querySelectorAll<HTMLElement>('.thumb-item')[2];
-
-    third.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const nav = container.querySelectorAll<HTMLButtonElement>('.thumb-item .thumb-nav')[2];
+    expect(nav.tagName).toBe('BUTTON');
+    expect(nav.type).not.toBe('submit'); // must not submit a form on Enter
+    nav.click();
     expect(onNavigate).toHaveBeenLastCalledWith(2);
-
-    third.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
-    expect(onNavigate).toHaveBeenLastCalledWith(2);
-    expect(onNavigate).toHaveBeenCalledTimes(2);
-  });
-
-  it('Space keydown is prevented from scrolling the page', async () => {
-    const model = makeModel(1);
-    const { panel } = makePanel(container, model);
-    await panel.render();
-    const item = container.querySelectorAll<HTMLElement>('.thumb-item')[0];
-    const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
-    item.dispatchEvent(ev);
-    expect(ev.defaultPrevented).toBe(true);
+    expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 });
 

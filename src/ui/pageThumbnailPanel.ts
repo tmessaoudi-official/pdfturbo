@@ -269,11 +269,13 @@ export class PageThumbnailPanel {
       item.dataset.index = String(i);
       item.dataset.pageId = page.id;
       item.draggable = true;
-      // M0 #8 — keyboard accessibility: the nav thumbnail is operable by keyboard,
-      // not just pointer. role=button + tabindex=0 + aria-label + Enter/Space.
-      item.setAttribute('role', 'button');
-      item.tabIndex = 0;
-      item.setAttribute('aria-label', t('thumbnail.goToPage', { page: i + 1 }));
+      // M0 #8 — keyboard accessibility. The nav affordance is a REAL <button> nested in the tile
+      // (see navBtn below), NOT role="button" on the tile itself. The tile also carries the
+      // rotate/export/delete buttons, and a button-role tile containing buttons is an axe
+      // `nested-interactive` violation (serious): its Enter/Space competed with the children's, and
+      // a screen reader announced a button inside a button. Found by /qa-sweep against the live app
+      // 2026-07-29 — the static a11y test cannot see it, because thumbnails need a loaded document.
+      // The tile stays the drag-reorder surface and the positioning context for the overlays.
 
       // Thumbnail image
       const img = document.createElement('img');
@@ -344,7 +346,15 @@ export class PageThumbnailPanel {
       moreBtn.setAttribute('aria-haspopup', 'menu');
       moreBtn.addEventListener('click', (e) => { e.stopPropagation(); this._openActionMenu(moreBtn, i, page.id); });
 
-      item.appendChild(img);
+      // The page-navigation control: a real button wrapping the thumbnail image. `.thumb-label`
+      // stays a direct child of the tile so its `position: absolute` keeps anchoring to the tile.
+      const navBtn = document.createElement('button');
+      navBtn.type = 'button';
+      navBtn.className = 'thumb-nav';
+      navBtn.setAttribute('aria-label', t('thumbnail.goToPage', { page: i + 1 }));
+      navBtn.appendChild(img);
+
+      item.appendChild(navBtn);
       item.appendChild(label);
       item.appendChild(rotateCcw);
       item.appendChild(rotateCw);
@@ -353,17 +363,14 @@ export class PageThumbnailPanel {
       item.appendChild(del);
       item.appendChild(moreBtn);
 
-      // Navigate on click
+      // Navigate on click. Listening on the TILE (not navBtn) keeps the whole tile clickable,
+      // including its padding, and catches the button's own bubbled click. The overlay buttons all
+      // stopPropagation, so they never navigate.
+      //
+      // There is deliberately NO keydown handler: navBtn is a native button, so the browser fires a
+      // click on Enter and Space and suppresses Space-scrolling itself. Adding the old hand-rolled
+      // handler back would fire onNavigate TWICE per Enter press.
       item.addEventListener('click', () => this.onNavigate(i));
-      // Navigate on Enter/Space (keyboard parity with click). Space is prevented
-      // from scrolling the page; both ignore events bubbling up from child buttons.
-      item.addEventListener('keydown', (e) => {
-        if (e.target !== item) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          this.onNavigate(i);
-        }
-      });
 
       // Drag-and-drop reorder
       item.addEventListener('dragstart', (e) => {
@@ -419,10 +426,13 @@ export class PageThumbnailPanel {
     // #QA-2026-06-23 P3 #1 — restore focus after a delete re-render. The deleted slot index
     // is clamped to the last surviving thumbnail (deleting the end page focuses the new last).
     if (this._focusSlotAfterRender !== null) {
-      const items = this.strip.querySelectorAll<HTMLElement>('.thumb-item');
-      if (items.length > 0) {
-        const slot = Math.min(this._focusSlotAfterRender, items.length - 1);
-        items[slot]?.focus();
+      // Focus the tile's nav BUTTON, not the tile: since the nested-interactive fix the tile is no
+      // longer focusable (no role/tabindex), so focusing it would silently drop focus to <body> and
+      // strand the keyboard user who just pressed Delete.
+      const navs = this.strip.querySelectorAll<HTMLElement>('.thumb-item .thumb-nav');
+      if (navs.length > 0) {
+        const slot = Math.min(this._focusSlotAfterRender, navs.length - 1);
+        navs[slot]?.focus();
       }
       this._focusSlotAfterRender = null;
     }
