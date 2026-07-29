@@ -2,9 +2,14 @@
  * DOCX/MD/TXT export blockers — confirming tests. See ./README.md for the convention.
  * Source research: research-2026-06-15-blockers/raw/docx.md (removed from the repo — see ./README.md)
  *
- * Focus: the Markdown/TXT writers (the DOCX scorecard never covered them). These
- * blockers are now FIXED — the writers carry ordered-list ordinals, list nesting,
- * and images. The tests assert that corrected behavior (formerly it.fails).
+ * Focus: the Markdown/TXT writers (the DOCX scorecard never covered them). All four
+ * blockers below were FIXED on 2026-06-15 (CLAUDE.md § "MD/TXT parity") — the writers
+ * now carry ordered-list ordinals, list nesting and images. These tests therefore run as
+ * REGRESSION guards on the corrected behaviour; they were `it.fails` only before the fix.
+ *
+ * Each assertion pins the writers' MEASURED output (verified 2026-07-29), not a weak
+ * "is not the old broken value" — a writer that emitted nothing would have satisfied the
+ * original negative assertions just as well as a correct one does.
  */
 import { describe, it, expect } from 'vitest';
 import { flowDocToMarkdown, flowDocToText } from '../../src/utils/flowDocWriters';
@@ -24,50 +29,48 @@ const docOf = (p: FlowPage): FlowDoc => ({ pages: [p] });
 const orderedPara = (text: string): FlowParagraph =>
   para({ listType: 'ordered', listFormat: 'lowerLetter', listOrdinalText: '%1)', runs: [run(text)] });
 
-describe('DOCX/MD blocker MD-1 — Markdown ordered lists lose their ordinals', () => {
-  // REACHABLE. flowDocToMarkdown hardcodes "1. " for every ordered item, ignoring
-  // listFormat/listOrdinalText and sequence position → a numbered list reads 1. 1. 1.
-  it('renders distinct ordinals for successive ordered items', () => {
+describe('DOCX/MD blocker MD-1 (FIXED) — Markdown ordered lists carry their ordinals', () => {
+  // WAS: flowDocToMarkdown hardcoded "1. " for every ordered item, ignoring listFormat /
+  // listOrdinalText and sequence position, so a numbered list read "1. 1. 1.".
+  // NOW: orderedMarker + computeOrderedOrdinals honour listFormat ('lowerLetter' here) and
+  // the ordinal template ('%1)'), producing a genuine a/b/c sequence.
+  it('emits the listFormat-correct marker AND advances the ordinal per item', () => {
     const md = flowDocToMarkdown(docOf(page({
       paragraphs: [orderedPara('alpha'), orderedPara('beta'), orderedPara('gamma')],
     })));
-    const lines = md.split('\n\n');
-    // DESIRED: 2nd item is not another "1." (either "2." or "b)"). TODAY: "1. beta".
-    expect(lines[1]).not.toMatch(/^1\./);
+    expect(md).toBe('a) alpha\n\nb) beta\n\nc) gamma');
   });
 });
 
-describe('DOCX/TXT blocker TX-1 — TXT ordered lists lose their ordinals', () => {
-  it('renders distinct ordinals for successive ordered items', () => {
+describe('DOCX/TXT blocker TX-1 (FIXED) — TXT ordered lists carry their ordinals', () => {
+  it('emits the listFormat-correct marker AND advances the ordinal per item', () => {
     const txt = flowDocToText(docOf(page({
       paragraphs: [orderedPara('alpha'), orderedPara('beta')],
     })));
-    const lines = txt.split('\n\n');
-    expect(lines[1]).not.toMatch(/^1\./);
+    expect(txt).toBe('a) alpha\n\nb) beta');
   });
 });
 
-describe('DOCX/MD blocker MD-2 — Markdown ignores list nesting depth', () => {
-  // REACHABLE. listDepth is computed and honored by the DOCX writer, but the MD
-  // writer emits every item flush-left regardless of depth.
-  it('indents a nested list item', () => {
+describe('DOCX/MD blocker MD-2 (FIXED) — Markdown honours list nesting depth', () => {
+  // WAS: listDepth was computed and honoured by the DOCX writer, but the MD writer emitted
+  // every item flush-left. NOW: two spaces of indent per depth level ('  '.repeat(listDepth)).
+  it('indents a nested list item by two spaces per depth level', () => {
     const md = flowDocToMarkdown(docOf(page({
       paragraphs: [para({ listType: 'bullet', listDepth: 2, runs: [run('nested')] })],
     })));
-    // DESIRED: nesting → leading indent. TODAY: "- nested" flush-left.
-    expect(md).toMatch(/^ {2,}- /m);
+    expect(md).toBe('    - nested'); // depth 2 → 4 spaces
   });
 });
 
-describe('DOCX/MD blocker MD-3 — Markdown silently drops images', () => {
-  // REACHABLE. The DOCX writer embeds page.images; the MD writer never reads them,
-  // so an image-only page exports as an EMPTY .md while its .docx has the picture.
-  it('emits an image reference for an image-only page', () => {
+describe('DOCX/MD blocker MD-3 (FIXED) — Markdown exports images', () => {
+  // WAS: the DOCX writer embedded page.images but the MD writer never read them, so an
+  // image-only page exported as an EMPTY .md while its .docx carried the picture.
+  // NOW: a data-URI Markdown image reference.
+  it('emits a data-URI image reference for an image-only page', () => {
     const img: FlowImage = {
       x: 0, y: 0, width: 100, height: 100, base64: 'iVBORw0KGgo=', mimeType: 'image/png',
     };
     const md = flowDocToMarkdown(docOf(page({ paragraphs: [], images: [img] })));
-    // DESIRED: a Markdown image reference. TODAY: "" (content silently lost).
-    expect(md).toContain('![');
+    expect(md).toBe('![image](data:image/png;base64,iVBORw0KGgo=)');
   });
 });
