@@ -112,7 +112,8 @@ ls "$TARGET"/{package.json,Cargo.toml,pyproject.toml,go.mod,pom.xml,Gemfile,Make
 Scan for design rationale in git: `git -C "$TARGET" log --oneline -50 2>/dev/null | grep -iE 'adr|decision|design|arch|refactor|rewrite|why|chose|chose|picked'`
 
 Find the WHY corpus. **pdfturbo's is unusual in shape: `CLAUDE.md` IS the decision register.** It is
-a ~700-line "Gotchas" catalogue where nearly every entry records a structural choice, the bug that
+its "Gotchas" catalogue — one `###` subsection per entry — where nearly every entry records a
+structural choice, the bug that
 forced it, and the alternatives rejected — often with the exact symptom ("read as *watermark not
 working*", "the reported *second edit resets* bug"). That is what makes the Chesterton's Fence gate
 below precise rather than noisy — do not skip this step:
@@ -141,7 +142,7 @@ Summarize in two lines: (1) tech stack sentence for `PROJECT_TYPE`; (2) design-d
 `ADR_CONTEXT`. **This repo has no `docs/adr/`** — its decision register is `CLAUDE.md` § Gotchas, plus
 any live plan under `docs/plans/`. Design docs written before 2026-06-26 were removed by `ac4ef68` and
 live only in git history (`git show ac4ef68^ --stat -- docs/`). So `ADR_CONTEXT` reads e.g. *"decisions
-in CLAUDE.md § Gotchas (~1.2k lines, the register); relevant commits: …"*. Pass both to every agent.
+in CLAUDE.md § Gotchas, N `###` entries (the register); relevant commits: …"*. Pass both to every agent.
 
 ## Step 2: Spawn Analysis Agents
 
