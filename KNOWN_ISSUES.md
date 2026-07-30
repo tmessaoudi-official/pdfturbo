@@ -63,7 +63,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
-- **Arabic native-speaker review** — one human pass over the AR locale strings and RTL rendering.
+- **Arabic native-speaker review** — PARTIALLY DONE (2026-07-30): 15 locale strings reviewed and
+  confirmed; 16 more (`findReplace.*`, `docxEditor.deleteImage`, `docxToolbar.insertImage`,
+  `sign.error.UNSUPPORTED_XREF`) are still awaiting a pass. RTL *rendering* (C18/C19) was not part of
+  that review and is unchanged.
 - Resizable crop handles / numeric crop margins (today: drag-to-set + re-drag).
 - XLSX table export; open-via-picker + recent-files for the native save dialog.
 

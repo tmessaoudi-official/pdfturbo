@@ -350,7 +350,7 @@ share ONE open-menu state (`_openMenu`/`_closeMenu`/`_onMenu*`) and the shared `
 which **flips the menu upward** when there's no room below (the thumbnail strip sits at the viewport bottom,
 so it almost always opens up) + clamps horizontally. Guarded by the F2b jsdom tests in
 `tests/ui/pageThumbnailPanel.test.ts` (wiring) + live @375px evidence (`qa-shots/f2b/`: overlays `display:none`,
-rows measured 44px, menu fully in-viewport). i18n: one new key `thumbnail.moreActions` (ar [Unverified]);
+rows measured 44px, menu fully in-viewport). i18n: one new key `thumbnail.moreActions` (ar reviewed 2026-07-30);
 row labels reuse the existing `thumbnail.*` keys.
 
 ### Export paths are consolidated
@@ -392,7 +392,20 @@ Every user-visible string goes through `t()`; `escapeValue: true` is set
 (`i18n.ts:70`) — i18next HTML-escapes interpolated values, so the XSS surface is small.
 Still prefer `textContent` over `innerHTML` for any user/translation data, and never
 disable escaping. The three locale files must stay key-identical (a hook checks this on
-write). Arabic values still need native-speaker review before being treated as final.
+write). **Arabic review status (2026-07-30):** a native speaker reviewed the 15 keys then marked
+`ar [Unverified]` and found ONE issue, which turned out not to be one — see the `صف` vs `سطر` note
+below. Those entries now read `ar reviewed 2026-07-30`. A SECOND batch of 16 keys
+(`findReplace.*`, `docxEditor.deleteImage`, `docxToolbar.insertImage`,
+`sign.error.UNSUPPORTED_XREF`) was missed by the first pass and still carries `ar [Unverified]`.
+Sign-off covers STRING translations only — the RTL *rendering* ceilings (C18/C19: bracket
+mirroring, tashkeel/GPOS, list-marker placement) are untouched by it and remain open.
+
+**`صف` (table row) vs `سطر` (text line) — do not "fix" one into the other.** The reviewer flagged
+`docxToolbar.addRow`/`deleteRow` as needing `سطر`, reading the French gloss *"Ajouter une ligne"*
+— French *ligne* is ambiguous. Those buttons call `addRowAfter`/`deleteRow` from
+**prosemirror-tables**, so they are TABLE rows and `صف` is correct; `formatting.lineSpacingLabel`
+already uses `أسطر` for genuine text lines. Confirmed keep-`صف` by the reviewer. The file is
+internally consistent on this distinction — preserve it.
 
 ### Base path is `/pdfturbo/`
 
@@ -920,7 +933,7 @@ gets `padding-left`) — markers are kept OUT of `this.text` (no fragile prefix-
 the user typed as "3. foo"). Mutations: `FormattingService.setListType(kind|null)`/`toggleList(kind)`
 (`MoveResizeCmd`, undoable, in `clearFormatting` + format-painter set); UI = two toggle buttons in the Text ⋮
 popover (`#bulletListBtn`/`#numberedListBtn`), `uiController.updateFormattingToolbar` reflects `te.list`.
-i18n `formatting.{list,bulletList,numberedList}` (ar [Unverified]). No feature flag (additive). **Ceiling
+i18n `formatting.{list,bulletList,numberedList}` (ar reviewed 2026-07-30). No feature flag (additive). **Ceiling
 (v1):** nested/multi-level lists, custom marker styles (a/A/i, start-at-N), RTL/Arabic marker placement
 (the ASCII marker still prefixes the logical Arabic line → drawn within the RTL shaping), and DOCX export of
 overlay-text markers (overlay annotations aren't in the PDF→DOCX path). Guards:
@@ -942,7 +955,7 @@ runs the same `renderText` on the same page object); byte-identical when unset/i
 (`.text-element--linked` in `editor.css`) + the URL as the box `title`; text is NOT auto-restyled (user controls
 colour/underline). `setLinkUrl` is a `MoveResizeCmd` (undoable); it is **NOT** in the format painter or
 `clearFormatting` (a URL is per-element data, like `text`) — cleared via the popover's empty input. UI = a URL
-input (`#textLinkInput`) in the Text ⋮ popover; i18n `formatting.{linkLabel,linkPlaceholder}` (ar [Unverified]).
+input (`#textLinkInput`) in the Text ⋮ popover; i18n `formatting.{linkLabel,linkPlaceholder}` (ar reviewed 2026-07-30).
 No feature flag. **Ceiling (v1):** per-run/partial-text links (needs multi-run rich text), internal GoTo links,
 rotated-element link rect is the axis-aligned bbox (PDF `/Link` rects can't rotate), and the lossy
 "flatten-to-images" compress path drops the annotation (it drops text too). Guards: `tests/utils/linkUrl.test.ts`,
@@ -1101,7 +1114,7 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   already auto-RTLs `isArabicText` lines via `drawArabicLine`; `direction` is editor + alignment only in v1
   (forcing the Arabic font path on non-Arabic text mis-renders — declined). **Gotcha:** any test that builds
   the uiController refs from a partial DOM must seed `'rtlBtn'` (else `getElementById` → null →
-  `r.rtlBtn.disabled` throws). i18n `formatting.rtlTitle` (ar [Unverified]).
+  `r.rtlBtn.disabled` throws). i18n `formatting.rtlTitle` (ar reviewed 2026-07-30).
 - **Multi-language DOCX (#2 `9cfc38a`)**: Cyrillic + CJK source text is preserved verbatim through
   PDF→DOCX/MD/TXT — they're LTR like Latin, so they take the same reconstructPage + writer path and the only
   script branch (`isArabicText` RTL reorder) must not fire. CONTENT is intact (verified, no prod change).
@@ -1439,7 +1452,7 @@ a `prosemirror-keymap` handler fires only on editor-focused keydown, so native b
 inside the open editor (the in-app-editor norm: Docs/VS Code/Notion). No new locale key (counter reuses
 `findReplace.counter` with a string `total`). Guards: the 3 truncation cases above (core+plugin+bar).
 **Table editing (Slice C #3a)**: `src/docx/*` extends the DOCX model to recursive `blocks: (DocParagraph | DocTable)[]` (replacing the flat `paragraphs` array, which is now a derived view for back-compat). `DocTable = { rows: DocRow[] }`, `DocRow = { cells: DocCell[] }`, `DocCell = { blocks: ... }` — nested tables are supported. The in-place save uses a table-anchored recursive reconciler `applyBlocks` in `docxMapping.ts` (partitions a container's `w:p`/`w:tbl` children into table-delimited paragraph segments; tables zip 1:1 by order and recurse into cells; cell paragraphs are rewritten in place via `applyParagraphRuns`; `w:tblPr`/`w:tblGrid`/`w:tcPr` structural/grid/styling elements are preserved verbatim — zero reconstruction). The **cardinal rule is maintained**: no docx-writer rebuild, only position-addressed in-place text edits. Schema integration via `prosemirror-tables@1.8.5` (MIT) — `tableEditing()` plugin + node specs merged into `docxSchema` (`docxSchema.ts`) supply cell selection/nav only (add row/col/merge/split NOT bound — structure read-only in 3a; 3b/3c/3d deferred). `docModelToDoc`/`docToDocModel` emit/read table nodes recursively; PDF export (`docxToPdf.ts`) reads the top-level `paragraphs` view only (table structure not rendered in v1). Find/replace now reaches cell text (the C#2 scope was lifted — `findMatches` descendants() recurses into cells; zero code change post-3a). Deps: prosemirror-tables (0 vulns; shipping MIT + attr). Gated by existing `VITE_FEATURE_DOCX_EDIT` (no new flag). Guards: `tests/docx/docModelTables.test.ts` (recursive model + populated paragraphs), `tests/docx/docxTablesMapping.test.ts` (in-place reconcile + nested round-trip), `tests/browser/docx-tables.browser.test.ts` (real Chrome: cell edit+format → save → reopen, nested table survives, structure byte-identical).
-**Table editing — Slice 3b (add/del row & column, 2026-06-23)**: the 3a "structure read-only" limitation is LIFTED for SIMPLE (un-merged) tables. `docxToolbar.ts` wires four prosemirror-tables commands — `addRowAfter`/`deleteRow`/`addColumnAfter`/`deleteColumn` (data-act = the command name; `update()` toggles `button.disabled` from `isInTable(view.state)` so they're greyed outside a table). The real work is `writeTable` in `docModel.ts`: it now reconciles row & cell COUNTS in place (NOT just the 1:1-min overlap) — extra rows cloned from the last `w:tr` (inherits cell `tcPr`/column structure), extra cells per row cloned from the row's last `w:tc`, trailing rows/cells removed, and `w:tblGrid` kept in sync (`syncTableGrid`: clone last `w:gridCol` to widen, trim to shrink — **no-op when the count already matches**, so a non-structural cell-text edit stays byte-identical and the 3a verbatim-structure tests still pass). **Cardinal rule preserved** — still in-place OPC surgery, never a docx-writer rebuild. **REFUSE gate (the 3b ceiling):** `tableHasMerges(tbl)` (a direct cell carries `w:gridSpan` or `w:vMerge`) → fall back to the 3a text-only min-reconcile (structure verbatim) — restructuring a spanned grid is deferred to **3c/3d (merge/split)**, which still need `DocCell` colspan/rowspan + the gridSpan/vMerge round-trip. The controller's `tableStructureUnsupported` warning is unchanged and still correct: row/col edits keep the table COUNT equal → the `saved` toast fires AND the change now genuinely round-trips (the prior silent-discard for same-count structural edits is fixed). i18n `docxToolbar.{addRow,deleteRow,addColumn,deleteColumn}` (ar [Unverified]). Mid-column-insert may shift a cell's `tcPr` (text content + column count stay correct) — documented ceiling. Guards: `docModelTables.test.ts` (add/del row+col, grid sync, merged-table refusal, byte-identical non-structural), `docxToolbar.test.ts` (the 4 acts dispatch), `docx-tables.browser.test.ts` (real Chrome: add-row via the toolbar button → save → reopen → 3 rows; buttons disabled outside a table). Verified live (synthetic table .docx, `qa-shots/f2-table-3b/`).
+**Table editing — Slice 3b (add/del row & column, 2026-06-23)**: the 3a "structure read-only" limitation is LIFTED for SIMPLE (un-merged) tables. `docxToolbar.ts` wires four prosemirror-tables commands — `addRowAfter`/`deleteRow`/`addColumnAfter`/`deleteColumn` (data-act = the command name; `update()` toggles `button.disabled` from `isInTable(view.state)` so they're greyed outside a table). The real work is `writeTable` in `docModel.ts`: it now reconciles row & cell COUNTS in place (NOT just the 1:1-min overlap) — extra rows cloned from the last `w:tr` (inherits cell `tcPr`/column structure), extra cells per row cloned from the row's last `w:tc`, trailing rows/cells removed, and `w:tblGrid` kept in sync (`syncTableGrid`: clone last `w:gridCol` to widen, trim to shrink — **no-op when the count already matches**, so a non-structural cell-text edit stays byte-identical and the 3a verbatim-structure tests still pass). **Cardinal rule preserved** — still in-place OPC surgery, never a docx-writer rebuild. **REFUSE gate (the 3b ceiling):** `tableHasMerges(tbl)` (a direct cell carries `w:gridSpan` or `w:vMerge`) → fall back to the 3a text-only min-reconcile (structure verbatim) — restructuring a spanned grid is deferred to **3c/3d (merge/split)**, which still need `DocCell` colspan/rowspan + the gridSpan/vMerge round-trip. The controller's `tableStructureUnsupported` warning is unchanged and still correct: row/col edits keep the table COUNT equal → the `saved` toast fires AND the change now genuinely round-trips (the prior silent-discard for same-count structural edits is fixed). i18n `docxToolbar.{addRow,deleteRow,addColumn,deleteColumn}` (ar reviewed 2026-07-30). Mid-column-insert may shift a cell's `tcPr` (text content + column count stay correct) — documented ceiling. Guards: `docModelTables.test.ts` (add/del row+col, grid sync, merged-table refusal, byte-identical non-structural), `docxToolbar.test.ts` (the 4 acts dispatch), `docx-tables.browser.test.ts` (real Chrome: add-row via the toolbar button → save → reopen → 3 rows; buttons disabled outside a table). Verified live (synthetic table .docx, `qa-shots/f2-table-3b/`).
 **Table editing — Slice 3c/3d (cell merge & split, 2026-06-23)**: `DocCell` gains OPTIONAL `colspan?`/`rowspan?`
 (the **PM shape** — covered grid positions are ABSENT, matching prosemirror-tables AND `docToDocModel`; `toJSON`
 not involved — docx model isn't persisted to IndexedDB). `parseTable` (docModel.ts) reads `w:gridSpan`→colspan and
@@ -1459,7 +1472,7 @@ merged-table REFUSE** at the SAVE layer (the rebuild handles merged-table row/co
 the toolbar still DISABLES row/col on a merged table (`currentTableHasMerges`), so v1's merged-table UI op is
 merge/split only. **Ceiling:** per-cell box `tcPr` (shading/width) is regenerated minimal on the rebuild path (a
 merge/split resets cell-box styling — content preserved); a pure text edit on a merged table keeps everything verbatim
-(the UNCHANGED path). i18n `docxToolbar.{mergeCells,splitCell}` (ar [Unverified]). Guards: `docModelTables.test.ts`
+(the UNCHANGED path). i18n `docxToolbar.{mergeCells,splitCell}` (ar reviewed 2026-07-30). Guards: `docModelTables.test.ts`
 (parse gridSpan/vMerge→colspan/rowspan; emit colspan→gridSpan, rowspan→vMerge restart+continuation, split re-expand,
 unchanged-merged verbatim, add-row-on-merged rebuild), `docxTablesMapping.test.ts` (colspan/rowspan PM round-trip),
 `docxToolbar.test.ts` (merge via CellSelection, split, enabled-probes), `docx-tables.browser.test.ts` (real Chrome:
@@ -1603,7 +1616,7 @@ moved/inserted/deleted** (all passes no-op; legacy `applyParagraphRuns` omits `e
 (model image anchorIds ⊆ map keys, dup-free) still bails to verbatim. **Ceiling:** moving tables/paragraphs
 themselves, move-to-top/bottom, multi-select move; cell-nested images stay opaque/non-movable; cut&paste
 (slice 3) + drag (slice 4) reuse `placeImageAnchors`. No new dep, no `SCHEMA_VERSION` bump, rides
-`VITE_FEATURE_DOCX_EDIT`. i18n `docxEditor.moveImageUp`/`moveImageDown` (ar [Unverified]). Guards:
+`VITE_FEATURE_DOCX_EDIT`. i18n `docxEditor.moveImageUp`/`moveImageDown` (ar reviewed 2026-07-30). Guards:
 `tests/docx/docImageMove.test.ts` (engine: move past text with `pPr` survival, cross-table, swap, move+insert,
 byte-identical, map-keyed delete/resize regression), `tests/docx/docxImageMove.test.ts` (command bounds +
 selection gate + undoable + NodeView ▲/▼ present), `tests/browser/docx-image-move.browser.test.ts` (real
