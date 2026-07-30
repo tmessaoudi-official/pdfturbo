@@ -25,35 +25,40 @@
 import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-// ── Chromium resolution ──────────────────────────────────────────────────────────
-// The container has no Google Chrome, so `channel: 'chrome'` (what vitest.browser.config.ts uses)
-// is unavailable here. Worse, the PREINSTALLED chromium-1194 lacks
-// Map.prototype.getOrInsertComputed, which pdfjs-dist v6 calls on every page render — every
-// render() throws and it looks like a product bug. So: pick the HIGHEST installed build, and
-// refuse to run on 1194 rather than emit 7 fake failures. See CLAUDE.md § Commands.
+// ── Browser resolution — must work in BOTH environments ──────────────────────────
+// Returns Playwright launch options, because the two places this runs get a browser differently:
+//
+//   CI (GitHub runner): no Playwright browser binary is downloaded — deploy.yml installs only
+//     `playwright install-deps chromium` and the browser suite uses `channel: 'chrome'` against the
+//     runner's preinstalled Google Chrome. So that is the fallback here too, which keeps the sweep
+//     and `npm run test:browser` on the same browser.
+//   Claude cloud container: no Google Chrome at all, so `channel: 'chrome'` cannot work. It has
+//     /opt/pw-browsers instead — but the PREINSTALLED chromium-1194 lacks
+//     Map.prototype.getOrInsertComputed, which pdfjs-dist v6 calls on every page render, so every
+//     render() throws and it reads as a product bug. Refuse 1194 rather than emit fake failures.
+//
+// Order: explicit override → a usable build under the browsers dir → system Chrome.
 const PW_ROOT = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
-function resolveChromium() {
-  if (process.env.QA_SWEEP_CHROME) return process.env.QA_SWEEP_CHROME;
-  if (!existsSync(PW_ROOT)) return null;
-  const builds = readdirSync(PW_ROOT)
-    .filter(d => /^chromium-\d+$/.test(d))
-    .map(d => ({ dir: d, rev: Number(d.split('-')[1]) }))
-    .sort((a, b) => b.rev - a.rev);
-  for (const b of builds) {
-    const exe = join(PW_ROOT, b.dir, 'chrome-linux64', 'chrome');
-    if (existsSync(exe)) {
-      if (b.rev <= 1194) {
-        console.error(
-          `qa-sweep: only chromium-${b.rev} is installed, which lacks ` +
-          'Map.prototype.getOrInsertComputed — pdfjs-dist v6 throws on every render.\n' +
-          '          Run `npx playwright install chromium` first (~115 MB, not persisted).',
-        );
-        return null;
-      }
-      return exe;
+function resolveBrowser() {
+  if (process.env.QA_SWEEP_CHROME) return { executablePath: process.env.QA_SWEEP_CHROME };
+  if (existsSync(PW_ROOT)) {
+    const builds = readdirSync(PW_ROOT)
+      .filter(d => /^chromium-\d+$/.test(d))
+      .map(d => ({ dir: d, rev: Number(d.split('-')[1]) }))
+      .sort((a, b) => b.rev - a.rev);
+    for (const b of builds) {
+      const exe = join(PW_ROOT, b.dir, 'chrome-linux64', 'chrome');
+      if (!existsSync(exe)) continue;
+      if (b.rev > 1194) return { executablePath: exe };
+      console.error(
+        `qa-sweep: chromium-${b.rev} lacks Map.prototype.getOrInsertComputed, which pdfjs-dist v6\n` +
+        '          needs on every render — skipping it. `npx playwright install chromium` provides a\n' +
+        '          usable build (~115 MB, not persisted in the container).',
+      );
     }
   }
-  return null;
+  // Fall back to the system Google Chrome, exactly as vitest.browser.config.ts does.
+  return { channel: 'chrome' };
 }
 
 // ── args ─────────────────────────────────────────────────────────────────────────
@@ -87,15 +92,22 @@ const results = [];
 const record = (verdict, subject, detail, shot) => results.push({ verdict, subject, detail, shot });
 
 async function main() {
-  const exe = resolveChromium();
-  if (!exe) { console.error('qa-sweep: no usable Chromium — aborting.'); process.exit(2); }
+  const launchOpts = resolveBrowser();
 
   let chromium;
   try { ({ chromium } = await import('playwright')); }
   catch { console.error('qa-sweep: playwright is not installed.'); process.exit(2); }
 
   mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ executablePath: exe });
+  let browser;
+  try {
+    browser = await chromium.launch(launchOpts);
+  } catch (e) {
+    console.error(`qa-sweep: could not launch a browser (${JSON.stringify(launchOpts)}): ` +
+      `${String(e.message).split('\n')[0]}`);
+    process.exit(2);
+  }
+  console.log(`qa-sweep: browser = ${launchOpts.executablePath ?? `channel:${launchOpts.channel}`}`);
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   const page = await ctx.newPage();
 

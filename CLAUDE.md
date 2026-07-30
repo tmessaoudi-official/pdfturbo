@@ -154,8 +154,12 @@ npm run test:watch   # vitest watch mode
 **Whole-app QA** (`/qa-sweep`, 2026-07-29): `node scripts/qa-sweep.mjs` boots the real app in real
 Chromium, loads a PDF, depth-first clicks every reachable control, and reports console errors, failed
 requests, axe-core WCAG 2.1 AA violations and a 375px overflow check — with before/after screenshots
-per control, into `var/claude/qa-sweep/<stamp>/`. Exit 1 on any FAIL, 2 if it could not run, so it
-works as a gate. Needs `npm run dev` serving and `npx playwright install chromium` (the preinstalled
+per control, into `var/claude/qa-sweep/<stamp>/`. Exit 1 on any FAIL (a console error, a failed request, or a **critical/serious** axe violation;
+moderate/minor are reported only, matching the static gate's policy), 2 if it could not run.
+**Wired into `deploy.yml` as a deploy-blocking step since 2026-07-29**, run against `vite preview`
+on :4173 — i.e. the BUILT artifact that actually deploys, not the dev server. It needs no browser
+download: the script prefers a usable build under `PLAYWRIGHT_BROWSERS_PATH` (skipping
+chromium-1194) and otherwise falls back to the same system Chrome `test:browser` uses. Needs `npm run dev` serving and `npx playwright install chromium` (the preinstalled
 chromium-1194 is refused on purpose — see the container note below). It answers "does the product
 work?", which **neither** vitest suite does: jsdom has no canvas and the browser suite mounts
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
@@ -169,7 +173,9 @@ goes green-local / red-CI (it has happened): `npm audit --audit-level=high` → 
 → type-check → lint → `npm run test` (jsdom) → `npm run test:browser` (real Chrome) →
 **`npm run test:coverage:export`** (the M1 #14 branch-coverage gate on `src/export/pdfElementRenderer.ts`,
 threshold 25% — adding an uncovered branch to `renderText` can drop below it and FAIL the build even
-when every test passes) → `npm run build`. Any of these failing on `master` blocks the deploy.
+when every test passes) → `npm run build` → **`npm run qa:sweep`** against `vite preview` on :4173
+(the live whole-app sweep; fails on a console error, a failed request, or a critical/serious axe
+violation, and uploads its screenshots as a CI artifact when it does). Any of these failing on `master` blocks the deploy.
 
 **Browser harness** (`vitest.browser.config.ts`): real-browser regression tests for things jsdom
 cannot exercise — canvas/pdf.js rasterization, pointer drag, image (`commonObjs`/`VideoFrame`)

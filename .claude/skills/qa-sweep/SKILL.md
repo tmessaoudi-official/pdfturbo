@@ -58,17 +58,30 @@ Two things the original could not have known, both encoded in the driver:
    CDP and is not subject to page CSP. Do **not** relax the CSP to make a11y testing work.
 2. **The preinstalled `chromium-1194` is unusable** — it lacks `Map.prototype.getOrInsertComputed`,
    which `pdfjs-dist` v6 calls on every render, so *every* page render throws and it reads as a
-   product bug. The driver refuses to run on it rather than emit fake failures.
+   product bug. The driver skips that build rather than emit fake failures, and falls back to the
+   system Chrome (which is what CI uses).
 
 ## Run it
 
 ```bash
-npm run dev &                       # the driver needs the app served
-npx playwright install chromium     # once per container (~115 MB, not persisted)
-node scripts/qa-sweep.mjs           # add --allow-destructive for the full surface
+# In the container, against the dev server:
+npx playwright install chromium     # once per container (~115 MB, not persisted; the preinstalled 1194 is skipped)
+npm run dev &
+npm run qa:sweep                    # add --allow-destructive for the full surface
+
+# What CI does — against the BUILT artifact, which is what actually deploys:
+npm run build && npm run preview -- --port 4173 &
+npm run qa:sweep -- --url http://localhost:4173/pdfturbo/
 ```
 
-Exit codes: `0` no failures · `1` at least one FAIL · `2` harness could not run. Safe to use as a gate.
+Exit codes: `0` no failures · `1` at least one FAIL · `2` harness could not run.
+
+**`deploy.yml` runs the SCRIPT on every push** (since 2026-07-29), after `npm run build` and against
+`vite preview` on :4173, so a console error / failed request / critical-or-serious axe violation blocks
+the deploy and the screenshots upload as a CI artifact. CI cannot run this SKILL — there is no model in
+the runner — so what CI gets is the mechanical half. **Your** half is the interpretation below, which is
+why running `/qa-sweep` by hand is still worth doing: CI will not resolve a WARN, root-cause a FAIL, or
+notice that 44 controls were skipped.
 
 ## Then interpret it — the part that is your job, not the script's
 
@@ -78,9 +91,12 @@ The driver reports facts. You decide what they mean.
    signature of the OCR-CSP breakage. Trace it to a root cause per Rule 14 — do not paper it over.
 2. **`WARN: not clickable` is ambiguous — resolve it, do not report it.** It means Playwright could not
    click: the control may be genuinely covered by an overlay (a real defect), or merely off-screen
-   behind a scroll container (a driver limit). Open the `-after.png` and say which. Today's known set
-   is `nextPage`/`prevPage`/`lastPage`/`exportPreviewConfirm`.
-3. **`SKIP` is coverage you did not get.** 46 controls skip by default (destructive names, or hidden
+   behind a scroll container (a driver limit). Open the `-after.png` and say which. The current known
+   set is `undoBtn` and `exportPreviewConfirm`, both blocked by a modal an earlier control in the
+   same subtree left open — a driver-unwind limit, not a product defect. (The former
+   `nextPage`/`prevPage`/`lastPage` WARNs are gone: they were controls that had legitimately become
+   `disabled`, which Playwright reports as a bare timeout, and are now classified as SKIPs.)
+3. **`SKIP` is coverage you did not get.** ~44 controls skip by default (destructive names, or hidden
    by the time their turn came). Re-run with `--allow-destructive` before claiming a full sweep, and
    say plainly in your report which controls were never exercised.
 4. **`A11Y` findings are product bugs with WCAG rule ids.** Do not fold them into "polish".
@@ -124,6 +140,6 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 ```
 
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots. Baseline for comparison
-(2026-07-29, flags default, no `--allow-destructive`): **147 checks · 94 pass · 0 fail · 6 warn ·
-46 skip · 3 a11y violation types**, converging in ~1m20s. A run that reports materially fewer checks
+(2026-07-29, against `vite preview`, no `--allow-destructive`): **147 checks · 102 pass · 0 fail ·
+1 warn · 44 skip · 0 a11y**, converging in ~1m20s. With `--allow-destructive`: 147 · 110 · 0 · 1 · 35 · 0. A run that reports materially fewer checks
 than this has probably failed to reach the surface — investigate before trusting a green summary.

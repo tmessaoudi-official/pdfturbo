@@ -43,6 +43,32 @@ jobs:
       # build if the pdfElementRenderer pixel tests stop covering it (regression guard).
       - run: npm run test:coverage:export
       - run: npm run build
+      # Whole-app QA sweep against the BUILT artifact — the thing that actually deploys, served by
+      # `vite preview`, not the dev server. Answers "does the product work?", which neither vitest
+      # suite does: jsdom has no canvas, and test:browser mounts components instead of booting the
+      # app. It boots it, loads a PDF, depth-first clicks every reachable control, and fails on a
+      # console error, a failed request, or a critical/serious axe violation. Three of those serious
+      # violations shipped undetected before this step existed (CLAUDE.md § Live-app a11y).
+      # No browser download: the script falls back to the same system Chrome test:browser uses.
+      - name: Whole-app QA sweep (live)
+        id: qa_sweep
+        run: |
+          npm run preview -- --port 4173 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4173/pdfturbo/ >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:4173/pdfturbo/ >/dev/null \
+            || { echo "::error::vite preview never came up on :4173"; exit 1; }
+          npm run qa:sweep -- --url http://localhost:4173/pdfturbo/
+      # The container is discarded, so a red sweep is undebuggable without its screenshots.
+      - name: Upload QA sweep report + screenshots
+        if: ${{ failure() && steps.qa_sweep.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-sweep-${{ github.sha }}
+          path: var/claude/qa-sweep/
+          retention-days: 14
       - if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v5
         with:
