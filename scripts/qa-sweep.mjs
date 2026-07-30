@@ -88,6 +88,24 @@ const DESTRUCTIVE = [
 // are safe to click, but each produces a download we do not need to keep.
 const EXPORTERS = ['downloadBtn', 'exportDocxBtn', 'exportMdBtn', 'exportTableBtn', 'exportXfdfBtn'];
 
+// Accepted axe findings: a DELIBERATE product decision that this gate must not veto.
+// Each entry is reported as ACCEPTED (never silently dropped) so it stays visible in every run, and
+// carries the reason so a future reader can re-litigate it instead of guessing.
+// Keep this list at zero entries wherever possible — it is a hole in the gate by construction.
+const A11Y_ACCEPTED = [
+  {
+    rule: 'scrollable-region-focusable',
+    target: '#canvasContainer',
+    why: 'Developer ruling 2026-07-30: keep the strict skip-nav idiom (tabindex="-1") on the main '
+       + 'landmark rather than add a tab stop before the page content. The trade-off is real and is '
+       + 'documented in CLAUDE.md § Live-app a11y and tests/ui/indexHtmlA11y.test.ts. The genuine fix '
+       + '(give the scroll region focusable CONTENT, so the rule passes with tabindex="-1" intact) is '
+       + 'open, not refused.',
+  },
+];
+const isAccepted = (ruleId, targets) => A11Y_ACCEPTED.some(a =>
+  a.rule === ruleId && targets.some(t => String(t).includes(a.target)));
+
 const results = [];
 const record = (verdict, subject, detail, shot) => results.push({ verdict, subject, detail, shot });
 
@@ -336,14 +354,22 @@ async function main() {
         // gate while being incapable of failing on the three serious WCAG rules it had just found.
         // Policy matches the existing static gate (tests/browser/a11y-axe.browser.test.ts): zero
         // critical/serious is the hard line; moderate/minor are reported, not enforced.
-        const blocking = v.filter(x => x.impact === 'critical' || x.impact === 'serious');
+        const severe = v.filter(x => x.impact === 'critical' || x.impact === 'serious');
+        // Split accepted findings out of the blocking set, and REPORT them either way.
+        const accepted = severe.filter(x => isAccepted(x.id, x.nodes.flatMap(n => n.target)));
+        const blocking = severe.filter(x => !accepted.includes(x));
         const detail = v.length
           ? v.map(x => `${x.id}:${x.impact}(${x.nodes.length})`).join(', ')
           : '0 violations';
+        for (const a of accepted) {
+          const why = A11Y_ACCEPTED.find(e => e.rule === a.id)?.why ?? '';
+          record('ACCEPT', `a11y ${a.id}`, `${a.impact}, accepted by decision — ${why.slice(0, 120)}…`);
+        }
         if (blocking.length) {
           record('FAIL', 'a11y (WCAG 2.1 AA)', `${blocking.length} critical/serious — ${detail}`);
         } else {
-          record(v.length ? 'A11Y' : 'PASS', 'a11y (WCAG 2.1 AA)', detail);
+          record(v.length ? 'A11Y' : 'PASS', 'a11y (WCAG 2.1 AA)',
+            accepted.length ? `${detail} (${accepted.length} accepted by decision)` : detail);
         }
       } catch (e) {
         record('WARN', 'a11y', `axe injection failed: ${String(e.message).split('\n')[0]}`);
@@ -375,7 +401,8 @@ async function finish(browser) {
     ...results.map(r => `${pad(r.verdict)} ${r.subject.padEnd(24)} — ${r.detail}${r.shot ? `  [${r.shot}]` : ''}`),
     '─'.repeat(78),
     `Summary: ${results.length} checks | ${count('PASS')} pass | ${count('FAIL')} fail | ` +
-      `${count('WARN')} warn | ${count('SKIP')} skipped | ${count('A11Y')} a11y`,
+      `${count('WARN')} warn | ${count('SKIP')} skipped | ${count('A11Y')} a11y` +
+      (count('ACCEPT') ? ` | ${count('ACCEPT')} a11y-accepted-by-decision` : ''),
     '',
     'Screenshots are in this directory. var/claude/ is gitignored and the container is',
     'reclaimed — deliver anything that matters with SendUserFile in the same turn.',

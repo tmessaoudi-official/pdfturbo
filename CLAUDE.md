@@ -316,10 +316,17 @@ reach these. Keep both gates; they answer different questions. Fixes:
    (4.65) / `#087d55` (5.15). `.toolbar-label` `#64748b` on `#f0f4f8` was **4.3:1** → `#616a78`
    (4.95). Both are the *lightest* values clearing 4.5:1, so the visual delta is minimal. `#64748b`
    elsewhere sits on white (4.76:1) and is left alone.
-3. **`scrollable-region-focusable` (1 node).** `#canvasContainer` was `tabindex="-1"` — the classic
-   skip-nav idiom, but a keyboard-only user could not reach or arrow-scroll a region whose content
-   (a rendered page) is not focusable. Now `tabindex="0"`: the skip link still lands there, and the
-   accepted cost is one extra tab stop. `tests/ui/indexHtmlA11y.test.ts` asserts `0` and explains why.
+3. **`scrollable-region-focusable` (1 node) — REVERTED 2026-07-30, and knowingly accepted.**
+   `#canvasContainer` was briefly changed `tabindex="-1"` → `"0"` to satisfy the rule. The developer
+   ruled to keep the strict skip-nav idiom (`-1`) instead, so the landmark stays out of the tab order
+   and a keyboard user reaches the page content without an extra stop. **The violation is real and
+   still there**: a keyboard-only user cannot arrow-scroll a region whose content (a rendered page) is
+   not focusable. It is listed in `scripts/qa-sweep.mjs` `A11Y_ACCEPTED`, which keeps the deploy gate
+   from vetoing the ruling and reports it as `ACCEPT` on every run — never silently dropped, and
+   counted in the summary line. `tests/ui/indexHtmlA11y.test.ts` asserts `-1` and carries the
+   reasoning. **The genuine fix is open, not refused:** give the scroll region focusable CONTENT, and
+   the rule passes with `-1` intact. Note the static test cannot see this either way — its DOM never
+   scrolls.
 
 **Do not "fix" a contrast report without checking `opacity` has reached 1.** axe reads *composited*
 colour, so a control caught mid fade-in reports the blend over the toolbar: `#textModeBtn` at

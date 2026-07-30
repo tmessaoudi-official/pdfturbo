@@ -42,19 +42,24 @@ describe('index.html — accessibility landmarks', () => {
     expect(mains.length).toBe(1);
   });
 
-  // tabindex is "0", not "-1" (changed 2026-07-29). Two a11y goals collide here and 0 satisfies both:
-  //   - Skip-nav target: `-1` is the classic idiom, but the skip link (href="#canvasContainer") lands
-  //     on the element with either value, so nothing is lost.
+  // tabindex is "-1": the classic skip-nav idiom. Briefly "0" on 2026-07-29, reverted 2026-07-30 by
+  // developer ruling. Two a11y goals genuinely collide here:
+  //   - Skip-nav target (this ruling): `-1` keeps the landmark out of the tab order, so a keyboard
+  //     user reaches the page content without an extra stop. The skip link lands on it either way.
   //   - WCAG 2.1.1 keyboard access: the canvas viewer is a SCROLLABLE region whose content (a
-  //     rendered page) is often not focusable, so with `-1` a keyboard-only user could not reach or
-  //     arrow-scroll it. axe flags exactly this as `scrollable-region-focusable` (serious) — found
-  //     by /qa-sweep against the live app, where the region actually scrolls.
-  // Cost, accepted deliberately: one extra tab stop before the page content.
-  it('exposes the canvas viewer as the main landmark, focusable and keyboard-scrollable', () => {
+  //     rendered page) is not focusable, so with `-1` a keyboard-only user cannot reach or
+  //     arrow-scroll it. axe flags this as `scrollable-region-focusable` (serious) against the LIVE
+  //     app, where the region actually scrolls — the static DOM here never does, which is why this
+  //     file cannot catch it.
+  // The violation is therefore REAL and knowingly accepted: scripts/qa-sweep.mjs lists it in
+  // A11Y_ACCEPTED so the deploy gate does not veto the ruling, and reports it as ACCEPT on every run
+  // rather than hiding it. The genuine fix — give the scroll region focusable CONTENT so the rule
+  // passes with `-1` intact — is open, not refused.
+  it('exposes the canvas viewer as the main landmark, kept out of the tab order (skip-nav idiom)', () => {
     const main = doc.querySelector('main, [role="main"]') as HTMLElement | null;
     expect(main).not.toBeNull();
     expect(main?.id).toBe('canvasContainer');
-    expect(main?.getAttribute('tabindex')).toBe('0');
+    expect(main?.getAttribute('tabindex')).toBe('-1');
   });
 
   it('has a skip-nav link pointing at the main landmark', () => {

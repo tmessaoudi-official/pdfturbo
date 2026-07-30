@@ -25,13 +25,20 @@ import indexHtml from '../../index.html?raw';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] as const;
 
 /**
- * Documented moderate/minor baseline ceiling. The gate fails ONLY on
- * critical/serious; moderate+minor are allowed up to this count so a NEW
- * regression that adds many issues still surfaces, while the known-outstanding
- * items (logged below) don't block. Bump this only with a comment explaining
- * what changed.
+ * Moderate/minor ceiling — TIGHTENED 60 → 0 on 2026-07-30.
+ *
+ * The 60 was set when there was real outstanding debt, so the gate would not block on it. That debt
+ * has since been paid: measured on this exact fixture, the main view reports
+ * `{critical:0, serious:0, moderate:0, minor:0}`. A ceiling of 60 against an actual count of 0 is 60
+ * points of slack — a regression introducing 40 new moderate violations would have passed silently,
+ * which is the opposite of what a baseline guard is for. A ratchet only works if it is tightened
+ * once the debt is gone.
+ *
+ * At 0 this is now a real guard: any new moderate/minor violation fails the build. If a future change
+ * legitimately needs headroom, raise it DELIBERATELY, in the same commit, with the measured count and
+ * the reason — never as a quiet nudge to make a red build green.
  */
-const MODERATE_MINOR_CEILING = 60;
+const MODERATE_MINOR_CEILING = 0;
 
 function injectAppDom(): void {
   // Extract the real <body> markup from index.html (minus the module script tag,
