@@ -298,8 +298,20 @@ async function main() {
           runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
         }));
         const v = res.violations || [];
-        record(v.length ? 'A11Y' : 'PASS', 'a11y (WCAG 2.1 AA)',
-          v.length ? v.map(x => `${x.id}:${x.impact}(${x.nodes.length})`).join(', ') : '0 violations');
+        // SEVERITY GATES THE EXIT CODE. Until 2026-07-29 every violation was recorded as 'A11Y',
+        // which is not 'FAIL', so the process still exited 0 — this script advertised itself as a
+        // gate while being incapable of failing on the three serious WCAG rules it had just found.
+        // Policy matches the existing static gate (tests/browser/a11y-axe.browser.test.ts): zero
+        // critical/serious is the hard line; moderate/minor are reported, not enforced.
+        const blocking = v.filter(x => x.impact === 'critical' || x.impact === 'serious');
+        const detail = v.length
+          ? v.map(x => `${x.id}:${x.impact}(${x.nodes.length})`).join(', ')
+          : '0 violations';
+        if (blocking.length) {
+          record('FAIL', 'a11y (WCAG 2.1 AA)', `${blocking.length} critical/serious — ${detail}`);
+        } else {
+          record(v.length ? 'A11Y' : 'PASS', 'a11y (WCAG 2.1 AA)', detail);
+        }
       } catch (e) {
         record('WARN', 'a11y', `axe injection failed: ${String(e.message).split('\n')[0]}`);
       }
