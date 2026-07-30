@@ -69,6 +69,31 @@ function pearson(p: number[], q: number[]): number {
   return num / Math.sqrt(dp * dq || 1);
 }
 
+/**
+ * The page's DECODED content stream(s), concatenated and latin1-decoded.
+ *
+ * `page.node.Contents()` is a PDFArray of stream refs, so each element is looked up in the document
+ * context. pdf-lib FlateDecode-compresses the content stream it writes (verified: the raw bytes open
+ * with the zlib header `78 9C`), so the bytes must be inflated before any operator can be matched —
+ * asserting on the raw bytes matches nothing. `fflate` is already a dependency (the DOCX OPC path),
+ * so no new one is added here. Streams that are not zlib-wrapped are used as-is.
+ */
+function pageContentStream(doc: unknown, page: unknown, unzlib: (b: Uint8Array) => Uint8Array): string {
+  const arr = (page as { node: { Contents: () => { asArray?: () => unknown[] } | null } }).node.Contents();
+  const refs = arr?.asArray?.() ?? [];
+  const ctx = (doc as { context: { lookup: (r: unknown) => unknown } }).context;
+  let out = '';
+  for (const ref of refs) {
+    const s = ctx.lookup(ref) as { contents?: Uint8Array; getContents?: () => Uint8Array };
+    const raw = s?.contents ?? s?.getContents?.();
+    if (!raw?.length) continue;
+    const isZlib = raw[0] === 0x78;
+    out += new TextDecoder('latin1').decode(isZlib ? unzlib(raw) : raw);
+  }
+  if (!out) throw new Error('no page content stream found — accessor changed?');
+  return out;
+}
+
 describe('drawArabicLine (real Chrome)', () => {
   it('renders shaped Arabic recoverable as real Unicode (no "?")', async () => {
     const { PDFDocument } = await import('@cantoo/pdf-lib');
@@ -84,10 +109,20 @@ describe('drawArabicLine (real Chrome)', () => {
     });
     const bytes = await doc.save();
 
-    // The content stream must carry a hex-encoded show-text (Tj), not a literal
-    // '?' substitution from a Latin standard font.
-    const ascii = String.fromCharCode(...bytes.subarray(0, bytes.length));
-    expect(ascii).not.toContain('(?');
+    // The content stream must carry a hex-encoded show-text (Tj), not a literal '?' substitution
+    // from a Latin standard font.
+    //
+    // ASSERT ON THE CONTENT STREAM, NOT THE WHOLE FILE. This previously scanned
+    // String.fromCharCode(...bytes) — the entire PDF, FlateDecode streams and the embedded font
+    // subset included — for the 2-byte sequence '(?'. Compressed bytes are effectively random, so
+    // that matched by coincidence: measured 2 failures in 8 local runs (25%), and it took down a CI
+    // run on 2026-07-30. The product was never wrong; the assertion was.
+    const { unzlibSync } = await import('fflate');
+    const stream = pageContentStream(doc, page, unzlibSync);
+    // Positive form of the same intent: the Arabic run is emitted as a hex CID string.
+    expect(stream).toMatch(/<[0-9A-Fa-f]+>\s*Tj/);
+    // And no literal-string show op carrying a '?' (the WinAnsi fallback signature).
+    expect(stream).not.toMatch(/\([^)]*\?[^)]*\)\s*Tj/);
 
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
     const p = await pdf.getPage(1);

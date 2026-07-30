@@ -260,6 +260,32 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### A flaky gate: never scan a whole PDF for a short byte sequence (2026-07-30)
+
+`tests/browser/arabic-overlay.browser.test.ts` asserted
+`expect(String.fromCharCode(...bytes)).not.toContain('(?')` — the ENTIRE saved PDF, FlateDecode
+streams and the embedded font subset included — to prove the Arabic overlay had not fallen back to a
+WinAnsi `?` substitution. Compressed bytes are effectively random, so `0x28 0x3F` appeared by
+coincidence: **measured 2 failures in 8 local runs (25%)**, and it took down the CI run for `eabcc3f`.
+The product was never wrong; the assertion was. A flaky test in a deploy-blocking pipeline blocks
+deploys at random, which is why this is a defect and not a nuisance.
+
+Now scoped to the page content stream, and stated positively:
+`expect(stream).toMatch(/<[0-9A-Fa-f]+>\s*Tj/)` plus a negative on a literal-string show op carrying
+`?`. **Two non-obvious details:** (1) `page.node.Contents()` is a `PDFArray` of stream refs, so each
+must be looked up in `doc.context`; (2) pdf-lib **FlateDecode-compresses the content stream it
+writes** (raw bytes open with `78 9C`), so it must be inflated first — `fflate`'s `unzlibSync`, already
+a dependency via the DOCX OPC path. Asserting on the raw bytes matches nothing, which is how a first
+attempt at this fix went 0/8 instead of 8/8.
+
+Verified non-vacuous: the real stream is
+`q BT 0 0 0 rg /NotoNaskhArabic-… 24 Tf 1 0 0 1 231.016 100 Tm <00010002000300040005> Tj ET Q`
+(one hex show op, 5 CIDs for the 5 letters), the negative regex flags a synthetic `(?????) Tj`, and
+does not match the real stream. 8/8 consecutive runs green.
+
+**The general rule:** a byte-level assertion on a container format must be scoped to the decoded part
+it is actually about. Whole-file `toContain` over compressed data is a coin flip.
+
 ### Live-app a11y: 3 serious WCAG rules fixed, and why the static gate missed them (2026-07-29)
 
 `/qa-sweep` found three `serious` axe violations in the **running** app that
