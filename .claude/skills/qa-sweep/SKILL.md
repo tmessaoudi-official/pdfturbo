@@ -91,11 +91,12 @@ The driver reports facts. You decide what they mean.
    signature of the OCR-CSP breakage. Trace it to a root cause per Rule 14 — do not paper it over.
 2. **`WARN: not clickable` is ambiguous — resolve it, do not report it.** It means Playwright could not
    click: the control may be genuinely covered by an overlay (a real defect), or merely off-screen
-   behind a scroll container (a driver limit). Open the `-after.png` and say which. The current known
-   set is `undoBtn` and `exportPreviewConfirm`, both blocked by a modal an earlier control in the
-   same subtree left open — a driver-unwind limit, not a product defect. (The former
-   `nextPage`/`prevPage`/`lastPage` WARNs are gone: they were controls that had legitimately become
-   `disabled`, which Playwright reports as a bare timeout, and are now classified as SKIPs.)
+   behind a scroll container (a driver limit). Open the `-after.png` and say which. **There are
+   currently ZERO known WARNs** — treat any as new. The historical ones are both fixed and worth
+   knowing so they are not re-diagnosed: `nextPage`/`prevPage`/`lastPage` were controls that had
+   legitimately become `disabled` (Playwright reports that as a bare timeout), now classified as
+   SKIPs; `undoBtn`/`exportPreviewConfirm` were the crawl reaching THROUGH an open modal, because
+   enumeration used visibility instead of hit-testable reachability.
 3. **`SKIP` is coverage you did not get.** ~44 controls skip by default (destructive names, or hidden
    by the time their turn came). Re-run with `--allow-destructive` before claiming a full sweep, and
    say plainly in your report which controls were never exercised.
@@ -140,6 +141,9 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 ```
 
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots. Baseline for comparison
-(2026-07-29, against `vite preview`, no `--allow-destructive`): **147 checks · 102 pass · 0 fail ·
-1 warn · 44 skip · 0 a11y**, converging in ~1m20s. With `--allow-destructive`: 147 · 110 · 0 · 1 · 35 · 0. A run that reports materially fewer checks
+(2026-07-29, no `--allow-destructive`): **142 checks · 98 pass · 0 fail · 0 warn · 44 skip ·
+0 a11y** over 89 distinct controls, converging in ~1m20s. With `--allow-destructive`:
+**144 · 108 · 0 · 0 · 36 · 0**. Entry count is lower than distinct-controls × 1 because the DFS
+revisits some controls at different depths (53 redundant revisits) — compare DISTINCT controls,
+not the entry total, when judging whether a run lost coverage. A run that reports materially fewer checks
 than this has probably failed to reach the surface — investigate before trusting a green summary.

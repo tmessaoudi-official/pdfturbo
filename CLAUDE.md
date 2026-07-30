@@ -165,7 +165,7 @@ work?", which **neither** vitest suite does: jsdom has no canvas and the browser
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
 UI crawl is over **disclosure depth** (only 8 of 139 buttons are visible on a freshly loaded document)
-rather than links, since the app is a single page. Baseline: 147 checks / 94 pass / 0 fail in ~1m20s.
+rather than links, since the app is a single page. Baseline: 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s.
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here

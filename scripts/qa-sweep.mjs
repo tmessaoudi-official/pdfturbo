@@ -166,8 +166,29 @@ async function main() {
   // Enumerated from the LIVE DOM, never a hardcoded list: feature flags remove buttons at runtime
   // (main.ts strips them when a VITE_FEATURE_* is off), so a fixed list would report phantom
   // failures for a legitimately disabled flag.
-  const visible = () => page.$$eval('button[id]', els =>
-    els.filter(e => e.offsetParent !== null && !e.disabled).map(e => e.id));
+  // REACHABLE, not merely visible. `offsetParent !== null` stays true for a control COVERED by an
+  // open modal, so enumerating on visibility alone made the crawl reach straight through a modal and
+  // click the toolbar behind it — which surfaced as "blocked by DIV#helpModal" WARNs that read like a
+  // product defect (measured: helpBtn opened the modal, and the very next descend target was a button
+  // underneath it). So hit-test each candidate: the element at its centre must be the button itself or
+  // inside it. `pointer-events: none` covers are ignored, because they do not intercept clicks —
+  // several of this app's overlays are pass-through by design (#watermarkOverlay), and treating them
+  // as blockers previously flagged ~10 perfectly clickable controls.
+  //
+  // Controls skipped here are NOT marked visited, so they get picked up later once the modal is
+  // unwound and they become reachable again.
+  const visible = () => page.$$eval('button[id]', els => els
+    .filter(e => e.offsetParent !== null && !e.disabled)
+    .filter(e => {
+      const r = e.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return false;
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) return false; // off-screen
+      const top = document.elementFromPoint(cx, cy);
+      if (!top || top === e || e.contains(top) || top.contains(e)) return true;
+      return getComputedStyle(top).pointerEvents === 'none';
+    })
+    .map(e => e.id));
 
   // DEPTH-FIRST, not round-based. A round-based sweep leaves a modal open and every later click in
   // that round times out (measured: 15 spurious "click failed" WARNs) — and it can never reach a
