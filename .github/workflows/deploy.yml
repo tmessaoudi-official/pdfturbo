@@ -50,6 +50,12 @@ jobs:
       # console error, a failed request, or a critical/serious axe violation. Three of those serious
       # violations shipped undetected before this step existed (CLAUDE.md § Live-app a11y).
       # No browser download: the script falls back to the same system Chrome test:browser uses.
+      #
+      # --allow-destructive is CORRECT HERE, though it is off by default locally. The flag guards a
+      # developer's own open document from redact/erase/reset/clear; CI drives a throwaway browser on
+      # a fixture PDF, so there is no user work to protect. Without it the gate skipped 44 controls
+      # including REDACTION and FLATTEN — two of the highest-consequence paths in the product.
+      # Measured: 145 checks / 107 pass / 0 fail vs 143 / 97 / 0 with the flag off.
       - name: Whole-app QA sweep (live)
         id: qa_sweep
         run: |
@@ -60,7 +66,7 @@ jobs:
           done
           curl -sf http://localhost:4173/pdfturbo/ >/dev/null \
             || { echo "::error::vite preview never came up on :4173"; exit 1; }
-          npm run qa:sweep -- --url http://localhost:4173/pdfturbo/
+          npm run qa:sweep -- --url http://localhost:4173/pdfturbo/ --allow-destructive
       # The container is discarded, so a red sweep is undebuggable without its screenshots.
       - name: Upload QA sweep report + screenshots
         if: ${{ failure() && steps.qa_sweep.outcome == 'failure' }}

@@ -165,7 +165,10 @@ work?", which **neither** vitest suite does: jsdom has no canvas and the browser
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
 UI crawl is over **disclosure depth** (only 8 of 139 buttons are visible on a freshly loaded document)
-rather than links, since the app is a single page. Baseline: 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s.
+rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s. **CI runs it with
+`--allow-destructive`** — correct there because the flag protects a developer's own open document,
+and CI drives a throwaway browser on a fixture; without it the gate skipped 44 controls including
+redaction and flatten. That run measures 145 checks / 107 pass / 0 fail.
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here
@@ -175,7 +178,8 @@ goes green-local / red-CI (it has happened): `npm audit --audit-level=high` → 
 threshold 25% — adding an uncovered branch to `renderText` can drop below it and FAIL the build even
 when every test passes) → `npm run build` → **`npm run qa:sweep`** against `vite preview` on :4173
 (the live whole-app sweep; fails on a console error, a failed request, or a critical/serious axe
-violation, and uploads its screenshots as a CI artifact when it does). Any of these failing on `master` blocks the deploy.
+violation, and uploads its screenshots as a CI artifact when it does; run with
+`--allow-destructive` so redaction/flatten are actually exercised). Any of these failing on `master` blocks the deploy.
 
 **Browser harness** (`vitest.browser.config.ts`): real-browser regression tests for things jsdom
 cannot exercise — canvas/pdf.js rasterization, pointer drag, image (`commonObjs`/`VideoFrame`)

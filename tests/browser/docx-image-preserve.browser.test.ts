@@ -7,7 +7,7 @@
  * single hyperlink occurrence byte-exact (the data-loss fix), with the plain paragraph still editable.
  */
 import { describe, it, expect } from 'vitest';
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { zipSync, strToU8 } from 'fflate';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';

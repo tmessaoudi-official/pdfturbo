@@ -4,7 +4,7 @@
  * does not move it; the drop-indicator line appears during a drag (eyes-on shot).
  */
 import { describe, it, expect } from 'vitest';
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { zipSync, strToU8 } from 'fflate';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { docxSchema } from '../../src/docx/docxSchema';

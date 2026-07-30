@@ -6,7 +6,7 @@
  * and a save round-trips the wp:extent change / w:drawing removal.
  */
 import { describe, it, expect } from 'vitest';
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { zipSync, strToU8 } from 'fflate';
 import { NodeSelection } from 'prosemirror-state';
 import { undo } from 'prosemirror-history';

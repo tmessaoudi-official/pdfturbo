@@ -6,7 +6,7 @@
  * in-place save (w:drawing relocated after the w:tbl). Plus an eyes-on screenshot of the ▲/▼ controls.
  */
 import { describe, it, expect } from 'vitest';
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { zipSync, strToU8 } from 'fflate';
 import { NodeSelection } from 'prosemirror-state';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';

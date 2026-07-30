@@ -4,7 +4,7 @@
  * duplicate anchorId — the whole bug this slice fixes). Cut→paste must yield exactly ONE, relocated.
  */
 import { describe, it, expect } from 'vitest';
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { zipSync, strToU8 } from 'fflate';
 import { NodeSelection } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';

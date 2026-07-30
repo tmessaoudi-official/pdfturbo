@@ -8,7 +8,7 @@
  * a document that had NONE.
  */
 import { describe, it, expect } from 'vitest';
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { zipSync, strToU8, strFromU8 } from 'fflate';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';

@@ -6,7 +6,7 @@
  * an internal-anchor link stays read-only, and a save round-trips the w:hyperlink + rels.
  */
 import { describe, it, expect } from 'vitest';
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { zipSync, strToU8, strFromU8 } from 'fflate';
 import { TextSelection } from 'prosemirror-state';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';

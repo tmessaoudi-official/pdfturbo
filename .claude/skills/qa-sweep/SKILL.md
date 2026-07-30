@@ -98,8 +98,10 @@ The driver reports facts. You decide what they mean.
    SKIPs; `undoBtn`/`exportPreviewConfirm` were the crawl reaching THROUGH an open modal, because
    enumeration used visibility instead of hit-testable reachability.
 3. **`SKIP` is coverage you did not get.** ~44 controls skip by default (destructive names, or hidden
-   by the time their turn came). Re-run with `--allow-destructive` before claiming a full sweep, and
-   say plainly in your report which controls were never exercised.
+   by the time their turn came). **CI passes `--allow-destructive`** (36 skips instead of 44 — it
+   reaches redaction, erase and crop-remove), so a local default run is WEAKER than the gate. Match
+   the flag before claiming your sweep is as thorough as CI's, and say plainly which controls were
+   never exercised.
 4. **`A11Y` findings are product bugs with WCAG rule ids.** Do not fold them into "polish".
 5. **A converged run is not a complete one.** The driver clicks each control once, in the state it
    happened to be in. It does not fill forms with boundary values, does not test tool *interactions*
@@ -143,7 +145,7 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots. Baseline for comparison
 (2026-07-29, no `--allow-destructive`): **142 checks · 98 pass · 0 fail · 0 warn · 44 skip ·
 0 a11y** over 89 distinct controls, converging in ~1m20s. With `--allow-destructive`:
-**144 · 108 · 0 · 0 · 36 · 0**. Entry count is lower than distinct-controls × 1 because the DFS
+**145 · 107 · 0 · 0 · 36 · 0** plus 1 a11y-accepted-by-decision (what CI runs). Entry count is lower than distinct-controls × 1 because the DFS
 revisits some controls at different depths (53 redundant revisits) — compare DISTINCT controls,
 not the entry total, when judging whether a run lost coverage. A run that reports materially fewer checks
 than this has probably failed to reach the surface — investigate before trusting a green summary.
