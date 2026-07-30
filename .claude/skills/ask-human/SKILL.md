@@ -70,7 +70,13 @@ Today:
 **Option 3 — none of these / challenge the premise.** <What you would want to hear.>
 
 I'll wait for your answer before doing anything else.
+
+❓ QUESTION — <one line naming the decision>
 ```
+
+**The `❓ QUESTION` marker is the literal last line** — see `CLAUDE.md` § "Every reply ends with a
+status marker". It is mandatory on every reply, not just questions: a reply that asks nothing ends
+with `⏹ NO QUESTION — <what you are waiting on>` instead. The options always sit ABOVE the marker.
 
 ## Non-negotiable rules
 

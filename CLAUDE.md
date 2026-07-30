@@ -17,6 +17,35 @@ Repo-native slash skills live in `.claude/skills/` and reviewer agents in `.clau
 read in place, nothing is installed. `ls .claude/skills/` is the authoritative list — a count written
 in prose drifts, so none is written here.
 
+## Every reply ends with a status marker — NO EXCEPTIONS
+
+Developer directive, 2026-07-29. **The last line of every reply is exactly one of these two markers.**
+A reply without one is unfinished.
+
+```
+❓ QUESTION — <one line naming the decision>
+⏹ NO QUESTION — <what you are waiting on, or why you stopped>
+```
+
+**Why it exists:** without it the developer cannot tell a question from a pause — both are just prose
+that stopped — so they do not know whether the turn is waiting on them. The marker is the signal, not
+a decoration.
+
+- **`❓ QUESTION`** — you are BLOCKED and need a decision. The numbered options go in the **body,
+  above the marker**: recommended option FIRST with its reason, each option stating its own
+  pros/cons and resulting after-state, and a final *"none of these / challenge the premise"* escape.
+  Then stop and wait.
+  *(The directive as given said the marker is the last line AND that options "follow" it. Both cannot
+  hold, so this is the resolution: options in the body, marker last. Scanning for the marker at the
+  end is the whole point.)*
+- **`⏹ NO QUESTION`** — nothing is being asked. State explicitly what you are blocked on — a
+  background job, a build, a pending re-sign, or nothing at all — so the developer knows whether a
+  reply is needed.
+
+**Applies to every reply without exception**, including one-line answers, status updates, error
+reports and acknowledgements. Never end a turn with a bare question mark and no options. Never use an
+interactive question tool (see the section below) — the marker is plain text like everything else.
+
 ## Questions are plain text — `AskUserQuestion` is FORBIDDEN
 
 `AskUserQuestion` **times out in the cloud container**, so a question asked that way can hang the turn
