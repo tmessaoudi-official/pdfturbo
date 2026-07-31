@@ -392,13 +392,16 @@ Every user-visible string goes through `t()`; `escapeValue: true` is set
 (`i18n.ts:70`) — i18next HTML-escapes interpolated values, so the XSS surface is small.
 Still prefer `textContent` over `innerHTML` for any user/translation data, and never
 disable escaping. The three locale files must stay key-identical (a hook checks this on
-write). **Arabic review status (2026-07-30):** a native speaker reviewed the 15 keys then marked
-`ar [Unverified]` and found ONE issue, which turned out not to be one — see the `صف` vs `سطر` note
-below. Those entries now read `ar reviewed 2026-07-30`. A SECOND batch of 16 keys
-(`findReplace.*`, `docxEditor.deleteImage`, `docxToolbar.insertImage`,
-`sign.error.UNSUPPORTED_XREF`) was missed by the first pass and still carries `ar [Unverified]`.
-Sign-off covers STRING translations only — the RTL *rendering* ceilings (C18/C19: bracket
-mirroring, tashkeel/GPOS, list-marker placement) are untouched by it and remain open.
+write). **Arabic review status — STRINGS COMPLETE (2026-07-30):** a native speaker reviewed and validated
+**all 31 keys** that had carried `ar [Unverified]`, across two rounds (15, then a further 16 that the
+first extraction missed: `findReplace.*`, `docxEditor.deleteImage`, `docxToolbar.insertImage`,
+`sign.error.UNSUPPORTED_XREF`). Every entry now reads `ar reviewed 2026-07-30`, and **no Arabic value
+was changed** — the one issue reported turned out not to be one (see the `صف` vs `سطر` note below).
+Do not re-add `ar [Unverified]` to an existing key; NEW keys start unverified as before.
+**Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
+remain open: C18 (per-glyph select/copy/search precision), C19 (tashkeel/GPOS micro-positioning),
+bracket mirroring in the overlay, and RTL list-marker placement. A reviewed string can still render
+imperfectly — those are separate, and they need EH-B (HarfBuzz-WASM), not a translation pass.
 
 **`صف` (table row) vs `سطر` (text line) — do not "fix" one into the other.** The reviewer flagged
 `docxToolbar.addRow`/`deleteRow` as needing `سطر`, reading the French gloss *"Ajouter une ligne"*
@@ -1263,7 +1266,7 @@ shipped `validatePageIndex`/`validateRect` (typed `INVALID_PAGE`/`INVALID_RECT`)
 call `isPdfSigned` (it MUST accept an already-signed PDF — that's the point). **H3** exported
 `assertClassicXref(bytes, startxrefOffset)` refuses xref-STREAM / hybrid inputs (peek at the offset, require
 the literal `xref` keyword) with NEW typed `SignError('UNSUPPORTED_XREF')` (added to the union + 3 locales,
-ar [Unverified]; `signingHandler` maps `sign.error.${code}` dynamically so it's additive). **H4** coverage:
+ar reviewed 2026-07-30; `signingHandler` maps `sign.error.${code}` dynamically so it's additive). **H4** coverage:
 two DISTINCT certs (each sig verifies against its own embedded cert), triple-sign N>2 (3 ByteRanges valid,
 append-only prefix preserved), multi-page. `beforeAll` gets 60s (two RSA-2048 keygens; hookTimeout ≠ the 30s
 testTimeout). Classic-xref + ASCII-object only remains the documented input contract. **Approval model B (D1/D2) stays the default**
@@ -1437,7 +1440,7 @@ the bar's `run()` calls `update()` after each command so the counter refreshes e
 view-level hook; the central hook covers external doc edits. **Ceilings (v1):** matches do NOT cross paragraph
 boundaries (regex `^`/`$` anchor per block); replace formatting = match-start marks only (mixed-format matches
 collapse); table-cell text is not searched (tables aren't in the PM model until feature #3); PDF find/replace
-is the separate follow-up ("DOCX first, PDF after"). i18n `findReplace.*` in en/fr/ar (ar [Unverified]). Guards:
+is the separate follow-up ("DOCX first, PDF after"). i18n `findReplace.*` in en/fr/ar (ar reviewed 2026-07-30). Guards:
 `tests/docx/findReplace.test.ts` (15 pure), `tests/docx/findReplacePlugin.test.ts` (11), `tests/docx/findReplaceBar.test.ts`
 (7), `tests/browser/docx-find-replace.browser.test.ts` (real Chrome: Mod-f opens, decorations paint+cycle,
 replace-all keeps bold through save→reopen, table passes through).
@@ -1539,7 +1542,7 @@ rewrites `wp:extent` (+ inner `a:ext`) cx/cy ONLY when dims differ (byte-exact w
 (Phase-1 verbatim, never corrupt). `S` is identity-only (any block with a numeric anchorId); RESIZE additionally
 requires `image` (dims). **UI:** `src/docx/docxImageView.ts` NodeView — corner SE drag handle (px→pt ×0.75; base
 on the node's stored widthPt NOT getBoundingClientRect, which `max-width:100%` clamps; aspect-locked, Shift = free
-tracks dy independently) dispatching `setNodeMarkup`, + a ✕ button (`docxEditor.deleteImage`, ar [Unverified]) and
+tracks dy independently) dispatching `setNodeMarkup`, + a ✕ button (`docxEditor.deleteImage`, ar reviewed 2026-07-30) and
 Delete/Backspace on the selected atom. **Undo:** `prosemirror-history` (NEW dep, MIT) + `Mod-z`/`Mod-y` — the
 editor had NO undo before; resize/delete (and now typing) are undoable, composing with findReplacePlugin's
 single-tx replace-all. **Ceilings (v1):** image MOVE/reorder + new-image INSERT → v2; cell-nested images opaque;
@@ -1584,7 +1587,7 @@ an existing anchor with a fresh parse-time `anchorId`. **Ceiling (later sub-slic
 (slice 2 ▲▼+Alt), cut&paste (3), drag (4) — all sharing one save-side reorder built in slice 2; inline-
 with-text insert, cell-nested insert, non-PNG/JPEG, dedup-by-content all out of scope. The toolbar exposes
 `insertImage(bytes, mime, widthPt, heightPt)` for tests; an undecodable image (`createImageBitmap` throws,
-caught) still inserts at 0 dims. i18n `docxToolbar.insertImage` (en/fr/ar, ar [Unverified]). No new feature
+caught) still inserts at 0 dims. i18n `docxToolbar.insertImage` (en/fr/ar, ar reviewed 2026-07-30). No new feature
 flag (rides `VITE_FEATURE_DOCX_EDIT`); no `SCHEMA_VERSION` bump. Guards: `tests/docx/opcImagePart.test.ts`,
 `tests/docx/docImageInsert.test.ts` (incl. the insert-BEFORE-existing data-loss case that proves the
 ordering), the insertImage cases in `tests/docx/docxToolbar.test.ts`, and
