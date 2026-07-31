@@ -343,10 +343,19 @@ enumerates **every** `input`/`select`/`textarea` rather than four hand-picked id
 third test that fails if an entry becomes stale — so a fixed control cannot be left in the list. Proven
 non-vacuous: reverting `index.html` fails 2 of the 3 and names all 16.
 
-**13 controls remain unnamed and are NOT a budget:** 5 hidden file/colour inputs driven by a button
-(axe skips hidden nodes), and 8 with no adjacent label at all — `shapeWidth`, `signX/Y/W/H`,
-`blankPageW/H`, `pdfPasswordInput`. Each needs a NEW `data-i18n-aria` key in **en/fr/ar**, and Arabic is
-a reviewed surface (§ i18n), which is why they were deliberately not bundled into the string-free pass.
+**The remaining 8 were closed the same day, with ZERO new i18n keys** — and the measurement that made
+that possible is the reusable lesson. They were **never axe violations**: accname falls back to
+`placeholder`, then `title`, so Chrome computed a name for every one and axe reported nothing. The
+defect was the *fragility* of that fallback, and `#pdfPasswordInput` is the proof — it announced its
+placeholder `"Enter password…"` while a perfectly good `<label>Password</label>` sat unassociated
+directly above it. **Do not budget new strings for this class before probing Chrome's computed name;
+the keys the placeholders already reference are the keys you need.** Fixes: `for=` on the password
+label; `role="group"` + `aria-labelledby` on the `signX/Y/W/H` and `blankPageW/H` rows so a bare `"X"`
+is announced with its group label; `data-i18n-aria` reusing the existing placeholder/title keys.
+
+`UNNAMED_OK` is therefore down to **5** — hidden file/colour inputs that exist only to be `.click()`ed
+by a visible button. That is a coherent permanent category, not a backlog: axe skips hidden nodes and
+no user can focus them.
 
 ### Live-app a11y: 3 serious WCAG rules fixed, and why the static gate missed them (2026-07-29)
 
@@ -378,17 +387,25 @@ reach these. Keep both gates; they answer different questions. Fixes:
    (4.65) / `#087d55` (5.15). `.toolbar-label` `#64748b` on `#f0f4f8` was **4.3:1** → `#616a78`
    (4.95). Both are the *lightest* values clearing 4.5:1, so the visual delta is minimal. `#64748b`
    elsewhere sits on white (4.76:1) and is left alone.
-3. **`scrollable-region-focusable` (1 node) — REVERTED 2026-07-30, and knowingly accepted.**
-   `#canvasContainer` was briefly changed `tabindex="-1"` → `"0"` to satisfy the rule. The developer
-   ruled to keep the strict skip-nav idiom (`-1`) instead, so the landmark stays out of the tab order
-   and a keyboard user reaches the page content without an extra stop. **The violation is real and
-   still there**: a keyboard-only user cannot arrow-scroll a region whose content (a rendered page) is
-   not focusable. It is listed in `scripts/qa-sweep.mjs` `A11Y_ACCEPTED`, which keeps the deploy gate
-   from vetoing the ruling and reports it as `ACCEPT` on every run — never silently dropped, and
-   counted in the summary line. `tests/ui/indexHtmlA11y.test.ts` asserts `-1` and carries the
-   reasoning. **The genuine fix is open, not refused:** give the scroll region focusable CONTENT, and
-   the rule passes with `-1` intact. Note the static test cannot see this either way — its DOM never
-   scrolls.
+3. **`scrollable-region-focusable` (1 node) — FIXED 2026-07-31, and the ruling below still stands.**
+   The rule is satisfied by the region containing focusable **content**, not only by the region itself
+   being focusable — so `#pdfCanvas` (which already had `role="img"` + an i18n aria-label) is now
+   `tabindex="0"`, and `#canvasContainer` keeps its `tabindex="-1"`. Both halves are asserted in
+   `tests/ui/indexHtmlA11y.test.ts`. Verified live with a document loaded: the violation is present
+   before and absent after, and with the canvas focused ArrowDown genuinely scrolls the region
+   (`scrollTop` 20 → 100) — the keyboard access the rule exists to protect, actually working.
+   **`A11Y_ACCEPTED` in `scripts/qa-sweep.mjs` is now EMPTY**, so the deploy gate has zero accepted
+   exceptions; keep it that way. The history below is kept because the trade-off it describes is real
+   and someone will re-propose `tabindex="0"` on the landmark:
+   `#canvasContainer` was briefly changed `tabindex="-1"` → `"0"` on 2026-07-29 to satisfy the rule.
+   The developer ruled on 2026-07-30 to keep the strict skip-nav idiom (`-1`) instead, so the landmark
+   stays out of the tab order and a keyboard user reaches the page content without an extra stop —
+   **that ruling was never overturned and still holds.** For one day the violation was therefore left
+   open and carried as the sole `A11Y_ACCEPTED` entry, reported as `ACCEPT` on every run rather than
+   hidden. What resolved it was noticing the rule accepts focusable *content*, so the landmark and the
+   rule were never actually in conflict — only the first fix attempt was. The lesson worth keeping:
+   **when a gate and a ruling appear to collide, re-read the rule before accepting a hole in the
+   gate.** Note the static test cannot see the rule either way — its DOM never scrolls.
 
 **Do not "fix" a contrast report without checking `opacity` has reached 1.** axe reads *composited*
 colour, so a control caught mid fade-in reports the blend over the toolbar: `#textModeBtn` at

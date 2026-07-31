@@ -108,7 +108,7 @@
           <button id="arrowBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.arrowTitle" title="Arrow (A)">→</button>
           <button id="rectBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.rectTitle" title="Rectangle (R)">□</button>
           <button id="circleBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.circleTitle" title="Circle (C)">○</button>
-          <input type="number" id="shapeWidth" value="2" min="1" max="20" class="toolbar-number" disabled data-i18n-title="toolbar.shapeWidthTitle" title="Line width (px)">
+          <input type="number" id="shapeWidth" data-i18n-aria="toolbar.shapeWidthTitle" value="2" min="1" max="20" class="toolbar-number" disabled data-i18n-title="toolbar.shapeWidthTitle" title="Line width (px)">
           <input type="color" id="redactColor" value="#000000" class="toolbar-color" data-i18n-title="toolbar.redactColorTitle" title="Redact color" style="display:none">
           <button id="redactEyedropperBtn" class="btn btn-icon btn-sm" disabled data-i18n-title="toolbar.eyedropperTitle" title="Pick color from screen (eyedropper)" style="display:none">🖊</button>
         </div>
@@ -219,7 +219,7 @@
     <div id="emptyState" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#5b6571;font-size:18px;pointer-events:none;z-index:1;">
       <span data-i18n="canvas.emptyState">Upload a PDF to get started</span>
     </div>
-    <canvas id="pdfCanvas" role="img" data-i18n-aria="canvas.ariaLabel"></canvas>
+    <canvas id="pdfCanvas" tabindex="0" role="img" data-i18n-aria="canvas.ariaLabel"></canvas>
     <div id="exportPreviewOverlay" class="export-preview-overlay" style="display:none">
       <div class="export-preview-banner">
         <span data-i18n="modal.exportPreview.banner">This is where your annotations will appear in the exported PDF.</span>
@@ -583,12 +583,12 @@
       <input type="number" id="signPage" min="1" step="1" value="1">
     </div>
     <div class="code-field">
-      <label data-i18n="modal.sign.positionLabel">Signature box (points: X, Y, width, height)</label>
-      <div class="sign-rect-row" style="display:flex;gap:6px">
-        <input type="number" id="signX" step="1" value="360" data-i18n-placeholder="modal.sign.x" placeholder="X" style="width:25%">
-        <input type="number" id="signY" step="1" value="40" data-i18n-placeholder="modal.sign.y" placeholder="Y" style="width:25%">
-        <input type="number" id="signW" step="1" value="200" data-i18n-placeholder="modal.sign.width" placeholder="W" style="width:25%">
-        <input type="number" id="signH" step="1" value="64" data-i18n-placeholder="modal.sign.height" placeholder="H" style="width:25%">
+      <label id="signRectGroupLabel" data-i18n="modal.sign.positionLabel">Signature box (points: X, Y, width, height)</label>
+      <div class="sign-rect-row" role="group" aria-labelledby="signRectGroupLabel" style="display:flex;gap:6px">
+        <input type="number" id="signX" data-i18n-aria="modal.sign.x" step="1" value="360" data-i18n-placeholder="modal.sign.x" placeholder="X" style="width:25%">
+        <input type="number" id="signY" data-i18n-aria="modal.sign.y" step="1" value="40" data-i18n-placeholder="modal.sign.y" placeholder="Y" style="width:25%">
+        <input type="number" id="signW" data-i18n-aria="modal.sign.width" step="1" value="200" data-i18n-placeholder="modal.sign.width" placeholder="W" style="width:25%">
+        <input type="number" id="signH" data-i18n-aria="modal.sign.height" step="1" value="64" data-i18n-placeholder="modal.sign.height" placeholder="H" style="width:25%">
       </div>
       <button type="button" id="signPickRect" class="btn btn-secondary" style="margin-top:6px" data-i18n="modal.sign.pickOnPage">Pick on page</button>
     </div>
@@ -728,13 +728,13 @@
       </select>
     </div>
 
-    <div id="blankPageCustomSize" style="display:none;margin-bottom:14px;gap:8px;flex-wrap:wrap;">
-      <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;" data-i18n="modal.blankPage.customLabel">Custom size (mm)</label>
+    <div id="blankPageCustomSize" role="group" aria-labelledby="blankPageCustomLabel" style="display:none;margin-bottom:14px;gap:8px;flex-wrap:wrap;">
+      <label id="blankPageCustomLabel" style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;" data-i18n="modal.blankPage.customLabel">Custom size (mm)</label>
       <div style="display:flex;gap:8px;align-items:center;">
-        <input type="number" id="blankPageW" data-i18n-placeholder="modal.blankPage.widthPlaceholder" placeholder="Width" min="50" max="2000" value="210"
+        <input type="number" id="blankPageW" data-i18n-aria="modal.blankPage.widthPlaceholder" data-i18n-placeholder="modal.blankPage.widthPlaceholder" placeholder="Width" min="50" max="2000" value="210"
                style="width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
         <span style="color:#64748b;">×</span>
-        <input type="number" id="blankPageH" data-i18n-placeholder="modal.blankPage.heightPlaceholder" placeholder="Height" min="50" max="2000" value="297"
+        <input type="number" id="blankPageH" data-i18n-aria="modal.blankPage.heightPlaceholder" data-i18n-placeholder="modal.blankPage.heightPlaceholder" placeholder="Height" min="50" max="2000" value="297"
                style="width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
         <span style="color:#64748b;font-size:12px;">mm</span>
       </div>
@@ -779,7 +779,7 @@
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#1e293b;border-radius:12px;padding:28px 32px;min-width:320px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.4);">
     <h3 id="pdfPasswordModalTitle" data-i18n="modal.pdfPassword.title" style="margin:0 0 16px;font-size:16px;font-weight:600;color:#f1f5f9;">This PDF is password-protected</h3>
-    <label style="display:block;margin-bottom:6px;font-size:13px;color:#94a3b8;" data-i18n="modal.pdfPassword.passwordLabel">Password</label>
+    <label for="pdfPasswordInput" style="display:block;margin-bottom:6px;font-size:13px;color:#94a3b8;" data-i18n="modal.pdfPassword.passwordLabel">Password</label>
     <div style="display:flex;gap:6px;margin-bottom:16px;">
       <input type="password" id="pdfPasswordInput" autocomplete="current-password"
         style="flex:1;padding:8px 10px;border-radius:7px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:14px;"

@@ -114,17 +114,12 @@ const EXPORTERS = ['downloadBtn', 'exportDocxBtn', 'exportMdBtn', 'exportTableBt
 // Each entry is reported as ACCEPTED (never silently dropped) so it stays visible in every run, and
 // carries the reason so a future reader can re-litigate it instead of guessing.
 // Keep this list at zero entries wherever possible — it is a hole in the gate by construction.
-const A11Y_ACCEPTED = [
-  {
-    rule: 'scrollable-region-focusable',
-    target: '#canvasContainer',
-    why: 'Developer ruling 2026-07-30: keep the strict skip-nav idiom (tabindex="-1") on the main '
-       + 'landmark rather than add a tab stop before the page content. The trade-off is real and is '
-       + 'documented in CLAUDE.md § Live-app a11y and tests/ui/indexHtmlA11y.test.ts. The genuine fix '
-       + '(give the scroll region focusable CONTENT, so the rule passes with tabindex="-1" intact) is '
-       + 'open, not refused.',
-  },
-];
+// EMPTY, and worth keeping that way. It held exactly one entry — `scrollable-region-focusable` on
+// #canvasContainer — from 2026-07-30 until 2026-07-31, when the fix it described as "open, not
+// refused" was actually done: #pdfCanvas (the region's CONTENT) is now tabindex="0", so the rule
+// passes with the main landmark's tabindex="-1" ruling fully intact. The gate now has zero accepted
+// exceptions; every critical/serious axe finding blocks the deploy.
+const A11Y_ACCEPTED = [];
 const isAccepted = (ruleId, targets) => A11Y_ACCEPTED.some(a =>
   a.rule === ruleId && targets.some(t => String(t).includes(a.target)));
 

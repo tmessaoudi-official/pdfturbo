@@ -62,6 +62,26 @@ describe('index.html — accessibility landmarks', () => {
     expect(main?.getAttribute('tabindex')).toBe('-1');
   });
 
+  // The other half of the ruling above, and what finally let scripts/qa-sweep.mjs drop its last
+  // A11Y_ACCEPTED entry. axe's `scrollable-region-focusable` (serious) wants a scrollable region to be
+  // keyboard-reachable; it is satisfied by the region containing focusable CONTENT, not only by the
+  // region itself being focusable. #pdfCanvas IS the content, and it already carries role="img" plus
+  // an i18n aria-label, so making it the tab stop names it properly too.
+  //
+  // Verified live 2026-07-31 with a document loaded (this static DOM never scrolls, so the rule can
+  // only be checked in the running app): the violation is present before and absent after, and with
+  // the canvas focused ArrowDown genuinely scrolls the region — #canvasContainer.scrollTop 20 -> 100.
+  // Both halves must hold together: landmark -1 (above) AND focusable content (here).
+  it('makes the page canvas focusable, so the scroll region is keyboard-reachable', () => {
+    const canvas = doc.getElementById('pdfCanvas');
+    expect(canvas, '#pdfCanvas must exist').not.toBeNull();
+    expect(canvas?.getAttribute('tabindex')).toBe('0');
+    // A focusable region needs a name as much as a label does.
+    const named = (canvas?.hasAttribute('data-i18n-aria') ?? false)
+      || (canvas?.hasAttribute('aria-label') ?? false);
+    expect(named, '#pdfCanvas is a tab stop, so it needs an accessible name').toBe(true);
+  });
+
   it('has a skip-nav link pointing at the main landmark', () => {
     const skip = doc.querySelector('a.skip-link') as HTMLAnchorElement | null;
     expect(skip).not.toBeNull();
@@ -118,16 +138,26 @@ describe('index.html — accessible names on toolbar inputs', () => {
   // announced an unnamed combo box / text field. Enumerate the class here so the live gate never has
   // to be the one that catches it.
   //
-  // UNNAMED_OK is a DECLINING allowlist, not a budget: every entry is a real remaining gap that needs
-  // a new i18n key in all three locales (Arabic included, which is a reviewed surface — see CLAUDE.md
-  // § i18n), so it is deliberately not fixed in the same pass as the string-free `for=` work. Adding
-  // an id here needs a reason; removing one is always welcome.
+  // What "unnamed" means HERE, precisely — the first version of this comment overstated it.
+  // These controls are NOT axe violations and never were: measured live in Chrome on 2026-07-31, the
+  // accname algorithm falls back to `placeholder` and then `title`, so every one of them DOES expose
+  // a name and axe reported zero violations for the whole set. This test enforces a deliberately
+  // STRICTER bar than axe — an EXPLICIT association (`label[for]`, `aria-label(ledby)`,
+  // `data-i18n-aria`, or a wrapping label) — because the fallback is fragile:
+  //   - a placeholder is the same mechanism that made #batesPrefix announce "ACME-", i.e. an example
+  //     value masquerading as a field name, and #pdfPasswordInput announced "Enter password…" while
+  //     a perfectly good <label>Password</label> sat unassociated right above it;
+  //   - `title` as a name is a last-resort fallback that some AT and most touch UIs never surface.
+  // Fixed 2026-07-31 with ZERO new i18n keys, by reusing the keys those placeholders/titles already
+  // referenced and adding role="group"/aria-labelledby so the grouped X/Y/W/H spin buttons are
+  // announced with their group label instead of a bare "X".
+  //
+  // UNNAMED_OK is a DECLINING allowlist, not a budget. What remains is one coherent category, not a
+  // backlog: hidden inputs that exist only to be `.click()`ed by a visible button. axe skips hidden
+  // nodes, no user can focus them, and naming them would be decoration. Adding an id here needs a
+  // reason; removing one is always welcome.
   const UNNAMED_OK = new Set([
-    // Hidden file/colour inputs driven entirely by a button; axe skips hidden nodes.
     'fileInput', 'addImageInput', 'addPdfInput', 'xfdfInput', 'redactColor',
-    // Have NO adjacent label at all — each needs a new aria-label key in en/fr/ar.
-    'shapeWidth', 'signX', 'signY', 'signW', 'signH',
-    'blankPageW', 'blankPageH', 'pdfPasswordInput',
   ]);
 
   function unnamedControls(): string[] {
