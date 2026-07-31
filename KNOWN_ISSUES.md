@@ -46,7 +46,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 | C7 | DOCX CJK font-face | No universal CJK family; content preserved, face approximate | Word's own fallback renders the codepoints |
 | C8 | DOCX char-level bidi / mixed LTR+RTL single line | Word-level reorder only | EH-B |
 | C9 | DOCX **borderless** tables | No ruled lines to detect | EH-E |
-| C10 | DOCX 3+ column recursive layout | Reconstructor is 2-column | Recursive XY-cut (research-grade) |
+| C10 | DOCX **4+** column layout | Recursive XY-cut ships (B6) but is depth-capped; 3 columns work, 4 measured as 3 groups | Deeper recursion / a looser gutter threshold. Corrected 2026-07-31 — this row previously said "Reconstructor is 2-column", which B6 had already made false |
 | C11 | DOCX internal GoTo links / sheared images / ICC spot colour | No DOCX representation / no client ICC engine | EH-D. External URL links already work |
 | C12 | Markup-annotation flatten | pdf-lib has no generic markup-flatten API | Raster path (covers the redaction-rasterise case) |
 | C13 | Borderless table → CSV | No grid lines | EH-E |

@@ -148,10 +148,19 @@ A11Y  a11y (WCAG 2.1 AA) — color-contrast:serious(2), …
 Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 ```
 
-Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots. Baseline for comparison
-(2026-07-29, no `--allow-destructive`): **142 checks · 98 pass · 0 fail · 0 warn · 44 skip ·
-0 a11y** over 89 distinct controls, converging in ~1m20s. With `--allow-destructive`:
-**145 · 107 · 0 · 0 · 36 · 0** plus 1 a11y-accepted-by-decision (what CI runs). Entry count is lower than distinct-controls × 1 because the DFS
-revisits some controls at different depths (53 redundant revisits) — compare DISTINCT controls,
-not the entry total, when judging whether a run lost coverage. A run that reports materially fewer checks
-than this has probably failed to reach the surface — investigate before trusting a green summary.
+Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots.
+
+**Baseline, `--allow-destructive` (what CI runs), measured 2026-07-31:**
+**149 checks · 113 pass · 0 fail · 0 warn · 36 skip · 0 a11y · 0 accepted-by-decision**, over
+**65 distinct controls of 139** in the DOM, in ~2 min including the 5 workflow scenarios.
+
+Read the numbers in this order, because two of them mislead on their own:
+
+- **Distinct controls, not the check total.** The DFS revisits some controls at different depths, so
+  the entry count exceeds distinct coverage. The report's `Exercised N distinct control(s) of M` line
+  is the honest figure; a `0 fail` over 65 of 139 is not a clean bill of health.
+- **`0 accepted-by-decision` is load-bearing.** `A11Y_ACCEPTED` was emptied on 2026-07-31 when the last
+  exception (`scrollable-region-focusable`) was properly fixed. A run reporting an `ACCEPT` line means
+  someone re-opened a hole in the gate — find out why before shipping.
+- A run reporting materially fewer checks than this has probably failed to reach the surface at all.
+  Investigate before trusting a green summary.

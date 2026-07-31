@@ -20,9 +20,24 @@ here as an absence of a limit; read [`KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md) f
 
 ## Ceiling → guard cross-reference (C1–C21)
 
-Where each structural ceiling is actually pinned. The point of the table is the last group: five
-ceilings are asserted **nowhere**, which is a real gap and is stated as one rather than left to be
-inferred from a count. Adding them is a deliberate new effort, not a gap-fill.
+Where each structural ceiling is actually pinned.
+
+**Two corrections from the 2026-07-31 pass, both worth reading before trusting any row here.**
+
+1. **C10's ceiling was written down wrong, in two places.** `KNOWN_ISSUES.md` said "Reconstructor is
+   2-column" and the first version of this table said only 1- and 2-column were exercised. Both were
+   already false: B6 shipped the recursive XY-cut (`splitColumns`, `COLUMN_MAX_DEPTH = 2`) and
+   `tests/utils/flowDocColumns.test.ts` has asserted 3 columns ever since. The real boundary was found
+   by measuring, not reading: **4 evenly-spaced columns yield 3 groups**, because the gutter search is
+   restricted to the inner 20–80% of each region with a 5% minimum gap, so a level can decline to split
+   even below the depth cap. A ceiling table is only as good as its last measurement — re-measure before
+   citing a row.
+2. **C11 is deliberately NOT pinned.** Its DOCX half is an inline predicate inside the private
+   `ExportService._extractFlowDoc` (`a.subtype === 'Link' && typeof a.url === 'string'`). Pinning it
+   would mean either booting the whole service or copying the predicate into a test — and a copy pins
+   nothing, since it cannot fail when the original changes. That is exactly the vacuous-assertion trap
+   this file warns about below. It becomes pinnable the day that predicate is extracted as a named pure
+   function; until then, "no test" is the honest state and is recorded as such.
 
 | Ceiling | Pinned by | Where |
 |---|---|---|
@@ -39,11 +54,11 @@ inferred from a count. Adding them is a deliberate new effort, not a gap-fill.
 | C13 borderless → CSV | yes — same lattice-only detection | `utils/flowDocTable.test.ts`, `browser/table-extract.browser.test.ts` |
 | C14 Arabic searchable-OCR search | yes — the "Arabic honest contract" case | `browser/searchable-ocr.browser.test.ts` |
 | C18 RTL layer select/copy/search | yes — item-level highlight pinned | `browser/arabic-search.browser.test.ts`, `browser/arabic-selection.browser.test.ts` |
-| **C10** 3+ column layout | **NO** — only 1- and 2-column are exercised; nothing asserts how a 3-column page degrades | — |
-| **C11** internal GoTo / sheared image / ICC spot | **NO** — external `/URI` links are covered, the ceiling itself is not | — |
-| **C12** markup-annotation flatten | **NO** — a source comment in `export/exportService.ts` only | — |
-| **C19** Arabic tashkeel / GPOS | **NO** — source comments in `export/arabicOverlay.ts` only | — |
-| **C21** raster ink, no per-stroke edit | **NO** — `core/inkLayer.test.ts` covers the *vector* stroke model, not the raster limit | — |
+| C10 4+ column layout | yes — 3 columns work, 4 measured as 3 groups | `blockers/layout-flatten.blockers.test.ts` |
+| C12 markup-annotation flatten | yes — a `/Text` note survives `getForm().flatten()` | `blockers/layout-flatten.blockers.test.ts` |
+| C19 Arabic tashkeel / GPOS | yes — marks reach the glyph stream; placement not asserted | `browser/ceilings.browser.test.ts` |
+| C21 raster ink, no per-stroke edit | yes — the bake returns a PNG data URL | `browser/ceilings.browser.test.ts` |
+| **C11** internal GoTo / sheared image / ICC spot | **NO**, and deliberately so — see below | — |
 | C5 PDF→DOCX pixel identity | **unencodable** — definitional (fixed-layout → reflowable); no assertion expresses it | — |
 | C15 OCR accuracy | **unencodable** — bounded by a non-deterministic LSTM model; evidence-only by design | — |
 | C20 XFDF Acrobat byte-exactness | **unencodable in-repo** — no Acrobat to compare against; the internal round-trip is the guarantee | `export/xfdfExport.test.ts`, `export/xfdfImport.test.ts` |

@@ -42,19 +42,17 @@ describe('index.html — accessibility landmarks', () => {
     expect(mains.length).toBe(1);
   });
 
-  // tabindex is "-1": the classic skip-nav idiom. Briefly "0" on 2026-07-29, reverted 2026-07-30 by
-  // developer ruling. Two a11y goals genuinely collide here:
-  //   - Skip-nav target (this ruling): `-1` keeps the landmark out of the tab order, so a keyboard
-  //     user reaches the page content without an extra stop. The skip link lands on it either way.
-  //   - WCAG 2.1.1 keyboard access: the canvas viewer is a SCROLLABLE region whose content (a
-  //     rendered page) is not focusable, so with `-1` a keyboard-only user cannot reach or
-  //     arrow-scroll it. axe flags this as `scrollable-region-focusable` (serious) against the LIVE
-  //     app, where the region actually scrolls — the static DOM here never does, which is why this
-  //     file cannot catch it.
-  // The violation is therefore REAL and knowingly accepted: scripts/qa-sweep.mjs lists it in
-  // A11Y_ACCEPTED so the deploy gate does not veto the ruling, and reports it as ACCEPT on every run
-  // rather than hiding it. The genuine fix — give the scroll region focusable CONTENT so the rule
-  // passes with `-1` intact — is open, not refused.
+  // tabindex is "-1": the classic skip-nav idiom, keeping the landmark out of the tab order so a
+  // keyboard user reaches the page content without an extra stop. Briefly "0" on 2026-07-29 to satisfy
+  // axe's `scrollable-region-focusable`, reverted 2026-07-30 by developer ruling, and that ruling
+  // stands. It looked for a day like two a11y goals were in conflict — skip-nav vs WCAG 2.1.1 keyboard
+  // access to a scrollable region — and the violation was carried as an accepted exception in
+  // scripts/qa-sweep.mjs A11Y_ACCEPTED.
+  //
+  // They were never actually in conflict. The rule is satisfied by the region containing focusable
+  // CONTENT, so #pdfCanvas is now tabindex="0" (asserted below) and this stays "-1". Only the first fix
+  // attempt was wrong. A11Y_ACCEPTED is empty again. Note this file still cannot see the rule either
+  // way — its static DOM never scrolls — which is why the live sweep is the gate for it.
   it('exposes the canvas viewer as the main landmark, kept out of the tab order (skip-nav idiom)', () => {
     const main = doc.querySelector('main, [role="main"]') as HTMLElement | null;
     expect(main).not.toBeNull();

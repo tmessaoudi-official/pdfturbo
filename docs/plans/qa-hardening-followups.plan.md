@@ -26,6 +26,18 @@ and 4 add test files only.
   rasterizing, so the attributes are applied by already-pixel-guarded code. Task 3 is rescoped to
   what is genuinely unguarded: their survival through the extra rasterize → `embedPng` round-trip.
 
+- [2026-07-31 12:35] AGREED: **C10 was documented wrong in two places** and is corrected rather than
+  pinned as stated. B6 already shipped the recursive XY-cut and 3 columns have been passing in
+  `tests/utils/flowDocColumns.test.ts` ever since, so `KNOWN_ISSUES.md`'s "Reconstructor is 2-column"
+  and this morning's own README row ("only 1- and 2-column are exercised") were both false. Measured
+  boundary: **4 columns yield 3 groups** — the gutter search's inner-20–80% zone and 5% min-gap bite
+  before the depth cap does.
+- [2026-07-31 12:38] AGREED: **C11 stays unpinned, deliberately.** Its DOCX half is an inline predicate
+  inside the private `ExportService._extractFlowDoc`; pinning it needs either booting the service or
+  copying the predicate, and a copy cannot fail when the original changes. Recorded as "no test" with
+  the reason, rather than satisfied with a vacuous assertion. It becomes pinnable if that predicate is
+  ever extracted as a named pure function.
+
 ## Formal Plan
 
 ### Task 1 — explicit accessible names for the remaining controls
