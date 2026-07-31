@@ -264,6 +264,26 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### A ceiling table is only as good as its last measurement — C10 was wrong in two places (2026-07-31)
+
+`KNOWN_ISSUES.md` listed **C10** as *"DOCX 3+ column recursive layout — Reconstructor is 2-column"*.
+That had been false since B6: `splitColumns` **is** recursive (`COLUMN_MAX_DEPTH = 2`) and
+`tests/utils/flowDocColumns.test.ts` has asserted *"3 columns → three groups"* ever since. A same-day
+cross-check table in `tests/blockers/README.md` repeated the error from the other direction ("only 1-
+and 2-column are exercised") because it was written from the ceiling text instead of from the tests.
+
+The real boundary came from measuring, and it is not the depth arithmetic either: **4 evenly-spaced
+columns yield 3 groups, not 4**, because the gutter search is restricted to the inner 20–80% of each
+region with a 5% minimum gap, so a level can decline to split well before the cap. Pinned in
+`tests/blockers/layout-flatten.blockers.test.ts` at the boundary (3 works, 4 under-splits, words are
+never lost — it degrades reading order, not content).
+
+**The habit this should buy: re-measure a ceiling before citing it, and write the pin from the code
+rather than from the prose.** Two documents agreed with each other and both were wrong, which is
+exactly the failure a green test suite cannot catch. `C11` is the counter-case in the same pass — left
+unpinned on purpose, because its only testable surface is an inline predicate in a private method and a
+copied predicate pins nothing.
+
 ### `/qa-sweep` reaches 64 of 139 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
 The sweep's `0 fail` covers **64 distinct controls of 139 in the DOM**. Every report now ends with
@@ -950,9 +970,15 @@ sets `colorInput.value` + applies). Bake (`pdfElementRenderer.renderText`): bg r
 via the shared highlight/redaction `anchorForCenter`) + `fontSize * (lineHeight ?? 1.2)` + `opacity ?? 1` threaded
 to text/decoration/rect. Discrete **L/C/R align buttons** (the old cycle stays for back-compat); the active one
 gets `btn-active-fmt`, synced in `uiController.updateFormattingToolbar`. **Non-obvious:** (1) the **raster export
-path** (`exportPipeline.ts`, used for redaction-bearing pages + thumbnails) ALSO honors lineHeight/opacity/
-backgroundColor now (`globalAlpha` scoped inside the existing `ctx.save()/restore()`), but is **code-reviewed,
-NOT pixel-test-guarded** — the primary vector bake IS; (2) the editor `<textarea>` preview now sets
+path** (`exportPipeline.ts`, used for redaction-bearing pages + thumbnails) honors lineHeight/opacity/
+backgroundColor because it calls the SAME `renderText` — **corrected 2026-07-31**: this used to claim
+`globalAlpha` scoped inside `ctx.save()/restore()`, which describes code that does not exist (`globalAlpha`
+appears nowhere in `src/`; the only `ctx.save()/restore()` pair in `exportPipeline.ts` is in the **ink stroke**
+rasterizer). There is exactly ONE text renderer, and `rasterizePageWithRedactions` runs it via
+`buildPageOverlays` BEFORE rasterizing, so the attrs ride the pixel-guarded vector code. What was genuinely
+unguarded is their survival through the extra **rasterize → `embedPng` round-trip**, now covered by
+`tests/browser/raster-text-attrs.browser.test.ts` (opacity 0.5 must read PINK, not red — injecting
+`opacity: 1` on the bg rect fails that case and only that case); (2) the editor `<textarea>` preview now sets
 `style.lineHeight` (`_applyInputFormatting`) for parity with the bake. No feature flag (additive core-toolbar
 improvement). Guards:
 `tests/core/formattingService.test.ts`, `tests/utils/{textCase,recentColors}.test.ts`,
@@ -990,7 +1016,9 @@ i18n `formatting.{justify,stroke,charSpacing,horizontalScale,baseline,superscrip
 [Unverified]). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
 (attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path NOW applies stroke/Tc/Tz
 too (Feature 4, 2026-06-24 — see below); the **raster export path** (`exportPipeline.ts`, redaction pages +
-thumbnails) is code-reviewed for these attrs, NOT pixel-guarded — the vector bake IS. Guards: `tests/export/styledText.test.ts`
+thumbnails) applies these attrs through the same `renderText` and its rasterize round-trip is pixel-guarded
+since 2026-07-31 by `tests/browser/raster-text-attrs.browser.test.ts` (see the correction in Slice 1 above —
+`stroke`/`Tc`/`Tz` specifically are still vector-guarded only). Guards: `tests/export/styledText.test.ts`
 (pure `hasAdvancedText`/`effectiveLineWidth`), `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,
 uiController}.test.ts`, `tests/browser/text-toolbar-slice2.browser.test.ts` (real Chrome: pdf.js OPS-38
 `setTextRenderingMode` present in styled / ABSENT in plain → catches a silent regression to `drawText`).
