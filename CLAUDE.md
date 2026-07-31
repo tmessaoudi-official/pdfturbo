@@ -264,6 +264,40 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### `/qa-sweep` reaches 64 of 139 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
+
+The sweep's `0 fail` covers **64 distinct controls of 139 in the DOM**. Every report now ends with
+`Exercised N distinct control(s) of M` and **names** the rest, because 31 `SKIP became hidden` lines
+buried among 150 entries read as thorough and are not. **Read that line before claiming the sweep
+covers a feature** — `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn` and the
+DOCX/MD/XFDF export buttons are **never clicked** (a `deploy.yml` comment claimed otherwise; corrected).
+
+**The cause is the product, not the driver.** `modalBinder.ts` registers the export flyout with
+`closeWhen: 'any-click'`, and each file-menu item removes `.open` from its wrap in its own handler — so
+the app shuts the container as soon as one child is used and every later sibling is legitimately hidden.
+Only re-opening the toggle once per child could reach them. **Four shapes of that were built and
+measured; all lost coverage overall** against the baseline `150 checks / 112 pass / 0 warn / 36 skip`:
+
+| attempt | checks | pass | warn | skip |
+|---|---|---|---|---|
+| unwind only when something was revealed | 143 | 81 | 30 | 30 |
+| re-click any parent when a sibling went hidden | 107 | 54 | 38 | 13 (+1 FAIL) |
+| re-click flyout/menu toggles only | 132 | 78 | 33 | 21 |
+| separate post-crawl container pass | 170 | 112 | 0 | 55 (+1 FAIL; a variant hung 15 min) |
+
+A hidden-SKIP and a `blocked by` WARN are **the same phenomenon** — a container in the way — so trading
+one for the other buys nothing and costs stability. The numbers live in `exercise()`; do not re-attempt
+without beating them. Two traps found along the way, both worth knowing: `unwind()` inspects only the
+**page centre**, so it is structurally blind to a toolbar flyout (which is why a naive re-open *closed*
+them); and `exercise()` marks a control `visited` **before** its visibility check, so a second pass that
+guards on `visited` silently skips exactly the controls it exists to reach.
+
+Two robustness fixes landed from this: `page.setDefaultTimeout(6_000)` after boot (Playwright's 30s
+default made 40 covered undo-clicks in the scenario reset hang the run for **20 minutes** with no
+output — in CI a job timeout, i.e. an unactionable red), and crash containment around the crawl (this
+container's Chromium SIGSEGVs non-deterministically; it used to throw out of `main()` → exit 2, **no
+report and no CI artifact**. Now it records the crash and still prints).
+
 ### A flaky gate: never scan a whole PDF for a short byte sequence (2026-07-30)
 
 `tests/browser/arabic-overlay.browser.test.ts` asserted
@@ -289,6 +323,30 @@ does not match the real stream. 8/8 consecutive runs green.
 
 **The general rule:** a byte-level assertion on a container format must be scoped to the decoded part
 it is actually about. Whole-file `toContain` over compressed data is a coin flip.
+
+### A CRITICAL a11y rule the gates could barely see: `<label>` with no `for=` (2026-07-31)
+
+`/qa-sweep` caught axe `select-name` (**critical** — a tier above the three `serious` rules fixed on
+2026-07-29) on `#blankPageSize`/`#blankPagePosition`, and caught it **by luck**: the rule fires only
+while a control is VISIBLE, so it needed a run that happened to leave `blankPageModal` open. The cause
+was systemic — **16 controls** sat beside a bare `<label>` with no `for=`, i.e. a visible label with
+**zero** programmatic association to the sibling it labels. Chrome's own computed name, before → after:
+`combobox:` (nameless) → `combobox "Mode"`. Worse, `#batesPrefix` reported `textbox "ACME-"` — it was
+falling back to its **placeholder**, so AT announced an example value as the field's name.
+
+Fixed by adding `for=` to all 16 (pure markup, existing i18n keys, no new strings; the labels also
+become click targets, which is a bonus not a risk — nothing in `src/` reads label structure).
+
+**The gate is now static, because the live one cannot be trusted for this.** `tests/ui/indexHtmlA11y.test.ts`
+enumerates **every** `input`/`select`/`textarea` rather than four hand-picked ids: zero unnamed
+`<select>` (that rule is critical), plus a **declining allowlist** `UNNAMED_OK` for the remainder and a
+third test that fails if an entry becomes stale — so a fixed control cannot be left in the list. Proven
+non-vacuous: reverting `index.html` fails 2 of the 3 and names all 16.
+
+**13 controls remain unnamed and are NOT a budget:** 5 hidden file/colour inputs driven by a button
+(axe skips hidden nodes), and 8 with no adjacent label at all — `shapeWidth`, `signX/Y/W/H`,
+`blankPageW/H`, `pdfPasswordInput`. Each needs a NEW `data-i18n-aria` key in **en/fr/ar**, and Arabic is
+a reviewed surface (§ i18n), which is why they were deliberately not bundled into the string-free pass.
 
 ### Live-app a11y: 3 serious WCAG rules fixed, and why the static gate missed them (2026-07-29)
 

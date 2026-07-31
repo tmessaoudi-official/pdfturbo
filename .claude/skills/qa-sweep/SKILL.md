@@ -97,11 +97,17 @@ The driver reports facts. You decide what they mean.
    legitimately become `disabled` (Playwright reports that as a bare timeout), now classified as
    SKIPs; `undoBtn`/`exportPreviewConfirm` were the crawl reaching THROUGH an open modal, because
    enumeration used visibility instead of hit-testable reachability.
-3. **`SKIP` is coverage you did not get.** ~44 controls skip by default (destructive names, or hidden
-   by the time their turn came). **CI passes `--allow-destructive`** (36 skips instead of 44 — it
-   reaches redaction, erase and crop-remove), so a local default run is WEAKER than the gate. Match
-   the flag before claiming your sweep is as thorough as CI's, and say plainly which controls were
-   never exercised.
+3. **`SKIP` is coverage you did not get — and the real number is worse than the skip count.** The
+   report now ends with `Exercised N distinct control(s) of M in the DOM` and **names** every control
+   that was not. Read that line first; a green `0 fail` over 64 of 139 controls is not a clean bill of
+   health. **CI passes `--allow-destructive`** (36 skips instead of 44 — it reaches redaction, erase
+   and crop-remove), so a local default run is WEAKER than the gate; match the flag before comparing.
+   Do NOT claim the sweep covers a specific feature without checking that list — measured 2026-07-31,
+   `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn` and the DOCX/MD/XFDF export
+   buttons are **never clicked**, because `modalBinder.ts` registers the export flyout with
+   `closeWhen: 'any-click'`, so the app shuts it the moment the first item is used. Four ways of
+   re-opening it per child were built and measured; every one lost coverage overall, and the numbers
+   are in `exercise()` so nobody repeats them blindly. Reaching those controls is open work.
 4. **`A11Y` findings are product bugs with WCAG rule ids.** Do not fold them into "polish".
 5. **A converged run is not a complete one.** The driver clicks each control once, in the state it
    happened to be in. It does not fill forms with boundary values, does not test tool *interactions*

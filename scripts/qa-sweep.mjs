@@ -17,7 +17,7 @@
  * Usage:
  *   node scripts/qa-sweep.mjs [--url <url>] [--fixture <pdf>] [--allow-destructive]
  *                             [--only <substr>] [--depth N] [--max-clicks N]
- *                             [--no-a11y] [--out <dir>]
+ *                             [--no-a11y] [--no-scenarios] [--out <dir>]
  *
  * Exit codes: 0 = no failures; 1 = at least one FAIL; 2 = harness could not run (no browser, no
  * server, app never booted). A non-zero exit is the point — this is usable as a gate.
@@ -71,6 +71,8 @@ const FIXTURE = flag('--fixture', 'tests/fixtures/qa-imagetext.pdf');
 const ONLY = flag('--only');
 const ALLOW_DESTRUCTIVE = has('--allow-destructive');
 const A11Y = !has('--no-a11y');
+const SCENARIOS = !has('--no-scenarios');
+const SCENARIO_ONLY = flag('--scenario');
 const MAX_DEPTH = Number(flag('--depth', '3'));
 const MAX_CLICKS = Number(flag('--max-clicks', '250'));
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -87,6 +89,26 @@ const DESTRUCTIVE = [
 // anchor-download fallback (CLAUDE.md § File System Access save) — we do the same below, so these
 // are safe to click, but each produces a download we do not need to keep.
 const EXPORTERS = ['downloadBtn', 'exportDocxBtn', 'exportMdBtn', 'exportTableBtn', 'exportXfdfBtn'];
+// Disclosure panels and the toggle that opens each. The DFS cannot cover these on its own: unwinding
+// child N also shuts the panel children N+1.. live in, so all but the first are recorded "became
+// hidden before click" (measured: 12 of the export flyout's 13 items, including the flatten, sanitize,
+// compress, Bates, watermark and DOCX/MD/XFDF export paths — some of the highest-consequence controls
+// in the product). Fixing that inside the DFS was tried three ways and every one lost coverage
+// overall (see exercise()). So instead: a bounded second pass that re-opens ONE known toggle per
+// child. Explicit, ordered, and it cannot destabilize the crawl because it runs after it.
+// WHY THE FLYOUT/MENU ITEMS ARE NEVER REACHED — and why that is the app's design, not a bug here.
+// modalBinder.ts registers the export flyout with `closeWhen: 'any-click'`, and each file-menu item
+// removes `.open` from its wrap in its own handler. So the app SHUTS the container as soon as one of
+// its children is clicked; every later sibling is then legitimately hidden. Only re-opening the
+// toggle once per child could reach them, and three shapes of that were built and measured on
+// 2026-07-31 — all net-negative against 145 checks / 107 pass / 0 warn / 36 skip:
+//   in-DFS, unwind only when something was revealed .... 143 /  81 / 30 WARN / 30 skip
+//   in-DFS, re-click any parent ........................ 107 /  54 / 38 WARN / 13 skip (+1 FAIL)
+//   in-DFS, re-click flyout/menu toggles only .......... 132 /  78 / 33 WARN / 21 skip
+//   separate post-crawl container pass ................. 170 / 112 /  0 WARN / 55 skip (+1 FAIL:
+//     it left state that broke the next scenario's precondition, and a variant hung for 15 minutes)
+// The controls this costs are named in every report under "NOT exercised". Reaching them is real open
+// work — most likely a per-container pass that resets the app between children — not a tweak.
 
 // Accepted axe findings: a DELIBERATE product decision that this gate must not veto.
 // Each entry is reported as ACCEPTED (never silently dropped) so it stays visible in every run, and
@@ -108,6 +130,14 @@ const isAccepted = (ruleId, targets) => A11Y_ACCEPTED.some(a =>
 
 const results = [];
 const record = (verdict, subject, detail, shot) => results.push({ verdict, subject, detail, shot });
+const VERDICTS = ['PASS', 'FAIL', 'WARN'];
+
+// Every button[id] present in the DOM at the end of the crawl. Used to name the coverage gap
+// explicitly in the report: a run with 31 "became hidden" SKIP lines buried among 145 entries reads
+// as thorough, and it is not. Best-effort by construction — a modal built on demand contributes its
+// buttons only once it has been opened at least once, so this is a floor on the universe, not a
+// census. Populated in main(); null means the crawl never got far enough to ask.
+let domButtonIds = null;
 
 async function main() {
   const launchOpts = resolveBrowser();
@@ -175,6 +205,13 @@ async function main() {
     '000-loaded.png');
   if (!canvasUp) { await finish(browser); return; }
 
+  // BOUND EVERY LATER ACTION. Playwright's default action timeout is 30s, and a covered control makes
+  // each click wait it out in full. Measured 2026-07-31: the scenario reset loop (up to 40 undo
+  // clicks) hit a covered #undoBtn and hung the run for 20 minutes with no output — in CI that is a
+  // job timeout, i.e. an unactionable red instead of a diagnosable failure. Boot already used its own
+  // explicit 30s/20s waits above, so lowering the default now costs nothing.
+  page.setDefaultTimeout(6_000);
+
   // ── crawl the UI STATE SPACE (not the URL space) ────────────────────────────────
   // This app is ONE page. The original bundle skill crawled links with --depth/--max-urls, which
   // finds nothing here. The equivalent structure is progressive disclosure: measured 2026-07-29,
@@ -213,8 +250,27 @@ async function main() {
   // menu's children, because by the time the next round enumerates, the menu is shut. So: click,
   // then descend into whatever that click revealed WHILE IT IS STILL OPEN, then unwind with Escape.
   // `--depth` is the bundle skill's flag, re-pointed from URL depth to disclosure depth.
+  // Close whatever popup/menu/modal is covering the page centre. ONE Escape is not enough: a nested
+  // popup consumes it, and some modals ignore Escape entirely, which would leave them covering the
+  // toolbar for the rest of the run (observed: #helpModal blocking 12 later controls).
+  const unwind = async () => {
+    for (let k = 0; k < 3; k++) {
+      const blocked = await page.evaluate(() => {
+        const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        for (let el = top; el; el = el.parentElement) {
+          if (el.className && /modal|overlay|popup|menu/i.test(String(el.className))) return true;
+        }
+        return false;
+      }).catch(() => false);
+      if (!blocked) break;
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.waitForTimeout(120).catch(() => {});
+    }
+    await page.waitForTimeout(80).catch(() => {});
+  };
+
   const visited = new Set();
-  let n = 0, capped = false, reachedTop = 0;
+  let n = 0, capped = false, reachedTop = 0, crashed = false;
 
   async function exercise(id, depth) {
     if (n >= MAX_CLICKS) { capped = true; return; }
@@ -283,34 +339,56 @@ async function main() {
       }
     }
 
-    // Unwind this subtree so a sibling is reachable. ONE Escape is not enough: a nested popup
-    // consumes it, and some modals do not close on Escape at all, which leaves them covering the
-    // toolbar for the rest of the sweep (observed: #helpModal blocking 12 later controls). Press up
-    // to three times and stop as soon as nothing modal-ish is on top of the page centre.
-    for (let k = 0; k < 3; k++) {
-      const blocked = await page.evaluate(() => {
-        const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
-        for (let n = top; n; n = n.parentElement) {
-          if (n.className && /modal|overlay|popup|menu/i.test(String(n.className))) return true;
-        }
-        return false;
-      }).catch(() => false);
-      if (!blocked) break;
-      await page.keyboard.press('Escape').catch(() => {});
-      await page.waitForTimeout(120);
-    }
-    await page.waitForTimeout(80);
+    // Unwind this subtree so whatever comes next is reachable, whether or not this node revealed
+    // anything. This is what turns a container in the way into a cheap honest SKIP instead of a
+    // "blocked by" WARN, and it is why ~31 controls are recorded "became hidden before click": a
+    // sibling's unwind also shuts the flyout they live in. THAT IS A KNOWN DRIVER LIMIT, listed
+    // explicitly at the end of every report. Three fixes were tried and MEASURED, all net losses
+    // against this baseline of 145 checks / 107 pass / 0 warn / 36 skip (--allow-destructive):
+    //   - Unwind only when this node revealed something: a leaf whose modal's buttons are already
+    //     visited never unwinds, so the modal blocks everything after it. #codeModal left open by
+    //     addCodeBtn cost 16 controls, twice over — 143 / 81 / 30 WARN / 30 skip.
+    //   - Also re-click the parent when a sibling went hidden: re-opens every modal and so drives
+    //     its CONFIRM branch too (blankPageConfirmBtn actually adds a page), mutating the document
+    //     under the rest of the run — 107 / 54 / 1 FAIL / 38 WARN / 13 skip.
+    //   - Same, but only for flyout/menu toggles: still 132 / 78 / 33 WARN / 21 skip.
+    // A hidden-SKIP and a blocked-WARN are the same phenomenon; trading the former for the latter
+    // buys nothing and costs stability. Do not re-attempt without beating those numbers.
+    await unwind();
   }
 
   let top = [...new Set(await visible())];
   reachedTop = top.length;
   if (ONLY) top = top.filter(i => i.toLowerCase().includes(ONLY.toLowerCase()));
   console.log(`qa-sweep: ${top.length} top-level button(s), max depth ${MAX_DEPTH}`);
+  // A BROWSER CRASH MID-CRAWL MUST STILL PRODUCE A REPORT. This container's Chromium exits with
+  // SIGSEGV non-deterministically (CLAUDE.md § test:browser in the container), and until 2026-07-31 a
+  // crash here threw straight out of main() → exit 2, no report, and in CI no uploaded artifact
+  // either: an unactionable red. The scenario phase already contained this; the crawl did not.
   for (const id of top) {
     if (visited.has(id)) continue;
     if (n >= MAX_CLICKS) { capped = true; break; }
-    await exercise(id, 0);
+    if (!browser.isConnected()) {
+      record('FAIL', 'crawl', `browser CRASHED (SIGSEGV) after ${n} clicks — coverage is INCOMPLETE`);
+      crashed = true;
+      break;
+    }
+    try {
+      await exercise(id, 0);
+      await unwind(); // leave a clean state for the next top-level control
+    } catch (e) {
+      const why = String(e.message).split('\n')[0];
+      record('FAIL', id, browser.isConnected() ? `crawl threw: ${why}`
+        : `browser CRASHED (SIGSEGV) on this control — coverage is INCOMPLETE: ${why}`);
+      if (!browser.isConnected()) { crashed = true; break; }
+    }
   }
+
+  // Snapshot the button universe while the page is still alive, for the coverage gap in the report.
+  domButtonIds = await page.$$eval('button[id]', els => els.map(e => e.id)).catch(() => null);
+
+  // Nothing below can run against a dead browser — report what was collected instead of throwing.
+  if (crashed || !browser.isConnected()) { await finish(browser); return; }
 
   // NO SILENT CAPS: a sweep that exercised nothing must not report a green summary.
   if (n === 0) {
@@ -356,7 +434,7 @@ async function main() {
         // critical/serious is the hard line; moderate/minor are reported, not enforced.
         const severe = v.filter(x => x.impact === 'critical' || x.impact === 'serious');
         // Split accepted findings out of the blocking set, and REPORT them either way.
-        const accepted = severe.filter(x => isAccepted(x.id, x.nodes.flatMap(n => n.target)));
+        const accepted = severe.filter(x => isAccepted(x.id, x.nodes.flatMap(node => node.target)));
         const blocking = severe.filter(x => !accepted.includes(x));
         const detail = v.length
           ? v.map(x => `${x.id}:${x.impact}(${x.nodes.length})`).join(', ')
@@ -380,12 +458,175 @@ async function main() {
   // ── mobile pass ────────────────────────────────────────────────────────────────
   // 375px is where this app has actually shipped bugs (the F2b thumbnail controls could not fit
   // five 44px touch targets on a 50x74 tile), so it is a first-class check, not a nicety.
+  if (browser.isConnected()) {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(OUT, 'zzz-mobile-375.png') });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   record(overflow ? 'WARN' : 'PASS', 'mobile 375px',
     overflow ? 'horizontal overflow at 375px' : 'no horizontal overflow', 'zzz-mobile-375.png');
+  }
+  // Back to desktop for the scenario phase.
+  if (browser.isConnected()) await page.setViewportSize({ width: 1440, height: 900 }).catch(() => {});
+
+  // ── WORKFLOW SCENARIOS ─────────────────────────────────────────────────────────
+  // The crawl above clicks each control ONCE, in whatever state it happened to be in. That is
+  // reachability, not use. Nearly every severe defect in this repo's history was an INTERACTION bug
+  // that a single click could never surface: the sequential-edit ghost (two edits sharing an origin),
+  // the destroyed `w:drawing` on DOCX save, the redaction burn misplaced on a cropped page, an
+  // invisible watermark. So: run a handful of real workflows end to end.
+  //
+  // Deliberately shallow assertions. This is a smoke driver, not a unit test — it checks "no console
+  // error, no failed request, and the app's own state changed as expected". Pixel-level proof belongs
+  // in tests/browser/**, which can assert on rasterised output. Keeping the bar here low is also what
+  // keeps it non-flaky, and a flaky gate blocks deploys at random (see CLAUDE.md § A flaky gate).
+  //
+  // Each scenario starts from a FRESH page + freshly loaded fixture, so one cannot contaminate the
+  // next. A scenario that throws is recorded FAIL — never skipped silently.
+  if (SCENARIOS) {
+    const enabled = (pg, id) => pg.$eval(`#${id}`, e => !e.disabled).catch(() => null);
+
+    // RESET IN-PAGE, NEVER BY NAVIGATION. Two container facts forced this, both measured 2026-07-30:
+    //   - `ctx.newPage()` crashes the browser (isConnected() true immediately before, false after) —
+    //     a second concurrent app instance is one pdf.js worker too many.
+    //   - `page.goto()` to reload the app while a PDF is loaded ALSO crashes it, with SIGSEGV
+    //     (signal 11, SEGV_MAPERR) — the trigger is navigating away from a live pdf.js document.
+    // Undoing back to an empty history restores the document to its just-loaded state without either,
+    // which is what the scenarios actually need. If a scenario leaves un-undoable state, the next one
+    // starts dirty — so scenarios are written to be order-independent.
+    const resetPage = async () => {
+      for (let i = 0; i < 40; i++) {
+        if (!await enabled(page, 'undoBtn')) break;
+        // A failed undo click means the button is unreachable, not that one more attempt will land —
+        // keep going and 40 unreachable clicks become 40 timeouts.
+        let ok = true;
+        await page.click('#undoBtn', { timeout: 2_000 }).catch(() => { ok = false; });
+        if (!ok) break;
+        await page.waitForTimeout(90);
+      }
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.click('#selectBtn', { timeout: 2_000 }).catch(() => {});
+      await page.waitForTimeout(200);
+      // Load-time noise is already covered by the boot/load checks; scenarios own only what they do.
+      consoleErrors.length = 0;
+      netFailures.length = 0;
+    };
+
+    // Drag inside the VISIBLE part of the page canvas. The canvas is taller than the viewport, so
+    // clamping to innerHeight matters — a drag below the fold lands on nothing.
+    const dragOnCanvas = async (pg, fromFrac = 0.25, toFrac = 0.55) => {
+      const box = await pg.evaluate(() => {
+        const c = document.querySelector('#canvasContainer canvas');
+        if (!c) return null;
+        const r = c.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: Math.min(r.height, innerHeight - r.y - 20) };
+      });
+      if (!box || box.h < 60) throw new Error('canvas not usably visible for a drag');
+      const y = box.y + box.h * 0.4;
+      await pg.mouse.move(box.x + box.w * fromFrac, y);
+      await pg.mouse.down();
+      await pg.mouse.move(box.x + box.w * (fromFrac + toFrac) / 2, y + 30, { steps: 6 });
+      await pg.mouse.move(box.x + box.w * toFrac, y + 60, { steps: 6 });
+      await pg.mouse.up();
+      await pg.waitForTimeout(350);
+    };
+
+
+    const scenarios = [
+      {
+        name: 'draw → undo → redo',
+        // Guards the core invariant in CLAUDE.md § Architecture: every mutation goes through a
+        // Command pushed to historyManager. undoBtn starts DISABLED, so it turning enabled is direct
+        // evidence a command was recorded — a mutation that bypassed history would leave it disabled.
+        run: async (pg) => {
+          if (await enabled(pg, 'undoBtn')) throw new Error('undoBtn was already enabled before any edit');
+          await pg.click('#freehandBtn');
+          await dragOnCanvas(pg);
+          if (!await enabled(pg, 'undoBtn')) throw new Error('drew a stroke but undo stayed disabled — no Command recorded?');
+          await pg.click('#undoBtn');
+          await pg.waitForTimeout(300);
+          if (!await enabled(pg, 'redoBtn')) throw new Error('undid a stroke but redo stayed disabled');
+          await pg.click('#redoBtn');
+          await pg.waitForTimeout(300);
+        },
+      },
+      {
+        name: 'draw → export PDF',
+        // The export bake with an overlay element present (pdfElementRenderer path).
+        run: async (pg) => {
+          await pg.click('#freehandBtn');
+          await dragOnCanvas(pg);
+          await pg.click('#downloadBtn');
+          await pg.waitForTimeout(2500);
+        },
+      },
+      {
+        name: 'redact → export PDF',
+        // Highest-consequence path in the product: a bug here means a user's secret stays readable.
+        // Exercises the RASTER export branch, which CLAUDE.md flags as code-reviewed but not
+        // pixel-guarded. Unextractability itself is asserted in tests/browser/blockers-redaction.
+        run: async (pg) => {
+          await pg.click('#redactBtn');
+          await dragOnCanvas(pg, 0.3, 0.6);
+          await pg.click('#downloadBtn');
+          await pg.waitForTimeout(3000);
+        },
+      },
+      {
+        name: 'crop → export PDF',
+        // The crop + export combination is exactly the shape of the redaction-burn-on-a-cropped-page
+        // leak (CLAUDE.md § Per-page crop): two coordinate spaces that must agree.
+        run: async (pg) => {
+          await pg.click('#cropBtn');
+          await dragOnCanvas(pg, 0.2, 0.7);
+          await pg.click('#downloadBtn');
+          await pg.waitForTimeout(3000);
+        },
+      },
+      {
+        name: 'rotate page → export PDF',
+        run: async (pg) => {
+          const rot = pg.locator('.thumb-item .thumb-rotate').first();
+          if (!await rot.count()) throw new Error('no thumbnail rotate control found');
+          await rot.click({ force: true });
+          await pg.waitForTimeout(700);
+          await pg.click('#downloadBtn');
+          await pg.waitForTimeout(3000);
+        },
+      },
+    ];
+
+    const picked = SCENARIO_ONLY
+      ? scenarios.filter(s => s.name.toLowerCase().includes(SCENARIO_ONLY.toLowerCase()))
+      : scenarios;
+    console.log(`qa-sweep: ${picked.length} workflow scenario(s)`);
+    for (const s of picked) {
+      const tag = `sc-${s.name.replace(/[^a-z]+/gi, '-').toLowerCase()}`;
+      // A scenario CRASHING the browser must not abort the sweep. Measured 2026-07-30: this
+      // container's Chromium exits with SIGSEGV (signal 11, SEGV_MAPERR) partway through the
+      // scenario phase, which previously took down the whole run before any report was written —
+      // turning a partial result into no result at all. Now: detect the dead browser, record the
+      // remainder as FAIL with the reason, and let finish() still print.
+      if (!browser.isConnected()) {
+        record('FAIL', `scenario: ${s.name}`, 'browser had already crashed (SIGSEGV) — not run');
+        continue;
+      }
+      let failure = null;
+      try {
+        await resetPage();
+        await s.run(page);
+      } catch (e) {
+        failure = String(e.message).split('\n')[0];
+        if (!browser.isConnected()) failure = `browser CRASHED during this scenario (SIGSEGV): ${failure}`;
+      }
+      const shot = `${tag}.png`;
+      await page.screenshot({ path: join(OUT, shot) }).catch(() => {});
+      const errs = consoleErrors.splice(0).concat(netFailures.splice(0));
+      if (failure) record('FAIL', `scenario: ${s.name}`, failure, shot);
+      else if (errs.length) record('FAIL', `scenario: ${s.name}`, `console/network: ${errs.slice(0, 3).join(' | ')}`, shot);
+      else record('PASS', `scenario: ${s.name}`, 'completed, 0 console/network errors', shot);
+    }
+  }
 
   await finish(browser);
 }
@@ -403,10 +644,35 @@ async function finish(browser) {
     `Summary: ${results.length} checks | ${count('PASS')} pass | ${count('FAIL')} fail | ` +
       `${count('WARN')} warn | ${count('SKIP')} skipped | ${count('A11Y')} a11y` +
       (count('ACCEPT') ? ` | ${count('ACCEPT')} a11y-accepted-by-decision` : ''),
-    '',
-    'Screenshots are in this directory. var/claude/ is gitignored and the container is',
-    'reclaimed — deliver anything that matters with SendUserFile in the same turn.',
   ];
+  // COVERAGE GAP, NAMED. `SKIP` is coverage you did not get (SKILL.md § interpret it), and the only
+  // honest way to present it is as a list of controls, not a count.
+  const exercised = new Set(results.filter(r => VERDICTS.includes(r.verdict)).map(r => r.subject));
+  if (domButtonIds) {
+    const missed = [...new Set(domButtonIds)].filter(id => id && !exercised.has(id));
+    const destructive = id => !ALLOW_DESTRUCTIVE
+      && DESTRUCTIVE.some(d => id.toLowerCase().includes(d.toLowerCase()));
+    const byName = missed.filter(destructive);
+    const unreached = missed.filter(id => !destructive(id));
+    lines.push('', `Exercised ${exercised.size} distinct control(s) of ${new Set(domButtonIds).size} in the DOM.`);
+    if (byName.length) lines.push(`NOT exercised — destructive by name (--allow-destructive): ${byName.join(', ')}`);
+    if (unreached.length) {
+      lines.push(
+        `NOT exercised — never reachable in this run (${unreached.length}): ${unreached.join(', ')}`,
+        'NOT evidence of health. Most are a container\'s 2nd..Nth item: the APP shuts a flyout/menu on',
+        'any click (modalBinder.ts), so only the first is ever reachable. Four ways of re-opening it per',
+        'child were measured and all lost coverage overall — the numbers are in exercise().',
+      );
+    }
+    if (!byName.length && !unreached.length) lines.push('Every button[id] in the DOM was exercised.');
+  } else {
+    lines.push('', 'Coverage gap: UNKNOWN — the crawl ended before the button universe could be read.');
+  }
+
+  lines.push('',
+    'Screenshots are in this directory. var/claude/ is gitignored and the container is',
+    'reclaimed — deliver anything that matters with SendUserFile in the same turn.');
+
   const report = lines.join('\n');
   writeFileSync(join(OUT, 'report.md'), `${report}\n`);
   console.log(`\n${report}\n\nreport: ${join(OUT, 'report.md')}`);

@@ -73,7 +73,7 @@ function nav(index: number): HTMLButtonElement {
 }
 
 describe('thumbnail nav button — native keyboard activation', () => {
-  it('is reachable by Tab (the tile itself is not a tab stop)', async () => {
+  it('is reachable by Tab (the tile itself is not a tab stop)', () => {
     nav(0).focus();
     expect(document.activeElement).toBe(nav(0));
     // The tile must not be focusable, or Tab would stop twice per thumbnail.

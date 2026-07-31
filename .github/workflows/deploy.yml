@@ -53,9 +53,13 @@ jobs:
       #
       # --allow-destructive is CORRECT HERE, though it is off by default locally. The flag guards a
       # developer's own open document from redact/erase/reset/clear; CI drives a throwaway browser on
-      # a fixture PDF, so there is no user work to protect. Without it the gate skipped 44 controls
-      # including REDACTION and FLATTEN — two of the highest-consequence paths in the product.
-      # Measured: 145 checks / 107 pass / 0 fail vs 143 / 97 / 0 with the flag off.
+      # a fixture PDF, so there is no user work to protect. With it the gate reaches REDACTION and the
+      # eraser, and it runs the workflow scenarios (draw/redact/crop/rotate → export) that a
+      # single-click crawl cannot. Measured: 150 checks / 112 pass / 0 fail vs 143 / 97 / 0 without.
+      #
+      # It does NOT reach the export flyout's items (flatten, sanitize, watermark, Bates, compress,
+      # DOCX/MD/XFDF) — `modalBinder.ts` shuts that flyout on any click, so only its first item is
+      # ever reachable. The report names every unexercised control; see SKILL.md § interpret it.
       - name: Whole-app QA sweep (live)
         id: qa_sweep
         run: |
