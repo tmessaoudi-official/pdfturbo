@@ -109,6 +109,66 @@ describe('index.html — accessible names on toolbar inputs', () => {
     expect(overlay?.getAttribute('aria-label') ?? 'absent').not.toBe('');
   });
 
+  // ── QA-sweep 2026-07-31 — the whole class, not four hand-picked ids ────────────
+  // /qa-sweep caught `select-name` (axe CRITICAL — higher than the three `serious` rules fixed on
+  // 2026-07-29) on #blankPageSize and #blankPagePosition, and caught it only by luck: it fires only
+  // while the control is VISIBLE, so it needed a run that happened to leave blankPageModal open. The
+  // cause was systemic, not local — 16 controls sat beside a bare `<label>` with no `for=`, i.e. a
+  // label rendered next to a sibling control with ZERO programmatic association, so a screen reader
+  // announced an unnamed combo box / text field. Enumerate the class here so the live gate never has
+  // to be the one that catches it.
+  //
+  // UNNAMED_OK is a DECLINING allowlist, not a budget: every entry is a real remaining gap that needs
+  // a new i18n key in all three locales (Arabic included, which is a reviewed surface — see CLAUDE.md
+  // § i18n), so it is deliberately not fixed in the same pass as the string-free `for=` work. Adding
+  // an id here needs a reason; removing one is always welcome.
+  const UNNAMED_OK = new Set([
+    // Hidden file/colour inputs driven entirely by a button; axe skips hidden nodes.
+    'fileInput', 'addImageInput', 'addPdfInput', 'xfdfInput', 'redactColor',
+    // Have NO adjacent label at all — each needs a new aria-label key in en/fr/ar.
+    'shapeWidth', 'signX', 'signY', 'signW', 'signH',
+    'blankPageW', 'blankPageH', 'pdfPasswordInput',
+  ]);
+
+  function unnamedControls(): string[] {
+    const forTargets = new Set(
+      [...doc.querySelectorAll('label[for]')].map((l) => l.getAttribute('for')),
+    );
+    const out: string[] = [];
+    for (const el of doc.querySelectorAll('input, select, textarea')) {
+      const type = (el.getAttribute('type') ?? '').toLowerCase();
+      if (['hidden', 'button', 'submit', 'reset'].includes(type)) continue;
+      if (el.hasAttribute('aria-label') || el.hasAttribute('data-i18n-aria')
+        || el.hasAttribute('aria-labelledby')) continue;
+      if (el.closest('label')) continue;            // wrapped by its own label
+      if (el.id && forTargets.has(el.id)) continue; // label[for] association
+      out.push(el.id || '(no id)');
+    }
+    return out;
+  }
+
+  it('every <select> has an accessible name (axe select-name is CRITICAL)', () => {
+    const forTargets = new Set(
+      [...doc.querySelectorAll('label[for]')].map((l) => l.getAttribute('for')),
+    );
+    const unnamed = [...doc.querySelectorAll('select')].filter((s) => !(
+      s.hasAttribute('aria-label') || s.hasAttribute('data-i18n-aria')
+      || s.hasAttribute('aria-labelledby') || s.closest('label')
+      || (s.id && forTargets.has(s.id))
+    )).map((s) => s.id || '(no id)');
+    expect(unnamed, `selects with no accessible name: ${unnamed.join(', ')}`).toEqual([]);
+  });
+
+  it('no form control outside the known-gap allowlist lacks an accessible name', () => {
+    const unexpected = unnamedControls().filter((id) => !UNNAMED_OK.has(id));
+    expect(unexpected, `unnamed control(s) not in UNNAMED_OK: ${unexpected.join(', ')}`).toEqual([]);
+  });
+
+  it('UNNAMED_OK has no stale entries (a fixed control must be removed from it)', () => {
+    const stale = [...UNNAMED_OK].filter((id) => !unnamedControls().includes(id));
+    expect(stale, `these now HAVE a name — drop them from UNNAMED_OK: ${stale.join(', ')}`).toEqual([]);
+  });
+
   it('every data-i18n / data-i18n-aria key referenced for these a11y elements resolves in EN/FR/AR', () => {
     const selectors = [
       'a.skip-link',

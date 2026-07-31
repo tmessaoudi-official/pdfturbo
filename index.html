@@ -342,26 +342,26 @@
       <label><input type="checkbox" id="wmEnabled"> <span data-i18n="modal.watermark.enable">Enable watermark on all pages</span></label>
     </div>
     <div class="wm-field">
-      <label data-i18n="modal.watermark.textLabel">Text</label>
+      <label for="wmText" data-i18n="modal.watermark.textLabel">Text</label>
       <input type="text" id="wmText" value="WATERMARK" class="wm-input" data-i18n-placeholder="modal.watermark.textPlaceholder" placeholder="Watermark text">
     </div>
     <div class="wm-field">
       <label><span data-i18n="modal.watermark.colorLabel">Color</span> <input type="color" id="wmColor" value="#888888"></label>
     </div>
     <div class="wm-field">
-      <label><span data-i18n="modal.watermark.fontSizeLabel">Font size</span>: <span id="wmFontSizeDisplay">60</span>px</label>
+      <label for="wmFontSize"><span data-i18n="modal.watermark.fontSizeLabel">Font size</span>: <span id="wmFontSizeDisplay">60</span>px</label>
       <input type="range" id="wmFontSize" min="12" max="400" value="60">
     </div>
     <div class="wm-field">
-      <label><span data-i18n="modal.watermark.opacityLabel">Opacity</span>: <span id="wmOpacityDisplay">25</span>%</label>
+      <label for="wmOpacity"><span data-i18n="modal.watermark.opacityLabel">Opacity</span>: <span id="wmOpacityDisplay">25</span>%</label>
       <input type="range" id="wmOpacity" min="1" max="100" value="25">
     </div>
     <div class="wm-field">
-      <label><span data-i18n="modal.watermark.angleLabel">Angle</span>: <span id="wmAngleDisplay">-45</span>°</label>
+      <label for="wmAngle"><span data-i18n="modal.watermark.angleLabel">Angle</span>: <span id="wmAngleDisplay">-45</span>°</label>
       <input type="range" id="wmAngle" min="-180" max="180" value="-45">
     </div>
     <div class="wm-field">
-      <label><span data-i18n="modal.watermark.densityLabel">Density</span>: <span id="wmDensityDisplay">3</span> (<span data-i18n="modal.watermark.densityHint">1 sparse → 5 dense</span>)</label>
+      <label for="wmDensity"><span data-i18n="modal.watermark.densityLabel">Density</span>: <span id="wmDensityDisplay">3</span> (<span data-i18n="modal.watermark.densityHint">1 sparse → 5 dense</span>)</label>
       <input type="range" id="wmDensity" min="1" max="10" step="0.5" value="3">
     </div>
     <div class="wm-preview">
@@ -381,7 +381,7 @@
       <label><input type="checkbox" id="batesEnabled"> <span data-i18n="modal.bates.enable">Stamp every page on export</span></label>
     </div>
     <div class="wm-field">
-      <label data-i18n="modal.bates.modeLabel">Mode</label>
+      <label for="batesMode" data-i18n="modal.bates.modeLabel">Mode</label>
       <select id="batesMode" class="wm-input">
         <option value="page" data-i18n="modal.bates.modePage">Page numbers (N / total)</option>
         <option value="bates" data-i18n="modal.bates.modeBates">Bates (prefix + sequence)</option>
@@ -389,20 +389,20 @@
     </div>
     <div id="batesNumberingGroup">
       <div class="wm-field">
-        <label data-i18n="modal.bates.prefixLabel">Prefix</label>
+        <label for="batesPrefix" data-i18n="modal.bates.prefixLabel">Prefix</label>
         <input type="text" id="batesPrefix" class="wm-input" data-i18n-placeholder="modal.bates.prefixPlaceholder" placeholder="ACME-">
       </div>
       <div class="wm-field">
-        <label data-i18n="modal.bates.startLabel">Start number</label>
+        <label for="batesStart" data-i18n="modal.bates.startLabel">Start number</label>
         <input type="number" id="batesStart" class="wm-input" min="0" value="1">
       </div>
       <div class="wm-field">
-        <label data-i18n="modal.bates.digitsLabel">Digits (zero-padded)</label>
+        <label for="batesDigits" data-i18n="modal.bates.digitsLabel">Digits (zero-padded)</label>
         <input type="number" id="batesDigits" class="wm-input" min="1" max="12" value="6">
       </div>
     </div>
     <div class="wm-field">
-      <label data-i18n="modal.bates.positionLabel">Position</label>
+      <label for="batesPosition" data-i18n="modal.bates.positionLabel">Position</label>
       <select id="batesPosition" class="wm-input">
         <option value="tl" data-i18n="modal.bates.posTL">Top left</option>
         <option value="tc" data-i18n="modal.bates.posTC">Top center</option>
@@ -429,7 +429,7 @@
   <div class="watermark-content">
     <h2 id="compressModalTitle" data-i18n="modal.compress.title">Compress PDF</h2>
     <div class="wm-field">
-      <label data-i18n="modal.compress.modeLabel">Method</label>
+      <label for="compressMode" data-i18n="modal.compress.modeLabel">Method</label>
       <select id="compressMode" class="wm-input">
         <option value="lossless" data-i18n="modal.compress.modeLossless">Quick optimize (keeps text — lossless)</option>
         <option value="lossy" data-i18n="modal.compress.modeLossy">Flatten to images (smaller — drops text)</option>
@@ -438,7 +438,7 @@
     <p class="wm-hint" id="compressModeHint" data-i18n="modal.compress.hintLossless">Re-packs the file and removes metadata. Text, vectors and form fields stay selectable.</p>
     <div id="compressLossyGroup" style="display:none">
       <div class="wm-field">
-        <label data-i18n="modal.compress.dpiLabel">Image resolution (DPI)</label>
+        <label for="compressDpi" data-i18n="modal.compress.dpiLabel">Image resolution (DPI)</label>
         <input type="number" id="compressDpi" class="wm-input" min="72" max="300" value="200">
       </div>
       <div class="wm-field">
@@ -717,7 +717,7 @@
     <h3 id="blankPageModalTitle" style="margin:0 0 18px;font-size:16px;font-weight:700;" data-i18n="modal.blankPage.title">New Blank Page</h3>
 
     <div style="margin-bottom:14px;">
-      <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;" data-i18n="modal.blankPage.sizeLabel">Page Size</label>
+      <label for="blankPageSize" style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;" data-i18n="modal.blankPage.sizeLabel">Page Size</label>
       <select id="blankPageSize" style="width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
         <option value="a4" data-i18n="modal.blankPage.sizeA4">A4 (210 × 297 mm)</option>
         <option value="letter" data-i18n="modal.blankPage.sizeLetter">Letter (8.5 × 11 in)</option>
@@ -741,7 +741,7 @@
     </div>
 
     <div style="margin-bottom:18px;">
-      <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;" data-i18n="modal.blankPage.positionLabel">Insert position</label>
+      <label for="blankPagePosition" style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;" data-i18n="modal.blankPage.positionLabel">Insert position</label>
       <select id="blankPagePosition" style="width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
         <option value="end" data-i18n="modal.blankPage.posEnd">At end</option>
         <option value="beginning" data-i18n="modal.blankPage.posBeginning">At beginning</option>
@@ -799,11 +799,11 @@
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#1e293b;border-radius:12px;padding:28px 32px;min-width:340px;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.4);">
     <h3 id="lockPdfModalTitle" data-i18n="modal.lockPdf.title" style="margin:0 0 16px;font-size:16px;font-weight:600;color:#f1f5f9;">Lock PDF with Password</h3>
-    <label style="display:block;margin-bottom:4px;font-size:13px;color:#94a3b8;" data-i18n="modal.lockPdf.userPasswordLabel">Open password (required to open the PDF)</label>
+    <label for="lockUserPassword" style="display:block;margin-bottom:4px;font-size:13px;color:#94a3b8;" data-i18n="modal.lockPdf.userPasswordLabel">Open password (required to open the PDF)</label>
     <input type="password" id="lockUserPassword" autocomplete="new-password"
       style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:7px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:14px;margin-bottom:12px;"
       data-i18n-placeholder="modal.lockPdf.userPasswordPlaceholder" placeholder="User password…">
-    <label style="display:block;margin-bottom:4px;font-size:13px;color:#94a3b8;" data-i18n="modal.lockPdf.ownerPasswordLabel">Owner password (optional, for permissions)</label>
+    <label for="lockOwnerPassword" style="display:block;margin-bottom:4px;font-size:13px;color:#94a3b8;" data-i18n="modal.lockPdf.ownerPasswordLabel">Owner password (optional, for permissions)</label>
     <input type="password" id="lockOwnerPassword" autocomplete="new-password"
       style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:7px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:14px;margin-bottom:16px;"
       data-i18n-placeholder="modal.lockPdf.ownerPasswordPlaceholder" placeholder="Owner password (leave empty to auto-generate a random one)…">
