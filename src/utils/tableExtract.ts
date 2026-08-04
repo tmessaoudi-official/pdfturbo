@@ -71,30 +71,54 @@ export function buildTableGrid(
     // the highest pair.
     const lo = rowBounds[rows - 1 - r];
     const hi = rowBounds[rows - r];
+    // The bands are half-open so adjacent cells cannot both claim an item — EXCEPT at the outermost
+    // edge, where the upper bound must be INCLUSIVE. flowDoc's `_itemInRegion` accepts the region
+    // bbox inclusively on all four sides, and reconstructPage then REMOVES every in-region word from
+    // the paragraph flow; a word sitting exactly on the top or right boundary would therefore be
+    // deleted from the flow AND land in no cell, vanishing from DOCX/MD/TXT/CSV with no warning.
+    // (Measured before the fix: with such a word as the only text, every cell came out empty and the
+    // whole table was discarded as phantom — `buildTableGrid` returned null.) The top band is r === 0
+    // because rows are emitted top-first.
+    const topBand = r === 0;
     const rowCells: string[] = [];
     for (let c = 0; c < cols; c++) {
       const xLo = colBounds[c];
       const xHi = colBounds[c + 1];
-      const inCell = items.filter(it => it.x >= xLo && it.x < xHi && it.y >= lo && it.y < hi);
+      const lastCol = c === cols - 1;
+      const inCell = items.filter(it =>
+        it.x >= xLo && (lastCol ? it.x <= xHi : it.x < xHi)
+        && it.y >= lo && (topBand ? it.y <= hi : it.y < hi));
       inCell.sort((a, b) => (b.y - a.y) || (a.x - b.x)); // reading order: top→bottom, left→right
       rowCells.push(inCell.map(it => it.text.trim()).filter(Boolean).join(' '));
     }
     cells.push(rowCells);
   }
 
-  // Prune columns that are empty across every row. A doubled / over-segmented
-  // vertical rule (one logical grid line detected as two bounds >tol apart)
-  // creates a thin band that catches no text and would otherwise emit a spurious
-  // empty CSV column (",,"). A genuine column keeps any row with data, so this
-  // never drops real data. If nothing survives there is no table to extract.
-  const keep: number[] = [];
-  for (let c = 0; c < cols; c++) {
-    if (cells.some(row => row[c] !== '')) keep.push(c);
+  // Prune bands that are empty across their whole extent, on BOTH axes. A doubled / over-segmented
+  // rule (one logical grid line detected as two bounds >tol apart) creates a thin band that catches
+  // no text; left in, it emits a spurious empty CSV column (",,") or a blank CSV record, and an empty
+  // row in the exported DOCX table. Only the COLUMN half of this existed until 2026-07-31 — rows have
+  // the identical failure mode and were not pruned, which is the asymmetry that was the bug.
+  //
+  // This never drops real data: a band survives if ANY cell in it holds text, so a deliberate blank
+  // spacer row in the source (whose cells DO carry text elsewhere in the band) is preserved. If
+  // nothing survives at all there is no table to extract.
+  const keepRows: number[] = [];
+  for (let r = 0; r < rows; r++) {
+    if (cells[r].some(v => v !== '')) keepRows.push(r);
   }
-  if (!keep.length) return null;
-  if (keep.length === cols) return { rows, cols, cells };
+  const keepCols: number[] = [];
+  for (let c = 0; c < cols; c++) {
+    if (keepRows.some(r => cells[r][c] !== '')) keepCols.push(c);
+  }
+  if (!keepRows.length || !keepCols.length) return null;
+  if (keepRows.length === rows && keepCols.length === cols) return { rows, cols, cells };
 
-  return { rows, cols: keep.length, cells: cells.map(row => keep.map(c => row[c])) };
+  return {
+    rows: keepRows.length,
+    cols: keepCols.length,
+    cells: keepRows.map(r => keepCols.map(c => cells[r][c])),
+  };
 }
 
 /**

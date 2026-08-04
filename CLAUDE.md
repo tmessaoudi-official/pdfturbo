@@ -545,6 +545,36 @@ XFDF export stay plain `_downloadBlob`. **Automation note:** the native Save dia
 Playwright — to capture a download in a browser test, `delete window.showSaveFilePicker` to force the
 anchor-download fallback. Open-via-picker + recent-files deferred (#54b).
 
+### Two boundary-convention bugs in the lattice-table path (2026-07-31)
+
+Found by READING the code while scoping EH-E, not by a failing test — both were invisible to 25
+existing flow-path test files. Worth knowing because the first is a **silent data-loss** shape this
+repo has been bitten by before.
+
+**1. Inclusive region vs half-open cells.** `_itemInRegion` (`flowDoc.ts`) accepts the table region
+bbox **inclusively on all four sides**, while `buildTableGrid`'s cell bands were **half-open**
+(`>= lo && < hi`), tiling only `[left,right) × [bottom,top)`. `reconstructPage` (`flowDoc.ts:1542`)
+then **removes every in-region word from the paragraph flow** — so a word sitting exactly on the top
+or right boundary was deleted from the flow AND landed in no cell, vanishing from DOCX/MD/TXT/CSV with
+no warning. **Measured worse than that:** when such a word was the only text, every cell came out
+empty, the grid was rejected as phantom, and `buildTableGrid` returned `null` — the whole table
+disappeared. Fixed by making the outermost upper bound inclusive (last column, top row); the lower
+bounds were already inclusive, so all four outer edges now match the region and internal bands stay
+half-open, which is what stops two adjacent cells claiming the same item.
+
+**2. Rows were not pruned, columns were.** The empty-column prune existed with a comment explaining
+exactly why (an over-segmented vertical rule — one logical line detected as two bounds >tol apart —
+creates a thin text-free band that emits a spurious `,,`). **Rows have the identical failure mode** (a
+2px line drawn as two 1px strokes) and were left in, producing a blank CSV record and an empty row in
+the exported DOCX table. The asymmetry was the bug and the column comment was already its
+specification. Now pruned on both axes, keyed on "this band caught no text at all" — so a deliberate
+blank spacer row whose band does carry text elsewhere is still preserved (guarded).
+
+**The transferable lesson: when one function tests a boundary inclusively and its collaborator tests
+the same boundary half-open, the gap is silent by construction.** Neither side looks wrong alone.
+Guard: `tests/utils/tableExtractEdges.test.ts` (7 cases; all 4 defect cases fail on the pre-fix code,
+two of them with `expected null not to be null`).
+
 ### Table → CSV (#56)
 
 `src/utils/tableExtract.ts` (`clusterPositions`/`buildTableGrid`/`gridToCsv`, pure) +
@@ -1802,12 +1832,24 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
   (`filelist/node_modules/brace-expansion@2.1.2`; the hoisted copy was already patched), it is
   **devDependency-only**, and `npm audit fix` could not touch it: ERESOLVE, because
   `vite-plugin-pwa@1.2.0` peer-requires `vite ^3–^7` while this project is on `vite@8`.
-  **The fix is the `overrides` block in `package.json`** (`"brace-expansion": "^5.0.8"`) — it pins the
-  transitive dep without touching `vite-plugin-pwa`, so the peer conflict never arises. Result:
-  one deduped copy at 5.0.8, `npm audit` clean, PWA build unaffected. **Do not remove that override**
-  without re-checking the advisory; reach for the same pattern the next time a transitive dev-dep
-  advisory is unfixable through the dependency that pulls it in. OCR traineddata stays SHA-256-pinned
-  (`scripts/prepare-ocr-assets.mjs`); no other remote assets are fetched at build.
+  **The fix is the `overrides` block in `package.json`** — it pins the transitive dep without touching
+  `vite-plugin-pwa`, so the peer conflict never arises. **Do not remove those overrides** without
+  re-checking the advisories, and reach for the same pattern the next time a transitive dev-dep
+  advisory is unfixable through the dependency that pulls it in.
+
+  **The overrides are a LIVING pin, not a one-off — re-audit before every push.** On 2026-07-31 the
+  gate went from `found 0 vulnerabilities` to **2 high** in a single day, with no dependency change on
+  our side, and one of them was `brace-expansion` **again**: GHSA-rgw5-rvv9-x895 explicitly *bypasses
+  the CVE-2026-14257 mitigation*, so the very version this block pinned to (`^5.0.8`) became the
+  vulnerable one. The second was `fast-uri` (GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
+  authority introducer) via `ajv` ← `workbox-build`. Both were devDependency-only and both were fixed
+  the same way — bump to `^5.0.9` / add `^3.1.5`, one deduped copy each, audit clean, PWA precache
+  unchanged at 22 entries. Lesson: a pinned version is a snapshot of the advisory database, not a
+  permanent fix, and because `npm audit` is the FIRST CI step a new advisory turns every deploy red
+  before a single test runs — including deploys of changes that have nothing to do with it.
+
+  OCR traineddata stays SHA-256-pinned (`scripts/prepare-ocr-assets.mjs`); no other remote assets are
+  fetched at build.
 - **Pre-push gate**: `.githooks/pre-push` (auto-installed via the `prepare` script →
   `core.hooksPath`) runs type-check + lint + test locally before any push reaches the
   auto-deploy. Bypass in emergencies with `git push --no-verify`.
