@@ -59,7 +59,9 @@ _Last updated: 2026-06-26 · Version 1.0.0_
   fonts, colour, lists, **tables** incl. add/remove rows & columns and merge/split cells, **images**
   incl. insert/move/resize/cut-paste/drag, **hyperlinks**), find & replace, paste-from-Word cleanup;
   export back to `.docx` or to PDF
-- **Table → CSV** — extract a ruled (visible-grid) table from a page
+- **Table → CSV / Excel (.xlsx)** — extract a table from a page; ruled tables and, since EH-E,
+  borderless ones inferred from column whitespace. The xlsx export writes numeric cells as real
+  numbers rather than text
 - **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
 - **XFDF** import/export of annotations
 - **Export targets** — full PDF, page range, single page, page as PNG/JPEG image; native OS "Save As"

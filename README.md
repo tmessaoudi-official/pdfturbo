@@ -55,7 +55,9 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
 - **Form flatten** — bake AcroForm field values into the page on export
 - **XFDF** — import / export annotations
-- **Table → CSV** — extract a ruled (visible-grid) table from a page to a CSV file
+- **Table → CSV / Excel** — extract a table from a page to a CSV file or a real `.xlsx` workbook
+  (numbers stay numbers, so a price column can be summed). Ruled tables and, since EH-E, borderless
+  ones inferred from column whitespace
 - **Watermark** — tiled repeating watermark on export with configurable text, opacity, angle, density
 - **Barcode / QR code** — generate and place 1D/2D barcodes or QR codes with custom content, format, and error-correction level
 - **Text search** — find text in the PDF with highlighted matches and Add Highlight action

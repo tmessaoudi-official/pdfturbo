@@ -570,7 +570,7 @@
     "xfdfImported": "Imported {{count}} annotation(s) from XFDF",
     "xfdfImportEmpty": "No importable annotations found in the file",
     "xfdfImportFailed": "Couldn't import the XFDF file",
-    "noTableFound": "No ruled table found on this page",
+    "noTableFound": "No table found on this page",
     "tableExtractFailed": "Table extraction failed",
     "pdfExportFailed": "PDF export failed",
     "sanitized": "Sanitized copy downloaded — {{count}} artifact type(s) removed",

@@ -570,7 +570,7 @@
     "xfdfImported": "تم استيراد {{count}} تعليق توضيحي من XFDF",
     "xfdfImportEmpty": "لم يتم العثور على تعليقات توضيحية قابلة للاستيراد في الملف",
     "xfdfImportFailed": "تعذّر استيراد ملف XFDF",
-    "noTableFound": "لم يُعثر على جدول بخطوط في هذه الصفحة",
+    "noTableFound": "لم يُعثر على جدول في هذه الصفحة",
     "tableExtractFailed": "فشل استخراج الجدول",
     "pdfExportFailed": "فشل تصدير PDF",
     "sanitized": "تم تنزيل نسخة منظَّفة — تمت إزالة {{count}} نوعًا من العناصر",

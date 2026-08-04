@@ -24,7 +24,7 @@ promise and the dependency-size budget.
 | **Date field** | One-click "today's date" text element |
 | **Batch export** | All pages as separate PDFs or a ZIP of PNGs |
 | **Page background** | Solid-colour background (useful for blank PDFs) |
-| **XLSX table export** | Beyond the current Table → CSV |
+| ~~XLSX table export~~ | **SHIPPED 2026-08-04** (`src/export/xlsxWriter.ts`) |
 | **Open-via-picker + recent files** | Use the File System Access API for opening, not just saving |
 | **Resizable crop handles / numeric margins** | Richer crop UX |
 

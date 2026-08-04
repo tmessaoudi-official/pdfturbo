@@ -99,12 +99,12 @@ The driver reports facts. You decide what they mean.
    enumeration used visibility instead of hit-testable reachability.
 3. **`SKIP` is coverage you did not get — and the real number is worse than the skip count.** The
    report now ends with `Exercised N distinct control(s) of M in the DOM` and **names** every control
-   that was not. Read that line first; a green `0 fail` over 64 of 139 controls is not a clean bill of
+   that was not. Read that line first; a green `0 fail` over 64 of 140 controls is not a clean bill of
    health. **CI passes `--allow-destructive`** (36 skips instead of 44 — it reaches redaction, erase
    and crop-remove), so a local default run is WEAKER than the gate; match the flag before comparing.
    Do NOT claim the sweep covers a specific feature without checking that list — measured 2026-07-31,
-   `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn` and the DOCX/MD/XFDF export
-   buttons are **never clicked**, because `modalBinder.ts` registers the export flyout with
+   `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
+   DOCX/MD/XFDF export buttons are **never clicked**, because `modalBinder.ts` registers the export flyout with
    `closeWhen: 'any-click'`, so the app shuts it the moment the first item is used. Four ways of
    re-opening it per child were built and measured; every one lost coverage overall, and the numbers
    are in `exercise()` so nobody repeats them blindly. Reaching those controls is open work.
@@ -152,13 +152,13 @@ Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots.
 
 **Baseline, `--allow-destructive` (what CI runs), measured 2026-07-31:**
 **149 checks · 113 pass · 0 fail · 0 warn · 36 skip · 0 a11y · 0 accepted-by-decision**, over
-**65 distinct controls of 139** in the DOM, in ~2 min including the 5 workflow scenarios.
+**65 distinct controls of 140** in the DOM, in ~2 min including the 5 workflow scenarios.
 
 Read the numbers in this order, because two of them mislead on their own:
 
 - **Distinct controls, not the check total.** The DFS revisits some controls at different depths, so
   the entry count exceeds distinct coverage. The report's `Exercised N distinct control(s) of M` line
-  is the honest figure; a `0 fail` over 65 of 139 is not a clean bill of health.
+  is the honest figure; a `0 fail` over 65 of 140 is not a clean bill of health.
 - **`0 accepted-by-decision` is load-bearing.** `A11Y_ACCEPTED` was emptied on 2026-07-31 when the last
   exception (`scrollable-region-focusable`) was properly fixed. A run reporting an `ACCEPT` line means
   someone re-opened a hole in the gate — find out why before shipping.

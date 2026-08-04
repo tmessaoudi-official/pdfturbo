@@ -245,6 +245,92 @@ describe('exportTableCsv save routing', () => {
   });
 });
 
+// ── exportTableXlsx (#56b) ─────────────────────────────────────────────────────
+// Parity with the CSV block above, because exportTableXlsx re-implements every one of those
+// behaviours with DIFFERENT constants: its own mime, its own `-table.xlsx` filename, and its own
+// picker call. In particular the picker must still be acquired BEFORE the async extraction (#54
+// transient activation) — reordering that is a silent regression no other test would catch.
+
+describe('exportTableXlsx save routing', () => {
+  function stubTable(probe: Probe): void {
+    (probe.svc as unknown as {
+      _extractPageTableData(p: unknown): Promise<unknown>;
+    })._extractPageTableData = () => Promise.resolve({
+      hRules: [{ x: 0, y: 0, width: 100, height: 1 }, { x: 0, y: 50, width: 100, height: 1 }],
+      vRules: [{ x: 0, y: 0, width: 1, height: 50 }, { x: 100, y: 0, width: 1, height: 50 }],
+      items: [{ x: 10, y: 25, text: 'cell' }],
+    });
+  }
+
+  const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  it('writes the workbook (spreadsheetml mime) to a file handle', async () => {
+    const cap = installPicker('report-table.xlsx');
+    const probe = buildProbe(await sourceBytes());
+    stubTable(probe);
+    await probe.svc.exportTableXlsx();
+    expect(g.showSaveFilePicker).toHaveBeenCalledOnce();
+    expect(probe.downloads).toHaveLength(0);
+    expect(cap.written).toHaveLength(1);
+    expect((cap.written[0] as Blob).type).toBe(XLSX_MIME);
+    expect(probe.infos.map(i => i.k)).toContain('toast.pdfSaved');
+  });
+
+  it('falls back to the anchor download with the .xlsx filename', async () => {
+    const probe = buildProbe(await sourceBytes());
+    stubTable(probe);
+    await probe.svc.exportTableXlsx();
+    expect(probe.downloads).toHaveLength(1);
+    expect(probe.downloads[0].filename).toBe('report-table.xlsx');
+    expect(probe.downloads[0].blob.type).toBe(XLSX_MIME);
+    expect(probe.infos.map(i => i.k)).toContain('toast.tableExtracted');
+  });
+
+  it('no-ops silently when the user cancels the picker', async () => {
+    g.showSaveFilePicker = () => Promise.reject(new DOMException('x', 'AbortError'));
+    const probe = buildProbe(await sourceBytes());
+    stubTable(probe);
+    await probe.svc.exportTableXlsx();
+    expect(probe.downloads).toHaveLength(0);
+    expect(probe.infos).toHaveLength(0);
+  });
+
+  it('acquires the picker BEFORE the async extraction (#54 transient activation)', async () => {
+    // Order matters and is invisible to the assertions above: an `await` before the picker call would
+    // outlive the activation window and the native dialog would be refused at runtime.
+    const order: string[] = [];
+    installPicker('report-table.xlsx');
+    const realPicker = g.showSaveFilePicker as unknown as () => Promise<unknown>;
+    g.showSaveFilePicker = ((...a: unknown[]) => {
+      order.push('picker');
+      return (realPicker as unknown as (...x: unknown[]) => Promise<unknown>)(...a);
+    }) as typeof g.showSaveFilePicker;
+    const probe = buildProbe(await sourceBytes());
+    (probe.svc as unknown as {
+      _extractPageTableData(p: unknown): Promise<unknown>;
+    })._extractPageTableData = () => {
+      order.push('extract');
+      return Promise.resolve({
+        hRules: [{ x: 0, y: 0, width: 100, height: 1 }, { x: 0, y: 50, width: 100, height: 1 }],
+        vRules: [{ x: 0, y: 0, width: 1, height: 50 }, { x: 100, y: 0, width: 1, height: 50 }],
+        items: [{ x: 10, y: 25, text: 'cell' }],
+      });
+    };
+    await probe.svc.exportTableXlsx();
+    expect(order).toEqual(['picker', 'extract']);
+  });
+
+  it('warns and writes nothing when no table is found', async () => {
+    const probe = buildProbe(await sourceBytes());
+    (probe.svc as unknown as {
+      _extractPageTableData(p: unknown): Promise<unknown>;
+    })._extractPageTableData = () => Promise.resolve(null);
+    await probe.svc.exportTableXlsx();
+    expect(probe.downloads).toHaveLength(0);
+    expect(probe.warns).toContain('toast.noTableFound');
+  });
+});
+
 // ── exportAsDocx (flow extraction stubbed at the private seam) ────────────────
 
 describe('exportAsDocx save routing', () => {

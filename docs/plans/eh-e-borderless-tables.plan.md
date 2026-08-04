@@ -37,6 +37,11 @@ deliberately separate follow-on — see the scope ruling below.
   pdf.js output, not just synthetic geometry. C13 marked closed in `KNOWN_ISSUES.md`; C9 left open with
   the harm-asymmetry reason recorded on the row itself.
 
+- [2026-08-04 23:55] AGREED: the borderless fallback now reaches a SECOND export surface (XLSX, #56b),
+  because both table exports share `ExportService._resolveTableGrid`. The per-path harm reasoning is
+  unchanged and still holds — an XLSX export is just as user-invoked as a CSV one — but extending a
+  scope ruling is itself a decision, so it is recorded here rather than left implicit in a refactor.
+
 ## Formal Plan
 
 ### New pure module `src/utils/borderlessTable.ts`

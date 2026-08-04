@@ -88,7 +88,8 @@ const DESTRUCTIVE = [
 // drive. The browser tests work around this by deleting window.showSaveFilePicker to force the
 // anchor-download fallback (CLAUDE.md § File System Access save) — we do the same below, so these
 // are safe to click, but each produces a download we do not need to keep.
-const EXPORTERS = ['downloadBtn', 'exportDocxBtn', 'exportMdBtn', 'exportTableBtn', 'exportXfdfBtn'];
+const EXPORTERS = ['downloadBtn', 'exportDocxBtn', 'exportMdBtn', 'exportTableBtn', 'exportXlsxBtn',
+  'exportXfdfBtn'];
 // Disclosure panels and the toggle that opens each. The DFS cannot cover these on its own: unwinding
 // child N also shuts the panel children N+1.. live in, so all but the first are recorded "became
 // hidden before click" (measured: 12 of the export flyout's 13 items, including the flatten, sanitize,

@@ -164,7 +164,7 @@ chromium-1194 is refused on purpose — see the container note below). It answer
 work?", which **neither** vitest suite does: jsdom has no canvas and the browser suite mounts
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
-UI crawl is over **disclosure depth** (only 8 of 139 buttons are visible on a freshly loaded document)
+UI crawl is over **disclosure depth** (only 8 of 140 buttons are visible on a freshly loaded document)
 rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s. **CI runs it with
 `--allow-destructive`** — correct there because the flag protects a developer's own open document,
 and CI drives a throwaway browser on a fixture; without it the gate skipped 44 controls including
@@ -284,12 +284,12 @@ exactly the failure a green test suite cannot catch. `C11` is the counter-case i
 unpinned on purpose, because its only testable surface is an inline predicate in a private method and a
 copied predicate pins nothing.
 
-### `/qa-sweep` reaches 64 of 139 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
+### `/qa-sweep` reaches 64 of 140 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
-The sweep's `0 fail` covers **64 distinct controls of 139 in the DOM**. Every report now ends with
+The sweep's `0 fail` covers **64 distinct controls of 140 in the DOM**. Every report now ends with
 `Exercised N distinct control(s) of M` and **names** the rest, because 31 `SKIP became hidden` lines
 buried among 150 entries read as thorough and are not. **Read that line before claiming the sweep
-covers a feature** — `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn` and the
+covers a feature** — `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
 DOCX/MD/XFDF export buttons are **never clicked** (a `deploy.yml` comment claimed otherwise; corrected).
 
 **The cause is the product, not the driver.** `modalBinder.ts` registers the export flyout with
@@ -582,6 +582,10 @@ exactly like "the file I generated is corrupt" and is not; check whether the too
 file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserting on the unzipped sheet
 XML). The button is in the export flyout, so `/qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
+i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]** — the only unreviewed Arabic value in
+`locales/ar.json`; needs a native pass). `toast.noTableFound` also dropped the word "ruled" in all three
+locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
+is verifiable at a glance.
 
 ### EH-E released for CSV — borderless tables, and the ONE rule that makes it safe (2026-08-04)
 
@@ -649,8 +653,10 @@ two of them with `expected null not to be null`).
 `ExportService.exportTableCsv`. `walkPageOps` now emits **`vRules`** (thin *vertical* line-like rects) alongside
 the horizontal `rules` — the horizontal filter (underline/strike) is byte-unchanged; vertical is a new
 additive branch. buildTableGrid clusters h-rule y's → rows, v-rule x's → cols, assigns text by center.
-**Lattice/ruled tables only** (needs visible grid lines on both axes); borderless = ceiling. CSV is a plain
-download (no FS-Access picker — sidesteps the transient-activation issue after async extraction). XLSX deferred (#56b).
+**Corrected 2026-08-04** — this paragraph carried three claims that later work made false: lattice-only
+(borderless now works via EH-E, see the § above), "plain download, no FS-Access picker" (both table
+exports call `pickSaveTarget`, which is why the picker must precede the async extraction), and "XLSX
+deferred (#56b)" (shipped — see § XLSX table export).
 
 ### Form flattening (#62)
 
@@ -1911,8 +1917,9 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
   the CVE-2026-14257 mitigation*, so the very version this block pinned to (`^5.0.8`) became the
   vulnerable one. The second was `fast-uri` (GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
   authority introducer) via `ajv` ← `workbox-build`. Both were devDependency-only and both were fixed
-  the same way — bump to `^5.0.9` / add `^3.1.5`, one deduped copy each, audit clean, PWA precache
-  unchanged at 22 entries. Lesson: a pinned version is a snapshot of the advisory database, not a
+  the same way — bump to `^5.0.9` / add `^3.1.5`, one deduped copy each, audit clean, and the PWA
+  precache unchanged at the 22 entries it had then (24 since the XLSX export added its lazy chunk and
+  split fflate out — recount rather than assuming the old figure). Lesson: a pinned version is a snapshot of the advisory database, not a
   permanent fix, and because `npm audit` is the FIRST CI step a new advisory turns every deploy red
   before a single test runs — including deploys of changes that have nothing to do with it.
 

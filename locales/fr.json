@@ -570,7 +570,7 @@
     "xfdfImported": "{{count}} annotation(s) importée(s) depuis XFDF",
     "xfdfImportEmpty": "Aucune annotation importable trouvée dans le fichier",
     "xfdfImportFailed": "Impossible d'importer le fichier XFDF",
-    "noTableFound": "Aucun tableau à grille trouvé sur cette page",
+    "noTableFound": "Aucun tableau trouvé sur cette page",
     "tableExtractFailed": "Échec de l'extraction du tableau",
     "pdfExportFailed": "Échec de l'export PDF",
     "sanitized": "Copie nettoyée téléchargée — {{count}} type(s) d'élément supprimé(s)",

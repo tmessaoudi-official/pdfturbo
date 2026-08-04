@@ -74,6 +74,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - Open-via-picker + recent-files for the native save dialog.
 
 > Releasing any escape hatch is a deliberate, per-need decision — most cost multi-MB dependencies,
-> significant build complexity, or the no-backend privacy promise. **EH-E is released for the CSV path
-> (2026-08-04)**, which was possible precisely because it costs none of those three: no dependency, no
+> significant build complexity, or the no-backend privacy promise. **EH-E is released for the CSV *and* XLSX table exports
+> (2026-08-04)** — both call the same `_resolveTableGrid`, and the harm reasoning is identical: each runs
+> only when the user explicitly asked for a table., which was possible precisely because it costs none of those three: no dependency, no
 > WASM, no backend — only an algorithm and a confidence gate. EH-A through EH-D remain un-greenlit.

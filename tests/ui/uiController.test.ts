@@ -37,7 +37,7 @@ function seedDOM(): void {
     'pageThumbnailContainer', 'addPdfInput', 'commentBtn', 'redactBtn', 'cropBtn',
     'copyBtn', 'pasteBtn', 'donePill', 'eraserBtn',
     'previewExportBtn', 'exportDocxBtn', 'exportMdBtn',
-    'sanitizeBtn', 'extractPagesBtn', 'exportTableBtn', 'flattenBtn',
+    'sanitizeBtn', 'extractPagesBtn', 'exportTableBtn', 'exportXlsxBtn', 'flattenBtn',
     'exportXfdfBtn', 'importXfdfBtn', 'xfdfInput',
     'exportPreviewOverlay', 'exportPreviewGhost', 'exportPreviewConfirm', 'exportPreviewClose',
     'selectBtn', 'restoreDialog', 'restoreYesBtn', 'restoreNoBtn',

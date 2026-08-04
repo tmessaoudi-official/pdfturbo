@@ -91,13 +91,48 @@ describe('buildXlsxBytes — cells', () => {
   });
 
   it('does NOT apply the CSV apostrophe guard — inline strings cannot be formulas', async () => {
-    const xml = await sheetOf(grid([['=1+1', '-cmd', '@ref']]));
-    // Text, escaped, and byte-for-byte what the PDF said — no injected apostrophe.
+    const xml = await sheetOf(grid([['=1+1', '-Dupont', '@handle']]));
+    // Text, escaped, and byte-for-byte what the PDF said — no injected apostrophe. (The real
+    // text-branch casualties of porting the guard are names like "-Dupont" and "@handle"; "-5" would
+    // never reach it, since it takes the numeric branch.)
     expect(xml).toContain('<t xml:space="preserve">=1+1</t>');
-    expect(xml).toContain('<t xml:space="preserve">@ref</t>');
+    expect(xml).toContain('<t xml:space="preserve">-Dupont</t>');
+    expect(xml).toContain('<t xml:space="preserve">@handle</t>');
     expect(xml).not.toContain("'=1+1");
-    // And never emitted as a formula element.
-    expect(xml).not.toContain('<f>');
+  });
+
+  // ── the two data-corruption regressions the certification panel caught ─────────────────────────
+  it('a EUROPEAN thousands value stays TEXT — it must not be silently divided by 1000', async () => {
+    // "1.200" is twelve hundred in FR/DE/ES/IT. It canonicalises to "1.2", so tolerating trailing
+    // zeros without bounding the fraction emitted <v>1.200</v>, which every reader parses as 1.2.
+    // A bare string cannot disambiguate a 3-digit group, so the only safe answer is text.
+    const xml = await sheetOf(grid([['1.200'], ['24.500'], ['1.000.000'], ['12.300']]));
+    expect(xml).not.toContain('<v>');
+    expect(xml).toContain('<t xml:space="preserve">1.200</t>');
+    expect(xml).toContain('<t xml:space="preserve">24.500</t>');
+  });
+
+  it('an XML-ILLEGAL control character cannot make the workbook unopenable', async () => {
+    // Reachable, not theoretical: pdf.js falls back to IdentityToUnicodeMap for a subset CID font with
+    // no usable /ToUnicode, yielding literal U+0001/U+0002 text items that survive every upstream
+    // trim() filter. One of them in a cell used to make sheet1.xml not well-formed — and the file is
+    // written BEFORE the success toast, so the user got a broken workbook and was told it worked.
+    const xml = await sheetOf(grid([['ACME\u0001 Ltd', 'a\u0000b', 'v\u000bt', 'x\u001fy']]));
+    const parsed = new DOMParser().parseFromString(xml, 'application/xml');
+    expect(parsed.getElementsByTagName('parsererror')).toHaveLength(0);
+    expect(xml).toContain('<t xml:space="preserve">ACME Ltd</t>');
+    expect(xml).toContain('<t xml:space="preserve">ab</t>');
+    // A legal control character (TAB) is NOT stripped — only the illegal ones.
+    const tabbed = await sheetOf(grid([['a\tb']]));
+    expect(tabbed).toContain('a\tb');
+  });
+
+  it('a hostile SHEET NAME cannot break workbook.xml either (same root cause)', async () => {
+    const files = unzipSync(await buildXlsxBytes(grid([['a']]), 'bad\u0001name'));
+    const wb = strFromU8(files['xl/workbook.xml']);
+    const parsed = new DOMParser().parseFromString(wb, 'application/xml');
+    expect(parsed.getElementsByTagName('parsererror')).toHaveLength(0);
+    expect(wb).toContain('name="badname"');
   });
 
   it('escapes XML metacharacters in cell text', async () => {
@@ -131,7 +166,11 @@ describe('helpers', () => {
     }
     // Text: leading zeros, separators, exponents, precision loss, non-numbers.
     for (const v of ['', ' ', '007', '00.5', '1,200', '1e5', '=1+1', 'abc', 'NaN', 'Infinity',
-      '12345678901234567890', '1.', '+5']) {
+      '12345678901234567890', '1.', '+5',
+      // European thousands separators — a 3-digit group after the dot is ambiguous, so never numeric.
+      '1.200', '24.500', '12.300', '1.000', '1.000.000',
+      // Exponent notation is refused outright so the documented invariant actually holds.
+      '1e+21', '1e-7', '1E5']) {
       expect(isNumericCell(v), v).toBe(false);
     }
   });
