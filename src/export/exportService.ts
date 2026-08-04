@@ -12,6 +12,7 @@ import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableTextItem } from '../utils/tableExtract';
+import { inferBorderlessGrid } from '../utils/borderlessTable';
 import { stripDocMetadata, dpiToScale, clampQuality, COMPRESS_DPI_DEFAULT, COMPRESS_QUALITY_DEFAULT, type CompressOptions } from './compress';
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
 import { elementToXfdfAnnot, pageHeightPt } from './xfdfMapping';
@@ -434,10 +435,10 @@ export class ExportService {
   }
 
   /**
-   * Extract a ruled (lattice) table from a page into CSV and download it (#56).
-   * Clusters the page's horizontal + vertical grid rules into cells and assigns
-   * the page text to them. Warns when no grid is detected. Source-PDF text only;
-   * borderless tables are not detected (ceiling). Plain download (CSV is small).
+   * Extract a table from a page into CSV and download it (#56). Clusters the page's horizontal +
+   * vertical grid rules into cells and assigns the page text to them; when there is no ruled grid,
+   * falls back to whitespace inference (EH-E, `borderlessTable.ts`), which refuses rather than guesses.
+   * Warns when neither finds a table. Source-PDF text only. Plain download (CSV is small).
    */
   async exportTableCsv(pageIdx?: number): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
@@ -454,7 +455,14 @@ export class ExportService {
     const _prog = progress.begin('progress.extractingTable');
     try {
       const data = await this._extractPageTableData(docPage);
-      const grid = data ? buildTableGrid(data.hRules, data.vRules, data.items) : null;
+      // Lattice FIRST, so a ruled table's output is byte-identical to before EH-E. The borderless
+      // detector runs only where the answer today is "no table found", and refuses rather than guesses
+      // (src/utils/borderlessTable.ts) — the user explicitly asked for a table by invoking this export,
+      // which is why the fallback is acceptable here and NOT yet in the DOCX flow, where a false
+      // positive would silently turn prose into a table.
+      const grid = data
+        ? (buildTableGrid(data.hRules, data.vRules, data.items) ?? inferBorderlessGrid(data.items))
+        : null;
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
       // Prepend a UTF-8 BOM (#QA-2026-06-23 P3 #28) so Excel auto-detects UTF-8 and renders
       // accented/non-ASCII cells correctly instead of mojibake.
@@ -488,7 +496,7 @@ export class ExportService {
     const ops = walkPageOps(opList, pdfjsLib.OPS as unknown as Record<string, number>);
     const items: TableTextItem[] = (content.items as RawTextItem[])
       .filter(it => typeof it.str === 'string' && it.str.trim().length > 0 && Array.isArray(it.transform))
-      .map(it => ({ x: it.transform[4], y: it.transform[5], text: it.str }));
+      .map(it => ({ x: it.transform[4], y: it.transform[5], text: it.str, width: it.width }));
     return { hRules: ops.rules, vRules: ops.vRules, items };
   }
 

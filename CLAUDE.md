@@ -545,6 +545,36 @@ XFDF export stay plain `_downloadBlob`. **Automation note:** the native Save dia
 Playwright — to capture a download in a browser test, `delete window.showSaveFilePicker` to force the
 anchor-download fallback. Open-via-picker + recent-files deferred (#54b).
 
+### EH-E released for CSV — borderless tables, and the ONE rule that makes it safe (2026-08-04)
+
+`src/utils/borderlessTable.ts` infers a table grid from text geometry when a page has no ruled lines,
+closing **C13**. It is the only escape hatch that cost nothing structural — no dependency, no WASM, no
+backend — which is why it was the one worth releasing.
+
+**Design: synthesize pseudo-rules and reuse `buildTableGrid`.** Inferred row/column boundaries become
+zero-height `RuleRect`s, so cell assignment, reading order, the empty-band pruning and every consumer
+(CSV/DOCX/MD/TXT) are shared with the lattice path. One grid shape, one set of semantics — and the
+boundary fix from `753c639` applies for free. Columns are **global whitespace bands** (an x-range no
+text item crosses), which is stricter than per-line gap persistence and rejects prose by construction.
+
+**The load-bearing rule is `MIN_SPANNING_RATIO`, and it is not obvious.** A two-column PAGE layout
+produces exactly one clean global band, so band detection alone would call every two-column article a
+two-column table. The discriminator: **in a table a single line spans multiple column bands; in a
+multi-column page each line lives in exactly one.** Proven load-bearing — disabling that one check
+makes the two-column-page test fail and *only* that test. Do not "simplify" it away.
+
+**C9 (DOCX) is deliberately NOT wired, and the reason is a harm asymmetry, not effort.**
+`exportTableCsv` runs only when the user explicitly asked for a table, so a false positive costs them
+one discardable CSV. The DOCX path is different: `reconstructPage` **removes in-region words from the
+paragraph flow**, so a phantom table there would silently mangle ordinary prose. Same engine, so C9 is
+a wiring change plus a stricter threshold — but it should follow evidence from real files.
+
+Guards: `tests/utils/borderlessTable.test.ts` (11 — the two refusal cases come FIRST because a phantom
+table is worse than a missed one) + `tests/browser/borderless-table.browser.test.ts` (3, real pdf.js:
+the lattice detector must find nothing, the borderless one recovers a 4×3 grid, and real prose is
+refused). `TableTextItem.width` is a new OPTIONAL field — the lattice path ignores it, so ruled-table
+output is byte-identical; the detector cannot find a column without knowing where text ENDS.
+
 ### Two boundary-convention bugs in the lattice-table path (2026-07-31)
 
 Found by READING the code while scoping EH-E, not by a failing test — both were invisible to 25

@@ -9,7 +9,7 @@ The items below are **not defects and not on a fix list** — they are the hones
 client-side editor. Each notes the "escape hatch" that *would* lift it and the trade-off of taking
 it, so the limit is understood rather than mistaken for a bug.
 
-_Last updated: 2026-06-26._
+_Last updated: 2026-08-04._
 
 ---
 
@@ -31,7 +31,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 | **EH-B** | **HarfBuzz-WASM** shaping + bidi-js (already a dep) | Arabic/complex-script char-level shaping + mixed LTR↔RTL single line + tashkeel (C2, C8, C18, C19) | Another WASM dep; shaping↔ToUnicode tension still limits exact Arabic search (C14) |
 | **EH-C** | **Page-as-image** export | DOCX/export pixel-identity (C5) | Destroys editable/selectable/searchable text — defeats the DOCX use-case |
 | **EH-D** | **Server-side conversion** (headless LibreOffice / render service) | Best-in-class fidelity (C5), TSA/LTV signing (C17) | **Breaks the no-backend / nothing-uploaded promise** — off the table unless that promise changes |
-| **EH-E** | **Whitespace-inference table detection** | Borderless tables → DOCX & CSV (C9, C13) | False positives (aligned prose misread as a table); needs a confidence gate. Ruled tables already work |
+| **EH-E** | **Whitespace-inference table detection** | **RELEASED for CSV (C13) 2026-08-04**; DOCX (C9) still gated | The confidence gate exists and its load-bearing rule is the multi-column-page discriminator (a table's rows span columns; a two-column page's lines do not). Ruled tables keep priority, so lattice output is unchanged |
 
 ## The structural ceilings (C1–C21)
 
@@ -45,11 +45,11 @@ work in a private/incognito window when editing sensitive documents on a shared 
 | C6 | DOCX subset-font **face** | Subset tag strips the family name (~75% face accuracy) | EH-D or font-fingerprinting. Content is exact; only typeface is approximate |
 | C7 | DOCX CJK font-face | No universal CJK family; content preserved, face approximate | Word's own fallback renders the codepoints |
 | C8 | DOCX char-level bidi / mixed LTR+RTL single line | Word-level reorder only | EH-B |
-| C9 | DOCX **borderless** tables | No ruled lines to detect | EH-E |
+| C9 | DOCX **borderless** tables | The EH-E engine now exists and works (C13), but is deliberately NOT wired into the DOCX flow: `reconstructPage` REMOVES in-region words from the paragraph flow, so a false positive would silently turn prose into a table. CSV is user-invoked, so a miss there is discardable | EH-E — a wiring change plus a stricter threshold, not new work |
 | C10 | DOCX **4+** column layout | Recursive XY-cut ships (B6) but is depth-capped; 3 columns work, 4 measured as 3 groups | Deeper recursion / a looser gutter threshold. Corrected 2026-07-31 — this row previously said "Reconstructor is 2-column", which B6 had already made false |
 | C11 | DOCX internal GoTo links / sheared images / ICC spot colour | No DOCX representation / no client ICC engine | EH-D. External URL links already work |
 | C12 | Markup-annotation flatten | pdf-lib has no generic markup-flatten API | Raster path (covers the redaction-rasterise case) |
-| C13 | Borderless table → CSV | No grid lines | EH-E |
+| ~~C13~~ | ~~Borderless table → CSV~~ | **CLOSED 2026-08-04** — EH-E released for the CSV path (`src/utils/borderlessTable.ts`): columns inferred from global whitespace bands, behind a confidence gate that refuses rather than guesses | — |
 | C14 | Arabic searchable-OCR **exact search** | Shaping yields contextual glyphs with incomplete ToUnicode | EH-B + richer ToUnicode. Selectable/screen-reader text already works |
 | C15 | OCR recognition **accuracy** | Bounded by the tesseract LSTM model | Cloud OCR (breaks EH-D) or a larger local model |
 | C16 | Encryption R6 hash-hardening | `@cantoo/pdf-lib` hardcodes R:5 | Fork/patch. AES-256 R5 is already strong |
@@ -68,7 +68,11 @@ work in a private/incognito window when editing sensitive documents on a shared 
   review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
 - Resizable crop handles / numeric crop margins (today: drag-to-set + re-drag).
-- XLSX table export; open-via-picker + recent-files for the native save dialog.
+- XLSX table export (no new dependency needed — `src/docx/opcEdit.ts` already writes OPC zips via
+  fflate's `zipSync`, and XLSX is the same ZIP-of-XML-parts format); open-via-picker + recent-files for
+  the native save dialog.
 
 > Releasing any escape hatch is a deliberate, per-need decision — most cost multi-MB dependencies,
-> significant build complexity, or the no-backend privacy promise. None are currently greenlit.
+> significant build complexity, or the no-backend privacy promise. **EH-E is released for the CSV path
+> (2026-08-04)**, which was possible precisely because it costs none of those three: no dependency, no
+> WASM, no backend — only an algorithm and a confidence gate. EH-A through EH-D remain un-greenlit.

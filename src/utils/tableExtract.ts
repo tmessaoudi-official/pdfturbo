@@ -15,6 +15,13 @@ export interface TableTextItem {
   x: number;
   y: number;
   text: string;
+  /**
+   * Advance width in user-space units, when the extractor knows it. OPTIONAL and ignored by the
+   * lattice path (which assigns cells by origin alone, so existing behaviour is byte-identical). It
+   * exists for the borderless detector in `borderlessTable.ts`, which cannot find a whitespace column
+   * without knowing where text ENDS.
+   */
+  width?: number;
 }
 
 export interface TableGrid {
