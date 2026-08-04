@@ -302,6 +302,7 @@ export function bindModalEvents(app: PDFTurboApp): void {
   app.ui.exportMdBtn.addEventListener('click', () => void app.exportAsMarkdown());
   app.ui.sanitizeBtn.addEventListener('click', () => void app.sanitizeAndDownload());
   app.ui.exportTableBtn.addEventListener('click', () => void app.exportTableCsv());
+  app.ui.exportXlsxBtn.addEventListener('click', () => void app.exportTableXlsx());
   app.ui.flattenBtn.addEventListener('click', () => void app.downloadFlattened());
   app.ui.exportXfdfBtn.addEventListener('click', () => void app.exportXfdf());
   app.ui.importXfdfBtn.addEventListener('click', () => app.ui.xfdfInput.click());

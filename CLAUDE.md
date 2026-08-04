@@ -545,6 +545,44 @@ XFDF export stay plain `_downloadBlob`. **Automation note:** the native Save dia
 Playwright — to capture a download in a browser test, `delete window.showSaveFilePicker` to force the
 anchor-download fallback. Open-via-picker + recent-files deferred (#54b).
 
+### XLSX table export (#56b, 2026-08-04) — and the numeric rule that a unit test cannot catch
+
+`📊 exportXlsxBtn` (export flyout) → `ExportService.exportTableXlsx` → `src/export/xlsxWriter.ts`.
+**No new dependency:** XLSX is OPC, the same ZIP-of-XML-parts container as DOCX, and this repo already
+writes OPC zips with fflate's `zipSync` (`src/docx/opcEdit.ts`). The writer is **dynamically imported**
+so fflate stays out of the entry bundle — verified: `xlsxWriter-*.js` is its own chunk and `zipSync`
+does not appear in `index-*.js`.
+
+Detection is SHARED with the CSV export via a new private `ExportService._resolveTableGrid()` (lattice
+first, then EH-E whitespace inference). The precedence lives in exactly one place on purpose — see
+§ Export paths are consolidated for what happens here when it does not.
+
+**Two ways XLSX must differ from the CSV writer, both easy to get wrong:**
+
+1. **Do NOT reuse the CSV formula-injection guard.** `csvField` prefixes `= + - @` with an apostrophe
+   because a CSV cell is parsed by the spreadsheet. In XLSX a formula is a distinct `<f>` element and a
+   `t="inlineStr"` cell is text by construction, so copying the guard would corrupt data (a cell
+   legitimately reading `-5` gains a visible apostrophe) while protecting against nothing.
+2. **Numeric cells must be real numbers** — a text `"9.99"` cannot be summed, which is the entire
+   reason to prefer XLSX over CSV. **The rule is subtler than it looks.** The obvious
+   `String(Number(v)) === v` accepts `"9.99"` but REJECTS `"24.50"` and `"5.00"`, so a currency column
+   comes out half numeric and half text. All 13 unit tests passed that bug because the fixture happened
+   to use `9.99`; it was caught by exporting a real invoice-shaped table and reading the sheet XML.
+   The fix compares against a canonical form that drops only **insignificant** trailing zeros, which
+   preserves three protections as a side effect rather than as special cases: `007` stays text
+   (significant leading zero), a 20-digit account number stays text (would lose IEEE precision), and
+   `1,200` / `1e5` stay text. A trailing `.` also stays text — `"1."` is a numeral to JS but in a table
+   it is almost always an ordinal marker.
+
+**Verified by an INDEPENDENT reader, not just its own round-trip:** `openpyxl` loads the exported
+workbook, reports `A1:C4`, types labels as `str` / Qty as `int` / Price as `float`, and **sums the Price
+column to 39.49**. Note `libreoffice` is present in the cloud container but **`libreoffice-calc` is
+not**, so `soffice --convert-to` fails on every spreadsheet — including a plain CSV. That failure looks
+exactly like "the file I generated is corrupt" and is not; check whether the tool can open a trivial
+file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserting on the unzipped sheet
+XML). The button is in the export flyout, so `/qa-sweep` never clicks it (the flyout closes on any
+click) — it is covered by the live drive described above, not by the sweep.
+
 ### EH-E released for CSV — borderless tables, and the ONE rule that makes it safe (2026-08-04)
 
 `src/utils/borderlessTable.ts` infers a table grid from text geometry when a page has no ruled lines,

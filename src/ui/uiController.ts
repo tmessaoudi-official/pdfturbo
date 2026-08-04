@@ -108,6 +108,7 @@ export interface AppDOMRefs {
   sanitizeBtn:          HTMLButtonElement;
   extractPagesBtn:      HTMLButtonElement;
   exportTableBtn:       HTMLButtonElement;
+  exportXlsxBtn:        HTMLButtonElement;
   flattenBtn:           HTMLButtonElement;
   exportXfdfBtn:        HTMLButtonElement;
   importXfdfBtn:        HTMLButtonElement;
@@ -364,6 +365,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
       sanitizeBtn:          document.getElementById('sanitizeBtn')          as HTMLButtonElement,
       extractPagesBtn:      document.getElementById('extractPagesBtn')      as HTMLButtonElement,
       exportTableBtn:       document.getElementById('exportTableBtn')       as HTMLButtonElement,
+      exportXlsxBtn:        document.getElementById('exportXlsxBtn')        as HTMLButtonElement,
       flattenBtn:           document.getElementById('flattenBtn')           as HTMLButtonElement,
       exportXfdfBtn:        document.getElementById('exportXfdfBtn')        as HTMLButtonElement,
       importXfdfBtn:        document.getElementById('importXfdfBtn')        as HTMLButtonElement,
@@ -549,6 +551,7 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     r.sanitizeBtn.disabled    = false;
     r.extractPagesBtn.disabled = false;
     r.exportTableBtn.disabled = false;
+    r.exportXlsxBtn.disabled = false;
     r.flattenBtn.disabled     = false;
     r.exportXfdfBtn.disabled  = false;
     r.importXfdfBtn.disabled  = false;

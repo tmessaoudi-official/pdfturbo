@@ -940,6 +940,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   downloadPage(pageIdx: number): Promise<void> { return this._exportService.downloadPage(pageIdx); }
   downloadPageRange(indices: number[]): Promise<void> { return this._exportService.downloadPageRange(indices); }
   exportTableCsv(pageIdx?: number): Promise<void> { return this._exportService.exportTableCsv(pageIdx); }
+  exportTableXlsx(pageIdx?: number): Promise<void> { return this._exportService.exportTableXlsx(pageIdx); }
   downloadPageAsImage(pageIdx?: number, opts?: ImageExportOptions): Promise<void> { return this._exportService.downloadPageAsImage(pageIdx, opts); }
   exportAsDocx(): Promise<void> { return this._exportService.exportAsDocx(); }
   exportAsMarkdown(): Promise<void> { return this._exportService.exportAsMarkdown(); }

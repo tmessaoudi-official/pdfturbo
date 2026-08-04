@@ -71,6 +71,7 @@
     "sanitizeTitle": "Sanitize — download a copy with metadata, JavaScript & embedded files removed",
     "extractPagesTitle": "Extract pages to a new PDF",
     "exportTableTitle": "Extract a ruled table to CSV",
+    "exportXlsxTitle": "Extract a table to Excel (.xlsx)",
     "flattenTitle": "Flatten form fields & download a static copy",
     "exportXfdfTitle": "Export annotations as XFDF",
     "importXfdfTitle": "Import annotations from XFDF",

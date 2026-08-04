@@ -71,6 +71,7 @@
     "sanitizeTitle": "Nettoyer — télécharger une copie sans métadonnées, JavaScript ni fichiers intégrés",
     "extractPagesTitle": "Extraire des pages vers un nouveau PDF",
     "exportTableTitle": "Extraire un tableau à grille en CSV",
+    "exportXlsxTitle": "Extraire un tableau vers Excel (.xlsx)",
     "flattenTitle": "Aplatir les champs de formulaire et télécharger une copie statique",
     "exportXfdfTitle": "Exporter les annotations au format XFDF",
     "importXfdfTitle": "Importer des annotations depuis XFDF",

@@ -11,7 +11,7 @@ import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pi
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
-import { buildTableGrid, gridToCsv, type TableTextItem } from '../utils/tableExtract';
+import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '../utils/tableExtract';
 import { inferBorderlessGrid } from '../utils/borderlessTable';
 import { stripDocMetadata, dpiToScale, clampQuality, COMPRESS_DPI_DEFAULT, COMPRESS_QUALITY_DEFAULT, type CompressOptions } from './compress';
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
@@ -20,7 +20,7 @@ import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import { PDFCheckBox, PDFRadioGroup, PDFDropdown, PDFOptionList, PDFTextField, type PDFForm } from '@cantoo/pdf-lib';
 import type { PDFElement } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
-import type { DocumentModel } from '../core/documentModel';
+import type { DocumentModel, DocumentPage } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
@@ -100,6 +100,11 @@ const SAVE_PDF: SaveFileType = { description: 'PDF document', mime: 'application
 const SAVE_PNG: SaveFileType = { description: 'PNG image', mime: 'image/png', ext: '.png' };
 const SAVE_JPG: SaveFileType = { description: 'JPEG image', mime: 'image/jpeg', ext: '.jpg' };
 const SAVE_CSV: SaveFileType = { description: 'CSV spreadsheet', mime: 'text/csv', ext: '.csv' };
+const SAVE_XLSX: SaveFileType = {
+  description: 'Excel workbook',
+  mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ext: '.xlsx',
+};
 
 // ── Page-image export options (G20) ────────────────────────────────────────
 export type ImageExportFormat = 'png' | 'jpeg';
@@ -435,6 +440,55 @@ export class ExportService {
   }
 
   /**
+   * Resolve a page's table grid: ruled (lattice) FIRST, then whitespace inference (EH-E).
+   *
+   * The precedence lives HERE and nowhere else, so CSV and XLSX can never drift apart — this repo has
+   * been bitten by triplicated export logic before (see CLAUDE.md § Export paths are consolidated).
+   * Lattice first means a ruled table's output is byte-identical to before EH-E; the borderless
+   * detector runs only where the answer would otherwise be "no table found", and refuses rather than
+   * guesses (`src/utils/borderlessTable.ts`). That fallback is acceptable on these two exports because
+   * the user explicitly asked for a table by invoking them, and is deliberately NOT in the DOCX flow,
+   * where a false positive would silently turn prose into a table.
+   */
+  private async _resolveTableGrid(docPage: DocumentPage): Promise<TableGrid | null> {
+    const data = await this._extractPageTableData(docPage);
+    if (!data) return null;
+    return buildTableGrid(data.hRules, data.vRules, data.items) ?? inferBorderlessGrid(data.items);
+  }
+
+  /**
+   * Extract a table from a page into a real .xlsx workbook and download it (#56b). Same detection as
+   * the CSV export; the difference is on the way out — numeric cells become actual numbers, so the
+   * result can be summed instead of merely read. No new dependency: XLSX is OPC, and this repo already
+   * writes OPC zips with fflate (`src/export/xlsxWriter.ts`, dynamically imported to keep it lazy).
+   */
+  async exportTableXlsx(pageIdx?: number): Promise<void> {
+    const { documentModel, reportError, progress } = this._ctx;
+    const idx = pageIdx ?? documentModel.currentPageIndex;
+    const docPage = documentModel.pages[idx];
+    if (!docPage || docPage.sourcePdfId === 'blank') { reportError.warn('toast.noTableFound'); return; }
+    const filename = `${this._exportBaseName()}-table.xlsx`;
+    // #54: acquire the picker BEFORE the async extraction, inside the transient-activation window.
+    const target = await pickSaveTarget(filename, SAVE_XLSX);
+    if (target === 'cancelled') return;
+    const _prog = progress.begin('progress.extractingTable');
+    try {
+      const grid = await this._resolveTableGrid(docPage);
+      if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
+      const { buildXlsxBytes } = await import('./xlsxWriter');
+      const bytes = await buildXlsxBytes(grid);
+      const blob = new Blob([bytes as BlobPart], { type: SAVE_XLSX.mime });
+      await this._saveOrDownload(target, blob, filename, SAVE_XLSX.mime);
+      if (target === 'download') reportError.info('toast.tableExtracted', { rows: grid.rows, cols: grid.cols });
+      else reportError.info('toast.pdfSaved', { name: target.name });
+      _prog.done();
+    } catch (err) {
+      reportError.error('toast.tableExtractFailed', err);
+      _prog.failed();
+    }
+  }
+
+  /**
    * Extract a table from a page into CSV and download it (#56). Clusters the page's horizontal +
    * vertical grid rules into cells and assigns the page text to them; when there is no ruled grid,
    * falls back to whitespace inference (EH-E, `borderlessTable.ts`), which refuses rather than guesses.
@@ -454,15 +508,7 @@ export class ExportService {
     if (target === 'cancelled') return;
     const _prog = progress.begin('progress.extractingTable');
     try {
-      const data = await this._extractPageTableData(docPage);
-      // Lattice FIRST, so a ruled table's output is byte-identical to before EH-E. The borderless
-      // detector runs only where the answer today is "no table found", and refuses rather than guesses
-      // (src/utils/borderlessTable.ts) — the user explicitly asked for a table by invoking this export,
-      // which is why the fallback is acceptable here and NOT yet in the DOCX flow, where a false
-      // positive would silently turn prose into a table.
-      const grid = data
-        ? (buildTableGrid(data.hRules, data.vRules, data.items) ?? inferBorderlessGrid(data.items))
-        : null;
+      const grid = await this._resolveTableGrid(docPage);
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
       // Prepend a UTF-8 BOM (#QA-2026-06-23 P3 #28) so Excel auto-detects UTF-8 and renders
       // accented/non-ASCII cells correctly instead of mojibake.

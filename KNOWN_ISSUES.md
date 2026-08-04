@@ -68,9 +68,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
   review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
 - Resizable crop handles / numeric crop margins (today: drag-to-set + re-drag).
-- XLSX table export (no new dependency needed — `src/docx/opcEdit.ts` already writes OPC zips via
-  fflate's `zipSync`, and XLSX is the same ZIP-of-XML-parts format); open-via-picker + recent-files for
-  the native save dialog.
+- **XLSX table export** — DONE (2026-08-04): `src/export/xlsxWriter.ts`, no new dependency (XLSX is OPC,
+  written with the fflate `zipSync` this repo already uses for DOCX). Shares table detection with the CSV
+  export, and writes numeric cells as real numbers so a price column can be summed.
+- Open-via-picker + recent-files for the native save dialog.
 
 > Releasing any escape hatch is a deliberate, per-need decision — most cost multi-MB dependencies,
 > significant build complexity, or the no-backend privacy promise. **EH-E is released for the CSV path
