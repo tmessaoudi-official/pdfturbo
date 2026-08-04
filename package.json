@@ -66,6 +66,7 @@
     "vitest": "^4.1.8"
   },
   "overrides": {
-    "brace-expansion": "^5.0.8"
+    "brace-expansion": "^5.0.9",
+    "fast-uri": "^3.1.5"
   }
 }
