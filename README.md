@@ -35,7 +35,8 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - Upload any PDF, fill form fields, annotate, sign, and export
 - **Text tool** — place editable text boxes with font/size/bold/italic/color controls
 - **Edit PDF text** — click any word in the PDF to overlay and edit it in place
-- **Shapes** — arrow, rectangle, ellipse, freehand draw
+- **Shapes** — arrow, rectangle, ellipse, freehand draw. A filled shape drawn over text **does not hide
+  it** — the text underneath stays fully selectable and copyable. To remove content, use **Redaction**
 - **Highlight** — semi-transparent highlight over existing text
 - **Eraser** — erase freehand ink strokes (does not affect annotation elements)
 - **Fill bucket** — flood-fill enclosed regions of freehand ink drawings with a chosen colour

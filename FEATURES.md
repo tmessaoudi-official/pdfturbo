@@ -21,7 +21,9 @@ _Last updated: 2026-06-26 · Version 1.0.0_
   outline, bullet/numbered lists, hyperlinks, RTL direction control, and a format painter
 - **Edit existing PDF text in place** — true content-stream editing (delete/replace/restyle a word),
   with an editable overlay fallback when in-place editing isn't possible
-- **Shapes** — arrow, rectangle, ellipse, line, freehand draw
+- **Shapes** — arrow, rectangle, ellipse, line, freehand draw.
+  **A filled shape over text conceals nothing** — the covered text remains fully extractable, even though
+  it looks identical to a redaction on screen. Use **Redaction** to remove content
 - **Highlight** brush over existing text; **eraser** for ink strokes; **fill bucket** for ink regions
 - **Image overlay** (PNG/JPEG/WebP); **comment / sticky notes**
 - **Barcode / QR** generator (1D/2D, formats, error-correction, styling)
@@ -39,12 +41,16 @@ _Last updated: 2026-06-26 · Version 1.0.0_
 
 ## Forms
 - Auto-detect and fill AcroForm text fields (undoable)
-- **Flatten forms** on export (bake field values into page content)
+- **Flatten forms** on export (bake field values into page content). Note this *exposes* the value rather
+  than concealing it: it stops being an editable field and becomes selectable page text
 
 ## Redaction & privacy
 - **True redaction** — permanent black-box burn via page rasterization (text becomes unextractable)
-- **Sanitize** — strip metadata (`/Info`, XMP), document JavaScript (`/OpenAction`, `/AA`), embedded files
+- **Sanitize** — strip metadata (`/Info`, XMP), document JavaScript (`/OpenAction`, `/AA`), embedded files.
+  It does **not** alter page content
 - **Lock PDF** — AES-256 password encryption on export
+- Which tools actually *delete* content versus only hide it is graded surface-by-surface in
+  [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content)
 
 ## OCR (scanned documents)
 - Recognise text via tesseract.js — 8 languages (eng/fra/ara/deu/spa/ita/por/nld); assets self-hosted

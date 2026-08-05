@@ -1538,6 +1538,43 @@ unqualified four lines away read as an equal promise. Numeric margins raised the
 creating them: a margin is exactly the affordance for a header banner, and typing `80` feels like a
 measurement.
 
+### The hide-vs-remove audit — every surface graded, and two more traps found (2026-08-05)
+
+Crop's disclosure gap begged the obvious question: **what else claims, or merely implies, removal?** So
+every surface a user could believe deletes content was measured the same way — build the file, run the
+REAL export path, try to recover the content with pdf.js. Pinned in
+`tests/browser/hide-vs-remove.browser.test.ts` (6 tests), and the grades are now a user-facing table in
+`SECURITY.md` § *"Hiding is not removing"* (which absorbed and kept the crop § rather than replacing it).
+
+**Verdict: four surfaces genuinely REMOVE** — redaction (rasterises), page delete (never copied),
+compress→flatten-to-images (rasterises), and **true-edit delete**, which is the only one that removes
+surgically: it blanks the show op, so the string leaves the content stream while *the rest of the page
+stays real text*. Worth knowing precisely because someone who has internalised "removal means
+rasterisation" will expect the neighbouring text to die with it, and it does not.
+
+**Two NEW traps, both undisclosed until now, neither a code defect:**
+1. **A filled shape over text hides nothing at all.** Not "recoverable with effort" like crop — the text
+   is plainly extractable, untouched. This is the single most famous PDF mistake in the world and the
+   product ships a black-rectangle tool in the same toolbar row as redaction, rendering an identical
+   result on screen. Nothing claimed otherwise, and that was exactly the crop failure mode: the *absence*
+   of a qualifier next to qualified neighbours reads as an equal promise.
+2. **Form flatten makes a value MORE exposed, not less.** "Flatten" sounds concealing; it converts an
+   editable field into permanent selectable page text. Correct behaviour, opposite connotation.
+
+**Method note worth reusing: pin the traps as tests, not just as prose.** Two of the six assertions
+encode behaviour that is *correct* — `expect(text).toContain(SECRET)` after drawing a black box over it.
+An assertion that a defect-shaped thing is intended is the only artifact that stops a future reader
+"fixing" it, or quietly describing shapes as hiding content. Each carries a comment saying so.
+
+Also confirmed by measurement rather than assumption: sanitize touches metadata only (page content
+survives, and it does not claim otherwise), and redaction takes the WHOLE page's text with it — the
+documented cost of "text unextractable", and the reason it is not the default.
+
+**One API trap found while writing it:** `PDFDict.lookup(key, PDFDict)` **throws**
+`Expected instance of PDFDict, but got instance of undefined` when the key is absent — so asserting a key
+was stripped must use `.get(key)`. And a fixture built with `page.drawText` needs a save→load round-trip
+before `findTarget` can see it: `drawText` buffers operators and only flushes them at save.
+
 ### Resizable crop handles (#G23 v1c, 2026-08-05)
 
 Eight grips (4 corners + 4 edge midpoints) on `#cropFrameOverlay`. Pure geometry in
