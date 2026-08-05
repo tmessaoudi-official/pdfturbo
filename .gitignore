@@ -39,3 +39,9 @@
 # NOT ignored, deliberately: scripts/claude-bootstrap/settings.json.pending. Claude cannot
 # write .claude/settings.json (classifier-blocked), so it commits the change there for the
 # developer to apply locally with apply-pending-settings.sh, which deletes it on success.
+
+# Stray QA artifacts at the repo root. Reviewer probes and screenshots belong in var/claude/** (already
+# ignored); this is the backstop so a `git add -A` on a green run cannot commit one. A root screenshot
+# of a real document would be a content leak, not just noise.
+/*.png
+/*.tmp.mjs

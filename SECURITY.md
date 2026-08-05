@@ -29,6 +29,23 @@ Security concerns most relevant to this project:
 - Malicious PDF files causing unexpected behavior in pdf.js
 - Privacy: PDFs are processed locally and never uploaded anywhere
 
+## Crop hides content — it does not remove it
+
+**Cropping a page is a view setting, not a deletion.** PDFturbo writes the PDF `CropBox`, which tells a
+viewer to display only that region; the page's full content stream and `MediaBox` are unchanged, so the
+cropped-away area is still in the exported file and a recipient can bring it back by removing one key.
+
+This matters because **the obvious way to check gives a false negative**: text extraction (select-all /
+copy, or a text-extraction tool) respects the CropBox, so cropped-away text looks gone even though the
+drawing operators are still present.
+
+If you need content **actually gone** — a classification banner, a case number, a letterhead, anything
+confidential — use **Redaction**, which rasterises the affected page so the content is not recoverable.
+Cropping is for framing.
+
+One exception worth knowing: on a page that also carries a redaction, the export takes the rasterising
+path, and there the crop *is* destructive. Do not generalise from that page to the others.
+
 ## Data at rest (session persistence)
 
 To restore your work after a reload, PDFturbo saves the open document — **including the raw

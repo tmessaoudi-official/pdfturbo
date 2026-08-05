@@ -125,24 +125,28 @@ export function displayRectToUserSpaceRect(
   return { x: c.x, y: H - (c.y + c.height), width: c.width, height: c.height };
 }
 
-/** Clamp a content-space rect into the `[0,0,W,H]` content box (keeps width/height ≥ 0). */
 /**
- * Convert per-edge MARGINS (points, unrotated content space) into a crop rect (#G23 v1b — the numeric
- * companion to drag-to-crop). Margins are the natural way to type a crop — "20pt off each edge" — and
- * they are page-size independent, which is why apply-to-all computes them per page rather than reusing
- * one rect.
+ * Inset a W×H box by per-edge MARGINS in points (#G23 v1b — the numeric companion to drag-to-crop).
  *
- * Content space is y-DOWN from the top-left of the source box, so `top` is the y offset and `bottom`
- * shortens the height. Returns null when the margins leave nothing (or less than 1pt) to show, so a
- * caller never has to special-case a degenerate crop — mirroring the drag path's own <1pt guard.
- * Negative margins are treated as 0: they would mean OUTSETTING the page, which the crop box cannot do.
+ * DELIBERATELY SPACE-AGNOSTIC. It is called with the page's *display* dimensions, because the user types
+ * what they SEE — "100pt off the top" means the visual top — and the caller then maps the resulting rect
+ * into unrotated content space with the very same `redactionRectToContent` the drag path uses. An earlier
+ * version took content dims directly and so cropped the WRONG VISUAL EDGE on any page with `/Rotate ≠ 0`
+ * (measured: at 90° a typed top margin removed the right-hand strip). Rotation belongs to the caller,
+ * once, shared with the drag path — not re-derived here.
+ *
+ * Returns null when the margins leave under 1pt, so a caller never special-cases a degenerate crop —
+ * mirroring the drag path's own guard. A NEGATIVE margin is clamped to 0 (it would mean OUTSETTING the
+ * page, which a crop box cannot express); NaN is treated as 0 (an empty number input parses to NaN);
+ * but a non-finite POSITIVE margin is left as-is so it refuses, rather than silently meaning "no margin"
+ * — `1e999` parses to Infinity and must behave like the `1e9` next to it.
  */
-export function marginsToContentCrop(
+export function marginsToRect(
   margins: { top: number; right: number; bottom: number; left: number },
   W: number,
   H: number,
 ): { x: number; y: number; width: number; height: number } | null {
-  const nn = (v: number) => (Number.isFinite(v) && v > 0 ? v : 0);
+  const nn = (v: number) => (Number.isNaN(v) ? 0 : Math.max(0, v));
   const left = nn(margins.left);
   const top = nn(margins.top);
   const rect = {
@@ -155,6 +159,7 @@ export function marginsToContentCrop(
   return clampContentRect(rect, W, H);
 }
 
+/** Clamp a content-space rect into the `[0,0,W,H]` content box (keeps width/height ≥ 0). */
 export function clampContentRect(
   rect: { x: number; y: number; width: number; height: number },
   W: number, H: number,

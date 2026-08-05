@@ -83,6 +83,10 @@ const OUT = resolve(flag('--out', `var/claude/qa-sweep/${STAMP}`));
 const DESTRUCTIVE = [
   'delete', 'remove', 'reset', 'clear', 'eraser', 'redact', 'flatten', 'compress',
   'cancel', 'restoreNo', 'lockPdfApply',
+  // cropMarginApply COMMITS a crop to the open document, and 'remove' already gates cropRemoveBtn —
+  // so without this a plain `npm run qa:sweep` cropped a developer's own document and then skipped the
+  // one control that would have undone it. Matched by substring, hence the lowercase fragment.
+  'cropmarginapply',
 ];
 // Byte-export buttons: they open the File System Access save dialog, which Playwright cannot
 // drive. The browser tests work around this by deleting window.showSaveFilePicker to force the

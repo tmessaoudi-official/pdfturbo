@@ -38,6 +38,16 @@
     padding: 8px;
     max-height: none;
   }
+  /* A toolbar GROUP must be able to wrap too, not just the toolbar. `.toolbar` has had
+     `flex-wrap: wrap` since QA-D F3 for the stated invariant "every control stays reachable without
+     scrolling", but `.toolbar-group` did not — so a group that outgrows the viewport pushed its own
+     children past the right edge, where `.container { overflow: hidden }` leaves no scroll to reach
+     them. Measured at 375px when #cropControls gained the four margin inputs: cropMarginBottom,
+     cropMarginLeft and cropMarginApplyBtn were all off-screen AND not hit-testable
+     (elementFromPoint at their own centre returned null). Desktop is untouched — this is inside the
+     mobile breakpoint only. */
+  .toolbar-group { flex-wrap: wrap; row-gap: 6px; }
+
   /* ── Mobile toolbar reorganization ──────────────────────── */
   /* Wrap row 1 into 2 lines so all tools are always visible   */
   .toolbar-row1 { flex-wrap: wrap; gap: 4px 5px; overflow-x: visible; }

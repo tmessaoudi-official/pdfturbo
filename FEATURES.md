@@ -30,7 +30,9 @@ _Last updated: 2026-06-26 · Version 1.0.0_
 ## Documents & pages
 - Merge (add pages from another PDF), delete, reorder, rotate pages
 - Extract a page range (e.g. `1-3, 5, 8-10`) to a new PDF
-- **Per-page crop** (keep only a drawn region; rotation-safe)
+- **Per-page crop** (show only a chosen region — drag it or type per-edge margins; rotation-safe).
+  **Crop HIDES rather than removes**: it sets the PDF CropBox, so the cropped-away area remains in the
+  file and can be restored by a recipient. Use **Redaction** to remove content permanently
 - **Watermark** — tiled, configurable text/opacity/angle/density; renders live in the editor and on export
 - **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
 

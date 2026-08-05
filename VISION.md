@@ -26,7 +26,7 @@ promise and the dependency-size budget.
 | **Page background** | Solid-colour background (useful for blank PDFs) |
 | ~~XLSX table export~~ | **SHIPPED 2026-08-04** (`src/export/xlsxWriter.ts`) |
 | **Open-via-picker + recent files** | Use the File System Access API for opening, not just saving |
-| **Resizable crop handles / numeric margins** | Richer crop UX |
+| **Resizable crop handles** | Richer crop UX (numeric **margins** already shipped 2026-08-04) |
 
 ## Things deliberately *not* pursued
 

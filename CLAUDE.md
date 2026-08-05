@@ -284,9 +284,9 @@ exactly the failure a green test suite cannot catch. `C11` is the counter-case i
 unpinned on purpose, because its only testable surface is an inline predicate in a private method and a
 copied predicate pins nothing.
 
-### `/qa-sweep` reaches 65 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
+### `/qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
-The sweep's `0 fail` covers **64 distinct controls of 141 in the DOM**. Every report now ends with
+The sweep's `0 fail` covers **66 distinct controls of 141 in the DOM**. Every report now ends with
 `Exercised N distinct control(s) of M` and **names** the rest, because 31 `SKIP became hidden` lines
 buried among 150 entries read as thorough and are not. **Read that line before claiming the sweep
 covers a feature** — `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
@@ -582,8 +582,8 @@ exactly like "the file I generated is corrupt" and is not; check whether the too
 file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserting on the unzipped sheet
 XML). The button is in the export flyout, so `/qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
-i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]** — the only unreviewed Arabic value in
-`locales/ar.json`; needs a native pass). `toast.noTableFound` also dropped the word "ruled" in all three
+i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
+`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day, so 8 values are pending). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
 
@@ -1503,7 +1503,29 @@ rides the CURRENT page's command (fires on execute AND undo). Live editor previe
 frame** (`pageRenderPipeline._renderCropFrame`, mapped via `contentRectToDisplay`), NOT a pdf.js sub-region
 render (Design β). Tool mode `'crop'` rides `DrawingHandler` (pointerdown gate + `_updatePreview` + pointer-up
 branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off).
-**Ceiling (v1b):** resizable crop handles / numeric margins; aspect-aware apply-to-all.
+**Ceiling (v1c):** resizable crop HANDLES on an existing frame; aspect-aware apply-to-all.
+Numeric margins SHIPPED 2026-08-04 — see § Numeric crop margins below.
+
+### Crop HIDES, redaction REMOVES — and the obvious check gives a false negative (2026-08-04)
+
+`buildPageOverlays` ends with `page.setCropBox(...)`: a **view directive**. The content stream and
+MediaBox are untouched, so cropped-away content is still in the exported bytes and a recipient restores
+it by deleting one key. Proven by a reviewer: export a crop over a `CONFIDENTIAL …` header, delete
+`/CropBox`, the header is back.
+
+**Two things make this worse than a plain limitation, and both are why it is now disclosed to USERS**
+(`README.md`, `FEATURES.md`, and its own § in `SECURITY.md` — not only here):
+1. **The user's own verification confirms the illusion.** `getTextContent()` respects the CropBox, so
+   select-all/copy in a viewer shows the header gone while `getOperatorList()` on the same untouched
+   file still returns it. Someone who checks the way a careful person would checks is reassured wrongly.
+2. **Removal semantics differ PER PAGE.** A page carrying a redaction takes
+   `rasterizePageWithRedactions`, which embeds only the clipped canvas — there the crop IS destructive.
+   Same UI action, same toast, opposite guarantees. Do not generalise from a redacted page.
+
+The docs already qualify removal-grade features ("Redaction — … text unextractable"), so crop sitting
+unqualified four lines away read as an equal promise. Numeric margins raised the stakes rather than
+creating them: a margin is exactly the affordance for a header banner, and typing `80` feels like a
+measurement.
 
 ### Numeric crop margins (#G23 v1b, 2026-08-04)
 
@@ -1521,7 +1543,20 @@ grouping (`MacroCmd` vs a single `SetPageCropCmd`), thumbnail invalidation and w
 drift between the drag and margin paths. No new command, no `SCHEMA_VERSION` bump: it writes the same
 `page.crop`.
 
-**Two things that will mislead you when testing this by hand:**
+**The margins are typed in DISPLAY space and mapped through the drag path's own
+`redactionRectToContent`** — deriving a content rect from margins directly ignored `srcRot`/`p.rotation`
+and cropped the WRONG VISUAL EDGE on any rotated page (measured: at 90° a typed top margin removed the
+right-hand strip; a `/Rotate 90` scan hits this without the user rotating anything). Sharing the mapping
+is what makes "top" mean the same thing in both entry points — pinned by a test that fails if rotation is
+ignored. **A green Playwright click is NOT evidence of reachability:** the 5 controls overflowed the
+375px viewport and `elementFromPoint` at the ✓ button's own centre returned null, yet the sweep scored it
+PASS because Playwright scrolls programmatically where a finger cannot, and
+`documentElement.scrollWidth` stays 375 because `.container` clips. Fixed by letting `.toolbar-group`
+wrap at the mobile breakpoint (`.toolbar` already did — the QA-D F3 invariant did not reach inside a
+group), guarded statically by `tests/ui/toolbarWrapInvariant.test.ts` because the live gate is blind to
+this class twice over.
+
+**Two more things that will mislead you when testing this by hand:**
 1. **The canvas does NOT resize.** Per § Per-page crop the live preview is a dimmed-margin SVG frame
    (`#cropFrameOverlay`, Design β), not a pdf.js sub-region render — so `#pdfCanvas.width` is unchanged
    and the overlay's presence is the real observable. Measured live: no overlay before, 5 rects after.

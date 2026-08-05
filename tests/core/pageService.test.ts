@@ -398,19 +398,68 @@ describe('PageService.cropPageByMargins (#G23 v1b)', () => {
     expect(ctx.reportError.warn).toHaveBeenCalledWith('toast.cropMarginsTooLarge');
   });
 
-  it('apply-to-all converts margins PER PAGE and groups them in one MacroCmd', async () => {
+  it('apply-to-all converts margins PER PAGE — proven with MIXED page sizes', async () => {
+    // A same-size fixture cannot prove this: convert-once-and-clamp (the drag path's behaviour, the
+    // very thing this improves on) produces identical output. Different sizes are the discriminator.
     const ctx = makeCtx();
-    addBlankPages(ctx.documentModel, 3);
+    ctx.documentModel.addBlankPage(595, 842);
+    ctx.documentModel.addBlankPage(300, 400);
     const svc = new PageService(ctx);
     const id = ctx.documentModel.pages[0].id;
     vi.spyOn(ctx.historyManager, 'execute');
     await svc.cropPageByMargins(id, { top: 10, right: 10, bottom: 10, left: 10 }, true);
     expect(ctx.historyManager.execute).toHaveBeenCalledWith(expect.any(MacroCmd));
-    for (const p of ctx.documentModel.pages) {
-      expect(p.crop).toEqual({ x: 10, y: 10, width: 575, height: 822 });
-    }
+    expect(ctx.documentModel.pages[0].crop).toEqual({ x: 10, y: 10, width: 575, height: 822 });
+    // Clamping ONE rect would give the small page 280x380 too only by luck of the numbers; the width
+    // and height here are derived from ITS OWN box, which a single clamped rect cannot produce.
+    expect(ctx.documentModel.pages[1].crop).toEqual({ x: 10, y: 10, width: 280, height: 380 });
     ctx.historyManager.undo();
     for (const p of ctx.documentModel.pages) expect(p.crop).toBeUndefined();
+  });
+
+  it('ROTATION: a typed top margin crops the visual top, matching the drag path', async () => {
+    // The bug this pins: the margins path used to ignore srcRot/p.rotation and emit ONE content rect
+    // for every rotation, so on a 90-rotated page a typed "top" removed a side strip. A /Rotate 90
+    // landscape scan hits this without the user rotating anything.
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const page = ctx.documentModel.pages[0];
+    page.rotation = 90;
+    await svc.cropPageByMargins(page.id, { top: 100, right: 0, bottom: 0, left: 0 }, false);
+    const rotated = page.crop;
+    // Same margin, no rotation → a different content rect. If rotation were ignored these would match,
+    // which is exactly how the defect looked.
+    page.rotation = 0;
+    page.crop = undefined;
+    await svc.cropPageByMargins(page.id, { top: 100, right: 0, bottom: 0, left: 0 }, false);
+    expect(rotated).not.toEqual(page.crop);
+    // And unrotated is the plain inset: 100pt off the top of a 595x842 box.
+    expect(page.crop).toEqual({ x: 0, y: 100, width: 595, height: 742 });
+  });
+
+  it('does NOTHING when no margin was typed (all four empty/zero)', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPageByMargins(ctx.documentModel.pages[0].id, { top: 0, right: 0, bottom: 0, left: 0 }, false);
+    expect(ctx.historyManager.execute).not.toHaveBeenCalled();
+    // Must NOT gain a crop: a full-page crop adds a /CropBox to a page that had none, so the exported
+    // bytes would stop being byte-identical for a change the user cannot even see.
+    expect(ctx.documentModel.pages[0].crop).toBeUndefined();
+  });
+
+  it('warns on a PARTIAL skip — some pages cropped, a small one swallowed', async () => {
+    const ctx = makeCtx();
+    ctx.documentModel.addBlankPage(595, 842);
+    ctx.documentModel.addBlankPage(120, 120);          // 100pt margins swallow this one
+    const svc = new PageService(ctx);
+    await svc.cropPageByMargins(ctx.documentModel.pages[0].id, { top: 100, right: 100, bottom: 100, left: 100 }, true);
+    expect(ctx.documentModel.pages[0].crop).toBeDefined();
+    expect(ctx.documentModel.pages[1].crop).toBeUndefined();
+    expect(ctx.reportError.info).toHaveBeenCalledWith('toast.cropAppliedAll');
+    expect(ctx.reportError.warn).toHaveBeenCalledWith('toast.cropMarginsTooLarge');
   });
 
   it('reports the apply-to-all toast, not the single-page one', async () => {
@@ -465,6 +514,27 @@ describe('PageService.cropPage', () => {
     await svc.cropPage(id, null, false);
     expect(ctx.documentModel.pages[0].crop).toBeUndefined();
     expect(ctx.reportError.info).toHaveBeenCalledWith('toast.cropRemoved');
+  });
+
+  it('reports the SINGLE-page toast for a single-page crop (not the all-pages one)', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 2);
+    const svc = new PageService(ctx);
+    await svc.cropPage(ctx.documentModel.pages[0].id, { x: 10, y: 10, width: 100, height: 100 }, false);
+    expect(ctx.reportError.info).toHaveBeenCalledWith('toast.cropApplied');
+    expect(ctx.reportError.info).not.toHaveBeenCalledWith('toast.cropAppliedAll');
+  });
+
+  it('re-renders the canvas ONCE for an apply-to-all, and once more on undo', async () => {
+    // _commitCrops claims onPageStructureChange fires only for the CURRENT page's command. Nothing
+    // pinned it, so a refactor could fire it per page (3 redundant full re-renders) unnoticed.
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 3);
+    const svc = new PageService(ctx);
+    await svc.cropPage(ctx.documentModel.pages[0].id, { x: 10, y: 10, width: 100, height: 100 }, true);
+    expect(ctx.onPageStructureChange).toHaveBeenCalledTimes(1);
+    ctx.historyManager.undo();
+    expect(ctx.onPageStructureChange).toHaveBeenCalledTimes(2);
   });
 
   it('apply-to-all crops every page in one MacroCmd; undo reverts all', async () => {

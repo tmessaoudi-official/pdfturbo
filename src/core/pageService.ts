@@ -11,7 +11,7 @@ import type { InkLayer } from '../infra/inkLayer';
 import { DocumentModel, PAGE_SIZES, type DocumentPage, type PageCrop } from './documentModel';
 import type { IErrorReporter } from './errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
-import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToContentCrop } from '../utils/geometry';
+import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToRect } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
 
 /**
@@ -210,16 +210,36 @@ export class PageService {
       : ctx.documentModel.pages.filter(p => p.id === pageId);
     if (!targets.length) return;
 
+    // Nothing typed is NOT a crop. Without this, clicking ✓ on four empty inputs stored a full-page
+    // "crop", consumed an undo entry for a visually undetectable change, and — because
+    // `getPageCropBox` falls back to the MediaBox — added a /CropBox to a page that had none, so the
+    // exported bytes stopped being byte-identical. The ⤺ button is how a crop is cleared.
+    if (margins.top <= 0 && margins.right <= 0 && margins.bottom <= 0 && margins.left <= 0) return;
+
     const entries: { pageId: string; crop: PageCrop | null }[] = [];
+    let swallowed = 0;
     for (const p of targets) {
       const g = await this._pageGeom(p);
       if (!g) continue;
-      const crop = marginsToContentCrop(margins, g.W, g.H);
-      if (!crop) continue; // margins swallow this page — skip it rather than crop to nothing
+      // ROTATION: the user types what they SEE, so inset the DISPLAY box and map the result through the
+      // same `redactionRectToContent` the drag path uses. Deriving the content rect from margins
+      // directly ignored `srcRot`/`p.rotation` and cropped the wrong visual edge on any rotated page —
+      // and a `/Rotate 90` landscape scan hits that without the user rotating anything. Sharing the
+      // mapping is what makes "top" mean the same thing in both entry points.
+      const totalRot = ((g.srcRot + (p.rotation ?? 0)) % 360 + 360) % 360;
+      const swap = totalRot % 180 === 90;
+      const displayRect = marginsToRect(margins, swap ? g.H : g.W, swap ? g.W : g.H);
+      if (!displayRect) { swallowed += 1; continue; } // margins swallow this page — skip, never crop to nothing
+      const crop = clampContentRect(redactionRectToContent(displayRect, g.W, g.H, totalRot), g.W, g.H);
+      if (crop.width < 1 || crop.height < 1) { swallowed += 1; continue; }
       entries.push({ pageId: p.id, crop });
     }
     if (!entries.length) { ctx.reportError.warn('toast.cropMarginsTooLarge'); return; }
     this._commitCrops(entries, true, applyToAll);
+    // A PARTIAL skip must be surfaced too: reporting "applied to all pages" while silently leaving a
+    // small page uncropped is the misleading case, and mixed-size documents are exactly what per-page
+    // conversion exists for.
+    if (swallowed > 0) ctx.reportError.warn('toast.cropMarginsTooLarge');
   }
 
   /**
