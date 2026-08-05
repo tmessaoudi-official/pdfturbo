@@ -50,7 +50,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Native save dialog** — on Chromium, Download opens the OS "Save As" picker and writes the file directly (File System Access API); other browsers download as usual
 - **Export to DOCX / Markdown / TXT** — reconstruct a flow document (headings, lists, tables, columns, images, hyperlinks, RTL) from the PDF text; uses the PDF's structure tags when present
 - **DOCX editor** — open a `.docx` and edit it: rich text, headings, fonts/colour, **tables** (add/remove rows & columns, merge/split cells), **images** (insert/move/resize/cut-paste/drag), **hyperlinks**, find & replace, paste-from-Word cleanup; export back to `.docx` or to PDF
-- **Per-page crop** — show only a chosen region, by dragging it or by typing per-edge margins
+- **Per-page crop** — show only a chosen region: drag it, drag the frame's handles to adjust, or type per-edge margins
   (rotation-safe). **Crop HIDES, it does not remove:** it sets the PDF CropBox, so the cropped-away
   area stays in the file and a recipient can restore it. To take content out permanently, use
   **Redaction**

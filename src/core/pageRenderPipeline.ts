@@ -5,6 +5,7 @@ import type { ToolMode } from '../types/tools';
 import type { FormFieldOverlay } from '../utils/formFieldOverlay';
 import type { TextLayerManager } from '../utils/textLayer';
 import type { IErrorReporter } from '../contracts/errorReporter';
+import { CROP_HANDLES, handleCursor, handlePositions, resizeDisplayRect } from '../utils/cropResize';
 import { contentRectToDisplay } from '../utils/geometry';
 
 export interface IPageRenderContext {
@@ -34,6 +35,12 @@ export interface IPageRenderContext {
   drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number): void;
   /** When the export-preview ghost is open it draws its OWN watermark — suppress the live one to avoid doubling. */
   readonly exportPreviewOpen: boolean;
+  /**
+   * Commit a resized crop frame (#G23 v1c). The rect is in editor DISPLAY space, i.e. exactly what
+   * `PageService.cropPage` takes — so a resize goes through the same undoable command and the same
+   * rotation mapping as a freshly drawn crop, with no second convention.
+   */
+  commitCropRect(pageId: string, displayRect: { x: number; y: number; width: number; height: number }): void;
 }
 
 export class PageRenderPipeline {
@@ -160,7 +167,91 @@ export class PageRenderPipeline {
     outline.setAttribute('stroke', '#2563eb');
     outline.setAttribute('stroke-width', '1.5');
     outline.setAttribute('stroke-dasharray', '5,3');
+    // Marked so tests (and the QA driver) can address the frame itself rather than guessing at a
+    // child index — the grips appended below are also <rect>.
+    outline.setAttribute('data-crop-outline', '');
     svg.appendChild(outline);
+
+    // ── resize grips (#G23 v1c) ────────────────────────────────────────────────────────────────────
+    // The SVG is pointer-events:none so it never intercepts drawing; each grip re-enables events for
+    // itself only. The drag updates the outline and the dimmed bands live (visual only) and commits ONE
+    // undoable crop on pointerup, through the same `cropPage` the drawn path uses.
+    const GRIP = 9;
+    const pageId = docPage.id;
+    const commit = this._ctx.commitCropRect.bind(this._ctx);
+    // Work in DISPLAY units and convert to viewport px only when drawing, so the rect handed to
+    // cropPage needs no inverse transform.
+    let live = { x: disp.x, y: disp.y, width: disp.width, height: disp.height };
+
+    const paint = (): void => {
+      const px = live.x * z + ox, py = live.y * z + oy;
+      const pw = live.width * z, ph = live.height * z;
+      outline.setAttribute('x', String(px)); outline.setAttribute('y', String(py));
+      outline.setAttribute('width', String(pw)); outline.setAttribute('height', String(ph));
+      // Re-lay the four dim bands (children 0..3, in the order appended above).
+      const bands: [number, number, number, number][] = [
+        [ox, oy, pageW, py - oy],
+        [ox, py + ph, pageW, oy + pageH - (py + ph)],
+        [ox, py, px - ox, ph],
+        [px + pw, py, ox + pageW - (px + pw), ph],
+      ];
+      const rects = svg.querySelectorAll('rect');
+      bands.forEach((b, i) => {
+        const r = rects[i];
+        if (!r) return;
+        r.setAttribute('x', String(b[0])); r.setAttribute('y', String(b[1]));
+        r.setAttribute('width', String(Math.max(0, b[2]))); r.setAttribute('height', String(Math.max(0, b[3])));
+      });
+      for (const h of CROP_HANDLES) {
+        const g = svg.querySelector(`[data-crop-handle="${h}"]`);
+        if (!g) continue;
+        const pos = handlePositions(live);
+        g.setAttribute('x', String(pos[h].x * z + ox - GRIP / 2));
+        g.setAttribute('y', String(pos[h].y * z + oy - GRIP / 2));
+      }
+    };
+
+    for (const h of CROP_HANDLES) {
+      const pos = handlePositions(live)[h];
+      const g = document.createElementNS(ns, 'rect');
+      g.setAttribute('data-crop-handle', h);
+      g.setAttribute('x', String(pos.x * z + ox - GRIP / 2));
+      g.setAttribute('y', String(pos.y * z + oy - GRIP / 2));
+      g.setAttribute('width', String(GRIP));
+      g.setAttribute('height', String(GRIP));
+      g.setAttribute('fill', '#ffffff');
+      g.setAttribute('stroke', '#2563eb');
+      g.setAttribute('stroke-width', '1.5');
+      Object.assign((g as unknown as SVGElement & { style: CSSStyleDeclaration }).style, {
+        pointerEvents: 'all', cursor: handleCursor(h), touchAction: 'none',
+      });
+      g.addEventListener('pointerdown', (ev: Event) => {
+        const pe = ev as PointerEvent;
+        pe.preventDefault();
+        pe.stopPropagation();          // never let a grip drag start a new crop rectangle
+        const start = { x: pe.clientX, y: pe.clientY };
+        const from = { ...live };
+        const onMove = (m: PointerEvent): void => {
+          // Deltas are viewport px; divide by zoom to get display units.
+          live = resizeDisplayRect(from, h, (m.clientX - start.x) / z, (m.clientY - start.y) / z, dW, dH);
+          paint();
+        };
+        const onUp = (): void => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          // A grip press with no movement must not push an undo entry for nothing.
+          const moved = live.x !== from.x || live.y !== from.y
+            || live.width !== from.width || live.height !== from.height;
+          if (moved) commit(pageId, { ...live });
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+      svg.appendChild(g);
+    }
+
     container.appendChild(svg);
   }
 

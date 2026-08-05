@@ -273,6 +273,10 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   get bates() { return this.documentModel.bates; }
   setBates(b: import('../export/batesStamp').BatesSettings): void { this.documentModel.bates = b; }
   get exportPreviewOpen(): boolean { return this._exportPreviewPanel.isOpen; }
+  /** #G23 v1c — a resized crop frame commits through the same undoable path as a drawn one. */
+  commitCropRect(pageId: string, displayRect: { x: number; y: number; width: number; height: number }): void {
+    void this._pageService.cropPage(pageId, displayRect, false);
+  }
   showExportPreview(): void { this._exportPreviewPanel.show(); }
 
   // ── ICodeModalContext accessors ──────────────────────────────────────────

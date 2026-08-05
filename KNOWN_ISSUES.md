@@ -9,7 +9,7 @@ The items below are **not defects and not on a fix list** — they are the hones
 client-side editor. Each notes the "escape hatch" that *would* lift it and the trade-off of taking
 it, so the limit is understood rather than mistaken for a bug.
 
-_Last updated: 2026-08-04._
+_Last updated: 2026-08-05._
 
 ---
 
@@ -67,8 +67,9 @@ work in a private/incognito window when editing sensitive documents on a shared 
   validated by a native speaker, with no value changes needed. **RTL rendering was not part of that
   review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
-- Resizable crop **handles** (today: drag-to-set + re-drag). Numeric crop **margins** SHIPPED
-  2026-08-04 — typed per-edge margins in points, converted per page.
+- Crop: numeric per-edge **margins** SHIPPED 2026-08-04 (converted per page); resizable **handles**
+  SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). Aspect-ratio-aware
+  apply-to-all remains open.
 - **XLSX table export** — DONE (2026-08-04): `src/export/xlsxWriter.ts`, no new dependency (XLSX is OPC,
   written with the fflate `zipSync` this repo already uses for DOCX). Shares table detection with the CSV
   export, and writes numeric cells as real numbers so a price column can be summed.

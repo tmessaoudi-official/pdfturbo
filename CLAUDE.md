@@ -1503,8 +1503,8 @@ rides the CURRENT page's command (fires on execute AND undo). Live editor previe
 frame** (`pageRenderPipeline._renderCropFrame`, mapped via `contentRectToDisplay`), NOT a pdf.js sub-region
 render (Design β). Tool mode `'crop'` rides `DrawingHandler` (pointerdown gate + `_updatePreview` + pointer-up
 branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off).
-**Ceiling (v1c):** resizable crop HANDLES on an existing frame; aspect-aware apply-to-all.
-Numeric margins SHIPPED 2026-08-04 — see § Numeric crop margins below.
+**Ceiling:** aspect-ratio-aware apply-to-all. Numeric margins SHIPPED 2026-08-04 (§ Numeric crop
+margins) and resizable HANDLES 2026-08-05 (§ Resizable crop handles).
 
 ### Crop HIDES, redaction REMOVES — and the obvious check gives a false negative (2026-08-04)
 
@@ -1526,6 +1526,40 @@ The docs already qualify removal-grade features ("Redaction — … text unextra
 unqualified four lines away read as an equal promise. Numeric margins raised the stakes rather than
 creating them: a margin is exactly the affordance for a header banner, and typing `80` feels like a
 measurement.
+
+### Resizable crop handles (#G23 v1c, 2026-08-05)
+
+Eight grips (4 corners + 4 edge midpoints) on `#cropFrameOverlay`. Pure geometry in
+`src/utils/cropResize.ts` (`resizeDisplayRect` / `handlePositions` / `handleCursor`); the wiring lives in
+`pageRenderPipeline._renderCropFrame` and commits via a new `IPageRenderContext.commitCropRect` seam →
+`PageService.cropPage`. **The drag works in DISPLAY space**, which is exactly what `cropPage` takes, so a
+resize reuses the drawn path's rotation mapping and its undoable `SetPageCropCmd` — no second coordinate
+convention, which is the mistake the margins path made on its first attempt.
+
+**The load-bearing detail is `pointer-events`.** The overlay must stay `none` or it would swallow every
+drawing gesture; each grip re-enables `all` for itself. A naive `all` on the SVG breaks the crop, redact
+and freehand tools at once, so the browser guard asserts BOTH halves and that each grip is the topmost
+node at its own centre.
+
+**Clamping is applied to the moving EDGE, not to the resulting width/height.** Dragging past the
+opposite side stops at `MIN_CROP` instead of inverting the rect — an inverted rect is still valid
+arithmetic and would silently crop a different region than the one under the pointer.
+
+**Two things that cost me time and will cost the next person the same:**
+1. **A grip can be BELOW THE FOLD.** The page canvas is taller than the viewport, so on a full-height
+   page the `se`/`s`/`sw` grips sit outside it and `elementFromPoint` at their centre returns null. My
+   first live drag targeted `se` and silently did nothing. Same family as the 375px reachability finding:
+   *rendered* is not *reachable*. Drag `nw` (or scroll the region first) when driving this by hand.
+2. **`#cropFrameOverlay`'s last `<rect>` is a GRIP, not the frame.** The outline now carries
+   `data-crop-outline` so tests and the QA driver can address it; a `rect:last-of-type` selector measures
+   a 9×9 grip and reads as "the drag did nothing".
+
+Verified live: dragging `nw` inward 80px takes the frame 882×650 → 802×570 with the dimmed bands
+following, and undo restores 882×650 exactly. Guards: `tests/utils/cropResize.test.ts` (7 pure — every
+handle, both clamps, the no-invert cases, identity at zero delta) +
+`tests/browser/crop-handles.browser.test.ts` (7 real-browser — hit-testability of all 8 grips through the
+pass-through overlay, SE/NW drags, a press with no movement committing nothing, cursor, clamp, and
+listener teardown so an in-flight drag cannot leak across the re-render that destroys the overlay).
 
 ### Numeric crop margins (#G23 v1b, 2026-08-04)
 
