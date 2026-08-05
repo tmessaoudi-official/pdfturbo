@@ -605,7 +605,18 @@ two-column table. The discriminator: **in a table a single line spans multiple c
 multi-column page each line lives in exactly one.** Proven load-bearing — disabling that one check
 makes the two-column-page test fail and *only* that test. Do not "simplify" it away.
 
-**C9 (DOCX) is deliberately NOT wired, and the reason is a harm asymmetry, not effort.**
+**C9 (DOCX) stays UNWIRED — and as of 2026-08-05 that is a MEASURED decision, not a cautious one.**
+A realistic corpus (`tests/browser/borderless-corpus.browser.test.ts`, real pdf.js extraction of 8 page
+shapes) found the gate had **2 false positives out of 6 prose shapes**, both invisible to the unit tests:
+a **side-by-side two-column article** (6×2) and a **bulleted list** (4×2). Both defeat
+`MIN_SPANNING_RATIO` for the same reason — every line genuinely does span both bands — and the
+two-column unit fixture had passed only because it stacked the columns sequentially, which no real layout
+does. That fixture is now realistic and the gate has a second rule (`MAX_MEDIAN_CELL_WORDS`, measured:
+tables median 1 word/cell, prose 4–5), after which the corpus is clean. **The remaining blocker is
+corpus BREADTH, not gate tightness** — 6 synthetic shapes passing is not real-file evidence, and the
+harm asymmetry below is unchanged.
+
+**The harm asymmetry, which is why the bar is this high for DOCX and not for CSV.**
 `exportTableCsv` runs only when the user explicitly asked for a table, so a false positive costs them
 one discardable CSV. The DOCX path is different: `reconstructPage` **removes in-region words from the
 paragraph flow**, so a phantom table there would silently mangle ordinary prose. Same engine, so C9 is

@@ -31,9 +31,17 @@ describe('inferBorderlessGrid — REFUSES on non-tables', () => {
     // The discriminator case. There IS a clean global whitespace band down the middle, so band
     // detection alone would happily call this a 2-column table. What makes it prose is that no line
     // spans both bands: the left column is one block of text, the right another.
+    // NB the columns are SIDE BY SIDE in the same y-range, as a real two-column page is. An earlier
+    // version of this fixture stacked them sequentially (left column above the right), which no real
+    // layout does — and it passed for the wrong reason: with no shared rows, nothing spanned both bands.
+    // The realistic shape DEFEATS the spanning discriminator (every line does span both), and it took a
+    // real-pdf.js corpus to expose that. It is refused by the cell-density gate instead.
     const items: TableTextItem[] = [];
-    for (let i = 0; i < 8; i++) items.push(t(60, 700 - i * 14, 'left column body text', 180));
-    for (let i = 0; i < 8; i++) items.push(t(330, 560 - i * 14, 'right column body text', 180));
+    for (let i = 0; i < 8; i++) {
+      const y = 700 - i * 14;
+      items.push(t(60, y, 'left column body text here', 180));
+      items.push(t(330, y, 'right column body text here', 180));
+    }
     expect(inferBorderlessGrid(items)).toBeNull();
   });
 

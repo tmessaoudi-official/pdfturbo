@@ -39,6 +39,23 @@ const MIN_LINES = 3;
  * simple majority: a table may legitimately carry a full-width title row or a spanning subtotal.
  */
 const MIN_SPANNING_RATIO = 0.5;
+/**
+ * Reject a candidate whose typical cell holds more words than this. **A table cell is a datum; a prose
+ * line is a clause** — that is the semantic distinction, and it is what the number encodes.
+ *
+ * Added after MEASURING a realistic corpus (`tests/browser/borderless-corpus.browser.test.ts`), which
+ * found two false positives the spanning-ratio rule could not catch:
+ *   invoice          median 1 word/cell (max 2)
+ *   bank statement   median 1          (max 2)
+ *   two-column page  median 5   <- side-by-side columns: EVERY line spans both bands, so the
+ *                                  multi-column discriminator passes and the layout reads as a table
+ *   bulleted list    median 4   <- markers in their own column, every line spans both
+ * The gap between 2 and 4 is wide, so 3 separates with margin at both ends rather than being tuned to
+ * the fixtures. ACCEPTED TRADE-OFF: a genuine table with sentence-length cells (a "Description" column
+ * of full sentences) is now refused. That is a false NEGATIVE — the user gets "no table found" instead
+ * of mangled output — which is the direction this whole module errs in by design.
+ */
+const MAX_MEDIAN_CELL_WORDS = 3;
 
 export interface WhitespaceBand { lo: number; hi: number }
 
@@ -93,6 +110,7 @@ export interface BorderlessOpts {
   minBand?: number;
   minLines?: number;
   minSpanningRatio?: number;
+  maxMedianCellWords?: number;
 }
 
 /**
@@ -152,5 +170,19 @@ export function inferBorderlessGrid(
   const hRules: RuleRect[] = rowBounds.map(y => ({ x: minX, y, width: maxX - minX, height: 0 }));
   const vRules: RuleRect[] = colBounds.map(x => ({ x, y: rowBounds[rowBounds.length - 1], width: 0, height: rowBounds[0] - rowBounds[rowBounds.length - 1] }));
 
-  return buildTableGrid(hRules, vRules, withText, 0.5);
+  const grid = buildTableGrid(hRules, vRules, withText, 0.5);
+  if (!grid) return null;
+
+  // FINAL GATE: is this tabular DATA, or is it prose that happens to align? See
+  // MAX_MEDIAN_CELL_WORDS — measured, not tuned.
+  const counts = grid.cells.flat()
+    .map(c => c.trim())
+    .filter(Boolean)
+    .map(c => c.split(/\s+/).length)
+    .sort((a, b) => a - b);
+  if (!counts.length) return null;
+  const median = counts[Math.floor(counts.length / 2)];
+  if (median > (opts.maxMedianCellWords ?? MAX_MEDIAN_CELL_WORDS)) return null;
+
+  return grid;
 }
