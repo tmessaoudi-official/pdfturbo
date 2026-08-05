@@ -362,6 +362,66 @@ describe('PageService.insertBlankPage — undoability (G3)', () => {
   });
 });
 
+describe('PageService.cropPageByMargins (#G23 v1b)', () => {
+  it('insets the page by the typed margins (595x842 blank)', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPageByMargins(id, { top: 10, right: 20, bottom: 30, left: 40 }, false);
+    expect(ctx.historyManager.execute).toHaveBeenCalledWith(expect.any(SetPageCropCmd));
+    expect(ctx.documentModel.pages[0].crop).toEqual({ x: 40, y: 10, width: 535, height: 802 });
+    expect(ctx.onPageStructureChange).toHaveBeenCalled();
+  });
+
+  it('is UNDOABLE through the same command as the drag path', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    await svc.cropPageByMargins(id, { top: 25, right: 25, bottom: 25, left: 25 }, false);
+    expect(ctx.documentModel.pages[0].crop).toBeDefined();
+    ctx.historyManager.undo();
+    expect(ctx.documentModel.pages[0].crop).toBeUndefined();
+  });
+
+  it('warns and changes nothing when the margins swallow the page', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 1);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPageByMargins(id, { top: 500, right: 0, bottom: 500, left: 0 }, false);
+    expect(ctx.historyManager.execute).not.toHaveBeenCalled();
+    expect(ctx.documentModel.pages[0].crop).toBeUndefined();
+    expect(ctx.reportError.warn).toHaveBeenCalledWith('toast.cropMarginsTooLarge');
+  });
+
+  it('apply-to-all converts margins PER PAGE and groups them in one MacroCmd', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 3);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    vi.spyOn(ctx.historyManager, 'execute');
+    await svc.cropPageByMargins(id, { top: 10, right: 10, bottom: 10, left: 10 }, true);
+    expect(ctx.historyManager.execute).toHaveBeenCalledWith(expect.any(MacroCmd));
+    for (const p of ctx.documentModel.pages) {
+      expect(p.crop).toEqual({ x: 10, y: 10, width: 575, height: 822 });
+    }
+    ctx.historyManager.undo();
+    for (const p of ctx.documentModel.pages) expect(p.crop).toBeUndefined();
+  });
+
+  it('reports the apply-to-all toast, not the single-page one', async () => {
+    const ctx = makeCtx();
+    addBlankPages(ctx.documentModel, 2);
+    const svc = new PageService(ctx);
+    await svc.cropPageByMargins(ctx.documentModel.pages[0].id, { top: 5, right: 5, bottom: 5, left: 5 }, true);
+    expect(ctx.reportError.info).toHaveBeenCalledWith('toast.cropAppliedAll');
+  });
+});
+
 describe('PageService.cropPage', () => {
   it('stores the drawn rect as the page crop (identity at rotation 0)', async () => {
     const ctx = makeCtx();

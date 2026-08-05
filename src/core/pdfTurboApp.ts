@@ -519,6 +519,11 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _reorderPages(newOrder: string[]): void { this._pageService.reorderPages(newOrder); }
   _rotatePage(pageId: string, delta: number): Promise<void> { return this._pageService.rotatePage(pageId, delta); }
   cropPage(pageId: string, displayRect: PageCrop | null, applyToAll: boolean): Promise<void> { return this._pageService.cropPage(pageId, displayRect, applyToAll); }
+  cropPageByMargins(
+    pageId: string,
+    margins: { top: number; right: number; bottom: number; left: number },
+    applyToAll = false,
+  ): Promise<void> { return this._pageService.cropPageByMargins(pageId, margins, applyToAll); }
 
 
   _onPageStructureChange(): Promise<void> { return this._pageNavController.onPageStructureChange(); }

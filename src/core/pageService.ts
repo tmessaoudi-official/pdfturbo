@@ -11,7 +11,7 @@ import type { InkLayer } from '../infra/inkLayer';
 import { DocumentModel, PAGE_SIZES, type DocumentPage, type PageCrop } from './documentModel';
 import type { IErrorReporter } from './errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
-import { transformCanvasPoint, redactionRectToContent, clampContentRect } from '../utils/geometry';
+import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToContentCrop } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
 
 /**
@@ -170,20 +170,12 @@ export class PageService {
     }
 
     if (!applyToAll) {
-      const cmd = new SetPageCropCmd(ctx.documentModel, pageId, contentCrop, () => {
-        ctx.invalidateThumbnail(pageId);
-        void ctx.onPageStructureChange();
-      });
-      ctx.historyManager.execute(cmd);
-      ctx.reportError.info(contentCrop ? 'toast.cropApplied' : 'toast.cropRemoved');
+      this._commitCrops([{ pageId, crop: contentCrop }], !!contentCrop, false);
       return;
     }
 
     // Apply the SAME content-space crop to every page, clamped to each page's own box.
-    // The canvas re-render rides the current page's command (fires on execute AND undo);
-    // every page's command invalidates its own thumbnail.
-    const currentId = ctx.documentModel.currentPage?.id;
-    const cmds: Command[] = [];
+    const entries: { pageId: string; crop: PageCrop | null }[] = [];
     for (const p of ctx.documentModel.pages) {
       let perPage: PageCrop | null = contentCrop;
       if (contentCrop) {
@@ -193,15 +185,65 @@ export class PageService {
         if (c.width < 1 || c.height < 1) continue;
         perPage = c;
       }
-      const pid = p.id;
+      entries.push({ pageId: p.id, crop: perPage });
+    }
+    this._commitCrops(entries, !!contentCrop, true);
+  }
+
+  /**
+   * Crop by typed per-edge MARGINS in points (#G23 v1b), the numeric companion to drag-to-crop.
+   *
+   * Margins are converted PER PAGE rather than once, which is a genuine improvement over the drag
+   * path's apply-to-all: "20pt off each edge" means the same thing on a mixed-size document, whereas
+   * one rect clamped to each page does not. A page whose margins leave nothing to show is skipped
+   * rather than cropped to nothing. Shares `_commitCrops`, so undo/redo, thumbnail invalidation and
+   * the toast are identical to the drag path by construction.
+   */
+  async cropPageByMargins(
+    pageId: string,
+    margins: { top: number; right: number; bottom: number; left: number },
+    applyToAll = false,
+  ): Promise<void> {
+    const ctx = this._ctx;
+    const targets = applyToAll
+      ? ctx.documentModel.pages
+      : ctx.documentModel.pages.filter(p => p.id === pageId);
+    if (!targets.length) return;
+
+    const entries: { pageId: string; crop: PageCrop | null }[] = [];
+    for (const p of targets) {
+      const g = await this._pageGeom(p);
+      if (!g) continue;
+      const crop = marginsToContentCrop(margins, g.W, g.H);
+      if (!crop) continue; // margins swallow this page — skip it rather than crop to nothing
+      entries.push({ pageId: p.id, crop });
+    }
+    if (!entries.length) { ctx.reportError.warn('toast.cropMarginsTooLarge'); return; }
+    this._commitCrops(entries, true, applyToAll);
+  }
+
+  /**
+   * Build and execute the crop command(s). ONE place, so the drag and margin entry points cannot drift
+   * on undo grouping, thumbnail invalidation or which toast fires. The canvas re-render rides the
+   * CURRENT page's command (so it fires on execute AND undo); every page invalidates its own thumbnail.
+   */
+  private _commitCrops(
+    entries: { pageId: string; crop: PageCrop | null }[],
+    cropping: boolean,
+    all: boolean,
+  ): void {
+    const ctx = this._ctx;
+    if (!entries.length) return;
+    const currentId = ctx.documentModel.currentPage?.id;
+    const cmds: Command[] = entries.map(({ pageId: pid, crop }) => {
       const onUpd = pid === currentId
         ? () => { ctx.invalidateThumbnail(pid); void ctx.onPageStructureChange(); }
         : () => { ctx.invalidateThumbnail(pid); };
-      cmds.push(new SetPageCropCmd(ctx.documentModel, pid, perPage, onUpd));
-    }
-    if (!cmds.length) return;
+      return new SetPageCropCmd(ctx.documentModel, pid, crop, onUpd);
+    });
     ctx.historyManager.execute(cmds.length === 1 ? cmds[0] : new MacroCmd(cmds));
-    ctx.reportError.info(contentCrop ? 'toast.cropAppliedAll' : 'toast.cropRemoved');
+    if (!cropping) { ctx.reportError.info('toast.cropRemoved'); return; }
+    ctx.reportError.info(all ? 'toast.cropAppliedAll' : 'toast.cropApplied');
   }
 
   /** Unrotated content dimensions + source rotation for a page (source viewport or blank dims). */

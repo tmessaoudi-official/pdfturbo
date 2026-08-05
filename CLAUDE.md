@@ -164,7 +164,7 @@ chromium-1194 is refused on purpose — see the container note below). It answer
 work?", which **neither** vitest suite does: jsdom has no canvas and the browser suite mounts
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
-UI crawl is over **disclosure depth** (only 8 of 140 buttons are visible on a freshly loaded document)
+UI crawl is over **disclosure depth** (only 8 of 141 buttons are visible on a freshly loaded document)
 rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s. **CI runs it with
 `--allow-destructive`** — correct there because the flag protects a developer's own open document,
 and CI drives a throwaway browser on a fixture; without it the gate skipped 44 controls including
@@ -284,9 +284,9 @@ exactly the failure a green test suite cannot catch. `C11` is the counter-case i
 unpinned on purpose, because its only testable surface is an inline predicate in a private method and a
 copied predicate pins nothing.
 
-### `/qa-sweep` reaches 64 of 140 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
+### `/qa-sweep` reaches 65 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
-The sweep's `0 fail` covers **64 distinct controls of 140 in the DOM**. Every report now ends with
+The sweep's `0 fail` covers **64 distinct controls of 141 in the DOM**. Every report now ends with
 `Exercised N distinct control(s) of M` and **names** the rest, because 31 `SKIP became hidden` lines
 buried among 150 entries read as thorough and are not. **Read that line before claiming the sweep
 covers a feature** — `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
@@ -1504,6 +1504,39 @@ frame** (`pageRenderPipeline._renderCropFrame`, mapped via `contentRectToDisplay
 render (Design β). Tool mode `'crop'` rides `DrawingHandler` (pointerdown gate + `_updatePreview` + pointer-up
 branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off).
 **Ceiling (v1b):** resizable crop handles / numeric margins; aspect-aware apply-to-all.
+
+### Numeric crop margins (#G23 v1b, 2026-08-04)
+
+`✓ cropMarginApplyBtn` + four `#cropMargin{Top,Right,Bottom,Left}` number inputs in `#cropControls`
+→ `PDFTurboApp.cropPageByMargins` → `PageService.cropPageByMargins`. Margins are typed in **points, in
+unrotated content space**, converted by the pure `marginsToContentCrop` (`utils/geometry.ts`).
+
+**Margins are converted PER PAGE, which is a real improvement over the drag path's apply-to-all.**
+"20pt off each edge" means the same thing on a mixed-size document; one drawn rect clamped to each page
+does not. A page whose margins leave nothing to show is SKIPPED, not cropped to nothing, and an
+all-pages-swallowed run warns `toast.cropMarginsTooLarge` instead of silently doing nothing.
+
+**Both crop entry points now share `PageService._commitCrops`** — extracted in the same change so undo
+grouping (`MacroCmd` vs a single `SetPageCropCmd`), thumbnail invalidation and which toast fires cannot
+drift between the drag and margin paths. No new command, no `SCHEMA_VERSION` bump: it writes the same
+`page.crop`.
+
+**Two things that will mislead you when testing this by hand:**
+1. **The canvas does NOT resize.** Per § Per-page crop the live preview is a dimmed-margin SVG frame
+   (`#cropFrameOverlay`, Design β), not a pdf.js sub-region render — so `#pdfCanvas.width` is unchanged
+   and the overlay's presence is the real observable. Measured live: no overlay before, 5 rects after.
+2. **Ctrl+Z does not undo the crop while a margin input still has focus** — the number input's own text
+   undo consumes it. That is ordinary browser behaviour, not a defect; the undo BUTTON works (verified
+   live: overlay present → absent). Worth knowing because it reads exactly like a broken undo.
+
+i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (**ar [Unverified]** — needs a
+native pass, alongside `toolbar.exportXlsxTitle`). The inputs use `role="group"` +
+`aria-labelledby` so a short field name is announced with its group label, the same pattern as
+`signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToContentCrop.test.ts` (7 pure —
+zero margins, negatives, NaN from an empty input, refusal when nothing is left) +
+`tests/core/pageService.test.ts` (5: inset, undo, per-page apply-to-all in one MacroCmd, the warn, the
+all-pages toast). **Still ceiling (v1c):** resizable drag handles on an existing crop frame, and
+aspect-ratio-aware apply-to-all.
 
 ### PDF compress (#60)
 

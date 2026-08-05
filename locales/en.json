@@ -59,6 +59,12 @@
     "cropTitle": "Crop page — drag to keep only that area (P)",
     "cropApplyAll": "All pages",
     "cropRemoveTitle": "Remove crop",
+    "cropMarginsLabel": "Margins (pt)",
+    "cropMarginTop": "Top margin",
+    "cropMarginRight": "Right margin",
+    "cropMarginBottom": "Bottom margin",
+    "cropMarginLeft": "Left margin",
+    "cropMarginApply": "Apply margins",
     "downloadLabel": "Download",
     "downloadTitle": "Download filled PDF",
     "selectTitle": "Select / pointer mode (Esc)",
@@ -588,7 +594,8 @@
     "appUpdateDismiss": "Later",
     "passwordRequired": "User password is required",
     "passwordTooWeak": "Open password must be at least {{min}} characters",
-    "eyedropperUnsupported": "Color picker not supported in this browser"
+    "eyedropperUnsupported": "Color picker not supported in this browser",
+    "cropMarginsTooLarge": "Those margins leave nothing to show"
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",

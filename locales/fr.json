@@ -59,6 +59,12 @@
     "cropTitle": "Rogner la page — faites glisser pour ne garder que cette zone (P)",
     "cropApplyAll": "Toutes les pages",
     "cropRemoveTitle": "Supprimer le rognage",
+    "cropMarginsLabel": "Marges (pt)",
+    "cropMarginTop": "Marge haute",
+    "cropMarginRight": "Marge droite",
+    "cropMarginBottom": "Marge basse",
+    "cropMarginLeft": "Marge gauche",
+    "cropMarginApply": "Appliquer les marges",
     "downloadLabel": "Télécharger",
     "downloadTitle": "Télécharger le PDF rempli",
     "selectTitle": "Mode sélection / pointeur (Échap)",
@@ -588,7 +594,8 @@
     "appUpdateDismiss": "Plus tard",
     "passwordRequired": "Le mot de passe utilisateur est requis",
     "passwordTooWeak": "Le mot de passe d'ouverture doit comporter au moins {{min}} caractères",
-    "eyedropperUnsupported": "Pipette non supportée dans ce navigateur"
+    "eyedropperUnsupported": "Pipette non supportée dans ce navigateur",
+    "cropMarginsTooLarge": "Ces marges ne laissent rien à afficher"
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",

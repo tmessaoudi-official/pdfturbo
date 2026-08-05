@@ -126,6 +126,35 @@ export function displayRectToUserSpaceRect(
 }
 
 /** Clamp a content-space rect into the `[0,0,W,H]` content box (keeps width/height ≥ 0). */
+/**
+ * Convert per-edge MARGINS (points, unrotated content space) into a crop rect (#G23 v1b — the numeric
+ * companion to drag-to-crop). Margins are the natural way to type a crop — "20pt off each edge" — and
+ * they are page-size independent, which is why apply-to-all computes them per page rather than reusing
+ * one rect.
+ *
+ * Content space is y-DOWN from the top-left of the source box, so `top` is the y offset and `bottom`
+ * shortens the height. Returns null when the margins leave nothing (or less than 1pt) to show, so a
+ * caller never has to special-case a degenerate crop — mirroring the drag path's own <1pt guard.
+ * Negative margins are treated as 0: they would mean OUTSETTING the page, which the crop box cannot do.
+ */
+export function marginsToContentCrop(
+  margins: { top: number; right: number; bottom: number; left: number },
+  W: number,
+  H: number,
+): { x: number; y: number; width: number; height: number } | null {
+  const nn = (v: number) => (Number.isFinite(v) && v > 0 ? v : 0);
+  const left = nn(margins.left);
+  const top = nn(margins.top);
+  const rect = {
+    x: left,
+    y: top,
+    width: W - left - nn(margins.right),
+    height: H - top - nn(margins.bottom),
+  };
+  if (rect.width < 1 || rect.height < 1) return null;
+  return clampContentRect(rect, W, H);
+}
+
 export function clampContentRect(
   rect: { x: number; y: number; width: number; height: number },
   W: number, H: number,

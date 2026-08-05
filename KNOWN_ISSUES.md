@@ -67,14 +67,16 @@ work in a private/incognito window when editing sensitive documents on a shared 
   validated by a native speaker, with no value changes needed. **RTL rendering was not part of that
   review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
-- Resizable crop handles / numeric crop margins (today: drag-to-set + re-drag).
+- Resizable crop **handles** (today: drag-to-set + re-drag). Numeric crop **margins** SHIPPED
+  2026-08-04 — typed per-edge margins in points, converted per page.
 - **XLSX table export** — DONE (2026-08-04): `src/export/xlsxWriter.ts`, no new dependency (XLSX is OPC,
   written with the fflate `zipSync` this repo already uses for DOCX). Shares table detection with the CSV
   export, and writes numeric cells as real numbers so a price column can be summed.
 - Open-via-picker + recent-files for the native save dialog.
 
 > Releasing any escape hatch is a deliberate, per-need decision — most cost multi-MB dependencies,
-> significant build complexity, or the no-backend privacy promise. **EH-E is released for the CSV *and* XLSX table exports
-> (2026-08-04)** — both call the same `_resolveTableGrid`, and the harm reasoning is identical: each runs
-> only when the user explicitly asked for a table., which was possible precisely because it costs none of those three: no dependency, no
-> WASM, no backend — only an algorithm and a confidence gate. EH-A through EH-D remain un-greenlit.
+> significant build complexity, or the no-backend privacy promise. **EH-E is released (2026-08-04) for
+> the CSV *and* XLSX table exports**, which was possible precisely because it costs none of those three:
+> no dependency, no WASM, no backend — only an algorithm and a confidence gate. Both exports call the
+> same `_resolveTableGrid`, and the harm reasoning is identical for each: the fallback runs only when the
+> user has explicitly asked for a table. EH-A through EH-D remain un-greenlit.

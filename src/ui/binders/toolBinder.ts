@@ -52,6 +52,26 @@ export function bindToolEvents(app: PDFTurboApp): void {
     const id = app.documentModel.currentPage?.id;
     if (id) void app.cropPage(id, null, false);
   });
+  // #G23 v1b — typed margins, the numeric companion to drag-to-crop. Reads the same
+  // #cropApplyAll checkbox the drag path uses, so one control means one thing.
+  document.getElementById('cropMarginApplyBtn')?.addEventListener('click', () => {
+    const id = app.documentModel.currentPage?.id;
+    if (!id) return;
+    // An EMPTY input must mean "no margin on this edge", not NaN — marginsToContentCrop is NaN-safe,
+    // but parsing here keeps that contract visible at the call site.
+    const num = (elId: string): number => {
+      const el = document.getElementById(elId) as HTMLInputElement | null;
+      const v = Number.parseFloat(el?.value ?? '');
+      return Number.isFinite(v) ? v : 0;
+    };
+    const applyAll = (document.getElementById('cropApplyAll') as HTMLInputElement | null)?.checked ?? false;
+    void app.cropPageByMargins(id, {
+      top: num('cropMarginTop'),
+      right: num('cropMarginRight'),
+      bottom: num('cropMarginBottom'),
+      left: num('cropMarginLeft'),
+    }, applyAll);
+  });
   app.ui.editTextBtn.addEventListener('click', () => {
     if (!app.documentModel.pageCount) return;
     app.setMode(app.mode === 'editText' ? 'select' : 'editText');

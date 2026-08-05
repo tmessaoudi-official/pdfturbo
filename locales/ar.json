@@ -70,6 +70,12 @@
     "cropTitle": "اقتصاص الصفحة — اسحب للإبقاء على تلك المنطقة فقط (P)",
     "cropApplyAll": "كل الصفحات",
     "cropRemoveTitle": "إزالة الاقتصاص",
+    "cropMarginsLabel": "الهوامش (نقطة)",
+    "cropMarginTop": "الهامش العلوي",
+    "cropMarginRight": "الهامش الأيمن",
+    "cropMarginBottom": "الهامش السفلي",
+    "cropMarginLeft": "الهامش الأيسر",
+    "cropMarginApply": "تطبيق الهوامش",
     "downloadLabel": "تحميل",
     "downloadTitle": "تحميل PDF المملوء",
     "selectTitle": "وضع التحديد / المؤشر (Esc)",
@@ -588,7 +594,8 @@
     "appUpdateDismiss": "لاحقًا",
     "passwordRequired": "كلمة مرور المستخدم مطلوبة",
     "passwordTooWeak": "يجب ألا تقل كلمة مرور الفتح عن {{min}} أحرف",
-    "eyedropperUnsupported": "أداة انتقاء اللون غير مدعومة في هذا المتصفح"
+    "eyedropperUnsupported": "أداة انتقاء اللون غير مدعومة في هذا المتصفح",
+    "cropMarginsTooLarge": "هذه الهوامش لا تترك شيئًا لعرضه"
   },
   "thumbnail": {
     "pageAlt": "صفحة {{page}}",
