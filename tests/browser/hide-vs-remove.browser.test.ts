@@ -7,8 +7,10 @@
  * every other surface, empirically, and PINS each answer — so a claim and the code can no longer drift
  * apart silently.
  *
- * Method: build the shape, run the REAL export path, then try to recover the content with pdf.js.
- * Recovery uses `getTextContent` / `getOperatorList`, never a raw byte scan for a short string — per
+ * Method: build the shape, perform the operation, then try to recover the content with pdf.js. TWO of
+ * these drive the real export bake (shape, redaction); the rest exercise the underlying operation
+ * directly — see the scope note above the flatten/page-delete pair. Recovery uses `getTextContent`,
+ * never a raw byte scan for a short string — per
  * CLAUDE.md § "A flaky gate", scanning compressed bytes for a few characters is a coin flip.
  *
  * Two of these tests pin behaviour that is NOT a defect but IS a trap, and they say so: a filled shape

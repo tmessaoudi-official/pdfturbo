@@ -17,7 +17,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 
 interface RawItem { str: string; transform: number[]; width: number }
 
-/** Exactly the mapping exportService._extractPageTableData performs, width included. */
+/**
+ * The COORDINATE mapping `exportService._extractPageTableData` performs, width included. It no longer
+ * mirrors that method wholesale: production also drops items under a redaction (guarded in
+ * `tests/export/redactionLeaks.test.ts`), which this fixture deliberately omits so the detector is
+ * exercised on the full item set.
+ */
 async function itemsOf(bytes: Uint8Array): Promise<TableTextItem[]> {
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   const page = await pdf.getPage(1);

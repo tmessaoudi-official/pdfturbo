@@ -13,9 +13,10 @@
  * that two of four extractors never called it. Sibling code paths that must share a safety filter are
  * exactly where a green suite gives false assurance, so each test below fails if the call is removed.
  */
-import { describe, it, expect, vi } from 'vitest';
-import { PDFDocument } from '@cantoo/pdf-lib';
+import { describe, it, expect, vi, onTestFinished } from 'vitest';
 import { ExportService, type IExportContext } from '../../src/export/exportService';
+import { TextElement } from '../../src/elements/textElement';
+import { RedactionElement } from '../../src/elements/redactionElement';
 
 const SECRET = 'Wolgast';
 const W = 300, H = 400;
@@ -133,8 +134,7 @@ function coverInDisplaySpace(
 describe('redaction does not leak into the table exports (CSV / XLSX)', () => {
   it('a redacted cell is absent from the CSV', async () => {
     const redaction = { pageId: 'p1', type: 'redaction', ...COVER, color: '#000000' };
-    const { ctx, warns } = buildCtx([redaction], fakeSource());
-    void warns;
+    const { ctx } = buildCtx([redaction], fakeSource());
     const svc = new ExportService(ctx);
     const downloads: { blob: Blob; filename: string }[] = [];
     (svc as unknown as { _downloadBlob: (b: Blob, f: string) => void })._downloadBlob =
@@ -200,8 +200,112 @@ describe('the table filter holds at every rotation', () => {
   }
 });
 
+/**
+ * OVERLAY text (a box the user typed) under a redaction. The PDF export removes it; three other exports
+ * emitted it. Reviewed as "wired in exactly one of the three places", which was true — the filter had
+ * been added to the assembler and to these two paths WITHOUT a test, so nothing held it there.
+ */
+describe('redaction removes overlay text from the non-PDF exports', () => {
+  const OVERLAY = 'OVERLAY-CONFIDENTIAL-4417';
+
+  /** A blank page with a typed text box, optionally covered by a redaction. */
+  function overlayCtx(withRedaction: boolean): { ctx: IExportContext; downloads: { blob: Blob; filename: string }[] } {
+    const text = Object.assign(
+      new TextElement(20, 40, 'p1', { width: 300, height: 20, fontSize: 12 }),
+      { text: OVERLAY },
+    );
+    const els: unknown[] = [text];
+    if (withRedaction) els.push(new RedactionElement(15, 35, 320, 30, 'p1', '#000000'));
+    const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
+    const downloads: { blob: Blob; filename: string }[] = [];
+    const ctx = {
+      documentModel: {
+        pageCount: 1,
+        currentPageIndex: 0,
+        pages: [{ id: 'p1', sourcePdfId: 'blank', sourcePageNum: 0, rotation: 0, blankWidth: W, blankHeight: H }],
+        sourcePdfs: new Map(),
+        watermark: { enabled: false },
+        bates: { enabled: false },
+      },
+      elements: els,
+      formValues: {},
+      currentFilename: 'case.pdf',
+      exportPassword: null,
+      inkLayer: { getStrokes: () => [] },
+      reportError: { info() {}, warn() {}, error() {} },
+      progress: { begin: () => handle },
+      cleanEmptyTextElements() {},
+      renderCurrentPage: () => Promise.resolve(),
+      rebuildElementLayer() {},
+    } as unknown as IExportContext;
+    return { ctx, downloads };
+  }
+
+  function attach(svc: ExportService, downloads: { blob: Blob; filename: string }[]): void {
+    (svc as unknown as { _downloadBlob: (b: Blob, f: string) => void })._downloadBlob =
+      (blob, filename) => downloads.push({ blob, filename });
+  }
+
+  it('Markdown: covered overlay text is absent, uncovered text is present', async () => {
+    const a = overlayCtx(true);
+    const svcA = new ExportService(a.ctx);
+    attach(svcA, a.downloads);
+    await svcA.exportAsMarkdown();
+    const covered = a.downloads.length ? await a.downloads[0].blob.text() : '';
+    expect(covered, 'redacted overlay text must not reach the Markdown export').not.toContain(OVERLAY);
+
+    // Control — without the redaction the SAME text does export, so the assertion above is not passing
+    // simply because the overlay never reached the writer.
+    const b = overlayCtx(false);
+    const svcB = new ExportService(b.ctx);
+    attach(svcB, b.downloads);
+    await svcB.exportAsMarkdown();
+    expect(await b.downloads[0].blob.text()).toContain(OVERLAY);
+  });
+
+  it('XFDF: a covered annotation is not exported, an uncovered one is', async () => {
+    const a = overlayCtx(true);
+    const svcA = new ExportService(a.ctx);
+    attach(svcA, a.downloads);
+    await svcA.exportXfdf();
+    const covered = a.downloads.length ? await a.downloads[0].blob.text() : '';
+    expect(covered, 'an XFDF carries the annotation TEXT — a covered one must not ship').not.toContain(OVERLAY);
+
+    const b = overlayCtx(false);
+    const svcB = new ExportService(b.ctx);
+    attach(svcB, b.downloads);
+    await svcB.exportXfdf();
+    expect(await b.downloads[0].blob.text()).toContain(OVERLAY);
+  });
+});
+
 describe('redaction is burned onto the OCR canvas before recognition', () => {
-  it('fills each redaction rect at render scale, so the engine cannot read the text', async () => {
+  /**
+   * A fake pdf.js page whose viewport mimics the two behaviours the burn depends on: the transform is
+   * relative to the VIEW BOX CORNER (so a non-zero CropBox origin shifts it), and `viewBox` is exposed so
+   * the production code can add that origin back. A fixture hardcoding origin 0 cannot detect a dropped
+   * origin term, which is why `ox`/`oy` are parameters.
+   */
+  function ocrSource(ox: number, oy: number): unknown {
+    return {
+      bytes: new Uint8Array(0),
+      doc: {
+        getPage: () => Promise.resolve({
+          rotate: 0,
+          getViewport: ({ scale = 1 }: { scale?: number; rotation?: number } = {}) => ({
+            width: W * scale,
+            height: H * scale,
+            viewBox: [ox, oy, ox + W, oy + H],
+            convertToViewportPoint: (x: number, y: number) => [(x - ox) * scale, (oy + H - y) * scale],
+          }),
+          render: () => ({ promise: Promise.resolve() }),
+        }),
+      },
+    };
+  }
+
+  /** Run `_recognize` against `src`, collecting every fillRect the burn performs. */
+  async function burnFills(src: unknown): Promise<number[][]> {
     const { OcrHandler } = await import('../../src/handlers/ocrHandler');
     const fills: number[][] = [];
     const ctx2d = {
@@ -209,12 +313,12 @@ describe('redaction is burned onto the OCR canvas before recognition', () => {
       set fillStyle(_v: string) {},
       get fillStyle() { return '#000000'; },
     };
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+    // Restored explicitly: vitest.config.ts sets no `restoreMocks`, so a stubbed getContext would leak
+    // into every later test in this file and silently break anything that draws.
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
       .mockReturnValue(ctx2d as unknown as CanvasRenderingContext2D);
+    onTestFinished(() => spy.mockRestore());
 
-    // A REAL RedactionElement: the burn narrows with `instanceof` so it can read `.color` without a
-    // cast, and an object literal would silently not match — passing the loop over in silence.
-    const { RedactionElement } = await import('../../src/elements/redactionElement');
     const redaction = new RedactionElement(10, 20, 30, 40, 'p1', '#000000');
     const app = {
       reportError: { info() {}, warn() {}, error() {} },
@@ -230,41 +334,74 @@ describe('redaction is burned onto the OCR canvas before recognition', () => {
     };
     const handler = new OcrHandler(app as never);
     const page = { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 };
-    // The fake page provides `convertToViewportPoint` because the burn maps display space → unrotated
-    // content → canvas through the RENDERING viewport, rather than assuming a plain scale-divide (which
-    // lands off-canvas entirely for some user rotations). At rotation 0 the transform is (x*s, y*s).
-    const RENDER_SCALE = 2;
-    const src = {
-      bytes: new Uint8Array(0),
-      doc: {
-        getPage: () => Promise.resolve({
-          rotate: 0,
-          getViewport: ({ scale = 1 }: { scale?: number; rotation?: number } = {}) => ({
-            width: W * scale,
-            height: H * scale,
-            // content space is y-DOWN top-left; user space (this input) is y-UP.
-            convertToViewportPoint: (x: number, y: number) => [x * scale, (H - y) * scale],
-          }),
-          render: () => ({ promise: Promise.resolve() }),
-        }),
-      },
-    };
-    void RENDER_SCALE;
-
     await (handler as unknown as {
       _recognize: (p: unknown, s: unknown, l: string) => Promise<unknown>;
-    })._recognize(page, src, 'eng').catch(() => null);   // recognition itself may bail in jsdom
+    })._recognize(page, src, 'eng').catch(() => null);   // recognition itself bails in jsdom
+    return fills;
+  }
 
-    // RENDER_SCALE is 2, so a 10,20,30x40 box must be filled at 20,40,60x80. Asserting the SCALED
-    // values matters: an unscaled fill would cover a quarter of the intended area and leave the
-    // bottom-right of the secret legible — a partial burn reads as "it works" in a screenshot.
-    expect(fills, 'the redaction must be burned before recognition').toContainEqual([20, 40, 60, 80]);
+  it('fills each redaction rect at render scale, so the engine cannot read the text', async () => {
+    // RENDER_SCALE is 2, so a 10,20,30x40 box must be filled at 20,40,60x80. Asserting the SCALED values
+    // matters: an unscaled fill would cover a quarter of the intended area and leave the bottom-right of
+    // the secret legible — a partial burn reads as "it works" in a screenshot.
+    expect(await burnFills(ocrSource(0, 0)), 'the redaction must be burned before recognition')
+      .toContainEqual([20, 40, 60, 80]);
+  });
+
+  it('honours a non-zero CropBox origin', async () => {
+    // Element coords are relative to the rendered page box; `convertToViewportPoint` consumes ABSOLUTE
+    // user space. Dropping the origin term burns 20pt off in both axes on a /CropBox [20 20 ...] page,
+    // clipping the wrong strip and leaving part of the secret legible.
+    expect(await burnFills(ocrSource(20, 20)), 'the burn must not shift with the CropBox origin')
+      .toContainEqual([20, 40, 60, 80]);
   });
 });
 
-/** Keep the pdf-lib import meaningful — a byte source is what the real service is handed. */
-it('sanity: the harness builds a real single-page PDF', async () => {
-  const doc = await PDFDocument.create();
-  doc.addPage([W, H]);
-  expect((await doc.save()).byteLength).toBeGreaterThan(0);
+/**
+ * Pure geometry of the blank-page filter. Lives in the JSDOM suite (it needs no browser) so it runs in the
+ * fast gate — it was briefly in the browser file, which only slowed the same coverage down.
+ */
+describe('dropElementsUnderRedactions', () => {
+  const mkText = (x: number, y: number, w: number, h: number) =>
+    Object.assign(new TextElement(x, y, 'p1', { width: w, height: h }), { text: 'x' });
+
+  it('drops a covered element, keeps the redaction and untouched content', async () => {
+    const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
+    const covered = mkText(20, 30, 200, 20);
+    const clear = mkText(20, 200, 200, 20);
+    const red = new RedactionElement(15, 25, 220, 30, 'p1', '#000000');
+    const kept = dropElementsUnderRedactions([covered, clear, red]);
+    expect(kept).toContain(red);
+    expect(kept).toContain(clear);
+    expect(kept).not.toContain(covered);
+  });
+
+  it('returns the same array when the page carries no redaction', async () => {
+    const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
+    const input = [mkText(10, 10, 10, 10), mkText(50, 50, 10, 10)];
+    expect(dropElementsUnderRedactions(input)).toBe(input);
+  });
+
+  it('drops an element only PARTLY under the box', async () => {
+    const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
+    const straddling = mkText(0, 0, 100, 100);
+    const red = new RedactionElement(90, 90, 50, 50, 'p1', '#000000');
+    expect(dropElementsUnderRedactions([straddling, red])).not.toContain(straddling);
+  });
+
+  it('keeps an element that merely TOUCHES an edge (no overlap is not a cover)', async () => {
+    const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
+    const touching = mkText(150, 120, 10, 10);        // starts exactly at the redaction's right edge
+    const red = new RedactionElement(100, 100, 50, 50, 'p1', '#000000');
+    expect(dropElementsUnderRedactions([touching, red])).toContain(touching);
+  });
+
+  it('drops an element whose box is expressed with NEGATIVE dimensions', async () => {
+    const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
+    // A negative width is reachable from resize maths; without normalisation the raw comparisons fail
+    // OPEN and this element — which genuinely overlaps — would be kept and drawn as live text.
+    const negative = Object.assign(mkText(160, 120, -30, 10), {});
+    const red = new RedactionElement(100, 100, 50, 50, 'p1', '#000000');
+    expect(dropElementsUnderRedactions([negative, red])).not.toContain(negative);
+  });
 });

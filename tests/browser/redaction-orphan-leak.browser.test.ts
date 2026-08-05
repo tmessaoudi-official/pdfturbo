@@ -1,18 +1,19 @@
 /**
  * The redaction promise, checked at the BYTE level — because every other way of checking it lies.
  *
- * ONE confirmed leak and one hardening, and the difference between them is stated because conflating
- * the two is how a security document starts over-claiming:
+ * TWO confirmed leaks, both live, both proven by reverting the fix and watching this file fail:
  *
- *  1. CONFIRMED, and it was live: a redaction on a BLANK page never reached the rasteriser (the
- *     `blank` branch is checked before `hasRedaction`), so it was an opaque vector rect drawn over
- *     live, fully extractable overlay text. Reverting the fix makes the test below extract the secret
- *     verbatim — that is the proof, and it is why the fix exists.
- *  2. NOT CONFIRMED end-to-end: `_assemblePdfDoc` pre-copied every needed page, including
- *     redaction-bearing ones whose copy is never `addPage`d. In ISOLATION that demonstrably leaves the
- *     page serialised (pdf-lib does not garbage-collect) and the source text recoverable from the raw
- *     bytes. But the real assembler shows no such trace with or without the filter, so the filter is
- *     defence in depth and the scan here is a REGRESSION guard — not evidence that a leak was closed.
+ *  1. A redaction on a BLANK page never reached the rasteriser (the `blank` branch is checked before
+ *     `hasRedaction`), so it was an opaque vector rect drawn over live, fully extractable overlay text.
+ *  2. `_assemblePdfDoc` pre-copied every needed page, including redaction-bearing ones whose copy is
+ *     never `addPage`d. pdf-lib does not garbage-collect, so the un-redacted page still got serialised —
+ *     invisible to `getTextContent()` (not in `/Pages`), recoverable from the raw bytes.
+ *
+ * #2 was briefly recorded as "could not reproduce end-to-end". That conclusion was an artefact of THIS
+ * FILE: `getDocument({ data })` transfers the buffer to the pdf.js worker, so the scan ran over zero
+ * bytes and answered "clean" every time. A safety scan that cannot fail is worse than no scan — it
+ * launders a leak into a documented non-finding. Hence `.slice(0)` at every `getDocument`, and a hard
+ * throw in `leaks()` on an empty buffer.
  *
  * So this file does what the audit's own redaction pin could not: it scans the RAW EXPORTED BYTES,
  * inflating every stream. That is normally the wrong tool — per CLAUDE.md § "A flaky gate", scanning
@@ -24,7 +25,6 @@ import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import { unzlibSync } from 'fflate';
-import { dropElementsUnderRedactions } from '../../src/export/exportService';
 import { RedactionElement } from '../../src/elements/redactionElement';
 import { TextElement } from '../../src/elements/textElement';
 import type { PDFElement } from '../../src/elements/annotationElement';
@@ -74,6 +74,11 @@ function hexOf(s: string): string {
 }
 
 function leaks(bytes: Uint8Array): boolean {
+  // A zero-length input can only ever answer "no", so refuse it outright. `getDocument({ data })`
+  // TRANSFERS the buffer to the pdf.js worker and leaves `byteLength === 0` behind — which silently made
+  // the first version of this scan inert and produced a confident, wrong "the leak does not reproduce".
+  // Every `getDocument` call in this file therefore passes `.slice(0)`, and this guard is the backstop.
+  if (bytes.byteLength === 0) throw new Error('leaks(): empty buffer — detached by pdf.js?');
   const decoded = decodedBytes(bytes);
   return decoded.includes(SECRET) || decoded.toUpperCase().includes(hexOf(SECRET));
 }
@@ -89,7 +94,13 @@ async function secretSource(): Promise<Uint8Array> {
   return doc.save({ useObjectStreams: false });
 }
 
-/** Run the production export over a one-page document carrying `elements`. */
+/**
+ * Run the production export over a one-page document carrying `elements`.
+ *
+ * The cast is scoped to `documentModel` (a class with methods a literal cannot satisfy) rather than
+ * applied to the whole ctx: every other field — `elements` above all — stays type-checked, and a missing
+ * `elements` is exactly the omission that an outer `as never` let through in a sibling test.
+ */
 async function assembleWithRedaction(elements: PDFElement[]): Promise<Uint8Array> {
   const { ExportService } = await import('../../src/export/exportService');
   const { InkLayer } = await import('../../src/infra/inkLayer');
@@ -104,7 +115,7 @@ async function assembleWithRedaction(elements: PDFElement[]): Promise<Uint8Array
       sourcePdfs: new Map([['s1', { bytes, doc }]]),
       watermark: { enabled: false },
       bates: { enabled: false },
-    },
+    } as unknown as import('../../src/core/documentModel').DocumentModel,
     elements,
     formValues: {},
     currentFilename: 'case.pdf',
@@ -122,7 +133,7 @@ async function assembleWithRedaction(elements: PDFElement[]): Promise<Uint8Array
     renderCurrentPage: () => Promise.resolve(),
     rebuildElementLayer() {},
   };
-  return new ExportService(ctx as never).assemblePdfBytes();
+  return new ExportService(ctx).assemblePdfBytes();
 }
 
 describe('AUDIT — a redacted page leaves NO recoverable copy in the exported bytes', () => {
@@ -131,16 +142,14 @@ describe('AUDIT — a redacted page leaves NO recoverable copy in the exported b
     // That distinction is the whole value of this test: the defect lived in the assembler's decision to
     // pre-copy pages it would later rasterise, so a test that performs the copy itself proves nothing
     // about the shipped code — it just re-creates the bug and asserts it exists.
-    const { ExportService } = await import('../../src/export/exportService');
     const redaction = new RedactionElement(15, 30, 320, 30, 'p1', '#000000') as unknown as PDFElement;
     const out = await assembleWithRedaction([redaction]);
 
     // pdf.js agrees the secret is gone — and that is precisely the false negative that hid this leak.
-    const pdf = await pdfjsLib.getDocument({ data: out }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: out.slice(0) }).promise;
     const content = await (await pdf.getPage(1)).getTextContent();
     const extracted = (content.items as unknown as { str?: string }[]).map(t => t.str ?? '').join('');
     expect(extracted).not.toContain(SECRET);
-    void ExportService;
 
     // The real question, and the one the audit's own redaction pin structurally could not ask.
     expect(leaks(out), 'the un-redacted page must not survive as an orphan object').toBe(false);
@@ -177,7 +186,7 @@ describe('AUDIT — a redaction on a BLANK page removes the overlay text under i
         sourcePdfs: new Map(),
         watermark: { enabled: false },
         bates: { enabled: false },
-      },
+      } as unknown as import('../../src/core/documentModel').DocumentModel,
       elements: [covered, redaction],
       formValues: {},
       currentFilename: 'case.pdf',
@@ -194,41 +203,12 @@ describe('AUDIT — a redaction on a BLANK page removes the overlay text under i
       renderCurrentPage: () => Promise.resolve(),
       rebuildElementLayer() {},
     };
-    const out = await new ExportService(ctx as never).assemblePdfBytes();
+    const out = await new ExportService(ctx).assemblePdfBytes();
 
-    const pdf = await pdfjsLib.getDocument({ data: out }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: out.slice(0) }).promise;
     const content = await (await pdf.getPage(1)).getTextContent();
     const extracted = (content.items as unknown as { str?: string }[]).map(t => t.str ?? '').join('');
     expect(extracted, 'redacted overlay text must not survive on a blank page').not.toContain(SECRET);
     expect(leaks(out), 'nor anywhere in the raw bytes').toBe(false);
-  });
-});
-
-describe('AUDIT — the blank-page filter itself', () => {
-  it('covered elements are dropped, redactions kept', () => {
-    const covered = new TextElement(20, 30, 'p1', { width: 200, height: 20 }) as unknown as PDFElement;
-    (covered as unknown as { text: string }).text = SECRET;
-    const clear = new TextElement(20, 200, 'p1', { width: 200, height: 20 }) as unknown as PDFElement;
-    (clear as unknown as { text: string }).text = 'safe to keep';
-    const redaction = new RedactionElement(15, 25, 220, 30, 'p1', '#000000') as unknown as PDFElement;
-
-    const kept = dropElementsUnderRedactions([covered, clear, redaction]);
-
-    expect(kept).toContain(redaction);          // the box itself must still be drawn
-    expect(kept).toContain(clear);              // untouched content survives
-    expect(kept).not.toContain(covered);        // the leak: this used to be drawn as live text
-  });
-
-  it('is a no-op when the page carries no redaction (byte-identical export path)', () => {
-    const a = new TextElement(10, 10, 'p1', {}) as unknown as PDFElement;
-    const b = new TextElement(50, 50, 'p1', {}) as unknown as PDFElement;
-    const input = [a, b];
-    expect(dropElementsUnderRedactions(input)).toBe(input);
-  });
-
-  it('drops an element only PARTLY under the box — partial cover still leaks part of it', () => {
-    const straddling = new TextElement(0, 0, 'p1', { width: 100, height: 100 }) as unknown as PDFElement;
-    const redaction = new RedactionElement(90, 90, 50, 50, 'p1', '#000000') as unknown as PDFElement;
-    expect(dropElementsUnderRedactions([straddling, redaction])).not.toContain(straddling);
   });
 });

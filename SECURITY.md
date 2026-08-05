@@ -54,8 +54,9 @@ rows were established by reading the code. Both are said plainly instead of impl
 | **Form flatten** | *converts, not conceals* | **[pinned]** See below. |
 
 Every grade above is about **the file you export** — none is about the copy in your browser. To restore
-your work after a reload, PDFturbo keeps the *original* PDF bytes in IndexedDB, so redacting a page, or
-deleting some of a file's pages, does not remove the underlying content from your own machine. (Deleting
+your work after a reload, PDFturbo keeps the opened PDF's bytes in IndexedDB. Redaction and page deletion
+do not touch those bytes, so neither removes the underlying content from your own machine. (Editing text
+in place *does* rewrite them, so the stored copy is not always the file you opened.) (Deleting
 *every* page that came from a given file does drop that file's bytes.) See **Data at rest** below.
 
 ### Redaction reaches the other exports too (fixed 2026-08-05)
@@ -80,6 +81,15 @@ you to discover them:
   also removed from these exports, even though the PDF export draws it above the box.
 - **Freehand ink is not covered.** Ink is composited above the redaction, so handwriting under a box
   stays visible in the export. Use redaction over ink with that in mind.
+
+### Deleting an image in the DOCX editor does not remove it from the file
+
+The grades above are about PDFs. The **Word editor** has one case worth knowing: deleting an image
+removes it from the document, but **the image data stays inside the `.docx`**. An OPC package is a ZIP,
+and the picture remains as an unreferenced part that anyone can extract by renaming the file to `.zip`.
+
+Not yet fixed — removing a package part safely means proving nothing else references it. If an image is
+confidential, delete it before it goes into the document, or rebuild the file without it.
 
 ### A black rectangle over text hides nothing
 

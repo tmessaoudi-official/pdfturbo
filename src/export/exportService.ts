@@ -135,11 +135,19 @@ const IMG_DEFAULTS: Required<ImageExportOptions> = { scale: 2, format: 'png', qu
 export function dropElementsUnderRedactions(pageElements: PDFElement[]): PDFElement[] {
   const reds = pageElements.filter(el => el.type === 'redaction');
   if (reds.length === 0) return pageElements;
+  // NORMALISE before testing. A negative width/height is reachable (`interactionHandler.resize` can
+  // produce one when an element sits past the canvas edge) and would make the raw comparisons FAIL OPEN —
+  // the footprint genuinely overlaps, yet the element is kept and drawn as live text. Same defect shape as
+  // the `#bg-fill` negative-height rect in § Gotchas, so it gets the same treatment.
+  const box = (e: { x: number; y: number; width: number; height: number }) => ({
+    x0: Math.min(e.x, e.x + e.width), x1: Math.max(e.x, e.x + e.width),
+    y0: Math.min(e.y, e.y + e.height), y1: Math.max(e.y, e.y + e.height),
+  });
+  const redBoxes = reds.map(box);
   return pageElements.filter((el) => {
     if (el.type === 'redaction') return true;
-    return !reds.some(r =>
-      el.x < r.x + r.width && el.x + el.width > r.x
-      && el.y < r.y + r.height && el.y + el.height > r.y);
+    const e = box(el);
+    return !redBoxes.some(r => e.x0 < r.x1 && e.x1 > r.x0 && e.y0 < r.y1 && e.y1 > r.y0);
   });
 }
 
@@ -672,18 +680,18 @@ export class ExportService {
 
       // Pre-copy all needed pages from each source (one copyPages call per source).
       //
-      // DEFENCE IN DEPTH, with its evidence stated precisely — a redaction-bearing page is not
-      // pre-copied, because it takes the rasterise branch below and its copy would never be
-      // `addPage`d. MEASURED: in isolation, `copyPages` followed by no `addPage` DOES leave the
-      // copied page serialised by `save()` (pdf-lib does not garbage-collect), and the original
-      // content stream is then recoverable from the raw bytes while `getTextContent()` reports it
-      // gone. MEASURED EQUALLY: the assembler as written does NOT exhibit that end-to-end — an
-      // assembled one-redacted-page document has 8 indirect objects and no trace of the source text,
-      // with or without this filter, so something in this path already avoids registering the copy.
-      // The mechanism was not identified, so this is NOT a fix for an observed leak; it removes the
-      // possibility structurally instead of relying on a behaviour nobody could explain. Guarded by
-      // `tests/browser/redaction-orphan-leak.browser.test.ts`, which is a regression scan, not proof
-      // that a leak was closed.
+      // REDACTION LEAK FIX (P0) — do NOT remove this filter. A redaction-bearing page must not be
+      // pre-copied: it takes the rasterise branch below and its copy is never `addPage`d, but pdf-lib
+      // does not garbage-collect, so `save()` still serialises it. The un-redacted page content stream
+      // then ships inside the exported file as an orphan — absent from `/Pages`, so `getTextContent()`
+      // reports the secret gone, while the text is recoverable from the raw bytes.
+      //
+      // MEASURED, and the measurement is worth the warning: reverting this line makes
+      // `tests/browser/redaction-orphan-leak.browser.test.ts` fail with the source text present in the
+      // exported bytes. An earlier revision of this comment claimed the leak "does not reproduce
+      // end-to-end" — that was wrong, and wrong because the test's own scan was inert: pdf.js's
+      // `getDocument({ data })` TRANSFERS the buffer, so scanning the same `Uint8Array` afterwards reads
+      // zero bytes and always answers "clean". The scan now slices, and refuses an empty buffer.
       //
       // Keyed on the DOC PAGE, not the source index, so a source page used twice — once redacted,
       // once not — is still copied for the clean instance: the filter keeps any index that at least
@@ -723,9 +731,12 @@ export class ExportService {
           // redaction never reaches the rasteriser — it was baked as an opaque vector rect over live,
           // fully extractable overlay text. There is no source document to rasterise here, so removal
           // is achieved the only other way available: the covered elements are not drawn at all. The
-          // rect is opaque, so for a fully-covered element the visual result is identical; a PARTIALLY
-          // covered one disappears entirely, which is the safe direction and is visible to the user
-          // rather than a silent leak.
+          // rect is opaque, so for a fully-covered element the visual result is identical. Two bounds are
+          // real and are disclosed in SECURITY.md rather than claimed away: a PARTIALLY covered element
+          // disappears entirely, and so does one the user deliberately stacked ABOVE the redaction (the
+          // raster path draws that one above the burn, so the two paths differ by design). Nothing
+          // surfaces either at export time — the earlier claim that the loss is "visible to the user" was
+          // wrong, they have to open the file.
           const blankElements = dropElementsUnderRedactions(pageElements);
           await buildPageOverlays({
             pdfDoc, page: blankPage, docPage,

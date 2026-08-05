@@ -250,15 +250,25 @@ export class OcrHandler {
     // uses for the crop clip. `convertToViewportPoint` takes y-UP user space, hence the `Hu -` flips.
     const unrot = pdfPage.getViewport({ scale: 1, rotation: 0 });
     const Hu = unrot.height;
+    // The CropBox origin must be ADDED back: element coords are relative to the rendered page box, while
+    // `convertToViewportPoint` consumes ABSOLUTE user space (its transform bakes in the viewBox centre).
+    // On a `/CropBox [20 20 …]` page, omitting this burns 20pt off in both axes and clips the wrong strip,
+    // leaving part of the secret legible. The vector path adds the same offset (`pdfElementRenderer`'s
+    // `cropOriginX/Y`), which is the precedent this follows.
+    const [ox, oy] = [unrot.viewBox[0] as number, unrot.viewBox[1] as number];
     const totalRot = ((((pdfPage.rotate as number) ?? 0) + (page.rotation ?? 0)) % 360 + 360) % 360;
     for (const el of this.app.elements) {
-      if (el.pageId !== page.id || !(el instanceof RedactionElement)) continue;
+      // `el.type`, NOT `instanceof`: identity checks fail OPEN across duplicated module instances (this
+      // build already warns about a statically+dynamically imported module), and a silently skipped burn
+      // is a leak with no error and no visual sign. The sibling filter in `exportService` uses `type`
+      // too — one predicate for one safety decision.
+      if (el.pageId !== page.id || el.type !== 'redaction') continue;
       const c = redactionRectToContent(
         { x: el.x, y: el.y, width: el.width, height: el.height }, unrot.width, Hu, totalRot,
       );
-      const [ax, ay] = viewport.convertToViewportPoint(c.x, Hu - c.y);
-      const [bx, by] = viewport.convertToViewportPoint(c.x + c.width, Hu - (c.y + c.height));
-      ctx.fillStyle = el.color;
+      const [ax, ay] = viewport.convertToViewportPoint(ox + c.x, oy + Hu - c.y);
+      const [bx, by] = viewport.convertToViewportPoint(ox + c.x + c.width, oy + Hu - (c.y + c.height));
+      ctx.fillStyle = (el as RedactionElement).color ?? '#000000';
       ctx.fillRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
     }
 

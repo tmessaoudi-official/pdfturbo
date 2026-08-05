@@ -1699,26 +1699,47 @@ to a green suite because no test existed on those paths at all. **A sibling path
 not the filter is this repo's recurring leak shape**, and rotation is where it hides: every test written
 for the first fix was at rotation 0, which is exactly why a rotation bug shipped inside a rotation fix.
 
+**A fourth leak, verified and DISCLOSED rather than fixed: deleting an image in the DOCX editor leaves
+its bytes in the saved file.** `reconcileImageAnchors` does `el.remove()` on the anchor `w:p` and nothing
+else; `grep -rn "delete opc.files" src/docx/` returns **nothing**, and `packOpc` re-zips every part
+verbatim — so `word/media/imageN.png` survives as an unreferenced part, recoverable by renaming to
+`.zip`. The picture disappears in the editor AND in Word, which is what makes it convincing.
+`CLAUDE.md` already noted "no part GC in v1" for the **cut/paste** slice only; the ✕-delete ceiling list
+did not mention it and no user-facing doc did. Now in `SECURITY.md` § *"Deleting an image in the DOCX
+editor does not remove it from the file"*. **Not fixed on purpose:** removing a package part safely means
+proving nothing else references it (headers, footers, unmodelled parts), and getting that wrong destroys
+images — a worse outcome than a disclosed orphan. The `SECURITY.md` table is otherwise PDF-scoped, which
+is exactly how a whole feature went ungraded under a heading that says "every surface".
+
 **Known bounds, deliberately not "fixed" (they are disclosed in `SECURITY.md` instead):** the drop is
 blunt — a partially-covered element goes entirely, and so does one the user deliberately stacked *above*
 a redaction (the raster path draws that one above the burn, so the two paths differ by design); the
 intersection test uses the stored AABB, so a **rotated** element's true footprint is not what is tested;
 and **ink is composited above the burn**, so handwriting under a redaction stays visible on every path.
 
-**One reported P0 I could NOT reproduce, recorded because the non-finding is also useful.** A reviewer
-measured that `_assemblePdfDoc` pre-copies redaction-bearing pages whose copies are never `addPage`d, and
-that pdf-lib serialises such orphans — so the un-redacted stream would ship, invisible to
-`getTextContent()`. **The orphan behaviour is real in isolation** (measured in both Node and the browser:
-`copyPages` + no `addPage` → the source text is recoverable from the saved bytes). **The assembler does
-not exhibit it end-to-end**: an assembled one-redacted-page document has 8 indirect objects and no trace
-of the text, with or without the filter. The mechanism that prevents it was not identified. The filter
-was kept as defence in depth with that reasoning written at the call site — but it is NOT labelled a
-closed leak, and its test is a regression scan, not proof. **Two traps here:** a "faithful reproduction"
-of a code path is not that path (my own first version of the test made the same error and asserted the
-bug into existence), and **a byte scan that silently fails to inflate passes vacuously** — pdf-lib
-Flate-compresses content streams AND emits hex show ops (`<434F4E…> Tj`) even for standard fonts, so a
-scan must trim the trailing EOL before `endstream`, must inflate, and must check the hex form. Missing
-any of the three makes the scan find nothing and look reassuring.
+**A FOURTH leak, and the way I nearly buried it is the most useful lesson in this whole entry.**
+`_assemblePdfDoc` pre-copied every needed page, **including redaction-bearing ones** whose copy is never
+`addPage`d. pdf-lib does not garbage-collect, so `save()` still serialised the intact page: the
+un-redacted content stream shipped inside the exported file as an orphan — absent from `/Pages`, so
+`getTextContent()` reported the secret gone, while the text sat there in the raw bytes. Reverting the
+`pageHasRedaction` filter makes `tests/browser/redaction-orphan-leak.browser.test.ts` fail with the source
+text present.
+
+**I first recorded this as "could not reproduce end-to-end" — and that was wrong, because MY OWN TEST
+could not fail.** `pdfjsLib.getDocument({ data })` **TRANSFERS the buffer** to the worker, so the same
+`Uint8Array` is left with `byteLength === 0`. The scan ran over zero bytes and answered "clean" every
+time, on every variant I tried, which is exactly why the wrong conclusion felt so well-measured. Fixed
+with `.slice(0)` at every `getDocument` and a hard throw in `leaks()` on an empty buffer.
+
+**Three rules fall out of it, and they are the transferable part:**
+1. **A safety scan that cannot fail is worse than no scan** — it launders a live leak into a documented
+   non-finding, and the next reader inherits the false conclusion plus a comment saying the fix is
+   removable. The call site now says *do NOT remove this filter*, with the measurement.
+2. **Always verify a NEGATIVE result the same way you verify a positive one.** I proved every *fix* in
+   this entry non-vacuous by reverting it; I did not apply that discipline to a *non-finding*. A "no
+   leak here" needs a control proving the probe can detect the leak at all — which the file now has.
+3. **pdf.js detaching its input is a silent, general trap.** Anything that reads bytes after handing them
+   to `getDocument` reads nothing. Pass `.slice(0)` whenever the buffer is still needed.
 
 **Two API traps found while writing it:** `PDFDict.lookup(key, PDFDict)` **throws**
 `Expected instance of PDFDict, but got instance of undefined` when the key is absent — so asserting a key
