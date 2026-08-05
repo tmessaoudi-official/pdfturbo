@@ -443,7 +443,9 @@ export class ExportService {
       const annots: XfdfAnnot[] = [];
       for (let i = 0; i < documentModel.pages.length; i++) {
         const docPage = documentModel.pages[i];
-        const pageEls = elements.filter(el => el.pageId === docPage.id);
+        // Redacted overlays are dropped here too: an XFDF carries the annotation's TEXT, so exporting a
+        // comment or text box the user had covered would hand it back in a plain-text sidecar file.
+        const pageEls = dropElementsUnderRedactions(elements.filter(el => el.pageId === docPage.id));
         if (!pageEls.length) continue;
         const h = await pageHeightPt(docPage, documentModel.sourcePdfs);
         for (const el of pageEls) {
@@ -567,10 +569,13 @@ export class ExportService {
     // `getTextContent()` and hand redacted text straight back — measured: redact a name in a ruled
     // table, export to Excel, and the name is a cell. The flow path had the guard and this one did
     // not, which is the shape a green test suite cannot catch: two sibling extractors, one filtered.
-    // The mapping mirrors `_extractFlowDoc` + `reconstructPage` exactly — same viewport, same
-    // `totalRot`, same `redactionRectToContent` un-rotation — so rotated pages behave identically
-    // rather than via a second, untested convention (CORE-P0-1 was a rotated-page leak).
-    const vp = page.getViewport({ scale: 1 });
+    // `rotation: 0` is LOAD-BEARING. `redactionRectToContent` and `isItemRedacted` both want the
+    // UNROTATED content dimensions (see the former's docstring, and `PageService._pageGeom`, which is
+    // the repo's canonical accessor). `getViewport({ scale: 1 })` defaults `rotation` to `page.rotate`,
+    // so on a `/Rotate 90|270` page it returns SWAPPED dims and the filter silently no-ops — measured:
+    // the secret still exports and, at some rotations, innocent cells get dropped instead. Mirroring a
+    // sibling call site is not verification of it; this convention was checked against the contract.
+    const vp = page.getViewport({ scale: 1, rotation: 0 });
     const totalRot = (((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360 + 360) % 360;
     const contentRedactions = this._ctx.elements
       .filter(el => el.pageId === docPage.id && el.type === 'redaction')
@@ -1132,8 +1137,14 @@ export class ExportService {
       // Interleaved into the source text by reading order on a source page (G12);
       // emitted alone on a blank page. The reading-order `y` is attached below for
       // a source page (it needs the source page height, known after getPage).
-      const overlayEls: OverlayTextLike[] = elements
-        .filter((el): el is TextElement => el.pageId === docPage.id && el.type === 'text')
+      // `dropElementsUnderRedactions` FIRST: the PDF export removes overlay text under a redaction, and
+      // this path must agree. Without it, redacting a typed note removed it from the exported PDF while
+      // "Export to Word" on the same page handed it back — promoted to a heading if it was styled as one.
+      // Both this and the redaction live in editor display space, so no conversion is involved.
+      const overlayEls: OverlayTextLike[] = dropElementsUnderRedactions(
+        elements.filter(el => el.pageId === docPage.id),
+      )
+        .filter((el): el is TextElement => el.type === 'text')
         .map((el) => ({
           text: el.text, x: el.x, y: el.y, fontSize: el.fontSize,
           color: el.color, fontFamily: el.fontFamily, bold: el.bold, italic: el.italic,
@@ -1215,7 +1226,12 @@ export class ExportService {
         fonts[it.fontName] = { name: realName, family: styles[it.fontName]?.fontFamily };
       }
 
-      const vp = page.getViewport({ scale: 1 });
+      // `rotation: 0` — pdf.js reports text items in UNROTATED content space, and `reconstructPage`
+      // uses these dims both to flip y for `isItemRedacted` and to un-rotate the redaction rects. With
+      // the default (`page.rotate`) the dims are swapped on a `/Rotate 90|270` page, so the redaction
+      // filter mis-maps and redacted source text leaked into DOCX/MD/TXT. CORE-P0-1's comment claimed
+      // rotated pages were covered; it had only fixed 0/180, where the error cancels.
+      const vp = page.getViewport({ scale: 1, rotation: 0 });
       let colorMap = new Map<string, string>();
       let pageRules: RuleRect[] = [];
       let pageVRules: RuleRect[] = [];

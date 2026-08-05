@@ -22,6 +22,8 @@ import { AddElementCmd, MacroCmd, type HistoryManager } from '../core/historyMan
 import { applySearchableLayerToPdf, partitionWordsByFont } from '../ocr/searchableTextLayer';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import type { PDFElement } from '../elements/annotationElement';
+import { RedactionElement } from '../elements/redactionElement';
+import { redactionRectToContent } from '../utils/geometry';
 
 /**
  * Narrow role-interface the OCR handler requires from the app (M2 #18). Decouples
@@ -236,13 +238,28 @@ export class OcrHandler {
     // and hands it back through "Copy text" / "Export to Word" — defeating the whole point of the tool.
     // Painting rather than filtering recognised words is deliberate: the engine then cannot see the
     // glyphs at all, so there is no partial-overlap word to reason about.
-    // Element rects are editor DISPLAY space (top-left, page points) and the viewport is the same
-    // orientation, so the only conversion needed is the render scale — the same relationship
-    // `rasterizePageWithRedactions` relies on when it fills `el.x * SCALE, el.y * SCALE`.
+    // A plain `el.x * scale` is WRONG here, which is not obvious: this canvas is rendered at the page's
+    // INTRINSIC `/Rotate` with no user rotation (see the rotation note on `ocrWordToTextElement`), while
+    // element rects live in display space at `page.rotate + docPage.rotation`. Measured on the naive
+    // version: with a user rotation applied the fill lands off-target and, for some combinations,
+    // ENTIRELY off-canvas — no burn at all. Rotating a sideways scan upright before OCR-ing it is the
+    // normal thing to do, so that is the likely configuration rather than an exotic one.
+    // Two proven mappings composed instead: display → unrotated content (`redactionRectToContent`,
+    // which handles the user rotation), then content → canvas via the rendering viewport's own
+    // `convertToViewportPoint` (which handles `/Rotate` and the scale) — the pattern `exportPipeline`
+    // uses for the crop clip. `convertToViewportPoint` takes y-UP user space, hence the `Hu -` flips.
+    const unrot = pdfPage.getViewport({ scale: 1, rotation: 0 });
+    const Hu = unrot.height;
+    const totalRot = ((((pdfPage.rotate as number) ?? 0) + (page.rotation ?? 0)) % 360 + 360) % 360;
     for (const el of this.app.elements) {
-      if (el.pageId !== page.id || el.type !== 'redaction') continue;
-      ctx.fillStyle = (el as unknown as { color?: string }).color ?? '#000000';
-      ctx.fillRect(el.x * scale, el.y * scale, el.width * scale, el.height * scale);
+      if (el.pageId !== page.id || !(el instanceof RedactionElement)) continue;
+      const c = redactionRectToContent(
+        { x: el.x, y: el.y, width: el.width, height: el.height }, unrot.width, Hu, totalRot,
+      );
+      const [ax, ay] = viewport.convertToViewportPoint(c.x, Hu - c.y);
+      const [bx, by] = viewport.convertToViewportPoint(c.x + c.width, Hu - (c.y + c.height));
+      ctx.fillStyle = el.color;
+      ctx.fillRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
     }
 
     const paths = ocrAssetPaths(import.meta.env.BASE_URL);

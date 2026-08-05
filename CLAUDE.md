@@ -1670,12 +1670,40 @@ handed the redacted text straight back. Each fix is pinned by a test proven to f
    elements. Deliberately blunt — a partially covered element is dropped whole, because leaving it
    would leak the covered part.
 
+**Round 3 then refuted my own fix, and this is the most instructive part.** Fix 1 above was written by
+mirroring `_extractFlowDoc`'s call shape — including `page.getViewport({ scale: 1 })`. But
+`redactionRectToContent`'s docstring says its `W`/`H` are the **UNROTATED** dims, and `getViewport`
+defaults `rotation` to `page.rotate`, so on `/Rotate 90|270` the dims arrive **swapped** and the filter
+**silently no-ops**. Measured across all `(pageRot, userRot)` pairs: 6 of 16 leaked, and two of those
+*also dropped the wrong region* — innocent cells deleted while the secret survived. The repo's canonical
+accessor had it right all along (`PageService._pageGeom` uses `{ scale: 1, rotation: 0 }`).
+
+**And the path I copied had the same bug**, so `CORE-P0-1`'s comment — *"without this, redacted text
+leaked on rotated pages"* — was only ever true at 0/180, where the error cancels. DOCX/MD/TXT leaked at
+90/270 for as long as that comment has existed. **Mirroring a sibling call site is not verification of
+it; check the contract.** Both call sites now pass `{ scale: 1, rotation: 0 }`, pinned across six
+rotation combinations — and the fixture's `getViewport` deliberately *mimics pdf.js's swap*, because a
+stub returning fixed `W×H` would make those tests pass while the bug stayed.
+
+Two more leaks fell out of the same question: **overlay text under a redaction** had no filter at all in
+the DOCX/MD/TXT and XFDF exports (the PDF export removed it; "Export to Word" handed it back, promoted to
+a heading if styled as one), and the **OCR burn** was mapped with a plain `el.x * scale` even though that
+canvas is rendered at the page's intrinsic `/Rotate` with **no** user rotation — so with a user rotation
+applied the fill landed off-target and, for some combinations, *entirely off-canvas*. Now composed from
+two proven mappings (`redactionRectToContent`, then the viewport's own `convertToViewportPoint`).
+
 **The lesson is about where to point a safety audit.** The first two rounds hardened the *tests* and the
 *wording* and found nothing in the product. What found real leaks was asking "does this claim hold for
-every path a user can reach?" — and the answer was no for three of them, each invisible to a green suite
-because no test existed on those paths at all. **A sibling path that shares a promise but not the filter
-is this repo's recurring leak shape** (`_extractFlowDoc` vs `_extractPageTableData` is the second
-instance; the first was the rotated-page case in the same function).
+every path a user can reach, at every rotation?" — and the answer was no for five of them, each invisible
+to a green suite because no test existed on those paths at all. **A sibling path that shares a promise but
+not the filter is this repo's recurring leak shape**, and rotation is where it hides: every test written
+for the first fix was at rotation 0, which is exactly why a rotation bug shipped inside a rotation fix.
+
+**Known bounds, deliberately not "fixed" (they are disclosed in `SECURITY.md` instead):** the drop is
+blunt — a partially-covered element goes entirely, and so does one the user deliberately stacked *above*
+a redaction (the raster path draws that one above the burn, so the two paths differ by design); the
+intersection test uses the stored AABB, so a **rotated** element's true footprint is not what is tested;
+and **ink is composited above the burn**, so handwriting under a redaction stays visible on every path.
 
 **One reported P0 I could NOT reproduce, recorded because the non-finding is also useful.** A reviewer
 measured that `_assemblePdfDoc` pre-copies redaction-bearing pages whose copies are never `addPage`d, and

@@ -60,17 +60,26 @@ deleting some of a file's pages, does not remove the underlying content from you
 
 ### Redaction reaches the other exports too (fixed 2026-08-05)
 
-Redaction rasterises the page, which is what makes it removal-grade — but three exports do not go
+Redaction rasterises the page, which is what makes it removal-grade — but several exports do not go
 through that path, and until 2026-08-05 each handed the redacted text back:
 
 - **Table → CSV / Excel** read the page's text directly, so a redacted cell appeared in the file.
 - **OCR → "Copy text" / "Export to Word"** recognised the page *before* the box was applied.
+- **Export to Word / Markdown / text and XFDF** exported a redacted *text box you had typed* — the PDF
+  export removed it, and these handed it back.
 - **A redaction on a blank page** (one you added in PDFturbo, not from a PDF) was drawn as an opaque
   rectangle over text that remained fully selectable.
+- **On a rotated page**, the filter that was supposed to protect the Word/Markdown export did nothing at
+  90° and 270°, so redacted text leaked there — despite a code comment claiming rotation was handled.
 
-All three now remove the content: the table and OCR paths respect redactions, and on a blank page the
-covered elements are not drawn at all. Note the last one is deliberately blunt — an element only
-*partly* under the box is dropped entirely, because leaving it would leak the covered part.
+All of those now remove the content, at every rotation. Two limits are worth stating rather than leaving
+you to discover them:
+
+- **Dropping is blunt by design.** An element only *partly* under the box is removed entirely, because
+  leaving it would leak the covered part. An element you deliberately placed *on top of* a redaction is
+  also removed from these exports, even though the PDF export draws it above the box.
+- **Freehand ink is not covered.** Ink is composited above the redaction, so handwriting under a box
+  stays visible in the export. Use redaction over ink with that in mind.
 
 ### A black rectangle over text hides nothing
 
