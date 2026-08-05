@@ -658,7 +658,15 @@ export class TextEditHandler {
         const ok = await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE, {
           adjustDecorations: isEnabled('textDecor'),
         });
-        if (!ok) return;
+        if (!ok) {
+          // A refused DELETE used to return silently — no toast, no fallback — while the replace path
+          // 50 lines below falls back to an overlay and says so. Silence is worst here of all: the user
+          // asked for content to be GONE, saw no error, and would export a document still carrying it.
+          // `deleteTextAt` can genuinely refuse after the editor opened (Type3 / invisible / vertical
+          // fonts that only A5 detects then), so this is reachable, not defensive.
+          app.reportError.warn('toast.trueEditFailed');
+          return;
+        }
         const newBytes = await opts.libDoc.save();
         if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
           app.reportError.info('toast.trueTextDeleted');

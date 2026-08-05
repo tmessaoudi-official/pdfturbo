@@ -105,12 +105,14 @@ async function bakeVector(elements: PDFElement[]): Promise<import('@cantoo/pdf-l
   const target = await PDFDocument.create();
   const [page] = await target.copyPages(src, [0]);
   target.addPage(page);
+  // No outer cast: BuildPageCtx is satisfied field-for-field on purpose. A cast here would let a future
+  // required field go missing silently, which is the same hole that made this file's first shape
+  // assertion pass while nothing was drawn.
   await buildPageOverlays({
     pdfDoc: target, page, docPage: makePage(), elements,
     pdfLib: { rgb, StandardFonts, degrees }, userRot: 0, sourceRot: 0,
     watermark: noWatermark, inkLayer: new InkLayer(), reportError: noopReporter,
-  } as unknown as Parameters<typeof buildPageOverlays>[0]);
-  void src;
+  });
   return target;
 }
 
@@ -149,6 +151,16 @@ describe('AUDIT — a filled SHAPE over text hides nothing (the classic false re
       src, makePage(), [redaction], target,
       { rgb, StandardFonts, degrees }, noWatermark, new InkLayer(), noopReporter,
     );
+    // POSITIVE evidence first, and it is load-bearing. Both text assertions below are NEGATIVE, so
+    // rasterisation ALONE satisfies them — they cannot tell "the burn destroyed the secret" from "the
+    // page became an image". Proven, not theorised: with the burn moved off-target (the #QA-2026-06-23
+    // misplaced-burn shape a crop offset really produced in this repo) the negative assertions still
+    // passed, while the secret's glyphs stayed rendered and readable. So require the secret's band to be
+    // actually covered in ink.
+    const burned = await patchDarkness(target, COVER.x + COVER.w / 2, COVER.y + COVER.h / 2);
+    expect(burned, 'the burn must land ON the secret, not merely somewhere on the page')
+      .toBeGreaterThan(200);
+
     const text = await extractedText(target);
     expect(text).not.toContain(SECRET);
     // …and the rasterisation is why: the whole page becomes an image, so the PUBLIC line is not
@@ -160,7 +172,7 @@ describe('AUDIT — a filled SHAPE over text hides nothing (the classic false re
 
 describe('AUDIT — sanitize strips what it claims to strip', () => {
   it('removes /Info metadata, /OpenAction JavaScript and embedded files', async () => {
-    const { PDFDocument, PDFName, PDFString } = await import('@cantoo/pdf-lib');
+    const { PDFDocument, PDFName, PDFString, PDFDict } = await import('@cantoo/pdf-lib');
     const { sanitizePdf } = await import('../../src/utils/pdfSanitizer');
     const doc = await secretPdf();
     doc.setTitle('Internal draft — do not circulate');
@@ -168,7 +180,22 @@ describe('AUDIT — sanitize strips what it claims to strip', () => {
     // A document-level JavaScript action, the thing /OpenAction stripping is for.
     const js = doc.context.obj({ S: PDFName.of('JavaScript'), JS: PDFString.of('app.alert("x")') });
     doc.catalog.set(PDFName.of('OpenAction'), doc.context.register(js));
+    // The fixture must actually CARRY what we assert is stripped. An earlier revision asserted /Names
+    // was gone without ever adding it, so the assertion held before sanitizePdf ran — vacuous, and
+    // exactly the "passes for an unrelated reason" trap this file exists to expose.
+    const names = doc.context.obj({
+      EmbeddedFiles: doc.context.obj({ Names: doc.context.obj([]) }),
+      JavaScript: doc.context.obj({ Names: doc.context.obj([]) }),
+    });
+    doc.catalog.set(PDFName.of('Names'), doc.context.register(names));
+    doc.catalog.set(PDFName.of('Metadata'), doc.context.register(
+      doc.context.flateStream('<?xpacket?><x:xmpmeta xmlns:x="adobe:ns:meta/"/>'),
+    ));
     const dirty = await doc.save({ useObjectStreams: false });
+    // Proof the fixture is dirty — otherwise the post-sanitize assertions prove nothing.
+    for (const key of ['Names', 'Metadata', 'OpenAction']) {
+      expect(doc.catalog.get(PDFName.of(key)), `fixture must carry /${key}`).toBeDefined();
+    }
 
     const { bytes: clean } = await sanitizePdf(dirty);
     // Re-load with updateMetadata:false — the default RE-STAMPS /Info at load time and would mask the
@@ -178,8 +205,14 @@ describe('AUDIT — sanitize strips what it claims to strip', () => {
     expect(reread.getAuthor() ?? '').toBe('');
     expect(reread.catalog.get(PDFName.of('OpenAction'))).toBeUndefined();
     // `.get()`, NOT `.lookup(key, PDFDict)` — lookup THROWS ("Expected instance of PDFDict, but got
-    // instance of undefined") when the key is absent, which is exactly the success case here.
-    expect(reread.catalog.get(PDFName.of('Names'))).toBeUndefined();
+    // instance of undefined") when the key is absent, which is a success case for several of these.
+    expect(reread.catalog.get(PDFName.of('Metadata'))).toBeUndefined();
+    // /Names is deliberately KEPT: the sanitizer removes the active-content sub-trees and preserves the
+    // rest (e.g. /Dests, which link targets need). Asserting the whole dict was gone was simply wrong —
+    // it only ever "passed" because the fixture never carried /Names in the first place.
+    const cleanNames = reread.catalog.lookup(PDFName.of('Names'), PDFDict);
+    expect(cleanNames.get(PDFName.of('JavaScript'))).toBeUndefined();
+    expect(cleanNames.get(PDFName.of('EmbeddedFiles'))).toBeUndefined();
     // And the page content itself is untouched — sanitize is not a content remover and does not claim
     // to be. A reader who expects it to remove visible text would be wrong, so pin that too.
     const text = await extractedText(reread);
@@ -187,6 +220,15 @@ describe('AUDIT — sanitize strips what it claims to strip', () => {
   });
 });
 
+/*
+ * SCOPE NOTE for the two tests below. Both exercise the pdf-lib MECHANISM the product relies on
+ * (`form.flatten()`, `copyPages`) rather than `ExportService` itself, which needs the whole app wired up.
+ * So they pin that the mechanism behaves as the docs describe — they do NOT prove the export path calls
+ * it correctly. That separate claim rests on the index-scoping in `_assemblePdfDoc`
+ * (`src/export/exportService.ts`, `docPages.filter(...)` feeding every `copyPages`), which is covered by
+ * the export-service tests. Stated here rather than left implied, because an over-claimed pin is the
+ * exact failure this file was written to stop.
+ */
 describe('AUDIT — form flatten bakes the VALUE into page text (not a leak, but a trap)', () => {
   it('a flattened field value is extractable page text afterwards', async () => {
     const { PDFDocument, StandardFonts } = await import('@cantoo/pdf-lib');
@@ -234,10 +276,9 @@ describe('AUDIT — deleting a page removes its bytes', () => {
     const { PDFDocument, StandardFonts } = await import('@cantoo/pdf-lib');
     const src = await PDFDocument.create();
     const font = await src.embedFont(StandardFonts.Helvetica);
-    for (const [i, label] of [PUBLIC, SECRET].entries()) {
+    for (const label of [PUBLIC, SECRET]) {
       const pg = src.addPage([W, H]);
       pg.drawText(label, { x: 32, y: 200, size: 12, font });
-      void i;
     }
     // The export assembles from COPIED pages, so a page the user deleted is simply never copied —
     // this is the one surface where "removed" is structurally true rather than a promise to check.

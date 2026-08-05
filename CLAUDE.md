@@ -1570,7 +1570,44 @@ Also confirmed by measurement rather than assumption: sanitize touches metadata 
 survives, and it does not claim otherwise), and redaction takes the WHOLE page's text with it — the
 documented cost of "text unextractable", and the reason it is not the default.
 
-**One API trap found while writing it:** `PDFDict.lookup(key, PDFDict)` **throws**
+**The audit's own first draft was the best illustration of its thesis — a reviewer refuted THREE of its
+pins, and the redaction one was serious.** All are fixed; the lessons are the point:
+
+1. **A pin made only of NEGATIVE assertions cannot detect the leak it exists to catch.** The redaction
+   test asserted `not.toContain(SECRET)` and `not.toContain(PUBLIC)` — but rasterisation alone satisfies
+   both, so it could not distinguish *"the burn destroyed the secret"* from *"the page became an image"*.
+   Demonstrated, not argued: with the burn moved off-target (the `#QA-2026-06-23` misplaced-burn shape a
+   crop offset really produced here) **the assertions still passed** while 375 of 5720 pixels in the
+   secret's band stayed inked — i.e. plainly readable. Now gated on `patchDarkness(...) > 200`, which
+   fails at 9.3 on that simulation. **Any redaction guard needs positive evidence the burn landed.**
+2. **"Each row is pinned by a test" was false for 3 of 9 rows** (compress→flatten, crop, highlight). An
+   overstated *provenance* claim in a security document is the same defect the audit exists to fix, so
+   rows now carry an explicit `[pinned]` marker and the rest say they were established by code reading.
+3. **The `/Names` assertion was both vacuous AND wrong.** The fixture never carried `/Names`, so
+   `expect(...).toBeUndefined()` held before `sanitizePdf` ran. Adding it to the fixture revealed the
+   assertion was also semantically wrong: the sanitizer **keeps** the `/Names` dict on purpose (so
+   `/Dests` survives) and deletes only its `/JavaScript` and `/EmbeddedFiles` sub-trees.
+
+Two factual corrections to the prose fell out of the same review: **crop is destructive in at least
+three paths, not one** (a redaction-bearing page, compress→flatten-to-images, and export-page-as-image —
+pdf.js's viewport *is* the CropBox, so any rasterising export discards the cropped region), and
+**export-page-as-image** was missing from a table that claimed to list every surface.
+
+**Two locale strings contradicted the new table and are fixed in all three locales.**
+`toolbar.cropTitle` still said *"drag to keep only that area"* — the original finding's exact wording,
+fixed in the docs but not in the tooltip a user reads **at the moment of cropping**, which is the
+highest-traffic surface of all. And `toast.redactionPlaced` said content is *"hidden"* on export, which
+under the new taxonomy means *recoverable* — the wrong word for the one tool that genuinely removes.
+Both Arabic edits are single-verb substitutions (`للإبقاء على` → `لإظهار`, `يُخفى` → `يُزال`) and are
+**pending a native pass**, alongside the 8 already outstanding.
+
+**A real product defect surfaced too: a refused true-edit DELETE was silent.** `textEditHandler` did
+`if (!ok) return;` — no toast, no fallback — while the replace path 50 lines below falls back to an
+overlay and says so. Silence is worst exactly there: the user asked for content to be GONE, saw no
+error, and would export a file still carrying it. Now warns `toast.trueEditFailed` (an EXISTING key —
+no new strings, no Arabic risk), guarded by a test proven to fail without the fix.
+
+**Two API traps found while writing it:** `PDFDict.lookup(key, PDFDict)` **throws**
 `Expected instance of PDFDict, but got instance of undefined` when the key is absent — so asserting a key
 was stripped must use `.get(key)`. And a fixture built with `page.drawText` needs a save→load round-trip
 before `findTarget` can see it: `drawText` buffers operators and only flushes them at save.

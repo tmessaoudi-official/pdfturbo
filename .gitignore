@@ -45,3 +45,6 @@
 # of a real document would be a content leak, not just noise.
 /*.png
 /*.tmp.mjs
+
+# Throwaway in-container browser-test harness (hardcoded chromium path — never commit)
+vitest.browser.container.ts

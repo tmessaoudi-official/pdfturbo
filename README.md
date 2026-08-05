@@ -47,7 +47,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **OCR** — recognise text in scanned/image PDFs (tesseract.js, 8 languages incl. Arabic); insert as editable text, or add an invisible searchable text layer
 - **Digital signature (e-Sign)** — visible PKCS#12/CMS signature (node-forge); upload a `.p12` or generate a self-signed certificate in-browser
 - **Lock PDF** — AES-256 password encryption on export
-- **Sanitize** — download a copy with metadata (`/Info`, XMP), document-level JavaScript (`/OpenAction`, `/AA`), and embedded files stripped
+- **Sanitize** — download a copy with metadata (`/Info`, XMP), document-level JavaScript (`/OpenAction`, `/AA`), and embedded files stripped. It does **not** alter page content
 - **Native save dialog** — on Chromium, Download opens the OS "Save As" picker and writes the file directly (File System Access API); other browsers download as usual
 - **Export to DOCX / Markdown / TXT** — reconstruct a flow document (headings, lists, tables, columns, images, hyperlinks, RTL) from the PDF text; uses the PDF's structure tags when present
 - **DOCX editor** — open a `.docx` and edit it: rich text, headings, fonts/colour, **tables** (add/remove rows & columns, merge/split cells), **images** (insert/move/resize/cut-paste/drag), **hyperlinks**, find & replace, paste-from-Word cleanup; export back to `.docx` or to PDF
@@ -57,7 +57,10 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
   **Redaction**
 - **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
 - **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
-- **Form flatten** — bake AcroForm field values into the page on export
+- **Form flatten** — bake AcroForm field values into the page on export. Note this *exposes* the value
+  rather than concealing it: it stops being an editable field and becomes selectable page text
+- Which tools actually **delete** content versus only hide it is graded surface-by-surface in
+  [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content)
 - **XFDF** — import / export annotations
 - **Table → CSV / Excel** — extract a table from a page to a CSV file or a real `.xlsx` workbook
   (numbers stay numbers, so a price column can be summed). Ruled tables and, since EH-E, borderless
