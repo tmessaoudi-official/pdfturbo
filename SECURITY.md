@@ -34,25 +34,43 @@ Security concerns most relevant to this project:
 Several tools make content *stop being visible*. Only some make it *stop being in the file*. If you are
 removing something confidential, the difference is the only thing that matters — so here is every
 surface, graded. Rows marked **[pinned]** have a test in `tests/browser/hide-vs-remove.browser.test.ts`
-that builds the file, runs the real export, and tries to recover the content; the rest were established
-by reading the code, and are labelled honestly rather than implied to be measured.
+that builds a file, performs the operation, and tries to recover the content with pdf.js. Two of those
+(shape, redaction) drive the real export bake; the others exercise the underlying operation directly, so
+they prove the mechanism behaves as described rather than that every export path invokes it. Unmarked
+rows were established by reading the code. Both are said plainly instead of implied to be measured.
 
 | Tool | Content is… | Notes |
 |---|---|---|
-| **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. |
+| **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Applies to a page from a real PDF; see the note below on **blank** pages, and on the CSV/Excel and OCR exports. |
 | **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied. |
-| **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. In rare font cases (Type3, invisible or vertical text) the in-place delete refuses and tells you so — nothing is removed in that case. |
-| **Compress → flatten to images** | **removed** | Rasterises every page. Same grade as redaction, applied document-wide. |
+| **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. Unlike *replacing* text — which can decline on fonts it cannot redraw — deleting is font-agnostic: it blanks the operator that draws the text, so nothing needs drawing. |
+| **Compress → flatten to images** | **removed** | The **flatten-to-images** setting only; "lossless optimise" keeps all text. Rasterises every page, so it is redaction's grade applied document-wide. |
 | **Export page as image** (PNG/JPEG) | **removed** | Rasterises the page, so only what you can see survives. |
+| **Extract page range** | **removed** | Like deleting pages: the new file is built from copied pages, so pages outside the range are never in it. |
 | **Crop** | *hidden only* | A view setting. See below. |
 | **Shape / rectangle over text** | ***not even hidden*** | **[pinned]** See below — this is the one that catches people. |
 | **Highlight** | *not hidden* | A semi-transparent annotation drawn over the text. |
 | **Sanitize** | metadata only | **[pinned]** Strips `/Info`, XMP, document JavaScript and embedded files. It does **not** touch page content, and does not claim to. |
 | **Form flatten** | *converts, not conceals* | **[pinned]** See below. |
 
-Every grade above is about **the file you export**. None of them is about the copy in your browser: to
-restore your work after a reload, PDFturbo keeps the *original* PDF bytes in IndexedDB, so redacting or
-deleting a page does not remove anything from your own machine. See **Data at rest** below.
+Every grade above is about **the file you export** — none is about the copy in your browser. To restore
+your work after a reload, PDFturbo keeps the *original* PDF bytes in IndexedDB, so redacting a page, or
+deleting some of a file's pages, does not remove the underlying content from your own machine. (Deleting
+*every* page that came from a given file does drop that file's bytes.) See **Data at rest** below.
+
+### Redaction reaches the other exports too (fixed 2026-08-05)
+
+Redaction rasterises the page, which is what makes it removal-grade — but three exports do not go
+through that path, and until 2026-08-05 each handed the redacted text back:
+
+- **Table → CSV / Excel** read the page's text directly, so a redacted cell appeared in the file.
+- **OCR → "Copy text" / "Export to Word"** recognised the page *before* the box was applied.
+- **A redaction on a blank page** (one you added in PDFturbo, not from a PDF) was drawn as an opaque
+  rectangle over text that remained fully selectable.
+
+All three now remove the content: the table and OCR paths respect redactions, and on a blank page the
+covered elements are not drawn at all. Note the last one is deliberately blunt — an element only
+*partly* under the box is dropped entirely, because leaving it would leak the covered part.
 
 ### A black rectangle over text hides nothing
 

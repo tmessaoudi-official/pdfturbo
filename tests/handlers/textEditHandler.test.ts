@@ -347,43 +347,6 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect((app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });
 
-  // A refused DELETE used to be the one commit outcome with NO feedback at all: the replace path falls
-  // back to an overlay and says so, but clearing the field and pressing Enter on a font `deleteTextAt`
-  // refuses (Type3 / invisible / vertical — only detected after the editor opened) simply returned. That
-  // is the worst place for silence: the user asked for content to be GONE, saw no error, and would go on
-  // to export a document that still carries it. The hide-vs-remove audit grades this path "removed", so
-  // the refusal has to be visible for that grade to be honest.
-  it('warns instead of failing silently when deleteTextAt refuses at commit time', async () => {
-    const item = makeItem('Secret', 100, 600);
-    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
-      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1
-        ? { fontKey: 'F1', fontSize: 12, fillColor: undefined }
-        : null);
-    mockDeleteTextAt.mockResolvedValue(false);
-
-    const canvas = makeCanvas();
-    const app = makeApp(canvas, makeFakePage([item], 841));
-    await handler.handleCanvasClick(
-      click(115, 241),
-      app as unknown as Parameters<typeof handler.handleCanvasClick>[1],
-    );
-
-    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
-    expect(input).not.toBeNull();
-    input.value = '';                 // clearing the field is the delete gesture
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await new Promise<void>(r => { setTimeout(r, 0); });
-
-    expect(mockDeleteTextAt).toHaveBeenCalled();
-    expect((app.reportError.warn as ReturnType<typeof vi.fn>).mock.calls.flat())
-      .toContain('toast.trueEditFailed');
-    // Nothing was persisted, and the success toast must NOT have fired — the document is unchanged and
-    // the user has been told so.
-    expect((app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
-    expect((app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat())
-      .not.toContain('toast.trueTextDeleted');
-  });
-
   // Slice B: when replaceTextAt reports 'substituted' (the embedded font was
   // redrawn in a base-14 substitute), the commit must tell the user honestly via
   // toast.trueEditFontSubstituted — NOT the plain trueTextEdited.

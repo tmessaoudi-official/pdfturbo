@@ -547,7 +547,7 @@
       "addComment": "Comment tool — drag to define size and place. Press Esc to cancel.",
       "addCode": "Code tool — drag to define size and place. Press Esc to cancel.",
       "drawRedaction": "Redact tool — drag to black out. Press Esc to exit.",
-      "crop": "Crop tool — drag to mark the area to keep. Press Esc to exit.",
+      "crop": "Crop tool — drag to mark the area to show. Press Esc to exit.",
       "drawErase": "Eraser — swipe to erase elements. Press Esc to exit.",
       "editText": "Edit Text — click on any word to overlay and edit it. Press Esc to exit.",
       "fillBucket": "Fill bucket — click a shape or stroke to fill it with color. Press Esc to exit.",

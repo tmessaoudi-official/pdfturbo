@@ -546,7 +546,7 @@
       "drawHighlight": "Outil surligneur — faites glisser pour marquer. Appuyez sur Échap pour quitter.",
       "addComment": "Outil commentaire — faites glisser pour définir la taille et placer. Appuyez sur Échap pour annuler.",
       "drawRedaction": "Outil caviardage — faites glisser pour caviarder. Appuyez sur Échap pour quitter.",
-      "crop": "Outil de rognage — faites glisser pour marquer la zone à conserver. Appuyez sur Échap pour quitter.",
+      "crop": "Outil de rognage — faites glisser pour marquer la zone à afficher. Appuyez sur Échap pour quitter.",
       "drawErase": "Gomme — balayez pour effacer des éléments. Appuyez sur Échap pour quitter.",
       "editText": "Éditer texte — cliquez sur un mot pour le superposer et l'éditer. Appuyez sur Échap pour quitter.",
       "addCode": "Outil code — faites glisser pour définir la taille et placer. Appuyez sur Échap pour annuler.",

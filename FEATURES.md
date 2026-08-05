@@ -34,8 +34,12 @@ _Last updated: 2026-06-26 · Version 1.0.0_
 - Extract a page range (e.g. `1-3, 5, 8-10`) to a new PDF
 - **Per-page crop** (show only a chosen region — drag it, adjust with the frame's 8 handles, or type
   per-edge margins; rotation-safe).
-  **Crop HIDES rather than removes**: it sets the PDF CropBox, so the cropped-away area remains in the
-  file and can be restored by a recipient. Use **Redaction** to remove content permanently
+  **Crop HIDES rather than removes**: it sets the PDF CropBox, so in a normal export the cropped-away
+  area remains in the file and can be restored by a recipient. It *is* destroyed by any export that
+  rasterises the page (a redaction-bearing page, compress→flatten-to-images, export-page-as-image), so
+  the grade depends on the export you choose — see
+  [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content).
+  Use **Redaction** to remove content permanently
 - **Watermark** — tiled, configurable text/opacity/angle/density; renders live in the editor and on export
 - **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
 

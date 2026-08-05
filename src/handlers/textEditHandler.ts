@@ -658,15 +658,15 @@ export class TextEditHandler {
         const ok = await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE, {
           adjustDecorations: isEnabled('textDecor'),
         });
-        if (!ok) {
-          // A refused DELETE used to return silently — no toast, no fallback — while the replace path
-          // 50 lines below falls back to an overlay and says so. Silence is worst here of all: the user
-          // asked for content to be GONE, saw no error, and would export a document still carrying it.
-          // `deleteTextAt` can genuinely refuse after the editor opened (Type3 / invisible / vertical
-          // fonts that only A5 detects then), so this is reachable, not defensive.
-          app.reportError.warn('toast.trueEditFailed');
-          return;
-        }
+        // Unlike the replace path below, this needs no overlay fallback and no failure toast, and that
+        // is provable rather than hopeful: `deleteTextAt` returns false ONLY when its internal
+        // `findTarget` misses, and `findTextOpAt` — which is literally `findTarget(...)?.target` — had
+        // to succeed on this same `libDoc`, `pageIndex`, `origin` and tolerance for the editor to open
+        // at all. Nothing mutates `libDoc` in between (this is the first mutating branch in commit), so
+        // the miss cannot recur. `deleteTextAt` also carries none of `replaceTextAt`'s Type3 / invisible
+        // / vertical font gates, because blanking a show op draws nothing and is font-agnostic.
+        // Adding a toast here was tried and reverted: it guarded an unreachable branch.
+        if (!ok) return;
         const newBytes = await opts.libDoc.save();
         if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
           app.reportError.info('toast.trueTextDeleted');

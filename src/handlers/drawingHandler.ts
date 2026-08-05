@@ -238,7 +238,9 @@ export class DrawingHandler {
       this.app.autosave();
       this.app.setMode('select');
       this.app.selectElement(redEl);
-      // #QA-2026-06-23 P3 #22 — confirm placement + remind the box only hides content on export.
+      // #QA-2026-06-23 P3 #22 — confirm placement. The toast says the content is REMOVED on export,
+      // which the rasterising path genuinely does; the stale "only hides" wording here predated that
+      // and contradicted it (2026-08-05).
       this.app.reportError.info('toast.redactionPlaced');
       return;
 

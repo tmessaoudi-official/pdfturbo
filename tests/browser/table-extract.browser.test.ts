@@ -43,6 +43,9 @@ describe('exportTableCsv (real Chrome)', () => {
         pages: [{ id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 }],
         sourcePdfs: new Map([['s1', { doc: pdfDoc, bytes }]]),
       },
+      // `elements` is required by IExportContext: the table extraction filters out text sitting under
+      // a redaction (see _extractPageTableData), so omitting it is a contract violation, not a detail.
+      elements: [],
       reportError: { info: () => {}, warn: (k: string) => warns.push(k), error: () => {} },
       progress: { begin: () => handle },
       currentFilename: 'doc.pdf',
@@ -77,6 +80,9 @@ describe('exportTableCsv (real Chrome)', () => {
         pages: [{ id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 }],
         sourcePdfs: new Map([['s1', { doc: pdfDoc, bytes }]]),
       },
+      // `elements` is required by IExportContext: the table extraction filters out text sitting under
+      // a redaction (see _extractPageTableData), so omitting it is a contract violation, not a detail.
+      elements: [],
       reportError: { info: () => {}, warn: (k: string) => warns.push(k), error: () => {} },
       progress: { begin: () => handle },
       currentFilename: 'doc.pdf',

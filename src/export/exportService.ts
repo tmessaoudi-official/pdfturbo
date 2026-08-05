@@ -7,7 +7,8 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
+import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
+import { redactionRectToContent } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
@@ -121,6 +122,26 @@ const IMG_SCALE_MAX = 6;
 const IMG_QUALITY_MIN = 0.5;
 const IMG_QUALITY_MAX = 1;
 const IMG_DEFAULTS: Required<ImageExportOptions> = { scale: 2, format: 'png', quality: 0.92 };
+
+/**
+ * Drop every non-redaction element whose box intersects a redaction on the same page, keeping the
+ * redactions themselves. Used for BLANK pages, which have no source document to rasterise, so this is
+ * the only way a redaction there can actually REMOVE rather than merely cover (see the call site).
+ *
+ * Intersection, not containment: a word only partly under the box still has part of itself hidden, so
+ * leaving it would leak that part — the same rule `isItemRedacted` applies to source text.
+ * Exported for direct testing; the geometry is trivial but the SAFETY depends on it.
+ */
+export function dropElementsUnderRedactions(pageElements: PDFElement[]): PDFElement[] {
+  const reds = pageElements.filter(el => el.type === 'redaction');
+  if (reds.length === 0) return pageElements;
+  return pageElements.filter((el) => {
+    if (el.type === 'redaction') return true;
+    return !reds.some(r =>
+      el.x < r.x + r.width && el.x + el.width > r.x
+      && el.y < r.y + r.height && el.y + el.height > r.y);
+  });
+}
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
@@ -540,8 +561,26 @@ export class ExportService {
     ]);
     if (!opList) return null;
     const ops = walkPageOps(opList, pdfjsLib.OPS as unknown as Record<string, number>);
+
+    // REDACTION LEAK FIX: drop any source text item sitting under a redaction box, exactly as
+    // `_extractFlowDoc` does for DOCX/MD/TXT. Without this the CSV and XLSX exports read the RAW
+    // `getTextContent()` and hand redacted text straight back — measured: redact a name in a ruled
+    // table, export to Excel, and the name is a cell. The flow path had the guard and this one did
+    // not, which is the shape a green test suite cannot catch: two sibling extractors, one filtered.
+    // The mapping mirrors `_extractFlowDoc` + `reconstructPage` exactly — same viewport, same
+    // `totalRot`, same `redactionRectToContent` un-rotation — so rotated pages behave identically
+    // rather than via a second, untested convention (CORE-P0-1 was a rotated-page leak).
+    const vp = page.getViewport({ scale: 1 });
+    const totalRot = (((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360 + 360) % 360;
+    const contentRedactions = this._ctx.elements
+      .filter(el => el.pageId === docPage.id && el.type === 'redaction')
+      .map(el => redactionRectToContent(
+        { x: el.x, y: el.y, width: el.width, height: el.height }, vp.width, vp.height, totalRot,
+      ));
+
     const items: TableTextItem[] = (content.items as RawTextItem[])
       .filter(it => typeof it.str === 'string' && it.str.trim().length > 0 && Array.isArray(it.transform))
+      .filter(it => !contentRedactions.some(r => isItemRedacted(it, r, vp.height)))
       .map(it => ({ x: it.transform[4], y: it.transform[5], text: it.str, width: it.width }));
     return { hRules: ops.rules, vRules: ops.vRules, items };
   }
@@ -626,12 +665,34 @@ export class ExportService {
         this._ctx.reportError.warn('toast.formValueDropped', { count: droppedFields.length });
       }
 
-      // Pre-copy all needed pages from each source (one copyPages call per source)
+      // Pre-copy all needed pages from each source (one copyPages call per source).
+      //
+      // DEFENCE IN DEPTH, with its evidence stated precisely — a redaction-bearing page is not
+      // pre-copied, because it takes the rasterise branch below and its copy would never be
+      // `addPage`d. MEASURED: in isolation, `copyPages` followed by no `addPage` DOES leave the
+      // copied page serialised by `save()` (pdf-lib does not garbage-collect), and the original
+      // content stream is then recoverable from the raw bytes while `getTextContent()` reports it
+      // gone. MEASURED EQUALLY: the assembler as written does NOT exhibit that end-to-end — an
+      // assembled one-redacted-page document has 8 indirect objects and no trace of the source text,
+      // with or without this filter, so something in this path already avoids registering the copy.
+      // The mechanism was not identified, so this is NOT a fix for an observed leak; it removes the
+      // possibility structurally instead of relying on a behaviour nobody could explain. Guarded by
+      // `tests/browser/redaction-orphan-leak.browser.test.ts`, which is a regression scan, not proof
+      // that a leak was closed.
+      //
+      // Keyed on the DOC PAGE, not the source index, so a source page used twice — once redacted,
+      // once not — is still copied for the clean instance: the filter keeps any index that at least
+      // one non-redacted doc page needs.
+      const pageHasRedaction = (p: typeof docPages[number]): boolean =>
+        elements.some(el => el.pageId === p.id && el.type === 'redaction');
       const copiedPages = new Map<string, import('@cantoo/pdf-lib').PDFPage>();
       for (const [id, srcDoc] of srcDocs) {
         const indices = [...new Set(
-          docPages.filter(p => p.sourcePdfId === id).map(p => p.sourcePageNum - 1)
+          docPages
+            .filter(p => p.sourcePdfId === id && !pageHasRedaction(p))
+            .map(p => p.sourcePageNum - 1)
         )].sort((a, b) => a - b);
+        if (indices.length === 0) continue;
         const pages = await pdfDoc.copyPages(srcDoc, indices);
         indices.forEach((idx: number, i: number) => copiedPages.set(`${id}:${idx}`, pages[i]));
       }
@@ -653,9 +714,17 @@ export class ExportService {
           const H_orig = docPage.blankHeight ?? 842;
           const blankPage = pdfDoc.addPage([W_orig, H_orig]);
           blankPage.drawRectangle({ x: 0, y: 0, width: W_orig, height: H_orig, color: rgb(1, 1, 1), borderWidth: 0 });
+          // REDACTION LEAK FIX (P0): this branch is checked BEFORE `hasRedaction`, so a blank page's
+          // redaction never reaches the rasteriser — it was baked as an opaque vector rect over live,
+          // fully extractable overlay text. There is no source document to rasterise here, so removal
+          // is achieved the only other way available: the covered elements are not drawn at all. The
+          // rect is opaque, so for a fully-covered element the visual result is identical; a PARTIALLY
+          // covered one disappears entirely, which is the safe direction and is visible to the user
+          // rather than a silent leak.
+          const blankElements = dropElementsUnderRedactions(pageElements);
           await buildPageOverlays({
             pdfDoc, page: blankPage, docPage,
-            elements: pageElements,
+            elements: blankElements,
             pdfLib: { rgb, degrees, StandardFonts },
             userRot: 0, sourceRot: 0,
             watermark: documentModel.watermark,

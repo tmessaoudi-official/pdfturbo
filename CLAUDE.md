@@ -201,6 +201,8 @@ npx playwright install chromium     # Chrome 151 / chromium-1234 (~115 MB, not p
 # then run vitest with a throwaway config that sets
 #   playwright({ launchOptions: { executablePath: '/opt/pw-browsers/chromium-1234/chrome-linux64/chrome' } })
 # instead of channel:'chrome' — delete it afterwards, never commit it.
+# NAME IT `vitest.browser.container.ts`: that exact name is in .gitignore, so a later `git add -A`
+# cannot stage it (the hardcoded chromium path would rot immediately). Any other name has no guard.
 ```
 
 With that, the full suite passes in-container (68 files / 179 tests). **Do not claim a green browser
@@ -490,9 +492,14 @@ disable escaping. The three locale files must stay key-identical (a hook checks 
 write). **Arabic review status — STRINGS COMPLETE (2026-07-30):** a native speaker reviewed and validated
 **all 31 keys** that had carried `ar [Unverified]`, across two rounds (15, then a further 16 that the
 first extraction missed: `findReplace.*`, `docxEditor.deleteImage`, `docxToolbar.insertImage`,
-`sign.error.UNSUPPORTED_XREF`). Every entry now reads `ar reviewed 2026-07-30`, and **no Arabic value
-was changed** — the one issue reported turned out not to be one (see the `صف` vs `سطر` note below).
+`sign.error.UNSUPPORTED_XREF`). Every entry read `ar reviewed 2026-07-30`, and **that review changed no
+Arabic value** — the one issue reported turned out not to be one (see the `صف` vs `سطر` note below).
 Do not re-add `ar [Unverified]` to an existing key; NEW keys start unverified as before.
+**AMENDED 2026-08-05:** three reviewed values HAVE since been changed — `toolbar.cropTitle`,
+`toast.modeHint.crop` and `toast.redactionPlaced`, because their wording contradicted the hide-vs-remove
+grades (see that § for why). They are single-verb substitutions and are **pending a native pass**. So the
+sign-off is no longer a blanket "nothing changed since"; check the pending count below before assuming a
+key is reviewed.
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
 remain open: C18 (per-glyph select/copy/search precision), C19 (tashkeel/GPOS micro-positioning),
 bracket mirroring in the overlay, and RTL list-marker placement. A reviewed string can still render
@@ -583,7 +590,9 @@ file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserti
 XML). The button is in the export flyout, so `/qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
-`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day, so 8 values are pending). `toast.noTableFound` also dropped the word "ruled" in all three
+`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **11 values pending as of
+2026-08-05**, these 8 plus the 3 re-worded in § The hide-vs-remove audit; that § is the count's home, so
+update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
 
@@ -1541,13 +1550,17 @@ measurement.
 ### The hide-vs-remove audit — every surface graded, and two more traps found (2026-08-05)
 
 Crop's disclosure gap begged the obvious question: **what else claims, or merely implies, removal?** So
-every surface a user could believe deletes content was measured the same way — build the file, run the
-REAL export path, try to recover the content with pdf.js. Pinned in
-`tests/browser/hide-vs-remove.browser.test.ts` (6 tests), and the grades are now a user-facing table in
-`SECURITY.md` § *"Hiding is not removing"* (which absorbed and kept the crop § rather than replacing it).
+every surface a user could believe deletes content was graded — building a file, performing the operation,
+and trying to recover the content with pdf.js. `tests/browser/hide-vs-remove.browser.test.ts` (6 tests)
+pins six of them; **two of those drive the real export bake** (shape, redaction) and the rest exercise the
+underlying operation directly, so they pin the MECHANISM, not that every export path invokes it. The
+remaining rows come from code reading. The grades are a user-facing table in `SECURITY.md` § *"Hiding is
+not removing"* (which absorbed and kept the crop § rather than replacing it). **Say which is which** —
+the first draft of that table claimed every row was test-pinned, and a reviewer refuted it.
 
-**Verdict: four surfaces genuinely REMOVE** — redaction (rasterises), page delete (never copied),
-compress→flatten-to-images (rasterises), and **true-edit delete**, which is the only one that removes
+**Verdict: six surfaces genuinely REMOVE** — redaction (rasterises), page delete (never copied),
+extract-page-range (same mechanism), compress→**flatten-to-images** (rasterises; the *lossless* setting
+does not), export-page-as-image (rasterises), and **true-edit delete**, which is the only one that removes
 surgically: it blanks the show op, so the string leaves the content stream while *the rest of the page
 stays real text*. Worth knowing precisely because someone who has internalised "removal means
 rasterisation" will expect the neighbouring text to die with it, and it does not.
@@ -1577,9 +1590,12 @@ pins, and the redaction one was serious.** All are fixed; the lessons are the po
    test asserted `not.toContain(SECRET)` and `not.toContain(PUBLIC)` — but rasterisation alone satisfies
    both, so it could not distinguish *"the burn destroyed the secret"* from *"the page became an image"*.
    Demonstrated, not argued: with the burn moved off-target (the `#QA-2026-06-23` misplaced-burn shape a
-   crop offset really produced here) **the assertions still passed** while 375 of 5720 pixels in the
-   secret's band stayed inked — i.e. plainly readable. Now gated on `patchDarkness(...) > 200`, which
-   fails at 9.3 on that simulation. **Any redaction guard needs positive evidence the burn landed.**
+   crop offset really produced here) **the assertions still passed** while the secret's glyphs stayed
+   inked — i.e. plainly readable. Now gated on `patchDarkness(...) > 200`, sampling a 6×6 patch at the
+   cover's centre; that reads **9.3** (near-white) on the off-target simulation and passes on a correct
+   burn. **Any redaction guard needs positive evidence the burn landed.** To re-measure, move the
+   `RedactionElement`'s `y` off the secret and re-run — the simulation is deliberately not committed, so
+   the figure above is the only record; treat it as a one-off measurement, not a ceiling to cite.
 2. **"Each row is pinned by a test" was false for 3 of 9 rows** (compress→flatten, crop, highlight). An
    overstated *provenance* claim in a security document is the same defect the audit exists to fix, so
    rows now carry an explicit `[pinned]` marker and the rest say they were established by code reading.
@@ -1593,19 +1609,88 @@ three paths, not one** (a redaction-bearing page, compress→flatten-to-images, 
 pdf.js's viewport *is* the CropBox, so any rasterising export discards the cropped region), and
 **export-page-as-image** was missing from a table that claimed to list every surface.
 
-**Two locale strings contradicted the new table and are fixed in all three locales.**
-`toolbar.cropTitle` still said *"drag to keep only that area"* — the original finding's exact wording,
-fixed in the docs but not in the tooltip a user reads **at the moment of cropping**, which is the
-highest-traffic surface of all. And `toast.redactionPlaced` said content is *"hidden"* on export, which
-under the new taxonomy means *recoverable* — the wrong word for the one tool that genuinely removes.
-Both Arabic edits are single-verb substitutions (`للإبقاء على` → `لإظهار`, `يُخفى` → `يُزال`) and are
-**pending a native pass**, alongside the 8 already outstanding.
+**THREE locale strings contradicted the new table; all are fixed in all three locales — and the one I
+missed first was the one that matters most.** `toolbar.cropTitle` still said *"drag to keep only that
+area"*, the original finding's exact wording, fixed in the docs but not in the UI. I then wrote that this
+tooltip was "the highest-traffic surface of all" and a reviewer refuted it: **`toast.modeHint.crop` is
+*pushed* at the user** by `toolModeService`'s `MODE_HINT_KEYS` the instant crop mode is entered, and it
+still said *"drag to mark the area to keep"* — a toast you cannot avoid reading beats a tooltip you must
+hover for. **When auditing a user-facing claim, grep the locale files for the CLAIM, not for the one key
+you already know about.** Third: `toast.redactionPlaced` said content is *"hidden"* on export, which
+under the new taxonomy means *recoverable* — the wrong word for the tool that genuinely removes.
 
-**A real product defect surfaced too: a refused true-edit DELETE was silent.** `textEditHandler` did
-`if (!ok) return;` — no toast, no fallback — while the replace path 50 lines below falls back to an
-overlay and says so. Silence is worst exactly there: the user asked for content to be GONE, saw no
-error, and would export a file still carrying it. Now warns `toast.trueEditFailed` (an EXISTING key —
-no new strings, no Arabic risk), guarded by a test proven to fail without the fix.
+The three Arabic edits are single-verb substitutions (`للإبقاء على` → `لإظهار`, `الإبقاء عليها` →
+`إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
+sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified, and the pending count
+is **11**: these 3 plus `toolbar.exportXlsxTitle`, the 6 `toolbar.cropMargin*` keys and
+`toast.cropMarginsTooLarge`. A reviewer found this tracking gap because the two other sections that
+enumerate the pending set were not updated — **when the pending list lives in prose in three places, a
+change to one is a change to all three.**
+
+**A "defect" I fixed and then had to UNFIX — worth the space, because the reasoning generalises.** The
+delete branch reads `if (!ok) return;` with no toast and no fallback, while the replace path 50 lines
+below falls back to an overlay and says so. That asymmetry looks exactly like a silent failure on a
+removal operation, so I added a warning toast, a test, a doc caveat saying the delete "refuses on Type3 /
+invisible / vertical fonts and tells you so" — and a reviewer refuted all three at once. **The branch is
+unreachable and the caveat was invented:**
+
+- `deleteTextAt` carries **none** of `replaceTextAt`'s font gates (`isType3Font` / renderMode 3,7 /
+  `isVerticalWritingFont` are at `contentStreamEditor.ts:1961-1963`, inside `replaceTextAt` only). It
+  needs none: blanking a show op **draws nothing**, so it is font-agnostic. Replace needs the gates
+  precisely because Path 3 must RENDER new glyphs. So delete is *unconditionally* removal-grade.
+- Its only `false` is `findTarget` missing — and `findTextOpAt` **is** `findTarget(...)?.target`
+  (`:1248`), which had to succeed on the same `libDoc`/`pageIndex`/`origin`/tolerance for the editor to
+  open. Nothing mutates `libDoc` in between (the delete branch is the first mutating branch in
+  `commit`), so a deterministic function cannot now miss.
+
+Reverted; the branch keeps a comment stating the proof. **The lesson: an asymmetry between two sibling
+code paths is not evidence of a bug** — the sibling may need the guard for a reason that does not apply.
+Under the anti-bandaid gate, adding a fallback for a failure mode with no observed instance is itself the
+defect, and the test I wrote for it could only be reached by mocking the impossible return.
+
+**THE AUDIT'S REAL PAYLOAD: three redaction leaks in SHIPPED code, found only once the reviewer panel
+attacked the claim rather than the tests (2026-08-05).** Redaction rasterises the page, which is what
+makes it removal-grade — but **three export paths do not go through that path**, and every one of them
+handed the redacted text straight back. Each fix is pinned by a test proven to fail without it:
+
+1. **Table → CSV / XLSX.** `_extractPageTableData` read the raw `getTextContent()`. Meanwhile
+   `_extractFlowDoc`, 500 lines away, filtered redactions and carried a comment saying
+   `CORE-P0-1 — without this, redacted text leaked on rotated pages`. **This repo had already graded
+   this exact class P0 for the sibling path and fixed only that one.** Reverting the new filter puts
+   `Wolgast` back in the CSV. The fix reuses `isItemRedacted` + `redactionRectToContent` with the same
+   viewport and `totalRot`, so rotated pages cannot diverge between the two extractors.
+2. **OCR → "Copy text" / "Export to Word".** `_recognize` rasterises the RAW source page, so tesseract
+   read the text under the box. Fixed by painting the redactions onto the OCR canvas **before**
+   recognition — the engine then cannot see the glyphs at all, which beats filtering recognised words
+   because there is no partial-overlap word left to reason about.
+3. **A redaction on a BLANK page was never rasterised at all** — `sourcePdfId === 'blank'` is checked
+   *before* `hasRedaction`, so the box was baked as an opaque vector rect over live overlay text.
+   Reverting the fix extracts the secret verbatim. There is no source document to rasterise here, so
+   removal is achieved the only other way available: `dropElementsUnderRedactions` omits the covered
+   elements. Deliberately blunt — a partially covered element is dropped whole, because leaving it
+   would leak the covered part.
+
+**The lesson is about where to point a safety audit.** The first two rounds hardened the *tests* and the
+*wording* and found nothing in the product. What found real leaks was asking "does this claim hold for
+every path a user can reach?" — and the answer was no for three of them, each invisible to a green suite
+because no test existed on those paths at all. **A sibling path that shares a promise but not the filter
+is this repo's recurring leak shape** (`_extractFlowDoc` vs `_extractPageTableData` is the second
+instance; the first was the rotated-page case in the same function).
+
+**One reported P0 I could NOT reproduce, recorded because the non-finding is also useful.** A reviewer
+measured that `_assemblePdfDoc` pre-copies redaction-bearing pages whose copies are never `addPage`d, and
+that pdf-lib serialises such orphans — so the un-redacted stream would ship, invisible to
+`getTextContent()`. **The orphan behaviour is real in isolation** (measured in both Node and the browser:
+`copyPages` + no `addPage` → the source text is recoverable from the saved bytes). **The assembler does
+not exhibit it end-to-end**: an assembled one-redacted-page document has 8 indirect objects and no trace
+of the text, with or without the filter. The mechanism that prevents it was not identified. The filter
+was kept as defence in depth with that reasoning written at the call site — but it is NOT labelled a
+closed leak, and its test is a regression scan, not proof. **Two traps here:** a "faithful reproduction"
+of a code path is not that path (my own first version of the test made the same error and asserted the
+bug into existence), and **a byte scan that silently fails to inflate passes vacuously** — pdf-lib
+Flate-compresses content streams AND emits hex show ops (`<434F4E…> Tj`) even for standard fonts, so a
+scan must trim the trailing EOL before `endstream`, must inflate, and must check the hex form. Missing
+any of the three makes the scan find nothing and look reassuring.
 
 **Two API traps found while writing it:** `PDFDict.lookup(key, PDFDict)` **throws**
 `Expected instance of PDFDict, but got instance of undefined` when the key is absent — so asserting a key
@@ -1684,7 +1769,8 @@ this class twice over.
    live: overlay present → absent). Worth knowing because it reads exactly like a broken undo.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (**ar [Unverified]** — needs a
-native pass, alongside `toolbar.exportXlsxTitle`). The inputs use `role="group"` +
+native pass, alongside `toolbar.exportXlsxTitle` and the 3 re-worded crop/redaction strings — 11 pending
+in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToContentCrop.test.ts` (7 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

@@ -52,9 +52,10 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Export to DOCX / Markdown / TXT** — reconstruct a flow document (headings, lists, tables, columns, images, hyperlinks, RTL) from the PDF text; uses the PDF's structure tags when present
 - **DOCX editor** — open a `.docx` and edit it: rich text, headings, fonts/colour, **tables** (add/remove rows & columns, merge/split cells), **images** (insert/move/resize/cut-paste/drag), **hyperlinks**, find & replace, paste-from-Word cleanup; export back to `.docx` or to PDF
 - **Per-page crop** — show only a chosen region: drag it, drag the frame's handles to adjust, or type per-edge margins
-  (rotation-safe). **Crop HIDES, it does not remove:** it sets the PDF CropBox, so the cropped-away
-  area stays in the file and a recipient can restore it. To take content out permanently, use
-  **Redaction**
+  (rotation-safe). **Crop HIDES, it does not remove:** it sets the PDF CropBox, so in a normal export the
+  cropped-away area stays in the file and a recipient can restore it. (It *is* destroyed by any export
+  that rasterises the page — see [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content).)
+  To take content out permanently, use **Redaction**
 - **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
 - **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
 - **Form flatten** — bake AcroForm field values into the page on export. Note this *exposes* the value

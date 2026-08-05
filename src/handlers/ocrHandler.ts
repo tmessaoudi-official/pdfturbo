@@ -231,6 +231,20 @@ export class OcrHandler {
     if (!ctx) return null;
     await pdfPage.render({ canvas, canvasContext: ctx, viewport }).promise;
 
+    // REDACTION LEAK FIX: burn the page's redactions onto the OCR canvas BEFORE recognition. This
+    // renders the RAW source page, so without the burn tesseract reads the text under a redaction box
+    // and hands it back through "Copy text" / "Export to Word" — defeating the whole point of the tool.
+    // Painting rather than filtering recognised words is deliberate: the engine then cannot see the
+    // glyphs at all, so there is no partial-overlap word to reason about.
+    // Element rects are editor DISPLAY space (top-left, page points) and the viewport is the same
+    // orientation, so the only conversion needed is the render scale — the same relationship
+    // `rasterizePageWithRedactions` relies on when it fills `el.x * SCALE, el.y * SCALE`.
+    for (const el of this.app.elements) {
+      if (el.pageId !== page.id || el.type !== 'redaction') continue;
+      ctx.fillStyle = (el as unknown as { color?: string }).color ?? '#000000';
+      ctx.fillRect(el.x * scale, el.y * scale, el.width * scale, el.height * scale);
+    }
+
     const paths = ocrAssetPaths(import.meta.env.BASE_URL);
     const result = await recognizePage(canvas, {
       language: resolveLanguage(language),
