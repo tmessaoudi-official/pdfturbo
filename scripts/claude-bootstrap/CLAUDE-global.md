@@ -447,31 +447,14 @@ Trigger words that signal `loop` is needed: *"keep doing"*, *"monitor"*, *"every
 
    **Relationship to other rules**: Rule 11 (verify proposals) defines *how* to check a claim; this rule defines *how to label* the result — every Rule 11 check ends in a Rule 18 grade. Rule 14 (root cause) is the fix-scoped case of this same discipline: a root cause must reach [Verified] here before Rule 14 permits writing a fix.
 
-## Memory System Toggles
+## Memory System Toggles — NOT APPLICABLE HERE
 
-The session-remember pipeline (`~/.claude/hooks/session-remember/`) has two file-presence kill switches:
-
-| File | Effect | Toggle |
-|------|--------|--------|
-| `~/.claude/hooks/session-remember/DISABLED` | Full silence — no context loaded, no capture | `touch` to disable; `rm` to re-enable |
-| `~/.claude/hooks/session-remember/READONLY` | Load prior context but skip new capture | `touch` to go read-only; `rm` to resume capture |
-
-**Precedence**: DISABLED > READONLY > per-project `blacklist` > normal operation.
-Both are independent of `CLAUDE_PROJECT_DIR` — they apply to every project globally.
-
-**Model override**: Set `SR_MODEL=<model-id>` in the environment before starting Claude Code to use a different model for all session-remember LLM calls. Default: `claude-haiku-4-5` (date-suffix-free, forward-compatible).
-
-**Timezone override**: Set `SR_TZ=<zone>` (e.g. `SR_TZ=UTC`, `SR_TZ=America/New_York`) to override the session-remember consolidation timezone. Default: `{{TZ}}`. Required on any machine where `$TZ` is not set to Paris — without this, daily consolidation fires at the wrong time and all session timestamps are offset.
-
-**Tunable knobs** (set as env vars before launching Claude Code): see `~/.claude/refs/SESSION-REMEMBER.md` for the full table.
-
-**Index maintenance**: `MEMORY.md` truncates at 200 lines. When the index approaches 150 lines, consolidate related entries, archive resolved project entries, and remove references to stale memories. Check: `wc -l ~/.claude/projects/<project>/memory/MEMORY.md`.
-
-**Memory expiry**: `/audit` Agent E is the natural review trigger — it flags stale, resolved, or no-longer-applicable backlog items. Run `/audit` (or `/audit --section=E`) after any major sprint completes. No separate pruner needed.
-
-**Time-bounded project memories**: For `project` type memories that contain genuinely time-bounded facts (sprint deadlines, active incidents, current blockers), add `expires: YYYY-MM-DD` to the frontmatter. Agent E will flag entries whose expiry date has passed for review. Example: `expires: 2026-06-01`.
-
-**What belongs in memory vs. reports**: Open P1 backlogs, in-progress task lists, and sprint state are ephemeral — they belong in mega-analysis reports (`~/.claude/projects/meta-reports/`) and session handoffs, not memory files. Memory is for non-obvious facts that future sessions need *without* running an analysis (behavioral quirks, decision rationale, design constraints). When a memory file starts accumulating "still pending" items, strip the open-item section and leave only the structural/evergreen facts.
+Upstream this section documented kill switches, a model override (`SR_MODEL`), a timezone override
+(`SR_TZ`) and index-maintenance rules for a `session-remember` memory pipeline under
+`~/.claude/hooks/session-remember/`. **That pipeline is not installed in this container** [Verified
+2026-08-06: `ls ~/.claude/hooks/session-remember` → absent], so there is nothing to toggle and no
+`MEMORY.md` to maintain. The whole section is retained only as this note, so that a session does not go
+looking for machinery the preamble already lists as absent.
 
 ## Destructive & Risky Command Protocol
 

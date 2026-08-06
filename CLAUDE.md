@@ -2325,7 +2325,21 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
 
 ## Claude config in this repo
 
-- `.claude/settings.json` — pre-approved read-only/build commands + deny list + hooks
+- `.claude/settings.json` — pre-approved commands + hooks. **`deny` is EMPTY and stays empty** (developer
+  ruling, 2026-08-06): in the web container the developer has no terminal, so a command Claude is denied is
+  a command *nobody* can run — a denial is not a safe default there, it is a dead end. The `allow` list is
+  correspondingly broad (85 entries) and adapted to THIS project's toolchain: `npm`/`npx`/`node`/`vitest`/
+  `vite`/`playwright`, `scripts/**` and `.githooks/**`, full `git` (commit and push are autonomous here),
+  the usual read-only shell tools, and `python3`/`jq`/`yq`. It deliberately does NOT carry the siblings'
+  `make`/`docker`/`shellcheck`/`hadolint` entries — none applies to a browser-only TypeScript app.
+- **The one thing no repo config can grant: `.claude/settings.json` itself.** Claude Code's auto-mode
+  classifier blocks Claude from writing that file, by Bash *and* by the Write tool — self-modification of
+  its own permission surface. That is a platform guard, not this repo's policy (our `deny` is empty), and
+  it cannot be lifted from inside the repo. The hand-over is
+  `scripts/claude-bootstrap/settings.json.pending` → the developer runs
+  `bash scripts/claude-bootstrap/apply-pending-settings.sh` (which deletes the pending file, so the repo
+  never carries two copies). **Do not attempt to work around this block** — staging the pending file and
+  saying so is the correct behaviour.
 - `.claude/hooks/oxlint-on-write.sh` — lints any `.ts` file Claude edits with oxlint, feedback on fail
 - `.claude/hooks/locale-sync-check.sh` — 3-way key diff on any `locales/*.json` write
 - `scripts/claude-bootstrap/hooks/precompact-handoff.sh` — the wired **PreCompact** hook; writes a

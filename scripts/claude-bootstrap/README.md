@@ -11,13 +11,14 @@ already-container-adapted [`phorj`](https://github.com/tmessaoudi-official/phorj
 
 | File | Role |
 |---|---|
-| `install.sh` | **SessionStart hook.** `cp -u` the three docs below into `~/.claude/`. Nothing else. |
+| `install.sh` | **SessionStart hook.** Unconditionally copies the three docs below into `~/.claude/` — the repo is the truth. Nothing else. |
 | `CLAUDE-global.md` | The global reasoning framework → installed as `~/.claude/CLAUDE.md`. Edited (not just disclaimed) for this container. |
 | `THINKING.md` | 33 named mental models → `~/.claude/THINKING.md`. Reference only, not auto-loaded. |
 | `BLAST-RADIUS.md` | State-dependent destructive-command reference → `~/.claude/BLAST-RADIUS.md`. |
 | `hooks/precompact-handoff.sh` | **PreCompact hook.** Writes `var/claude/handoff/{latest,handoff-<stamp>}.md` before compaction. Deterministic — no LLM call by default. Honours a `<!-- manual -->` marker in `latest.md`, so a handoff a human wrote is never clobbered. |
 | `hooks/test-precompact-handoff.sh` | **Guard for the above — run it after any edit** (`bash scripts/claude-bootstrap/hooks/test-precompact-handoff.sh`). 35 assertions, no deps. Porting it here in 2026-08-06 failed 5/35 on contact and exposed a live handoff-clobbering bug. |
 | `hooks/log-helpers.sh` | `log_obs()` shared by the hooks. |
+| `test-install.sh` | **Guard for `install.sh`** (`bash scripts/claude-bootstrap/test-install.sh`). 17 assertions, no deps — covers repo-is-truth, the one-time `.pre-bootstrap.bak`, the multi-repo case, and that nothing is ever copied OUT of `~/.claude`. |
 | `apply-pending-settings.sh` | **You run this one, on your machine.** See below. |
 
 The repo-native skills (`.claude/skills/`) and reviewer agents (`.claude/agents/`) need **no**
@@ -99,8 +100,22 @@ head -40 ~/.claude/CLAUDE.md          # should open with the pdfturbo adaptation
 bash -n scripts/claude-bootstrap/*.sh scripts/claude-bootstrap/hooks/*.sh
 ```
 
-`install.sh` is idempotent: `cp -u` only copies when the repo copy is newer, so running it twice is a
-no-op and a hand-edited newer `~/.claude/CLAUDE.md` on a real workstation is never clobbered.
+`install.sh` is idempotent in the sense that matters — running it twice leaves the same bytes — but it is
+**not conditional**: it copies the repo's three docs into `~/.claude/` on every run, because the repo is
+the truth (ruled 2026-08-06).
+
+This replaced `cp -u`, and the wording it replaced was false rather than merely imprecise. `cp -u` copies
+when the SOURCE is newer, and a fresh `git clone` stamps every file with the clone time — so on a real
+workstation it clobbered a hand-maintained `~/.claude/CLAUDE.md` anyway, which is exactly what the old
+sentence promised it would not do. The converse was as bad: hand-edit the target and `cp -u` silently did
+nothing forever, so the repo quietly stopped being the truth. Both outcomes depended on mtimes nobody was
+tracking.
+
+The safety net is a **one-time** snapshot: a file that predates this hook is copied once to
+`<name>.pre-bootstrap.bak` and never written again. It is not a second source of truth — nothing reads it
+back. The never-rewrite half is load-bearing across repos: all five siblings ship this hook, so opening a
+sibling installs its copy over ours, and without the guard the next session would snapshot *that* over the
+irreplaceable original. `test-install.sh` covers this case.
 
 ## Known limits
 
