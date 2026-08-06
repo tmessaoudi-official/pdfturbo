@@ -77,7 +77,7 @@ When in doubt, lean toward **Medium**. The user can say "just do it" to drop to 
 
 ## Software Craftsmanship & Thinking Frameworks
 
-*Full reference (Core Working Set, 5 categories, Phase-to-Framework mapping) is maintained in `~/.claude/THINKING.md`. Edit that file to add or modify frameworks. (Not @-included at session start — standalone reference only.)*
+*Full reference (Core Working Set, 5 categories, Phase-to-Framework mapping) is maintained in `scripts/claude-bootstrap/THINKING.md` **in the repo** — edit THAT to add or modify frameworks, never the installed `~/.claude/THINKING.md`, which `install.sh` overwrites unconditionally at every SessionStart (see that file's own maintenance rule). (Not @-included at session start — standalone reference only.)*
 
 ## The 8-Phase Workflow
 
@@ -346,7 +346,7 @@ A task is **not complete** until all four dimensions are addressed. Skipping a d
 
 12. **Challenge first, accept second.** When the user proposes an approach, design, or trade-off — don't accept it silently. Actively apply mental frameworks (thinking razors, engineering laws, first principles, inversion) to test the proposal. If a better path exists, surface it clearly with reasoning. If the proposal survives scrutiny, confirm it with the rationale. Override this only when the user has already explained the reasoning in the conversation — then engage, understand, and still look for improvements. The goal is to arrive at the right solution together, not to validate what was already decided.
 
-13. **Observability rule (hooks & scripts).** Any hook or bin script that runs unattended must: (1) write errors to `~/.claude/logs/hooks-errors.log`; (2) log state-changing actions (file created/deleted, API called, session saved) at INFO level; (3) stay silent on no-ops. Log format: `YYYY-MM-DDTHH:MM:SS | LEVEL | script | message`. Use `log_obs()` from `~/.claude/hooks/log-helpers.sh` — source it at the top of the script. Never fatal — all log writes must use `|| true`. **Prerequisite**: `jq` must be installed — it is used by `~/.claude/hooks/session-remember/common.sh` (JSON state tracking) and `~/.claude/bin/claude-cleanup.sh`. Verify with `which jq`.
+13. **Observability rule (hooks & scripts).** Any hook or script that runs unattended must: (1) write errors to **`var/claude/logs/hooks-errors.log` in the repo** (gitignored via `/var`) — **not** `~/.claude/logs/`, which dies with the container, so a line logged there is unreadable by anyone; (2) log state-changing actions (file created/deleted, API called, session saved) at INFO level; (3) stay silent on no-ops. Log format: `YYYY-MM-DDTHH:MM:SS | LEVEL | script | message`. Use `log_obs()` from **`scripts/claude-bootstrap/hooks/log-helpers.sh`** — source it at the top of the script; it defaults to the repo path above and honours `$OBS_LOG` for tests. Never fatal — all log writes must use `|| true`. **Prerequisite**: `jq`, used by the PreCompact handoff hook to parse the transcript. Verify with `which jq`.
 
 
 14. **Root cause before fix — no exceptions, no bandaids.** Never write a fix, fallback, default value, error handler, or workaround without first confirming the root cause with hard physical evidence. Reasoning and assumptions do
@@ -456,6 +456,11 @@ Upstream this section documented kill switches, a model override (`SR_MODEL`), a
 `MEMORY.md` to maintain. The whole section is retained only as this note, so that a session does not go
 looking for machinery the preamble already lists as absent.
 
+**What replaces it:** durable state lives in the repo — `docs/plans/<topic>.plan.md` for decisions (each
+with its own `## Decisions Log`), `CLAUDE.md` § "Gotchas" for rulings that outlive a plan, and gitignored
+`var/claude/**` for transient review output and the PreCompact handoff. Only committed state survives the
+container.
+
 ## Destructive & Risky Command Protocol
 
 *Full pre-flight blast-radius checks and state-sensitive context gates: `~/.claude/BLAST-RADIUS.md`*
@@ -518,5 +523,5 @@ description of intent, not a literal output script. The plain-text question prot
 
 ## Global Skills Reference
 
-**Skills here are REPO-NATIVE** under `.claude/skills/` — read in place, nothing installed, no `~/.claude/refs/SKILLS.md` and no `~/.claude/skills/`. **`ls .claude/skills/` is the authoritative list** — never restate a count in prose, it drifts. As built: `/ask-human` (the plain-text question protocol), `/converge` (the certification ladder, mechanised), `/sweep` (Phase 6 diff review), `/expanding-context` (Phase 1/3C widening), `/sleuth` (behavioural bug hunt + output-path-divergence lens K), `/inspect` (10-lens health), `/gaps` (incompleteness), `/forge` (adversarial design critic), `/aggregate-findings` (cross-stage dedup), `/pre-commit` (evidence table), `/qa-sweep` (drives the real app in a real browser), `/cross-check` (doc validation + `--drift`, doc-vs-code), `/handoff`, `/retrospective`. Anything else named in this framework (`/mega-analysis`, `/audit`, `/bootstrap`, `/templatize`, `/memory-*`, `/adapt-project`, `/skill-audit`, `/recent`, `/expand`, `/validate-infra`, `/loop` as a global) is **NOT installed here** — `/loop` is provided by the host instead.
+**Skills here are REPO-NATIVE** under `.claude/skills/` — read in place, nothing installed, and no `~/.claude/refs/SKILLS.md`. Note that `~/.claude/skills/` is **not** empty: the host installs its own set there [Verified 2026-08-06: `ls ~/.claude/skills | wc -l` → 40, including `pdf`, `docx`, `xlsx`, `pptx`, `skill-creator` and the `grdf-*` org workflows], so the set available in a session is the UNION of the repo's and the host's. Never assume a host skill exists without checking, and never assume the repo set is everything. **`ls .claude/skills/` is the authoritative list** — never restate a count in prose, it drifts. As built: `/ask-human` (the plain-text question protocol), `/converge` (the certification ladder, mechanised), `/sweep` (Phase 6 diff review), `/expanding-context` (Phase 1/3C widening), `/sleuth` (behavioural bug hunt + output-path-divergence lens K), `/inspect` (10-lens health), `/gaps` (incompleteness), `/forge` (adversarial design critic), `/aggregate-findings` (cross-stage dedup), `/pre-commit` (evidence table), `/qa-sweep` (drives the real app in a real browser), `/cross-check` (doc validation + `--drift`, doc-vs-code), `/handoff`, `/retrospective`. Anything else named in this framework (`/mega-analysis`, `/audit`, `/bootstrap`, `/templatize`, `/memory-*`, `/adapt-project`, `/skill-audit`, `/recent`, `/expand`, `/validate-infra`, `/loop` as a global) is **NOT installed here** — `/loop` is provided by the host instead.
 

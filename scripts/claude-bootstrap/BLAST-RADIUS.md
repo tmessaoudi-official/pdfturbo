@@ -60,13 +60,16 @@ pgrep -a pattern      # verify matches before pkill -f pattern
 >    genuinely irreversible actions are the outward-facing ones (force-push, `npm publish`, a deploy).
 >    Weight your caution accordingly: be relaxed about local state, strict about anything that leaves.
 
-`~/.claude/state/` and `~/.claude/projects/<slug>/state/` hold **persistent safety sentinels**: the
-bypass toggles (`ask-human-gate-bypass`, `ask-bash-firewall-bypass`, `ask-human-question-guard-bypass`)
-and the persistent `autonomous-3c-bypass`. They are removed ONLY by deliberate user action — each
-create/delete is `ask`-gated in `settings.json` AND matched by the firewall `danger_patterns`
-substring. No cleanup/sweep may delete them (`claude-cleanup.sh` enforces a `*/state/*` guard in
-`_cc_act`/`_cc_act_dir`) and no bundle may ship them (the export pipeline never copies `state/` and
-asserts against leakage at build time).
+**None of that sentinel machinery exists here** — restating the banner above because this paragraph is
+where a reader would otherwise assume protection. Upstream, `~/.claude/state/` and
+`~/.claude/projects/<slug>/state/` held persistent safety sentinels (`ask-human-gate-bypass`,
+`ask-bash-firewall-bypass`, `ask-human-question-guard-bypass`, `autonomous-3c-bypass`), each
+`ask`-gated in `settings.json`, matched by a bash-firewall `danger_patterns` substring, and guarded
+against deletion by `claude-cleanup.sh`. In this container **none of those paths, tiers, hooks or
+scripts is present** [Verified: `ls ~/.claude/state ~/.claude/hooks` → both absent;
+`jq '.permissions|keys' .claude/settings.json` → `["allow","defaultMode","deny"]`, no `ask`]. There is
+therefore nothing to protect and nothing protecting you: **no bypass can be toggled, and no mechanism
+prevents a destructive command.** The discipline in this file is the only control.
 
 ---
 

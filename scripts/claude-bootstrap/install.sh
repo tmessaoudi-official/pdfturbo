@@ -68,6 +68,9 @@ install_doc "$here/BLAST-RADIUS.md"  BLAST-RADIUS.md
 
 # var/claude/ is the in-repo, gitignored home for everything the review skills and the PreCompact
 # handoff hook write. Created here so a skill never has to guess whether it exists.
-mkdir -p "${CLAUDE_PROJECT_DIR:-$here/../..}/var/claude"
+# `|| true`: under `set -e` a failed mkdir would abort the SessionStart hook. The three docs above are
+# already copied by this point, so failing here must not cost the session its framework. Evidenced:
+# `test-install.sh` case 7 puts a FILE at the var/ path so mkdir genuinely fails, and asserts exit 0.
+mkdir -p "${CLAUDE_PROJECT_DIR:-$here/../..}/var/claude" 2>/dev/null || true
 
 exit 0

@@ -151,11 +151,14 @@ else
   ok "no copy-out or bundle-publish pattern in executable code"
 fi
 
-# ── 7. Not fatal when the project dir is unwritable ────────────────────────────
+# ── 7. Not fatal when var/claude cannot be created ─────────────────────────────
+# A FILE at the var/ path, not chmod: these suites run as root, where `chmod 500` does not prevent
+# mkdir at all — so the previous version of this case passed because the mkdir SUCCEEDED, never
+# because failure was tolerated. A probe that cannot fail is worse than no probe.
 reset_sandbox
-chmod 500 "$TMP/proj"
+printf 'x' > "$TMP/proj/var"
 rc="$(run_install)"
-chmod 700 "$TMP/proj"
+rm -f "$TMP/proj/var"
 check "exit 0 when var/claude cannot be created" "$rc" "0"
 
 echo

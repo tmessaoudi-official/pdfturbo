@@ -275,7 +275,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 
 ### The Claude bundle is a CROSS-REPO artefact — align it, don't fork it (2026-08-06)
 
-Five repos share this bundle (`phorj` 07-24 → **pdfturbo** 07-28 → `twes-in` 08-02 → `stack` 08-06 →
+Five repos share this bundle (`phorj` 07-23 → **pdfturbo** 07-28 → `twes-in` 08-02 → `stack` 08-06 →
 `rent-watch` 08-06). The *file set* is identical in all five; every difference is content, and each repo
 tailors the prose to its own invariants. **pdfturbo was second-oldest, so it had missed four rounds of
 convention evolution.** Unified against `rent-watch` (newest) — seven items. What the exercise taught:
@@ -331,6 +331,41 @@ read a pdf.js-detached buffer and laundered a live leak into a non-finding.
 **The habit worth keeping: diff the bundle against the newest sibling whenever one of them is touched.**
 Every file differed, so "the files are all there" proves nothing — compare headings and counts, then read
 the deltas. Four of these seven were things actively wrong here, not features missing.
+
+**ROUND 2 (same day, after the developer updated all four siblings). Nine more items — and the two most
+useful were things round 1 got wrong or missed, which is why "we already swept" is not a reason to skip a
+second pass.**
+
+- **A real bug, from phorj: `log_obs` wrote to `~/.claude/logs/`**, wiped when the container is reclaimed,
+  so every line a hook logged in a real session went where nobody could read it. Rule 13 satisfied on
+  paper, useless in practice. Now `var/claude/logs/` in the repo. **And Rule 13 itself still mandated the
+  dead-end path** — the code moved and the rule that requires it did not, so the file contradicted itself
+  319 lines apart with both halves live in `~/.claude/CLAUDE.md`. Three of four siblings had already
+  rewritten that rule; pdfturbo was the last. **When you change where something writes, grep for the rule
+  that told it to write there.**
+- **`install.sh` now copies UNCONDITIONALLY** (developer ruling: the repo is always the truth). `cp -u` was
+  wrong in both directions, and its own header claimed the opposite — see § "Claude config in this repo".
+  This **superseded a THINKING.md rule round 1 had ported hours earlier**, and made a *different* line
+  actively harmful: `CLAUDE-global.md` still said "edit `~/.claude/THINKING.md`", which under unconditional
+  copy is destroyed at the next SessionStart rather than merely diverging.
+- **Round 1's absent-machinery sweep was NOT complete**, though its entry above reads as if it were. Three
+  more instances surfaced: `§ Memory System Toggles` (a `session-remember` pipeline), `BLAST-RADIUS.md`'s
+  registry section AND its state-sentinel paragraph (an `ask` tier and a bash firewall). Worse, the
+  framework asserted `~/.claude/skills/` does not exist while the **host installs 40 skills there** — so a
+  session was told to ignore `pdf`, `docx`, `xlsx`, `pptx` and the `grdf-*` org workflows. **A
+  false-absence claim is as harmful as a false-presence one, and this class needed three passes to clear.**
+- **Full autonomy, ruled: `deny` stays empty** — in the web container a denied command is one *nobody* can
+  run. The allow list goes 13 → 85, staged as `settings.json.pending` because the classifier blocks Claude
+  from writing its own permission surface (a platform guard, not repo policy — do not work around it).
+  **Describe that list honestly**: it is not "read-only", and `bash:*` alone makes the enumeration
+  containment-free. An earlier draft of that bullet said "the usual read-only shell tools", which was false
+  of 16 entries.
+- **A guard suite can be vacuous in a way `bash -n` and a green run never show.** `test-install.sh` case 7
+  asserted "exit 0 when var/claude cannot be created" via `chmod 500` — which does not bind root, so it
+  passed because the mkdir SUCCEEDED, and the asserted behaviour was in fact false (`set -e` + a failing
+  `mkdir` exits 1). Fixed both ends: a file-in-the-way makes it genuinely fail, and the `mkdir` is now
+  `|| true` so a hook never loses the session over a scratch directory. Reverting the guard fails exactly
+  that case.
 
 ### A ceiling table is only as good as its last measurement — C10 was wrong in two places (2026-07-31)
 
@@ -2327,11 +2362,25 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
 
 - `.claude/settings.json` — pre-approved commands + hooks. **`deny` is EMPTY and stays empty** (developer
   ruling, 2026-08-06): in the web container the developer has no terminal, so a command Claude is denied is
-  a command *nobody* can run — a denial is not a safe default there, it is a dead end. The `allow` list is
-  correspondingly broad (85 entries) and adapted to THIS project's toolchain: `npm`/`npx`/`node`/`vitest`/
-  `vite`/`playwright`, `scripts/**` and `.githooks/**`, full `git` (commit and push are autonomous here),
-  the usual read-only shell tools, and `python3`/`jq`/`yq`. It deliberately does NOT carry the siblings'
-  `make`/`docker`/`shellcheck`/`hadolint` entries — none applies to a browser-only TypeScript app.
+  a command *nobody* can run — a denial is not a safe default there, it is a dead end.
+  **The live file currently allows 13 commands; the broad 85-entry list is STAGED, not active** — see the
+  next bullet. Once applied it covers `npm`/`npx`/`node`/`vitest` (`vite` and `playwright` transitively via
+  `Bash(npx:*)`, not as their own entries), `scripts/**`, `.githooks/**`, full `git` (commit and push are
+  autonomous here), `python3`/`jq`/`yq`, and the ordinary shell utilities. It deliberately omits the
+  siblings' `make`/`docker`/`shellcheck`/`hadolint` — none applies to a browser-only TypeScript app.
+  **Be honest about what that list is: it is not "read-only".** It includes `rm`, `mv`, `cp`, `chmod`,
+  `kill`/`pkill`, `curl`, `pip`, and — decisively — `bash:*`, `sh:*`, `env:*`, `xargs:*`, `timeout:*`,
+  `command:*` and `nohup:*`. `bash -c '<anything>'` being pre-approved means the granular enumeration
+  provides **no containment whatsoever**; it only removes prompts. With `deny: []` and
+  `defaultMode: auto` the real control is the discipline in this file and in `BLAST-RADIUS.md`, plus the
+  harness classifier — nothing else. That is the accepted cost of the no-dead-ends ruling, and it should be
+  stated rather than dressed up. (An earlier version of this bullet called the list "the usual read-only
+  shell tools", which was false of at least 16 entries.)
+  **Considered and declined:** a `Read`/`Edit` deny on `.env`, which rent-watch carries and its cross-repo
+  audit recommends to all four siblings on the grounds that a path deny has no dead-end failure mode. This
+  repo has no `.env` and no `.env` line in `.gitignore`, so the guard would be purely preventive, and
+  adding a deny entry cuts against a directive given in absolute terms. Revisit if a `.env` is ever
+  introduced — that is the trigger, not a periodic review.
 - **The one thing no repo config can grant: `.claude/settings.json` itself.** Claude Code's auto-mode
   classifier blocks Claude from writing that file, by Bash *and* by the Write tool — self-modification of
   its own permission surface. That is a platform guard, not this repo's policy (our `deny` is empty), and
@@ -2342,6 +2391,15 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
   saying so is the correct behaviour.
 - `.claude/hooks/oxlint-on-write.sh` — lints any `.ts` file Claude edits with oxlint, feedback on fail
 - `.claude/hooks/locale-sync-check.sh` — 3-way key diff on any `locales/*.json` write
+- `scripts/claude-bootstrap/install.sh` — the wired **SessionStart** hook. **THE REPO IS ALWAYS THE TRUTH**
+  (developer ruling, 2026-08-06): it copies the three framework docs into `~/.claude/`
+  **unconditionally** on every run, replacing the old `cp -u`. `cp -u` was not merely conservative, it was
+  wrong in both directions — it copies when the SOURCE is newer, and a fresh clone stamps clone-time, so it
+  clobbered a hand-maintained global anyway; hand-edit the target instead and it silently did nothing
+  forever, so the repo quietly stopped being the truth. The safety net is a **one-time**
+  `<name>.pre-bootstrap.bak` snapshot, never rewritten. Guarded by `test-install.sh` in the same directory
+  — **run it after any edit** (`bash scripts/claude-bootstrap/test-install.sh`, 17 assertions, no deps).
+  Corollary: **never hand-edit anything under `~/.claude/`** — it is overwritten at the next SessionStart.
 - `scripts/claude-bootstrap/hooks/precompact-handoff.sh` — the wired **PreCompact** hook; writes a
   handoff into `var/claude/` before context is compacted. It honours a `<!-- manual -->` marker in
   `latest.md`, so a handoff a human wrote is never clobbered. Guarded by

@@ -88,6 +88,6 @@ Rules:
 - "Memory Updates" is advisory — the next session will see it and decide whether to act
 - If nothing meaningful to hand off, write: "No active work."
 
-After writing the file, append `<!-- manual -->` on its own line at the very end. This marker tells the **PreCompact** hook (`scripts/claude-bootstrap/hooks/precompact-handoff.sh`) that a human explicitly saved state, so it will not overwrite the file — on either the default or the opt-in LLM path. Guarded by `test-precompact-handoff.sh`; the promise was inert until 2026-08-06, so do not assume it works without that suite passing.
+After writing the file, append `<!-- manual -->` on its own line at the very end. This marker tells the **PreCompact** hook (`scripts/claude-bootstrap/hooks/precompact-handoff.sh`) that a human explicitly saved state, so it will not overwrite the file — on either the default or the opt-in LLM path — and writes its auto-generated note to the timestamped archive instead, so nothing is lost either way. **Not a "Stop hook"**: this bundle registers no Stop hook, though the container itself ships `~/.claude/stop-hook-*` scripts of its own, which are unrelated and do not read this marker. Guarded by `test-precompact-handoff.sh`; the promise was inert until 2026-08-06, so do not assume it works without that suite passing.
 
 Say "Saved." when done — nothing else.

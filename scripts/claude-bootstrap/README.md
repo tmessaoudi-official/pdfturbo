@@ -117,6 +117,14 @@ back. The never-rewrite half is load-bearing across repos: all five siblings shi
 sibling installs its copy over ours, and without the guard the next session would snapshot *that* over the
 irreplaceable original. `test-install.sh` covers this case.
 
+Two honest limits on that protection. **Only rent-watch and this repo have the snapshot mechanism** —
+`twes-in`, `phorj` and `stack` still run `cp -u` with no backup, so if one of those opens first on a real
+workstation the original is clobbered with no snapshot at all. The net helps only when a backup-capable
+repo happens to run first. And the guard's condition is literally `! -e "$backup"`, not "the target
+predates this hook": in a container that had already run the hook, the `.bak` captured the hook's own
+previous output rather than anything irreplaceable. Harmless here; on a workstation it means the `.bak`
+most likely holds a previous repo revision or a sibling's copy.
+
 ## Known limits
 
 - **New skills need a session restart to appear.** Claude Code watches an existing
