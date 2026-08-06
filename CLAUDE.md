@@ -2317,8 +2317,11 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
   `core.hooksPath`) runs type-check + lint + test locally before any push reaches the
   auto-deploy. Bypass in emergencies with `git push --no-verify`.
 - Commit style: `feat:` / `fix:` / `refactor:` / `docs:` prefixes, imperative subject.
-  No Co-Authored-By trailers.
-- `git push` is always manual (run it yourself when asked).
+  No `Co-Authored-By` and no `Claude-Session` trailers — see § "Git autonomy" for the full ruling.
+- **`git push` is AUTONOMOUS for green, self-contained work** — see § "Git autonomy", which is
+  authoritative. This line previously read "always manual"; that predated the 2026-07-27 directive and
+  contradicted it, which is the worst possible defect in a rule about the most consequential action in
+  the repo. Corrected 2026-08-06.
 
 ## Claude config in this repo
 
@@ -2334,4 +2337,4 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
 
 **Cross-repo convention.** The bundle and the skill/agent set are kept aligned with the sibling repos
 (`rent-watch`, `stack`, `twes-in`, `phorj`); `rent-watch` is currently the newest and is the reference
-when they disagree. Ported here 2026-08-06 — see the § below.
+when they disagree. Ported here 2026-08-06 — see § "The Claude bundle is a CROSS-REPO artefact" in Gotchas above.

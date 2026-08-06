@@ -15,7 +15,8 @@ already-container-adapted [`phorj`](https://github.com/tmessaoudi-official/phorj
 | `CLAUDE-global.md` | The global reasoning framework → installed as `~/.claude/CLAUDE.md`. Edited (not just disclaimed) for this container. |
 | `THINKING.md` | 33 named mental models → `~/.claude/THINKING.md`. Reference only, not auto-loaded. |
 | `BLAST-RADIUS.md` | State-dependent destructive-command reference → `~/.claude/BLAST-RADIUS.md`. |
-| `hooks/precompact-handoff.sh` | **PreCompact hook.** Writes `var/claude/handoff/{latest,handoff-<stamp>}.md` before compaction. Deterministic — no LLM call. |
+| `hooks/precompact-handoff.sh` | **PreCompact hook.** Writes `var/claude/handoff/{latest,handoff-<stamp>}.md` before compaction. Deterministic — no LLM call by default. Honours a `<!-- manual -->` marker in `latest.md`, so a handoff a human wrote is never clobbered. |
+| `hooks/test-precompact-handoff.sh` | **Guard for the above — run it after any edit** (`bash scripts/claude-bootstrap/hooks/test-precompact-handoff.sh`). 35 assertions, no deps. Porting it here in 2026-08-06 failed 5/35 on contact and exposed a live handoff-clobbering bug. |
 | `hooks/log-helpers.sh` | `log_obs()` shared by the hooks. |
 | `apply-pending-settings.sh` | **You run this one, on your machine.** See below. |
 

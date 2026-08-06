@@ -15,13 +15,18 @@
 #   2. WRITES INTO THE REPO (`var/claude/handoff/`, gitignored) — not `~/.claude/projects/<slug>/`,
 #      which is wiped when the container is reclaimed.
 #   3. NO statusline/banner writes — the statusline and its `~/.claude/run/` sentinels do not exist
-#      in this container (rejected in `docs/plans/claude-bundle-integration.plan.md`).
+#      in this container [verified: `ls ~/.claude/run` → absent]. The plan file that recorded this
+#      ruling was purged with the rest of docs/plans in 2026-07-29; the verification above replaces it,
+#      because a pointer to a deleted file is the very thing that purge existed to remove.
 #
 # CONTRACT: a PreCompact hook must never block compaction, so this script ALWAYS exits 0. That is the
 # hook contract, not error suppression — every failure path that could LOSE THE HANDOFF logs a reason
-# via log_obs. Three paths deliberately do not log, because there is nothing actionable to say and no
-# data at risk: unreadable stdin (falls through to a git-only handoff, which is logged), and the two
-# `rm -f`/cleanup lines.
+# via log_obs. The non-logging suppressions are, exhaustively: unreadable stdin and the three `jq`
+# extractions (lines ~32-35 — all fall through to a git-only handoff, which IS logged), the
+# `log-helpers.sh` source guard (so a missing helper cannot abort the hook), and the single `rm -f`
+# of the scratch prompt. None risks the handoff. Counted 2026-08-06 — an earlier version of this
+# comment said "three paths" and "the two `rm -f` lines" when there is exactly ONE `rm -f`; a
+# justification for every `|| true` in a file is worthless if its own inventory is wrong.
 # Note the deliberate absence of `set -e`: an aborting shell here would be the failure mode.
 set -uo pipefail
 

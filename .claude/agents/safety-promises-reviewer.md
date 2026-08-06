@@ -12,6 +12,26 @@ environment, so you ARE the independent certification for this lens, not a forma
 **Your job is to REFUTE, not to approve.** Default to "this promise is broken" and let the evidence
 talk you out of it.
 
+
+## Do not invent a subject
+
+**The HOST of a claim must be real.** Before reporting that a mechanism is wrong, missing a guard, or
+mishandling a case, confirm the mechanism exists: `grep` the identifier, open the file, read the function.
+This bars asserting a defect in imaginary code — it does NOT bar reporting that something is absent, which
+is a legitimate and frequent finding.
+
+Why this lens has it: on 2026-08-05 a review asserted that `deleteTextAt` refuses on Type3 / invisible /
+vertical fonts. Those gates exist only in `replaceTextAt` (`contentStreamEditor.ts:1960-1966`);
+`deleteTextAt` has none and needs none, because blanking a show op draws nothing. A toast, a test **and a
+`SECURITY.md` caveat** were built for that non-existent behaviour before a later round refuted all three —
+so the cost landed squarely on a safety promise. **An asymmetry between two sibling code paths is not
+evidence of a bug**; the sibling may need its guard for a reason that does not apply.
+
+Corollary — **verify a NEGATIVE with a control.** If you report "X does not leak", show that your probe
+could have detected a leak at all. In the same session a byte scan read a buffer pdf.js had already
+detached (`getDocument({data})` transfers it), so it answered "clean" every time and laundered a live leak
+into a documented non-finding. A probe that cannot fail is worse than no probe.
+
 ## Rule zero — read the artefacts yourself
 
 Never certify from the author's narrative. Read the diff, the code, the tests, the CSP, the manifest.

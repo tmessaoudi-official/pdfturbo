@@ -7,7 +7,7 @@ disallowed-tools: AskUserQuestion
 ---
 
 <!-- ═══════════════════════════════════════════════════════════════════════════════════
-  pdfturbo CONTAINER ADAPTATION (2026-08-06). Ported from pdfturbo, which had it from the
+  pdfturbo CONTAINER ADAPTATION (2026-08-06). Ported from rent-watch, which had it from the
   container-adapted `stack` port (where `--drift` was invented), which had it from the developer's
   machine bundle. These deltas OVERRIDE the body below wherever they conflict:
 
@@ -70,8 +70,8 @@ Parse `$ARGUMENTS`:
 
 If `<spec-file>` is not provided: report the error and stop.
 
-Natural targets in this repo: `CLAUDE.md`, `templates/tips/env-update.md`, `templates/tips/env-scan.md`,
-`templates/tips/file-layout.md`, `README.md`, `TODO.md`, `docs/**`, any `docs/plans/*.plan.md`, and
+Natural targets in this repo: `CLAUDE.md` (the primary one — it IS the decision register),
+`KNOWN_ISSUES.md`, `SECURITY.md`, `README.md`, `FEATURES.md`, `docs/**`, any `docs/plans/*.plan.md`, and
 `scripts/claude-bootstrap/README.md`.
 
 ---
@@ -126,11 +126,11 @@ you ran as the evidence. Examples of what is checkable here:
 | "N tests pass" / a count | run the suite. Counts in prose go stale within a commit; `npm run test` and `npm run test:browser` (real Chrome — needs the container config, see CLAUDE.md) are the only sources. |
 | A locale-key claim | `python3 -c "import json;…"` over all three of `locales/{en,fr,ar}.json`. They must stay key-identical, and a claim about ONE key is a claim about three files. Grep the locales for the CLAIM, not just the key you know about. |
 | "the export is byte-identical when X is unset" | find the guard in `src/export/`, then confirm a test asserts it. This repo's core export invariant; an unguarded claim here is the highest-severity doc drift it can have. |
-| A feature-flag default (`VITE_FEATURE_*`) | `grep` the flag in `src/` and in `main.ts`'s removal path — a flag documented ON that `main.ts` strips is STALE. |
+| A feature-flag default (`VITE_FEATURE_*`) | `grep` the flag in `src/` and in `src/main.ts`'s removal path — a flag documented ON that `src/main.ts` strips is STALE. |
 | An npm script or gate step | `grep '"scripts"' -A30 package.json` and cross-read `.github/workflows/deploy.yml`. The deploy gate runs MORE than the three pre-commit checks; a doc listing fewer is STALE. |
 | "N skills / N agents / N hooks exist" | `ls .claude/skills/`, `ls .claude/agents/`, `ls .claude/hooks/` — and check the inventory table in `CLAUDE.md` § "Claude config in this repo" against the result |
-| A tool is available | `command -v <tool>`. In this container `ruff`, `python3`, `jq` and `git` ARE present; `pytest`, `yq`, `shellcheck`, `yamllint`, `shfmt` and `hadolint` may not be. Any doc claiming a command runs, without a manifest that wires it, is conditionally stale. |
-| The prototype's behaviour | `python3 prototype/scout.py --help`. The prototype is the one runnable thing; a claim about it is cheap to verify and several in `CLAUDE.md` § Gotchas were written from reading it. |
+| A tool is available | `command -v <tool>` — measure, do not assume. Measured 2026-08-06: `ruff`, `pytest`, `yq`, `python3`, `jq`, `git`, `node`, `npm` ARE present; `shellcheck`, `yamllint`, `shfmt`, `hadolint` are ABSENT. Note `ruff`/`pytest` being installed is irrelevant here — this is a TypeScript repo whose linter is `oxlint` and whose runner is `vitest`; a doc naming a Python tool as part of the gate is STALE regardless of whether the binary exists. |
+| A claim about the BUILT artifact | `npm run build` then inspect `dist/` — e.g. the PWA precache entry count, or whether a chunk is lazy. A § entry asserting a chunk is split is checkable in one build. |
 
 Report each as **STALE** with: the claim, the command, its actual output, and the corrected value.
 Do **not** silently fix the doc — report first. Docs are the project's memory; a correction the

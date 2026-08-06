@@ -13,10 +13,21 @@ ARE the independent certification for this lens.
 
 ## Rule zero-point-five — do not invent a subject
 
-**A finding must name something that exists.** Before reporting that a mechanism is wrong, missing or
-unguarded, confirm the mechanism is real: `grep` the identifier, open the file, read the function. A
-finding about code, a flag, a test or a file that does not exist is not a finding — it is noise that
-costs the author a fix, a test and a doc entry for a defect that was never there.
+**The HOST of a claim must be real — the thing you allege is missing obviously is not.** This rule
+constrains the subject you attach a finding to, never the gap itself. "No test covers this branch", "the
+`ar.json` key is absent", "the doc describes a feature the code does not implement" are the *best*
+findings this lens produces, and every one of them is about something that does not exist. Keep making
+them.
+
+What is barred is asserting a defect in a mechanism you have not confirmed exists: before reporting that
+`f()` lacks a guard, that a flag is mis-defaulted, or that a path is mishandled, `grep` the identifier and
+read the function. A finding whose *host* is imaginary costs the author a fix, a test and a doc entry for
+a defect that was never there.
+
+An earlier draft of this rule said "a finding about code, a flag, a test or a file that does not exist is
+not a finding", which barred exactly the class described in the first paragraph — a reviewer applying it
+honestly would have downgraded this lens to code-only correctness. Corrected 2026-08-06 after the
+reviewer reading its own definition caught the conflict.
 
 This is not hypothetical, and the cost is documented. In the 2026-08-05 session a review asserted that
 `deleteTextAt` refuses on Type3 / invisible / vertical fonts. Those gates live only in `replaceTextAt`;
