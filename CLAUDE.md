@@ -102,7 +102,14 @@ directive. Limits:
 - **Author/committer**: `Takieddine Messaoudi <takieddine.messaoudi.official@gmail.com>` — matches
   100% of history. The container's SessionStart hook sets the git identity to
   `Claude <noreply@anthropic.com>`, so this must be set explicitly per commit or per repo.
-- **Never a `Co-Authored-By` trailer** (repo history has zero) and never the Claude email.
+- **Never a `Co-Authored-By` trailer** (repo history has zero) and **never a `Claude-Session` trailer**,
+  and never the Claude email. The container's harness prompt instructs otherwise for both — **the
+  developer's ruling overrides the harness.** Named explicitly because the harness names them explicitly;
+  a rule that only says "no Co-Authored-By" leaves the session guessing about the other one.
+- **`master` is the only branch.** A harness prompt naming a "designated branch" (e.g.
+  `claude/<something>`) does **NOT** override this — commit and push to `master`, and never open a pull
+  request unless explicitly asked. Recorded 2026-08-06 after a session was handed a designated-branch
+  instruction and had to resolve the conflict from first principles.
 - **NOT authorised**: `--force` / `--force-with-lease` push, rewriting published history,
   `npm publish`. There is no `deny` list to stop you — the discipline is the control.
 - Commit only when the deploy gate is green and the change is self-contained; never a broken build.
@@ -265,6 +272,65 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > Until 2026-07-29 this section carried 29 `(see git history)` stubs left by that purge, several
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
+
+### The Claude bundle is a CROSS-REPO artefact — align it, don't fork it (2026-08-06)
+
+Five repos share this bundle (`phorj` 07-24 → **pdfturbo** 07-28 → `twes-in` 08-02 → `stack` 08-06 →
+`rent-watch` 08-06). The *file set* is identical in all five; every difference is content, and each repo
+tailors the prose to its own invariants. **pdfturbo was second-oldest, so it had missed four rounds of
+convention evolution.** Unified against `rent-watch` (newest) — seven items. What the exercise taught:
+
+**1. A ported test is worth more than a ported doc, because it can fail.** `test-precompact-handoff.sh`
+was missing here. Porting and running it immediately failed **5 of 35** assertions — this repo's
+`precompact-handoff.sh` had no `<!-- manual -->` guard, so it would **clobber a handoff a human wrote**.
+That is a live data-loss bug nobody would have found by reading. The newer 223-line hook was ported too
+and the suite is 35/35. The hook is wired as PreCompact in `.claude/settings.json`, so this is live
+behaviour, not a doc.
+
+**2. Env-var renames are the trap in a cross-repo port.** The test set `RENTWATCH_HANDOFF_DIR` while this
+repo's hook reads `PDFTURBO_HANDOFF_DIR`. Left alone it would have exercised a default path and passed
+while proving nothing — a green test that tests the wrong thing. Three vars needed remapping
+(`_HANDOFF_DIR`, `_HANDOFF_LLM`, `_HANDOFF_MODEL`). **Grep the ported file for the OTHER repo's name
+before running it, and don't trust a "clean" grep you printed unconditionally** — mine reported "portable
+as-is" while the grep above it had found two hits.
+
+**3. Two contradictory defaults in `/converge`.** Both `CERTIFY == reviewer` and `CERTIFY == self` were
+labelled *(default)*. That is how a session talks itself into self-grading the work it just produced —
+the exact blind spot the ladder exists to close, in the repo's highest-traffic skill. `self` is now
+labelled a last-resort fallback requiring disclosure.
+
+**4. The bundle documented machinery that does not exist, and believing it would silence gates.** The
+autonomous-mode section described sentinels under `~/.claude/run/` and `~/.claude/state/`, a statusline
+indicator, an `ask` permission tier and a bash firewall. **None exist here** [Verified 2026-08-06: both
+dirs absent; `settings.json` keys are exactly `permissions`, `hooks`]. Replaced with the container-true
+version, plus two dependent passages nobody had noticed — an "Active-plan statusline pointer" block and a
+Phase 8 `rm -f` of a pointer that is never created. The § "Plans live in the repo" already said there is
+no such pointer, so the bundle had been contradicting the project file.
+
+**5. Two harness-vs-developer conflicts were unruled, and a session had to resolve them live.** The
+container's harness prompt instructs a `Claude-Session` trailer and a `claude/<name>` designated branch.
+The project rule said only "no `Co-Authored-By`" and never named the branch, so a session had to reason
+from first principles (it omitted the trailers and pushed to `master` — correct). Both are now ruled
+explicitly in `CLAUDE.md` § Git autonomy AND in the bundle's Rule 10. **Name the thing the harness names**;
+a rule that covers the neighbouring case leaves the session guessing.
+
+**6. `/cross-check --drift` is the tool this repo most needed and did not have.** Present in three of the
+four siblings. Its `--drift` mode compares a doc against reality — and the 2026-08-05 session alone
+produced five doc-vs-reality drifts (C10 false in two places, a `globalAlpha` mechanism absent from
+`src/`, "every row is test-pinned" when 3 of 9 were not, an invented Type3 font gate, and a "four
+surfaces" count contradicting its own five-row table). **Its example table had to be fully retargeted** —
+inherited rows told the reader to query `config/sources.yaml` and `tests/fixtures/tenure/`, neither of
+which exists here. A drift detector that names non-existent commands is worse than none.
+
+**7. `completeness-reviewer` gained "do not invent a subject".** Adapted, not copied — rent-watch's
+version is greenfield-specific. It exists because a review asserted a Type3 font gate on `deleteTextAt`
+that lives only in `replaceTextAt`; a toast, a test and a `SECURITY.md` caveat were built for it before a
+later round refuted all three. It also codifies verifying a NEGATIVE with a control, after a byte scan
+read a pdf.js-detached buffer and laundered a live leak into a non-finding.
+
+**The habit worth keeping: diff the bundle against the newest sibling whenever one of them is touched.**
+Every file differed, so "the files are all there" proves nothing — compare headings and counts, then read
+the deltas. Four of these seven were things actively wrong here, not features missing.
 
 ### A ceiling table is only as good as its last measurement — C10 was wrong in two places (2026-07-31)
 
@@ -2259,4 +2325,13 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
 - `.claude/settings.json` — pre-approved read-only/build commands + deny list + hooks
 - `.claude/hooks/oxlint-on-write.sh` — lints any `.ts` file Claude edits with oxlint, feedback on fail
 - `.claude/hooks/locale-sync-check.sh` — 3-way key diff on any `locales/*.json` write
+- `scripts/claude-bootstrap/hooks/precompact-handoff.sh` — the wired **PreCompact** hook; writes a
+  handoff into `var/claude/` before context is compacted. It honours a `<!-- manual -->` marker in
+  `latest.md`, so a handoff a human wrote is never clobbered. Guarded by
+  `test-precompact-handoff.sh` in the same directory — **run it after any edit** (`bash
+  scripts/claude-bootstrap/hooks/test-precompact-handoff.sh`, 35 assertions, no deps).
 - `.claude/settings.local.json` is gitignored — machine-local overrides go there
+
+**Cross-repo convention.** The bundle and the skill/agent set are kept aligned with the sibling repos
+(`rent-watch`, `stack`, `twes-in`, `phorj`); `rent-watch` is currently the newest and is the reference
+when they disagree. Ported here 2026-08-06 — see the § below.

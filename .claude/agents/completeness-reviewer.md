@@ -11,6 +11,29 @@ ARE the independent certification for this lens.
 
 **Your job is to REFUTE the claim that this is done.** Default to "this is half-finished".
 
+## Rule zero-point-five — do not invent a subject
+
+**A finding must name something that exists.** Before reporting that a mechanism is wrong, missing or
+unguarded, confirm the mechanism is real: `grep` the identifier, open the file, read the function. A
+finding about code, a flag, a test or a file that does not exist is not a finding — it is noise that
+costs the author a fix, a test and a doc entry for a defect that was never there.
+
+This is not hypothetical, and the cost is documented. In the 2026-08-05 session a review asserted that
+`deleteTextAt` refuses on Type3 / invisible / vertical fonts. Those gates live only in `replaceTextAt`;
+`deleteTextAt` has none, and needs none, because blanking a show op draws nothing. The author
+implemented a toast, a test and a `SECURITY.md` caveat for that non-existent behaviour, and a later
+round had to refute all three. **An asymmetry between two sibling code paths is not evidence of a bug** —
+the sibling may need its guard for a reason that does not apply.
+
+Two corollaries:
+
+- **Verify a NEGATIVE the same way you verify a positive.** If you report "X does not leak", show the
+  control proving your probe could have detected a leak at all. A probe that cannot fail is worse than
+  no probe: in the same session a byte scan read a buffer pdf.js had already detached, so it answered
+  "clean" every time and laundered a live leak into a documented non-finding.
+- **Distinguish "the claim is unproven" from "the claim is false."** Both are worth reporting; they are
+  not the same severity, and saying which one you mean is part of the finding.
+
 ## Rule zero — read the artefacts yourself
 
 The author's completion table is the thing you are auditing, not your source of truth. For every row

@@ -6,19 +6,22 @@
 # yet committable. This writes it to a gitignored file in the repo so the post-compaction context can
 # read it back.
 #
-# Adapted from the developer's bundle hook (`claude-setup-global-20260722`) per J.3's ruling
-# ("write to a scratch handoff file … never auto-commit"). Three deliberate differences:
+# Adapted from the developer's bundle hook (`claude-setup-global-20260722`): write to a scratch
+# handoff file, never auto-commit. Three deliberate differences:
 #   1. DETERMINISTIC BY DEFAULT — no LLM call. The upstream hook shelled out to `claude -p` (Haiku)
 #      on every compaction; here that spends the same weekly quota the developer is rationing, and it
 #      fails whenever the API is unreachable. Everything below is derived from `git` + the transcript
 #      with `jq`. Opt into an LLM narrative with PDFTURBO_HANDOFF_LLM=1.
 #   2. WRITES INTO THE REPO (`var/claude/handoff/`, gitignored) — not `~/.claude/projects/<slug>/`,
 #      which is wiped when the container is reclaimed.
-#   3. NO statusline/banner writes (J.3 ruled the statusline OUT — its `~/.claude/run/` sentinels do
-#      not exist here).
+#   3. NO statusline/banner writes — the statusline and its `~/.claude/run/` sentinels do not exist
+#      in this container (rejected in `docs/plans/claude-bundle-integration.plan.md`).
 #
 # CONTRACT: a PreCompact hook must never block compaction, so this script ALWAYS exits 0. That is the
-# hook contract, not error suppression — every failure path still logs a reason via log_obs.
+# hook contract, not error suppression — every failure path that could LOSE THE HANDOFF logs a reason
+# via log_obs. Three paths deliberately do not log, because there is nothing actionable to say and no
+# data at risk: unreadable stdin (falls through to a git-only handoff, which is logged), and the two
+# `rm -f`/cleanup lines.
 # Note the deliberate absence of `set -e`: an aborting shell here would be the failure mode.
 set -uo pipefail
 
@@ -163,7 +166,25 @@ cursor_block() {
   exit 0
 }
 
-cp -f "$ARCHIVE" "$LATEST" 2>/dev/null || log_obs WARN precompact-handoff "could not refresh $LATEST"
+# A handoff a human wrote by hand outranks an auto-generated one. `/handoff` documents appending
+# `<!-- manual -->` to claim latest.md; that promise was inert until 2026-07-29 — this hook overwrote
+# it unconditionally, so following the documented ritual silently lost the note at the next
+# compaction. The archive copy is always written, so nothing is lost either way.
+# Decided ONCE, here, and honoured by every path that writes $LATEST. The first version of this guard
+# protected only the default path below and left the opt-in LLM path (further down) overwriting
+# unconditionally — so with PDFTURBO_HANDOFF_LLM=1 the marker was still ignored, and the log claimed
+# "kept" two lines before clobbering the file. A single variable is what makes that class of bug
+# impossible rather than merely unlikely.
+LATEST_IS_MANUAL=0
+if [[ -f "$LATEST" ]] && grep -q '<!-- manual -->' "$LATEST" 2>/dev/null; then
+  LATEST_IS_MANUAL=1
+fi
+
+if (( LATEST_IS_MANUAL )); then
+  log_obs INFO precompact-handoff "latest.md is manual — kept; auto handoff is at $ARCHIVE"
+else
+  cp -f "$ARCHIVE" "$LATEST" 2>/dev/null || log_obs WARN precompact-handoff "could not refresh $LATEST"
+fi
 
 # ── Optional LLM narrative — OFF by default, see header note 1 ─────────────────────────────────
 if [[ "${PDFTURBO_HANDOFF_LLM:-0}" == "1" && -n "$TRANSCRIPT" && -f "$TRANSCRIPT" ]]; then
@@ -181,8 +202,13 @@ if [[ "${PDFTURBO_HANDOFF_LLM:-0}" == "1" && -n "$TRANSCRIPT" && -f "$TRANSCRIPT
     SUMMARY=$(printf '%s' "$RAW" | jq -r '.result // empty' 2>/dev/null)
     if [[ -n "$SUMMARY" ]]; then
       { printf '\n## LLM narrative (PDFTURBO_HANDOFF_LLM=1)\n\n%s\n' "$SUMMARY"; } >> "$ARCHIVE"
-      cp -f "$ARCHIVE" "$LATEST" 2>/dev/null || true
-      log_obs INFO precompact-handoff "LLM narrative appended"
+      if (( LATEST_IS_MANUAL )); then
+        log_obs INFO precompact-handoff "LLM narrative appended to $ARCHIVE; manual latest.md left intact"
+      else
+        cp -f "$ARCHIVE" "$LATEST" 2>/dev/null \
+          || log_obs WARN precompact-handoff "could not refresh $LATEST after LLM narrative"
+        log_obs INFO precompact-handoff "LLM narrative appended"
+      fi
     else
       log_obs WARN precompact-handoff "LLM narrative requested but the call returned nothing"
     fi

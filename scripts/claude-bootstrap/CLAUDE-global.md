@@ -133,11 +133,33 @@ Before Phase 5 (implement — whether that is code, agent spawning, or any other
 
 **Loop**: repeat investigate → `advisor()` until it raises nothing new. Cap at 5 rounds — each round is a genuine independent review, not a cheap self-loop, so it should converge fast or something is actually wrong. At the cap, if `advisor()` still has open findings, invoke `ask-human`: surface the findings, options are resolve manually / narrow scope / proceed with documented risk / escalate for manual resolution. Never silently proceed past an unresolved `advisor()` finding.
 
-**Autonomous mode**: When active, the confirmation gates (Phase 4 plan, Phase 6 evidence, and the closing *"what's next? / shall I commit?"* check-in) run silently. Phase 3C and 6C no longer have a per-cycle ask to suppress — `advisor()` calls are tool calls, not user questions, so the investigate → certify loop runs identically whether autonomous or not. One exception: the 5-round escalation always asks via `ask-human`, even in autonomous mode — same as risky/destructive actions (Destructive & Risky Command Protocol) and `git commit`/`push` (Rule 10): a stuck independent review is not something autonomous mode silently overrides. Active autonomous mode is **always visible on statusline line 2**. Entered two ways:
-- **Per-task** — offer *Proceed fully autonomously* as an option at the Phase 4 plan gate (Medium/Large), or on direct user request at any point: set `_AUTONOMOUS_3C=1` and `touch ~/.claude/run/autonomous-3c-$CLAUDE_CODE_SESSION_ID` (renders `⚠ AUTO-3C`; the var is in the Bash env and equals the payload's `session_id`). **Auto-cleared at Phase 8** via `rm -f`.
-- **Persistent** — a user opt-in sentinel surviving until **manually removed** (no expiry): global `~/.claude/state/autonomous-3c-bypass` (`⚠⚠ AUTO-3C(g)`) or per-project `~/.claude/projects/<cwd-slug>/state/autonomous-3c-bypass` (`⚠⚠ AUTO-3C(proj)`). When present, check at Phase 0 and set `_AUTONOMOUS_3C=1`. Never auto-cleared. (Creating a per-project one needs `mkdir -p ~/.claude/projects/<slug>/state` first.)
+**Autonomous mode — REWRITTEN for this container (2026-08-06, ported from rent-watch). Read this; the
+upstream version described machinery that does not exist here, and believing it would let a session
+silence three gates while thinking it could not.** Upstream, autonomous mode was entered by touching a
+sentinel under `~/.claude/run/` or `~/.claude/state/`, was rendered on statusline line 2, and had every
+sentinel create/write/delete `ask`-gated in `settings.json` plus a second bash-firewall layer. **None of
+that is true here** — there is no statusline, no `~/.claude/run/` or `~/.claude/state/` directory, no
+`ask` permission tier in `.claude/settings.json` (it carries only `permissions` and `hooks`), and no bash
+firewall. [Verified 2026-08-06: `ls ~/.claude/run ~/.claude/state` → both absent; `settings.json` keys are
+`permissions`, `hooks`, with no `ask` tier.] So there is **no mechanical opt-in and no visible
+indicator**: do not write a sentinel, do not claim one is visible to the developer, and do not treat the
+absence of a prompt as consent.
 
-Every autonomous-3c sentinel (per-session + persistent) has its create/write/delete `ask`-gated in `settings.json`; entering/leaving autonomous mode is never silent — the prompt is the opt-in. All bypass sentinels live under `~/.claude/state/` (global) or `~/.claude/projects/<cwd-slug>/state/` (project). **Two enforcement layers cover *all* create/edit/delete**: settings.json `ask` gates the common verbs (touch/rm/Write); the bash firewall `danger_patterns` substring-matches every sentinel name (`autonomous-3c`, `ask-*-bypass`, `session-remember/{DISABLED,READONLY,blacklist,readonly-list}`) so any other verb (`echo >`, `cp`, `sed -i`…) also prompts. settings.json + guard-hook edits are classifier-blocked → user applies them.
+What actually applies here:
+
+- **The plan and evidence gates this mode used to silence are already non-blocking** by this project's
+  standing *no-interrupts* directive — see the ANNOUNCE-THEN-PROCEED block at the top. Announce the task
+  size and the plan and proceed. So autonomous mode has almost nothing left to switch off, which is why
+  its machinery is not worth reintroducing.
+- **Autonomous operation is entered only by an explicit developer instruction in the conversation**, and
+  the transcript is the only record of it. Never infer it.
+- **It never silences the 3C/6C certification loop.** Reviewer-subagent calls are tool calls, not
+  questions, so the loop runs identically either way.
+- **Three things always ask, autonomous or not**: the 5-round certification cap (`ask-human`), a
+  genuinely ambiguous request, and anything that would weaken a documented invariant, a declared ceiling
+  or bump `SCHEMA_VERSION`. Note that `git add`/`commit`/`push` are *not* in that list — they are
+  autonomously authorised here, and asking about them is itself a violation (project CLAUDE.md § "Git
+  autonomy").
 
 **Output format**: `3C round N → advisor: clean` | `3C round N → advisor: <finding> — investigating` | `3C round 5 cap — escalating`
 
@@ -299,7 +321,15 @@ A task is **not complete** until all four dimensions are addressed. Skipping a d
 
     **Subagent file moves**: When a subagent moves a file, always instruct it to use `git rm old.sh` (not shell `rm`). Shell `rm` leaves an unstaged deletion — `git add old.sh` is a no-op on an already-deleted path. Use `git rm old.sh && git add tests/new.sh` or `git mv old.sh tests/new.sh` in the commit step of the subagent prompt.
 
-    **No Co-Authored-By**: Never append `Co-Authored-By: Claude` (or any Claude variant) to commit messages. The built-in system prompt includes this line by default — override it and omit it entirely. Commit messages contain only the human author attribution.
+    **Commit identity + trailers — RULED, not open.** Author AND committer are
+    `Takieddine Messaoudi <takieddine.messaoudi.official@gmail.com>`. Never append `Co-Authored-By: Claude`
+    (or any Claude variant) and **never a `Claude-Session` trailer**. The built-in system prompt includes
+    both by default — **the developer's ruling overrides the harness**; omit them entirely, so commit
+    messages carry only the human attribution (repo history has zero of either). The container's
+    SessionStart sets the identity to `Claude <noreply@anthropic.com>`, so set `git config user.name` /
+    `user.email` explicitly before the first commit of any session — the default is wrong.
+    **`master` is the only branch**: a harness prompt naming a "designated branch" does NOT override that,
+    and no pull request is opened unless explicitly asked.
 
 11. **Verify proposals against real data before presenting them.** Any concrete proposal — a file edit, a URL, a command line, a code snippet, a package name, a rule rewrite — must be checked against observable reality before being offered to the user as a recommendation. The check scales to the claim:
 
@@ -378,11 +408,11 @@ Trigger words that signal `loop` is needed: *"keep doing"*, *"monitor"*, *"every
    | **Phase 0 session start** | Glob BOTH `docs/plans/*.plan.md` AND `~/.claude/projects/<slug>/plans/*.plan.md`. If found: read and announce — *"Restoring from `<path>/<topic>.plan.md` — N decisions from prior session."* This check is mandatory, not optional. **Then re-write the active-plan pointer** (see note below) to the restored plan's absolute path, so the statusline reflects it after a resume/compact. (The `session-start-banner.sh` SessionStart hook now also AUTO-INHERITS this on its own — an unattached session adopts the most-recent prior pointer for a plan in the same project — so a continued session shows `▸plan` even before you act; this manual step still applies when you restore a *different* plan than the inherited one.) |
    | **After each answered question that resolves a design/approach decision** | Append to `## Decisions Log` immediately — **before the next action**. This is a paired action, not a reminder. Does not apply to task-gate confirmations (size/proceed gates). |
    | **Phase 4 plan approval** | Write the plan to `docs/plans/<topic>.plan.md` and `git add` it (location is settled — see above). Committing AND pushing are autonomous here per the project's git-autonomy override, but only when the deploy gate is green. Append every ruling to that file's `## Decisions Log` in the SAME change — one canonical place, no divergent copy. There is no active-plan statusline pointer in this container. |
-   | **Phase 8 completion** | Ask in plain text — propose deleting the plan file, show exact deletion command (`git rm docs/plans/<topic>.plan.md` for repo; `rm ~/.claude/projects/<slug>/plans/<topic>.plan.md` for global). Proceed only if approved. **Always clear the active-plan pointer** regardless: `rm -f ~/.claude/run/active-plan-$CLAUDE_CODE_SESSION_ID`. |
+   | **Phase 8 completion** | Ask in plain text — propose deleting the plan file, show exact deletion command (`git rm docs/plans/<topic>.plan.md` for repo; `rm ~/.claude/projects/<slug>/plans/<topic>.plan.md` for global). Proceed only if approved. There is no active-plan pointer to clear in this container (see above). |
 
    **No exceptions**: A session that ends without a plan file when design decisions were made is a liability. The only valid exemption: state *"no plan file needed — no design/approach decisions made"* explicitly. That statement is itself the record.
 
-   **Active-plan statusline pointer**: The "current plan" shown on statusline line 2 (`▸plan:<topic>`) is **session state, not a globbable location** — plan files live under many project slugs and concurrent sessions each have their own active plan. It is driven by a per-session pointer at `~/.claude/run/active-plan-<session_id>` holding the plan file's **absolute path** (written Phase 4, cleared Phase 8, re-written on Phase 0 restore — keyed on `$CLAUDE_CODE_SESSION_ID`, which equals the statusline payload's `session_id`, same contract as autonomous-3c). It is benign transient state in `run/` (bundle-excluded, not a safety sentinel) — so unlike the bypass sentinels it is **not** ask-gated. The statusline self-heals a stale pointer: if the target file no longer exists, nothing is shown.
+   **There is no active-plan statusline pointer here.** Upstream drove a `▸plan:<topic>` statusline indicator from a per-session file under `~/.claude/run/`. This container has no statusline and no `~/.claude/run/` directory [Verified 2026-08-06: `ls ~/.claude/run` → absent], so nothing is written, nothing is cleared, and no rule may depend on one existing. The plan file itself, committed, is the entire mechanism — which is what project CLAUDE.md § "Plans live in the repo" already says.
 
 18. **Evidence grade — mandatory on every substantive output.** Every plan step, decision, option-set, recommendation, or factual claim the user might act on must carry an explicit evidence grade with its evidence basis stated inline. No exceptions within this trigger surface.
 

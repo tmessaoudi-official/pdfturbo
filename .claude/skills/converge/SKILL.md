@@ -181,7 +181,14 @@ Where `<status>` is one of:
 - A lens repeats a point after a resolution attempt → **Case C (STUCK)**.
 `prev_findings` is still tracked, and is what tells the next round's reviewers what changed.
 
-**If `CERTIFY == self`** (default): evaluate using the original self-graded comparison:
+**If `CERTIFY == self`** (LAST-RESORT FALLBACK — `reviewer` is the default): evaluate using the original
+self-graded comparison, and **say in the output that certification was self-graded, and why**. Reaching
+this branch requires subagents to be genuinely unavailable (e.g. inside a restricted agent whose tool
+list excludes `Agent`); "the reviewers are slow" or "the diff looks small" are not reasons.
+
+Both branches used to be labelled *(default)*, which is how a session talks itself into self-grading the
+work it just produced — the exact blind spot the ladder exists to close. Ported from rent-watch
+2026-08-06.
 
 **Case A — CLEAN:**
 - `counter += 1`
