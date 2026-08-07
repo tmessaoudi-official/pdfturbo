@@ -273,6 +273,45 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
+
+A lockfile-only bump (`^2.7.1` allowed 2.7.4 → **2.8.1**) turned CI red: **13 tests across 6 files**, every
+one of them a custom-font embed, all dying identically:
+
+```
+TypeError: Cannot read properties of undefined (reading 'pos')
+  |- Struct.encode                            @pdf-lib/fontkit
+  |- TTFSubset.encode                         @pdf-lib/fontkit
+  |- CustomFontSubsetEmbedder.serializeFont   @cantoo/pdf-lib
+```
+
+**Bisected, not guessed: 2.8.0 passes, 2.8.1 fails, nothing else changed.** 2.8.1 added feature-detection
+to `serializeFont` — *"Upstream fontkit v2+ exposes sync `encode()`; @pdf-lib/fontkit uses Node-style
+`encodeStream()`"* — and takes the `encode()` branch whenever the method merely EXISTS. `@pdf-lib/fontkit`
+v1's subset does have an `encode`: restructure's low-level **`Struct.encode(stream)`**, which needs a
+stream. Called bare it dereferences `undefined`.
+
+**The discriminator is ARITY, not presence** — fontkit v2's sync `encode()` takes 0 args, v1's takes 1. So
+`src/utils/fontkitAdapter.ts` wraps the registered module and hides `encode` only when
+`encode.length > 0`, forcing the `encodeStream()` path v1 actually implements. Nothing is monkey-patched;
+the real objects are untouched behind a `Proxy`. It self-obsoletes safely in both directions: if pdf-lib
+fixes the detection the wrapper is inert, and on a real fontkit v2 it stops hiding anything.
+
+**Rejected: `subset: false`.** That embeds the whole ~250 KB Noto Naskh Arabic face in every Arabic
+export instead of the few glyphs used — a permanent size regression to dodge a transient upstream bug.
+Also rejected: pinning back to 2.7.4/2.8.0 (developer ruling — keep the dependency current).
+
+**EVERY `registerFontkit` must go through `adaptFontkit`.** Production has exactly one site
+(`arabicOverlay.getArabicFont`), but three browser fixtures register fontkit themselves to build
+subset-font PDFs, and they stayed red until routed through the adapter too — which is also what keeps a
+fixture faithful to the real embed path. `grep -rn registerFontkit src/ tests/` is the check.
+
+**The transferable part:** a dependency's *minor* bump inside a caret range can break a path no test of
+ours touches directly, and the failure surfaced 500 lines deep in two vendored libraries. What identified
+it in minutes was bisecting the single changed version with `npm i --no-save` and re-running ONE failing
+file — not reading the stack trace harder. Note the whole diff was `package-lock.json`; `package.json`
+never changed, so nothing in the repo's own history hints at it.
+
 ### The Claude bundle is a CROSS-REPO artefact — align it, don't fork it (2026-08-06)
 
 Five repos share this bundle (`phorj` 07-23 → **pdfturbo** 07-28 → `twes-in` 08-02 → `stack` 08-06 →

@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import fontkit from '@pdf-lib/fontkit';
+import { adaptFontkit } from '../../src/utils/fontkitAdapter';
 import fontUrl from 'pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf?url';
 import { reconstructPage, type RawTextItem, type FontInfoMap } from '../../src/utils/flowDoc';
 import { flowDocToDocxBase64 } from '../../src/utils/flowDocWriters';
@@ -33,7 +34,10 @@ describe('Cyrillic source PDF → DOCX (real Chrome)', () => {
     const { PDFDocument } = await import('@cantoo/pdf-lib');
     const ttf = new Uint8Array(await (await fetch(fontUrl)).arrayBuffer());
     const doc = await PDFDocument.create();
-    doc.registerFontkit(fontkit);
+    // Through the adapter, exactly as production does (`src/export/arabicOverlay.ts`): pdf-lib ≥2.8.1
+    // mis-detects fontkit v1's `subset.encode`, so a RAW registration makes every subset embed throw in
+    // `Struct.encode`. Keeping fixtures on the same path keeps them faithful to the real embed.
+    doc.registerFontkit(adaptFontkit(fontkit));
     const font = await doc.embedFont(ttf, { subset: true });
     const page = doc.addPage([400, 200]);
     page.drawText('Привет мир документа', { x: 40, y: 150, size: 20, font });

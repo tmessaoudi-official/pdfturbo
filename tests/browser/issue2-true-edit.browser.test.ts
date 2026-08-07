@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import fontkit from '@pdf-lib/fontkit';
+import { adaptFontkit } from '../../src/utils/fontkitAdapter';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import fontUrl from 'pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf?url';
@@ -31,7 +32,10 @@ const BASELINE = 150;
 async function makeSubsetHeadingPdf(): Promise<Uint8Array> {
   const ttf = new Uint8Array(await (await fetch(fontUrl)).arrayBuffer());
   const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
+  // Through the adapter, exactly as production does (`src/export/arabicOverlay.ts`): pdf-lib ≥2.8.1
+  // mis-detects fontkit v1's `subset.encode`, so a RAW registration makes every subset embed throw in
+  // `Struct.encode`. Keeping fixtures on the same path keeps them faithful to the real embed.
+  pdf.registerFontkit(adaptFontkit(fontkit));
   const font = await pdf.embedFont(ttf, { subset: true });
   const page = pdf.addPage([PAGE_W, PAGE_H]);
   page.drawText(HEADING, { x: 30, y: BASELINE, size: 24, font });

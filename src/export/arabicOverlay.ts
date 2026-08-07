@@ -96,7 +96,11 @@ export function getArabicFont(pdfDoc: PDFDocument): Promise<PDFFont> {
   if (existing) return existing;
   const cached = (async () => {
     const fontkit = (await import('@pdf-lib/fontkit')).default;
-    pdfDoc.registerFontkit(fontkit);
+    // Registered THROUGH the adapter, not raw: @cantoo/pdf-lib ≥2.8.1 feature-detects a sync
+    // `subset.encode()`, which fontkit v1 has under that name with an incompatible signature — every
+    // subset embed then dies in `Struct.encode`. See `utils/fontkitAdapter.ts` for the measurement.
+    const { adaptFontkit } = await import('../utils/fontkitAdapter');
+    pdfDoc.registerFontkit(adaptFontkit(fontkit));
     return pdfDoc.embedFont(await loadNotoBytes(), { subset: true });
   })();
   // Same anti-poison rule per document: drop a failed embed so a retry can succeed.
