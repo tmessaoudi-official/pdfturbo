@@ -8,55 +8,31 @@ RTL), IndexedDB (session persistence), bwip-js + qr-code-styling (barcode/QR too
 ## Routing
 
 Work here is handled with the **global reasoning framework** (`~/.claude/CLAUDE.md`) — the 8-phase
-workflow, the four-dimension Completion Gate, evidence grades, the anti-bandaid gate. A cloud session
-gets a fresh `~/.claude/` every time and never reads the developer's own, so the framework travels in
-this repo and is reinstalled at session start by `scripts/claude-bootstrap/install.sh` (a SessionStart
-hook). See `scripts/claude-bootstrap/README.md`. On any conflict, **this file wins**.
+workflow, the four-dimension Completion Gate, evidence grades, the anti-bandaid gate. That framework
+is the developer's own persistent install; this repo never writes it — the container-era
+`scripts/claude-bootstrap/` reinstaller was removed 2026-08-18. On any conflict, **this file wins**.
 
-Repo-native slash skills live in `.claude/skills/` and reviewer agents in `.claude/agents/`; both are
-read in place, nothing is installed. `ls .claude/skills/` is the authoritative list — a count written
-in prose drifts, so none is written here.
+The repo carries exactly THREE skills, all repo-specific by name and content (global-is-reference
+ruling, 2026-08-18 — a repo may not duplicate anything that exists in `~/.claude/`):
+`/pdf-ask-human` (the question protocol with this repo's extra rules), `/pdf-lenses` (the mandatory
+review dimensions + sleuth lens K), and `/pdf-qa-sweep` (the whole-app QA driver). Every other
+skill — `/sweep`, `/sleuth`, `/inspect`, `/gaps`, `/forge`, `/cross-check`, `/converge`,
+`/pre-commit`, `/aggregate-findings`, `/handoff`, `/retrospective`, `/expanding-context` — comes
+from the developer's global install. **Before running ANY of those global review skills here, load
+`/pdf-lenses` first**: it carries the pdfturbo dimensions, lens K and the repo conventions (reports
+under `var/claude/`, non-blocking closes, project scope only) that the deleted repo-local copies
+used to enforce. Reviewer agents stay in `.claude/agents/` (read in place, nothing is installed).
 
-## Every reply ends with a status marker — NO EXCEPTIONS
+## Questions — `AskUserQuestion`, sparingly
 
-Developer directive, 2026-07-29. **The last line of every reply is exactly one of these two markers.**
-A reply without one is unfinished.
+Questions to the developer use the **`AskUserQuestion` tool**, per the global framework: options with
+the recommended one FIRST (labelled, with its reason) and a visible *"none of these / challenge the
+premise"* escape. Protocol details: `.claude/skills/pdf-ask-human/SKILL.md`.
 
-```
-❓ QUESTION — <one line naming the decision>
-⏹ NO QUESTION — <what you are waiting on, or why you stopped>
-```
-
-**Why it exists:** without it the developer cannot tell a question from a pause — both are just prose
-that stopped — so they do not know whether the turn is waiting on them. The marker is the signal, not
-a decoration.
-
-- **`❓ QUESTION`** — you are BLOCKED and need a decision. The numbered options go in the **body,
-  above the marker**: recommended option FIRST with its reason, each option stating its own
-  pros/cons and resulting after-state, and a final *"none of these / challenge the premise"* escape.
-  Then stop and wait.
-  *(The directive as given said the marker is the last line AND that options "follow" it. Both cannot
-  hold, so this is the resolution: options in the body, marker last. Scanning for the marker at the
-  end is the whole point.)*
-- **`⏹ NO QUESTION`** — nothing is being asked. State explicitly what you are blocked on — a
-  background job, a build, a pending re-sign, or nothing at all — so the developer knows whether a
-  reply is needed.
-
-**Applies to every reply without exception**, including one-line answers, status updates, error
-reports and acknowledgements. Never end a turn with a bare question mark and no options. Never use an
-interactive question tool (see the section below) — the marker is plain text like everything else.
-
-## Questions are plain text — `AskUserQuestion` is FORBIDDEN
-
-`AskUserQuestion` **times out in the cloud container**, so a question asked that way can hang the turn
-and be lost — a gate that cannot fire is worse than no gate. Every question to the developer is
-ordinary prose: context, a minimal concrete example, numbered options, the **recommended option first
-with its reason**, and a visible *"none of these / challenge the premise"* escape — then STOP and wait.
-Protocol: `.claude/skills/pdf-ask-human/SKILL.md`.
-
-Partial mechanical backing: every skill in `.claude/skills/` declares
-`disallowed-tools: AskUserQuestion`, which removes the tool from the pool while that skill is active.
-The grant clears on the next user message, so outside a skill the discipline is yours.
+> The container-era plain-text protocol and the `❓`/`⏹` end-of-reply markers are **RETIRED**
+> (2026-08-18). They existed because `AskUserQuestion` timed out in the dead cloud container; on this
+> machine it works, `askUserQuestionTimeout` is `"never"` globally, and the marker's rationale
+> (a prose question being indistinguishable from a pause) dies with the prose protocol.
 
 **Do not ask about routine work.** The standing directive for this repo is *no interrupts*: announce
 the task size and the plan, then build it. Asking is reserved for the cases in
@@ -65,9 +41,9 @@ that would weaken a documented invariant, a declared ceiling, or bump `SCHEMA_VE
 
 ## Certification ladder — governs every 3C/6C gate
 
-`advisor()` does not exist in this environment, so independent certification comes from
-**fresh-context, read-only, adversarial reviewer subagents** in `.claude/agents/` — that is the TOP
-rung here, not a fallback. Three lenses, one agent each:
+`advisor()` **is available on this machine** (verified 2026-08-18) and is the FIRST rung: call it
+per the global framework. The panel of record for gate rounds is the set of **fresh-context,
+read-only, adversarial reviewer subagents** in `.claude/agents/`. Three lenses, one agent each:
 
 | Lens | Agent |
 |---|---|
@@ -79,7 +55,7 @@ Each reviewer **reads the actual diff, code and tests itself** — never certify
 narrative — and is chartered to REFUTE, not approve. `/converge` runs the panel mechanically.
 
 **Tier: MAXIMAL by default** — all three lenses, **two consecutive fully-clean rounds**, any finding
-resets the counter, cap 5 rounds → then ask in plain text (never silently proceed). Rationale: this
+resets the counter, cap 5 rounds → then ask via `AskUserQuestion` (never silently proceed). Rationale: this
 repo's severe bugs have not been confined to one subsystem — a destroyed `w:drawing` on DOCX save, an
 Android keyboard loop that made typing impossible, OCR dead in production for three reasons, an
 invisible watermark. A path allowlist would have to cover nearly everything, so a single rule is both
@@ -89,9 +65,9 @@ safer and cheaper to follow.
 `src/`, STANDARD is enough — one reviewer, three lenses in a single pass, one clean round. Locale
 strings, docs and `CLAUDE.md` edits qualify. Anything touching `src/` does not.
 
-Availability chain: reviewer subagents → (if subagents are unavailable, e.g. inside a restricted
-agent) three distinct-lens self-passes **with mandatory disclosure that certification was
-self-graded**. Never silently skip a gate. The deploy gate below is the floor, never the certification.
+Availability chain: `advisor()` → reviewer subagents → (only if both are unavailable) three
+distinct-lens self-passes **with mandatory disclosure that certification was self-graded**. Never
+silently skip a gate. The deploy gate below is the floor, never the certification.
 
 ## Git autonomy — overrides global Rule 10
 
@@ -100,8 +76,8 @@ work (developer directive, 2026-07-27). Asking permission for them violates the 
 directive. Limits:
 
 - **Author/committer**: `Takieddine Messaoudi <takieddine.messaoudi.official@gmail.com>` — matches
-  100% of history. The container's SessionStart hook sets the git identity to
-  `Claude <noreply@anthropic.com>`, so this must be set explicitly per commit or per repo.
+  100% of history. A harness may set a different default identity, so **check
+  `git config user.name` / `user.email` before the first commit of any session.**
 - **Never a `Co-Authored-By` trailer** (repo history has zero) and **never a `Claude-Session` trailer**,
   and never the Claude email. The container's harness prompt instructs otherwise for both — **the
   developer's ruling overrides the harness.** Named explicitly because the harness names them explicitly;
@@ -116,7 +92,9 @@ directive. Limits:
 - Commit style: `feat:` / `fix:` / `refactor:` / `docs:` / `chore:`, imperative subject.
 - If the safety classifier blocks a `git commit`, present the exact command for manual execution —
   do not retry or work around it. The same applies to `.claude/settings.json`, which Claude cannot
-  write: stage it as `scripts/claude-bootstrap/settings.json.pending` instead.
+  write: hand the developer ONE `! bash /tmp/<script>.sh` that validates with `jq`, backs up the
+  original and commits the result (the container-era `settings.json.pending` route died with
+  `scripts/claude-bootstrap/`, removed 2026-08-18).
 
 **Recent SHAs are NOT stable — re-baseline before every follow-up task.** After each task the
 developer pulls, **re-signs the new commits and force-pushes**, which rewrites their SHAs (observed
@@ -137,13 +115,16 @@ follow:
 
 Every plan or spec produced here is persisted at **`docs/plans/<topic>.plan.md`**, each carrying its
 own `## Decisions Log` (`- [YYYY-MM-DD HH:MM] AGREED: <one-sentence decision>`), appended in the same
-change as the ruling. The container is reclaimed and only committed state survives, so an out-of-repo
-plan file is never the record of truth. There is no plan-location sentinel to ask about.
+change as the ruling. A plan in the repo survives any one machine and lands in the same commit as the
+code it governs — an out-of-repo plan file is never the record of truth. There is no plan-location
+sentinel to ask about.
 
 There is no separate roadmap SSOT or decision register: the plan file is the plan, and a ruling that
 outlives it graduates into a **§ Gotchas** entry below — which is what makes that section this
-project's real decision register. Transient review output (reports, handoffs, memory) goes to
-`var/claude/**`, which is gitignored.
+project's real decision register. Transient review output (reports, memory) goes to `var/claude/**`,
+which is gitignored. Session handoffs are the GLOBAL PreCompact hook's job
+(`~/.claude/hooks/precompact-handoff.sh` → the developer's memory pipeline); this repo carries no
+copy of that hook — global-is-reference ruling, 2026-08-18.
 
 ## Commands
 
@@ -195,7 +176,9 @@ extraction, content-stream edits verified by pixels. Uses the system Google Chro
 build, using the runner's system Chrome). Run it locally for any editor/export/DnD change. Guards
 ISSUE-1..5 (see `KNOWN_ISSUES.md`).
 
-**Running `npm run test:browser` in the Claude cloud container (2026-07-28)** — it works, but not
+**Running `npm run test:browser` in the Claude cloud container (2026-07-28 — HISTORICAL: that
+container is dead since 2026-08-18; on the developer's machine `channel: 'chrome'` uses the system
+Chrome and none of this workaround is needed)** — it worked, but not
 out of the box. Two things bite in order: (1) the config uses Playwright `channel: 'chrome'` and the
 container has no Google Chrome; (2) the *preinstalled* Chromium-1194 at `/opt/pw-browsers` lacks
 `Map.prototype.getOrInsertComputed`, which `pdfjs-dist` v6 calls from
@@ -2402,8 +2385,8 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
 - `.claude/settings.json` — pre-approved commands + hooks. **`deny` is EMPTY and stays empty** (developer
   ruling, 2026-08-06): in the web container the developer has no terminal, so a command Claude is denied is
   a command *nobody* can run — a denial is not a safe default there, it is a dead end.
-  **The live file currently allows 13 commands; the broad 85-entry list is STAGED, not active** — see the
-  next bullet. Once applied it covers `npm`/`npx`/`node`/`vitest` (`vite` and `playwright` transitively via
+  **The broad 85-entry allow list is LIVE** ([Verified 2026-08-18: `jq '.permissions.allow | length'`
+  → 85]; the container-era `settings.json.pending` staging route is gone). It covers `npm`/`npx`/`node`/`vitest` (`vite` and `playwright` transitively via
   `Bash(npx:*)`, not as their own entries), `scripts/**`, `.githooks/**`, full `git` (commit and push are
   autonomous here), `python3`/`jq`/`yq`, and the ordinary shell utilities. It deliberately omits the
   siblings' `make`/`docker`/`shellcheck`/`hadolint` — none applies to a browser-only TypeScript app.
@@ -2423,29 +2406,22 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
 - **The one thing no repo config can grant: `.claude/settings.json` itself.** Claude Code's auto-mode
   classifier blocks Claude from writing that file, by Bash *and* by the Write tool — self-modification of
   its own permission surface. That is a platform guard, not this repo's policy (our `deny` is empty), and
-  it cannot be lifted from inside the repo. The hand-over is
-  `scripts/claude-bootstrap/settings.json.pending` → the developer runs
-  `bash scripts/claude-bootstrap/apply-pending-settings.sh` (which deletes the pending file, so the repo
-  never carries two copies). **Do not attempt to work around this block** — staging the pending file and
-  saying so is the correct behaviour.
+  it cannot be lifted from inside the repo. The hand-over is ONE `! bash /tmp/<script>.sh` for the
+  developer (jq transform + validation + backup + commit). **Do not attempt to work around this block** —
+  writing the script and saying so is the correct behaviour.
 - `.claude/hooks/oxlint-on-write.sh` — lints any `.ts` file Claude edits with oxlint, feedback on fail
 - `.claude/hooks/locale-sync-check.sh` — 3-way key diff on any `locales/*.json` write
-- `scripts/claude-bootstrap/install.sh` — the wired **SessionStart** hook. **THE REPO IS ALWAYS THE TRUTH**
-  (developer ruling, 2026-08-06): it copies the three framework docs into `~/.claude/`
-  **unconditionally** on every run, replacing the old `cp -u`. `cp -u` was not merely conservative, it was
-  wrong in both directions — it copies when the SOURCE is newer, and a fresh clone stamps clone-time, so it
-  clobbered a hand-maintained global anyway; hand-edit the target instead and it silently did nothing
-  forever, so the repo quietly stopped being the truth. The safety net is a **one-time**
-  `<name>.pre-bootstrap.bak` snapshot, never rewritten. Guarded by `test-install.sh` in the same directory
-  — **run it after any edit** (`bash scripts/claude-bootstrap/test-install.sh`, 17 assertions, no deps).
-  Corollary: **never hand-edit anything under `~/.claude/`** — it is overwritten at the next SessionStart.
-- `scripts/claude-bootstrap/hooks/precompact-handoff.sh` — the wired **PreCompact** hook; writes a
-  handoff into `var/claude/` before context is compacted. It honours a `<!-- manual -->` marker in
-  `latest.md`, so a handoff a human wrote is never clobbered. Guarded by
-  `test-precompact-handoff.sh` in the same directory — **run it after any edit** (`bash
-  scripts/claude-bootstrap/hooks/test-precompact-handoff.sh`, 35 assertions, no deps).
+- **`scripts/claude-bootstrap/` is GONE (removed 2026-08-18).** It existed because cloud containers
+  started with an empty `~/.claude/` each session; that environment is dead, `~/.claude/` is the
+  developer's own persistent install, and this repo never writes it. Its `install.sh` clobbered the
+  developer's global framework with a stale container-era copy on every SessionStart — removing it was
+  the P0 of the de-containerization. Session handoffs are the GLOBAL PreCompact hook's job (see § Plans).
 - `.claude/settings.local.json` is gitignored — machine-local overrides go there
 
-**Cross-repo convention.** The bundle and the skill/agent set are kept aligned with the sibling repos
-(`rent-watch`, `stack`, `twes-in`, `phorj`); `rent-watch` is currently the newest and is the reference
-when they disagree. Ported here 2026-08-06 — see § "The Claude bundle is a CROSS-REPO artefact" in Gotchas above.
+**Cross-repo convention.** The skill/agent set follows the same rules as the sibling repos
+(`rent-watch`, `stack`, `twes-in`, `phorj`), governed since 2026-08-18 by the global-is-reference
+ruling: generic machinery lives in `~/.claude/`, a repo carries only renamed, heavily-repurposed,
+repo-specific skills. `rent-watch` executed the recipe first and is the reference when siblings
+disagree; the recipe itself is pinned in `/stack`'s `docs/plans/decontainerization.plan.md`. The
+2026-08-06 bundle-alignment story in § "The Claude bundle is a CROSS-REPO artefact" (Gotchas) is the
+historical record of the container era.
