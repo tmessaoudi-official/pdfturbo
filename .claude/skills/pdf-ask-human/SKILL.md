@@ -1,23 +1,27 @@
 ---
-name: ask-human
+name: pdf-ask-human
 description: >
-  PLAIN-TEXT question protocol — never AskUserQuestion. Context, a minimal failing example,
-  clear numbered options, a recommended option first with its reason, then STOP and wait.
+  Question protocol — AskUserQuestion with this repo's extra rules. Context, a minimal
+  concrete example, clear options, the recommended option first with its reason, a visible
+  "none of these / challenge the premise" escape, then STOP and wait.
 user-invocable: true
-disallowed-tools: AskUserQuestion
 ---
 
 <!-- ═══════════════════════════════════════════════════════════════════════════════════
-  REWRITTEN 2026-07-27 (developer ruling, recorded under the 2026-07-27 integration). This skill previously
-  mandated `AskUserQuestion` and forbade prose questions. That is now INVERTED:
+  RE-INVERTED 2026-08-18 (de-containerization ruling, recorded in /stack's
+  docs/plans/decontainerization.plan.md § Decisions Log). The 2026-07-27 ruling banned
+  `AskUserQuestion` because it silently failed in the Claude Code CLOUD CONTAINER. That
+  environment is dead. On the developer's own machine the tool WORKS —
+  `askUserQuestionTimeout` is `"never"` globally and the global ask-human-question-guard
+  Stop hook mechanically REQUIRES it. Questions therefore use `AskUserQuestion` again.
+  Everything below that is about question QUALITY (five parts, recommendation first,
+  after-states, escape hatch, when-mandatory list) survives unchanged — only the delivery
+  mechanism inverted back. Renamed ask-human → pdf-ask-human the same day (global-is-reference
+  ruling: a repo skill may not share a global skill's name).
 
-    `AskUserQuestion` is FORBIDDEN in this project. It silently fails here — it returned
-    "the user did not answer" four separate times on 2026-07-26 while the developer was
-    actively at the keyboard, so a question asked that way can be lost with no trace and
-    the turn ends as if nothing was asked. A gate that cannot fire is worse than none.
-
-  The developer's instruction, verbatim: *"never use askUserQuestion — you must put the
-  context clearly with clear options and clear examples with a recommended option"*.
+  pdfturbo ADAPTATION: the protocol itself is UNCHANGED from the cross-repo port — five
+  parts, the shape template, and every non-negotiable rule are exactly as ported. Only the
+  illustrations are pdfturbo's own (export fidelity, documented ceilings, SCHEMA_VERSION).
 ═══════════════════════════════════════════════════════════════════════════════════ -->
 
 ## --help
@@ -25,20 +29,23 @@ disallowed-tools: AskUserQuestion
 > If ARGUMENTS contains `--help`: output the text below verbatim, then STOP — do not execute any other steps.
 >
 > ```
-> /ask-human — Plain-text question protocol: context + example + numbered options,
->              recommended first with its reason, then stop and wait.
->              AskUserQuestion is forbidden — it silently fails in this container.
+> /pdf-ask-human — Question protocol: AskUserQuestion with context + a minimal example,
+>              recommended option first with its reason, a visible "none of these /
+>              challenge the premise" escape, then stop and wait.
 >
 > No flags — invoked automatically by Claude whenever a decision belongs to the developer.
 > ```
 
 ---
 
-# Plain-text question protocol
+# Question protocol
 
-Every question to the developer is **ordinary text in the response**. No tool call, no dialog, no
-hidden state. Then **STOP**: end the turn and wait. Never assume an answer, never proceed on a
-default, never re-ask a different question because the first one went unanswered.
+Every question to the developer goes through **`AskUserQuestion`** — context in the question text,
+2–4 options with the recommended one FIRST (label it `(Recommended)`), and a visible
+*"none of these / challenge the premise"* option (the built-in "Other" is the free-text escape, but
+the challenge path must be a VISIBLE option, not only "Other"). Then **STOP**: end the turn and
+wait. Never assume an answer, never proceed on a default, never re-ask a different question because
+the first one went unanswered.
 
 ## The five required parts
 
@@ -51,6 +58,12 @@ default, never re-ask a different question because the first one went unanswered
 | 5 | **Escape hatch** | A visible final option — *"none of these / challenge the premise"* — plus an explicit invitation to tweak any option. The developer must be able to answer *and* amend in one reply. |
 
 ## Shape
+
+The five parts map onto the tool call: context → the `question` text (with the minimal example);
+options → `options[]`, recommended first, each `description` carrying its own consequence AND
+after-state; escape hatch → a visible final option. The worked example at the bottom shows the
+CONTENT at full quality — deliver that content through the tool, not as prose. Prose layout for
+reference:
 
 ```
 ## Question — <one-line subject>
@@ -70,17 +83,12 @@ Today:
 **Option 3 — none of these / challenge the premise.** <What you would want to hear.>
 
 I'll wait for your answer before doing anything else.
-
-❓ QUESTION — <one line naming the decision>
 ```
-
-**The `❓ QUESTION` marker is the literal last line** — see `CLAUDE.md` § "Every reply ends with a
-status marker". It is mandatory on every reply, not just questions: a reply that asks nothing ends
-with `⏹ NO QUESTION — <what you are waiting on>` instead. The options always sit ABOVE the marker.
 
 ## Non-negotiable rules
 
-- **Never `AskUserQuestion`.** Not as a fallback, not "just to try", not for a yes/no.
+- **Never a free-text prose question.** The global ask-human-question-guard Stop hook blocks a
+  turn that ends on a bare `?` without an `AskUserQuestion` call — and it is right to.
 - **Never a bare `?` with no options.** If a real choice exists, enumerate it. An unstructured
   question makes the developer do the work of designing the options.
 - **Always a recommendation.** "What do you prefer?" with no lean is an abdication. State the

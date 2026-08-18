@@ -52,7 +52,7 @@ interactive question tool (see the section below) — the marker is plain text l
 and be lost — a gate that cannot fire is worse than no gate. Every question to the developer is
 ordinary prose: context, a minimal concrete example, numbered options, the **recommended option first
 with its reason**, and a visible *"none of these / challenge the premise"* escape — then STOP and wait.
-Protocol: `.claude/skills/ask-human/SKILL.md`.
+Protocol: `.claude/skills/pdf-ask-human/SKILL.md`.
 
 Partial mechanical backing: every skill in `.claude/skills/` declares
 `disallowed-tools: AskUserQuestion`, which removes the tool from the pool while that skill is active.
@@ -158,7 +158,7 @@ npm run test:browser # vitest run in REAL Chrome (@vitest/browser + Playwright) 
 npm run test:watch   # vitest watch mode
 ```
 
-**Whole-app QA** (`/qa-sweep`, 2026-07-29): `node scripts/qa-sweep.mjs` boots the real app in real
+**Whole-app QA** (`/pdf-qa-sweep`, 2026-07-29): `node scripts/qa-sweep.mjs` boots the real app in real
 Chromium, loads a PDF, depth-first clicks every reachable control, and reports console errors, failed
 requests, axe-core WCAG 2.1 AA violations and a 375px overflow check — with before/after screenshots
 per control, into `var/claude/qa-sweep/<stamp>/`. Exit 1 on any FAIL (a console error, a failed request, or a **critical/serious** axe violation;
@@ -426,7 +426,7 @@ exactly the failure a green test suite cannot catch. `C11` is the counter-case i
 unpinned on purpose, because its only testable surface is an inline predicate in a private method and a
 copied predicate pins nothing.
 
-### `/qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
+### `/pdf-qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
 The sweep's `0 fail` covers **66 distinct controls of 141 in the DOM**. Every report now ends with
 `Exercised N distinct control(s) of M` and **names** the rest, because 31 `SKIP became hidden` lines
@@ -488,7 +488,7 @@ it is actually about. Whole-file `toContain` over compressed data is a coin flip
 
 ### A CRITICAL a11y rule the gates could barely see: `<label>` with no `for=` (2026-07-31)
 
-`/qa-sweep` caught axe `select-name` (**critical** — a tier above the three `serious` rules fixed on
+`/pdf-qa-sweep` caught axe `select-name` (**critical** — a tier above the three `serious` rules fixed on
 2026-07-29) on `#blankPageSize`/`#blankPagePosition`, and caught it **by luck**: the rule fires only
 while a control is VISIBLE, so it needed a run that happened to leave `blankPageModal` open. The cause
 was systemic — **16 controls** sat beside a bare `<label>` with no `for=`, i.e. a visible label with
@@ -521,7 +521,7 @@ no user can focus them.
 
 ### Live-app a11y: 3 serious WCAG rules fixed, and why the static gate missed them (2026-07-29)
 
-`/qa-sweep` found three `serious` axe violations in the **running** app that
+`/pdf-qa-sweep` found three `serious` axe violations in the **running** app that
 `tests/browser/a11y-axe.browser.test.ts` cannot see. That test injects `index.html`'s static body with
 `<script>` stripped, so `main.ts` never runs: no document is loaded, so **no thumbnails are rendered
 and the canvas region does not scroll**, and the elements that fail are either absent or `display:none`
@@ -727,7 +727,7 @@ column to 39.49**. Note `libreoffice` is present in the cloud container but **`l
 not**, so `soffice --convert-to` fails on every spreadsheet — including a plain CSV. That failure looks
 exactly like "the file I generated is corrupt" and is not; check whether the tool can open a trivial
 file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserting on the unzipped sheet
-XML). The button is in the export flyout, so `/qa-sweep` never clicks it (the flyout closes on any
+XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
 `toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **11 values pending as of

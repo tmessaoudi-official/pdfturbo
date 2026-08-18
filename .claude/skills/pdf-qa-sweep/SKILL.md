@@ -1,8 +1,7 @@
 ---
-name: qa-sweep
+name: pdf-qa-sweep
 description: Exhaustive systematic QA on the real PDFturbo app in a real browser — boot, load a PDF, exercise every reachable control, collect console/network errors, run axe-core WCAG checks, screenshot everything. Use before a release, after any change to the editor/export/UI surface, or when a defect is reported that the test suites do not reproduce. Not a substitute for the vitest suites; it answers "does the product work?" rather than "does this unit work?".
 user-invocable: true
-disallowed-tools: AskUserQuestion
 args: "[--allow-destructive] [--only <substr>] [--depth N] [--max-clicks N] [--no-a11y] [--fixture <pdf>] [--url <url>]"
 ---
 
@@ -11,9 +10,9 @@ args: "[--allow-destructive] [--only <substr>] [--depth N] [--max-clicks N] [--n
 > If `$ARGUMENTS` contains `--help`: print the block below verbatim, then STOP.
 >
 > ```
-> /qa-sweep — drive the real app in a real browser and report what breaks.
+> /pdf-qa-sweep — drive the real app in a real browser and report what breaks.
 >
-> Usage: /qa-sweep [--allow-destructive] [--only <substr>] [--depth N]
+> Usage: /pdf-qa-sweep [--allow-destructive] [--only <substr>] [--depth N]
 >                  [--max-clicks N] [--no-a11y] [--fixture <pdf>] [--url <url>]
 >
 >   --allow-destructive  include delete/remove/reset/redact/flatten/compress controls
@@ -27,7 +26,7 @@ args: "[--allow-destructive] [--only <substr>] [--depth N] [--max-clicks N] [--n
 
 ---
 
-# /qa-sweep
+# /pdf-qa-sweep
 
 ## Why this exists
 
@@ -43,13 +42,13 @@ Ported 2026-07-29 from the machine bundle's `qa-sweep`. What the original assume
 
 | Original | Here |
 |---|---|
-| `@playwright/mcp` browser tools | **`scripts/qa-sweep.mjs`** driving the repo's own `playwright` — no MCP server exists in this container |
+| `@playwright/mcp` browser tools | **`scripts/qa-sweep.mjs`** driving the repo's own `playwright` — the script needs no MCP server |
 | Link crawl (`--depth`, `--max-urls`, domain guard, visited URL set) | **UI-state crawl.** This app is ONE page; there are no links. `--depth` now means *disclosure* depth (menu → flyout → modal) |
 | `--target=cli` | **Dropped.** There is no CLI binary to QA here |
 | Step 0 auth detection via `ask-human` | **Dropped.** No backend, no login. Replaced by a dev-server + Chromium preflight |
 | `advisor()` convergence loop | The **certification ladder** (`CLAUDE.md` § Certification ladder) |
 | GIF via `claude-in-chrome` MCP | **Dropped.** Screenshots only |
-| Report → `~/.claude/projects/<slug>/qa-sweep/` | **`var/claude/qa-sweep/<stamp>/`** — `~/.claude` is ephemeral here |
+| Report → `~/.claude/projects/<slug>/qa-sweep/` | **`var/claude/qa-sweep/<stamp>/`** — reports live in the repo, never in `~/.claude` |
 
 Two things the original could not have known, both encoded in the driver:
 
@@ -64,8 +63,8 @@ Two things the original could not have known, both encoded in the driver:
 ## Run it
 
 ```bash
-# In the container, against the dev server:
-npx playwright install chromium     # once per container (~115 MB, not persisted; the preinstalled 1194 is skipped)
+# Against the dev server:
+npx playwright install chromium     # once per machine/CI run (~115 MB; a stale preinstalled 1194 is skipped)
 npm run dev &
 npm run qa:sweep                    # add --allow-destructive for the full surface
 
@@ -80,7 +79,7 @@ Exit codes: `0` no failures · `1` at least one FAIL · `2` harness could not ru
 `vite preview` on :4173, so a console error / failed request / critical-or-serious axe violation blocks
 the deploy and the screenshots upload as a CI artifact. CI cannot run this SKILL — there is no model in
 the runner — so what CI gets is the mechanical half. **Your** half is the interpretation below, which is
-why running `/qa-sweep` by hand is still worth doing: CI will not resolve a WARN, root-cause a FAIL, or
+why running `/pdf-qa-sweep` by hand is still worth doing: CI will not resolve a WARN, root-cause a FAIL, or
 notice that 44 controls were skipped.
 
 ## Then interpret it — the part that is your job, not the script's
@@ -123,7 +122,7 @@ The driver reports facts. You decide what they mean.
 
 ## Visual evidence — CAPTURED IS NOT DELIVERED
 
-`var/claude/` is gitignored and this container is reclaimed. A screenshot left on disk is evidence
+`var/claude/` is gitignored. A screenshot left on disk is evidence
 **nobody will ever see**. For anything with a rendered surface, attach the before/after with
 **`SendUserFile` in the same turn** — see `CLAUDE.md` Rule 6 / the pdfturbo amendment. A report that
 says "screenshots saved to var/claude/…" has produced no Coverage evidence at all.
