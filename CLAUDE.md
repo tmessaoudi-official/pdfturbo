@@ -306,8 +306,11 @@ convention evolution.** Unified against `rent-watch` (newest) — seven items. W
 was missing here. Porting and running it immediately failed **5 of 35** assertions — this repo's
 `precompact-handoff.sh` had no `<!-- manual -->` guard, so it would **clobber a handoff a human wrote**.
 That is a live data-loss bug nobody would have found by reading. The newer 223-line hook was ported too
-and the suite is 35/35. The hook is wired as PreCompact in `.claude/settings.json`, so this is live
-behaviour, not a doc.
+and the suite was 35/35. **The hook and its PreCompact registration are both GONE (2026-08-18)** — the
+global-is-reference ruling removed every repo copy of something `~/.claude/` already owns, and handoffs
+are the global PreCompact hook's job now [Verified 2026-08-19: `jq '.hooks | keys'` → `["PostToolUse"]`;
+no `precompact-handoff.sh` under `.claude/hooks/`]. The lesson survives its subject: a ported test can
+fail, and this one did.
 
 **2. Env-var renames are the trap in a cross-repo port.** The test set `RENTWATCH_HANDOFF_DIR` while this
 repo's hook reads `PDFTURBO_HANDOFF_DIR`. Left alone it would have exercised a default path and passed

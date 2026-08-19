@@ -68,7 +68,7 @@ editor for months; a DOCX image was destroyed on save.
    `npm run test:browser` is the real-Chrome harness.
 2. **Visual evidence: DELIVERED, not just captured.** For any change with a rendered surface (most
    changes in this repo), the gate needs a before/after screenshot of the real render **sent via
-   `SendUserFile` in the same turn**. `/qa-shots/` is gitignored and the container is reclaimed, so
+   `SendUserFile` in the same turn**. `/qa-shots/` is gitignored — in no commit and no review — so
    "screenshots saved to qa-shots/" is **zero** evidence — nobody will ever see them. A claim of
    visual verification with no delivered image is a finding. If the change genuinely has no visual
    surface, the author must say `no visual surface` in one line; check that claim is true.
