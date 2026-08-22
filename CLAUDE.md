@@ -256,6 +256,31 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### A raised `testTimeout` does not raise `hookTimeout` — it blocked a push (2026-08-22)
+
+`vitest.config.ts` raised `testTimeout` to 30s (`a214076`) because node-forge RSA-2048 keygen is slow
+under full-suite CPU contention. `hookTimeout` was left at vitest's **10s default**, so a `beforeAll`
+running that *identical* keygen got one third of the budget of a test running it. Three signing hooks
+were patched individually with `}, 60_000)`; the fourth (`incrementalSigner.test.ts:106`) was missed
+and eventually failed a real pre-push run — `Hook timed out in 10000ms` — **blocking the push**.
+
+**It is contention, not a hang, and that is measured**: the failing hook's exact workload (keygen +
+`loadP12`) runs in **242–466ms idle** and **564–2297ms under 8-way CPU saturation** on this machine.
+So the operation was never close to broken; only the budget was. Re-measure rather than citing those
+figures — they are one machine on one day.
+
+**The fix is the config, not a fourth argument** (`hookTimeout: 60_000`, the value the three sibling
+sites independently converged on). Patching the fourth site would have left the next hook someone
+writes on the same 10s cliff. The three explicit `60_000` args are now redundant and deliberately
+kept as local documentation.
+
+**Two things worth carrying forward.** First, this is the global framework's "full-set coverage" trap
+(Phase 6's semantic checklist — it has no section in this file) in its purest form — three of four members fixed one at a time, and the miss surfaced only when the unlucky one hit
+a loaded machine. When a per-site workaround appears three times, the workaround is the bug report:
+fix the origin. Second, `tests/infra/vitestTimeouts.test.ts` asserts the **effective config value**,
+not the file text — a text regex would accept a present-but-too-small `hookTimeout`, which sabotage
+confirmed (5s → the guard goes red on both assertions; absent → red as well).
+
 ### Destroying a node on `pointerup` suppresses the mouse `click` — desktop selection was dead for two months (2026-08-22)
 
 Reported as *"adding text and then trying to edit it on desktop does not work — it works only on
@@ -1549,7 +1574,9 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   `tests/utils/flowDocCjkCyrillic.test.ts` (jsdom writer/reconstruct), `tests/browser/cyrillic-docx.browser.test.ts`
   (real pdf.js extract embedded-font Cyrillic → DOCX).
 - **Test-infra**: jsdom `testTimeout` 5s→30s (`a214076`) — node-forge RSA-2048 keygen tests flaked under
-  full-suite CPU contention; mirrors the browser config (`87180d1`).
+  full-suite CPU contention; mirrors the browser config (`87180d1`). **`hookTimeout: 60_000` was added
+  beside it 2026-08-22** — that bump was applied to tests only, leaving hooks doing the identical keygen
+  on vitest's 10s default; see § "A raised `testTimeout` does not raise `hookTimeout`".
 
 ### OCR (Sprint 4, 2026-06-15; CSP/engine fix 2026-06-15)
 
