@@ -25,15 +25,45 @@ export function isPageSurfaceClick(target: EventTarget | null, canvas: HTMLCanva
 }
 
 /**
- * Route page-surface clicks to the app's canvas-click router.
+ * Did this click land on the grey area AROUND the page — the container's own background?
+ *
+ * That area is not the page surface, so it deliberately gets its own predicate instead of a
+ * looser definition of the one above; but a click there is unambiguously "empty space" and
+ * must deselect, exactly as a click on empty page area does. Measured on the running app:
+ * at fit-to-width the gutter is only 20px, but it grows with every zoom-out step (a 909px
+ * canvas in a 1200px container leaves a 146px gap after five, and it keeps growing), and a
+ * click anywhere in it left the selection untouched while an identical click on the page
+ * cleared it.
+ *
+ * `target === container` and NOT `closest('#canvasContainer')`: every overlay in that
+ * container — `#exportPreviewOverlay`, the ink canvas, the annotation layer — is a
+ * DESCENDANT of it, so `closest` would re-admit precisely what `isPageSurfaceClick` exists
+ * to exclude. An overlay click always has that overlay (or a child) as its target, so a bare
+ * container target can only be the background.
+ */
+export function isEmptyCanvasAreaClick(target: EventTarget | null, container: HTMLElement): boolean {
+  return target === container;
+}
+
+/**
+ * Route clicks on the page, or on the empty area around it, to the app's canvas-click router.
  *
  * Listening on the CONTAINER rather than the canvas is what lets a click on the text layer
- * through; the `isPageSurfaceClick` gate is what stops every other overlay in that
- * container coming with it. Exported for unit testing.
+ * through; the two gates are what stop every overlay in that container coming with them.
+ *
+ * The placement modes (`addText`, `addImage`, `addComment`, `addSignature`, `addCode`) and
+ * the shape modes return early inside `CanvasClickRouter.handleCanvasClick`, so a margin
+ * click can never drop an element out there. `editText` resolves the click to PDF content
+ * coords and finds no text item within tolerance, so it re-shows its hint; `fillBucket`
+ * bounds-tests shapes and ink and matches nothing. Only the `select` branch has an effect,
+ * and that effect is the deselect this exists for.
+ *
+ * Exported for unit testing.
  */
 export function installCanvasClickRouting(app: Pick<PDFTurboApp, 'ui' | 'handleCanvasClick'>): void {
   app.ui.container.addEventListener('click', (e) => {
-    if (!isPageSurfaceClick(e.target, app.ui.canvas)) return;
+    if (!isPageSurfaceClick(e.target, app.ui.canvas) &&
+        !isEmptyCanvasAreaClick(e.target, app.ui.container)) return;
     app.handleCanvasClick(e as MouseEvent);
   });
 }

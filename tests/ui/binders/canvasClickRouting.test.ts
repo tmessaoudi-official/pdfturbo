@@ -21,7 +21,11 @@
  * coordinate maths) for clicks that are not page clicks at all.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { installCanvasClickRouting, isPageSurfaceClick } from '../../../src/ui/binders/navigationBinder';
+import {
+  installCanvasClickRouting,
+  isPageSurfaceClick,
+  isEmptyCanvasAreaClick,
+} from '../../../src/ui/binders/navigationBinder';
 import type { PDFTurboApp } from '../../../src/core/pdfTurboApp';
 
 interface Built {
@@ -99,6 +103,49 @@ describe('isPageSurfaceClick — what counts as a click on the page', () => {
     expect(isPageSurfaceClick(null, canvas)).toBe(false);
     expect(isPageSurfaceClick(document, canvas)).toBe(false);
   });
+
+  it('the container background is NOT the page surface — it is empty space beside it', () => {
+    const { canvas, container } = build();
+    expect(isPageSurfaceClick(container, canvas)).toBe(false);
+  });
+});
+
+/**
+ * The grey area AROUND the page is the container's own background. It is not the page
+ * surface, so it needs its own predicate rather than a looser definition of that one —
+ * but a click there is unambiguously "empty space", and must deselect.
+ *
+ * Measured on the running app: at fit-to-width the gutter is only 20px, but it grows with
+ * every zoom-out step (909px canvas in a 1200px container → a 146px gap after five clicks,
+ * and unbounded below that). Clicking it left the element selected while an identical click
+ * on the page deselected — the same inconsistency the text-layer fix above removed, one
+ * layer further out.
+ *
+ * `target === container` rather than `closest('#canvasContainer')` is load-bearing: every
+ * overlay in that container (`#exportPreviewOverlay`, the ink canvas, the annotation layer)
+ * is a DESCENDANT, so `closest` would re-admit exactly what the gate above exists to
+ * exclude. An overlay click always has that overlay as its target, so the bare container
+ * can only be the background.
+ */
+describe('isEmptyCanvasAreaClick — the grey margin around the page', () => {
+  it('the container background is empty canvas area', () => {
+    const { container } = build();
+    expect(isEmptyCanvasAreaClick(container, container)).toBe(true);
+  });
+
+  it('a DESCENDANT of the container is not — that is what `closest` would wrongly admit', () => {
+    const { container, canvas, textSpan, previewOverlay, element } = build();
+    expect(isEmptyCanvasAreaClick(canvas, container)).toBe(false);
+    expect(isEmptyCanvasAreaClick(textSpan, container)).toBe(false);
+    expect(isEmptyCanvasAreaClick(previewOverlay, container)).toBe(false);
+    expect(isEmptyCanvasAreaClick(element, container)).toBe(false);
+  });
+
+  it('a non-Element target is not empty canvas area', () => {
+    const { container } = build();
+    expect(isEmptyCanvasAreaClick(null, container)).toBe(false);
+    expect(isEmptyCanvasAreaClick(document, container)).toBe(false);
+  });
 });
 
 describe('installCanvasClickRouting — wiring', () => {
@@ -123,6 +170,23 @@ describe('installCanvasClickRouting — wiring', () => {
   it('does NOT route a click on an annotation element', () => {
     const { element, handleCanvasClick } = build();
     click(element);
+    expect(handleCanvasClick).not.toHaveBeenCalled();
+  });
+
+  it('routes a click on the grey margin around the page', () => {
+    const { container, handleCanvasClick } = build();
+    click(container);
+    expect(handleCanvasClick).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The pair that matters: admitting the container background must NOT admit the overlays
+   * that sit inside it. A `closest('#canvasContainer')` implementation passes the case above
+   * and fails this one.
+   */
+  it('admitting the margin does not admit the overlays inside the container', () => {
+    const { previewOverlay, handleCanvasClick } = build();
+    click(previewOverlay);
     expect(handleCanvasClick).not.toHaveBeenCalled();
   });
 });

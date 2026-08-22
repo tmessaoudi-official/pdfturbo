@@ -351,6 +351,42 @@ already `stopPropagation` in `ElementLayerRenderer`, so they never arrive. Guard
 `tests/ui/binders/canvasClickRouting.test.ts` — sabotage-verified (rebinding to the canvas fails
 exactly the text-layer case and nothing else).
 
+**The same gate needed a THIRD branch: the grey area AROUND the page (2026-08-22, same day).**
+Fixing the text layer fixed clicks *on* the page; a click *beside* it still did nothing.
+`.canvas-container` is `padding: 20px` and `#pdfCanvas` is `margin: 0 auto` (`editor.css`), so
+whenever the page is narrower than the viewport there is a band of the container's own
+background next to it. **At fit-to-width that band is only 20px, which is why it reads as
+negligible — but it grows with every zoom-out step: measured 909px canvas in a 1200px container,
+a 146px gap after five clicks, unbounded below that.** So the deselect worked on the page and
+silently failed on what looks like the same empty space.
+
+The fix is a SECOND predicate, `isEmptyCanvasAreaClick`, composed with the first —
+**deliberately not a looser `isPageSurfaceClick`**, because the grey margin is genuinely not the
+page surface and saying so would make the name lie. **`target === container`, never
+`closest('#canvasContainer')`**: every overlay lives INSIDE that container, so `closest` re-admits
+exactly what the gate above exists to exclude. Sabotage-proven — swapping in `closest` fails the
+descendant and overlay cases and nothing else.
+
+Routing the margin through `handleCanvasClick` is safe in every mode, and this was checked rather
+than assumed: the placement modes (`addText`/`addImage`/`addComment`/`addSignature`/`addCode`) and
+the shape modes return early in `CanvasClickRouter`, so **no element can be dropped out there**;
+`editText` maps the click to PDF content coords, finds no item within `TOLERANCE`, and re-shows its
+hint; `fillBucket` bounds-tests shapes and ink (`hitTestShape` has no `Math.abs`, so a negative x
+cannot match). Only the `select` branch does anything.
+
+**Known bound, unmeasured:** on a platform with CLASSIC (space-taking) scrollbars, a click on the
+container's scrollbar would also have `target === container` and would deselect. This Chrome uses
+overlay scrollbars (`offsetWidth - clientWidth === 0`) and `::-webkit-scrollbar` sizing would not
+force one, so it could not be reproduced — it is recorded rather than guessed at, and no guard was
+written for a failure mode with no observed instance. If it ever surfaces, the one-line test is
+`e.offsetX < container.clientWidth`.
+
+Guards: the `isEmptyCanvasAreaClick` + wiring cases in the same jsdom file, and
+`tests/browser/canvas-margin-deselect.browser.test.ts` — the browser one earns its place because
+jsdom picks its own event target, so it assumes what a pointer in the gap hits; only a real layout
+can show the gap exists and that no stretched overlay swallows the click first, which is the exact
+shape of the bug this gate already had once.
+
 ### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
 
 A lockfile-only bump (`^2.7.1` allowed 2.7.4 → **2.8.1**) turned CI red: **13 tests across 6 files**, every
