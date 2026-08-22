@@ -1,6 +1,44 @@
 import type { PDFTurboApp } from '../../core/pdfTurboApp';
 
 /**
+ * Did this click land on the PAGE SURFACE — the rendered page itself, rather than some
+ * chrome floating above it?
+ *
+ * The page surface is the canvas plus pdf.js's text layer. The text layer is a sibling
+ * overlay spanning the whole page, and `TextLayerManager.setPointerEvents` makes it
+ * interactive in SELECT mode so PDF text can be selected and copied — which means that in
+ * exactly the mode where clicking empty page area should DESELECT an annotation, the click
+ * lands on `.textLayer` and never reaches the canvas. pdf.js emits one span per glyph, so
+ * the real target is usually a descendant, hence `closest`.
+ *
+ * Everything else under `#canvasContainer` is deliberately excluded: `#exportPreviewOverlay`
+ * and the annotation layer are children too, and routing their clicks into
+ * `handleCanvasClick` would deselect — and in editText/fillBucket modes run canvas-relative
+ * coordinate maths — for clicks that are not page clicks. Annotation elements stop
+ * propagation themselves (ElementLayerRenderer), so they never arrive here; they are
+ * excluded by construction anyway, since neither branch below matches them.
+ */
+export function isPageSurfaceClick(target: EventTarget | null, canvas: HTMLCanvasElement): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target === canvas) return true;
+  return target.closest('.textLayer') !== null;
+}
+
+/**
+ * Route page-surface clicks to the app's canvas-click router.
+ *
+ * Listening on the CONTAINER rather than the canvas is what lets a click on the text layer
+ * through; the `isPageSurfaceClick` gate is what stops every other overlay in that
+ * container coming with it. Exported for unit testing.
+ */
+export function installCanvasClickRouting(app: Pick<PDFTurboApp, 'ui' | 'handleCanvasClick'>): void {
+  app.ui.container.addEventListener('click', (e) => {
+    if (!isPageSurfaceClick(e.target, app.ui.canvas)) return;
+    app.handleCanvasClick(e as MouseEvent);
+  });
+}
+
+/**
  * Re-fit the page to width on viewport WIDTH changes only (rotation, desktop↔mobile) — the
  * reason the QA-D F2 resize handler exists.
  *
@@ -122,7 +160,7 @@ export function bindNavigationEvents(app: PDFTurboApp): void {
   });
 
   // ── Canvas click + pointer events ────────────────────────────
-  app.ui.canvas.addEventListener('click', (e) => app.handleCanvasClick(e));
+  installCanvasClickRouting(app);
   app.ui.canvas.style.touchAction = 'pan-x pan-y';
   document.addEventListener('pointermove', (e) => {
     app.interactionHandler.handlePointerMove(e);

@@ -299,6 +299,33 @@ no movement must leave the handler idle and must not rebuild the layer, for both
 `tests/browser/element-click-select.browser.test.ts` drives a **real mouse** for the outcome.
 Sabotage-verified: re-committing the drag on pointerdown fails 3 browser + 6 jsdom cases.
 
+### pdf.js's text layer swallowed every click on the page, so nothing ever deselected (2026-08-22)
+
+Found while hunting the click-to-select regression above, and independent of it. The click that
+deselects an annotation was bound to `<canvas id="pdfCanvas">`. But
+`TextLayerManager.setPointerEvents(mode === 'select')` makes pdf.js's `.textLayer` interactive in
+SELECT mode so PDF text can be selected and copied — and that layer is a **sibling overlay covering
+the whole page**. So in exactly the mode where clicking empty page area should deselect, the click
+landed on `.textLayer`, never reached the canvas, and `CanvasClickRouter`'s `selectElement(null)`
+branch was **dead code on any page carrying a text layer**. Escape was the only way to deselect.
+
+**Proven by single-variable experiment on the running app**, which is the technique worth copying
+here: with the layer interactive, a click on empty page area leaves the element selected; setting
+ONLY `document.querySelector('.textLayer').style.pointerEvents = 'none'` — changing nothing else —
+makes the identical click deselect. The behaviour is also **page-type-inconsistent** (a page with no
+text layer deselects fine), which is what marks it an accident rather than a design choice.
+
+**The listener moved to `#canvasContainer`, gated on `isPageSurfaceClick`.** The gate is the whole
+point and must not be dropped for a bare container listener: `#exportPreviewOverlay`, the ink
+canvas and the annotation layer are children of that same container, and routing their clicks into
+`handleCanvasClick` would deselect — and in `editText`/`fillBucket` modes run canvas-relative
+coordinate maths — for clicks that are not page clicks at all. The surface is the canvas plus
+anything inside `.textLayer`; pdf.js emits **one span per glyph**, so the real target is almost
+never the layer node itself and the check has to be `closest`, not `===`. Annotation elements
+already `stopPropagation` in `ElementLayerRenderer`, so they never arrive. Guard:
+`tests/ui/binders/canvasClickRouting.test.ts` — sabotage-verified (rebinding to the canvas fails
+exactly the text-layer case and nothing else).
+
 ### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
 
 A lockfile-only bump (`^2.7.1` allowed 2.7.4 → **2.8.1**) turned CI red: **13 tests across 6 files**, every
