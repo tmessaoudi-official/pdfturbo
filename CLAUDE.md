@@ -256,6 +256,49 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### Destroying a node on `pointerup` suppresses the mouse `click` — desktop selection was dead for two months (2026-08-22)
+
+Reported as *"adding text and then trying to edit it on desktop does not work — it works only on
+mobile"*. It was not a text bug: **no annotation element of any type could be selected with a mouse
+once it was unselected.** Root cause, in two coupled halves both from `c6bd71d` (2026-06-24,
+*"fix(mobile): element drag no longer scrolls the page or lags"*):
+
+1. `startDrag` engaged on the bare `pointerdown` with **no movement threshold** for mouse, so a plain
+   click set `isDragging = true`.
+2. That commit added `if (wasDragging || …) rebuildElementLayer()` to `_finish()`, which runs on
+   `pointerup`. `rebuildElementLayer()` removes and recreates **every** `.pdf-element` node.
+
+So a zero-movement click detached its own `mousedown` target before `mouseup` landed. **A mouse
+`click` is only dispatched when mousedown and mouseup share a live common ancestor**, so Chrome
+dispatched *no click at all* — measured: zero on the element **and** zero on the document.
+`handleElementClick` → `selectElement` never ran.
+
+**Why it looked like a mobile-only success, which is the genuinely non-obvious part: a
+touch-derived click SURVIVES the same node swap.** Isolated in a synthetic page with identical DOM
+mutation — mouse `0` clicks, touch `1` click. Pre-c6bd71d the drag path rebuilt the layer on every
+`pointermove` and `_finish()` rebuilt nothing, so a click with no movement never triggered a rebuild
+and selection worked. **Do not "verify" a pointer regression on touch and conclude the path is
+fine.**
+
+**Fix: the drag is deferred behind `_DRAG_THRESHOLD` for EVERY pointer type** (`_pendingTouchDrag` →
+`_pendingDrag`), which is c6bd71d's own touch pattern generalised. `wasDragging` then *implies* real
+movement, so its `_finish()` rebuild became correct as written and needed no second change. A mouse
+press inside a text control still returns early and is left to the browser — that is what keeps
+caret placement and drag-to-select-text alive. `startDrag` is gone; its `e.preventDefault()` (which
+also suppressed native text selection during a drag) is replaced by `user-select:none` on
+`.pdf-element`, with the inner control opting back in.
+
+**Two traps for whoever reads this next.** First, `git blame` credits c6bd71d with the
+`if (!isSelected) input.style.pointerEvents = 'none'` line in `elementLayerRenderer.ts` — **blame is
+wrong there, the code was only MOVED into `_renderOne`.** That gate is older, so
+click-to-select-then-click-to-focus (two clicks) is the ORIGINAL design; do not "restore" one-click
+editing by adding auto-focus-on-select, and do not delete the gate. Second, this class is invisible
+to jsdom, which does not model the mousedown/mouseup common-ancestor rule — a dispatched `click`
+runs no matter what happened to the node. The jsdom guard therefore pins the *cause* (a press with
+no movement must leave the handler idle and must not rebuild the layer, for both pointer types) and
+`tests/browser/element-click-select.browser.test.ts` drives a **real mouse** for the outcome.
+Sabotage-verified: re-committing the drag on pointerdown fails 3 browser + 6 jsdom cases.
+
 ### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
 
 A lockfile-only bump (`^2.7.1` allowed 2.7.4 → **2.8.1**) turned CI red: **13 tests across 6 files**, every

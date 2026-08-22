@@ -3,7 +3,7 @@ import type { PDFElement } from '../elements/annotationElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import { MoveResizeCmd, RotateElementCmd } from '../core/historyManager';
 
-interface PendingTouchDrag {
+interface PendingDrag {
   element: PDFElement;
   div: HTMLDivElement;
   offsetX: number;
@@ -27,7 +27,7 @@ export class InteractionHandler {
   private startWidth = 0;
   private startHeight = 0;
   private _beforeState: Record<string, unknown> | null = null;
-  private _pendingTouchDrag: PendingTouchDrag | null = null;
+  private _pendingDrag: PendingDrag | null = null;
   private static readonly _DRAG_THRESHOLD = 5;
   private _rotCenterX = 0;
   private _rotCenterY = 0;
@@ -53,29 +53,42 @@ export class InteractionHandler {
   }
 
   handlePointerDown(e: PointerEvent, element: PDFElement, div: HTMLDivElement): void {
-    if ((e.target as HTMLElement).classList.contains('control-btn')) return;
-    if ((e.target as HTMLElement).classList.contains('rotation-handle')) {
-      this.startRotation(e, element, div);
-    } else if ((e.target as HTMLElement).classList.contains('resize-handle')) {
-      this.startResize(e, element);
-    } else if ((e.target as HTMLElement).matches('input, textarea') && e.pointerType === 'touch') {
-      // On touch, defer drag start until movement threshold so tap-to-edit still works
-      const divRect = div.getBoundingClientRect();
-      this._pendingTouchDrag = {
-        element, div,
-        offsetX: e.clientX - divRect.left,
-        offsetY: e.clientY - divRect.top,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        pointerId: e.pointerId
-      };
-    } else if (!(e.target as HTMLElement).matches('input, textarea')) {
-      this.startDrag(e, element, div);
-    }
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('control-btn')) return;
+    // The grips have no click meaning, so they engage immediately — a press on one is
+    // never anything but a resize/rotate.
+    if (target.classList.contains('rotation-handle')) { this.startRotation(e, element, div); return; }
+    if (target.classList.contains('resize-handle')) { this.startResize(e, element); return; }
+    // A MOUSE press inside a text control is left entirely to the browser: that is what
+    // keeps caret placement and drag-to-select-text working inside a focused text box.
+    // (An unselected element's input is `pointer-events:none`, so this only applies once
+    // the element is selected — see ElementLayerRenderer.)
+    if (target.matches('input, textarea') && e.pointerType !== 'touch') return;
+    // Everything else — the element body with any pointer type, and a touch on its text
+    // control — DEFERS the drag until the pointer has actually moved.
+    //
+    // The threshold is load-bearing for more than ergonomics. Engaging a drag on the bare
+    // pointerdown makes `_finish()` run `rebuildElementLayer()` on pointerup, which
+    // destroys the node that received `mousedown`; a mouse `click` is only dispatched when
+    // mousedown and mouseup share a live common ancestor, so the click was suppressed
+    // outright and `handleElementClick` → `selectElement` never ran. An element that was
+    // not already selected could then never be selected or edited with a mouse. Touch was
+    // immune (its click survives the swap), which is exactly why this reached users as
+    // "editing text works on mobile but not on desktop". Guarded by
+    // tests/browser/element-click-select.browser.test.ts.
+    const divRect = div.getBoundingClientRect();
+    this._pendingDrag = {
+      element, div,
+      offsetX: e.clientX - divRect.left,
+      offsetY: e.clientY - divRect.top,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      pointerId: e.pointerId
+    };
   }
 
-  private _commitTouchDrag(e: PointerEvent): void {
-    const p = this._pendingTouchDrag;
+  private _commitDrag(e: PointerEvent): void {
+    const p = this._pendingDrag;
     if (!p) return;
     this.isDragging = true;
     this.currentElement = p.element;
@@ -84,20 +97,8 @@ export class InteractionHandler {
     this.offsetX = p.offsetX;
     this.offsetY = p.offsetY;
     try { p.div.setPointerCapture(p.pointerId); } catch { /* pointer already released */ }
-    this._pendingTouchDrag = null;
+    this._pendingDrag = null;
     this.drag(e);
-  }
-
-  private startDrag(e: PointerEvent, element: PDFElement, div: HTMLDivElement): void {
-    this.isDragging = true;
-    this.currentElement = element;
-    this._activePointerId = e.pointerId;
-    this._beforeState = this._captureState(element);
-    const divRect = div.getBoundingClientRect();
-    this.offsetX = e.clientX - divRect.left;
-    this.offsetY = e.clientY - divRect.top;
-    try { div.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
-    e.preventDefault();
   }
 
   private startResize(e: PointerEvent, element: PDFElement): void {
@@ -126,10 +127,10 @@ export class InteractionHandler {
   }
 
   handlePointerMove(e: PointerEvent): void {
-    if (this._pendingTouchDrag && e.pointerId === this._pendingTouchDrag.pointerId) {
-      const dx = e.clientX - this._pendingTouchDrag.startClientX;
-      const dy = e.clientY - this._pendingTouchDrag.startClientY;
-      if (Math.hypot(dx, dy) > InteractionHandler._DRAG_THRESHOLD) this._commitTouchDrag(e);
+    if (this._pendingDrag && e.pointerId === this._pendingDrag.pointerId) {
+      const dx = e.clientX - this._pendingDrag.startClientX;
+      const dy = e.clientY - this._pendingDrag.startClientY;
+      if (Math.hypot(dx, dy) > InteractionHandler._DRAG_THRESHOLD) this._commitDrag(e);
       return;
     }
     if (e.pointerId !== this._activePointerId) return;
@@ -207,8 +208,8 @@ export class InteractionHandler {
   }
 
   handlePointerUp(e: PointerEvent): void {
-    if (this._pendingTouchDrag && e.pointerId === this._pendingTouchDrag.pointerId) {
-      this._pendingTouchDrag = null;
+    if (this._pendingDrag && e.pointerId === this._pendingDrag.pointerId) {
+      this._pendingDrag = null;
       return;
     }
     if (e.pointerId !== this._activePointerId) return;
@@ -216,8 +217,8 @@ export class InteractionHandler {
   }
 
   handlePointerCancel(e: PointerEvent): void {
-    if (this._pendingTouchDrag && e.pointerId === this._pendingTouchDrag.pointerId) {
-      this._pendingTouchDrag = null;
+    if (this._pendingDrag && e.pointerId === this._pendingDrag.pointerId) {
+      this._pendingDrag = null;
       return;
     }
     if (e.pointerId !== this._activePointerId) return;
