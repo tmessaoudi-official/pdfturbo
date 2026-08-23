@@ -86,3 +86,61 @@ are compared in different coordinate origins.
   five leaks, every fix is test-pinned, and the full deploy gate is green.
 - [2026-08-23 07:55] AGREED: round-1 panel output recovered from agent transcripts rather than re-run; verdict FINDINGS, two-clean counter stays at 0.
 - [2026-08-23 07:55] AGREED: the `zzpanel-probe*` files stay untracked in the tree as the reproducers for the fix round.
+
+## Fix-round work order (written 2026-08-23, pre-compaction — resume from here)
+
+Baseline: `origin/master == 4c8225c`, tree level (`0 0`), only the 3 untracked `zzpanel-probe*` files.
+Fast gate green at that SHA: type-check ✓, lint ✓ (4 pre-existing `no-shadow` warnings), jsdom
+**208 files / 2395 passed + 2 expected-fail**. Full deploy gate NOT run.
+
+### Step 1 — the three live leaks (TDD: red first, for the stated reason)
+
+| # | Fix | Site |
+|---|---|---|
+| P0-1 | filter `pageImages` through the same redaction test the 4 sibling channels use | `exportService.ts` ~:1247-1276 |
+| P0-2 | add the viewBox/CropBox origin offset before comparing rect vs items | `exportService.ts:1245` (`_extractFlowDoc`) |
+| P0-3 | same fix, same reason | `exportService.ts:586` (`_extractPageTableData`) |
+
+P0-2/3 are ONE root cause: `redactionRectToContent` returns coords relative to a `(0,0)` viewport
+origin; pdf.js reports items in full-page space. Same class as the `/Rotate` bug already fixed —
+rect and items compared in different origins. Fix the origin, do not special-case a call site.
+
+Promote `zzpanel-probe{,2,3}.browser.test.ts` into real guards (rename properly) or delete them.
+They must not stay untracked. Each already ships a passing CONTROL — keep that property.
+
+### Step 2 — the two guards that cannot fail
+
+- **P1-2** `redactionLeaks.test.ts:343,351` — fixture's `getViewport` ignores rotation and
+  `convertToViewportPoint` has no rotation term, so naive `el.x * scale` and the shipped mapping are
+  numerically identical at rotation 0. The test named "honours a non-zero CropBox origin" passes
+  against the code it replaced. Fixture must mimic pdf.js's real behaviour (the table fixture 250
+  lines above already does — copy that shape, do not invent one).
+- **P1-3** `exportService.ts:1240` has no test at any non-zero PAGE rotation; reverting it leaves the
+  suite green. `redactionLeaks.test.ts`'s six `(pageRot, userRot)` combos drive `exportTableCsv` only.
+
+Sabotage-verify BOTH: revert each fix, confirm the new guard goes red for the stated reason, restore
+and `cmp` byte-for-byte.
+
+### Step 3 — four doc surfaces that contradict each other
+
+- **P2-5** `tests/browser/blockers-redaction.browser.test.ts:124-128,147` — comment describes a FIXED
+  leak in the present tense; helper uses `getViewport({ scale: 1 })` annotated as "what exportService
+  does", i.e. the removed defective shape left as a template.
+- **P2-6** `KNOWN_ISSUES.md:66` — "with no value changes needed" is false since 3 values changed and
+  11 are pending. CLAUDE.md was amended; the user-facing register was not.
+- **P3-8** `CLAUDE.md:1397` and `:1760` — two `ar [Unverified]` prose markers outside the 11-item count.
+- **P3-9** `README.md:46`, `FEATURES.md:52` — redaction described as rasterisation only; false on a
+  BLANK page, where removal is `dropElementsUnderRedactions` (`exportService.ts:740`).
+
+### Step 4 — certification
+
+Re-run the panel over `dfe34ae..HEAD` (NOT `7859864` — dangles). Three unnamed lenses:
+`export-fidelity-reviewer`, `safety-promises-reviewer`, `completeness-reviewer`. Freeze first: commit,
+then review the commit. MAXIMAL wants two consecutive clean rounds; counter is **0**, and four rounds
+so far have each found real defects — three of them in my own fixes. Budget for that.
+
+### Decisions Log
+
+- [2026-08-23 22:10] AGREED: steps 1–3 land as one commit round; step 4 certifies it. Bucket 5
+  (Arabic native pass ×11, DOCX part GC, disclosed bounds, C9 corpus) stays out of scope — the first
+  is blocked on a human, the rest are deliberate deferrals with reasons already recorded above.
