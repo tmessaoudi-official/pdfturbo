@@ -87,7 +87,12 @@ directive. Limits:
   request unless explicitly asked. Recorded 2026-08-06 after a session was handed a designated-branch
   instruction and had to resolve the conflict from first principles.
 - **NOT authorised**: `--force` / `--force-with-lease` push, rewriting published history,
-  `npm publish`. There is no `deny` list to stop you — the discipline is the control.
+  `npm publish`. **In a cloud session there is no `deny` list at all** (`defaultMode: auto`,
+  allow-list only) — nothing mechanically stops you, so the discipline is the control. **On the
+  developer's local machine** `~/.claude/settings.json` does deny `git push --force`, `-f` and
+  `--mirror` globally, and `ask-bash-firewall.sh` carries the same force patterns. Its blanket
+  `Bash(git push *)` deny had made this section inert locally from the day it was written (the deny
+  dates to 2026-04-24); it was dropped 2026-08-23.
 - Commit only when the deploy gate is green and the change is self-contained; never a broken build.
 - Commit style: `feat:` / `fix:` / `refactor:` / `docs:` / `chore:`, imperative subject.
 - If the safety classifier blocks a `git commit`, present the exact command for manual execution —
