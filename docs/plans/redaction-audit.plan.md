@@ -18,14 +18,41 @@ list, so it can be deleted once they are closed.
 | Every export shipped the **un-redacted page** as an orphan object | `pageHasRedaction` pre-copy filter |
 | The table/flow filter **no-opped at `/Rotate` 90/270** | `getViewport({ scale: 1, rotation: 0 })` |
 
+## New leaks found by the re-run panel (2026-08-23) — NOT yet fixed
+
+Each is pinned by a probe with a **passing control**, run against the source md5s that are shipping
+now (`var/claude/redaction-panel/round1/probes-final.log`; reproducers: untracked
+`tests/browser/zzpanel-probe{,2,3}.browser.test.ts`).
+
+| Leak | Where | Evidence |
+|---|---|---|
+| Source-PDF **images** under a redaction are not filtered — DOCX/MD/TXT embed the whole image | `_extractFlowDoc` image channel (`exportService.ts` ~:1249-1278 → `flowDocWriters`) | probe 1: `images_under_redaction = 1`; completeness P0-1 |
+| Redaction filter **no-ops when the page CropBox origin is non-zero** — DOCX/MD/TXT | `_extractFlowDoc` | probe 2: `SECRETWORD` survives; `viewBox [50,50,350,350]` vs item at `100,300` |
+| Same root cause, CSV/XLSX | `_extractPageTableData` | probe 3: `items = SECRETWORD\|PUBLICWORD` |
+
+On a scan the whole page is one image XObject, so the first row is the canonical redaction case.
+The CropBox rows are the same class as the `/Rotate` bug already fixed: the rect and the text items
+are compared in different coordinate origins.
+
 ## Open
 
-1. **Certification is NOT complete.** Rounds 1–3 each found real defects *in my own fixes*; round 4 was
-   **cut short by a rate limit** with both lenses mid-investigation. The safety lens's last message was
-   *"One more check: the single failure I observed looked exactly like pre-fix behaviour"* — an
-   **unresolved lead**, not a finding. **Re-run the panel (`export-fidelity-reviewer`,
-   `safety-promises-reviewer`, `completeness-reviewer`) over `git diff 7859864..HEAD` before treating
-   this work as converged.** MAXIMAL tier wants two consecutive clean rounds; we have zero.
+1. **Certification is NOT complete — and round 1 of the re-run found TWO LIVE LEAKS.** Rounds 1–3 each
+   found real defects *in my own fixes*; round 4 was **cut short by a rate limit** with both lenses
+   mid-investigation. The re-run round (2026-08-23) was ALSO rate-limited, but its output was recovered
+   from the agent transcripts → `var/claude/redaction-panel/round1/` (`completeness.md` verbatim,
+   `recovery-note.md` for the other two lenses). **Verdict: FINDINGS — see § New leaks below.**
+
+   Round 4's safety-lens lead (*"the single failure I observed looked exactly like pre-fix
+   behaviour"*) is now **RESOLVED**: it was the CropBox-origin leak, confirmed by probes 2 and 3
+   above. Do not re-chase it — fix it. **Re-run the panel (`export-fidelity-reviewer`,
+   `safety-promises-reviewer`, `completeness-reviewer`) after the fix round.** MAXIMAL tier wants two
+   consecutive clean rounds; we have zero.
+
+   **Range for the re-run: `dfe34ae..HEAD`.** Do NOT use `7859864` — it was re-signed into `dfe34ae`
+   and now dangles (this plan used to say `7859864`, which is exactly the defect its own recovered
+   finding P2-4 names). `dfe34ae` has been published since 2026-08-05 and is stable. If it ever
+   dangles too, re-derive by subject rather than hardcoding a new one:
+   `git log --format=%H -1 --grep='hide-vs-remove pins'`.
 2. **DOCX editor: deleting an image leaves its bytes in the `.docx`.** Verified (no part GC anywhere in
    `src/docx`); disclosed in `SECURITY.md`, deliberately not fixed — removing a package part safely means
    proving nothing else references it, and getting that wrong destroys images. Needs its own change.
@@ -57,3 +84,5 @@ list, so it can be deleted once they are closed.
 - [2026-08-05 12:10] AGREED: push the five commits despite incomplete certification. The container is
   reclaimed on inactivity, so holding risks losing the work; the deployed state currently carries all
   five leaks, every fix is test-pinned, and the full deploy gate is green.
+- [2026-08-23 07:55] AGREED: round-1 panel output recovered from agent transcripts rather than re-run; verdict FINDINGS, two-clean counter stays at 0.
+- [2026-08-23 07:55] AGREED: the `zzpanel-probe*` files stay untracked in the tree as the reproducers for the fix round.
