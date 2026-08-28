@@ -15,8 +15,14 @@
  *
  * ── Why the flags are mocked rather than set via env ──────────────────────────────
  * `isEnabled` reads `import.meta.env` and localStorage, neither of which can be changed per-test
- * inside one vitest run. Mocking the seam is the seam's own contract, and the DEFAULT-ON control
- * below runs against the real module so the mock cannot quietly become the only thing under test.
+ * inside one vitest run. Mocking the seam is the seam's own contract.
+ *
+ * Be precise about what the flag-ON cases are: `vi.mock` replaces the module file-wide, so they run
+ * against the MOCK returning true, not against the real `isEnabled`. They are still load-bearing —
+ * they prove the gates are the only thing standing between the data and the output, so a flag-OFF
+ * pass cannot come from crop/Bates being broken for some unrelated reason — but they do not verify
+ * the real seam's default-ON behaviour. `tests/export/cropCropBox.test.ts` and
+ * `tests/export/bates.test.ts` exercise these paths with no mock at all and cover that.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PDFDocument, rgb, degrees, StandardFonts } from '@cantoo/pdf-lib';
