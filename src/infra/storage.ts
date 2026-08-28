@@ -69,26 +69,50 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function saveState(state: SavedState): Promise<void> {
+  let db: IDBDatabase;
   try {
-    const db = await openDB();
+    db = await openDB();
+  } catch {
+    // IDB genuinely unavailable (private browsing, permissions, a blocked upgrade). There is
+    // no persistence to be had in this context, so skipping is correct and stays silent.
+    // NOTE the scope: this arm covers only the OPEN. A failure of the WRITE below is data
+    // loss and MUST reach the caller — conflating the two is what made every lost write look
+    // like a success. `SessionManager._flush` already distinguishes them properly (quota →
+    // `toast.storageFull`, anything else → `silent()`), so the filter that used to live here
+    // was both redundant and the thing that broke the contract.
+    return;
+  }
+  try {
     const stamped: SavedState = { ...state, schemaVersion: SCHEMA_VERSION };
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(stamped, KEY);
+      const req = tx.objectStore(STORE).put(stamped, KEY);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      // Read the REQUEST's error, NOT the transaction's. Per the IndexedDB spec the step that
+      // SETS `transaction.error` is "abort a transaction", and it runs only AFTER this error
+      // event has finished dispatching — so `tx.error` is still `null` right here. Rejecting
+      // with it therefore rejected with `null`, which is not `instanceof DOMException`, so the
+      // old catch-all swallowed every write failure and `saveState` RESOLVED. Pinned by
+      // `tests/core/storageErrors.test.ts`, whose first test asserts that ordering directly.
+      // `onabort` is the backstop for a transaction that aborts with no failed request.
+      tx.onerror = () => reject(req.error ?? tx.error ?? new DOMException('IndexedDB write failed', 'UnknownError'));
+      tx.onabort = () => reject(tx.error ?? req.error ?? new DOMException('IndexedDB write aborted', 'AbortError'));
     });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-      throw err;  // re-throw so caller can notify user
-    }
-    // IDB unavailable (private browsing, permissions) — silently skip
+  } finally {
+    // Every call opened a fresh connection and never closed one, so they accumulated for the
+    // life of the tab and blocked any later `deleteDatabase`/version upgrade indefinitely.
+    db.close();
   }
 }
 
 export async function loadState(): Promise<SavedState | null> {
+  let db: IDBDatabase;
   try {
-    const db = await openDB();
+    db = await openDB();
+  } catch {
+    return null;   // no IDB → nothing to restore
+  }
+  try {
     return await new Promise<SavedState | null>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(KEY);
@@ -96,20 +120,36 @@ export async function loadState(): Promise<SavedState | null> {
       req.onerror = () => reject(req.error);
     });
   } catch {
+    // A failed READ is recoverable in a way a failed write is not: the caller's fallback is
+    // simply "start with an empty session", which is what a null already means here.
     return null;
+  } finally {
+    db.close();
   }
 }
 
 export async function clearState(): Promise<void> {
+  let db: IDBDatabase;
   try {
-    const db = await openDB();
+    db = await openDB();
+  } catch {
+    return;
+  }
+  try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).delete(KEY);
+      const req = tx.objectStore(STORE).delete(KEY);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      // Same wrong-property bug as `saveState` had — `tx.error` is null during this event.
+      // Unlike `saveState` this stays best-effort by design (the caller has no recovery for a
+      // failed cleanup), so the rejection is still swallowed below. It is corrected anyway:
+      // leaving a dead branch here would silently mislead whoever next makes this report.
+      tx.onerror = () => reject(req.error ?? tx.error ?? new DOMException('IndexedDB clear failed', 'UnknownError'));
+      tx.onabort = () => reject(tx.error ?? req.error ?? new DOMException('IndexedDB clear aborted', 'AbortError'));
     });
   } catch {
-    // ignore
+    // best-effort cleanup
+  } finally {
+    db.close();
   }
 }

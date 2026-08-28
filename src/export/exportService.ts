@@ -8,7 +8,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
 import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
-import { redactionRectToContent } from '../utils/geometry';
+import { redactionRectToPageSpace } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
@@ -132,6 +132,37 @@ const IMG_DEFAULTS: Required<ImageExportOptions> = { scale: 2, format: 'png', qu
  * leaving it would leak that part — the same rule `isItemRedacted` applies to source text.
  * Exported for direct testing; the geometry is trivial but the SAFETY depends on it.
  */
+/**
+ * Does a source image XObject placement fall under a redaction, and so have to be kept out of the
+ * flow (DOCX/MD/TXT) export?
+ *
+ * `ctm` is the placement's draw matrix from `walkPageOps`; `redactions` and `pageTopY` must both
+ * come from {@link redactionRectToPageSpace} / the page's `viewBox[3]`, i.e. x in absolute user
+ * space and y measured down from the crop top.
+ *
+ * Exported for direct testing. Trivial geometry, but the SAFETY depends on it — the same reason
+ * {@link dropElementsUnderRedactions} is exported.
+ */
+export function imagePlacementRedacted(
+  ctm: readonly number[],
+  redactions: ReadonlyArray<{ x: number; y: number; width: number; height: number }>,
+  pageTopY: number,
+): boolean {
+  if (redactions.length === 0) return false;
+  const [a, b, c, d, e, f] = ctm;
+  // PDF paints an image XObject through the UNIT SQUARE, so the true footprint is that square
+  // under the CTM. All four corners are transformed rather than reading |a|/|d| as the size:
+  // for a rotated or sheared placement an |a|/|d| box is too SMALL, and under-dropping is the
+  // one direction a leak filter must never err in. Over-approximating is safe here.
+  const xs = [e, a + e, c + e, a + c + e];
+  const ys = [f, b + f, d + f, b + d + f];
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  // y-up user space → y-down from the crop top, matching the redaction rects' convention.
+  const yTop = pageTopY - Math.max(...ys), yBot = pageTopY - Math.min(...ys);
+  return redactions.some(r =>
+    x0 < r.x + r.width && x1 > r.x && yTop < r.y + r.height && yBot > r.y);
+}
+
 export function dropElementsUnderRedactions(pageElements: PDFElement[]): PDFElement[] {
   const reds = pageElements.filter(el => el.type === 'redaction');
   if (reds.length === 0) return pageElements;
@@ -583,17 +614,23 @@ export class ExportService {
     // so on a `/Rotate 90|270` page it returns SWAPPED dims and the filter silently no-ops — measured:
     // the secret still exports and, at some rotations, innocent cells get dropped instead. Mirroring a
     // sibling call site is not verification of it; this convention was checked against the contract.
+    // The `viewBox` term is the SECOND half of this mapping and is just as load-bearing as
+    // `rotation: 0`. pdf.js reports items in ABSOLUTE user space while a redaction rect is
+    // relative to the rendered (crop) box, so on a page with a non-zero CropBox ORIGIN the two
+    // are compared in different frames, nothing matches, and the secret exports into the CSV /
+    // XLSX. Measured on `/CropBox [50 50 350 350]`: `SECRETWORD|PUBLICWORD`. Same class as the
+    // `/Rotate` bug above — see `redactionRectToPageSpace`, which handles both together.
     const vp = page.getViewport({ scale: 1, rotation: 0 });
     const totalRot = (((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360 + 360) % 360;
     const contentRedactions = this._ctx.elements
       .filter(el => el.pageId === docPage.id && el.type === 'redaction')
-      .map(el => redactionRectToContent(
-        { x: el.x, y: el.y, width: el.width, height: el.height }, vp.width, vp.height, totalRot,
+      .map(el => redactionRectToPageSpace(
+        { x: el.x, y: el.y, width: el.width, height: el.height }, vp.viewBox, totalRot,
       ));
 
     const items: TableTextItem[] = (content.items as RawTextItem[])
       .filter(it => typeof it.str === 'string' && it.str.trim().length > 0 && Array.isArray(it.transform))
-      .filter(it => !contentRedactions.some(r => isItemRedacted(it, r, vp.height)))
+      .filter(it => !contentRedactions.some(r => isItemRedacted(it, r, vp.viewBox[3])))
       .map(it => ({ x: it.transform[4], y: it.transform[5], text: it.str, width: it.width }));
     return { hRules: ops.rules, vRules: ops.vRules, items };
   }
@@ -1243,6 +1280,13 @@ export class ExportService {
       // filter mis-maps and redacted source text leaked into DOCX/MD/TXT. CORE-P0-1's comment claimed
       // rotated pages were covered; it had only fixed 0/180, where the error cancels.
       const vp = page.getViewport({ scale: 1, rotation: 0 });
+      // Redaction rects mapped ONCE into the frame pdf.js reports both text items and image
+      // placements in (absolute x, y measured down from the crop top). The image channel below
+      // is filtered with these; `reconstructPage` is handed `vp.viewBox` and derives the same
+      // thing for the text channels, so all three agree by construction.
+      const pageSpaceRedactions = redactions.map(
+        r => redactionRectToPageSpace(r, vp.viewBox, totalRot),
+      );
       let colorMap = new Map<string, string>();
       let pageRules: RuleRect[] = [];
       let pageVRules: RuleRect[] = [];
@@ -1268,13 +1312,27 @@ export class ExportService {
             await page.render({ canvas: renderCanvas, canvasContext: renderCtx, viewport: vp }).promise;
           }
           for (const placement of ops.images) {
+            // REDACTION LEAK FIX: the four TEXT channels were filtered and this one was not, so
+            // a redaction over a picture removed the words on top of it while the picture itself
+            // was embedded whole in the DOCX/MD/TXT export. On a SCANNED page that is the entire
+            // page as one image XObject, which is the canonical redaction case — the tool's core
+            // promise, inverted. Measured: `images_under_redaction = 1`.
+            // Dropping the whole image is deliberate and matches the blank-page precedent: for a
+            // leak filter, over-approximating is the only safe direction. The cost is real and is
+            // disclosed in SECURITY.md — one redaction anywhere on a scan removes that scan from
+            // these exports. Burning the box into the bitmap (as the OCR path already does) is the
+            // follow-up that would let the rest of the scan survive.
+            if (imagePlacementRedacted(placement.ctm, pageSpaceRedactions, vp.viewBox[3])) continue;
             const img = this._rasterizeImagePlacement(page, placement, vp.height);
             if (img) pageImages.push(img);
           }
         }
       }
 
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined, useStruct ? { tree: structTree, markedItems } : undefined);
+      // `vp.viewBox` is the last argument and it is load-bearing: without it `reconstructPage`
+      // assumes a CropBox origin of (0,0) and the redaction filter silently no-ops on any page
+      // that has one. Pinned by tests/browser/redaction-crop-origin.browser.test.ts.
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined, useStruct ? { tree: structTree, markedItems } : undefined, vp.viewBox);
       if (pageImages.length > 0) flowPage.images = pageImages;
       // Interleave typed overlay text into the source paragraphs by reading order
       // (G12) instead of appending it at the end. The overlay paragraphs get a PDF

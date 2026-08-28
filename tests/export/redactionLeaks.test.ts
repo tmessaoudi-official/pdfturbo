@@ -82,9 +82,15 @@ function buildCtx(
 /**
  * A fake pdf.js page carrying `tableItems()` and no vector rules (so the borderless path runs).
  *
- * `getViewport` MIMICS pdf.js faithfully on the one behaviour that broke the fix: `rotation` defaults to
- * the page's own `/Rotate`, and a 90/270 rotation SWAPS width and height. A stub that always returned
- * WxH would make the rotation tests below pass while the production bug remained.
+ * `getViewport` MIMICS pdf.js faithfully on the two behaviours the filter depends on:
+ *   1. `rotation` defaults to the page's own `/Rotate`, and a 90/270 rotation SWAPS width and height.
+ *      A stub that always returned WxH would make the rotation tests below pass while the production
+ *      bug remained.
+ *   2. `viewBox` — the page's CropBox — is present and, unlike width/height, is NOT affected by
+ *      rotation. Omitting it (as this fake did until 2026-08-28) makes the fake diverge from pdf.js
+ *      in a way that only shows up once production reads the field, which is what the CropBox-origin
+ *      fix does. `[0, 0, W, H]` is the origin-zero case these tests are about; the non-zero origin is
+ *      covered end-to-end against REAL pdf.js in tests/browser/redaction-crop-origin.browser.test.ts.
  */
 function fakeSource(pageRot = 0): unknown {
   return {
@@ -94,7 +100,8 @@ function fakeSource(pageRot = 0): unknown {
         rotate: pageRot,
         getViewport: ({ rotation }: { scale: number; rotation?: number } = { scale: 1 }) => {
           const r = ((rotation ?? pageRot) % 360 + 360) % 360;
-          return r % 180 === 90 ? { width: H, height: W } : { width: W, height: H };
+          const viewBox = [0, 0, W, H];   // CropBox: rotation-invariant, exactly as pdf.js reports it
+          return r % 180 === 90 ? { width: H, height: W, viewBox } : { width: W, height: H, viewBox };
         },
         getTextContent: () => Promise.resolve({ items: tableItems() }),
         getOperatorList: () => Promise.resolve({ fnArray: [], argsArray: [] }),

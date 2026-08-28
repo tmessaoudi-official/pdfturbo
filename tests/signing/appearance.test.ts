@@ -62,9 +62,17 @@ describe('validatePageIndex', () => {
   });
 
   it('carries the INVALID_PAGE code', () => {
+    // `expect.assertions` is load-bearing here, not ceremony. With the only assertion inside a
+    // catch, a `validatePageIndex` that stopped throwing would run ZERO assertions and this test
+    // would still pass — confirmed by mutation: disabling the range check left this case GREEN
+    // while its sibling `rejects out-of-range / non-integer indices` went red. This was the only
+    // test in the suite with that shape (checked by walking every `it` body for one whose every
+    // `expect` sits inside a catch).
+    expect.assertions(2);
     try {
       validatePageIndex(99, 1);
     } catch (e) {
+      expect(e).toBeInstanceOf(SignError);
       expect((e as SignError).code).toBe('INVALID_PAGE');
     }
   });

@@ -73,8 +73,26 @@ through that path, and until 2026-08-05 each handed the redacted text back:
 - **On a rotated page**, the filter that was supposed to protect the Word/Markdown export did nothing at
   90° and 270°, so redacted text leaked there — despite a code comment claiming rotation was handled.
 
-All of those now remove the content, at every rotation. Two limits are worth stating rather than leaving
-you to discover them:
+Two more of the same shape were found and fixed on 2026-08-28:
+
+- **Pictures were never filtered at all.** A redaction over an image removed the *words* on top of it
+  while the image itself was embedded whole in the Word / Markdown / text export. On a **scanned** page
+  that image is the entire page, which is the case redaction exists for — so the tool's core promise was
+  inverted exactly where it mattered most.
+- **A page with a non-zero CropBox origin defeated the filter completely.** PDF pages can declare a
+  visible area that does not start at the origin (common in print-ready and cropped files). On such a
+  page the redaction box and the page's text were compared in two different coordinate frames, nothing
+  matched, and the redacted text went straight into the Word, Markdown, text, CSV and Excel exports.
+  Nothing about the document looked unusual, and every other export path was unaffected.
+
+All of those now remove the content, at every rotation and at any CropBox origin. Three limits are worth
+stating rather than leaving you to discover them:
+
+- **A redacted picture is dropped whole.** There is no way to remove part of an embedded image from
+  these text-oriented exports, so the whole picture is left out. The practical consequence: on a scanned
+  document, *one* redaction anywhere on the page removes that page's scan from the Word / Markdown / text
+  export. The PDF export is unaffected — it rasterises, so it keeps the page with the box burned in. Use
+  that one if you need the rest of the scan.
 
 - **Dropping is blunt by design.** An element only *partly* under the box is removed entirely, because
   leaving it would leak the covered part. An element you deliberately placed *on top of* a redaction is

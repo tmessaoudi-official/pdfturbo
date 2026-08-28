@@ -49,7 +49,10 @@ _Last updated: 2026-06-26 · Version 1.0.0_
   than concealing it: it stops being an editable field and becomes selectable page text
 
 ## Redaction & privacy
-- **True redaction** — permanent black-box burn via page rasterization (text becomes unextractable)
+- **True redaction** — permanent black-box burn. Removal is real on both page kinds, by two different
+  means: a source-PDF page is rasterized (its text becomes unextractable), while a **blank** page has
+  nothing to rasterize, so the covered annotations are omitted from the export instead. The bounds of
+  each — notably that the blank-page omission is whole-element — are graded in `SECURITY.md`
 - **Sanitize** — strip metadata (`/Info`, XMP), document JavaScript (`/OpenAction`, `/AA`), embedded files.
   It does **not** alter page content
 - **Lock PDF** — AES-256 password encryption on export

@@ -221,7 +221,8 @@
     "drawErase": "⌫ ERASE",
     "editText": "✎ EDIT TEXT",
     "addCode": "⊡ CODE",
-    "fillBucket": "🪣 FILL"
+    "fillBucket": "🪣 FILL",
+    "signRect": "🔏 SIGN AREA"
   },
   "modal": {
     "close": "Close",

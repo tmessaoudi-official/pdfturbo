@@ -261,6 +261,108 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### The redaction filter compared two coordinate frames — a non-zero CropBox origin defeated it, and images were never filtered at all (2026-08-28)
+
+Three live leaks, each reproduced against shipping code with a passing control before any fix.
+
+**1. The CropBox origin.** pdf.js reports text items in **absolute** PDF user space
+(`item.transform[4]/[5]`); a redaction element's rect is relative to the **rendered** page box, i.e.
+the CropBox. They differ by exactly `(viewBox[0], viewBox[1])`, which is `(0,0)` on almost every
+page — so the two frames coincide, every fixture agrees, and the mismatch is invisible. Measured on
+`/CropBox [50 50 350 350]` with the secret at absolute `100,300`: the flow model returned the
+secret's paragraph verbatim and `_extractPageTableData` returned `SECRETWORD|PUBLICWORD`.
+
+**The inventory is the lesson.** The repo already knew about this: `pdfElementRenderer`
+(`cropOriginX/Y`) and the OCR burn (`unrot.viewBox[0]/[1]`) both add the origin, and the OCR one
+even carries a comment naming the renderer as its precedent. **Both paths that BAKE pixels handled
+it; both paths that EXTRACT text did not.** A concern known and solved in half the places it applies
+is the repo's recurring shape — same as the `/Rotate` leak, same as the three-of-four `hookTimeout`.
+`grep -rn "cropOrigin\|viewBox\[0\]" src/` is the one-line check.
+
+**Fixed at the origin, not per call site:** `redactionRectToPageSpace` (geometry.ts) maps a display
+rect into the items' frame, handling rotation and origin together; `isItemRedacted`'s third argument
+is now `pageTopY` (`= viewBox[3]`), not `pageHeight` — those two numbers are equal only when the
+origin is zero, which is why passing the height was right until it wasn't. `reconstructPage` takes an
+optional trailing `viewBox`, defaulting to `[0,0,pageWidth,pageHeight]` so every existing caller and
+all 58 call sites are byte-identical.
+
+**A useful side effect, verified rather than assumed: the redaction filter is now structurally
+independent of `getViewport`'s `rotation: 0`.** `viewBox` is rotation-invariant (only `width`/
+`height` swap), so the filter no longer reads either. Mutating `{scale:1,rotation:0}` → `{scale:1}`
+leaves the new guard 27/27 green. Note the honest negative that goes with it: **that mutation did not
+produce a leak on the PRE-fix code either** — at 90° the wrong un-rotation dims and the wrong flip
+base cancel for this geometry (14 failed either way, square or non-square crop). So do not record it
+as "the rotation guard was vacuous and is now closed"; record it as "that argument is no longer
+load-bearing for redaction" (it still is for layout dims — margins, column detection).
+
+**2. Source IMAGES under a redaction were never filtered.** Four text channels were filtered and the
+image channel was not, so a redaction over a picture removed the words on top and embedded the
+picture whole. On a scan the whole page is one image XObject — the canonical redaction case, exactly
+inverted. `imagePlacementRedacted` (exportService) now tests the placement, computing the footprint
+from **all four corners of the unit square under the CTM**, not `|a|`/`|d|`: for a rotated placement
+the `|a|/|d|` box is too SMALL, and under-dropping is the one direction a leak filter must never err
+in. Drop-whole is deliberate and disclosed in `SECURITY.md` — one redaction now removes a scan from
+these exports; burning the box into the bitmap (as the OCR path already does) is the follow-up.
+
+**3. A square fixture cannot detect a dimension swap.** The first version of the guard used a 300×300
+crop box. Sabotage found it: the rotation mutation changed nothing. Made it 300×240. The origin was
+already asymmetric `(30,70)` for the same reason on the other axis — **apply that rule to BOTH axes,
+and to the page box as well as the origin.**
+
+Guards: `tests/browser/redaction-crop-origin.browser.test.ts` (27 — origin × 6 rotations × flow and
+table, plus the image channel, plus a contract pin asserting pdf.js still reports absolute
+coordinates so a future upgrade says so in one line) and `tests/utils/redactionPageSpace.test.ts` (12
+pure, including an identity check against the mapping it replaced at every rotation). Sabotage-
+verified: dropping the `viewBox` argument fails exactly the 6 flow rows, reverting the table path
+exactly the 6 table rows, removing the image guard exactly the 2 image rows.
+
+### `saveState` read the wrong error property, so every failed autosave looked like a success (2026-08-28)
+
+`tx.onerror = () => reject(tx.error)`. Per the IndexedDB spec the step that *sets*
+`transaction.error` is "abort a transaction", and it runs only **after** the request's error event
+finishes dispatching — so inside `tx.onerror` the transaction has not aborted and `tx.error` is
+`null`, while the failure sits on `request.error`. Measured against a real IDB implementation:
+`{txErrorInOnError: 'NULL', reqErrorInOnError: 'ConstraintError', txErrorInOnAbort: 'ConstraintError'}`.
+
+The consequence was total, not degraded. `saveState`'s catch re-threw only
+`err instanceof DOMException && err.name === 'QuotaExceededError'`, and `null instanceof DOMException`
+is `false` — so **every** write failure took the silent-skip arm, `saveState` RESOLVED, and
+`toast.storageFull` was unreachable code. The user keeps editing a document that has silently stopped
+being persisted and loses it on reload.
+
+**The root cause was scope, not just the property.** `SessionManager._flush` already handles both
+cases correctly (quota → toast, anything else → `silent()`), so the filter inside `saveState` was
+redundant *and* was the thing that broke the contract. The swallow is now scoped to what its own
+comment says it is for — the **open** failing (private browsing, permissions) — and any failure of
+the **write** propagates.
+
+`tests/core/sessionManager.test.ts` could not catch this: it `vi.mock`s `saveState` wholesale and
+rejects with a hand-built DOMException, so both sides are green while the seam between them is
+broken. **A test that mocks the collaborator it depends on proves nothing about the seam.**
+
+Two more things came out of the same file. `clearState` had the identical wiring (fixed; its swallow
+is deliberate, so there is no behavioural test to write — the dead branch was corrected so the next
+person to make it report errors does not inherit it). And `openDB` **never closed its connection**:
+every call opened a fresh one, so they accumulated for the life of the tab and blocked any later
+`deleteDatabase`/version upgrade indefinitely. That is why the storage suite used to take 37s and now
+takes 3s. Guard: `tests/core/storageErrors.test.ts`, whose deadline helper exists because the leak's
+natural failure mode is a **hang** — an opaque 30s vitest timeout that reads as "slow test". It now
+fails in 5s saying `saveState() never settled — a leaked IndexedDB connection is blocking it`.
+
+### `Record<string, …>` on a mode map defeats the compiler — the badge said "SELECT" in sign mode (2026-08-28)
+
+`uiController`'s `badgeKeys` covered 16 of `ToolMode`'s 17 members; `signRect` was missing from the
+map **and** from `badge.*` in all three locales. With its `?? 'badge.select'` fallback, entering the
+e-signature rectangle mode rendered the badge as **"SELECT"** while `.active` was toggled on — wrong
+in a way nobody reports, because it looks like a real state rather than a missing string.
+
+Fixed in three parts, and the third is the point: the map is `Record<ToolMode, string>` so the
+compiler refuses a new mode that forgets its badge; the fallback is **deleted**, because a fallback
+re-opens exactly this gap by turning a missing entry into a wrong label instead of a build failure;
+and `ToolMode` is now derived from a runtime `TOOL_MODES` array (`typeof TOOL_MODES[number]` — the
+type is unchanged) so a test can assert the half TypeScript cannot see, namely that the locale files
+carry a string for every mode. Guard: `tests/ui/modeBadgeCoverage.test.ts`, both directions.
+
 ### A raised `testTimeout` does not raise `hookTimeout` — it blocked a push (2026-08-22)
 
 `vitest.config.ts` raised `testTimeout` to 30s (`a214076`) because node-forge RSA-2048 keygen is slow
@@ -852,7 +954,7 @@ file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserti
 XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
-`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **11 values pending as of
+`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **12 values pending as of
 2026-08-05**, these 8 plus the 3 re-worded in § The hide-vs-remove audit; that § is the count's home, so
 update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
@@ -1399,7 +1501,9 @@ sub −0.15×fontSize); (6) the popover super/sub buttons **toggle** — re-clic
 (`formattingBinder` → `app.setAlign`) + 4 popover rows wired in `textOptionsPopover.ts` (outline **width** (no
 color — uses fill), letter-spacing, width%, x²/x₂); `uiController.updateFormattingToolbar` toggles `btn-active-fmt` + reflects values;
 i18n `formatting.{justify,stroke,charSpacing,horizontalScale,baseline,superscript,subscript}` in en/fr/ar (ar
-[Unverified]). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
+status UNRECONCILED — see § i18n; these predate the 2026-07-30 sign-off and carried the marker at that
+date, so they were probably in the 31 reviewed and this marker is merely stale, but the repo cannot
+prove it either way). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
 (attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path NOW applies stroke/Tc/Tz
 too (Feature 4, 2026-06-24 — see below); the **raster export path** (`exportPipeline.ts`, redaction pages +
 thumbnails) applies these attrs through the same `renderText` and its rasterize round-trip is pixel-guarded
@@ -1762,7 +1866,10 @@ two DISTINCT certs (each sig verifies against its own embedded cert), triple-sig
 append-only prefix preserved), multi-page. `beforeAll` gets 60s (two RSA-2048 keygens; hookTimeout ≠ the 30s
 testTimeout). Classic-xref + ASCII-object only remains the documented input contract. **Approval model B (D1/D2) stays the default**
 for the no-backend tool; D3 is now an opt-in productionisation candidate. Editable free-text caption date = v1b.
-**Arabic `mentionDefault`/labels are [Unverified]** — need native review.
+**Arabic `modal.signers.mentionDefault`/labels: status UNRECONCILED** — see § i18n. The key exists with
+an Arabic value (`locales/ar.json:440`) and predates the 2026-07-30 sign-off, so this marker is probably
+just stale; the repo cannot prove it. Note the prose said `mentionDefault` for two years — the actual key
+is `modal.signers.mentionDefault`, which is why a grep for the short name finds only `signersPanel.ts`.
 
 ### Per-page crop (#G23)
 
@@ -2082,7 +2189,7 @@ this class twice over.
    live: overlay present → absent). Worth knowing because it reads exactly like a broken undo.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (**ar [Unverified]** — needs a
-native pass, alongside `toolbar.exportXlsxTitle` and the 3 re-worded crop/redaction strings — 11 pending
+native pass, alongside `toolbar.exportXlsxTitle`, `badge.signRect` and the 3 re-worded crop/redaction strings — 12 pending
 in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToContentCrop.test.ts` (7 pure —

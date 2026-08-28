@@ -221,7 +221,8 @@
     "drawErase": "⌫ محو",
     "editText": "✎ تحرير",
     "addCode": "⊡ رمز",
-    "fillBucket": "🪣 تعبئة"
+    "fillBucket": "🪣 تعبئة",
+    "signRect": "🔏 منطقة التوقيع"
   },
   "modal": {
     "close": "إغلاق",

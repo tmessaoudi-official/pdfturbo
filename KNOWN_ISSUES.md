@@ -9,7 +9,7 @@ The items below are **not defects and not on a fix list** — they are the hones
 client-side editor. Each notes the "escape hatch" that *would* lift it and the trade-off of taking
 it, so the limit is understood rather than mistaken for a bug.
 
-_Last updated: 2026-08-05._
+_Last updated: 2026-08-28._
 
 ---
 
@@ -63,9 +63,14 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
-- **Arabic locale strings** — DONE (2026-07-30): all 31 previously-unverified keys reviewed and
-  validated by a native speaker, with no value changes needed. **RTL rendering was not part of that
-  review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
+- **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a
+  native speaker, and that pass changed no value. **That sign-off is no longer blanket.** Twelve
+  values have been added or re-worded since and are pending a native pass: `toolbar.exportXlsxTitle`,
+  `badge.signRect` (added 2026-08-28 — the mode badge had no string for the e-sign rectangle mode),
+  the six `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, and the three re-worded on
+  2026-08-05 to match the hide-vs-remove grades (`toolbar.cropTitle`, `toast.modeHint.crop`,
+  `toast.redactionPlaced` — single-verb substitutions, the first changes to a reviewed Arabic value
+  since the sign-off). **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
 - Crop: numeric per-edge **margins** SHIPPED 2026-08-04 (converted per page); resizable **handles**
   SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). Aspect-ratio-aware

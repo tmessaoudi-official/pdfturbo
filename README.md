@@ -43,7 +43,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Signature pad** — draw a signature on a canvas, then place it anywhere
 - **Image overlay** — insert PNG/JPEG/WebP images
 - **Comment / sticky note** — place resizable sticky notes
-- **Redaction** — permanent black-box redaction via full page rasterization (text unextractable)
+- **Redaction** — permanent black-box redaction; the covered text is genuinely removed, not hidden. On a page from a source PDF this works by rasterizing that page, so the text becomes unextractable; on a **blank** page there is nothing to rasterize, so the covered annotations are instead not written to the export at all. Both paths remove; they remove by different means, and the bounds of each are graded in [SECURITY.md](SECURITY.md)
 - **OCR** — recognise text in scanned/image PDFs (tesseract.js, 8 languages incl. Arabic); insert as editable text, or add an invisible searchable text layer
 - **Digital signature (e-Sign)** — visible PKCS#12/CMS signature (node-forge); upload a `.p12` or generate a self-signed certificate in-browser
 - **Lock PDF** — AES-256 password encryption on export

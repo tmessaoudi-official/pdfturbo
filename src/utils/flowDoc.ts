@@ -12,7 +12,7 @@
  * (DOCX / Markdown / TXT — see flowDocWriters.ts).
  */
 
-import { redactionRectToContent } from './geometry';
+import { redactionRectToPageSpace } from './geometry';
 import { buildTableGrid, clusterPositions, type TableGrid, type TableTextItem } from './tableExtract';
 import { visualToLogical } from './bidi';
 
@@ -304,15 +304,25 @@ export interface RedactionRect {
  * Any intersection (not full containment) redacts the item — partial overlap of a
  * word still means part of it sits under the box, so it must not leak.
  */
-export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageHeight: number): boolean {
+/**
+ * Does a text item's glyph box intersect a redaction rect?
+ *
+ * BOTH arguments must be expressed in the SAME frame, and that frame is the one
+ * {@link redactionRectToPageSpace} produces: `red.x` in ABSOLUTE user space, `red.y` measured
+ * DOWN from the crop box's top edge. `pageTopY` is the y-up user-space coordinate of that top
+ * edge — i.e. `viewBox[3]`. On a `/CropBox [0 0 w h]` page that equals the page height, which is
+ * why passing the height was correct right up until a page with a non-zero CropBox origin
+ * appeared, and then silently matched nothing.
+ */
+export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: number): boolean {
   const size = Math.hypot(item.transform[0], item.transform[1]) || Math.abs(item.height) || 12;
   const x0 = item.transform[4];
   const x1 = x0 + Math.abs(item.width);
   // Baseline in y-up PDF space; glyph box spans roughly [baseline, baseline+size].
   const baseline = item.transform[5];
   // Convert to top-origin (y-down) space: topY is the box top, botY the box bottom.
-  const topY = pageHeight - (baseline + size);
-  const botY = pageHeight - baseline;
+  const topY = pageTopY - (baseline + size);
+  const botY = pageTopY - baseline;
   const redLeft = red.x;
   const redRight = red.x + red.width;
   const redTop = red.y;
@@ -1204,7 +1214,7 @@ function _structItemsToWords(
   ids: string[],
   mcMap: Map<string, RawTextItem[]>,
   redactions: RedactionRect[] | undefined,
-  pageHeight: number,
+  pageTopY: number,
 ): Word[] {
   const words: Word[] = [];
   for (const id of ids) {
@@ -1212,7 +1222,7 @@ function _structItemsToWords(
     if (!arr) continue;
     for (const it of arr) {
       if (!it.str || !it.str.trim()) continue;
-      if (redactions?.length && redactions.some(r => isItemRedacted(it, r, pageHeight))) continue;
+      if (redactions?.length && redactions.some(r => isItemRedacted(it, r, pageTopY))) continue;
       const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
       words.push({
         text: foldLatinLigatures(it.str),
@@ -1232,9 +1242,9 @@ function _structBlockParagraph(
   heading: FlowParagraph['heading'],
   listCtx: { depth: number } | null,
   redactions: RedactionRect[] | undefined,
-  pageHeight: number,
+  pageTopY: number,
 ): FlowParagraph | null {
-  const words = _structItemsToWords(ids, mcMap, redactions, pageHeight);
+  const words = _structItemsToWords(ids, mcMap, redactions, pageTopY);
   if (!words.length) return null;
   const lines = clusterWordsIntoLines(words);
   const runs = buildRunsFromLines(lines, fonts);
@@ -1274,12 +1284,12 @@ function _structTable(
   mcMap: Map<string, RawTextItem[]>,
   fonts: FontInfoMap,
   redactions: RedactionRect[] | undefined,
-  pageHeight: number,
+  pageTopY: number,
 ): FlowTable | null {
   const rows: string[][] = [];
   let topY = -Infinity;
   const cellText = (cell: StructTreeNodeLike): string => {
-    const words = _structItemsToWords(_collectLeafIds(cell, _STRUCT_CELL_STOP), mcMap, redactions, pageHeight);
+    const words = _structItemsToWords(_collectLeafIds(cell, _STRUCT_CELL_STOP), mcMap, redactions, pageTopY);
     for (const w of words) topY = Math.max(topY, w.y);
     if (!words.length) return '';
     return buildRunsFromLines(clusterWordsIntoLines(words), fonts).map(r => r.text).join('').trim();
@@ -1332,7 +1342,7 @@ export function structTreeToFlow(
   mcMap: Map<string, RawTextItem[]>,
   fonts: FontInfoMap,
   pageWidth: number,
-  pageHeight: number,
+  pageTopY: number,
   redactions?: RedactionRect[],
 ): { paragraphs: FlowParagraph[]; tables: FlowTable[] } | null {
   if (!tree) return null;
@@ -1341,7 +1351,7 @@ export function structTreeToFlow(
 
   const pushPara = (node: StructTreeNodeLike, heading: FlowParagraph['heading'], listCtx: { depth: number } | null) => {
     const p = _structBlockParagraph(
-      _collectLeafIds(node, _STRUCT_BLOCK_STOP), mcMap, fonts, heading, listCtx, redactions, pageHeight,
+      _collectLeafIds(node, _STRUCT_BLOCK_STOP), mcMap, fonts, heading, listCtx, redactions, pageTopY,
     );
     if (p) paragraphs.push(p);
   };
@@ -1366,7 +1376,7 @@ export function structTreeToFlow(
       return;
     }
     if (role === 'TABLE') {
-      const t = _structTable(node, mcMap, fonts, redactions, pageHeight);
+      const t = _structTable(node, mcMap, fonts, redactions, pageTopY);
       if (t) tables.push(t);
       return;
     }
@@ -1468,18 +1478,27 @@ export function reconstructPage(
   // B1: when the page is tagged, `struct.tree` + the marked-content item stream
   // drive an exact-replace flow (correct reading order + tag structure); a tree
   // that resolves no text falls through to the heuristic path below.
-  struct?: { tree: StructTreeNodeLike | null; markedItems: ReadonlyArray<RawTextItem | MarkedContentMarker> }
+  struct?: { tree: StructTreeNodeLike | null; markedItems: ReadonlyArray<RawTextItem | MarkedContentMarker> },
+  /**
+   * The page's pdf.js `viewBox` (CropBox) `[x0, y0, x1, y1]` at rotation 0. Needed because text
+   * items are reported in ABSOLUTE user space while redaction rects are relative to the rendered
+   * (crop) box — see {@link redactionRectToPageSpace}. Omitting it assumes an origin of (0,0),
+   * which is what every caller effectively did before and is correct for almost every page.
+   */
+  viewBox?: readonly number[],
 ): FlowPage {
-  // Redaction rects arrive in editor DISPLAYED space; text items are reported in
-  // UNROTATED content space. Un-rotate the rects once so the intersection test in
-  // isItemRedacted compares like-for-like (identity at rotation 0). CORE-P0-1.
+  // Redaction rects arrive in editor DISPLAYED space; text items are reported in ABSOLUTE user
+  // space. One mapping brings the rects into the items' frame, handling BOTH the rotation
+  // (CORE-P0-1) and the CropBox origin. The default below is exactly the old behaviour.
+  const vb = viewBox ?? [0, 0, pageWidth, pageHeight];
+  const pageTopY = vb[3];
   const contentRedactions = redactions?.length
-    ? redactions.map(r => redactionRectToContent(r, pageWidth, pageHeight, pageRotation))
+    ? redactions.map(r => redactionRectToPageSpace(r, vb, pageRotation))
     : undefined;
   const words: Word[] = [];
   for (const it of items) {
     if (!it.str || !it.str.trim()) continue;
-    if (contentRedactions?.length && contentRedactions.some(r => isItemRedacted(it, r, pageHeight))) continue;
+    if (contentRedactions?.length && contentRedactions.some(r => isItemRedacted(it, r, pageTopY))) continue;
     const size = Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12;
     const x = it.transform[4];
     const y = it.transform[5];
@@ -1518,7 +1537,7 @@ export function reconstructPage(
   // un-rotated contentRedactions the heuristic path uses.
   if (struct?.tree) {
     const flow = structTreeToFlow(
-      struct.tree, buildMarkedContentMap(struct.markedItems), fonts, pageWidth, pageHeight, contentRedactions,
+      struct.tree, buildMarkedContentMap(struct.markedItems), fonts, pageWidth, pageTopY, contentRedactions,
     );
     if (flow) {
       const taggedPage: FlowPage = { width: pageWidth, height: pageHeight, paragraphs: flow.paragraphs, tagged: true };

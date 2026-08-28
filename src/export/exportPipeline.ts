@@ -17,6 +17,7 @@ import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
 import type { PdfLibOps, PdfLibDrawOps } from '../utils/pdfLibTypes';
 import { batesStampText, batesPosition, type BatesSettings } from './batesStamp';
+import { isEnabled } from '../config/features';
 
 // ── Shared context for page overlay assembly ─────────────────────────────────
 
@@ -204,7 +205,15 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   // SOURCE-box coordinates (the CropBox clips them); the watermark + Bates use the cropped
   // "effective box" so they tile/anchor inside the crop. No crop → effBox === cropBox, so the
   // export is byte-identical to the pre-crop path.
-  const effBox = docPage.crop ? contentCropToPdfCropBox(docPage.crop, cropBox) : cropBox;
+  // #28 kill switch, honoured on the EXPORT path and not only in the UI. `main.ts` removes the
+  // buttons when a flag is off, but crop and Bates state PERSISTS to IndexedDB and is restored on
+  // load — so without these two gates a session created while the flag was on keeps being cropped
+  // and stamped after the feature has been switched off. That makes the switch kill the button
+  // rather than the feature, which is the opposite of what a kill switch is for, and it matters
+  // most for crop: crop is destructive on a redaction-bearing page. Both flags default ON and an
+  // undefined env reads as ON, so with stock configuration these are no-ops.
+  const cropEnabled = isEnabled('crop');
+  const effBox = (docPage.crop && cropEnabled) ? contentCropToPdfCropBox(docPage.crop, cropBox) : cropBox;
 
   const exportErrors: string[] = [];
   const exportErrorTypes = new Set<string>();
@@ -238,7 +247,7 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
 
   // #61 Bates / page number — drawn last so it sits above content; uses the
   // page's full-document position so single-page / range exports stay correct.
-  if (ctx.bates?.enabled && ctx.pageNumber !== undefined && ctx.pageCount !== undefined) {
+  if (isEnabled('bates') && ctx.bates?.enabled && ctx.pageNumber !== undefined && ctx.pageCount !== undefined) {
     await drawBatesOnPage(page, effBox.width, effBox.height, effBox.x, effBox.y, ctx.bates, ctx.pageNumber, ctx.pageCount, { rgb, degrees, pdfDoc, StandardFonts }, totalRot);
   }
 
@@ -246,7 +255,7 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   // source-box space — so element/ink positions are unaffected; the viewer then shows only
   // the crop window. The redaction rasterizer passes skipCropBox=true and clips the CANVAS
   // instead (so its full-page burn coords stay correct — #QA-2026-06-23).
-  if (docPage.crop && !ctx.skipCropBox) {
+  if (docPage.crop && cropEnabled && !ctx.skipCropBox) {
     page.setCropBox(effBox.x, effBox.y, effBox.width, effBox.height);
   }
 }
@@ -327,7 +336,9 @@ export async function rasterizePageWithRedactions(
   // canvas (byte-identical to the pre-fix uncropped path).
   let outCanvas: HTMLCanvasElement = offscreen;
   let outW = w_eff, outH = h_eff;
-  if (docPage.crop) {
+  // Same #28 gate as the vector path above — the raster path clips the CANVAS instead of setting
+  // a CropBox, so it needs its own check or a disabled crop would still apply here.
+  if (docPage.crop && isEnabled('crop')) {
     const effBox = contentCropToPdfCropBox(docPage.crop, cropBoxR);
     // Map the crop window's user-space corners to canvas pixels — convertToViewportPoint
     // applies the viewport's rotation + scale, so this is correct for /Rotate'd pages too.

@@ -63,6 +63,44 @@ export function redactionRectToContent(
 }
 
 /**
+ * Map a redaction rect from editor DISPLAY space into the frame pdf.js reports TEXT ITEMS and
+ * IMAGE placements in, given the page's `viewBox` (its CropBox, `[x0, y0, x1, y1]`).
+ *
+ * ── Why this exists, and why {@link redactionRectToContent} alone is not enough ───────────
+ * pdf.js reports `item.transform[4]/[5]` in ABSOLUTE PDF user space, but a redaction element's
+ * rect is relative to the RENDERED page box — i.e. the CropBox. The two frames differ by exactly
+ * `(x0, y0)`. On the near-universal `/CropBox [0 0 w h]` page they coincide, so comparing them
+ * directly appears to work and every fixture agrees; give the page a non-zero origin and the
+ * intersection test silently matches nothing and the redacted text is handed back by the flow
+ * (DOCX/MD/TXT) and table (CSV/XLSX) exports. This is the same class as the `/Rotate 90|270`
+ * leak fixed earlier on these paths — rect and items compared in different frames.
+ *
+ * The two paths that BAKE pixels already got this right (`pdfElementRenderer`'s
+ * `cropOriginX/Y`, and the OCR burn's `unrot.viewBox[0]/[1]`); only the two that EXTRACT text
+ * were missing it.
+ *
+ * Returns a rect whose **x is absolute user-space** and whose **y is measured DOWN from the
+ * crop box's top edge**. That is precisely the frame `flowDoc.isItemRedacted` compares in when
+ * it is given `viewBox[3]` as its `pageTopY` — pass the two together, from the same viewBox.
+ *
+ * Identity-preserving: with `viewBox = [0, 0, W, H]` this returns exactly what
+ * {@link redactionRectToContent} returns, so ordinary pages are byte-for-byte unaffected.
+ */
+export function redactionRectToPageSpace(
+  rect: { x: number; y: number; width: number; height: number },
+  viewBox: readonly number[],
+  totalRot: number,
+): { x: number; y: number; width: number; height: number } {
+  const x0 = viewBox[0], y0 = viewBox[1], x1 = viewBox[2], y1 = viewBox[3];
+  // Rotation acts on the RENDERED box, so un-rotate within the crop dimensions first, then
+  // translate. Composing the other way round would rotate the origin offset too.
+  const c = redactionRectToContent(rect, x1 - x0, y1 - y0, totalRot);
+  // y needs no term: it is already measured down from the crop TOP, which is what `pageTopY`
+  // (= y1) makes `isItemRedacted` measure an item's glyph box against.
+  return { x: c.x + x0, y: c.y, width: c.width, height: c.height };
+}
+
+/**
  * Inverse of {@link redactionRectToContent}: map a rect from UNROTATED content
  * space (y-down, top-left, W×H = unrotated dims) back into editor DISPLAYED space
  * (the on-screen rotated orientation, y-down, top-left). Used to draw a persisted

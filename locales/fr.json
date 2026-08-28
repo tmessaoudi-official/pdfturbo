@@ -221,7 +221,8 @@
     "drawErase": "⌫ GOMME",
     "editText": "✎ ÉDITER",
     "addCode": "⊡ CODE",
-    "fillBucket": "🪣 REMPLIR"
+    "fillBucket": "🪣 REMPLIR",
+    "signRect": "🔏 ZONE SIGN."
   },
   "modal": {
     "close": "Fermer",

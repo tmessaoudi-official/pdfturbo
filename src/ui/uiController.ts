@@ -617,15 +617,25 @@ fillBucketBtn:    document.getElementById('fillBucketBtn')    as HTMLButtonEleme
     toggles.forEach(([btn, m]) => btn.setAttribute('aria-pressed', String(mode === m)));
     r.textModeBtn.setAttribute('aria-pressed', String(mode === 'addText' || mode === 'editText'));
 
-    const badgeKeys: Record<string, string> = {
+    // `Record<ToolMode, …>` — NOT `Record<string, …>`. Typed loosely this map silently covered
+    // only 16 of the 17 modes: `signRect` was missing, and the `?? 'badge.select'` fallback it
+    // used to carry turned that into a badge reading "SELECT" while `.active` was toggled ON —
+    // visibly wrong, and not the raw key a user would think to report. The sibling map
+    // `MODE_HINT_KEYS` in toolModeService is exhaustive, so only this one drifted. With the
+    // exhaustive type the compiler now refuses a new ToolMode that forgets its badge, which is
+    // the same reason `RENDERERS` is keyed on `ElementType`.
+    const badgeKeys: Record<ToolMode, string> = {
       select: 'badge.select', addText: 'badge.addText', addSignature: 'badge.addSignature',
       addImage: 'badge.addImage', addCode: 'badge.addCode', drawArrow: 'badge.drawArrow', drawRect: 'badge.drawRect',
       drawEllipse: 'badge.drawEllipse', drawFreehand: 'badge.drawFreehand',
       drawHighlight: 'badge.drawHighlight', addComment: 'badge.addComment',
       drawRedaction: 'badge.drawRedaction', drawErase: 'badge.drawErase',
       editText: 'badge.editText', fillBucket: 'badge.fillBucket', crop: 'badge.crop',
+      signRect: 'badge.signRect',
     };
-    r.modeBadge.textContent = t(badgeKeys[mode] ?? 'badge.select');
+    // No `??` fallback: the lookup is total now, and a fallback would silently re-open exactly
+    // the gap above — a missing mode would show the wrong badge instead of failing the build.
+    r.modeBadge.textContent = t(badgeKeys[mode]);
     r.modeBadge.classList.toggle('active', mode !== 'select');
     r.canvas.className = mode === 'select' ? 'cursor-default' : mode === 'fillBucket' ? 'cursor-bucket' : 'cursor-crosshair';
     r.donePill.style.display = (mode === 'drawFreehand' || mode === 'drawErase') ? '' : 'none';

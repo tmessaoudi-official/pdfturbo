@@ -144,3 +144,78 @@ so far have each found real defects — three of them in my own fixes. Budget fo
 - [2026-08-23 22:10] AGREED: steps 1–3 land as one commit round; step 4 certifies it. Bucket 5
   (Arabic native pass ×11, DOCX part GC, disclosed bounds, C9 corpus) stays out of scope — the first
   is blocked on a human, the rest are deliberate deferrals with reasons already recorded above.
+
+---
+
+## Fix round EXECUTED (2026-08-28/29)
+
+All three leaks in § "New leaks found by the re-run panel" are **fixed and guarded**. Each was first
+reproduced against shipping code with its control passing, then fixed, then sabotage-verified.
+
+| # | Leak | Fix | Sabotage evidence |
+|---|---|---|---|
+| P0-1 | source IMAGES under a redaction embedded whole in DOCX/MD/TXT | `imagePlacementRedacted` (exportService), footprint from all four CTM corners | removing the guard fails exactly the 2 image rows |
+| P0-2 | flow export no-ops at a non-zero CropBox origin | `redactionRectToPageSpace` + `viewBox` threaded to `reconstructPage` | dropping the `viewBox` arg fails exactly the 6 flow rows |
+| P0-3 | same, table CSV/XLSX | same helper at that call site | reverting it fails exactly the 6 table rows |
+
+Guards: `tests/browser/redaction-crop-origin.browser.test.ts` (27) + `tests/utils/redactionPageSpace.test.ts`
+(12 pure). The `zzpanel-probe*` reproducers are **deleted** — superseded by those, which keep the
+passing-control property.
+
+**The origin class is now closed, and the inventory is the reusable part.** The two paths that BAKE
+pixels already handled the CropBox origin (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn's
+`unrot.viewBox[0]/[1]`); only the two that EXTRACT text did not. `grep -rn "cropOrigin\|viewBox\[0\]" src/`
+is the check.
+
+### Step 2 (the two guards that cannot fail) — one confirmed, one REFUTED
+
+- **P1-2 is not what it was recorded as.** The OCR fixture's `convertToViewportPoint` DOES subtract the
+  origin, so dropping the production `ox +` term makes the fill land at `-20` and the test fails. The
+  origin dimension is guarded. What is genuinely unexercised there is ROTATION (the fake page is
+  `rotate: 0`).
+- **P1-3 is real but its consequence was overstated.** Mutating `{scale:1,rotation:0}` → `{scale:1}`
+  goes undetected — but it goes undetected on the PRE-fix code too (measured: 14 failed either way,
+  with a square AND a non-square crop box), because at 90° the wrong un-rotation dims and the wrong
+  flip base cancel. So it is not "re-ships the documented P0 leak". After the fix the question is moot
+  for redaction: the filter reads only `viewBox`, which is rotation-invariant, so that argument is no
+  longer load-bearing for it (it still is for layout dims — margins, column detection).
+- A THIRD vacuous guard was found and fixed: `tests/signing/appearance.test.ts` had its only assertion
+  inside a `catch`, so it ran zero assertions. Now `expect.assertions(2)`, sabotage-verified. A sweep of
+  every `it` body for that shape found it was the only instance in the suite.
+
+### Step 3 (doc surfaces) — done
+
+`KNOWN_ISSUES.md` (the "no value changes needed" claim, and the pending Arabic count, now **12**),
+`README.md` + `FEATURES.md` (redaction described as rasterisation only — false on a blank page), and
+the two stale `ar [Unverified]` prose markers in `CLAUDE.md`, which are now marked UNRECONCILED rather
+than silently resolved: the repo cannot prove whether the 2026-07-30 native pass covered them.
+
+### Still open
+
+1. **Certification.** `advisor()` ran at 3C and 6C. The three-lens panel has NOT been re-run over this
+   round; the two-consecutive-clean counter remains **0**.
+2. **Finding C — non-zero CropBox origin also shifts the whole flow LAYOUT.** Not a leak, and
+   deliberately not fixed. Words, images and margins are mixed absolute/crop-relative: probe output
+   shows a word at `"y":300` on a 300-high crop. Normalising means moving items, rules, links, images
+   AND the position-derived `colorMap` keys in lockstep; a partial normalisation silently breaks
+   colour/underline/link matching. Wants its own change, pinned first.
+3. **`tests/browser/redaction-orphan-leak.browser.test.ts` is FLAKY** (observed 1 failed / 2 passed, then
+   3 passed on an immediate re-run against a clean tree; it passed in this round's full suite). It is the
+   only signal that the orphan-page leak returned, so random reds train people to re-run it. Needs
+   root-causing, not a retry.
+4. Items 2–5 of the original § Open (DOCX part GC, Arabic native pass, disclosed bounds, C9) unchanged.
+
+### Decisions Log
+
+- [2026-08-28 23:10] AGREED: fix the origin at `redactionRectToPageSpace` rather than per call site, and
+  give `reconstructPage` an optional trailing `viewBox` defaulting to `[0,0,pageWidth,pageHeight]` — so
+  all 58 existing call sites stay byte-identical instead of churning the contract.
+- [2026-08-28 23:15] AGREED: drop a redacted image WHOLE. For a leak filter over-approximating is the
+  only safe direction; the cost (one redaction removes a scan from these exports) is disclosed in
+  `SECURITY.md` rather than hidden.
+- [2026-08-29 00:05] AGREED: the fixture's crop box must be NON-SQUARE and its origin ASYMMETRIC. A
+  square box hides a width/height swap exactly as a symmetric origin hides an x/y transposition — found
+  by sabotaging my own guard, which passed until the box became 300×240.
+- [2026-08-29 00:20] AGREED: `tests/export/redactionLeaks.test.ts`'s fake page now reports `viewBox`.
+  A fake that omits a field real pdf.js always provides is unfaithful; the 7 failures it caused were the
+  fixture being wrong, not the fix.
