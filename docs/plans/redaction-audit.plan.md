@@ -22,7 +22,8 @@ list, so it can be deleted once they are closed.
 
 Each is pinned by a probe with a **passing control**, run against the source md5s that are shipping
 now (`var/claude/redaction-panel/round1/probes-final.log`; reproducers: untracked
-`tests/browser/zzpanel-probe{,2,3}.browser.test.ts`).
+`tests/browser/zzpanel-probe{,2,3}.browser.test.ts` — **since deleted**, superseded by the
+committed guards; see the later note in this file. Nothing untracked remains in the tree).
 
 | Leak | Where | Evidence |
 |---|---|---|
@@ -209,7 +210,8 @@ than silently resolved: the repo cannot prove whether the 2026-07-30 native pass
 
 - [2026-08-28 23:10] AGREED: fix the origin at `redactionRectToPageSpace` rather than per call site, and
   give `reconstructPage` an optional trailing `viewBox` defaulting to `[0,0,pageWidth,pageHeight]` — so
-  all 58 existing call sites stay byte-identical instead of churning the contract.
+  all 57 existing call sites stay byte-identical instead of churning the contract.
+  (The figure read "58" until `9ee7381`; corrected in both places this time — the point of that commit.)
 - [2026-08-28 23:15] AGREED: drop a redacted image WHOLE. For a leak filter over-approximating is the
   only safe direction; the cost (one redaction removes a scan from these exports) is disclosed in
   `SECURITY.md` rather than hidden.
@@ -245,14 +247,14 @@ annotation whose `/Rect` meets a redaction, called from `rasterizePageWithRedact
 both rasterize what it produces and carried the identical leak. `annotationRectRedacted` is pure,
 exported and normalises reversed `/Rect` corners; it fails CLOSED on an unreadable rect.
 
-### Still open after this round
+### Open at the time this section was written — BOTH SINCE FIXED in the same round
 
-- **Leak #4 — `walkPageOps` ignores Form XObject matrices.** `paintFormXObjectBegin`/`End` are not
-  handled, so an image inside a form reports the form-LOCAL ctm and `imagePlacementRedacted` misses
-  it; a `cm` inside a form also leaks out past the form's end, corrupting later page-level geometry.
-- **Sign-rect frame mismatch.** `_pageGeomForSign` derives from the pdf.js CropBox viewport while
-  the signer validates and places against pdf-lib's MediaBox `getSize()` — a 4th instance of the
-  frame-mismatch pattern.
+Kept for the record rather than deleted, but marked: a resuming reader was otherwise told to fix
+work that is already committed. Leak #4 was fixed in `27324c5`, the sign-rect frame in `7ba25d4`,
+and both are written up later in this same file.
+
+- ~~**Leak #4 — `walkPageOps` ignores Form XObject matrices.**~~ FIXED — see § "Leak #4" below.
+- ~~**Sign-rect frame mismatch.**~~ FIXED — see § "The sign-rect frame mismatch" below.
 
 ### Decisions Log
 
@@ -359,3 +361,54 @@ would still be mis-bounded; not fixed, not observed, and `getSize()` cannot expr
 **NOT certified end-to-end:** the `downloadPageAsImage` and `renderThumbnailWithOverlays` wiring — the
 shared collaborator's mechanism is unit-pinned, but no test drives those two callers to pixels. Named
 rather than implied, per the `[pinned]` discipline.
+
+## Round 5 — the milestone review, and what it caught
+
+Three lenses (`export-fidelity`, `safety-promises`, `completeness`), spawned unnamed against the
+frozen commit `f4a237a`. **All three independently converged on the same P0, each with its own
+reproduction: the fix shipped the very class of defect it was written to close.**
+
+`buildPageOverlays` MUTATES the page it is handed — `setRotation(totalRot)` and
+`setCropBox(effBox)`. The strip read both AFTER that call, so it received a doubled rotation and
+the narrowed box, and the leak stayed live on `downloadPageAsImage` and
+`renderThumbnailWithOverlays` — the only two callers where the strip had work to do.
+
+**Why the suite could not see it: every guard ran at rotation 0 with no crop.** That is the exact
+shape this file already records for the 2026-08-05 round ("a rotation bug shipped inside a rotation
+fix"), repeated. A fix for a frame bug has to be pinned at every frame, or it is pinned at the one
+frame where all frames coincide.
+
+**A second trap, found while writing the new guard:** element coordinates are DISPLAY space, so a
+test that holds a redaction rect fixed while rotating the page is measuring nothing — the burn
+genuinely moves off the target and the test asserts a leak that is not one. The guard derives the
+rect per rotation via `contentRectToDisplay`. My first version of the crop case was vacuous for the
+same family of reason (a 10pt origin shift still overlapped); it now uses a (100,150) origin.
+
+Also fixed from the panel: `beginAnnotation`/`endAnnotation` (the third implicit-CTM op — a stamped
+image reported its ctm at the page origin, so the filter erred in BOTH directions); genuine
+fail-closed behaviour in the strip (`lookupMaybe` THROWS on a wrong type rather than yielding
+undefined); and `validateRect` bounding against the media BOX rather than its dimensions.
+
+### Still open after round 5
+
+- **The signer signs the ASSEMBLED document.** A redaction-bearing page becomes a fresh raster page
+  at origin (0,0) sized to the crop box, so for that one page the absolute sign prefill is off by
+  the crop origin. Not fixed on purpose: making the prefill depend on which assembly branch a page
+  will take couples the UI to export internals, which is how this family of bug breeds.
+- **The form `/BBox` clip is not modelled** by `walkPageOps`. It makes an in-form footprint an
+  OVER-approximation, which is the safe direction for a leak filter, but it can admit a rule that is
+  clipped away on the page. No confirmed instance; recorded rather than guessed at.
+- **C22** (flow LAYOUT on a non-zero CropBox origin) — now registered in `KNOWN_ISSUES.md` and
+  `tests/blockers/README.md`, which it was not before.
+
+### Decisions Log
+
+- [2026-08-29 10:20] AGREED: both `stripRedactedAnnotations` call sites read the page frame BEFORE
+  `buildPageOverlays`. The rasterizer did not strictly need it (it captured `srcRot` early and
+  passes `skipCropBox`), but relying on that subtlety is what let the sibling diverge silently.
+- [2026-08-29 10:25] AGREED: a guard for a frame bug asserts over the WHOLE output (no red pixel
+  anywhere) rather than sampling a computed point, so the test's own coordinate arithmetic cannot
+  mask the defect it exists to catch.
+- [2026-08-29 10:30] AGREED: keep the `endAnnotation` pop although sabotage leaves the suite green,
+  and say so in the code. It is unobservable only because `beginAnnotation` resets the ctm; the pop
+  keeps the stack balanced for any future op emitted after an annotation block.

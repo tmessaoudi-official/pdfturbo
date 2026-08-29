@@ -56,6 +56,7 @@ Where each structural ceiling is actually pinned.
 | C18 RTL layer select/copy/search | yes — item-level highlight pinned | `browser/arabic-search.browser.test.ts`, `browser/arabic-selection.browser.test.ts` |
 | C10 4+ column layout | yes — 3 columns work, 4 measured as 3 groups | `blockers/layout-flatten.blockers.test.ts` |
 | C12 markup-annotation flatten | yes — a `/Text` note survives `getForm().flatten()` | `blockers/layout-flatten.blockers.test.ts` |
+| C22 CropBox-origin flow LAYOUT | yes — words/images/margins mix absolute and crop-relative coords | `browser/blockers-cropbox-layout.browser.test.ts` |
 | C19 Arabic tashkeel / GPOS | yes — marks reach the glyph stream; placement not asserted | `browser/ceilings.browser.test.ts` |
 | C21 raster ink, no per-stroke edit | yes — the bake returns a PNG data URL | `browser/ceilings.browser.test.ts` |
 | **C11** internal GoTo / sheared image / ICC spot | **NO**, and deliberately so — see below | — |

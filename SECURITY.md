@@ -73,8 +73,11 @@ stream, but annotations are painted **after** the content stream, so they land a
 always rasterised the page — that part was true — but it rasterised with the annotations still
 attached, so they were baked into the image on top of the burn.
 
-Any annotation whose rectangle touches a redaction is now removed before the page is rasterised. Two
-consequences worth knowing:
+Any annotation whose rectangle touches a redaction is now removed before the page is rasterised — on
+every export path, at every page rotation, and with or without a crop. (The first version of this fix
+got that wrong: it removed the annotation correctly on the PDF export but not on the image export or
+the thumbnail when the page was rotated or cropped. Both are covered now, and pinned at each
+rotation.) Two consequences worth knowing:
 
 - **The whole annotation goes, not just the covered part.** A comment that overlaps a redaction by one
   corner disappears entirely. That is deliberate: for a leak filter, removing too much is the only safe

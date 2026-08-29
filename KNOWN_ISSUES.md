@@ -9,7 +9,7 @@ The items below are **not defects and not on a fix list** — they are the hones
 client-side editor. Each notes the "escape hatch" that *would* lift it and the trade-off of taking
 it, so the limit is understood rather than mistaken for a bug.
 
-_Last updated: 2026-08-28._
+_Last updated: 2026-08-29._
 
 ---
 
@@ -33,7 +33,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 | **EH-D** | **Server-side conversion** (headless LibreOffice / render service) | Best-in-class fidelity (C5), TSA/LTV signing (C17) | **Breaks the no-backend / nothing-uploaded promise** — off the table unless that promise changes |
 | **EH-E** | **Whitespace-inference table detection** | **RELEASED for CSV (C13) 2026-08-04**; DOCX (C9) still gated | The confidence gate exists and its load-bearing rule is the multi-column-page discriminator (a table's rows span columns; a two-column page's lines do not). Ruled tables keep priority, so lattice output is unchanged |
 
-## The structural ceilings (C1–C21)
+## The structural ceilings (C1–C22)
 
 | ID | Ceiling | Why it's structural | Escape hatch |
 |----|---------|---------------------|--------------|
@@ -58,6 +58,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 | C19 | Arabic overlay tashkeel/GPOS micro-positioning | Needs a GPOS shaper; legibility is already fine | EH-B |
 | C20 | XFDF Acrobat byte-exactness + rotated-page coords | No Acrobat to verify against | Internal round-trip is the correctness guarantee |
 | C21 | Raster ink — no per-stroke edit | Rasterised by design | Use the **vector** freehand tool |
+| C22 | Flow LAYOUT on a non-zero CropBox origin | The redaction FILTER is fixed (2026-08-28), but the DOCX/MD/TXT layout still mixes absolute and crop-relative coordinates: words, images, margins and the position-derived `colorMap` keys would all have to be normalised in lockstep, and a partial normalisation silently breaks colour/underline/link matching | Its own change, pinned first. Confirmed by `tests/browser/blockers-cropbox-layout.browser.test.ts` |
 
 ---
 

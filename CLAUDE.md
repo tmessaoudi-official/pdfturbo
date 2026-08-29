@@ -289,7 +289,30 @@ assertion while silently deleting every annotation on a redacted page, so the gu
 annotation clear of every redaction still renders green. **A leak guard needs a case that fails when the
 fix over-reaches, not only one that fails when it under-reaches.**
 
-Guards: `tests/browser/redaction-annotation-burn.browser.test.ts` (3, real pdf.js pixels) and
+**AND THE FIX ITSELF SHIPPED THE SAME BUG — caught by the review panel, not by the suite.**
+`buildPageOverlays` MUTATES the page it is handed: `page.setRotation(totalRot)` and
+`page.setCropBox(effBox)`. The strip was placed AFTER that call in `_applyOverlaysToPage`, so it
+read a DOUBLED rotation (`srcRot + 2·userRot`) and the NARROWED crop box, while the redaction
+elements are still in source-box display coords. On any rotated or cropped page the covered
+annotation therefore survived — on exactly the two callers the strip was added for
+(`downloadPageAsImage`, `renderThumbnailWithOverlays`), since every other caller routes a
+redaction-bearing page to the rasterizer instead. The rasterizer escaped it only by accident of
+capturing `srcRot` early and passing `skipCropBox`. **Both call sites now take the frame from
+pristine state, before `buildPageOverlays` runs.**
+
+Three things to carry forward. **A collaborator that mutates its argument turns "read it again"
+into a different value** — check for `set*` calls before reading page state around one. **The
+guards were written at rotation 0 with no crop**, which is the same "a rotation bug shipped inside
+a rotation fix" shape recorded for the 2026-08-05 round, two entries down; a fix for a frame bug
+must be pinned at every frame. And **the element coords are DISPLAY space**, so a guard that holds
+a redaction rect fixed while rotating the page is measuring nothing — the burn genuinely moves off
+the target, and the test asserts a leak that is not one. `redaction-annotation-frames` derives the
+rect per rotation via `contentRectToDisplay` for that reason.
+
+Guards: `tests/browser/redaction-annotation-frames.browser.test.ts` (6 — every rotation and a
+crop, driving `renderThumbnailWithOverlays` end-to-end; asserts NO red pixel survives anywhere
+rather than sampling a computed point, so no coordinate arithmetic of the test's own can mask the
+leak), `tests/browser/redaction-annotation-burn.browser.test.ts` (3, real pdf.js pixels) and
 `tests/export/redactedAnnotations.test.ts` (13). Sabotage-verified three ways: removing the strip fails
 exactly the leak case, a forward loop fails exactly the adjacent-annotations case (`PDFArray.remove`
 shifts later indices down), and dropping the CropBox origin fails exactly the origin case.
@@ -328,6 +351,17 @@ Blast radius, stated because nothing pinned the old values: rules and text origi
 from form-local to page space. That is the desired direction — a coloured run or an underline inside a
 form previously keyed at a position `getTextContent` never reports, so it silently failed to match.
 
+**The same class had a THIRD member, found by the panel: `beginAnnotation`.** An annotation's
+appearance stream is placed by ops the page content stream never shows — pdf.js does `save()` then
+composes `transform` and `matrix` (its args[2] and args[3]) and restores at `endAnnotation`. Without
+them an image painted by a Stamp or FreeText appearance reported its ctm at the PAGE ORIGIN, so
+`imagePlacementRedacted` **missed** a redaction over a stamped image *and* **falsely dropped** one
+whenever a redaction happened to sit at (0,0) — a filter erring in both directions at once. Note the
+annotation strip above does NOT cover this: `_extractFlowDoc` walks the ORIGINAL source page, not the
+stripped export copy. `beginAnnotation` RESETS the ctm rather than composing onto it, which is why
+the matching `endAnnotation` pop is unobservable in current pdf.js output and is kept as defensive,
+**explicitly unpinned** — sabotaging it leaves the suite green, and the code says so.
+
 **Checked and deliberately NOT changed:** `paintInlineImageXObject` and `paintImageMaskXObject` are not
 recorded by the walker. That is not a leak — images reach the DOCX export only via named
 `paintImageXObject` placements resolved through `page.objs`/`commonObjs`, so an inline image or stencil
@@ -353,6 +387,17 @@ Fixed as the redaction fix's sibling: `displayRectToPageUserSpaceRect` is to
 carries the origin, and it is rotation-invariant so it stays correct under `rotation: 0`.
 `validateRect` is deliberately UNCHANGED: with the prefill emitting absolute coordinates, its
 MediaBox-from-(0,0) check is the right frame for them.
+
+**Two consequences of moving to absolute coordinates, both found by the panel.** `validateRect`
+bounded them against `getSize()` — a *dimension*, not an extent — so on a page whose MediaBox origin
+is non-zero a legitimate placement near the far edge was refused with `INVALID_RECT`. `PageSize` now
+carries an optional origin (defaulting to 0, so every existing caller is unchanged) and both signers
+pass `getMediaBox()`. Second, and NOT fixed: the signer signs `assemblePdfBytes()`, and in that
+assembly a redaction-bearing page is replaced by a fresh raster page at origin (0,0) sized to the
+crop box — so for that one page the absolute prefill is off by the crop origin, where the old
+crop-relative number happened to be right. Left alone deliberately: making the prefill depend on
+which assembly branch a page will take couples the UI to export internals, which is how this family
+of bug breeds. Recorded as a bound rather than papered over.
 
 **The count is now four** (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
 filter, and this) — so when touching anything that converts between what is DRAWN and what is STORED,
