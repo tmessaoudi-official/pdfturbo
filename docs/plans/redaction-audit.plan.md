@@ -219,3 +219,51 @@ than silently resolved: the repo cannot prove whether the 2026-07-30 native pass
 - [2026-08-29 00:20] AGREED: `tests/export/redactionLeaks.test.ts`'s fake page now reports `viewBox`.
   A fake that omits a field real pdf.js always provides is unfaithful; the 7 failures it caused were the
   fixture being wrong, not the fix.
+
+## Round 5 (2026-08-29) — resumed after a session was closed mid-round
+
+Two untracked probe files were left in the tree by the stopped session. Run rather than read,
+they turned out to encode three unfinished findings, all since confirmed and two of them live
+leaks. Recorded here because a probe that asserts the BUG passes while the bug exists — a green
+run on `zzcert-probe.test.ts` was evidence FOR the defect, which is easy to misread as "fine".
+
+### Leak #5 — a source ANNOTATION under a redaction was painted OVER the burn (fixed)
+
+The burn is written into the page CONTENT STREAM; pdf.js paints annotation appearance streams
+AFTER it. So a FreeText note, a stamp or an un-flattened form widget sitting over a redaction was
+repainted on top of the burn and baked into the exported pixels — **visibly**, not merely
+extractably, which is a worse grade than every leak found in rounds 1–4. Measured: the covered
+annotation's centre sampled `(255,0,0)` through an opaque black burn, with a burn-only control
+sampling black in the same image.
+
+This **refutes `CLAUDE.md` #62b** ("the redaction-rasterize path + PNG export already cover that
+nuclear case"). The claim had never been tested; it was reasoning about a path nobody had driven.
+
+Fixed at the shared collaborator, not per call site: `stripRedactedAnnotations` removes any
+annotation whose `/Rect` meets a redaction, called from `rasterizePageWithRedactions` AND from
+`_applyOverlaysToPage` — the latter because `downloadPageAsImage` and `renderThumbnailWithOverlays`
+both rasterize what it produces and carried the identical leak. `annotationRectRedacted` is pure,
+exported and normalises reversed `/Rect` corners; it fails CLOSED on an unreadable rect.
+
+### Still open after this round
+
+- **Leak #4 — `walkPageOps` ignores Form XObject matrices.** `paintFormXObjectBegin`/`End` are not
+  handled, so an image inside a form reports the form-LOCAL ctm and `imagePlacementRedacted` misses
+  it; a `cm` inside a form also leaks out past the form's end, corrupting later page-level geometry.
+- **Sign-rect frame mismatch.** `_pageGeomForSign` derives from the pdf.js CropBox viewport while
+  the signer validates and places against pdf-lib's MediaBox `getSize()` — a 4th instance of the
+  frame-mismatch pattern.
+
+### Decisions Log
+
+- [2026-08-29 08:20] AGREED: drop a source annotation WHOLE when its `/Rect` meets a redaction,
+  rather than clipping its appearance or disabling annotations wholesale. Over-approximating is
+  the only safe direction for a leak filter, and `annotationMode: DISABLE` would have satisfied
+  the leak assertion while silently deleting every annotation on a redacted page — which is why
+  the guard carries a CONTROL annotation that must survive.
+- [2026-08-29 08:35] AGREED: place the strip in `_applyOverlaysToPage`, the shared collaborator,
+  not at the two rasterizing call sites. A per-site fix would leave the next rasterizing caller on
+  the same cliff — the "fix the origin, not three call sites" lesson from the `hookTimeout` entry.
+- [2026-08-29 08:40] AGREED: the CropBox-origin fixture needs an ASYMMETRIC origin on both axes AND
+  a non-square crop AND a snugly-sized redaction. The first version had all the right words and was
+  VACUOUS — sabotaging the origin term away left it green, because a 50pt shift still overlapped.

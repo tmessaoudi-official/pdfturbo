@@ -6,7 +6,7 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
-import { buildPageOverlays, rasterizePageWithRedactions, type BuildPageCtx } from './exportPipeline';
+import { buildPageOverlays, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
 import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { redactionRectToPageSpace } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
@@ -1170,6 +1170,18 @@ export class ExportService {
       reportError: this._ctx.reportError,
       bates: this._ctx.documentModel.bates, pageNumber, pageCount,
     });
+    // Source annotations over a redaction must go before ANY pdf.js raster of this page.
+    // The burn sits in the content stream and pdf.js paints annotation appearance streams
+    // after it, so a covered FreeText note / stamp / un-flattened widget is repainted ON TOP
+    // of the burn and baked into the exported pixels — visibly. `downloadPageAsImage` and
+    // `renderThumbnailWithOverlays` both rasterize what this method produces, so the strip
+    // belongs HERE rather than at those two call sites: a per-site fix would leave the next
+    // rasterizing caller on the same cliff. No-op on a page with no redaction, which is every
+    // page reaching this method from the PDF export path (those route to the rasterizer).
+    await stripRedactedAnnotations(
+      page, pageElements, docPage.id, getPageCropBox(page),
+      (((page.getRotation().angle as number) + (docPage.rotation ?? 0)) % 360 + 360) % 360,
+    );
   }
 
   /**

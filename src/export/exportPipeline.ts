@@ -8,7 +8,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
-import { transformPoint, hexToRgbValues, contentCropToPdfCropBox } from '../utils/geometry';
+import { transformPoint, hexToRgbValues, contentCropToPdfCropBox, redactionRectToPageSpace } from '../utils/geometry';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { densitySpacingFactor } from '../utils/watermarkDensity';
 import type { PDFElement } from '../elements/annotationElement';
@@ -58,6 +58,41 @@ export function getPageCropBox(
   } catch { /* no CropBox */ }
   const { width, height } = page.getSize();
   return { x: 0, y: 0, width, height };
+}
+
+/**
+ * Does a source annotation's `/Rect` fall under a redaction, and so have to be removed before
+ * the page is rasterized?
+ *
+ * pdf.js paints annotation appearance streams AFTER the page content stream, and the redaction
+ * burn lives IN that content stream — so an annotation over a redaction is repainted ON TOP of
+ * the burn and baked into the exported pixels. That makes the "redacted" content plainly
+ * VISIBLE, not merely extractable, which is why the whole annotation is dropped.
+ *
+ * `rect` is a PDF `/Rect` in ABSOLUTE user space (y-up); `redactions` and `pageTopY` must both
+ * come from {@link redactionRectToPageSpace} / the page's `viewBox[3]`, i.e. x in absolute user
+ * space and y measured down from the crop top — the same convention `imagePlacementRedacted`
+ * and `isItemRedacted` use.
+ *
+ * Exported for direct testing. Trivial geometry, but the SAFETY depends on it.
+ */
+export function annotationRectRedacted(
+  rect: readonly number[],
+  redactions: ReadonlyArray<{ x: number; y: number; width: number; height: number }>,
+  pageTopY: number,
+): boolean {
+  if (redactions.length === 0) return false;
+  const [x1, y1, x2, y2] = rect;
+  if (![x1, y1, x2, y2].every(n => Number.isFinite(n))) return true; // unreadable → fail CLOSED
+  // NORMALISE: a /Rect's corners may be stored in any order (the spec does not require
+  // lower-left-first), and raw comparisons on a reversed pair FAIL OPEN — the annotation
+  // genuinely overlaps yet is kept and repainted over the burn. Same defect shape as the
+  // negative-height rect in `dropElementsUnderRedactions`, so it gets the same treatment.
+  const xL = Math.min(x1, x2), xR = Math.max(x1, x2);
+  // y-up user space → y-down from the crop top, matching the redaction rects' convention.
+  const yTop = pageTopY - Math.max(y1, y2), yBot = pageTopY - Math.min(y1, y2);
+  return redactions.some(r =>
+    xL < r.x + r.width && xR > r.x && yTop < r.y + r.height && yBot > r.y);
 }
 
 // ── Ink layer helper ─────────────────────────────────────────────────────────
@@ -262,6 +297,50 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
 
 // ── Redaction rasterizer ─────────────────────────────────────────────────────
 
+/**
+ * Remove every source annotation whose `/Rect` meets a redaction on this page.
+ *
+ * Operates on the pdf-lib page's `/Annots` array in place, before the page is serialised for
+ * pdf.js. See {@link annotationRectRedacted} for why the whole annotation goes.
+ *
+ * Iterates BACKWARDS because `PDFArray.remove` shifts every later index down — a forward loop
+ * skips the entry after each removal, which on two adjacent covered annotations would leave the
+ * second one live. Fail-CLOSED on an unreadable `/Rect`: this page carries a redaction, so an
+ * annotation we cannot place is one we cannot prove is safe.
+ */
+export async function stripRedactedAnnotations(
+  page: import('@cantoo/pdf-lib').PDFPage,
+  elements: PDFElement[],
+  pageId: string,
+  cropBox: { x: number; y: number; width: number; height: number },
+  totalRot: number,
+): Promise<void> {
+  const { PDFArray, PDFNumber, PDFName, PDFDict } = await import('@cantoo/pdf-lib');
+
+  const viewBox = [cropBox.x, cropBox.y, cropBox.x + cropBox.width, cropBox.y + cropBox.height];
+  const redactions = elements
+    .filter(el => el.pageId === pageId && el.type === 'redaction')
+    .map(el => redactionRectToPageSpace(
+      { x: el.x, y: el.y, width: el.width, height: el.height }, viewBox, totalRot,
+    ));
+  if (redactions.length === 0) return;
+
+  const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+  if (!annots) return;
+
+  for (let i = annots.size() - 1; i >= 0; i--) {
+    const dict = annots.lookupMaybe(i, PDFDict);
+    // No dict (a dangling ref) → nothing renders, so leaving it cannot leak; skip rather than
+    // remove, keeping this pass byte-neutral for anything it does not understand.
+    if (!dict) continue;
+    const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray);
+    const rect = rectArr && rectArr.size() === 4
+      ? [0, 1, 2, 3].map(k => rectArr.lookupMaybe(k, PDFNumber)?.asNumber() ?? NaN)
+      : [NaN, NaN, NaN, NaN];
+    if (annotationRectRedacted(rect, redactions, viewBox[3])) annots.remove(i);
+  }
+}
+
 export async function rasterizePageWithRedactions(
   srcDoc: import('@cantoo/pdf-lib').PDFDocument,
   docPage: DocumentPage,
@@ -314,6 +393,16 @@ export async function rasterizePageWithRedactions(
   const { width: W_orig, height: H_orig } = cropBoxR;
   const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
   const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
+
+  // ── Source annotations under a redaction must be removed BEFORE the render ────────────────
+  // The burn is written into the page CONTENT STREAM, but pdf.js paints annotation appearance
+  // streams AFTER it — so a FreeText note, a stamp or an un-flattened form widget sitting over
+  // a redaction is repainted ON TOP of the burn and baked into the exported pixels, VISIBLY.
+  // Measured before this fix: the covered annotation's centre sampled (255,0,0) through an
+  // opaque black burn. This refutes the old #62b claim that the rasterize path already covered
+  // source markup annotations. Drop-whole and over-approximating, matching the image channel;
+  // annotations clear of every redaction are untouched (guarded by a CONTROL assertion).
+  await stripRedactedAnnotations(tempPage, elements, docPage.id, cropBoxR, totalRot);
 
   const tempBytes  = await tempDoc.save({ useObjectStreams: false });
   const renderDoc  = await pdfjsLib.getDocument({ data: tempBytes }).promise;
