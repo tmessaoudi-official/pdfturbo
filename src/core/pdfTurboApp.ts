@@ -51,7 +51,7 @@ import { PageNavigationController } from './pageNavigationController';
 import { CleanupService } from './cleanupService';
 import { PanelFocusTrapService } from './panelFocusTrapService';
 import { trapFocus } from '../utils/focusTrap';
-import { displayRectToUserSpaceRect } from '../utils/geometry';
+import { displayRectToPageUserSpaceRect } from '../utils/geometry';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { BatesPanel } from '../ui/batesPanel';
@@ -813,7 +813,13 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       const geom = await this._pageGeomForSign(page);
       if (geom) {
         const totalRot = (((geom.srcRot + (page.rotation ?? 0)) % 360) + 360) % 360;
-        const us = displayRectToUserSpaceRect(displayRect, geom.W, geom.H, totalRot);
+        // ABSOLUTE user space, not crop-relative: these four numbers are written verbatim into
+        // the signature annotation's /Rect, which PDF defines in absolute coordinates, and the
+        // signer bounds-checks them against pdf-lib's MediaBox getSize(). Mapping through the
+        // crop dimensions alone displaced the visible signature by exactly the CropBox origin —
+        // the same frame mismatch as the redaction CropBox-origin leak, and invisible for the
+        // same reason: almost every page has a (0,0) origin.
+        const us = displayRectToPageUserSpaceRect(displayRect, geom.viewBox, totalRot);
         if (us.width >= 1 && us.height >= 1) {
           this.ui.signX.value = String(Math.round(us.x));
           this.ui.signY.value = String(Math.round(us.y));
@@ -838,13 +844,24 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   }
 
   /** Unrotated point dimensions + source rotation of a page (for the sign-rect transform). */
-  private async _pageGeomForSign(p: DocumentPage): Promise<{ W: number; H: number; srcRot: number } | null> {
-    if (p.sourcePdfId === 'blank') return { W: p.blankWidth ?? 595, H: p.blankHeight ?? 842, srcRot: 0 };
+  /**
+   * Page geometry for the sign-rect prefill, as the page's `viewBox` rather than bare W/H.
+   *
+   * The viewBox carries the CropBox ORIGIN, which the caller needs to emit absolute user-space
+   * coordinates — a `/Rect` is absolute, so W/H alone silently produced crop-relative numbers.
+   * It is also rotation-invariant, so it stays correct under `{ scale: 1, rotation: 0 }`.
+   */
+  private async _pageGeomForSign(p: DocumentPage): Promise<{ viewBox: number[]; srcRot: number } | null> {
+    if (p.sourcePdfId === 'blank') {
+      return { viewBox: [0, 0, p.blankWidth ?? 595, p.blankHeight ?? 842], srcRot: 0 };
+    }
     const src = this.documentModel.sourcePdfs.get(p.sourcePdfId);
     if (!src) return null;
     const pg = await src.doc.getPage(p.sourcePageNum);
+    // `rotation: 0` is deliberate: viewBox is reported in UNROTATED page space, and the caller
+    // applies totalRot itself. Leaving the default would apply the page's own /Rotate twice.
     const vp = pg.getViewport({ scale: 1, rotation: 0 });
-    return { W: vp.width, H: vp.height, srcRot: (pg.rotate as number) ?? 0 };
+    return { viewBox: Array.from(vp.viewBox as ArrayLike<number>), srcRot: (pg.rotate as number) ?? 0 };
   }
 
   /** Delegates the entire sign-modal flow to the handler (M2 #19). */

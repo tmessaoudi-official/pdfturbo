@@ -313,3 +313,28 @@ also adding the filtering, which is the one change that WOULD open a leak here.
 - [2026-08-29 09:10] AGREED: a Form XObject fixture MUST carry its own `/Matrix`. Placing the form
   with a page-level `cm` tests the `transform` op that already worked and proves nothing about the
   fix — the first version of this guard passed against the unfixed walker for exactly that reason.
+
+### The sign-rect frame mismatch (fixed) — the 4th instance of the same root cause
+
+Not a leak: a MISPLACED signature. The sign modal's X/Y/W/H are written verbatim into the
+signature annotation's `/Rect`, which PDF defines in ABSOLUTE user space, and `PdfSigner`
+bounds-checks them against pdf-lib's `getSize()` (the MEDIA box). But the drag-to-place prefill
+mapped the drawn rect through the pdf.js viewport's dimensions alone — i.e. relative to the CROP
+box. On a page with an inset CropBox the visible signature therefore landed displaced by exactly
+the origin, and with a deep enough inset outside the visible area altogether.
+
+Fixed as the sibling of the redaction fix: `displayRectToPageUserSpaceRect` is to
+`displayRectToUserSpaceRect` what `redactionRectToPageSpace` is to `redactionRectToContent`, and
+`_pageGeomForSign` now returns the page's `viewBox` rather than bare `W`/`H` — the viewBox is
+what carries the origin, and it is rotation-invariant.
+
+`validateRect` is deliberately UNCHANGED. Now that the prefill emits absolute coordinates, its
+MediaBox-from-(0,0) bounds check is the right frame for them. (A MediaBox with a non-zero origin
+would still be mis-bounded; not fixed, not observed, and `getSize()` cannot express it.)
+
+### Decisions Log
+
+- [2026-08-29 09:20] AGREED: fix the sign-rect frame at the PREFILL, emitting absolute user-space
+  coordinates, rather than teaching `validateRect` about the CropBox. The `/Rect` is absolute by
+  specification, so absolute is the canonical frame for those inputs — and changing `validateRect`
+  would also change the contract for hand-typed coordinates and for `incrementalSigner`.

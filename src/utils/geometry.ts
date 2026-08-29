@@ -164,6 +164,32 @@ export function displayRectToUserSpaceRect(
 }
 
 /**
+ * Map a drawn DISPLAY-space rect into ABSOLUTE PDF user space, honouring the CropBox origin.
+ *
+ * The sibling of {@link redactionRectToPageSpace}, and it exists for the same reason. A
+ * signature annotation's `/Rect` is defined in absolute user space, but
+ * {@link displayRectToUserSpaceRect} maps into a box whose origin is implicitly (0,0) — i.e.
+ * relative to the RENDERED (crop) box. Those two frames coincide only when the CropBox origin
+ * is (0,0), which is true of almost every page, which is exactly why the mismatch shipped
+ * undetected: on a page with an inset CropBox the visible signature landed displaced by the
+ * origin, and with a deep enough inset outside the visible area entirely.
+ *
+ * `viewBox` is pdf.js's `[x0, y0, x1, y1]` for the page (rotation-invariant); `totalRot` is
+ * `(page.rotate + userRotation) % 360`.
+ */
+export function displayRectToPageUserSpaceRect(
+  rect: { x: number; y: number; width: number; height: number },
+  viewBox: readonly number[],
+  totalRot: number,
+): { x: number; y: number; width: number; height: number } {
+  const x0 = viewBox[0], y0 = viewBox[1], x1 = viewBox[2], y1 = viewBox[3];
+  // Un-rotate and flip within the CROP dimensions first, then translate — composing the other
+  // way round would rotate the origin offset too. Same ordering as redactionRectToPageSpace.
+  const c = displayRectToUserSpaceRect(rect, x1 - x0, y1 - y0, totalRot);
+  return { x: c.x + x0, y: c.y + y0, width: c.width, height: c.height };
+}
+
+/**
  * Inset a W×H box by per-edge MARGINS in points (#G23 v1b — the numeric companion to drag-to-crop).
  *
  * DELIBERATELY SPACE-AGNOSTIC. It is called with the page's *display* dimensions, because the user types
