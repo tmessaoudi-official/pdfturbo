@@ -240,3 +240,53 @@ describe('walkPageOps — Form XObject matrices (real pdf.js)', () => {
     expect(Array.from(res.images[0].ctm)).toEqual([IMG_W, 0, 0, IMG_H, 20, 20]);
   }, 60_000);
 });
+
+describe('walkPageOps — annotation ink must not pollute the PAGE text channels', () => {
+  /**
+   * Composing beginAnnotation's placement (so a stamped IMAGE can be redaction-filtered) also
+   * moves an annotation's own vector ink and text colour into page space. Before, that ink sat
+   * at (0,0) where `classifyRuleAsUnderline`'s overlap test never matched real text — inert
+   * noise. Placed correctly it lands ON the text baseline, so a Square annotation's border is
+   * read as an underline the source text does not have, and a page of widget borders becomes a
+   * phantom table grid — and `reconstructPage` REMOVES in-region words from the paragraph flow,
+   * which is the harm CLAUDE.md grades as the reason C9 stays unwired.
+   *
+   * So the ANNOTATION's rules/vRules/colorMap are suppressed while its images are kept.
+   */
+  async function pageWithAnnotationBar(): Promise<Uint8Array> {
+    const { PDFDocument, PDFName, PDFArray, PDFNumber, StandardFonts, rgb } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 800]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText('Hello world paragraph', { x: 100, y: 600, size: 12, font, color: rgb(0, 0, 0) });
+    const ctx = doc.context;
+    // A blue bar exactly on the text baseline, plus blue text, inside the annotation's AP.
+    const ap = ctx.stream('0 0 1 rg 0 0 120 1 re f BT /F1 12 Tf 0 0 1 rg 1 0 0 1 0 0 Tm (x) Tj ET', {
+      Type: PDFName.of('XObject'), Subtype: PDFName.of('Form'),
+      BBox: ctx.obj([0, 0, 120, 4]), Resources: ctx.obj({}),
+    });
+    const annot = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Square'),
+      Rect: ctx.obj([100, 596, 220, 600]), F: PDFNumber.of(4),
+      AP: ctx.obj({ N: ctx.register(ap) }),
+    });
+    const arr = PDFArray.withContext(ctx);
+    arr.push(ctx.register(annot));
+    page.node.set(PDFName.of('Annots'), arr);
+    return doc.save({ useObjectStreams: false });
+  }
+
+  it('an annotation appearance stream contributes no rules and no colours', async () => {
+    const res = await opsFor(await pageWithAnnotationBar());
+    // The only rule-like rect on this page comes from the annotation.
+    expect(res.rules).toHaveLength(0);
+    expect(res.vRules).toHaveLength(0);
+    expect(res.colorMap.size).toBe(0);
+  }, 60_000);
+
+  it('but an annotation IMAGE placement is still recorded (the redaction filter needs it)', async () => {
+    const res = await opsFor(await buildStampedImagePdf());
+    expect(res.images).toHaveLength(1);
+    expect(Array.from(res.images[0].ctm)).toEqual([IMG_W, 0, 0, IMG_H, 300, 600]);
+  }, 60_000);
+});

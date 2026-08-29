@@ -74,6 +74,21 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
   const ctmStack: Matrix6[] = [];
   let ctm: Matrix6 = [1, 0, 0, 1, 0, 0];
 
+  /**
+   * How deep we are inside an annotation's appearance stream.
+   *
+   * The IMAGE channel is collected inside annotations on purpose — `imagePlacementRedacted`
+   * needs a stamped image's true placement or a redaction over it cannot drop it. The other
+   * three channels are NOT: they describe the PAGE's own text, and an annotation's vector ink
+   * and fill colours would be read as page content. Before the placement was composed that ink
+   * landed at (0,0), where `classifyRuleAsUnderline`'s overlap test never matched real text, so
+   * it was inert noise; placed correctly it lands ON a text baseline, and a Square annotation's
+   * border becomes an underline the source does not have while a page of widget borders becomes
+   * a phantom table grid. `reconstructPage` REMOVES in-region words from the paragraph flow, so
+   * that is the same harm CLAUDE.md grades as the reason C9 stays unwired.
+   */
+  let annotationDepth = 0;
+
   /** `m × [a b c d e f]`, the PDF `cm` composition. Shared so the sites cannot drift. */
   const composeCtm = (
     m: Matrix6, a: number, b: number, c: number, d: number, e: number, f: number,
@@ -110,6 +125,7 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
       // dropped one whenever a redaction happened to sit at (0,0) — it erred in both directions.
       // The strip added for the raster paths does not cover this: `_extractFlowDoc` walks the
       // ORIGINAL source page, not the stripped export copy.
+      annotationDepth++;
       ctmStack.push([...ctm] as Matrix6);
       // Reset first: the backend sets the base transform rather than composing onto whatever the
       // content stream left behind.
@@ -119,13 +135,17 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
         if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);
       }
     } else if (fn === OPS['endAnnotation']) {
+      if (annotationDepth > 0) annotationDepth--;
       // Defensive, and NOT pinned by a test — said plainly rather than implied. Because
       // `beginAnnotation` RESETS the ctm rather than composing onto it, a missing pop here is
       // unobservable in pdf.js's current output: annotations come last in the operator list and
       // each one re-establishes its own frame. Sabotaging this line away leaves the suite green.
-      // It stays because it keeps the stack balanced (matching the backend's own `restore`), so
-      // any future op emitted after an annotation block reads the page frame and not the
-      // annotation's.
+      // It stays because it keeps the stack balanced, so any future op emitted after an
+      // annotation block reads the page frame and not the annotation's. Note this is a
+      // deliberate DIVERGENCE from pdf.js, not a match to it: `endAnnotation` pops only
+      // `baseTransformStack`, and the transform unwind happens at the NEXT `beginAnnotation`
+      // via `#restoreInitialState()`. An earlier version of this comment claimed it mirrored
+      // the backend's own `restore`, which the backend does not do here.
       const prev = ctmStack.pop();
       if (prev) ctm = prev;
     } else if (fn === OPS['paintFormXObjectBegin']) {
@@ -176,9 +196,9 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
         // Keep only thin, line-like rules — excludes shading blocks / vector art.
         // Horizontal → underline/strike candidates; vertical → table-grid (#56).
         if (rw > 2 && rh < 8 && rw > rh * 3) {
-          rules.push({ x: minX, y: minY, width: rw, height: rh });
+          if (annotationDepth === 0) rules.push({ x: minX, y: minY, width: rw, height: rh });
         } else if (rh > 2 && rw < 8 && rh > rw * 3) {
-          vRules.push({ x: minX, y: minY, width: rw, height: rh });
+          if (annotationDepth === 0) vRules.push({ x: minX, y: minY, width: rw, height: rh });
         }
       }
     } else if (fn === OPS['setFillRGBColor']) {
@@ -221,7 +241,7 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
       const py = Math.round(ctm[1] * ox + ctm[3] * oy + ctm[5]);
       // Only record non-black so reconstructPage defaults to black text.
       if (fillHex !== '000000') {
-        colorMap.set(`${px},${py}`, fillHex);
+        if (annotationDepth === 0) colorMap.set(`${px},${py}`, fillHex);
       }
     }
   }

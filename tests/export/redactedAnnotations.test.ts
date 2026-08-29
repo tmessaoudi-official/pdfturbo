@@ -77,7 +77,7 @@ describe('stripRedactedAnnotations', () => {
     return { doc, page, PDFName, PDFArray };
   }
 
-  const annotCount = async (
+  const annotCount = (
     page: import('@cantoo/pdf-lib').PDFPage,
     PDFName: typeof import('@cantoo/pdf-lib').PDFName,
     PDFArray: typeof import('@cantoo/pdf-lib').PDFArray,
@@ -91,7 +91,7 @@ describe('stripRedactedAnnotations', () => {
     // covered: y-up 280..340 (y-down 60..120); clear: y-up 90..150 (y-down 250..310)
     const { page, PDFName, PDFArray } = await build([[40, 280, 140, 340], [40, 90, 140, 150]]);
     await stripRedactedAnnotations(page, [redactionEl(30, 50, 120, 80)], 'p1', cropBox, 0);
-    expect(await annotCount(page, PDFName, PDFArray)).toBe(1);
+    expect(annotCount(page, PDFName, PDFArray)).toBe(1);
   });
 
   it('removes BOTH of two adjacent covered annotations', async () => {
@@ -99,20 +99,20 @@ describe('stripRedactedAnnotations', () => {
     // forward loop skips the entry after each removal and leaves the second one live.
     const { page, PDFName, PDFArray } = await build([[40, 280, 140, 340], [40, 290, 140, 350]]);
     await stripRedactedAnnotations(page, [redactionEl(30, 40, 120, 100)], 'p1', cropBox, 0);
-    expect(await annotCount(page, PDFName, PDFArray)).toBe(0);
+    expect(annotCount(page, PDFName, PDFArray)).toBe(0);
   });
 
   it('is a no-op when the page carries no redaction', async () => {
     const { page, PDFName, PDFArray } = await build([[40, 280, 140, 340]]);
     await stripRedactedAnnotations(page, [], 'p1', cropBox, 0);
-    expect(await annotCount(page, PDFName, PDFArray)).toBe(1);
+    expect(annotCount(page, PDFName, PDFArray)).toBe(1);
   });
 
   it('ignores redactions belonging to a DIFFERENT page', async () => {
     const { page, PDFName, PDFArray } = await build([[40, 280, 140, 340]]);
     const other = new RedactionElement(30, 50, 120, 80, 'OTHER-PAGE', '#000000') as unknown as PDFElement;
     await stripRedactedAnnotations(page, [other], 'p1', cropBox, 0);
-    expect(await annotCount(page, PDFName, PDFArray)).toBe(1);
+    expect(annotCount(page, PDFName, PDFArray)).toBe(1);
   });
 
   it('honours a non-zero CropBox ORIGIN', async () => {
@@ -175,6 +175,26 @@ describe('stripRedactedAnnotations', () => {
     })));
     page.node.set(PDFName.of('Annots'), arr);
     await stripRedactedAnnotations(page, [redactionEl(30, 50, 120, 80)], 'p1', cropBox, 0);
+    expect(page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0);
+  });
+
+  it('fails CLOSED on a wrong-TYPE entry inside /Annots', async () => {
+    // A bare number in the array throws from `annots.lookupMaybe(i, PDFDict)` exactly as a
+    // wrong-typed /Rect does. That lookup sat OUTSIDE the try, so the throw propagated and,
+    // on the thumbnail path, degraded to a plain un-redacted raster.
+    const { PDFDocument, PDFName, PDFArray, PDFNumber, PDFString } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([W, H]);
+    const ctx = doc.context;
+    const arr = PDFArray.withContext(ctx);
+    arr.push(ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FreeText'),
+      Rect: ctx.obj([40, 280, 140, 340]), F: PDFNumber.of(4), Contents: PDFString.of('covered'),
+    })));
+    arr.push(PDFNumber.of(42));  // not a dict
+    page.node.set(PDFName.of('Annots'), arr);
+    await stripRedactedAnnotations(page, [redactionEl(30, 50, 120, 80)], 'p1', cropBox, 0);
+    // Both go: the covered one because it is covered, the malformed one because it is unreadable.
     expect(page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0);
   });
 

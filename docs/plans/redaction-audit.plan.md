@@ -18,12 +18,13 @@ list, so it can be deleted once they are closed.
 | Every export shipped the **un-redacted page** as an orphan object | `pageHasRedaction` pre-copy filter |
 | The table/flow filter **no-opped at `/Rotate` 90/270** | `getViewport({ scale: 1, rotation: 0 })` |
 
-## New leaks found by the re-run panel (2026-08-23) — NOT yet fixed
+## New leaks found by the re-run panel (2026-08-23) — ALL SINCE FIXED (see § below)
 
 Each is pinned by a probe with a **passing control**, run against the source md5s that are shipping
 now (`var/claude/redaction-panel/round1/probes-final.log`; reproducers: untracked
 `tests/browser/zzpanel-probe{,2,3}.browser.test.ts` — **since deleted**, superseded by the
-committed guards; see the later note in this file. Nothing untracked remains in the tree).
+committed guards; see the later note in this file. No probe file is committed, and `.gitignore` now
+carries `tests/**/zz*` so a `git add -A` cannot publish one — a prose claim alone never guaranteed that).
 
 | Leak | Where | Evidence |
 |---|---|---|
@@ -37,7 +38,9 @@ are compared in different coordinate origins.
 
 ## Open
 
-1. **Certification is NOT complete — and round 1 of the re-run found TWO LIVE LEAKS.** Rounds 1–3 each
+1. **Certification is NOT complete — and round 1 of the re-run found TWO LIVE LEAKS.** (HISTORICAL:
+   this § describes the 2026-08-23 re-run, not round 5. Round 5's own certification state is recorded
+   in its sections below.) Rounds 1–3 each
    found real defects *in my own fixes*; round 4 was **cut short by a rate limit** with both lenses
    mid-investigation. The re-run round (2026-08-23) was ALSO rate-limited, but its output was recovered
    from the agent transcripts → `var/claude/redaction-panel/round1/` (`completeness.md` verbatim,
@@ -193,10 +196,14 @@ than silently resolved: the repo cannot prove whether the 2026-07-30 native pass
 
 ### Still open
 
-1. **Certification.** `advisor()` ran at 3C and 6C. The three-lens panel has NOT been re-run over this
+1. **Certification.** SUPERSEDED by round 5 — the panel HAS since run twice over `d945127..HEAD`; see
+   the two round-5 sections below for what each found and the counter state. Original text: `advisor()`
+   ran at 3C and 6C. The three-lens panel has NOT been re-run over this
    round; the two-consecutive-clean counter remains **0**.
 2. **Finding C — non-zero CropBox origin also shifts the whole flow LAYOUT.** Not a leak, and
-   deliberately not fixed. Words, images and margins are mixed absolute/crop-relative: probe output
+   deliberately not fixed. NOW REGISTERED as **C22** in `KNOWN_ISSUES.md` and
+   `tests/blockers/README.md`, and pinned by `tests/browser/blockers-cropbox-layout.browser.test.ts`
+   — so "wants its own change, pinned first" is half done: it is pinned; the change is still open. Words, images and margins are mixed absolute/crop-relative: probe output
    shows a word at `"y":300` on a 300-high crop. Normalising means moving items, rules, links, images
    AND the position-derived `colorMap` keys in lockstep; a partial normalisation silently breaks
    colour/underline/link matching. Wants its own change, pinned first.
@@ -412,3 +419,59 @@ undefined); and `validateRect` bounding against the media BOX rather than its di
 - [2026-08-29 10:30] AGREED: keep the `endAnnotation` pop although sabotage leaves the suite green,
   and say so in the code. It is unobservable only because `beginAnnotation` resets the ctm; the pop
   keeps the stack balanced for any future op emitted after an annotation block.
+
+## Round 5 review, round 2 — and the regression the first fix introduced
+
+Frozen at `e7b7789`. All three lenses ran again. **The counter did NOT reach clean: 3 + 5 + 10
+findings.** Two mattered.
+
+### A regression created BY the `beginAnnotation` fix
+
+Composing the annotation placement was right for the IMAGE channel — it is what lets
+`imagePlacementRedacted` see a stamped image. But `walkPageOps` emits **four** channels off the same
+`ctm`, and the other three describe the PAGE's own text. Before the fix an annotation's vector ink
+sat at (0,0), where `classifyRuleAsUnderline`'s overlap test never matched real text — inert noise.
+Placed correctly it lands ON a text baseline: a `Square` annotation's border reads as an underline
+the source does not have, and a page of un-flattened widget borders becomes a phantom lattice. Since
+`reconstructPage` REMOVES in-region words from the paragraph flow, that can silently DELETE body text
+from the DOCX/MD/TXT export — verbatim the harm this repo cites as the reason C9 stays unwired.
+
+Fixed with an `annotationDepth` counter: images are still collected inside an annotation, the three
+page-text channels are not. **The lesson is that "fix the ctm" and "fix the image channel" were not
+the same change** — a shared variable feeding four consumers means a correctness fix for one is a
+behaviour change for all four, and only the image channel had been reasoned about.
+
+### `stripRedactedAnnotations` was still not fail-closed
+
+`annots.lookupMaybe(i, PDFDict)` sat OUTSIDE the try added in the previous round, so a wrong-typed
+ENTRY (a bare number in `/Annots`) threw where a wrong-typed `/Rect` was caught. Two lenses found it
+independently. On the thumbnail path that throw degrades to a plain UN-REDACTED raster — the exact
+degradation the wholesale-delete branch was written to prevent, defeated three lines later.
+
+### Process finding, accepted
+
+**The round was run on a moving tree** and that is a real violation of this repo's own freeze rule —
+I was editing `opStreamWalker.ts` and `exportPipeline.ts` while the reviewers measured. One reviewer
+also had to restore its own sabotage snapshots and flagged that it may have clobbered an in-flight
+edit of mine. No work was lost (verified against `git show HEAD:`), but the round's numbers are
+weaker for it. **Freeze means freeze: no edits between spawning the panel and reading its reports.**
+
+### Also corrected
+
+`CLAUDE.md` said `validateRect` was "deliberately UNCHANGED" three lines above the paragraph
+explaining how it had changed; three guard counts were stale in the very file that carries the
+"a wrong count here is exactly the claim this file exists to prevent" rule; `SECURITY.md` claimed
+both image-export paths were "pinned at each rotation" when only the thumbnail was; the
+`endAnnotation` comment claimed to mirror pdf.js's own `restore`, which pdf.js does not do there
+(the unwind happens at the NEXT `beginAnnotation`); and the rasteriser path is now pinned across all
+four rotations and a crop, which it never was.
+
+### Decisions Log
+
+- [2026-08-29 11:20] AGREED: inside an annotation appearance stream, collect the IMAGE channel but
+  suppress `rules`/`vRules`/`colorMap`. An annotation's ink is not page content, and placing it
+  correctly is precisely what makes it dangerous to the flow reconstructor.
+- [2026-08-29 11:25] AGREED: `SECURITY.md` states which callers are DRIVEN end-to-end and which are
+  covered only by sharing a collaborator. "Pinned" is a claim about tests, not about confidence.
+- [2026-08-29 11:30] AGREED: `.gitignore` carries `tests/**/zz*`. A prose promise that no probe file
+  remains is not a mechanism, and this repo commits with `git add -A`.

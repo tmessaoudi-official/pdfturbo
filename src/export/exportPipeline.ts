@@ -340,7 +340,17 @@ export async function stripRedactedAnnotations(
   if (!annots) return;
 
   for (let i = annots.size() - 1; i >= 0; i--) {
-    const dict = annots.lookupMaybe(i, PDFDict);
+    // The lookup is INSIDE the try: a wrong-TYPE entry (a bare number in /Annots, say) throws
+    // exactly as a wrong-typed /Rect does. Left uncaught it propagated, and on the thumbnail
+    // path a throw degrades to a plain UN-REDACTED raster — the degradation the wholesale
+    // delete above exists to avoid. An entry we cannot read is one we cannot prove is safe.
+    let dict: import('@cantoo/pdf-lib').PDFDict | undefined;
+    try {
+      dict = annots.lookupMaybe(i, PDFDict);
+    } catch {
+      annots.remove(i);
+      continue;
+    }
     // No dict (a dangling ref) → nothing renders, so leaving it cannot leak; skip rather than
     // remove, keeping this pass byte-neutral for anything it does not understand.
     if (!dict) continue;

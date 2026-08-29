@@ -152,7 +152,7 @@ export function contentCropToPdfCropBox(
  * to a signature appearance rect in PDF USER space (y-up, bottom-left origin),
  * clamped to the page. Composes {@link redactionRectToContent} (display→unrotated
  * content, y-down) + {@link clampContentRect} + a y-flip into user space — the same
- * content space the e-signer validates against (`page.getSize()`, origin 0).
+ * content space the e-signer validates against (`page.getMediaBox()`, origin included).
  * `W`/`H` are the UNROTATED page point dimensions; `totalRot = (page.rotate + userRotation) % 360`.
  */
 export function displayRectToUserSpaceRect(

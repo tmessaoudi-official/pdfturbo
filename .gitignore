@@ -48,3 +48,6 @@
 
 # Throwaway in-container browser-test harness (hardcoded chromium path — never commit)
 vitest.browser.container.ts
+
+# Throwaway probe files from review rounds — never commit (they encode transient state).
+tests/**/zz*

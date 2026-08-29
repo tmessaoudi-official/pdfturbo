@@ -25,6 +25,7 @@ import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import { rasterizePageWithRedactions } from '../../src/export/exportPipeline';
 import { RedactionElement } from '../../src/elements/redactionElement';
 import { InkLayer } from '../../src/infra/inkLayer';
+import { contentRectToDisplay } from '../../src/utils/geometry';
 import type { DocumentPage, WatermarkSettings } from '../../src/core/documentModel';
 import type { IErrorReporter } from '../../src/core/errorReporter';
 import type { PDFElement } from '../../src/elements/annotationElement';
@@ -129,6 +130,68 @@ async function rasterize(): Promise<import('@cantoo/pdf-lib').PDFDocument> {
   );
   return target;
 }
+
+/**
+ * The same promise, pinned across FRAMES on this path too.
+ *
+ * The shipped guard below runs only at rotation 0 with no crop. That is exactly the blind spot
+ * that let a mis-framing ship on the sibling path (`_applyOverlaysToPage`) and go unnoticed —
+ * so the rasterizer gets the same frame coverage rather than being trusted because it happened
+ * to be written correctly. Asserts no RED pixel anywhere, so no coordinate arithmetic of the
+ * test's own can mask a leak.
+ */
+describe('redaction burn vs SOURCE annotations — every frame (rasterize path)', () => {
+  async function redCountAfterRasterize(
+    opts: { rotation?: number; crop?: { x: number; y: number; width: number; height: number } },
+  ): Promise<number> {
+    const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
+    const rot = ((opts.rotation ?? 0) % 360 + 360) % 360;
+    const docPage: DocumentPage = {
+      id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: rot,
+      ...(opts.crop ? { crop: opts.crop } : {}),
+    };
+    const src = await buildAnnotatedPdf();
+    const target = await PDFDocument.create();
+    // Element coords are DISPLAY space, so the rect must be re-derived per rotation or the burn
+    // genuinely moves off the annotation and the test asserts a leak that is not one.
+    const d = contentRectToDisplay(
+      { x: COVERED.x, y: COVERED.y, width: COVERED.w, height: COVERED.h }, W_ORIG, H_ORIG, rot,
+    );
+    const M = 10;
+    const redaction = new RedactionElement(
+      d.x - M, d.y - M, d.width + 2 * M, d.height + 2 * M, docPage.id, '#000000',
+    ) as unknown as PDFElement;
+    await rasterizePageWithRedactions(
+      src, docPage, [redaction], target,
+      { rgb, StandardFonts, degrees }, noWatermark, new InkLayer(), noopReporter,
+    );
+    const bytes = await target.save({ useObjectStreams: false });
+    const pdf = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+    const p = await pdf.getPage(1);
+    const vp = p.getViewport({ scale: 1 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(vp.width);
+    canvas.height = Math.round(vp.height);
+    const c2d = canvas.getContext('2d') as CanvasRenderingContext2D;
+    await p.render({ canvas, viewport: vp }).promise;
+    const data = c2d.getImageData(0, 0, canvas.width, canvas.height).data;
+    let red = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] > 150 && data[i + 1] < 110 && data[i + 2] < 110) red++;
+    }
+    return red;
+  }
+
+  for (const rotation of [0, 90, 180, 270]) {
+    it(`rotation ${rotation}: no annotation ink survives the burn`, async () => {
+      expect(await redCountAfterRasterize({ rotation })).toBe(0);
+    }, 60_000);
+  }
+
+  it('with a crop: no annotation ink survives the burn', async () => {
+    expect(await redCountAfterRasterize({ crop: { x: 10, y: 20, width: 180, height: 340 } })).toBe(0);
+  }, 60_000);
+});
 
 describe('redaction burn vs SOURCE annotations (rasterize path)', () => {
   it('an annotation under a redaction is BURNED, not repainted over it', async () => {

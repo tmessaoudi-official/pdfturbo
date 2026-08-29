@@ -815,7 +815,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         const totalRot = (((geom.srcRot + (page.rotation ?? 0)) % 360) + 360) % 360;
         // ABSOLUTE user space, not crop-relative: these four numbers are written verbatim into
         // the signature annotation's /Rect, which PDF defines in absolute coordinates, and the
-        // signer bounds-checks them against pdf-lib's MediaBox getSize(). Mapping through the
+        // signer bounds-checks them against pdf-lib's `getMediaBox()`. Mapping through the
         // crop dimensions alone displaced the visible signature by exactly the CropBox origin —
         // the same frame mismatch as the redaction CropBox-origin leak, and invisible for the
         // same reason: almost every page has a (0,0) origin.

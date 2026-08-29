@@ -313,7 +313,7 @@ Guards: `tests/browser/redaction-annotation-frames.browser.test.ts` (6 — every
 crop, driving `renderThumbnailWithOverlays` end-to-end; asserts NO red pixel survives anywhere
 rather than sampling a computed point, so no coordinate arithmetic of the test's own can mask the
 leak), `tests/browser/redaction-annotation-burn.browser.test.ts` (3, real pdf.js pixels) and
-`tests/export/redactedAnnotations.test.ts` (13). Sabotage-verified three ways: removing the strip fails
+`tests/export/redactedAnnotations.test.ts` (17). Sabotage-verified three ways: removing the strip fails
 exactly the leak case, a forward loop fails exactly the adjacent-annotations case (`PDFArray.remove`
 shifts later indices down), and dropping the CropBox origin fails exactly the origin case.
 
@@ -368,7 +368,7 @@ recorded by the walker. That is not a leak — images reach the DOCX export only
 mask never enters that export at all. Recorded so nobody adds the recording without the filtering, which
 is the one change that WOULD open a leak here.
 
-Guard: `tests/browser/redaction-form-xobject.browser.test.ts` (5, real pdf.js). Sabotage-verified in both
+Guard: `tests/browser/redaction-form-xobject.browser.test.ts` (10, real pdf.js). Sabotage-verified in both
 halves independently: removing the `End` pop fails exactly the two leak-out cases; removing the `Begin`
 composition fails exactly the placement and redaction cases.
 
@@ -385,8 +385,10 @@ Fixed as the redaction fix's sibling: `displayRectToPageUserSpaceRect` is to
 `displayRectToUserSpaceRect` what `redactionRectToPageSpace` is to `redactionRectToContent`, and
 `_pageGeomForSign` now returns the page's `viewBox` instead of bare `W`/`H` — the viewBox is what
 carries the origin, and it is rotation-invariant so it stays correct under `rotation: 0`.
-`validateRect` is deliberately UNCHANGED: with the prefill emitting absolute coordinates, its
-MediaBox-from-(0,0) check is the right frame for them.
+`validateRect` was initially left alone on the reasoning that its MediaBox-from-(0,0) check was
+already the right frame for absolute coordinates. **That was wrong and it HAS since changed** — see
+the paragraph below; this sentence is kept only because a reader who remembers the original ruling
+needs to see it superseded rather than silently gone.
 
 **Two consequences of moving to absolute coordinates, both found by the panel.** `validateRect`
 bounded them against `getSize()` — a *dimension*, not an extent — so on a page whose MediaBox origin
@@ -403,8 +405,9 @@ of bug breeds. Recorded as a bound rather than papered over.
 filter, and this) — so when touching anything that converts between what is DRAWN and what is STORED,
 `grep -rn "cropOrigin\|viewBox\[0\]" src/` first and assume the frame is wrong until checked.
 
-Guard: `tests/utils/signRectPageSpace.test.ts` (5 pure, non-square crop, asymmetric origin on both
-axes). Sabotage-verified: dropping the origin term fails 4 of 5 — the survivor being the zero-origin
+Guard: `tests/utils/signRectPageSpace.test.ts` (8 — 5 pure mapping cases with a non-square crop and
+an asymmetric origin on both axes, plus 3 for the `validateRect` origin below).
+Sabotage-verified: dropping the origin term fails 4 of the 5 mapping cases — the survivor being the zero-origin
 case where both mappings agree by construction, which is exactly why this shipped undetected.
 
 ### The redaction filter compared two coordinate frames — a non-zero CropBox origin defeated it, and images were never filtered at all (2026-08-28)

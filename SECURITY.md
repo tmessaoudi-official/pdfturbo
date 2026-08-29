@@ -76,8 +76,12 @@ attached, so they were baked into the image on top of the burn.
 Any annotation whose rectangle touches a redaction is now removed before the page is rasterised — on
 every export path, at every page rotation, and with or without a crop. (The first version of this fix
 got that wrong: it removed the annotation correctly on the PDF export but not on the image export or
-the thumbnail when the page was rotated or cropped. Both are covered now, and pinned at each
-rotation.) Two consequences worth knowing:
+the thumbnail when the page was rotated or cropped.)
+
+To be precise about what is *tested* rather than merely believed: the PDF-export rasteriser and the
+thumbnail are each driven end-to-end at rotations 0/90/180/270 and with a crop. "Export page as
+image" is not driven directly — it shares the same code path as the thumbnail, so the mechanism is
+pinned but that one caller's wiring is not. Two consequences worth knowing:
 
 - **The whole annotation goes, not just the covered part.** A comment that overlaps a redaction by one
   corner disappears entirely. That is deliberate: for a leak filter, removing too much is the only safe
