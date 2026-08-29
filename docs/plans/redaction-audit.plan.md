@@ -338,3 +338,24 @@ would still be mis-bounded; not fixed, not observed, and `getSize()` cannot expr
   coordinates, rather than teaching `validateRect` about the CropBox. The `/Rect` is absolute by
   specification, so absolute is the canonical frame for those inputs — and changing `validateRect`
   would also change the contract for hand-typed coordinates and for `incrementalSigner`.
+
+### Round 5 close-out checks
+
+- **`downloadFlattened` × redaction ordering — VERIFIED SAFE, not reasoned.** `form.flatten()` runs
+  on each *source* doc inside `_assemblePdfDoc` BEFORE `copyPages`, so widget appearances are baked
+  into source content streams before any page is copied and before the burn is drawn. The burn wins on
+  both the vector and raster paths, and post-flatten there are no widget annotations left for the strip
+  to see.
+- **`hasRedaction → rasterizer` branch confirmed** in both `_assemblePdfDoc` and `downloadPage`, which
+  is what makes the `_applyOverlaysToPage` strip a no-op for every page reaching it from the PDF export
+  path (it fires for `downloadPageAsImage` and `renderThumbnailWithOverlays`, which have no such branch).
+- **`KNOWN_ISSUES.md` C12 carried the refuted #62b claim in paraphrase** — "Raster path (covers the
+  redaction-rasterise case)" — and was found only by grepping for the CLAIM rather than for the one file
+  already known about. That is this repo's own recorded lesson from the hide-vs-remove round, and it
+  caught a real miss again.
+
+**Certified by execution:** the `rasterizePageWithRedactions` path (end-to-end real-pdf.js pixels), the
+`walkPageOps` form-boundary fix (real pdf.js operator lists), and the sign-rect mapping (pure).
+**NOT certified end-to-end:** the `downloadPageAsImage` and `renderThumbnailWithOverlays` wiring — the
+shared collaborator's mechanism is unit-pinned, but no test drives those two callers to pixels. Named
+rather than implied, per the `[pinned]` discipline.
