@@ -530,3 +530,41 @@ produce unattributable.
   over-reach.
 - [2026-08-29 12:05] AGREED: a reviewer that sabotages must do so in an isolated worktree. Recorded
   after two lenses independently reported contamination from a third.
+
+## Certification state at push — stated, not claimed
+
+**The two-consecutive-clean counter is 0/2.** Three rounds ran; each found something, so none was a
+clean round. That is recorded rather than papered over: this milestone is NOT certified under the
+repo's MAXIMAL tier, and the developer authorised the push knowing it.
+
+The severity trend is the argument that was made for pushing, and it should be judged on its own
+merits later: round 1 found two P0 leaks, round 2 one P1 regression plus doc defects, round 3 no live
+product defect at all — two guards that could not fail, and a set of documentation corrections. The
+counter-argument, equally real, is that rounds 1 and 2 each found a defect *inside the fix written in
+the previous round*, so "the trend is good" is exactly what a session would say before shipping a
+fourth one.
+
+**What the push carries that was live in production until now:** a source annotation under a
+redaction repainted OVER the burn and baked visibly into the export; an image inside a Form XObject
+escaping the redaction filter; an image painted by a stamp/comment placed at the page origin, so a
+redaction over it missed and a redaction at (0,0) wrongly dropped it. Those are the reason the push
+was not deferred.
+
+**Uncertified by execution, named individually rather than implied:**
+
+- `downloadPageAsImage` is not driven end-to-end — covered only by sharing `_applyOverlaysToPage`
+  with the thumbnail, which IS driven at every rotation and with a crop.
+- The sign-rect prefill is pinned as a pure function only; nothing drives `onSignRectPicked`, so
+  reverting the fix's effect there leaves the jsdom suite green. Closing it needs a `PDFTurboApp`
+  harness that does not exist.
+- `_pageGeomForSign`'s deliberate `rotation: 0` is unpinned for the same reason.
+- The form `/BBox` clip is still not modelled by `walkPageOps` (an over-approximation, i.e. the safe
+  direction for a leak filter, but it can admit a rule clipped away on the page).
+- The signer signs the ASSEMBLED document, where a redaction-bearing page becomes a fresh raster page
+  at origin (0,0) — so for that one page the absolute prefill is off by the crop origin.
+
+### Decisions Log
+
+- [2026-08-29 12:20] AGREED (developer): push at 0/2 clean rounds. The leaks being fixed are live on
+  the deployed site, and master auto-deploys, so holding a green fix has a cost of its own. The
+  certification shortfall is recorded here instead of being claimed away.
