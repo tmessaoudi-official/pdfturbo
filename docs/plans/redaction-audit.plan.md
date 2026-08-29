@@ -267,3 +267,49 @@ exported and normalises reversed `/Rect` corners; it fails CLOSED on an unreadab
 - [2026-08-29 08:40] AGREED: the CropBox-origin fixture needs an ASYMMETRIC origin on both axes AND
   a non-square crop AND a snugly-sized redaction. The first version had all the right words and was
   VACUOUS — sabotaging the origin term away left it green, because a 50pt shift still overlapped.
+
+### Leak #4 — `walkPageOps` ignored Form XObject boundaries (fixed)
+
+A form XObject is an implicit `q`/`cm`: pdf.js's canvas backend saves the graphics state and
+applies the form's `/Matrix` on `paintFormXObjectBegin`, restoring at `End`. The walker handled
+neither op, so an image inside a form reported the form-LOCAL ctm — `imagePlacementRedacted`
+computed its footprint in the wrong place and a redacted picture exported into DOCX/MD/TXT
+intact — and the form's inner `cm` leaked out to every later page-level op.
+
+**The leak-out compounds MULTIPLICATIVELY, not additively.** Measured: a page-level
+`[100,0,0,50,20,20]` placement after a form containing `100 0 0 50 0 0 cm` was reported as
+`[10000,0,0,2500,2000,1000]`.
+
+**The fixture is where the real lesson is.** The first version placed the form with a page-level
+`q 1 0 0 1 150 500 cm /Fm0 Do Q` and gave it no `/Matrix` — and it PASSED against the unfixed
+walker, because the placement rode an ordinary `transform` the walker already handled. Only a
+form carrying its own `/Matrix` exercises the Begin argument. The throwaway probe that started
+this thread asserted the opposite (form-local ctm) from a HAND-BUILT OPS table and was simply
+wrong about real pdf.js; dumping the real operator list settled it:
+
+```
+paintFormXObjectBegin[[1,0,0,1,150,500],[0,0,200,200]]
+transform[...]            ← only the form's INTERNAL cm arrives this way
+paintImageXObject[...]
+paintFormXObjectEnd[]
+```
+
+Blast radius, stated because nothing pinned the old values: rules and text origins inside forms
+also move from form-local to page space. That is the desired direction — a coloured run or an
+underline inside a form previously keyed at a position `getTextContent` never reports, so it
+silently failed to match.
+
+**Checked and deliberately NOT changed:** `paintInlineImageXObject` and `paintImageMaskXObject`
+are not recorded by the walker. That is not a leak — images reach the DOCX export only via named
+`paintImageXObject` placements resolved through `page.objs`/`commonObjs`, so an inline image or a
+stencil mask never enters that export at all. Recorded so nobody later adds the recording without
+also adding the filtering, which is the one change that WOULD open a leak here.
+
+### Decisions Log
+
+- [2026-08-29 09:05] AGREED: handle the form boundary in `walkPageOps` by pushing the CTM and
+  composing `args[0]` on Begin, popping on End — mirroring `CanvasGraphics.paintFormXObjectBegin`,
+  including its `length === 6` guard for a form with no or a malformed `/Matrix`.
+- [2026-08-29 09:10] AGREED: a Form XObject fixture MUST carry its own `/Matrix`. Placing the form
+  with a page-level `cm` tests the `transform` op that already worked and proves nothing about the
+  fix — the first version of this guard passed against the unfixed walker for exactly that reason.

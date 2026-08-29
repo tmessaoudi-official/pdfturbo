@@ -88,6 +88,35 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
         ctm[0] * c + ctm[2] * d, ctm[1] * c + ctm[3] * d,
         ctm[0] * e + ctm[2] * f + ctm[4], ctm[1] * e + ctm[3] * f + ctm[5],
       ];
+    } else if (fn === OPS['paintFormXObjectBegin']) {
+      // A form XObject is an implicit q/cm: pdf.js's canvas backend saves the state and
+      // applies the form's /Matrix here (CanvasGraphics.paintFormXObjectBegin), restoring at
+      // the matching End. The form /Matrix arrives as THIS op's first argument — it is NOT
+      // re-emitted as a `transform`, verified by dumping a real operator list:
+      //   paintFormXObjectBegin[[1,0,0,1,150,500],[0,0,200,200]]
+      //   transform[...]   ← only the form's INTERNAL cm comes through this way
+      // Without both halves an image inside a form reported the form-LOCAL ctm (so
+      // `imagePlacementRedacted` missed a redacted picture and it exported intact), and the
+      // form's inner cm leaked out to every later page-level op — compounding
+      // MULTIPLICATIVELY, measured as [10000,0,0,2500,2000,1000] for a [100,0,0,50,20,20]
+      // placement. Rules and text origins inside forms move to page space too, which is the
+      // desired direction: nothing pinned the old form-local values.
+      ctmStack.push([...ctm] as Matrix6);
+      const m = args[0] as unknown as ArrayLike<number> | null | undefined;
+      // Mirror canvas.js's own guard: a form may carry no /Matrix, or a malformed one.
+      if (m && m.length === 6) {
+        const [a, b, c, d, e, f] = Array.from(m, Number);
+        if ([a, b, c, d, e, f].every(Number.isFinite)) {
+          ctm = [
+            ctm[0] * a + ctm[2] * b, ctm[1] * a + ctm[3] * b,
+            ctm[0] * c + ctm[2] * d, ctm[1] * c + ctm[3] * d,
+            ctm[0] * e + ctm[2] * f + ctm[4], ctm[1] * e + ctm[3] * f + ctm[5],
+          ];
+        }
+      }
+    } else if (fn === OPS['paintFormXObjectEnd']) {
+      const prev = ctmStack.pop();
+      if (prev) ctm = prev;
     } else if (fn === OPS['paintImageXObject']) {
       images.push({ name: args[0] as unknown as string, ctm: [...ctm] as Matrix6 });
     } else if (fn === OPS['constructPath']) {
