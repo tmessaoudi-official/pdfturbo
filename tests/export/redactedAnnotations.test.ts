@@ -145,6 +145,48 @@ describe('stripRedactedAnnotations', () => {
     expect(page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0);
   });
 
+  it('fails CLOSED on a /Rect of the wrong TYPE, which throws rather than yielding NaN', async () => {
+    // pdf-lib's lookupMaybe returns undefined only for an ABSENT or null object; on a present-
+    // but-wrong-type object it THROWS. Without a catch this escaped the NaN path entirely and
+    // propagated — and on the thumbnail path a throw degrades to a plain un-redacted raster.
+    const { PDFDocument, PDFName, PDFArray, PDFNumber, PDFString } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([W, H]);
+    const ctx = doc.context;
+    const arr = PDFArray.withContext(ctx);
+    arr.push(ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FreeText'),
+      Rect: PDFString.of('not-an-array'), F: PDFNumber.of(4),
+    })));
+    page.node.set(PDFName.of('Annots'), arr);
+    await stripRedactedAnnotations(page, [redactionEl(30, 50, 120, 80)], 'p1', cropBox, 0);
+    expect(page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0);
+  });
+
+  it('fails CLOSED on a /Rect containing a non-numeric entry', async () => {
+    const { PDFDocument, PDFName, PDFArray, PDFNumber, PDFString } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([W, H]);
+    const ctx = doc.context;
+    const arr = PDFArray.withContext(ctx);
+    arr.push(ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FreeText'),
+      Rect: ctx.obj([0, 0, 100, PDFString.of('x')]), F: PDFNumber.of(4),
+    })));
+    page.node.set(PDFName.of('Annots'), arr);
+    await stripRedactedAnnotations(page, [redactionEl(30, 50, 120, 80)], 'p1', cropBox, 0);
+    expect(page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0);
+  });
+
+  it('drops a non-array /Annots wholesale rather than leaving it unexamined', async () => {
+    const { PDFDocument, PDFName, PDFArray, PDFString } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([W, H]);
+    page.node.set(PDFName.of('Annots'), PDFString.of('malformed'));
+    await stripRedactedAnnotations(page, [redactionEl(30, 50, 120, 80)], 'p1', cropBox, 0);
+    expect(page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)).toBeUndefined();
+  });
+
   it('leaves a page with no /Annots untouched', async () => {
     const { PDFDocument } = await import('@cantoo/pdf-lib');
     const doc = await PDFDocument.create();

@@ -843,7 +843,6 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     ));
   }
 
-  /** Unrotated point dimensions + source rotation of a page (for the sign-rect transform). */
   /**
    * Page geometry for the sign-rect prefill, as the page's `viewBox` rather than bare W/H.
    *

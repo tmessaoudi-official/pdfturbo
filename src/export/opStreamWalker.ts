@@ -69,9 +69,26 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
     textLineMatrix = [a, b, c, d, tx * a + ty * c + e, tx * b + ty * d + f];
     textMatrix = [...textLineMatrix];
   };
-  // CTM stack for image position/size extraction (q/Q/cm operators).
+  // CTM stack for image position/size extraction (q/Q/cm operators, and the implicit
+  // save/transform pairs pdf.js emits for form XObjects and annotation appearance streams).
   const ctmStack: Matrix6[] = [];
   let ctm: Matrix6 = [1, 0, 0, 1, 0, 0];
+
+  /** `m × [a b c d e f]`, the PDF `cm` composition. Shared so the sites cannot drift. */
+  const composeCtm = (
+    m: Matrix6, a: number, b: number, c: number, d: number, e: number, f: number,
+  ): Matrix6 => [
+    m[0] * a + m[2] * b, m[1] * a + m[3] * b,
+    m[0] * c + m[2] * d, m[1] * c + m[3] * d,
+    m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5],
+  ];
+  /** A 6-element finite matrix argument, or null — mirrors canvas.js's own defensive checks. */
+  const asMatrix6 = (v: unknown): Matrix6 | null => {
+    const len = (v as ArrayLike<number> | null)?.length;
+    if (len !== 6) return null;
+    const a = Array.from(v as ArrayLike<number>, Number);
+    return a.every(Number.isFinite) ? (a as Matrix6) : null;
+  };
 
   for (let i = 0; i < opList.fnArray.length; i++) {
     const fn = opList.fnArray[i];
@@ -83,11 +100,34 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
       if (prev) ctm = prev;
     } else if (fn === OPS['transform']) {
       const [a, b, c, d, e, f] = args;
-      ctm = [
-        ctm[0] * a + ctm[2] * b, ctm[1] * a + ctm[3] * b,
-        ctm[0] * c + ctm[2] * d, ctm[1] * c + ctm[3] * d,
-        ctm[0] * e + ctm[2] * f + ctm[4], ctm[1] * e + ctm[3] * f + ctm[5],
-      ];
+      ctm = composeCtm(ctm, a, b, c, d, e, f);
+    } else if (fn === OPS['beginAnnotation']) {
+      // An annotation's appearance stream is placed by ops the page content stream never shows.
+      // pdf.js's canvas backend (pdf.mjs:12638-12696) resets to the base transform, saves, then
+      // applies `transform` and `matrix` — args[2] and args[3]. Without this an image painted by
+      // a Stamp/FreeText appearance reported its ctm at the PAGE ORIGIN, so
+      // `imagePlacementRedacted` both MISSED a redaction over a stamped image and falsely
+      // dropped one whenever a redaction happened to sit at (0,0) — it erred in both directions.
+      // The strip added for the raster paths does not cover this: `_extractFlowDoc` walks the
+      // ORIGINAL source page, not the stripped export copy.
+      ctmStack.push([...ctm] as Matrix6);
+      // Reset first: the backend sets the base transform rather than composing onto whatever the
+      // content stream left behind.
+      ctm = [1, 0, 0, 1, 0, 0];
+      for (const idx of [2, 3]) {
+        const m = asMatrix6(args[idx]);
+        if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);
+      }
+    } else if (fn === OPS['endAnnotation']) {
+      // Defensive, and NOT pinned by a test — said plainly rather than implied. Because
+      // `beginAnnotation` RESETS the ctm rather than composing onto it, a missing pop here is
+      // unobservable in pdf.js's current output: annotations come last in the operator list and
+      // each one re-establishes its own frame. Sabotaging this line away leaves the suite green.
+      // It stays because it keeps the stack balanced (matching the backend's own `restore`), so
+      // any future op emitted after an annotation block reads the page frame and not the
+      // annotation's.
+      const prev = ctmStack.pop();
+      if (prev) ctm = prev;
     } else if (fn === OPS['paintFormXObjectBegin']) {
       // A form XObject is an implicit q/cm: pdf.js's canvas backend saves the state and
       // applies the form's /Matrix here (CanvasGraphics.paintFormXObjectBegin), restoring at
@@ -102,18 +142,9 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
       // placement. Rules and text origins inside forms move to page space too, which is the
       // desired direction: nothing pinned the old form-local values.
       ctmStack.push([...ctm] as Matrix6);
-      const m = args[0] as unknown as ArrayLike<number> | null | undefined;
       // Mirror canvas.js's own guard: a form may carry no /Matrix, or a malformed one.
-      if (m && m.length === 6) {
-        const [a, b, c, d, e, f] = Array.from(m, Number);
-        if ([a, b, c, d, e, f].every(Number.isFinite)) {
-          ctm = [
-            ctm[0] * a + ctm[2] * b, ctm[1] * a + ctm[3] * b,
-            ctm[0] * c + ctm[2] * d, ctm[1] * c + ctm[3] * d,
-            ctm[0] * e + ctm[2] * f + ctm[4], ctm[1] * e + ctm[3] * f + ctm[5],
-          ];
-        }
-      }
+      const m = asMatrix6(args[0]);
+      if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);
     } else if (fn === OPS['paintFormXObjectEnd']) {
       const prev = ctmStack.pop();
       if (prev) ctm = prev;

@@ -930,8 +930,10 @@ export class ExportService {
    * Returns `null` when the page has no overlay elements AND no ink: the caller
    * then falls back to the plain source raster, so an unedited thumbnail is
    * byte-identical to the pre-G17 path and costs nothing extra. A redaction is
-   * composited as its visible fill rect (same as the PNG export — a thumbnail is
-   * a preview, not the true content-stripping export path).
+   * composited as its visible fill rect. Source annotations under a redaction ARE stripped
+   * here (via `_applyOverlaysToPage`), the same as on the PNG export — an earlier version of
+   * this comment called the thumbnail "a preview, not the true content-stripping export path"
+   * and paired it with the PNG export, which SECURITY.md grades as removal-grade.
    *
    * Mirrors `downloadPageAsImage` but returns a JPEG data URL (matching
    * `PDFRenderer.generateThumbnail`'s format/quality) and destroys the temporary
@@ -1159,29 +1161,40 @@ export class ExportService {
     pageNumber?: number,
     pageCount?: number,
   ): Promise<void> {
+    const sourceRot = page.getRotation().angle as number;
+
+    // Source annotations over a redaction must go before ANY pdf.js raster of this page. The
+    // burn sits in the content stream and pdf.js paints annotation appearance streams after it,
+    // so a covered FreeText note / stamp / un-flattened widget is repainted ON TOP of the burn
+    // and baked into the exported pixels — visibly. `downloadPageAsImage` and
+    // `renderThumbnailWithOverlays` both rasterize what this method produces, so the strip
+    // belongs HERE rather than at those two call sites: a per-site fix would leave the next
+    // rasterizing caller on the same cliff. No-op on a page with no redaction, which is every
+    // page reaching this method from the PDF export path (those route to the rasterizer).
+    //
+    // It runs BEFORE `buildPageOverlays`, and that ordering is load-bearing: `buildPageOverlays`
+    // MUTATES the page it is given — `page.setRotation(totalRot)` and `page.setCropBox(effBox)`
+    // — so reading either afterwards yields a DOUBLED rotation (`srcRot + 2·userRot`) and the
+    // NARROWED crop box, while the redaction elements are still in source-box display coords.
+    // That combination silently un-did the strip on exactly these two callers; the rasterizer
+    // escaped it only by capturing `srcRot` early and passing `skipCropBox`. Pinned at every
+    // rotation and with a crop by tests/browser/redaction-annotation-frames.browser.test.ts.
+    await stripRedactedAnnotations(
+      page, pageElements, docPage.id, getPageCropBox(page),
+      ((sourceRot + (docPage.rotation ?? 0)) % 360 + 360) % 360,
+    );
+
     await buildPageOverlays({
       pdfDoc, page, docPage,
       elements: pageElements,
       pdfLib,
       userRot: docPage.rotation ?? 0,
-      sourceRot: page.getRotation().angle as number,
+      sourceRot,
       watermark: this._ctx.documentModel.watermark,
       inkLayer: this._ctx.inkLayer,
       reportError: this._ctx.reportError,
       bates: this._ctx.documentModel.bates, pageNumber, pageCount,
     });
-    // Source annotations over a redaction must go before ANY pdf.js raster of this page.
-    // The burn sits in the content stream and pdf.js paints annotation appearance streams
-    // after it, so a covered FreeText note / stamp / un-flattened widget is repainted ON TOP
-    // of the burn and baked into the exported pixels — visibly. `downloadPageAsImage` and
-    // `renderThumbnailWithOverlays` both rasterize what this method produces, so the strip
-    // belongs HERE rather than at those two call sites: a per-site fix would leave the next
-    // rasterizing caller on the same cliff. No-op on a page with no redaction, which is every
-    // page reaching this method from the PDF export path (those route to the rasterizer).
-    await stripRedactedAnnotations(
-      page, pageElements, docPage.id, getPageCropBox(page),
-      (((page.getRotation().angle as number) + (docPage.rotation ?? 0)) % 360 + 360) % 360,
-    );
   }
 
   /**

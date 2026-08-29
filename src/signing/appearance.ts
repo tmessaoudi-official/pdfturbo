@@ -6,10 +6,19 @@
 
 import { SignError, type SignOptions, type SignatureRect } from './types';
 
-/** A page's media box dimensions in points. */
+/**
+ * A page's media box in points.
+ *
+ * `x`/`y` are the box's ORIGIN and default to 0. They exist because a `/Rect` is in ABSOLUTE
+ * user space: on a page whose MediaBox origin is non-zero, bounding an absolute rectangle
+ * against bare width/height rejects legitimate placements near the far edge. `getSize()`
+ * returns dimensions only, so a caller that has the real box should pass `getMediaBox()`.
+ */
 export interface PageSize {
   width: number;
   height: number;
+  x?: number;
+  y?: number;
 }
 
 /**
@@ -30,10 +39,13 @@ export function validateRect(rect: SignatureRect, page: PageSize): void {
   if (rect.width <= 0 || rect.height <= 0) {
     throw new SignError('INVALID_RECT', 'Signature rectangle width and height must be positive.');
   }
-  if (rect.x < -eps || rect.y < -eps) {
+  const originX = page.x ?? 0;
+  const originY = page.y ?? 0;
+  if (rect.x < originX - eps || rect.y < originY - eps) {
     throw new SignError('INVALID_RECT', 'Signature rectangle starts off the page (negative origin).');
   }
-  if (rect.x + rect.width > page.width + eps || rect.y + rect.height > page.height + eps) {
+  if (rect.x + rect.width > originX + page.width + eps
+    || rect.y + rect.height > originY + page.height + eps) {
     throw new SignError(
       'INVALID_RECT',
       `Signature rectangle (${rect.x},${rect.y} ${rect.width}x${rect.height}) exceeds page ` +

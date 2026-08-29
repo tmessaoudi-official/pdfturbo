@@ -325,7 +325,18 @@ export async function stripRedactedAnnotations(
     ));
   if (redactions.length === 0) return;
 
-  const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+  // Same throw-on-wrong-type caveat as below. If `/Annots` is present but is not an array we
+  // cannot enumerate it, and this page carries a redaction — so drop the whole entry rather
+  // than render annotations we could not test. Malformed and rare; over-approximating is the
+  // safe direction, and it keeps a `catch` from degrading the thumbnail path to a plain
+  // un-redacted raster (pageThumbnailPanel falls back to `generateThumbnail` on a null result).
+  let annots: import('@cantoo/pdf-lib').PDFArray | undefined;
+  try {
+    annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+  } catch {
+    page.node.delete(PDFName.of('Annots'));
+    return;
+  }
   if (!annots) return;
 
   for (let i = annots.size() - 1; i >= 0; i--) {
@@ -333,11 +344,22 @@ export async function stripRedactedAnnotations(
     // No dict (a dangling ref) → nothing renders, so leaving it cannot leak; skip rather than
     // remove, keeping this pass byte-neutral for anything it does not understand.
     if (!dict) continue;
-    const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray);
-    const rect = rectArr && rectArr.size() === 4
-      ? [0, 1, 2, 3].map(k => rectArr.lookupMaybe(k, PDFNumber)?.asNumber() ?? NaN)
-      : [NaN, NaN, NaN, NaN];
-    if (annotationRectRedacted(rect, redactions, viewBox[3])) annots.remove(i);
+    // `lookupMaybe` returns undefined only for an ABSENT or null object — on a present-but-
+    // wrong-TYPE object it THROWS `UnexpectedObjectTypeError` (PDFContext.js:62-81). So a
+    // malformed `/Rect` (a string, or `[0 0 100 /Foo]`) escapes the NaN path entirely. Catching
+    // here and removing is what makes the "fail CLOSED" claim actually true for every shape,
+    // rather than only for a missing or null rect.
+    let redacted: boolean;
+    try {
+      const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray);
+      const rect = rectArr && rectArr.size() === 4
+        ? [0, 1, 2, 3].map(k => rectArr.lookupMaybe(k, PDFNumber)?.asNumber() ?? NaN)
+        : [NaN, NaN, NaN, NaN];
+      redacted = annotationRectRedacted(rect, redactions, viewBox[3]);
+    } catch {
+      redacted = true; // unreadable on a redacted page → cannot be proven safe
+    }
+    if (redacted) annots.remove(i);
   }
 }
 
@@ -363,6 +385,24 @@ export async function rasterizePageWithRedactions(
 
   const userRot  = docPage.rotation ?? 0;
   const srcRot   = tempPage.getRotation().angle as number;
+
+  // ── Source annotations under a redaction must be removed BEFORE the render ────────────────
+  // The burn is written into the page CONTENT STREAM, but pdf.js paints annotation appearance
+  // streams AFTER it — so a FreeText note, a stamp or an un-flattened form widget sitting over
+  // a redaction is repainted ON TOP of the burn and baked into the exported pixels, VISIBLY.
+  // Measured before this fix: the covered annotation's centre sampled (255,0,0) through an
+  // opaque black burn. This refutes the old #62b claim that the rasterize path already covered
+  // source markup annotations. Drop-whole and over-approximating, matching the image channel;
+  // annotations clear of every redaction are untouched (guarded by a CONTROL assertion).
+  //
+  // Runs BEFORE `buildPageOverlays`, which MUTATES the page's rotation and CropBox. This path
+  // would survive reading them afterwards (it captures `srcRot` above and passes `skipCropBox`),
+  // but its sibling in `_applyOverlaysToPage` did not, and the leak came back silently. Both
+  // sites now take the frame from pristine state so neither depends on that subtlety.
+  await stripRedactedAnnotations(
+    tempPage, elements, docPage.id, getPageCropBox(tempPage),
+    ((srcRot + userRot) % 360 + 360) % 360,
+  );
 
   // Draw ALL elements (redactions included) in array/stacking order through the vector bake,
   // then rasterize the whole page. Array order == on-screen stacking, so an overlay placed ON
@@ -393,16 +433,6 @@ export async function rasterizePageWithRedactions(
   const { width: W_orig, height: H_orig } = cropBoxR;
   const w_eff = (totalRot === 90 || totalRot === 270) ? H_orig : W_orig;
   const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
-
-  // ── Source annotations under a redaction must be removed BEFORE the render ────────────────
-  // The burn is written into the page CONTENT STREAM, but pdf.js paints annotation appearance
-  // streams AFTER it — so a FreeText note, a stamp or an un-flattened form widget sitting over
-  // a redaction is repainted ON TOP of the burn and baked into the exported pixels, VISIBLY.
-  // Measured before this fix: the covered annotation's centre sampled (255,0,0) through an
-  // opaque black burn. This refutes the old #62b claim that the rasterize path already covered
-  // source markup annotations. Drop-whole and over-approximating, matching the image channel;
-  // annotations clear of every redaction are untouched (guarded by a CONTROL assertion).
-  await stripRedactedAnnotations(tempPage, elements, docPage.id, cropBoxR, totalRot);
 
   const tempBytes  = await tempDoc.save({ useObjectStreams: false });
   const renderDoc  = await pdfjsLib.getDocument({ data: tempBytes }).promise;

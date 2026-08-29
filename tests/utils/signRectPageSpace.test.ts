@@ -65,3 +65,33 @@ describe('displayRectToPageUserSpaceRect', () => {
     expect(r.x + r.width).toBeLessThanOrEqual(VIEW_BOX[2]);
   });
 });
+
+describe('validateRect and a non-zero MediaBox ORIGIN', () => {
+  it('accepts an absolute rect near the far edge of an offset MediaBox', async () => {
+    const { validateRect } = await import('../../src/signing/appearance');
+    // MediaBox [50 50 662 842] → getSize() reports 612x792, but the box extends to x=662.
+    // The prefill now emits ABSOLUTE coordinates, so bounding them against the bare dimensions
+    // rejected a placement that is genuinely on the page.
+    const rect = { x: 610, y: 762, width: 40, height: 20 };
+    expect(() => validateRect(rect, { x: 50, y: 50, width: 612, height: 792 })).not.toThrow();
+    // The stale framing (dimensions only) is what used to refuse it.
+    expect(() => validateRect(rect, { width: 612, height: 792 })).toThrow();
+  });
+
+  it('still refuses a rect that genuinely leaves an offset MediaBox', async () => {
+    const { validateRect } = await import('../../src/signing/appearance');
+    expect(() => validateRect(
+      { x: 650, y: 800, width: 40, height: 60 }, { x: 50, y: 50, width: 612, height: 792 },
+    )).toThrow();
+    // ...and one that starts before the origin.
+    expect(() => validateRect(
+      { x: 10, y: 100, width: 40, height: 20 }, { x: 50, y: 50, width: 612, height: 792 },
+    )).toThrow();
+  });
+
+  it('is unchanged when the origin is absent (every existing caller)', async () => {
+    const { validateRect } = await import('../../src/signing/appearance');
+    expect(() => validateRect({ x: 0, y: 0, width: 612, height: 792 }, { width: 612, height: 792 })).not.toThrow();
+    expect(() => validateRect({ x: 1, y: 0, width: 612, height: 792 }, { width: 612, height: 792 })).toThrow();
+  });
+});

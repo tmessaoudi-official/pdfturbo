@@ -122,6 +122,69 @@ async function opsFor(bytes: Uint8Array) {
   return walkPageOps(opList, pdfjsLib.OPS as unknown as Record<string, number>);
 }
 
+/**
+ * A page carrying a STAMP annotation whose appearance stream paints an image.
+ * /Rect [300 600 400 650], AP BBox [0 0 100 50] → pdf.js maps BBox→Rect, so the image's true
+ * on-page footprint is (300,600)-(400,650).
+ */
+async function buildStampedImagePdf(): Promise<Uint8Array> {
+  const { PDFDocument, PDFName, PDFArray, PDFNumber } = await import('@cantoo/pdf-lib');
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([500, 800]);
+  const img = await doc.embedPng(await pngBytes());
+  const ctx = doc.context;
+  const ap = ctx.stream(`${IMG_W} 0 0 ${IMG_H} 0 0 cm /Im0 Do`, {
+    Type: PDFName.of('XObject'), Subtype: PDFName.of('Form'), FormType: PDFNumber.of(1),
+    BBox: ctx.obj([0, 0, IMG_W, IMG_H]),
+    Resources: ctx.obj({ XObject: ctx.obj({ Im0: img.ref }) }),
+  });
+  const annot = ctx.obj({
+    Type: PDFName.of('Annot'), Subtype: PDFName.of('Stamp'),
+    Rect: ctx.obj([300, 600, 300 + IMG_W, 600 + IMG_H]),
+    F: PDFNumber.of(4),
+    AP: ctx.obj({ N: ctx.register(ap) }),
+  });
+  const arr = PDFArray.withContext(ctx);
+  arr.push(ctx.register(annot));
+  page.node.set(PDFName.of('Annots'), arr);
+  return doc.save({ useObjectStreams: false });
+}
+
+describe('walkPageOps — annotation placement transforms (real pdf.js)', () => {
+  /**
+   * `beginAnnotation`/`endAnnotation` are the same class of implicit-CTM op as
+   * `paintFormXObjectBegin`/`End`, one step further out. pdf.js's canvas backend does
+   * `save()` then `transform(...transform); transform(...matrix)` (pdf.mjs:12638-12696), and
+   * restores at `endAnnotation` — so an image painted by an annotation's appearance stream is
+   * placed by ops the walker never composed. It reported the ctm at the PAGE ORIGIN, so
+   * `imagePlacementRedacted` missed a redaction over a stamped image in the DOCX/MD/TXT export
+   * and would falsely drop one if a redaction happened to sit at (0,0).
+   *
+   * Note the annotation strip does NOT cover this: `_extractFlowDoc` walks the ORIGINAL source
+   * page, not the stripped export copy.
+   */
+  it('composes an annotation appearance stream placement into the image ctm', async () => {
+    const res = await opsFor(await buildStampedImagePdf());
+    expect(res.images).toHaveLength(1);
+    // Pre-fix this is [100,0,0,50,0,0] — the page origin.
+    expect(Array.from(res.images[0].ctm)).toEqual([IMG_W, 0, 0, IMG_H, 300, 600]);
+  }, 60_000);
+
+  it('LEAK: a redaction over the stamped image is detected', async () => {
+    const res = await opsFor(await buildStampedImagePdf());
+    const red = [{ x: 300, y: 800 - (600 + IMG_H), width: IMG_W, height: IMG_H }];
+    expect(imagePlacementRedacted(res.images[0].ctm, red, 800)).toBe(true);
+  }, 60_000);
+
+  it('CONTROL: a redaction at the page origin does NOT drop the stamped image', async () => {
+    // Pre-fix this returned true — the placement was reported at (0,0), so a redaction there
+    // dropped an image that is nowhere near it. The filter erred in BOTH directions.
+    const res = await opsFor(await buildStampedImagePdf());
+    const red = [{ x: 0, y: 800 - IMG_H, width: IMG_W, height: IMG_H }];
+    expect(imagePlacementRedacted(res.images[0].ctm, red, 800)).toBe(false);
+  }, 60_000);
+});
+
 describe('walkPageOps — Form XObject matrices (real pdf.js)', () => {
   it('composes the form matrix into an image placement inside it', async () => {
     const res = await opsFor(await buildFormWrappedImagePdf());

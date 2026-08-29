@@ -216,8 +216,9 @@ export async function addIncrementalSignature(
   // shipped ALREADY_SIGNED guard lives in PdfSigner.preflight and is untouched.
   validatePageIndex(opts.page, doc.getPageCount());
   {
-    const { width, height } = doc.getPage(opts.page).getSize();
-    validateRect(opts.rect, { width, height });
+    // getMediaBox(), not getSize() — see the same call in pdfSigner: a /Rect is absolute.
+    const { x, y, width, height } = doc.getPage(opts.page).getMediaBox();
+    validateRect(opts.rect, { x, y, width, height });
   }
 
   // ── Read structure (no save) ──────────────────────────────────────────────

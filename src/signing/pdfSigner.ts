@@ -146,8 +146,10 @@ export class PdfSigner {
     const pdfLib = await import('@cantoo/pdf-lib');
     const doc = await this._loadDocument(pdfLib, pdfBytes);
     validatePageIndex(page, doc.getPageCount());
-    const { width, height } = doc.getPage(page).getSize();
-    validateRect(rect, { width, height });
+    // getMediaBox(), not getSize(): a /Rect is ABSOLUTE user space, so on a page whose media
+    // box origin is non-zero the bare dimensions reject legitimate placements near the far edge.
+    const { x, y, width, height } = doc.getPage(page).getMediaBox();
+    validateRect(rect, { x, y, width, height });
   }
 
   private async _loadDocument(
