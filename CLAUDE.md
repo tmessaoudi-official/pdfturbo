@@ -312,10 +312,15 @@ rect per rotation via `contentRectToDisplay` for that reason.
 Guards: `tests/browser/redaction-annotation-frames.browser.test.ts` (6 — every rotation and a
 crop, driving `renderThumbnailWithOverlays` end-to-end; asserts NO red pixel survives anywhere
 rather than sampling a computed point, so no coordinate arithmetic of the test's own can mask the
-leak), `tests/browser/redaction-annotation-burn.browser.test.ts` (3, real pdf.js pixels) and
+leak), `tests/browser/redaction-annotation-burn.browser.test.ts` (8, real pdf.js pixels — 3 at rotation 0
+plus 5 covering all four rotations and a crop) and
 `tests/export/redactedAnnotations.test.ts` (17). Sabotage-verified three ways: removing the strip fails
-exactly the leak case, a forward loop fails exactly the adjacent-annotations case (`PDFArray.remove`
-shifts later indices down), and dropping the CropBox origin fails exactly the origin case.
+every leak case and no control (6 of 8 in the burn file), a forward loop fails the
+adjacent-annotations case and the wrong-typed-entry case (`PDFArray.remove` shifts later indices
+down, and the catch re-uses the same removal), and dropping the CropBox origin fails exactly the
+origin case. **Those counts are the measured ones** — an earlier version of this sentence said
+"exactly the leak case" and "exactly the adjacent-annotations case", which stopped being true the
+moment cases were added to the same files without re-running the sabotage.
 
 ### `walkPageOps` ignored Form XObject boundaries, and the fixture that "proved" the fix was vacuous (2026-08-29)
 
@@ -407,6 +412,11 @@ filter, and this) — so when touching anything that converts between what is DR
 
 Guard: `tests/utils/signRectPageSpace.test.ts` (8 — 5 pure mapping cases with a non-square crop and
 an asymmetric origin on both axes, plus 3 for the `validateRect` origin below).
+**UNCERTIFIED-BY-EXECUTION at the wiring:** the mapping is pinned as a pure function, but nothing
+drives `onSignRectPicked` — its only production caller — so reverting the fix's *effect* there leaves
+the whole jsdom suite green. Said plainly rather than left implied; `_pageGeomForSign`'s deliberate
+`rotation: 0` is unpinned for the same reason. Closing it needs a `PDFTurboApp` harness, which does
+not exist today.
 Sabotage-verified: dropping the origin term fails 4 of the 5 mapping cases — the survivor being the zero-origin
 case where both mappings agree by construction, which is exactly why this shipped undetected.
 

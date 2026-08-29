@@ -337,14 +337,19 @@ Fixed as the sibling of the redaction fix: `displayRectToPageUserSpaceRect` is t
 `_pageGeomForSign` now returns the page's `viewBox` rather than bare `W`/`H` — the viewBox is
 what carries the origin, and it is rotation-invariant.
 
-`validateRect` is deliberately UNCHANGED. Now that the prefill emits absolute coordinates, its
-MediaBox-from-(0,0) bounds check is the right frame for them. (A MediaBox with a non-zero origin
-would still be mis-bounded; not fixed, not observed, and `getSize()` cannot express it.)
+~~`validateRect` is deliberately UNCHANGED…~~ **SUPERSEDED the same day.** The panel refuted it:
+with the prefill emitting absolute coordinates, bounding them against `getSize()` — a *dimension*,
+not an extent — refuses legitimate placements near the far edge of a page whose MediaBox origin is
+non-zero. `PageSize` now carries an optional origin (defaulting to 0, so every existing caller is
+unchanged) and BOTH signers pass `getMediaBox()`. Pinned by 3 cases in `signRectPageSpace.test.ts`.
+Left visible rather than deleted because the original ruling is referenced below.
 
 ### Decisions Log
 
-- [2026-08-29 09:20] AGREED: fix the sign-rect frame at the PREFILL, emitting absolute user-space
-  coordinates, rather than teaching `validateRect` about the CropBox. The `/Rect` is absolute by
+- [2026-08-29 09:20] AGREED (first half stands, second half SUPERSEDED): fix the sign-rect frame at
+  the PREFILL, emitting absolute user-space coordinates. The rider — "rather than teaching
+  `validateRect` about the CropBox" — did not survive the panel: `validateRect` was taught about the
+  MediaBox ORIGIN (not the CropBox), and `incrementalSigner` was updated with it. The `/Rect` is absolute by
   specification, so absolute is the canonical frame for those inputs — and changing `validateRect`
   would also change the contract for hand-typed coordinates and for `incrementalSigner`.
 
@@ -365,8 +370,12 @@ would still be mis-bounded; not fixed, not observed, and `getSize()` cannot expr
 
 **Certified by execution:** the `rasterizePageWithRedactions` path (end-to-end real-pdf.js pixels), the
 `walkPageOps` form-boundary fix (real pdf.js operator lists), and the sign-rect mapping (pure).
-**NOT certified end-to-end:** the `downloadPageAsImage` and `renderThumbnailWithOverlays` wiring — the
-shared collaborator's mechanism is unit-pinned, but no test drives those two callers to pixels. Named
+**NOT certified end-to-end (at the time of writing — NOW PARTLY SUPERSEDED):** the
+`downloadPageAsImage` and `renderThumbnailWithOverlays` wiring. `renderThumbnailWithOverlays` IS now
+driven to pixels at every rotation and with a crop
+(`tests/browser/redaction-annotation-frames.browser.test.ts`, 6 cases). `downloadPageAsImage` is
+still not driven directly — it is covered only by sharing `_applyOverlaysToPage` with the
+thumbnail. Named
 rather than implied, per the `[pinned]` discipline.
 
 ## Round 5 — the milestone review, and what it caught
@@ -475,3 +484,49 @@ four rotations and a crop, which it never was.
   covered only by sharing a collaborator. "Pinned" is a claim about tests, not about confidence.
 - [2026-08-29 11:30] AGREED: `.gitignore` carries `tests/**/zz*`. A prose promise that no probe file
   remains is not a mechanism, and this repo commits with `git add -A`.
+
+## Round 5 review, round 3 — severity converging, but two real coverage gaps
+
+Frozen at `80ca590`. Findings: 3 + 2 + 10. **No live product leak this round** — a genuine change
+from rounds 1 and 2, both of which found leaks in the fixes themselves. What did come up:
+
+### Two guards that could not fail
+
+- **The `vRules` gate was unpinned.** Removing it left the ENTIRE repo green. The fixture's bar was
+  horizontal, so it could never produce a vertical rule — and `vRules` is precisely the channel whose
+  harm the gate's own comment names (`buildTableGrid` clusters it into columns → phantom lattice →
+  `reconstructPage` deletes in-region words). Fixed by adding a vertical bar; each of the three gates
+  now reds exactly one case when removed individually.
+- **The new rasterize frame cases had no over-reach control.** Demonstrated, not argued: making the
+  strip delete `/Annots` wholesale made all five pass while every annotation on the page was
+  destroyed. This is the rule the previous round wrote into `CLAUDE.md` — *a leak guard needs a case
+  that fails when the fix OVER-reaches* — not applied to the block written in the same round.
+
+### Documentation defects, several self-inflicted
+
+The worst: a "correction" in round 2 replaced a TRUE statement with a false one. `geometry.ts`'s
+docstring for `displayRectToUserSpaceRect` was edited to say the signer validates against
+`getMediaBox()` — but that function has no origin term at all, as the sibling 16 lines below says
+explicitly. Also: a fourth guard count went stale in the very commit that fixed three others; two
+"sabotage fails EXACTLY case X" claims stopped being true the moment cases were added to those files;
+the plan file still carried the `validateRect`-is-UNCHANGED sentence that `CLAUDE.md` had already
+superseded (the sibling-copy miss again); and two of the three leaks fixed in this range had no
+user-facing `SECURITY.md` bullet.
+
+### Process: parallel reviewers cannot share a working tree
+
+Two lenses reported the tree moving under them — this time from EACH OTHER's sabotage, not from the
+author. One lens defended itself by working in an isolated `git archive` snapshot, which is the right
+answer. **A reviewer that performs mutation testing needs its own worktree, or the lenses must run
+sequentially.** Running three sabotage-performing agents against one checkout makes every number they
+produce unattributable.
+
+### Decisions Log
+
+- [2026-08-29 11:55] AGREED: every channel gate gets its own fixture feature. A gate that no test can
+  fail is not a guard, and the horizontal-bar fixture silently exempted `vRules`.
+- [2026-08-29 12:00] AGREED: every frame case in a leak guard asserts BOTH directions — covered ink
+  gone AND uncovered ink present. One shared control at rotation 0 does not cover a rotation-specific
+  over-reach.
+- [2026-08-29 12:05] AGREED: a reviewer that sabotages must do so in an isolated worktree. Recorded
+  after two lenses independently reported contamination from a third.

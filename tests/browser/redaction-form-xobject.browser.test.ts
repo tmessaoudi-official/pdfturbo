@@ -261,13 +261,19 @@ describe('walkPageOps — annotation ink must not pollute the PAGE text channels
     page.drawText('Hello world paragraph', { x: 100, y: 600, size: 12, font, color: rgb(0, 0, 0) });
     const ctx = doc.context;
     // A blue bar exactly on the text baseline, plus blue text, inside the annotation's AP.
-    const ap = ctx.stream('0 0 1 rg 0 0 120 1 re f BT /F1 12 Tf 0 0 1 rg 1 0 0 1 0 0 Tm (x) Tj ET', {
+    // A horizontal bar (→ rules), a VERTICAL bar (→ vRules) and blue text (→ colorMap): one
+    // fixture per channel. Without the vertical bar the vRules gate is unpinned — removing it
+    // left the whole repo green, and vRules is the channel whose harm the gate's own comment
+    // names (buildTableGrid clusters it into columns → phantom lattice → words deleted).
+    const ap = ctx.stream(
+      '0 0 1 rg 0 0 120 1 re f  0 0 1 rg 0 0 1 60 re f  BT /F1 12 Tf 0 0 1 rg 1 0 0 1 0 0 Tm (x) Tj ET',
+      {
       Type: PDFName.of('XObject'), Subtype: PDFName.of('Form'),
-      BBox: ctx.obj([0, 0, 120, 4]), Resources: ctx.obj({}),
-    });
+      BBox: ctx.obj([0, 0, 120, 60]), Resources: ctx.obj({}),
+      });
     const annot = ctx.obj({
       Type: PDFName.of('Annot'), Subtype: PDFName.of('Square'),
-      Rect: ctx.obj([100, 596, 220, 600]), F: PDFNumber.of(4),
+      Rect: ctx.obj([100, 540, 220, 600]), F: PDFNumber.of(4),
       AP: ctx.obj({ N: ctx.register(ap) }),
     });
     const arr = PDFArray.withContext(ctx);
@@ -280,7 +286,7 @@ describe('walkPageOps — annotation ink must not pollute the PAGE text channels
     const res = await opsFor(await pageWithAnnotationBar());
     // The only rule-like rect on this page comes from the annotation.
     expect(res.rules).toHaveLength(0);
-    expect(res.vRules).toHaveLength(0);
+    expect(res.vRules).toHaveLength(0);   // pinned by the VERTICAL bar in the fixture above
     expect(res.colorMap.size).toBe(0);
   }, 60_000);
 

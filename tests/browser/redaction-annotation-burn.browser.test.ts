@@ -143,7 +143,7 @@ async function rasterize(): Promise<import('@cantoo/pdf-lib').PDFDocument> {
 describe('redaction burn vs SOURCE annotations — every frame (rasterize path)', () => {
   async function redCountAfterRasterize(
     opts: { rotation?: number; crop?: { x: number; y: number; width: number; height: number } },
-  ): Promise<number> {
+  ): Promise<{ red: number; green: number }> {
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     const rot = ((opts.rotation ?? 0) % 360 + 360) % 360;
     const docPage: DocumentPage = {
@@ -175,21 +175,30 @@ describe('redaction burn vs SOURCE annotations — every frame (rasterize path)'
     const c2d = canvas.getContext('2d') as CanvasRenderingContext2D;
     await p.render({ canvas, viewport: vp }).promise;
     const data = c2d.getImageData(0, 0, canvas.width, canvas.height).data;
-    let red = 0;
+    let red = 0, green = 0;
     for (let i = 0; i < data.length; i += 4) {
-      if (data[i] > 150 && data[i + 1] < 110 && data[i + 2] < 110) red++;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (r > 150 && g < 110 && b < 110) red++;
+      if (g > 150 && r < 110 && b < 110) green++;
     }
-    return red;
+    return { red, green };
   }
 
+  // Each case asserts BOTH directions. Without the green control an over-reach passes: making the
+  // strip delete /Annots wholesale satisfied every red assertion here while destroying every
+  // annotation on the page — the exact failure mode CLAUDE.md records for annotationMode:DISABLE.
   for (const rotation of [0, 90, 180, 270]) {
-    it(`rotation ${rotation}: no annotation ink survives the burn`, async () => {
-      expect(await redCountAfterRasterize({ rotation })).toBe(0);
+    it(`rotation ${rotation}: covered ink burned, uncovered ink kept`, async () => {
+      const { red, green } = await redCountAfterRasterize({ rotation });
+      expect(red).toBe(0);
+      expect(green).toBeGreaterThan(500);
     }, 60_000);
   }
 
-  it('with a crop: no annotation ink survives the burn', async () => {
-    expect(await redCountAfterRasterize({ crop: { x: 10, y: 20, width: 180, height: 340 } })).toBe(0);
+  it('with a crop: covered ink burned, uncovered ink kept', async () => {
+    const { red, green } = await redCountAfterRasterize({ crop: { x: 10, y: 20, width: 180, height: 340 } });
+    expect(red).toBe(0);
+    expect(green).toBeGreaterThan(500);
   }, 60_000);
 });
 

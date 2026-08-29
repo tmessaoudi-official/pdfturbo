@@ -1,10 +1,15 @@
 /**
  * Pure walk of a pdf.js operator list (M2 #22 — extracted from exportService's
  * _extractFlowDoc). Tracks the CTM (q/Q/cm), the text matrix (Tm, Td/TD/T*, leading),
- * and the current fill color, then emits three flow-export inputs:
+ * and the current fill color, then emits FOUR flow-export inputs:
  *   - colorMap: non-black text fill colors keyed by page-space text origin
  *   - rules:    thin horizontal filled/stroked rects (underline/strike candidates)
+ *   - vRules:   thin vertical rects (table-grid candidates, #56)
  *   - images:   image-XObject paint placements (name + draw CTM)
+ *
+ * The count matters: `ctm` feeds all four, so a placement fix for one is a behaviour change for
+ * every one of them — which is exactly how the `beginAnnotation` fix introduced a regression in
+ * the other three before they were gated (see `annotationDepth`).
  *
  * No DOM, no canvas: image bitmap rasterization (which needs page.objs + a canvas)
  * stays in the caller. This makes the matrix/color/rule logic unit-testable.
@@ -97,7 +102,14 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
     m[0] * c + m[2] * d, m[1] * c + m[3] * d,
     m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5],
   ];
-  /** A 6-element finite matrix argument, or null — mirrors canvas.js's own defensive checks. */
+  /**
+   * A 6-element finite matrix argument, or null.
+   *
+   * STRICTER than pdf.js, which only tests the argument for truthiness
+   * (`if (matrix) { this.transform(...matrix) }`) and has no length or finiteness check. Stated
+   * precisely because an earlier comment claimed to "mirror canvas.js's own guard", and this
+   * round's own headline lesson is not to assert what a library does without reading it.
+   */
   const asMatrix6 = (v: unknown): Matrix6 | null => {
     const len = (v as ArrayLike<number> | null)?.length;
     if (len !== 6) return null;
@@ -162,7 +174,8 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
       // placement. Rules and text origins inside forms move to page space too, which is the
       // desired direction: nothing pinned the old form-local values.
       ctmStack.push([...ctm] as Matrix6);
-      // Mirror canvas.js's own guard: a form may carry no /Matrix, or a malformed one.
+      // A form may carry no /Matrix, or a malformed one. pdf.js guards this with a bare
+      // truthiness test; `asMatrix6` is deliberately stricter (see its doc comment).
       const m = asMatrix6(args[0]);
       if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);
     } else if (fn === OPS['paintFormXObjectEnd']) {

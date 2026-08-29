@@ -114,6 +114,18 @@ Two more of the same shape were found and fixed on 2026-08-28:
   matched, and the redacted text went straight into the Word, Markdown, text, CSV and Excel exports.
   Nothing about the document looked unusual, and every other export path was unaffected.
 
+Two more of the same family were found and fixed on 2026-08-29, both in the Word / Markdown / text
+export and both about *where a picture sits* rather than whether it was filtered:
+
+- **A picture wrapped in a "form" escaped the filter.** PDFs often place an image inside a reusable
+  container rather than directly on the page — what most tools produce for a stamp or a placed page.
+  The filter computed such an image's position without the container's own offset, so it looked for
+  the picture in the wrong place, found no overlap with your redaction, and exported it intact.
+- **A picture drawn by a stamp or comment escaped it too.** An image painted by an annotation was
+  positioned as if it sat at the page's bottom-left corner. A redaction over the stamp therefore
+  missed it — and, in the other direction, a redaction that happened to sit in that corner wrongly
+  removed a picture nowhere near it.
+
 All of those now remove the content, at every rotation and at any CropBox origin. Three limits are worth
 stating rather than leaving you to discover them:
 
