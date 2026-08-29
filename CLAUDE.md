@@ -284,7 +284,10 @@ rect into the items' frame, handling rotation and origin together; `isItemRedact
 is now `pageTopY` (`= viewBox[3]`), not `pageHeight` — those two numbers are equal only when the
 origin is zero, which is why passing the height was right until it wasn't. `reconstructPage` takes an
 optional trailing `viewBox`, defaulting to `[0,0,pageWidth,pageHeight]` so every existing caller and
-all 58 call sites are byte-identical.
+every existing call site is byte-identical. Precise counts, since a wrong one here would be exactly
+the kind of claim this file exists to prevent: 57 calls in all, of which **one** is production
+(`exportService.ts` — the only site that passes the new argument) and 56 are tests
+[Verified: `grep -rn "reconstructPage(" src/ tests/`, minus the definition].
 
 **A useful side effect, verified rather than assumed: the redaction filter is now structurally
 independent of `getViewport`'s `rotation: 0`.** `viewBox` is rotation-invariant (only `width`/
