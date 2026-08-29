@@ -261,6 +261,107 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### A source annotation under a redaction was painted OVER the burn (2026-08-29)
+
+The burn is written into the page CONTENT STREAM; pdf.js paints annotation appearance streams
+**after** it. So a FreeText note, a stamp or an un-flattened form widget sitting over a redaction was
+repainted on top of the opaque burn and baked into the exported pixels — **visibly**, which is a worse
+grade than every leak found in the 2026-08-05 round, where content was merely extractable. Measured:
+the covered annotation's centre sampled `(255,0,0)` through the burn, with a burn-only control sampling
+black in the same image.
+
+**This refuted a claim in this very file** — #62b's "the redaction-rasterize path + PNG export already
+cover that nuclear case". That sentence had never been driven; it was reasoning about a path nobody had
+run. The lesson is the one the 2026-08-05 entry already recorded and this round proves again: **a
+documented ceiling is a hypothesis until a test drives it.** Prefer deleting such a claim over
+softening it.
+
+Fixed at the shared collaborator: `stripRedactedAnnotations` (exportPipeline) drops any annotation whose
+`/Rect` meets a redaction, called from `rasterizePageWithRedactions` AND from `_applyOverlaysToPage` —
+the latter because `downloadPageAsImage` and `renderThumbnailWithOverlays` both rasterize what it
+produces and carried the identical leak. A per-site fix would have left the next rasterizing caller on
+the same cliff. `annotationRectRedacted` is pure and exported, normalises reversed `/Rect` corners (the
+spec does not require lower-left-first, and a reversed pair fails OPEN), and fails CLOSED on an
+unreadable rect.
+
+**The guard's CONTROL is the load-bearing half.** `annotationMode: DISABLE` would satisfy the leak
+assertion while silently deleting every annotation on a redacted page, so the guard asserts that an
+annotation clear of every redaction still renders green. **A leak guard needs a case that fails when the
+fix over-reaches, not only one that fails when it under-reaches.**
+
+Guards: `tests/browser/redaction-annotation-burn.browser.test.ts` (3, real pdf.js pixels) and
+`tests/export/redactedAnnotations.test.ts` (13). Sabotage-verified three ways: removing the strip fails
+exactly the leak case, a forward loop fails exactly the adjacent-annotations case (`PDFArray.remove`
+shifts later indices down), and dropping the CropBox origin fails exactly the origin case.
+
+### `walkPageOps` ignored Form XObject boundaries, and the fixture that "proved" the fix was vacuous (2026-08-29)
+
+A form XObject is an implicit `q`/`cm`: pdf.js's canvas backend saves the state and applies the form's
+`/Matrix` on `paintFormXObjectBegin`, restoring at `End`. The walker handled neither, so an image inside
+a form reported the form-LOCAL ctm — `imagePlacementRedacted` placed its footprint wrongly and a redacted
+picture exported into DOCX/MD/TXT intact — and the form's inner `cm` **leaked out and compounded
+MULTIPLICATIVELY**: a page-level `[100,0,0,50,20,20]` placement after a form containing
+`100 0 0 50 0 0 cm` was reported as `[10000,0,0,2500,2000,1000]`.
+
+**Two traps, and both are about fixtures rather than about forms.**
+
+First, the throwaway probe that started this thread asserted, from a HAND-BUILT OPS table, that pdf.js
+reports the form-local ctm *and* re-emits the form matrix as a `transform`. It was wrong about real
+pdf.js. Dumping the actual operator list settled it in one look:
+
+```
+paintFormXObjectBegin[[1,0,0,1,150,500],[0,0,200,200]]   ← the /Matrix is THIS op's first arg
+transform[...]                                            ← only the form's INTERNAL cm arrives so
+paintImageXObject[...]
+paintFormXObjectEnd[]
+```
+
+**A synthetic operator table can only confirm what you already believe.** When the question is what a
+library emits, dump it.
+
+Second, the first version of the browser guard placed the form with a page-level
+`q 1 0 0 1 150 500 cm /Fm0 Do Q` and gave it no `/Matrix` — and **PASSED against the unfixed walker**,
+because the placement rode an ordinary `transform` that already worked. A Form XObject fixture MUST
+carry its own `/Matrix` or it tests nothing about `Begin`.
+
+Blast radius, stated because nothing pinned the old values: rules and text origins inside forms also move
+from form-local to page space. That is the desired direction — a coloured run or an underline inside a
+form previously keyed at a position `getTextContent` never reports, so it silently failed to match.
+
+**Checked and deliberately NOT changed:** `paintInlineImageXObject` and `paintImageMaskXObject` are not
+recorded by the walker. That is not a leak — images reach the DOCX export only via named
+`paintImageXObject` placements resolved through `page.objs`/`commonObjs`, so an inline image or stencil
+mask never enters that export at all. Recorded so nobody adds the recording without the filtering, which
+is the one change that WOULD open a leak here.
+
+Guard: `tests/browser/redaction-form-xobject.browser.test.ts` (5, real pdf.js). Sabotage-verified in both
+halves independently: removing the `End` pop fails exactly the two leak-out cases; removing the `Begin`
+composition fails exactly the placement and redaction cases.
+
+### The drag-placed signature rect was crop-relative while `/Rect` is absolute (2026-08-29)
+
+The 4th instance of the CropBox frame mismatch, and the only one that is not a leak — it MISPLACES a
+signature. The sign modal's X/Y/W/H go verbatim into the signature annotation's `/Rect`, which PDF
+defines in ABSOLUTE user space, and `PdfSigner` bounds-checks them against pdf-lib's `getSize()` (the
+MEDIA box). The prefill mapped the drawn rect through the pdf.js viewport's dimensions alone, i.e.
+relative to the CROP box. On a page with an inset CropBox the visible signature landed displaced by
+exactly the origin; with a deep enough inset, outside the visible area entirely.
+
+Fixed as the redaction fix's sibling: `displayRectToPageUserSpaceRect` is to
+`displayRectToUserSpaceRect` what `redactionRectToPageSpace` is to `redactionRectToContent`, and
+`_pageGeomForSign` now returns the page's `viewBox` instead of bare `W`/`H` — the viewBox is what
+carries the origin, and it is rotation-invariant so it stays correct under `rotation: 0`.
+`validateRect` is deliberately UNCHANGED: with the prefill emitting absolute coordinates, its
+MediaBox-from-(0,0) check is the right frame for them.
+
+**The count is now four** (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
+filter, and this) — so when touching anything that converts between what is DRAWN and what is STORED,
+`grep -rn "cropOrigin\|viewBox\[0\]" src/` first and assume the frame is wrong until checked.
+
+Guard: `tests/utils/signRectPageSpace.test.ts` (5 pure, non-square crop, asymmetric origin on both
+axes). Sabotage-verified: dropping the origin term fails 4 of 5 — the survivor being the zero-origin
+case where both mappings agree by construction, which is exactly why this shipped undetected.
+
 ### The redaction filter compared two coordinate frames — a non-zero CropBox origin defeated it, and images were never filtered at all (2026-08-28)
 
 Three live leaks, each reproduced against shipping code with a passing control before any fix.
@@ -1057,7 +1158,13 @@ the annotation. The opts param defaults false → byte-identical for the other 3
 (downloadPDF / downloadPageRange / assemblePdfBytes). Gated by `VITE_FEATURE_FLATTEN` (#28 seam, default ON;
 `main.ts` removes the button when off). The app's own overlay annotations are already baked by `buildPageOverlays`;
 source **markup** annotations (notes/stamps authored elsewhere) = ceiling **#62b** — pdf-lib has no generic
-markup-flatten, and the redaction-rasterize path + PNG export already cover that nuclear case.
+markup-flatten. **The claim that "the redaction-rasterize path + PNG export already cover that nuclear
+case" was FALSE and is retracted (2026-08-29).** It was reasoning about a path nobody had driven: the burn
+is written into the page CONTENT STREAM and pdf.js paints annotation appearance streams AFTER it, so a
+covered note/stamp/widget was repainted ON TOP of the burn and baked into the exported pixels — measured
+`(255,0,0)` through an opaque black burn. Fixed by `stripRedactedAnnotations`; see § "A source annotation
+under a redaction was painted OVER the burn". The residual #62b ceiling is genuine and narrower than it
+looked: an annotation NOT under a redaction is still not flattened by these paths.
 **Form FILLS are undoable (#QA-2026-06-23 P1 fix):** the form-overlay change callback routes through
 `app.handleFormInput` → `UndoRedoController.handleFormInput`, which sets `_formValues` live AND coalesces a
 burst of edits to one field into a single `SetFormValueCmd` (`src/core/commands/formCmds.ts`) recorded after a

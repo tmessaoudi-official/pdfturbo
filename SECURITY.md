@@ -41,7 +41,7 @@ rows were established by reading the code. Both are said plainly instead of impl
 
 | Tool | Content is… | Notes |
 |---|---|---|
-| **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Applies to a page from a real PDF; see the note below on **blank** pages, and on the CSV/Excel and OCR exports. |
+| **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Applies to a page from a real PDF; see the note below on **blank** pages, on the CSV/Excel and OCR exports, and on **source annotations** (a note, stamp or form field under a redaction is now removed with it). |
 | **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied. |
 | **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. Unlike *replacing* text — which can decline on fonts it cannot redraw — deleting is font-agnostic: it blanks the operator that draws the text, so nothing needs drawing. |
 | **Compress → flatten to images** | **removed** | The **flatten-to-images** setting only; "lossless optimise" keeps all text. Rasterises every page, so it is redaction's grade applied document-wide. |
@@ -58,6 +58,28 @@ your work after a reload, PDFturbo keeps the opened PDF's bytes in IndexedDB. Re
 do not touch those bytes, so neither removes the underlying content from your own machine. (Editing text
 in place *does* rewrite them, so the stored copy is not always the file you opened.) (Deleting
 *every* page that came from a given file does drop that file's bytes.) See **Data at rest** below.
+
+### A note or form field under a redaction used to survive it (fixed 2026-08-29)
+
+If the area you redacted contained a **source annotation** — a sticky note, a FreeText comment, a
+stamp, or a form field still holding its value — that annotation's content was drawn back **on top of
+the black box** in the exported file, and stayed plainly readable.
+
+This was worse than the leaks fixed on 2026-08-05, which left content *extractable*. Here it was
+simply *visible*: the export looked like a redacted page with the secret printed over the redaction.
+
+The cause is an ordering rule in the PDF format. The black box is written into the page's content
+stream, but annotations are painted **after** the content stream, so they land above it. Redaction has
+always rasterised the page — that part was true — but it rasterised with the annotations still
+attached, so they were baked into the image on top of the burn.
+
+Any annotation whose rectangle touches a redaction is now removed before the page is rasterised. Two
+consequences worth knowing:
+
+- **The whole annotation goes, not just the covered part.** A comment that overlaps a redaction by one
+  corner disappears entirely. That is deliberate: for a leak filter, removing too much is the only safe
+  direction to err in.
+- **Annotations clear of every redaction are untouched** and still appear in your export.
 
 ### Redaction reaches the other exports too (fixed 2026-08-05)
 
