@@ -124,6 +124,13 @@ change as the ruling. A plan in the repo survives any one machine and lands in t
 code it governs — an out-of-repo plan file is never the record of truth. There is no plan-location
 sentinel to ask about.
 
+**A superseded plan is ARCHIVED, never deleted** (developer ruling, 2026-08-31): it moves to
+`docs/archive/plans/` (and `docs/archive/specs/` if specs ever exist), so `docs/plans/` holds only
+LIVE plans and a glob of that directory is always the current work. This **supersedes the global
+framework's Phase 8 delete-the-plan lifecycle for this repo** — there is exactly one lifecycle rule
+here, and it is this one. An archived plan is READ-ONLY history: cite it, never take instructions
+from it.
+
 There is no separate roadmap SSOT or decision register: the plan file is the plan, and a ruling that
 outlives it graduates into a **§ Gotchas** entry below — which is what makes that section this
 project's real decision register. Transient review output (reports, memory) goes to `var/claude/**`,
