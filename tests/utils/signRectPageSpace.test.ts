@@ -3,10 +3,15 @@
  *
  * The sign modal's X/Y/W/H are written verbatim into the signature annotation's `/Rect`, which
  * PDF defines in ABSOLUTE user space. But the drag-to-place prefill mapped the drawn rect
- * through the pdf.js viewport's dimensions alone, i.e. relative to the CROP box, and the signer
- * validates against pdf-lib's `getSize()`, i.e. the MEDIA box. On any page whose CropBox origin
- * is not (0,0) the visible signature therefore landed displaced by exactly that origin — and if
- * the crop is inset far enough, outside the visible area altogether.
+ * through the pdf.js viewport's dimensions alone, i.e. relative to the CROP box. On any page whose
+ * CropBox origin is not (0,0) the visible signature therefore landed displaced by exactly that
+ * origin — and if the crop is inset far enough, outside the visible area altogether.
+ *
+ * The bounds check had the mirror-image defect: it ran against pdf-lib's `getSize()`, which is a
+ * pair of DIMENSIONS, not an extent — so on a page whose media box origin is non-zero it rejected
+ * legitimate placements near the far edge. Both signers now validate against `getMediaBox()`
+ * (`pdfSigner.ts` and `incrementalSigner.ts` each carry a comment saying why `getSize()` is wrong);
+ * the last three cases below pin that origin handling.
  *
  * Same root cause as the redaction CropBox-origin leak, and the fix is its sibling:
  * `displayRectToPageUserSpaceRect` is to `displayRectToUserSpaceRect` what

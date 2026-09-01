@@ -2330,7 +2330,7 @@ listener teardown so an in-flight drag cannot leak across the re-render that des
 
 `✓ cropMarginApplyBtn` + four `#cropMargin{Top,Right,Bottom,Left}` number inputs in `#cropControls`
 → `PDFTurboApp.cropPageByMargins` → `PageService.cropPageByMargins`. Margins are typed in **points, in
-unrotated content space**, converted by the pure `marginsToContentCrop` (`utils/geometry.ts`).
+unrotated content space**, converted by the pure `marginsToRect` (`utils/geometry.ts`).
 
 **Margins are converted PER PAGE, which is a real improvement over the drag path's apply-to-all.**
 "20pt off each edge" means the same thing on a mixed-size document; one drawn rect clamped to each page
@@ -2367,7 +2367,7 @@ i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (**ar [Unve
 native pass, alongside `toolbar.exportXlsxTitle`, `badge.signRect` and the 3 re-worded crop/redaction strings — 12 pending
 in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
-`signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToContentCrop.test.ts` (7 pure —
+`signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +
 `tests/core/pageService.test.ts` (5: inset, undo, per-page apply-to-all in one MacroCmd, the warn, the
 all-pages toast). **Still ceiling (v1c):** resizable drag handles on an existing crop frame, and

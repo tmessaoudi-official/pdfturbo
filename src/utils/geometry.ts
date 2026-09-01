@@ -151,9 +151,10 @@ export function contentCropToPdfCropBox(
  * F-C C2 — map a rect drawn in editor DISPLAY space (rotated, y-down, top-left)
  * to a signature appearance rect in PDF USER space (y-up, bottom-left origin),
  * clamped to the page. Composes {@link redactionRectToContent} (display→unrotated
- * content, y-down) + {@link clampContentRect} + a y-flip into user space — the same
- * content space the e-signer validates against. NOTE this function's box origin is implicitly
- * (0,0) — i.e. CROP-relative. For the absolute user-space rect a signature `/Rect` needs, use
+ * content, y-down) + {@link clampContentRect} + a y-flip into user space. NOTE this function's box
+ * origin is implicitly (0,0) — i.e. CROP-relative, which is NOT the frame the e-signer validates
+ * against: a `/Rect` is ABSOLUTE user space and both signers bounds-check it against
+ * `getMediaBox()`. For the absolute user-space rect a signature `/Rect` needs, use
  * {@link displayRectToPageUserSpaceRect} below, which adds the origin.
  * `W`/`H` are the UNROTATED page point dimensions; `totalRot = (page.rotate + userRotation) % 360`.
  */

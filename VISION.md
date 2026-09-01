@@ -1,6 +1,6 @@
 # PDFturbo — Vision & Future Ideas
 
-_Last updated: 2026-06-26._
+_Last updated: 2026-09-01._
 
 ## Vision
 
@@ -9,8 +9,9 @@ no upload, nothing tracked. The bet: a privacy-first, install-free tool can cove
 majority of everyday PDF work — edit, annotate, sign, fill, redact, convert, export — without
 ever sending a document to a server. Everything that *can* be done client-side, is.
 
-The current capabilities are in [`FEATURES.md`](FEATURES.md); the honest limits of the
-no-backend approach are in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
+The current capabilities are in [`FEATURES.md`](FEATURES.md), what shipped when in
+[`CHANGELOG.md`](CHANGELOG.md), and the honest limits of the no-backend approach in
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
 
 ## Future ideas (not committed)
 
@@ -24,9 +25,7 @@ promise and the dependency-size budget.
 | **Date field** | One-click "today's date" text element |
 | **Batch export** | All pages as separate PDFs or a ZIP of PNGs |
 | **Page background** | Solid-colour background (useful for blank PDFs) |
-| ~~XLSX table export~~ | **SHIPPED 2026-08-04** (`src/export/xlsxWriter.ts`) |
 | **Open-via-picker + recent files** | Use the File System Access API for opening, not just saving |
-| ~~Resizable crop handles / numeric margins~~ | **BOTH SHIPPED** 2026-08-04/05 |
 
 ## Things deliberately *not* pursued
 

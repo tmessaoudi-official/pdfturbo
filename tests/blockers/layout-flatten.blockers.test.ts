@@ -4,9 +4,9 @@
  * Per this directory's convention, a CEILING blocker is a normal PASSING `it` that pins the current
  * degraded behaviour, so a future change that alters it is noticed. These are not defects.
  *
- * Covers C10 (multi-column depth cap) and C21 (ink is rasterised by design). C12 and C19 need a real
- * PDF and a real font, so they live in tests/browser/ceilings.browser.test.ts instead — jsdom has no
- * canvas and cannot embed a font subset.
+ * Covers C12 (markup annotations survive form flatten) and C10 (multi-column depth cap). C21 and
+ * C19 need a real canvas and a real font, so they live in tests/browser/ceilings.browser.test.ts
+ * instead — jsdom has no canvas and cannot embed a font subset.
  */
 import { describe, it, expect } from 'vitest';
 import { splitColumns } from '../../src/utils/flowDoc';

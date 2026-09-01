@@ -57,7 +57,7 @@ export function bindToolEvents(app: PDFTurboApp): void {
   document.getElementById('cropMarginApplyBtn')?.addEventListener('click', () => {
     const id = app.documentModel.currentPage?.id;
     if (!id) return;
-    // An EMPTY input must mean "no margin on this edge", not NaN — marginsToContentCrop is NaN-safe,
+    // An EMPTY input must mean "no margin on this edge", not NaN — marginsToRect is NaN-safe,
     // but parsing here keeps that contract visible at the call site.
     const num = (elId: string): number => {
       const el = document.getElementById(elId) as HTMLInputElement | null;

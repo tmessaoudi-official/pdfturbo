@@ -18,7 +18,7 @@ So a green run here says *"the 2026-06-15 findings are still correctly handled"*
 the ceilings are covered, and 8 of its 12 blockers are not ceilings at all. Do not read an absence
 here as an absence of a limit; read [`KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md) for that.
 
-## Ceiling → guard cross-reference (C1–C21)
+## Ceiling → guard cross-reference (C1–C22)
 
 Where each structural ceiling is actually pinned.
 
@@ -73,7 +73,7 @@ git show ac4ef68^:docs/reviews/research-2026-06-15-blockers/CONSOLIDATED.md
 git show ac4ef68^ --stat -- docs/reviews/research-2026-06-15-blockers/   # list the raw/ files
 ```
 
-The **living** register is `KNOWN_ISSUES.md` — ceilings `C1`–`C21` with escape hatches `EH-A`–`EH-E`.
+The **living** register is `KNOWN_ISSUES.md` — ceilings `C1`–`C22` with escape hatches `EH-A`–`EH-E`.
 Read that first; reach for git history only for the original measurement behind a specific blocker.
 
 ## Convention
