@@ -23,9 +23,10 @@ most of the work went into proving that what the product claims to remove is act
   or a critical/serious axe violation.
 
 ### Fixed — redaction and export safety
-- **Redacted content reached six export paths that never rasterised the page**: table → CSV/XLSX,
-  OCR "copy text" / "export to Word", a redaction on a blank page, overlay text under a redaction
-  in the DOCX/MD/TXT and XFDF exports, and the OCR burn's own placement.
+- **Redacted content reached every export path that does not rasterise the page.** Each was
+  reproduced against shipping code before being fixed: table → CSV/XLSX; OCR "copy text" and
+  "export to Word"; a redaction on a blank page; overlay text under a redaction in the
+  DOCX/MD/TXT exports; the same in the XFDF export; and the OCR burn's own placement.
 - **The redaction filter silently no-opped on rotated pages** (90°/270°), and on any page whose
   CropBox origin is not (0,0) — two coordinate-frame defects, each measured across all rotations.
 - **A source annotation under a redaction was painted on top of the burn** and baked into the

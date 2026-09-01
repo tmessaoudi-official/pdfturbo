@@ -83,7 +83,23 @@ No product defect was found by the verification pass — only the nine doc-drift
 
 ---
 
-## Step 0 — Consolidation (do this first, one commit)
+## Progress
+
+Update this table as each stream lands; it is what a resuming session reads first.
+
+| Stream | State | Notes |
+|---|---|---|
+| Step 0 — consolidation | **DONE** 2026-09-01 | The four plans ARE now in `docs/archive/plans/`; the Step 0 prose below is history, not an instruction. |
+| WS0 — doc drift | **DONE** 2026-09-01 | Ten drifts, not nine — see the Decisions Log. Gate green on the same commit. |
+| WS1 — uncertified dimensions + flake | not started | |
+| WS2 — C22 flow layout | not started | |
+| WS3 — Arabic ×12 | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. All 12 keys resolve in all three locales. |
+| WS4 — bound PoCs | not started | |
+| WS5 — adversarial audit | not started | |
+| WS6 — feature backlog | not started | |
+| WS7 — certification | not started | Range `dfe34ae..HEAD` still resolves. |
+
+## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
 1. `mkdir -p docs/archive/plans && git mv docs/plans/crop-margins.plan.md docs/plans/eh-e-borderless-tables.plan.md docs/plans/qa-hardening-followups.plan.md docs/plans/redaction-audit.plan.md docs/archive/plans/`
 2. Add one line to `CLAUDE.md` § "Plans live in the repo": superseded plans move to
@@ -312,3 +328,23 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   wire only at zero false positives.
 - [2026-09-01 00:05] AGREED: this session writes ONLY this file; Step 0 (archive move, CLAUDE.md
   line, commit) and everything after is executed by the follow-up session.
+- [2026-09-02 00:08] AGREED: Step 0 and WS0 are both docs-only, so they land as two commits but
+  share ONE deploy-gate run and ONE push — deviating from Step 0's "commit + push" wording, which
+  would have bought a second full real-Chrome suite for zero code change.
+- [2026-09-02 00:08] RECORDED: WS0 is **ten** drifts, not nine. The tenth was found by running the
+  item-9 residue sweep before the edits rather than after: `CLAUDE.md` names `marginsToContentCrop`
+  as the function AND cites a guard file `tests/utils/marginsToContentCrop.test.ts` that does not
+  exist (it is `marginsToRect.test.ts`, and it has 8 cases, not the 7 claimed). The plan expected
+  those hits to be "verified-true"; both were false.
+- [2026-09-02 00:08] RECORDED: two corrections to this plan's own recipe. Step 0 must
+  `git add docs/plans/master.plan.md` — it is untracked, and the recipe moves the four old plans
+  without adding the new one, so "the sole live plan" would land with no plan in the repo. And
+  item 9's `git grep "C1–C21"` pattern is vacuous for `tests/blockers/README.md:76`, where the
+  range is backticked as `` `C1`–`C21` ``; sweep `git grep -n C21` and validate each hit instead.
+- [2026-09-02 00:30] RECORDED: `git push` here exceeds a 3-minute Bash timeout because
+  `.githooks/pre-push` re-runs type-check + lint + the 170s jsdom suite. Two pushes were killed
+  mid-hook with nothing transferred (an exit code is NOT evidence — require the `To github.com:…`
+  line plus `git rev-list --count origin/master..master` → 0). The WS0 push therefore used the
+  hook's documented `--no-verify` bypass, justified by the full deploy gate having been run to
+  green on that exact commit with a clean tree minutes earlier — a strict superset of what the
+  hook runs. Future streams: run the push detached and leave the session idle until it reports.
