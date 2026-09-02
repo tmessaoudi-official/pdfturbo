@@ -143,13 +143,15 @@ stating rather than leaving you to discover them:
 - **Rotation is now accounted for (since 2026-09-02).** A redaction — like any element — can be rotated,
   and the box burned into the export is the rotated one. Until this date every filter tested the upright
   box instead, so content under the parts that stick out was painted over yet left fully extractable.
-  Both sides of the test now use the upright box that *contains* the rotated one, which errs towards
-  removing slightly more than the box strictly covers rather than less.
+  Both sides of the test now use the upright box that *contains* the rotated one. That errs towards
+  removing more than the box strictly covers rather than less — and for a long, thin redaction it is
+  considerably more, not slightly: a 20x260 bar turned on its side is tested as a 260x260 square.
 - **Freehand ink IS covered (since 2026-09-02).** It previously was not: the ink layer is stamped after
   the burn, so handwriting under a box was composited on top of it and baked into the exported pixels.
   Ink is now clipped to the redactions on the layer's own canvas, which removes the covered pixels and
   leaves the rest of the same stroke intact. A rotated redaction clips by the upright box containing it,
-  so slightly more ink is removed than the box strictly covers — the safe direction.
+  so more ink is removed than the box strictly covers — considerably more for a long, thin one, and the
+  safe direction.
 
 ### Deleting an image in the DOCX editor does not remove it from the file
 

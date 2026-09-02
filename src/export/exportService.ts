@@ -130,6 +130,13 @@ const IMG_DEFAULTS: Required<ImageExportOptions> = { scale: 2, format: 'png', qu
  *
  * Intersection, not containment: a word only partly under the box still has part of itself hidden, so
  * leaving it would leak that part — the same rule `isItemRedacted` applies to source text.
+ *
+ * Both sides are tested by {@link rotatedElementFootprint}, not by the stored box: an element's own
+ * `rotation` is applied when it is DRAWN but was not applied when it was TESTED until WS4-B, so a
+ * rotated element could protrude into a redaction — or a rotated redaction cover an element — with
+ * neither side noticing. That helper also does the negative-extent normalisation this used to do
+ * inline (a negative width/height is reachable via `interactionHandler.resize` and would make the
+ * raw comparisons fail OPEN).
  * Exported for direct testing; the geometry is trivial but the SAFETY depends on it.
  */
 /**

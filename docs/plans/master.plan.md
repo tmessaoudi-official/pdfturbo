@@ -438,3 +438,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-02 14:25] RECORDED: bound B was listed in this plan as "currently DISCLOSED in
   SECURITY.md" and was NOT in SECURITY.md at all — only in CLAUDE.md's hide-vs-remove bounds
   paragraph. Disclosed there now, as closed.
+- [2026-09-02 15:05] RECORDED: the struct-tree (tagged-PDF) path is NOT a second leak —
+  `reconstructPage` hands `structTreeToFlow` the already-mapped `contentRedactions`, so tagged files
+  inherit the WS4-B and C22 fixes without a second call site to keep in step. Checked because that is
+  exactly where a sibling path would hide.
+- [2026-09-02 15:05] AGREED: A's plan criterion said "all 4 rotations + crop" and the first round ran
+  only the rotations. The crop case was added and passes — as reasoned, but now measured; "reasoning
+  says it passes" is the sentence this repo's Gotchas exist to distrust.
+- [2026-09-02 15:05] AGREED: `SECURITY.md` said the rotated-redaction over-approximation removes
+  "slightly more". For a 20x260 bar at 90 degrees the tested box is 260x260 — thirteen times the
+  burn's area. A security document must not understate its own imprecision; reworded.

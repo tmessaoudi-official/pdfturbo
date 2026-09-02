@@ -301,6 +301,11 @@ under the protruding parts rode over the burn — the exact leak B closes, on th
 rect-building sites do not reach. **When a fix introduces a new consumer of a shape, that consumer
 joins the class the next fix has to sweep.**
 
+**The struct-tree (tagged-PDF) path was checked and is NOT a second leak.** `reconstructPage` hands
+`structTreeToFlow` the already-mapped `contentRedactions`, not the raw display rects, so the ~15% of
+files that are tagged inherit this fix — and inherited the C22 and rotation fixes before it — without a
+second call site to keep in step. Worth stating because it is exactly where a sibling path would hide.
+
 **One site is UNCERTIFIED-BY-EXECUTION and is named rather than omitted:** the OCR burn
 (`ocrHandler.ts`) takes the footprint now, but no test drives it — sabotage S4 re-stripped `rotation`
 there and the suite stayed green. Pinning it needs the OCR engine. The rasterizer/annotation-strip site

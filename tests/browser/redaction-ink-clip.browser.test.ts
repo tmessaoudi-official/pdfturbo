@@ -23,7 +23,7 @@ import { renderInkForExport } from '../../src/export/exportPipeline';
 import { ExportService } from '../../src/export/exportService';
 import { InkLayer } from '../../src/infra/inkLayer';
 import { transformPoint, contentRectToDisplay } from '../../src/utils/geometry';
-import { buildRedactedCtx, countColours, COVERED, CONTROL, W as PW, H as PH } from './_redactedAnnotationFixture';
+import { buildRedactedCtx, countColours, COVERED, CONTROL, CROP, W as PW, H as PH } from './_redactedAnnotationFixture';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 
@@ -141,8 +141,16 @@ describe('WS4-A — ink under a redaction is clipped out of the baked layer', ()
  * fails the second.
  */
 describe('WS4-A — end to end: ink under the burn does not reach the rasterised page', () => {
-  for (const rotation of [0, 90, 180, 270]) {
-    it(`rotation ${rotation}: covered ink is gone, clear ink survives`, async () => {
+  // The CROP row is not decoration. Reasoning says it must pass — ink and redactions both stay in
+  // source-box display space and `effBox` only moves the watermark and Bates stamp — but every
+  // frame bug in this repo shipped inside a fixture that was missing one dimension, and "reasoning
+  // says it passes" is the sentence the Gotchas exist to distrust.
+  const CASES: Array<{ rotation: number; crop?: typeof CROP }> = [
+    { rotation: 0 }, { rotation: 90 }, { rotation: 180 }, { rotation: 270 },
+    { rotation: 90, crop: CROP },
+  ];
+  for (const { rotation, crop } of CASES) {
+    it(`rotation ${rotation}${crop ? ' + crop' : ''}: covered ink is gone, clear ink survives`, async () => {
       const rot = ((rotation % 360) + 360) % 360;
       const cov = contentRectToDisplay({ x: COVERED.x, y: COVERED.y, width: COVERED.w, height: COVERED.h }, PW, PH, rot);
       const ctl = contentRectToDisplay({ x: CONTROL.x, y: CONTROL.y, width: CONTROL.w, height: CONTROL.h }, PW, PH, rot);
@@ -150,11 +158,11 @@ describe('WS4-A — end to end: ink under the burn does not reach the rasterised
         [{ x: d.x + 4, y: d.y + d.height / 2 }, { x: d.x + d.width - 4, y: d.y + d.height / 2 }];
 
       const base = await countColours(
-        (await new ExportService(await buildRedactedCtx({ rotation })).renderThumbnailWithOverlays(0, 2)) as string,
+        (await new ExportService(await buildRedactedCtx({ rotation, crop })).renderThumbnailWithOverlays(0, 2)) as string,
       );
       const withInk = await countColours(
         (await new ExportService(await buildRedactedCtx({
-          rotation,
+          rotation, crop,
           strokes: [
             { type: 'ink', width: 10, color: '#ff0000', points: across(cov) },
             { type: 'ink', width: 10, color: '#00ff00', points: across(ctl) },
