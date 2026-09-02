@@ -78,13 +78,12 @@ every export path, at every page rotation, and with or without a crop. (The firs
 got that wrong: it removed the annotation correctly on the PDF export but not on the image export or
 the thumbnail when the page was rotated or cropped.)
 
-To be precise about what is *tested* rather than merely believed: the PDF-export rasteriser and the
-thumbnail are each driven end-to-end at rotations 0/90/180/270 and with a crop. "Export page as
-image" is a narrower claim: `downloadPageAsImage` *is* driven by tests, but with pdf.js stubbed at
-the module seam, so what they pin is the option → viewport/format/save-name wiring, not the pixels.
-The annotation strip on that one path is therefore **UNCERTIFIED-BY-EXECUTION** — it calls the same
-collaborator as the thumbnail, which *is* driven end-to-end, so the mechanism is pinned and only
-that caller's use of it is not. Two consequences worth knowing:
+To be precise about what is *tested* rather than merely believed: the PDF-export rasteriser, the
+thumbnail and "export page as image" are each driven end-to-end on real pdf.js pixels, at rotations
+0/90/180/270 and with a crop. Until 2026-09-02 the image export was the exception — it was covered
+only by tests that stub pdf.js at the module seam, so they pinned the option →
+viewport/format/save-name wiring rather than the output, and reverting the fix left that one path
+green. It no longer does. Two consequences worth knowing:
 
 - **The whole annotation goes, not just the covered part.** A comment that overlaps a redaction by one
   corner disappears entirely. That is deliberate: for a leak filter, removing too much is the only safe

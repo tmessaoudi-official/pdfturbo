@@ -319,15 +319,30 @@ rect per rotation via `contentRectToDisplay` for that reason.
 Guards: `tests/browser/redaction-annotation-frames.browser.test.ts` (6 — every rotation and a
 crop, driving `renderThumbnailWithOverlays` end-to-end; asserts NO red pixel survives anywhere
 rather than sampling a computed point, so no coordinate arithmetic of the test's own can mask the
-leak), `tests/browser/redaction-annotation-burn.browser.test.ts` (8, real pdf.js pixels — 3 at rotation 0
+leak), **`tests/browser/redaction-annotation-image-export.browser.test.ts` (6, added 2026-09-02 —
+the SAME six cases driving the other rasterizing caller, `downloadPageAsImage`)**,
+`tests/browser/redaction-annotation-burn.browser.test.ts` (8, real pdf.js pixels — 3 at rotation 0
 plus 5 covering all four rotations and a crop) and
 `tests/export/redactedAnnotations.test.ts` (17). Sabotage-verified three ways: removing the strip fails
 every leak case and no control (6 of 8 in the burn file), a forward loop fails the
 adjacent-annotations case and the wrong-typed-entry case (`PDFArray.remove` shifts later indices
 down, and the catch re-uses the same removal), and dropping the CropBox origin fails exactly the
-origin case. **Those counts are the measured ones** — an earlier version of this sentence said
+origin case. Restoring the PRE-FIX ORDERING (reading rotation and crop box AFTER
+`buildPageOverlays` mutates them) fails **5 of 6 in EACH** browser file — every case except the
+rotation-0-no-crop regression control, which the pre-fix code got right — with the covered
+annotation repainted whole (24000 red pixels at scale 2) rather than partially [measured
+2026-09-02]. **Those counts are the measured ones** — an earlier version of this sentence said
 "exactly the leak case" and "exactly the adjacent-annotations case", which stopped being true the
 moment cases were added to the same files without re-running the sabotage.
+
+The two browser files share `tests/browser/_redactedAnnotationFixture.ts` deliberately. A copied
+fixture is how a frame fix gets pinned on one caller and not the other — which is precisely the
+defect these guards exist to catch, transposed from the source onto the test surface. Until
+2026-09-02 the image export was covered only by `tests/export/imageExportOptions.test.ts`, which
+stubs pdf.js at the module seam: it drives `downloadPageAsImage` six times and still went green
+against the reverted fix, because what it pins is the option → viewport/format/save-name wiring,
+not the pixels. **A test that drives the right entry point can still be blind to the whole
+mechanism underneath it.**
 
 ### `walkPageOps` ignored Form XObject boundaries, and the fixture that "proved" the fix was vacuous (2026-08-29)
 
