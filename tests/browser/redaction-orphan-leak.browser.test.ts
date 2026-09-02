@@ -124,8 +124,12 @@ async function assembleWithRedaction(elements: PDFElement[]): Promise<Uint8Array
     reportError: {
       info() {},
       // Fail loud: a swallowed render error would make every assertion below meaningless.
-      warn(k: string) { throw new Error(`export warned: ${k}`); },
-      error(k: string) { throw new Error(`export errored: ${k}`); },
+      warn(k: string, params?: Record<string, string | number>) { throw new Error(`export warned: ${k} ${JSON.stringify(params ?? {})}`); },
+      // Carry the CAUSE, not just the i18n key. `reportError.error(key, err)` is handed the
+      // real exception and this ctx used to drop it, so a failure reported a toast name and
+      // nothing else — useless for the one thing a rare flake needs, which is its first
+      // occurrence being legible. See CLAUDE.md § the orphan-leak flake investigation.
+      error(k: string, err?: unknown) { throw new Error(`export errored: ${k}${err === undefined ? '' : ` — ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`}`); },
       silent() {},
     },
     progress: { begin: () => handle },
@@ -194,8 +198,12 @@ describe('AUDIT — a redaction on a BLANK page removes the overlay text under i
       inkLayer: new InkLayer(),
       reportError: {
         info() {},
-        warn(k: string) { throw new Error(`export warned: ${k}`); },
-        error(k: string) { throw new Error(`export errored: ${k}`); },
+        warn(k: string, params?: Record<string, string | number>) { throw new Error(`export warned: ${k} ${JSON.stringify(params ?? {})}`); },
+        // Carry the CAUSE, not just the i18n key. `reportError.error(key, err)` is handed the
+        // real exception and this ctx used to drop it, so a failure reported a toast name and
+        // nothing else — useless for the one thing a rare flake needs, which is its first
+        // occurrence being legible. See CLAUDE.md § the orphan-leak flake investigation.
+        error(k: string, err?: unknown) { throw new Error(`export errored: ${k}${err === undefined ? '' : ` — ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`}`); },
         silent() {},
       },
       progress: { begin: () => handle },

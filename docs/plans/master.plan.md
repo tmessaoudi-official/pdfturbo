@@ -91,7 +91,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 |---|---|---|
 | Step 0 — consolidation | **DONE** 2026-09-01 | The four plans ARE now in `docs/archive/plans/`; the Step 0 prose below is history, not an instruction. |
 | WS0 — doc drift | **DONE** 2026-09-01 | Ten drifts, not nine — see the Decisions Log. Gate green on the same commit. |
-| WS1 — uncertified dimensions + flake | not started | |
+| WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 27 runs and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
 | WS2 — C22 flow layout | not started | |
 | WS3 — Arabic ×12 | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. All 12 keys resolve in all three locales. |
 | WS4 — bound PoCs | not started | |
@@ -348,3 +348,24 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   hook's documented `--no-verify` bypass, justified by the full deploy gate having been run to
   green on that exact commit with a clean tree minutes earlier — a strict superset of what the
   hook runs. Future streams: run the push detached and leave the session idle until it reports.
+- [2026-09-02 08:04] AGREED: drive `onSignRectPicked` via `Object.create(PDFTurboApp.prototype)`
+  rather than extracting the seam this plan offered as the fallback. A two-line probe showed
+  `src/core/pdfTurboApp.ts` imports cleanly under jsdom, so the untouched production code can be
+  driven as-is with own-property stubs shadowing `setMode`/`_reopenSignModal` — reshaping shipping
+  code for testability is the worse trade when that is true. (`ui` is a prototype getter, so it
+  needs `Object.defineProperty`, not assignment.)
+- [2026-09-02 08:04] AGREED: pin WS1-1c as a CONTRACT, not as a call. `_pageGeomForSign` reads only
+  `vp.viewBox`, which pdf.js stores verbatim regardless of rotation, so the plan's offered
+  "assert the viewport call arguments" would be a guard that fails on a harmless edit and passes on
+  a harmful one. The assertion is instead that the returned box is the UNROTATED content box
+  carrying its origin, at `/Rotate 90` where both wrong answers are distinguishable; the
+  call-argument assertion is kept beside it and labelled in the test as intent documentation.
+- [2026-09-02 08:20] RECORDED: WS1-1d found NO reproduction in 27 executions (18 isolated at load
+  ~16, 9 in-suite across 3 full browser runs at load 16.7–19.6) and REFUTED the timeout hypothesis
+  by measurement — the test is faster in-suite (2.7–3.7s) than isolated (4.1–13.2s) because pdf.js's
+  worker is warm by then, against a 30s budget whose suite-wide maximum is 10.1s. No retry and no
+  timeout bump were added. The only change is diagnosability, and it is disclosed as
+  UNCERTIFIED-BY-EXECUTION: no current fixture in that file can reach either error hook.
+- [2026-09-02 08:20] AGREED: fix the dropped-cause error hooks at ALL THREE sites across both files
+  that use the pattern, not only in the flaky one — and note that `IErrorReporter`'s second argument
+  means params for `warn` and a cause for `error`, which the first version of the fix got wrong.

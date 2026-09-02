@@ -45,7 +45,9 @@ const noopReporter = {
   info() {},
   silent(_e?: unknown, msg?: string) { throw new Error(`export reported: ${msg}`); },
   warn(key: string, meta?: unknown) { throw new Error(`export warned: ${key} ${JSON.stringify(meta)}`); },
-  error(key: string) { throw new Error(`export errored: ${key}`); },
+  // Carry the CAUSE, not just the i18n key — see the sibling note in
+  // redaction-orphan-leak.browser.test.ts.
+  error(key: string, err?: unknown) { throw new Error(`export errored: ${key}${err === undefined ? '' : ` — ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`}`); },
 } as unknown as IErrorReporter;
 const noWatermark: WatermarkSettings =
   { enabled: false, text: '', opacity: 0, angle: 0, color: '#000000', fontSize: 10 };

@@ -268,6 +268,57 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### The `redaction-orphan-leak` flake did NOT reproduce in 27 runs — and the obvious cause is refuted (2026-09-02)
+
+`tests/browser/redaction-orphan-leak.browser.test.ts` was recorded as flaky after **one** observed
+red (1 failed / 2 passed, 2026-08-29, inside a full-suite run; it passed on an immediate re-run and
+in that same day's full run). No failure output was ever captured, so this round set out to
+reproduce it before touching anything. **It did not reproduce: 27 executions, 0 failures** — 18
+isolated (6 runs at load ~16 on 8 cores) and 9 in-suite (3 full browser runs at load 16.7–19.6).
+
+**The timeout hypothesis is REFUTED, not merely unconfirmed, and the measurement inverts the
+intuition.** The natural theory is "slow under full-suite contention, exceeds `testTimeout`". In
+fact the test is **FASTER in the suite than alone** — 2689 / 3014 / 3653 ms in-suite versus
+4124–13221 ms isolated — because by the time the file runs, pdf.js's worker is already warm. The
+budget is 30s and the slowest test anywhere in the browser suite is 10076 ms. So contention makes
+this file *cheaper*, and a timeout bump would have been a bandaid aimed at the wrong mechanism.
+
+**Where the time actually goes** (probe, one run): `getDocument` worker spin-up **1797 ms**,
+`assemblePdfBytes` 356 ms, verify `getTextContent` 194 ms, the byte scan **24 ms**, the
+`includes` + `toUpperCase` 13 ms. So the dominant cost is not the test's subject at all, and the
+component CLAUDE.md's § "A flaky gate" rule trains you to suspect — scanning bytes for a string —
+is 1% of the runtime, decodes 1.44 MB, and looks for a **42-character** token. A coincidental match
+is not a quantitatively plausible mechanism here; that rule's warning is about SHORT sequences.
+
+**Still open, and deliberately unpatched:** Chromium canvas/resource exhaustion surfacing as a
+transient export failure, or a browser crash. Both are consistent with a single red inside a long
+run and neither is proven. **One data point arrived unbidden during this round's own deploy gate**:
+`npm run test:browser` failed at load ~16 with `Failed to connect to the browser session … within
+the timeout`, reporting `Test Files (84) / Tests no tests / Errors 1` and exit 1 after 60s; the
+identical command passed at load ~6 minutes later. That is not this flake's shape — it kills the
+whole run rather than one test — but it establishes that **the browser harness has load-dependent
+failure modes that surface as a red with no product defect behind them**, which is the family the
+single 2026-08-29 observation most likely belongs to. Re-run before believing a lone browser red,
+and record the load. **No retry, no timeout bump, no `2>/dev/null`** — under the anti-bandaid
+gate, a fix for a failure mode with no captured evidence is itself the defect.
+
+**What DID change is diagnosability, so the next occurrence is legible.** The ctx's error hooks
+threw away everything but the i18n key. Two corrections, applied at all three sites across both
+files that use the pattern rather than only the flaky one:
+
+- `IErrorReporter` is `warn(msgKey, params?)` but `error(msgKey, err?, params?)` — the second
+  argument means *different things*. The first version of this fix typed `warn`'s as a cause, which
+  would have stringified a params object as though it were an exception. **Check the interface
+  before writing a handler for it**; `hide-vs-remove` already had `warn` right and `error` wrong.
+- `error` now carries the cause (`err.stack ?? err.message`) instead of dropping it.
+
+**UNCERTIFIED-BY-EXECUTION, and worth stating plainly: no current fixture in that file can reach
+either hook.** Sabotaging `renderElementToPdfLib` to throw on a text element left the suite green —
+the only text element there is dropped under the redaction before rendering, and a redaction render
+failure fails CLOSED and rethrows raw (correctly: a swallowed redaction render would ship an
+un-redacted page). So this is a defensive diagnostic that has never fired, said out loud rather
+than sold as a proven improvement.
+
 ### A source annotation under a redaction was painted OVER the burn (2026-08-29)
 
 The burn is written into the page CONTENT STREAM; pdf.js paints annotation appearance streams
