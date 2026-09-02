@@ -91,7 +91,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 |---|---|---|
 | Step 0 — consolidation | **DONE** 2026-09-01 | The four plans ARE now in `docs/archive/plans/`; the Step 0 prose below is history, not an instruction. |
 | WS0 — doc drift | **DONE** 2026-09-01 | Ten drifts, not nine — see the Decisions Log. Gate green on the same commit. |
-| WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 27 runs and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
+| WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 9 file runs (3 in-suite — a thin sample) and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
 | WS2 — C22 flow layout | not started | |
 | WS3 — Arabic ×12 | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. All 12 keys resolve in all three locales. |
 | WS4 — bound PoCs | not started | |
@@ -360,8 +360,11 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   a harmful one. The assertion is instead that the returned box is the UNROTATED content box
   carrying its origin, at `/Rotate 90` where both wrong answers are distinguishable; the
   call-argument assertion is kept beside it and labelled in the test as intent documentation.
-- [2026-09-02 08:20] RECORDED: WS1-1d found NO reproduction in 27 executions (18 isolated at load
-  ~16, 9 in-suite across 3 full browser runs at load 16.7–19.6) and REFUTED the timeout hypothesis
+- [2026-09-02 08:20] RECORDED: WS1-1d found NO reproduction in 9 runs of the FILE (6 isolated at
+  load ~16, 3 in-suite at load 16.7–19.6; 27 `it`-block executions, which is NOT the comparable
+  unit — the original observation was one file run). Three in-suite samples are thin: 3 clean runs
+  are the expected outcome 73% of the time even at a 1-in-10 rate, so the finding is "not
+  reproduced", never "fixed". It REFUTED the timeout hypothesis
   by measurement — the test is faster in-suite (2.7–3.7s) than isolated (4.1–13.2s) because pdf.js's
   worker is warm by then, against a 30s budget whose suite-wide maximum is 10.1s. No retry and no
   timeout bump were added. The only change is diagnosability, and it is disclosed as

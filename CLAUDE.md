@@ -268,13 +268,21 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
-### The `redaction-orphan-leak` flake did NOT reproduce in 27 runs — and the obvious cause is refuted (2026-09-02)
+### The `redaction-orphan-leak` flake did NOT reproduce in 9 file runs — and the obvious cause is refuted (2026-09-02)
 
 `tests/browser/redaction-orphan-leak.browser.test.ts` was recorded as flaky after **one** observed
 red (1 failed / 2 passed, 2026-08-29, inside a full-suite run; it passed on an immediate re-run and
 in that same day's full run). No failure output was ever captured, so this round set out to
-reproduce it before touching anything. **It did not reproduce: 27 executions, 0 failures** — 18
-isolated (6 runs at load ~16 on 8 cores) and 9 in-suite (3 full browser runs at load 16.7–19.6).
+reproduce it before touching anything. **It did not reproduce: 9 runs of the FILE, 0 failures** — 6
+isolated (load ~16 on 8 cores) and 3 in-suite (full browser runs at load 16.7–19.6), i.e. 27
+`it`-block executions.
+
+**Count the FILE runs, not the `it` blocks — and treat 3 as thin.** The original observation was
+"1 failed / 2 passed", which is one file run, so file runs are the comparable unit; quoting 27
+inflates the sample fourfold in exactly the way this repo already had to correct for the
+env-update suite's `✓` marks. Only 3 samples exist under the condition the flake was actually seen
+in, and **3 clean full-suite runs are what you would expect 73% of the time even at a 1-in-10 rate**.
+So this is "not reproduced", never "fixed" — and nothing here licenses deleting the flake note.
 
 **The timeout hypothesis is REFUTED, not merely unconfirmed, and the measurement inverts the
 intuition.** The natural theory is "slow under full-suite contention, exceeds `testTimeout`". In
