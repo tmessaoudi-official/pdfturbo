@@ -264,7 +264,7 @@ export class OcrHandler {
       // too — one predicate for one safety decision.
       if (el.pageId !== page.id || el.type !== 'redaction') continue;
       const c = redactionRectToContent(
-        { x: el.x, y: el.y, width: el.width, height: el.height }, unrot.width, Hu, totalRot,
+        el, unrot.width, Hu, totalRot,
       );
       const [ax, ay] = viewport.convertToViewportPoint(ox + c.x, oy + Hu - c.y);
       const [bx, by] = viewport.convertToViewportPoint(ox + c.x + c.width, oy + Hu - (c.y + c.height));

@@ -268,6 +268,59 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### A rotated redaction burned a rotated box while every filter tested the upright one (2026-09-02)
+
+WS4-B, and it turned out to be a live leak rather than the bluntness bound the plan described. A
+redaction element renders a rotation handle like any other, the editor shows it rotated
+(`elementLayerRenderer` sets `transform: rotate()`) and the export burns it rotated (`renderRedaction`
+passes `rotate: pdfRotVal`) — but every filter tested the element's **stored, upright** box. A rotated
+rectangle protrudes from that box along its long axis, so content under the protruding parts was
+painted over by an opaque burn and left **fully extractable** in the DOCX / MD / TXT / CSV / XLSX
+exports. Measured on shipping code: `SECRETWORD` present in both the flow model and the table items.
+
+**The plan scoped B as the rotated ELEMENT's footprint; the rotated REDACTION is the same geometry with
+the bigger blast radius**, because it reaches the SOURCE-text channels rather than only the blank-page
+overlay drop. Both are fixed by one predicate.
+
+**UNION, not replacement — and this is the part that looks wrong until you check it.** The obvious
+"true footprint" implementation is the AABB of the rotated corners. At 90° a 120×20 box becomes 20×120,
+i.e. **narrower on x**, so substituting it would stop dropping things that are dropped today. For a leak
+filter the tested footprint may only ever GROW, so `rotatedElementFootprint` returns the union of the
+stored box and the rotated AABB. That also makes the change additive by construction: every existing
+drop survives. Sabotage S1 (seeding the AABB without the upright corners) fails 4 pure cases.
+
+**A one-seam normalisation is only structural if callers pass the object through.** The fix went into
+`redactionRectToContent`, which all five conversion sites reach — and the table path STILL leaked,
+because four sites rebuilt a stripped `{x, y, width, height}` literal and dropped `rotation` on the
+floor before the call. Hand-copying exactly the fields you need today is how a future field silently
+fails to propagate; those sites now pass `el`.
+
+**And the A fix, landed 40 minutes earlier, shipped the same bug.** `renderInkForExport` mapped the
+stored rect, so under a rotated redaction the ink clip covered only the upright box and handwriting
+under the protruding parts rode over the burn — the exact leak B closes, on the one path B's own
+rect-building sites do not reach. **When a fix introduces a new consumer of a shape, that consumer
+joins the class the next fix has to sweep.**
+
+**One site is UNCERTIFIED-BY-EXECUTION and is named rather than omitted:** the OCR burn
+(`ocrHandler.ts`) takes the footprint now, but no test drives it — sabotage S4 re-stripped `rotation`
+there and the suite stayed green. Pinning it needs the OCR engine. The rasterizer/annotation-strip site
+was in the same position and IS now pinned, by a case whose redaction is a tall thin bar that misses the
+annotation upright and crosses it rotated.
+
+Also worth knowing: this bound was listed in the plan as one of six "currently DISCLOSED in
+`SECURITY.md`" and **was not in `SECURITY.md` at all** — only in the § "hide-vs-remove" bounds paragraph
+here. It is disclosed there now, as closed.
+
+Guards: `tests/browser/redaction-rotated-footprint.browser.test.ts` (8 — flow, table, blank-page drop
+for both a rotated redaction and a rotated element, the rasterizer/annotation-strip path, plus an
+unrotated regression control asserting the secret is still exported when nothing is rotated, which is
+what makes the others rotation findings rather than filter-strength ones) and
+`tests/utils/rotatedFootprint.test.ts` (8 pure, including "never shrinks on either axis" swept every 15°
+and the negative-extent normalisation). Sabotage-verified five ways: replacement instead of union → 4;
+rotation ignored → 4 browser + 3 pure; the CSV site re-stripping → exactly the table case; the
+rasterizer site re-stripping → exactly that case; the ink clip back to the stored box → exactly the
+rotated-ink case.
+
 ### Ink was stamped OVER the burn, and the fixture that "proved" the clip could not see a rotation (2026-09-02)
 
 WS4-A, the first of the six disclosed bounds. `buildPageOverlays` draws the redaction burn inside its
@@ -2461,10 +2514,10 @@ is exactly how a whole feature went ungraded under a heading that says "every su
 
 **Known bounds, deliberately not "fixed" (they are disclosed in `SECURITY.md` instead):** the drop is
 blunt — a partially-covered element goes entirely, and so does one the user deliberately stacked *above*
-a redaction (the raster path draws that one above the burn, so the two paths differ by design); the
-intersection test uses the stored AABB, so a **rotated** element's true footprint is not what is tested;
-and ink used to be composited above the burn — **that one is CLOSED as of 2026-09-02**, see § "Ink was
-stamped over the burn".
+a redaction (the raster path draws that one above the burn, so the two paths differ by design). Two of
+the bounds listed here are now **CLOSED as of 2026-09-02**: the stored-AABB intersection test (see § "A
+rotated redaction burned a rotated box") and ink composited above the burn (see § "Ink was stamped OVER
+the burn").
 
 **A FOURTH leak, and the way I nearly buried it is the most useful lesson in this whole entry.**
 `_assemblePdfDoc` pre-copied every needed page, **including redaction-bearing ones** whose copy is never

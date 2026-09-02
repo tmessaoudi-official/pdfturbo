@@ -8,7 +8,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
 import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
-import { redactionRectToPageSpace } from '../utils/geometry';
+import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
@@ -170,10 +170,14 @@ export function dropElementsUnderRedactions(pageElements: PDFElement[]): PDFElem
   // produce one when an element sits past the canvas edge) and would make the raw comparisons FAIL OPEN —
   // the footprint genuinely overlaps, yet the element is kept and drawn as live text. Same defect shape as
   // the `#bg-fill` negative-height rect in § Gotchas, so it gets the same treatment.
-  const box = (e: { x: number; y: number; width: number; height: number }) => ({
-    x0: Math.min(e.x, e.x + e.width), x1: Math.max(e.x, e.x + e.width),
-    y0: Math.min(e.y, e.y + e.height), y1: Math.max(e.y, e.y + e.height),
-  });
+  // WS4-B — the footprint, not the stored box: an element's `rotation` is applied when it is
+  // drawn but was never applied when it was tested, so a rotated element could protrude into a
+  // redaction (or a rotated redaction could cover an element) with neither side noticing.
+  // `rotatedElementFootprint` also does the negative-extent normalisation this used to do inline.
+  const box = (e: RotatableRect) => {
+    const f = rotatedElementFootprint(e);
+    return { x0: f.x, x1: f.x + f.width, y0: f.y, y1: f.y + f.height };
+  };
   const redBoxes = reds.map(box);
   return pageElements.filter((el) => {
     if (el.type === 'redaction') return true;
@@ -625,7 +629,7 @@ export class ExportService {
     const contentRedactions = this._ctx.elements
       .filter(el => el.pageId === docPage.id && el.type === 'redaction')
       .map(el => redactionRectToPageSpace(
-        { x: el.x, y: el.y, width: el.width, height: el.height }, vp.viewBox, totalRot,
+        el, vp.viewBox, totalRot,
       ));
 
     const items: TableTextItem[] = (content.items as RawTextItem[])
@@ -1250,7 +1254,7 @@ export class ExportService {
       const totalRot = (((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360 + 360) % 360;
       const redactions: RedactionRect[] = elements
         .filter(el => el.pageId === docPage.id && el.type === 'redaction')
-        .map(el => ({ x: el.x, y: el.y, width: el.width, height: el.height }));
+        .map(el => ({ x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation }));
 
       // B1: a tagged PDF carries a struct tree. When present, request the
       // marked-content text variant (markers tie struct leaves to text items) so

@@ -94,7 +94,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 9 file runs (3 in-suite — a thin sample) and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
 | WS2 — C22 flow layout | **DONE** 2026-09-02 | Normalised at the `_extractFlowDoc` boundary; C22 CLOSED in `KNOWN_ISSUES.md`. Five sabotages, each red exactly where predicted. Sabotage exposed an UNPINNED frame in the image-channel redaction filter — guarded now. |
 | WS3 — Arabic ×12 | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. All 12 keys resolve in all three locales. |
-| WS4 — bound PoCs | in progress | **A PROMOTED** (ink clipped to redactions on its own canvas; 15 guards, 4 sabotages). B/F/E/D/C pending. |
+| WS4 — bound PoCs | in progress | **A + B PROMOTED** — ink clipped on its own canvas (16 guards); rotated-element/redaction footprint, a LIVE leak on the flow+table exports (8+8 guards). F/E/D/C pending. |
 | WS5 — adversarial audit | not started | |
 | WS6 — feature backlog | not started | |
 | WS7 — certification | not started | Range `dfe34ae..HEAD` still resolves. |
@@ -416,3 +416,25 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-02 13:40] RECORDED: sabotage S1 (reverting only the CALL SITE) fails exactly the 4
   end-to-end cases and nothing else, so the wiring is pinned and not merely the pure helper — the
   gap that left the sign-rect prefill uncertified until 2026-09-02.
+- [2026-09-02 14:25] AGREED: PoC **B (rotated footprint) is PROMOTED**, and it is a LIVE LEAK rather
+  than the bluntness bound the plan described. A redaction element can itself be rotated; the burn
+  and the editor honour that, every filter did not, so content under the protruding parts was
+  painted over and left fully extractable in the flow and table exports. Measured on shipping code.
+- [2026-09-02 14:25] AGREED: the footprint is the UNION of the stored box and the rotated AABB, never
+  the rotated AABB alone — at 90° a 120x20 box becomes 20x120, i.e. NARROWER, and a leak filter's
+  tested footprint may only grow. Union also makes the change additive: every existing drop survives.
+- [2026-09-02 14:25] RECORDED: normalising inside `redactionRectToContent` (which all five conversion
+  sites reach) did NOT fix the table path — four sites rebuilt a stripped `{x,y,width,height}` literal
+  and dropped `rotation` before the call. **A one-seam normalisation is only structural if callers
+  pass the object through**; those sites now pass `el`.
+- [2026-09-02 14:25] RECORDED: the WS4-A ink clip shipped the same defect 40 minutes earlier — it
+  mapped the STORED rect, so a rotated redaction under-clipped the ink. Fixed in the same change and
+  pinned. When a fix introduces a new consumer of a shape, that consumer joins the class the next fix
+  must sweep.
+- [2026-09-02 14:25] RECORDED: **UNCERTIFIED-BY-EXECUTION** — the OCR burn (`ocrHandler.ts`) takes the
+  footprint but no test drives it; sabotage re-stripping `rotation` there leaves the suite green.
+  Pinning it needs the OCR engine. The rasterizer/annotation-strip site was in the same position and
+  IS now pinned.
+- [2026-09-02 14:25] RECORDED: bound B was listed in this plan as "currently DISCLOSED in
+  SECURITY.md" and was NOT in SECURITY.md at all — only in CLAUDE.md's hide-vs-remove bounds
+  paragraph. Disclosed there now, as closed.

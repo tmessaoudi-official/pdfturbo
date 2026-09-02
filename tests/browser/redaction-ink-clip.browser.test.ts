@@ -108,6 +108,18 @@ describe('WS4-A — ink under a redaction is clipped out of the baked layer', ()
     expect(clipped).not.toBe(plain);
   });
 
+  it('a ROTATED redaction clips the ink its upright box would miss (WS4-B)', async () => {
+    // A tall thin bar: upright it is x 70..90 / y 20..120, which does NOT reach the sample point.
+    // Rotated 90° about its centre (80,70) it becomes x 30..130 / y 60..80 and crosses the stroke
+    // there. The A fix mapped the STORED rect, so without B's footprint the ink at (110,70) rides
+    // over the burn — the leak B closes, on the one path B's own rect-building sites do not reach.
+    const bar = { x: 70, y: 20, width: 20, height: 100, rotation: 90 };
+    const url = renderInkForExport(inkOf(), 'p1', W, H, 0, [bar]) as string;
+    const p = toCanvas(110, 70, 0);
+    const [, , , alpha] = await pixelAt(url, p.x, p.y);
+    expect(alpha).toBe(0);
+  }, 60_000);
+
   it('a redaction nowhere near the ink leaves it byte-identical', () => {
     const plain = renderInkForExport(inkOf(), 'p1', W, H, 0) as string;
     const far = renderInkForExport(inkOf(), 'p1', W, H, 0, [{ x: 0, y: 0, width: 10, height: 10 }]) as string;

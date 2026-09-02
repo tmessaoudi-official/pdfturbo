@@ -30,6 +30,53 @@ export function transformCanvasPoint(cx: number, cy: number, W: number, H: numbe
   return inverseTransformPoint(pdf.x, pdf.y, W, H, toRot);
 }
 
+/** A rect that may carry the element's own rotation, in degrees about its centre. */
+export interface RotatableRect { x: number; y: number; width: number; height: number; rotation?: number }
+
+/**
+ * The upright box that is guaranteed to contain everything a (possibly rotated) element covers —
+ * the UNION of its stored box and the AABB of that box rotated about its own centre.
+ *
+ * WS4-B. An element's `rotation` is applied when it is DRAWN (`elementLayerRenderer` sets a CSS
+ * `transform: rotate()`, `renderRedaction` passes `rotate: pdfRotVal`) but was never applied when
+ * its box was tested against a redaction. The two shapes are not nested — a rotated rectangle
+ * sticks out of its own upright box along the long axis — so a rotated redaction burned an opaque
+ * box over content that every filter then left fully extractable.
+ *
+ * UNION, not replacement, and the difference matters: at 90 degrees a 120x20 box becomes 20x120,
+ * i.e. NARROWER on x. Substituting the rotated AABB would stop dropping things that are dropped
+ * today, and for a leak filter the tested footprint may only ever GROW. Taking the union keeps
+ * every existing drop and adds the missing ones, so the change is additive by construction.
+ *
+ * Also normalises a negative width/height, which `interactionHandler.resize` can produce and which
+ * makes raw comparisons FAIL OPEN — the same trap `dropElementsUnderRedactions` and
+ * `annotationRectRedacted` already guard against.
+ *
+ * Exact identity when `rotation` is absent, 0, or a multiple of 360, so the ~all of pages that
+ * never rotate an element are byte-for-byte unaffected. Pure; exported for direct testing.
+ */
+export function rotatedElementFootprint(rect: RotatableRect): { x: number; y: number; width: number; height: number } {
+  const x0 = Math.min(rect.x, rect.x + rect.width), x1 = Math.max(rect.x, rect.x + rect.width);
+  const y0 = Math.min(rect.y, rect.y + rect.height), y1 = Math.max(rect.y, rect.y + rect.height);
+  const upright = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  const deg = ((rect.rotation ?? 0) % 360 + 360) % 360;
+  if (deg === 0 || !Number.isFinite(deg)) return upright;
+
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const rad = (deg * Math.PI) / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+  const xs: number[] = [x0, x1], ys: number[] = [y0, y1];
+  for (const px of [x0, x1]) {
+    for (const py of [y0, y1]) {
+      const dx = px - cx, dy = py - cy;
+      xs.push(cx + dx * cos - dy * sin);
+      ys.push(cy + dx * sin + dy * cos);
+    }
+  }
+  const ux0 = Math.min(...xs), ux1 = Math.max(...xs);
+  const uy0 = Math.min(...ys), uy1 = Math.max(...ys);
+  return { x: ux0, y: uy0, width: ux1 - ux0, height: uy1 - uy0 };
+}
+
 /**
  * Map a redaction rectangle from editor DISPLAYED space (the on-screen rotated
  * orientation the user placed it in — y-down, top-left origin, dims = rotated page)
@@ -41,14 +88,20 @@ export function transformCanvasPoint(cx: number, cy: number, W: number, H: numbe
  * `W`/`H` are the UNROTATED content dimensions; `totalRot` is `(page.rotate + userRotation) % 360`.
  */
 export function redactionRectToContent(
-  rect: { x: number; y: number; width: number; height: number },
+  rect: RotatableRect,
   W: number, H: number, totalRot: number,
 ): { x: number; y: number; width: number; height: number } {
+  // WS4-B — take the element's OWN rotation into account first, then the page's. Doing it here
+  // rather than at each caller is the point: five of the six sites that turn a redaction element
+  // into a filter rect reach this function (`redactionRectToPageSpace` delegates to it), so a
+  // partial normalisation across them is unexpressible. Identity when `rotation` is absent, which
+  // is every crop rect and every unrotated redaction.
+  const r = rotatedElementFootprint(rect);
   const corners: Array<[number, number]> = [
-    [rect.x, rect.y],
-    [rect.x + rect.width, rect.y],
-    [rect.x, rect.y + rect.height],
-    [rect.x + rect.width, rect.y + rect.height],
+    [r.x, r.y],
+    [r.x + r.width, r.y],
+    [r.x, r.y + r.height],
+    [r.x + r.width, r.y + r.height],
   ];
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [dx, dy] of corners) {
@@ -87,7 +140,7 @@ export function redactionRectToContent(
  * {@link redactionRectToContent} returns, so ordinary pages are byte-for-byte unaffected.
  */
 export function redactionRectToPageSpace(
-  rect: { x: number; y: number; width: number; height: number },
+  rect: RotatableRect,
   viewBox: readonly number[],
   totalRot: number,
 ): { x: number; y: number; width: number; height: number } {

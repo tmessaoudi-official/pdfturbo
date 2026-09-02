@@ -293,6 +293,13 @@ export interface RedactionRect {
   y: number;
   width: number;
   height: number;
+  /**
+   * The redaction element's OWN rotation in degrees, about its centre (WS4-B). Carried so that
+   * `redactionRectToPageSpace` / `redactionRectToContent` can widen the rect to the footprint the
+   * burn actually covers — a rotated rectangle protrudes from its upright box, and content under
+   * those parts was burned yet left extractable. Absent → identity.
+   */
+  rotation?: number;
 }
 
 /**

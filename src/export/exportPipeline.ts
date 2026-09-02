@@ -8,7 +8,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
-import { transformPoint, hexToRgbValues, contentCropToPdfCropBox, redactionRectToPageSpace } from '../utils/geometry';
+import { transformPoint, hexToRgbValues, contentCropToPdfCropBox, redactionRectToPageSpace, rotatedElementFootprint } from '../utils/geometry';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { densitySpacingFactor } from '../utils/watermarkDensity';
 import type { PDFElement } from '../elements/annotationElement';
@@ -115,7 +115,7 @@ export function renderInkForExport(
    * call site by dropping whole strokes: the covered pixels go and the rest of the same stroke
    * stays, which is why the guard carries an over-reach control.
    */
-  redactions?: ReadonlyArray<{ x: number; y: number; width: number; height: number }>,
+  redactions?: ReadonlyArray<{ x: number; y: number; width: number; height: number; rotation?: number }>,
 ): string | null {
   const strokes = inkLayer.getStrokes(pageId);
   if (!strokes.length) return null;
@@ -173,9 +173,14 @@ export function renderInkForExport(
       // width/height, which `interactionHandler.resize` can produce and which would otherwise make
       // `fillRect` a no-op and fail OPEN (the same negative-extent trap as `#bg-fill` and
       // `dropElementsUnderRedactions`).
+      // WS4-B — the element's OWN rotation first (a rotated redaction protrudes from its stored
+      // box), then the page's via `toCanvas`. Without the footprint the clip covers only the
+      // upright box and ink under the protruding parts survives under the burn: the A fix would
+      // have shipped with exactly the leak B exists to close, on the one path B does not reach.
+      const fp = rotatedElementFootprint(r);
       const cs = [
-        toCanvas(r.x, r.y), toCanvas(r.x + r.width, r.y),
-        toCanvas(r.x, r.y + r.height), toCanvas(r.x + r.width, r.y + r.height),
+        toCanvas(fp.x, fp.y), toCanvas(fp.x + fp.width, fp.y),
+        toCanvas(fp.x, fp.y + fp.height), toCanvas(fp.x + fp.width, fp.y + fp.height),
       ];
       const x0 = Math.min(...cs.map(p => p.x)), x1 = Math.max(...cs.map(p => p.x));
       const y0 = Math.min(...cs.map(p => p.y)), y1 = Math.max(...cs.map(p => p.y));
@@ -374,7 +379,7 @@ export async function stripRedactedAnnotations(
   const redactions = elements
     .filter(el => el.pageId === pageId && el.type === 'redaction')
     .map(el => redactionRectToPageSpace(
-      { x: el.x, y: el.y, width: el.width, height: el.height }, viewBox, totalRot,
+      el, viewBox, totalRot,
     ));
   if (redactions.length === 0) return;
 
