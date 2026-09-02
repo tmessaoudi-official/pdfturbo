@@ -29,6 +29,9 @@ most of the work went into proving that what the product claims to remove is act
   DOCX/MD/TXT exports; the same in the XFDF export; and the OCR burn's own placement.
 - **The redaction filter silently no-opped on rotated pages** (90°/270°), and on any page whose
   CropBox origin is not (0,0) — two coordinate-frame defects, each measured across all rotations.
+- **Freehand ink was stamped over the burn**, so handwriting under a redaction stayed visible in
+  the export. Ink is now clipped to the redactions on its own canvas — the covered pixels go and
+  the rest of the same stroke is untouched.
 - **A source annotation under a redaction was painted on top of the burn** and baked into the
   exported pixels — visibly. Annotations meeting a redaction are now stripped before rasterisation,
   on every path, at every rotation, with or without a crop.

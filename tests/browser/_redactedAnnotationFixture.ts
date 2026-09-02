@@ -102,6 +102,12 @@ export interface RedactedCtxOpts {
   crop?: { x: number; y: number; width: number; height: number };
   /** Called for every `reportError.error`, so a bailed export fails loudly instead of timing out. */
   onError?: (key: string, err?: unknown) => void;
+  /**
+   * Freehand strokes for the page's ink layer, in editor DISPLAY space (WS4-A). Default empty, so
+   * every pre-existing caller is unchanged. The ink layer is stamped AFTER the burn, so this is
+   * what lets a guard drive the "handwriting under a redaction" leak end-to-end.
+   */
+  strokes?: Array<{ type: 'ink' | 'erase'; width: number; color: string; points: Array<{ x: number; y: number }> }>;
 }
 
 /**
@@ -139,7 +145,7 @@ export async function buildRedactedCtx(opts: RedactedCtxOpts): Promise<IExportCo
     },
     elements: [redaction],
     formValues: {}, currentFilename: 'x.pdf', exportPassword: null,
-    inkLayer: { getStrokes: () => [] },
+    inkLayer: { getStrokes: () => opts.strokes ?? [] },
     reportError: {
       info() {}, warn() {},
       error(key: string, err?: unknown) { opts.onError?.(key, err); },

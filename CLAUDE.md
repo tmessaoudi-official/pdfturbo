@@ -268,6 +268,46 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### Ink was stamped OVER the burn, and the fixture that "proved" the clip could not see a rotation (2026-09-02)
+
+WS4-A, the first of the six disclosed bounds. `buildPageOverlays` draws the redaction burn inside its
+element loop and stamps the ink layer **after** it, so a freehand stroke crossing a redaction was
+composited on top of the opaque box and baked into the exported pixels — **visibly readable**, the same
+grade as the 2026-08-29 annotation leak rather than the merely-extractable grade of the 2026-08-05 round.
+Measured before touching anything: alpha 255 at the covered point.
+
+**The clip is stroke-exact, and that came free from where the fix was placed.** Ink is rasterised to its
+own canvas before being stamped, so a `destination-out` fill of the redaction rects removes exactly the
+covered pixels and leaves the rest of the same stroke. The plan's floor was "drop (or clip) strokes whose
+bbox intersects" — dropping whole strokes at the CALL SITE would have been the obvious reading and is
+strictly worse. **Where you put a filter decides how blunt it has to be.**
+
+**The lockstep is structural, again.** Strokes and clip rects both go through one local `toCanvas`, so the
+clip cannot end up in a different frame from the ink it clips. Sabotage S4 (rects bypass `toCanvas`) fails
+6 cases at 90/180/270 and passes at rotation 0, where the two mappings coincide by construction.
+
+**And S4 is why the fixture is non-square AND off-centre.** The first version used a 200×200 page with the
+redaction centred on it, and S4 left **every case green** — under central symmetry the right and wrong
+AABBs are the same rect, so the fixture could not detect a rotation error at all. Only the end-to-end
+cases, whose geometry is asymmetric, went red. This is CLAUDE.md's own "a square fixture cannot detect a
+dimension swap" one step further in: **a CENTRED fixture cannot detect a rotation.** Both properties are
+now load-bearing and commented as such.
+
+**The end-to-end half is not optional.** Every helper case still passes if `buildPageOverlays` never passes
+the redactions in — the exact shape that left the sign-rect prefill uncertified until 2026-09-02. Sabotage
+S1 reverts only the call site and fails exactly the 4 e2e cases and nothing else.
+
+`renderInkForExport`'s new `redactions` parameter is OPTIONAL, so the ~85% of pages with no redaction bake a
+**byte-identical** PNG — pinned as a string compare, not asserted in prose. A redaction that covers every
+stroke makes the function return `null` and stamp no image at all; that early-out predates this change.
+
+Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (15 — 4 rotations × erased/over-reach-control,
+byte-identity, non-vacuity, a far-away redaction, plus 4 end-to-end through `renderThumbnailWithOverlays`).
+It shares `_redactedAnnotationFixture.ts` with the two annotation-strip files, which gained an optional
+`strokes` field; a copied fixture is how a frame fix lands on one caller and not the other. Sabotage-verified
+four ways: call site reverted → 4; clip disabled → 9; clip the whole canvas → 13 (including all four
+over-reach controls, because an all-transparent canvas makes the helper return `null`); wrong frame → 6.
+
 ### The flow export mixed absolute and crop-relative coordinates — C22, and the lockstep is now structural (2026-09-02)
 
 pdf.js reports every CONTENT channel in **absolute user space** — text items, operator-list CTMs
@@ -2423,7 +2463,8 @@ is exactly how a whole feature went ungraded under a heading that says "every su
 blunt — a partially-covered element goes entirely, and so does one the user deliberately stacked *above*
 a redaction (the raster path draws that one above the burn, so the two paths differ by design); the
 intersection test uses the stored AABB, so a **rotated** element's true footprint is not what is tested;
-and **ink is composited above the burn**, so handwriting under a redaction stays visible on every path.
+and ink used to be composited above the burn — **that one is CLOSED as of 2026-09-02**, see § "Ink was
+stamped over the burn".
 
 **A FOURTH leak, and the way I nearly buried it is the most useful lesson in this whole entry.**
 `_assemblePdfDoc` pre-copied every needed page, **including redaction-bearing ones** whose copy is never

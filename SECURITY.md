@@ -140,8 +140,11 @@ stating rather than leaving you to discover them:
 - **Dropping is blunt by design.** An element only *partly* under the box is removed entirely, because
   leaving it would leak the covered part. An element you deliberately placed *on top of* a redaction is
   also removed from these exports, even though the PDF export draws it above the box.
-- **Freehand ink is not covered.** Ink is composited above the redaction, so handwriting under a box
-  stays visible in the export. Use redaction over ink with that in mind.
+- **Freehand ink IS covered (since 2026-09-02).** It previously was not: the ink layer is stamped after
+  the burn, so handwriting under a box was composited on top of it and baked into the exported pixels.
+  Ink is now clipped to the redactions on the layer's own canvas, which removes the covered pixels and
+  leaves the rest of the same stroke intact. One residual, in the safe direction: a *rotated* redaction
+  clips by its upright bounding box, so slightly more ink is removed than the box strictly covers.
 
 ### Deleting an image in the DOCX editor does not remove it from the file
 

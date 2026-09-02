@@ -103,6 +103,19 @@ export function renderInkForExport(
   W_orig: number,
   H_orig: number,
   totalRot: number,
+  /**
+   * Redaction rects on this page, in editor DISPLAY space — the same frame the ink strokes are
+   * stored in. Omitted (or empty) → the baked layer is byte-identical to the pre-WS4-A output,
+   * which is the path ~85% of pages take.
+   *
+   * WS4-A: the burn is drawn inside the element loop of {@link buildPageOverlays} and the ink layer
+   * is stamped AFTER it, so a stroke crossing a redaction was composited ON TOP of the opaque box
+   * and baked into the export — visibly readable, the same grade as the 2026-08-29 annotation leak
+   * and worse than an extractable one. Clipping happens HERE, on the ink canvas, rather than at the
+   * call site by dropping whole strokes: the covered pixels go and the rest of the same stroke
+   * stays, which is why the guard carries an over-reach control.
+   */
+  redactions?: ReadonlyArray<{ x: number; y: number; width: number; height: number }>,
 ): string | null {
   const strokes = inkLayer.getStrokes(pageId);
   if (!strokes.length) return null;
@@ -113,6 +126,17 @@ export function renderInkForExport(
   c.height = Math.round(H_orig * SCALE);
   const ctx = c.getContext('2d');
   if (!ctx) return null;
+
+  /**
+   * Display space → ink-canvas pixels. Strokes AND redaction rects both go through this one
+   * function, so the clip cannot end up in a different frame from the ink it is clipping — the
+   * lockstep is structural rather than a thing to remember. Every frame bug in this repo has been
+   * two call sites that agreed until one of them was edited.
+   */
+  const toCanvas = (px: number, py: number): { x: number; y: number } => {
+    const pdf = transformPoint(px, py, W_orig, H_orig, totalRot);
+    return { x: pdf.x * SCALE, y: (H_orig - pdf.y) * SCALE };
+  };
 
   for (const stroke of strokes) {
     if (stroke.points.length < 2) continue;
@@ -128,13 +152,35 @@ export function renderInkForExport(
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = stroke.color;
     }
-    const pts = stroke.points.map(p => {
-      const pdf = transformPoint(p.x, p.y, W_orig, H_orig, totalRot);
-      return { x: pdf.x * SCALE, y: (H_orig - pdf.y) * SCALE };
-    });
+    const pts = stroke.points.map(p => toCanvas(p.x, p.y));
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  // WS4-A — punch the redactions out of the finished ink. Done AFTER every stroke so an erase
+  // stroke cannot re-open a hole in the clip, and with `destination-out` so the covered pixels are
+  // removed rather than painted over: nothing downstream can recover them, and the burn shows
+  // through as the burn rather than as a second black box of our own.
+  if (redactions?.length) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000';
+    for (const r of redactions) {
+      // All four corners, then the AABB. Rotations here are multiples of 90°, so the AABB IS the
+      // rotated rect — no over-approximation. Normalising via min/max also absorbs a negative
+      // width/height, which `interactionHandler.resize` can produce and which would otherwise make
+      // `fillRect` a no-op and fail OPEN (the same negative-extent trap as `#bg-fill` and
+      // `dropElementsUnderRedactions`).
+      const cs = [
+        toCanvas(r.x, r.y), toCanvas(r.x + r.width, r.y),
+        toCanvas(r.x, r.y + r.height), toCanvas(r.x + r.width, r.y + r.height),
+      ];
+      const x0 = Math.min(...cs.map(p => p.x)), x1 = Math.max(...cs.map(p => p.x));
+      const y0 = Math.min(...cs.map(p => p.y)), y1 = Math.max(...cs.map(p => p.y));
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
     ctx.restore();
   }
 
@@ -142,6 +188,8 @@ export function renderInkForExport(
   for (let i = 3; i < data.length; i += 4) {
     if (data[i] > 0) return c.toDataURL('image/png');
   }
+  // Every stroke fell under a redaction → no image is stamped at all, which is the correct
+  // degenerate case and not a special one: this early-out predates WS4-A.
   return null;
 }
 
@@ -274,7 +322,12 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
     await drawWatermarkOnPage(page, effBox.width, effBox.height, effBox.x, effBox.y, watermark, { rgb, degrees, pdfDoc, StandardFonts });
   }
 
-  const inkDataUrl = renderInkForExport(inkLayer, docPage.id, W_orig, H_orig, totalRot);
+  // WS4-A: ink is stamped after the burn, so it must be clipped to the redactions rather than
+  // composited over them. `elements` is this page's set, already filtered by the caller.
+  const inkDataUrl = renderInkForExport(
+    inkLayer, docPage.id, W_orig, H_orig, totalRot,
+    elements.filter(el => el.type === 'redaction'),
+  );
   if (inkDataUrl) {
     const inkImg = await pdfDoc.embedPng(dataUrlToUint8Array(inkDataUrl));
     page.drawImage(inkImg, { x: cropOriginX, y: cropOriginY, width: W_orig, height: H_orig });

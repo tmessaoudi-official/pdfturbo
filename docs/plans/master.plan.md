@@ -94,7 +94,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 9 file runs (3 in-suite — a thin sample) and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
 | WS2 — C22 flow layout | **DONE** 2026-09-02 | Normalised at the `_extractFlowDoc` boundary; C22 CLOSED in `KNOWN_ISSUES.md`. Five sabotages, each red exactly where predicted. Sabotage exposed an UNPINNED frame in the image-channel redaction filter — guarded now. |
 | WS3 — Arabic ×12 | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. All 12 keys resolve in all three locales. |
-| WS4 — bound PoCs | not started | |
+| WS4 — bound PoCs | in progress | **A PROMOTED** (ink clipped to redactions on its own canvas; 15 guards, 4 sabotages). B/F/E/D/C pending. |
 | WS5 — adversarial audit | not started | |
 | WS6 — feature backlog | not started | |
 | WS7 — certification | not started | Range `dfe34ae..HEAD` still resolves. |
@@ -399,3 +399,20 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   (`blockers-cropbox-layout` → `cropbox-origin-layout`). That prefix means "an `it.fails` stating
   behaviour we do NOT have"; a green plain-`it` file under it would be a doc-vs-reality drift of
   exactly the kind WS0 spent a stream correcting. `tests/blockers/README.md` row updated to match.
+- [2026-09-02 13:20] AGREED: WS4 runs one **detached** `git worktree` per PoC with `node_modules`
+  symlinked entry-by-entry and its OWN `node_modules/.vite`. Probed before committing to it (a
+  browser file green in the worktree): a shared `.vite` re-optimizes on every switch between trees,
+  which is the documented mid-suite reload trap. Detached because `master` is the only branch.
+- [2026-09-02 13:40] AGREED: PoC **A (ink above the burn) is PROMOTED**. The clip lives in
+  `renderInkForExport` on the ink CANVAS (`destination-out`), not at the call site dropping whole
+  strokes: ink is rasterised before it is stamped, so clipping there is stroke-exact and the plan's
+  "drop (or clip)" floor is beaten. The new `redactions` parameter is optional → a page with no
+  redaction bakes a byte-identical PNG, pinned as a string compare.
+- [2026-09-02 13:40] RECORDED: sabotage S4 (clip rects bypassing the shared `toCanvas`) left the
+  helper cases GREEN on the first fixture — a 200×200 page with the redaction CENTRED on it, where
+  the right and wrong AABBs are the same rect. Only the asymmetric end-to-end cases went red. The
+  fixture is now non-square and off-centre and S4 fails 6. **A centred fixture cannot detect a
+  rotation** — the rotational form of this repo's "a square fixture cannot detect a dimension swap".
+- [2026-09-02 13:40] RECORDED: sabotage S1 (reverting only the CALL SITE) fails exactly the 4
+  end-to-end cases and nothing else, so the wiring is pinned and not merely the pure helper — the
+  gap that left the sign-rect prefill uncertified until 2026-09-02.
