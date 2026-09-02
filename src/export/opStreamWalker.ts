@@ -42,7 +42,16 @@ export interface OpListLike {
   argsArray: ArrayLike<unknown>;
 }
 
-export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): PageOpsResult {
+export function walkPageOps(
+  opList: OpListLike,
+  OPS: Record<string, number>,
+  /**
+   * The page's CropBox origin `{ x: viewBox[0], y: viewBox[1] }`, when the caller wants positions
+   * reported in the CROP frame rather than absolute user space (C22). Omitted → absolute, which is
+   * what pdf.js itself reports and what the CSV/XLSX caller wants.
+   */
+  origin?: { x: number; y: number },
+): PageOpsResult {
   const colorMap = new Map<string, string>();
   const rules: RuleRect[] = [];
   const vRules: RuleRect[] = [];
@@ -77,7 +86,22 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
   // CTM stack for image position/size extraction (q/Q/cm operators, and the implicit
   // save/transform pairs pdf.js emits for form XObjects and annotation appearance streams).
   const ctmStack: Matrix6[] = [];
-  let ctm: Matrix6 = [1, 0, 0, 1, 0, 0];
+  /**
+   * The BASE transform — pdf.js's own term for the frame a page's ops are placed into.
+   *
+   * C22: every position this walker reports — `rules`, `vRules`, image CTMs and the `colorMap`
+   * keys — derives from `ctm`, so seeding it with the negated CropBox origin normalises all four
+   * channels in LOCKSTEP by construction. That matters more than it looks: colour, underline and
+   * hyperlink are matched by POSITION against the text items, so a normalisation that reached the
+   * words but only some of these channels would fix the layout and silently break all three. Here
+   * a partial one is unexpressible rather than merely discouraged.
+   *
+   * `composeCtm(m, …)` applies `m` LAST, so this translation stays outermost and is never scaled
+   * or rotated by a later `cm` — read, not assumed (`result[4] = m[0]*e + m[2]*f + m[4]`).
+   * Identity by default → byte-identical output for an omitted origin.
+   */
+  const base: Matrix6 = [1, 0, 0, 1, -(origin?.x ?? 0), -(origin?.y ?? 0)];
+  let ctm: Matrix6 = [...base];
 
   /**
    * How deep we are inside an annotation's appearance stream.
@@ -140,8 +164,13 @@ export function walkPageOps(opList: OpListLike, OPS: Record<string, number>): Pa
       annotationDepth++;
       ctmStack.push([...ctm] as Matrix6);
       // Reset first: the backend sets the base transform rather than composing onto whatever the
-      // content stream left behind.
-      ctm = [1, 0, 0, 1, 0, 0];
+      // content stream left behind. `base`, NOT identity — an annotation's appearance stream is
+      // placed in the same page frame as everything else, so a literal identity here would leave
+      // annotation-borne images and rules in ABSOLUTE space while the rest of the page had moved
+      // to the crop frame. That mixed frame is the exact partial-normalisation failure C22 exists
+      // to avoid, and it would err in the leak direction: `imagePlacementRedacted` would test a
+      // stamped image against redactions expressed in a different frame.
+      ctm = [...base];
       for (const idx of [2, 3]) {
         const m = asMatrix6(args[idx]);
         if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);

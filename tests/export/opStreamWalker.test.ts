@@ -17,6 +17,7 @@ const OPS: Record<string, number> = {
   nextLine: 14, showText: 15, showSpacedText: 16, nextLineShowText: 17,
   nextLineSetSpacingShowText: 18, fill: 20, eoFill: 21, fillStroke: 22,
   eoFillStroke: 23, stroke: 24, closeStroke: 25,
+  beginAnnotation: 26, endAnnotation: 27,
 };
 
 const opList = (fnArray: number[], argsArray: unknown[]): OpListLike => ({ fnArray, argsArray });
@@ -85,5 +86,67 @@ describe('walkPageOps', () => {
     expect(r.rules).toHaveLength(0);
     expect(r.vRules).toHaveLength(1);
     expect(r.vRules[0]).toMatchObject({ x: 0, y: 0, width: 1, height: 40 });
+  });
+});
+
+/**
+ * C22 — the optional `origin` argument, i.e. "report positions in the CROP frame".
+ *
+ * These pin the property the flow export depends on: ONE argument moves `rules`, `vRules`, the
+ * image CTMs and the `colorMap` keys together, because all four derive from the walker's ctm. The
+ * caller's alternative — translating each channel after the fact — is what would let three of the
+ * four move and the fourth stay put, silently unmatching colour, underline and hyperlink from the
+ * words they belong to.
+ */
+describe('walkPageOps — CropBox origin (C22)', () => {
+  const ORIGIN = { x: 50, y: 70 };
+
+  it('translates a rule into the crop frame', () => {
+    const ops = opList([OPS.constructPath], [[OPS.fill, null, { 0: 100, 1: 296, 2: 140, 3: 297 }]]);
+    expect(walkPageOps(ops, OPS, ORIGIN).rules[0]).toMatchObject({ x: 50, y: 226 });
+  });
+
+  it('translates an image placement', () => {
+    const ops = opList(
+      [OPS.save, OPS.transform, OPS.paintImageXObject, OPS.restore],
+      [[], [60, 0, 0, 40, 120, 200], ['img0'], []],
+    );
+    expect(walkPageOps(ops, OPS, ORIGIN).images[0].ctm).toEqual([60, 0, 0, 40, 70, 130]);
+  });
+
+  it('translates the colour key, so it still matches the translated text item', () => {
+    const ops = opList(
+      [OPS.beginText, OPS.setTextMatrix, OPS.setFillRGBColor, OPS.showText],
+      [[], [[1, 0, 0, 1, 100, 300]], ['#FF0000'], [[]]],
+    );
+    const r = walkPageOps(ops, OPS, ORIGIN);
+    expect(r.colorMap.get('50,230')).toBe('FF0000');
+    // And NOT under the absolute key — a stale duplicate would match the wrong word.
+    expect(r.colorMap.get('100,300')).toBeUndefined();
+  });
+
+  it('applies the origin INSIDE an annotation appearance stream too', () => {
+    // `beginAnnotation` RESETS the ctm rather than composing onto it (pdf.js's canvas backend
+    // sets the base transform there). It must reset to the BASE, not to identity: an annotation's
+    // appearance stream is placed in the same page frame as everything else, so a literal identity
+    // would leave stamped images and rules in ABSOLUTE space while the rest of the page had moved
+    // — a mixed frame, and in the direction that makes `imagePlacementRedacted` test a stamped
+    // image against redactions expressed in a different frame. This is the one case that goes red
+    // for that mistake.
+    const ops = opList(
+      [OPS.beginAnnotation, OPS.transform, OPS.paintImageXObject, OPS.endAnnotation],
+      [[null, null, [1, 0, 0, 1, 120, 200], [1, 0, 0, 1, 0, 0]], [40, 0, 0, 30, 0, 0], ['img0'], []],
+    );
+    expect(walkPageOps(ops, OPS, ORIGIN).images[0].ctm).toEqual([40, 0, 0, 30, 70, 130]);
+  });
+
+  it('is byte-identical to the absolute walk when the origin is omitted or zero', () => {
+    const build = () => opList(
+      [OPS.constructPath, OPS.save, OPS.transform, OPS.paintImageXObject, OPS.restore],
+      [[OPS.fill, null, { 0: 10, 1: 50, 2: 110, 3: 52 }], [], [50, 0, 0, 60, 10, 20], ['img0'], []],
+    );
+    const absolute = walkPageOps(build(), OPS);
+    expect(walkPageOps(build(), OPS, { x: 0, y: 0 })).toEqual(absolute);
+    expect(absolute.images[0].ctm).toEqual([50, 0, 0, 60, 10, 20]);
   });
 });

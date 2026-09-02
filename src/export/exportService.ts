@@ -7,7 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
+import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { redactionRectToPageSpace } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
@@ -1264,6 +1264,32 @@ export class ExportService {
         page.getAnnotations().catch(() => [] as unknown[]),
       ]);
 
+      // `rotation: 0` — pdf.js reports text items in UNROTATED content space, and `reconstructPage`
+      // uses these dims both to flip y for `isItemRedacted` and to un-rotate the redaction rects. With
+      // the default (`page.rotate`) the dims are swapped on a `/Rotate 90|270` page, so the redaction
+      // filter mis-maps and redacted source text leaked into DOCX/MD/TXT. CORE-P0-1's comment claimed
+      // rotated pages were covered; it had only fixed 0/180, where the error cancels.
+      const vp = page.getViewport({ scale: 1, rotation: 0 });
+
+      // ── C22 — ONE FRAME, established once, here ────────────────────────────────────────
+      // pdf.js reports every CONTENT channel in ABSOLUTE user space: text items, operator-list
+      // CTMs (rules, images, colour keys) and Link rects alike. But the page box handed to
+      // `reconstructPage` is the CROP box. On a `/CropBox [0 0 w h]` page the frames coincide;
+      // give the page an origin and the flow model's margins, image anchors and reading order are
+      // all computed against a box its coordinates do not belong to (C22).
+      //
+      // Measured on `/CropBox [50 50 350 350]` before this fix: item (100,300), rule (100,296),
+      // colour key "100,300", image ctm e/f (120,200) — all absolute, and all mutually CONSISTENT.
+      // That consistency is what makes one translation safe, and it is also the hazard: colour,
+      // underline and hyperlink are matched BY POSITION, so moving the words without moving those
+      // channels would fix the layout and silently break all three. Every channel below therefore
+      // moves together, and the two that carry several channels at once (`walkPageOps` via its
+      // base transform) do so by construction rather than by discipline.
+      const cropOriginX = vp.viewBox[0], cropOriginY = vp.viewBox[1];
+      // The page box in the normalised frame. Equal to `vp.viewBox` on a zero-origin page, which
+      // is why every existing fixture is byte-identical and the whole flow suite is the guard.
+      const cropFrame = [0, 0, vp.width, vp.height];
+
       // Gap 2: Link annotations → hyperlinks. pdf.js gives each Link a `url` and a
       // `rect` [x0,y0,x1,y1] in PDF user space (y-up) — the same space the text
       // item transforms live in, so reconstructPage can bbox-match words to URLs.
@@ -1273,15 +1299,21 @@ export class ExportService {
           const [rx0, ry0, rx1, ry1] = a.rect as number[];
           return {
             url: a.url as string,
-            x0: Math.min(rx0, rx1), y0: Math.min(ry0, ry1),
-            x1: Math.max(rx0, rx1), y1: Math.max(ry0, ry1),
+            x0: Math.min(rx0, rx1) - cropOriginX, y0: Math.min(ry0, ry1) - cropOriginY,
+            x1: Math.max(rx0, rx1) - cropOriginX, y1: Math.max(ry0, ry1) - cropOriginY,
           };
         });
 
       // When the marked-content variant was requested, the stream interleaves
       // boundary markers (carry `type`) with text items; the heuristic path + font
       // map want text items only. markedItems keeps the full stream for the struct path.
-      const markedItems = content.items as unknown as Array<RawTextItem | MarkedContentMarker>;
+      // C22: translated HERE, before anything downstream reads a position — the struct-tree path
+      // consumes `markedItems` directly, so normalising only the filtered `items` would leave a
+      // tagged PDF on the old frame.
+      const markedItems = translateItemsToCropOrigin(
+        content.items as unknown as Array<RawTextItem | MarkedContentMarker>,
+        cropOriginX, cropOriginY,
+      );
       const items = (useStruct ? markedItems.filter(it => !('type' in it)) : markedItems) as RawTextItem[];
       const styles = content.styles as Record<string, { fontFamily?: string }>;
 
@@ -1299,18 +1331,19 @@ export class ExportService {
         fonts[it.fontName] = { name: realName, family: styles[it.fontName]?.fontFamily };
       }
 
-      // `rotation: 0` — pdf.js reports text items in UNROTATED content space, and `reconstructPage`
-      // uses these dims both to flip y for `isItemRedacted` and to un-rotate the redaction rects. With
-      // the default (`page.rotate`) the dims are swapped on a `/Rotate 90|270` page, so the redaction
-      // filter mis-maps and redacted source text leaked into DOCX/MD/TXT. CORE-P0-1's comment claimed
-      // rotated pages were covered; it had only fixed 0/180, where the error cancels.
-      const vp = page.getViewport({ scale: 1, rotation: 0 });
       // Redaction rects mapped ONCE into the frame pdf.js reports both text items and image
-      // placements in (absolute x, y measured down from the crop top). The image channel below
-      // is filtered with these; `reconstructPage` is handed `vp.viewBox` and derives the same
-      // thing for the text channels, so all three agree by construction.
+      // placements in (x in that frame, y measured down from the crop top). The image channel
+      // below is filtered with these; `reconstructPage` is handed the same `cropFrame` and derives
+      // the same thing for the text channels, so all three agree by construction.
+      //
+      // The frame is `cropFrame`, NOT `vp.viewBox`: the items have already been translated to the
+      // crop origin above, so mapping the rects into absolute space here would re-introduce the
+      // offset on one side of the comparison and the filter would silently stop matching. The two
+      // are equal on a zero-origin page, and the invariance is exact on any other — an item's
+      // distance below the crop top is `(y1 − y0) − (y − y0) = y1 − y`, which is what this
+      // computed before. `redaction-crop-origin.browser.test.ts` is the guard.
       const pageSpaceRedactions = redactions.map(
-        r => redactionRectToPageSpace(r, vp.viewBox, totalRot),
+        r => redactionRectToPageSpace(r, cropFrame, totalRot),
       );
       let colorMap = new Map<string, string>();
       let pageRules: RuleRect[] = [];
@@ -1320,7 +1353,10 @@ export class ExportService {
       if (opList) {
         // Pure operator-list walk → text colors, rules, image placements (M2 #22).
         const OPS = pdfjsLib.OPS as unknown as Record<string, number>;
-        const ops = walkPageOps(opList, OPS);
+        // C22: the origin argument carries `rules`, `vRules`, the image CTMs AND the `colorMap`
+        // keys into the crop frame together — they all derive from the walker's ctm, so this one
+        // argument is what makes a partial normalisation of those four unexpressible.
+        const ops = walkPageOps(opList, OPS, { x: cropOriginX, y: cropOriginY });
         colorMap = ops.colorMap;
         pageRules = ops.rules;
         pageVRules = ops.vRules;
@@ -1347,17 +1383,23 @@ export class ExportService {
             // disclosed in SECURITY.md — one redaction anywhere on a scan removes that scan from
             // these exports. Burning the box into the bitmap (as the OCR path already does) is the
             // follow-up that would let the rest of the scan survive.
-            if (imagePlacementRedacted(placement.ctm, pageSpaceRedactions, vp.viewBox[3])) continue;
+            // `cropFrame[3]` (= vp.height), not `vp.viewBox[3]`: the placement CTM is now in the
+            // crop frame, so the top edge it is measured down from is the crop HEIGHT. Identical
+            // on a zero-origin page.
+            if (imagePlacementRedacted(placement.ctm, pageSpaceRedactions, cropFrame[3])) continue;
             const img = this._rasterizeImagePlacement(page, placement, vp.height);
             if (img) pageImages.push(img);
           }
         }
       }
 
-      // `vp.viewBox` is the last argument and it is load-bearing: without it `reconstructPage`
-      // assumes a CropBox origin of (0,0) and the redaction filter silently no-ops on any page
-      // that has one. Pinned by tests/browser/redaction-crop-origin.browser.test.ts.
-      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined, useStruct ? { tree: structTree, markedItems } : undefined, vp.viewBox);
+      // The last argument is the page box in the frame the items are now in, and it is
+      // load-bearing: `reconstructPage` maps the redaction rects through it, so a mismatch with
+      // the items' frame makes the filter silently no-op (pinned by
+      // tests/browser/redaction-crop-origin.browser.test.ts). It is a ZERO origin BY CONSTRUCTION
+      // here rather than by luck — `cropFrame` is passed explicitly, and identically to
+      // `pageSpaceRedactions` above, so the two cannot drift apart in a later edit.
+      const flowPage = reconstructPage(items, fonts, vp.width, vp.height, colorMap, redactions, links.length ? links : undefined, pageRules.length ? pageRules : undefined, totalRot, pageVRules.length ? pageVRules : undefined, useStruct ? { tree: structTree, markedItems } : undefined, cropFrame);
       if (pageImages.length > 0) flowPage.images = pageImages;
       // Interleave typed overlay text into the source paragraphs by reading order
       // (G12) instead of appending it at the end. The overlay paragraphs get a PDF

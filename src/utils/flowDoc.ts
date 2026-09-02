@@ -1140,6 +1140,34 @@ export interface MarkedContentMarker {
 }
 
 /**
+ * C22 — translate text items from pdf.js's ABSOLUTE user space into the CROP frame.
+ *
+ * pdf.js reports item baselines relative to the user-space origin, while `reconstructPage` is
+ * handed the CROP dimensions as the page box. The two coincide on the usual `/CropBox [0 0 w h]`
+ * page and diverge by exactly the origin on any other, which shifted every position in the flow
+ * model — margins, image anchors and reading order alike.
+ *
+ * Only `transform[4]`/`[5]` move; the linear part (size, skew, rotation) is a translation
+ * invariant. Marked-content boundaries pass through untouched — they carry no geometry.
+ *
+ * Returns the INPUT ARRAY unchanged at a zero origin, so the ~85% of pages that have one allocate
+ * nothing and produce byte-identical output. Never mutates: the items belong to pdf.js, and the
+ * same objects are read again by the caller's font map and by the struct-tree path.
+ */
+export function translateItemsToCropOrigin<T extends RawTextItem | MarkedContentMarker>(
+  items: T[],
+  originX: number,
+  originY: number,
+): T[] {
+  if (originX === 0 && originY === 0) return items;
+  return items.map((it) => {
+    if ('type' in it || !Array.isArray((it as RawTextItem).transform)) return it;
+    const t = (it as RawTextItem).transform;
+    return { ...it, transform: [t[0], t[1], t[2], t[3], t[4] - originX, t[5] - originY] };
+  });
+}
+
+/**
  * Minimal shape of a pdf.js `getStructTree()` node. An ELEMENT carries a `role`
  * (e.g. 'H1','P','L','LI','Table','TR','TD','TH') and `children`; a CONTENT LEAF
  * carries `type:'content'` (or `'object'`) and an `id` matching a marked-content id.

@@ -268,6 +268,72 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### The flow export mixed absolute and crop-relative coordinates — C22, and the lockstep is now structural (2026-09-02)
+
+pdf.js reports every CONTENT channel in **absolute user space** — text items, operator-list CTMs
+(rules, vRules, image placements, the colour keys) and Link annotation rects alike — while
+`reconstructPage` is handed the **CROP** dimensions as the page box. On a `/CropBox [0 0 w h]` page
+the two frames coincide, which is why this survived every fixture; give the page an origin and the
+DOCX/MD/TXT export gets wrong margins, wrong image anchors and a reading order computed against a
+box its coordinates do not belong to. Registered as C22 on 2026-08-28 and pinned as an `it.fails`
+rather than bundled into that day's redaction-leak fix.
+
+**Measured before touching anything, on `/CropBox [50 50 350 350]`:** item `(100,300)`, rule
+`(100,296)`, colour key `"100,300"`, image ctm e/f `(120,200)` — all absolute, and all mutually
+CONSISTENT. That second half is the whole design. Colour, underline and hyperlink are matched **by
+position**, so they work today *because* every channel is equally wrong; normalising the words
+alone would fix the layout and silently break all three. **The deferral reason was never the
+arithmetic — it was that a partial fix is invisible.**
+
+**So the fix is one translation at the `_extractFlowDoc` boundary, and the lockstep is bought
+STRUCTURALLY rather than by discipline.** `rules`, `vRules`, image CTMs and the `colorMap` keys all
+derive from the walker's ctm, so `walkPageOps` gained an optional CropBox origin that seeds its
+**base transform** — one argument moves those four together and a partial normalisation of them
+becomes unexpressible. `composeCtm(m, …)` applies `m` last, so the translation stays outermost and
+is never scaled by a later `cm`; that was read (`result[4] = m[0]*e + m[2]*f + m[4]`), not assumed.
+Words go through the pure `translateItemsToCropOrigin`, links through a two-term subtraction, and
+`reconstructPage` + `imagePlacementRedacted` are handed `cropFrame = [0,0,vp.width,vp.height]`.
+
+**The trap that would have made it a partial fix, found by reading rather than by a red test:**
+`beginAnnotation` RESETS the ctm (`opStreamWalker.ts`) rather than composing onto it. Seeding only
+the *initial* ctm leaves annotation-borne images and rules in absolute space while the rest of the
+page has moved — a mixed frame, in the direction where `imagePlacementRedacted` tests a stamped
+image against redactions expressed in a different frame. The origin therefore has to be a named
+`base` used at BOTH sites. **When a walker has more than one place that establishes its frame, a
+frame change is not one edit.**
+
+**The redaction filter is invariant under this, and that is provable rather than hoped for:** an
+item's distance below the crop top is `(y1−y0) − (y−y0) = y1−y`, exactly what it was, and
+`redactionRectToPageSpace`'s only origin term is `+x0` on x — which cancels against the translated
+items. `redaction-crop-origin.browser.test.ts` (27) stayed green throughout.
+
+**One freebie, stated because nobody will look for it:** overlay typed text was ALREADY
+crop-relative (`textElementsToFlowParagraphs(…, vp.height)`), so on a cropped page a typed note was
+interleaved against absolute source paragraphs and landed in the wrong place in the reading order.
+That agrees now without a second change.
+
+**A gap the sabotage round exposed, and the reason the guard has a leak case:** mapping the
+redactions into the WRONG frame (`vp.viewBox` instead of `cropFrame`) left
+`redaction-crop-origin.browser.test.ts` **fully green at 27/27**. Its image row uses a target wide
+enough that a 30pt frame error still overlaps its own mis-placed test region — so it pins that the
+filter EXISTS, not that it runs in the right frame. The new guard's image is deliberately narrower
+(20pt) than the origin (50pt), because the only difference a wrong frame makes to a redaction rect
+is an x-shift of exactly the origin. **A leak guard whose target is bigger than the error it is
+looking for cannot see that error.**
+
+Guards: `tests/browser/cropbox-origin-layout.browser.test.ts` (8 — y, image anchor, margins, the
+image-under-redaction leak case, three LOCKSTEP cases that pass before and after, and a zero-origin
+control), `tests/export/opStreamWalker.test.ts` (+5, including the annotation-reset case) and
+`tests/utils/flowDoc.test.ts` (+4 for `translateItemsToCropOrigin`). It REPLACES
+`blockers-cropbox-layout.browser.test.ts` — the `blockers-` prefix means "an `it.fails` stating
+behaviour we do NOT have", so a green plain-`it` file under that name would be its own doc drift.
+Sabotage-verified five ways, each landing where predicted: annotation reset → identity fails
+exactly 1 (the annotation case); dropping the walker origin fails 3 (image anchor + colour +
+underline — the layout cases stay GREEN, which is the recorded failure mode demonstrated); leaving
+the words untranslated fails 5 (y, margins, and all three lockstep channels — S2's mirror image);
+leaving link rects absolute fails exactly 1; the redaction frame mismatch fails exactly the leak
+case. Byte-identical at a zero origin, and the entire 216-file jsdom suite is that guard.
+
 ### The `redaction-orphan-leak` flake did NOT reproduce in 9 file runs — and the obvious cause is refuted (2026-09-02)
 
 `tests/browser/redaction-orphan-leak.browser.test.ts` was recorded as flaky after **one** observed
@@ -487,9 +553,10 @@ crop-relative number happened to be right. Left alone deliberately: making the p
 which assembly branch a page will take couples the UI to export internals, which is how this family
 of bug breeds. Recorded as a bound rather than papered over.
 
-**The count is now four** (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
-filter, and this) — so when touching anything that converts between what is DRAWN and what is STORED,
-`grep -rn "cropOrigin\|viewBox\[0\]" src/` first and assume the frame is wrong until checked.
+**The count is now FIVE** (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
+filter, this, and the flow-export LAYOUT closed as C22 on 2026-09-02) — so when touching anything that
+converts between what is DRAWN and what is STORED, `grep -rn "cropOrigin\|viewBox\[0\]\|cropOriginX" src/`
+first and assume the frame is wrong until checked.
 
 Guards: `tests/utils/signRectPageSpace.test.ts` (8 — 5 pure mapping cases with a non-square crop and
 an asymmetric origin on both axes, plus 3 for the `validateRect` origin below) and, since

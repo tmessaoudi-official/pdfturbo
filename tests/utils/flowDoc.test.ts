@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   reconstructPage,
+  translateItemsToCropOrigin,
   assignHeadings,
   extractPsName,
   detectColumnSplit,
@@ -543,5 +544,39 @@ describe('reconstructColumn — wrapped list-item continuation merge (Gap 4)', (
     expect(md).toMatch(/^1\. .*First item/m);
     expect(md).toMatch(/^2\. Second item/m);
     expect(md).not.toMatch(/^1\. Second item/m);
+  });
+});
+
+/**
+ * C22 — the text-item half of the crop-frame normalisation. Its siblings (rules, images, colour
+ * keys) are carried by `walkPageOps`' base transform, pinned in tests/export/opStreamWalker.test.ts.
+ */
+describe('translateItemsToCropOrigin', () => {
+  const item = (x: number, y: number): RawTextItem => mkItem('W', x, y);
+
+  it('moves only the translation part of the transform', () => {
+    const src = item(100, 300);
+    src.transform = [14, 1, 2, 14, 100, 300]; // a skewed/scaled run, to prove a,b,c,d are invariant
+    const [out] = translateItemsToCropOrigin([src], 50, 70) as RawTextItem[];
+    expect(out.transform).toEqual([14, 1, 2, 14, 50, 230]);
+  });
+
+  it('never mutates the input — pdf.js owns those objects and they are read again', () => {
+    const src = item(100, 300);
+    translateItemsToCropOrigin([src], 50, 70);
+    expect(src.transform[4]).toBe(100);
+    expect(src.transform[5]).toBe(300);
+  });
+
+  it('returns the SAME array at a zero origin (the ~85% case allocates nothing)', () => {
+    const items = [item(10, 20)];
+    expect(translateItemsToCropOrigin(items, 0, 0)).toBe(items);
+  });
+
+  it('passes marked-content boundaries through untouched — they carry no geometry', () => {
+    const marker = { type: 'beginMarkedContentProps' as const, id: 'mc0' };
+    const out = translateItemsToCropOrigin([marker, item(100, 300)], 50, 70);
+    expect(out[0]).toBe(marker);
+    expect((out[1] as RawTextItem).transform[4]).toBe(50);
   });
 });

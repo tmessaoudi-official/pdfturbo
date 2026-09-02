@@ -56,7 +56,7 @@ Where each structural ceiling is actually pinned.
 | C18 RTL layer select/copy/search | yes — item-level highlight pinned | `browser/arabic-search.browser.test.ts`, `browser/arabic-selection.browser.test.ts` |
 | C10 4+ column layout | yes — 3 columns work, 4 measured as 3 groups | `blockers/layout-flatten.blockers.test.ts` |
 | C12 markup-annotation flatten | yes — a `/Text` note survives `getForm().flatten()` | `blockers/layout-flatten.blockers.test.ts` |
-| C22 CropBox-origin flow LAYOUT | partial — the page-height and paragraph-y mismatch are asserted; the image-anchor and margin cases are NOT | `browser/blockers-cropbox-layout.browser.test.ts` |
+| ~~C22~~ CropBox-origin flow LAYOUT | **not a ceiling any more — FIXED 2026-09-02.** The `it.fails` pin became a regression guard and lost the `blockers-` prefix, which means "an `it.fails` stating behaviour we do NOT have". The image-anchor and margin cases this row recorded as unasserted are now asserted, alongside three lockstep cases (colour / underline / hyperlink) that pass before AND after the fix — those are the ones a PARTIAL normalisation goes red on | `browser/cropbox-origin-layout.browser.test.ts` |
 | C19 Arabic tashkeel / GPOS | yes — marks reach the glyph stream; placement not asserted | `browser/ceilings.browser.test.ts` |
 | C21 raster ink, no per-stroke edit | yes — the bake returns a PNG data URL | `browser/ceilings.browser.test.ts` |
 | **C11** internal GoTo / sheared image / ICC spot | **NO**, and deliberately so — see below | — |

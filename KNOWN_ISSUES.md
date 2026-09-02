@@ -58,7 +58,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 | C19 | Arabic overlay tashkeel/GPOS micro-positioning | Needs a GPOS shaper; legibility is already fine | EH-B |
 | C20 | XFDF Acrobat byte-exactness + rotated-page coords | No Acrobat to verify against | Internal round-trip is the correctness guarantee |
 | C21 | Raster ink — no per-stroke edit | Rasterised by design | Use the **vector** freehand tool |
-| C22 | Flow LAYOUT on a non-zero CropBox origin | The redaction FILTER is fixed (2026-08-28), but the DOCX/MD/TXT layout still mixes absolute and crop-relative coordinates: words, images, margins and the position-derived `colorMap` keys would all have to be normalised in lockstep, and a partial normalisation silently breaks colour/underline/link matching | Its own change, pinned first. Confirmed by `tests/browser/blockers-cropbox-layout.browser.test.ts` |
+| ~~C22~~ | ~~Flow LAYOUT on a non-zero CropBox origin~~ | **CLOSED 2026-09-02** — the normalisation happens ONCE, at the `_extractFlowDoc` boundary: words, links, rules, images, margins and the position-derived `colorMap` keys are all translated by the CropBox origin, so every consumer sees a single origin-(0,0) frame. The lockstep the row demanded is bought structurally rather than by discipline — `rules`, `vRules`, image CTMs and the colour keys all derive from `walkPageOps`' ctm, so one base-transform argument moves the four together and a partial normalisation of them is unexpressible. Guarded by `tests/browser/cropbox-origin-layout.browser.test.ts` | — |
 
 ---
 

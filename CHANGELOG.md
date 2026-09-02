@@ -49,12 +49,20 @@ most of the work went into proving that what the product claims to remove is act
   rather than pinning back or embedding whole fonts.
 - Transitive `npm audit` advisories pinned via `overrides` (`brace-expansion`, `fast-uri`).
 
+### Fixed — cropped-page export
+- **Word/Markdown/text export on a cropped page** (closing ceiling **C22**) — on a PDF whose
+  CropBox has a non-zero origin, every position in the reconstructed document was offset by that
+  origin: wrong page margins, misplaced images, and typed notes interleaved at the wrong point in
+  the reading order. The export now normalises text, rules, images, links and colours into one
+  frame before reconstructing, so a cropped source exports like any other. Pages with an ordinary
+  CropBox are byte-identical.
+
 ### Documented
 - **`SECURITY.md` § "Hiding is not removing"** — every surface graded: six genuinely remove
   content, the rest hide it. Crop, a filled shape over text, and form flattening are each called
   out, because each reads as removal and is not.
 - `KNOWN_ISSUES.md` grew ceiling **C22** (flow layout on a non-zero CropBox origin), pinned by a
-  confirming blocker test so it cannot rot unnoticed.
+  confirming blocker test so it cannot rot unnoticed — and **C22 is now CLOSED** (see Fixed).
 
 ## [1.0.0] — 2026-06-26
 

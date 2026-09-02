@@ -92,7 +92,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | Step 0 — consolidation | **DONE** 2026-09-01 | The four plans ARE now in `docs/archive/plans/`; the Step 0 prose below is history, not an instruction. |
 | WS0 — doc drift | **DONE** 2026-09-01 | Ten drifts, not nine — see the Decisions Log. Gate green on the same commit. |
 | WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 9 file runs (3 in-suite — a thin sample) and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
-| WS2 — C22 flow layout | not started | |
+| WS2 — C22 flow layout | **DONE** 2026-09-02 | Normalised at the `_extractFlowDoc` boundary; C22 CLOSED in `KNOWN_ISSUES.md`. Five sabotages, each red exactly where predicted. Sabotage exposed an UNPINNED frame in the image-channel redaction filter — guarded now. |
 | WS3 — Arabic ×12 | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. All 12 keys resolve in all three locales. |
 | WS4 — bound PoCs | not started | |
 | WS5 — adversarial audit | not started | |
@@ -182,6 +182,10 @@ verified landed, restore `cmp`-verified. Then update `SECURITY.md`'s driven-vs-s
 WS0-6) to the new truth.
 
 ## WS2 — C22: flow LAYOUT on non-zero CropBox-origin pages
+
+> **DONE 2026-09-02 — the prose below is the plan as written, i.e. history, not an instruction.**
+> C22 is CLOSED in `KNOWN_ISSUES.md`, and the pin named below was replaced by
+> `tests/browser/cropbox-origin-layout.browser.test.ts` (see the Decisions Log for the rename).
 
 Registered as C22 in `KNOWN_ISSUES.md:61`; pinned by
 `tests/browser/blockers-cropbox-layout.browser.test.ts` (the `it.fails` at :70 is the pin).
@@ -372,3 +376,26 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-02 08:20] AGREED: fix the dropped-cause error hooks at ALL THREE sites across both files
   that use the pattern, not only in the flaky one — and note that `IErrorReporter`'s second argument
   means params for `warn` and a cause for `error`, which the first version of the fix got wrong.
+- [2026-09-02 10:30] AGREED: normalise C22 at the `_extractFlowDoc` BOUNDARY (one translation by the
+  CropBox origin, everything downstream on a single origin-(0,0) frame) rather than teaching each
+  consumer about the origin. Measured first: on `/CropBox [50 50 350 350]` pdf.js reports item
+  (100,300), rule (100,296), colour key "100,300" and image ctm e/f (120,200) — every channel
+  absolute AND mutually consistent, which is exactly why colour/underline/link work today and why a
+  partial normalisation would silently break them.
+- [2026-09-02 10:30] AGREED: buy the lockstep STRUCTURALLY — `walkPageOps` takes an optional origin
+  seeding its BASE transform, so `rules`, `vRules`, image CTMs and the `colorMap` keys move together
+  by construction and a partial normalisation of those four is unexpressible. `composeCtm(m, …)`
+  applies `m` last (read, not assumed), so the translation stays outermost.
+- [2026-09-02 10:30] RECORDED: the origin must be used at BOTH sites that establish the walker's
+  frame — `beginAnnotation` RESETS the ctm rather than composing, so seeding only the initial value
+  would leave annotation-borne images in absolute space (a mixed frame, in the leak direction).
+  Found by reading the code during 3C, not by a red test; pinned in the walker's jsdom suite.
+- [2026-09-02 10:30] RECORDED: sabotage S5 (mapping the redactions into `vp.viewBox` while the items
+  are crop-relative) left `redaction-crop-origin.browser.test.ts` GREEN at 27/27. Its image row's
+  target is wider than the origin error, so it pins that the filter exists, not the frame it runs
+  in. A discriminating leak case (a 20pt image against a 50pt origin) was added to the new guard
+  before proceeding — a leak guard whose target is bigger than the error cannot see the error.
+- [2026-09-02 10:30] AGREED: the fixed pin loses the `blockers-` prefix
+  (`blockers-cropbox-layout` → `cropbox-origin-layout`). That prefix means "an `it.fails` stating
+  behaviour we do NOT have"; a green plain-`it` file under it would be a doc-vs-reality drift of
+  exactly the kind WS0 spent a stream correcting. `tests/blockers/README.md` row updated to match.
