@@ -432,15 +432,36 @@ of bug breeds. Recorded as a bound rather than papered over.
 filter, and this) — so when touching anything that converts between what is DRAWN and what is STORED,
 `grep -rn "cropOrigin\|viewBox\[0\]" src/` first and assume the frame is wrong until checked.
 
-Guard: `tests/utils/signRectPageSpace.test.ts` (8 — 5 pure mapping cases with a non-square crop and
-an asymmetric origin on both axes, plus 3 for the `validateRect` origin below).
-**UNCERTIFIED-BY-EXECUTION at the wiring:** the mapping is pinned as a pure function, but nothing
-drives `onSignRectPicked` — its only production caller — so reverting the fix's *effect* there leaves
-the whole jsdom suite green. Said plainly rather than left implied; `_pageGeomForSign`'s deliberate
-`rotation: 0` is unpinned for the same reason. Closing it needs a `PDFTurboApp` harness, which does
-not exist today.
+Guards: `tests/utils/signRectPageSpace.test.ts` (8 — 5 pure mapping cases with a non-square crop and
+an asymmetric origin on both axes, plus 3 for the `validateRect` origin below) and, since
+2026-09-02, `tests/core/signRectPrefill.test.ts` (7 — the WIRING).
 Sabotage-verified: dropping the origin term fails 4 of the 5 mapping cases — the survivor being the zero-origin
 case where both mappings agree by construction, which is exactly why this shipped undetected.
+
+**The wiring was UNCERTIFIED-BY-EXECUTION until 2026-09-02 and no longer is.** The mapping had only
+ever been pinned as a pure function, so reverting the fix's *effect* in `onSignRectPicked` — its
+only production caller — left the whole jsdom suite green; the sole test touching that path stubs
+the method with `vi.fn()`. The harness that was said not to exist turned out not to need building:
+`src/core/pdfTurboApp.ts` **imports cleanly under jsdom**, so
+`Object.create(PDFTurboApp.prototype)` plus own-property stubs shadowing `setMode` and
+`_reopenSignModal` drives the real method and the real `_pageGeomForSign`. **Check whether the
+untouched code can be driven before reshaping it for testability** — the plan's fallback was to
+extract a seam, and that would have been the worse trade. One trap: `ui` is a prototype GETTER, so
+it needs `Object.defineProperty`, not assignment. Sabotage-verified three ways, each landing
+exactly where predicted: the crop-relative mapper fails only the origin case; dropping
+`page.rotation` from `totalRot` fails only the rotation-composition case; returning
+`[0, 0, vp.width, vp.height]` fails the `_pageGeomForSign` contract case *and* the origin case.
+
+**`_pageGeomForSign`'s `rotation: 0` is pinned as a CONTRACT, not as a call.** It reads only
+`vp.viewBox`, and pdf.js stores `viewBox` verbatim whatever the rotation — so no input makes
+`rotation: 0` change today's result, and an assertion on the call arguments alone would be a guard
+that fails on a harmless edit and passes on a harmful one (the "two guards that could not fail"
+shape this repo has already had to correct once). What the caller actually depends on is that the
+returned box is the UNROTATED content box *carrying its origin*, and that is what is asserted, at
+`/Rotate 90` where both wrong answers are distinguishable. The call-argument assertion is kept
+beside it and **labelled in the test as intent documentation** — it exists so that a refactor to
+`vp.width`/`vp.height`, the only way `rotation: 0` ever becomes load-bearing, has to change that
+line deliberately.
 
 ### The redaction filter compared two coordinate frames — a non-zero CropBox origin defeated it, and images were never filtered at all (2026-08-28)
 
