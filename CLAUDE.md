@@ -3125,6 +3125,19 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
   permanent fix, and because `npm audit` is the FIRST CI step a new advisory turns every deploy red
   before a single test runs — including deploys of changes that have nothing to do with it.
 
+  **Third occurrence, 2026-09-04 — `fast-uri` again, and the pin that fixed it became the
+  vulnerable one.** Four new advisories (GHSA-5jgf-p345-68v8, -f65p-4m7j-42xc, -fph4-wmhf-6fwf,
+  -jqff-g426-hqxp) put the whole `3.0.0 - 3.1.5` range in scope, so the `^3.1.5` pin added on
+  2026-07-31 was itself inside it. Bumped to `^3.1.7`, one deduped copy, audit back to
+  `found 0 vulnerabilities`, build green with 25 precache entries. **Stay inside the dependent's
+  own range**: `ajv` declares `fast-uri: ^3.0.1`, so 3.1.7 satisfies it natively while the current
+  4.1.4 would force a major past that range — an override can express it, and the PWA build is what
+  pays. Same shape as the `brace-expansion` `^5.0.8` → `^5.0.9` bump.
+
+  **Never run the audit gate with `--offline`.** It reads the cached advisory database and reported
+  `found 0 vulnerabilities` against the very tree that was carrying this high — a false green that
+  looks exactly like a real one [measured 2026-09-04].
+
   OCR traineddata stays SHA-256-pinned (`scripts/prepare-ocr-assets.mjs`); no other remote assets are
   fetched at build.
 - **Pre-push gate**: `.githooks/pre-push` (auto-installed via the `prepare` script →
