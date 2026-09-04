@@ -121,10 +121,13 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   mapping plus a real-browser guard at all four rotations, and "visible" mode is the non-default,
   explicitly-relabelled OCR output.
 - ~~**FileAttachment annotations survive `sanitizePdf`** (P2).~~ **CLOSED 2026-09-05** by developer
-  ruling: the whole paperclip annotation goes, with its `/Popup`, and `/FS` is deleted on the dict
-  itself so the file leaves the bytes even when a reply note (`/IRT`) or a popup still references the
-  annotation — removing it from `/Annots` alone left the payload reachable for the sweep, which is the
-  reference-deleted, payload-serialised shape WS5 P1 found. The same ruling widened sanitize to the
+  ruling: the whole paperclip annotation goes, with its `/Popup` (from whichever page lists it), and
+  BOTH `/FS` and `/AF` are deleted on the dict itself so the file leaves the bytes even when a reply
+  note (`/IRT`) or a popup still references the annotation — removing it from `/Annots` alone left the
+  payload reachable for the sweep, which is the reference-deleted, payload-serialised shape WS5 P1
+  found. The first version cut `/FS` only; a post-push review found a paperclip carrying `/FS` AND
+  `/AF` kept its file with the flag saying removed (P0), fixed the same night. `/AF` now goes on every
+  annotation, field and bookmark, not only the catalog and pages. The same ruling widened sanitize to the
   non-JavaScript egress action class (`/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`, `/ImportData`),
   spliced at every chain position like scripts. Guards: 15 cases in `tests/utils/pdfSanitizer.test.ts`,
   sabotage-verified five ways.

@@ -43,7 +43,8 @@ most of the work went into proving that what the product claims to remove is act
 - **Sanitize now removes actions that reach outside the document without JavaScript** — form
   submission to a URL, launching an external program or file, opening another document, and
   importing form data — and **removes paperclip attachments together with their file**, not only
-  files in the document's name tree. Ordinary hyperlinks are kept.
+  files in the document's name tree, and associated files (`/AF`) hung on any annotation. Ordinary
+  hyperlinks and in-document media actions are kept.
 - **Deleting an image in the DOCX editor now removes it from the file.** It used to drop the
   picture from the document while leaving its bytes in the package, recoverable by renaming the
   `.docx` to `.zip` — disclosed since 2026-08-05 and closed on 2026-09-04. The collector errs

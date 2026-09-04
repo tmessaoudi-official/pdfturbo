@@ -97,7 +97,12 @@ non-JavaScript egress class — `/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`, `/
 class rather than the two the panel named — and `/FileAttachment` annotations with their file. The
 measured survival (`https://…/collect` present after sanitize) is now a red test. Like `a99ccea`, this
 change is post-panel: certified by execution (15 cases, five sabotage mutations, the full deploy gate)
-and NOT by the WS7 ladder, which stays paused at 0 of 2.
+and NOT by the WS7 ladder, which stays paused at 0 of 2. **A single-lens (safety-promises) review of
+`3fc0863` after the push returned five findings, one a P0** — `/AF` on the paperclip dict kept its
+file whenever anything still referenced the dict, with the flag reporting success — plus a cross-page
+Popup, a self-cyclic `/Next` array, and an overclaiming sentence. All fixed and pushed the same night
+(five more cases, three more sabotage mutations). The pattern this record exists to name: the fix for
+"reference deleted, payload serialised" had that shape itself, one key over.
 
 **Documentation and claim drift — 13 findings, none of them a code defect**, carried here rather
 than left in gitignored reports:

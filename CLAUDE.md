@@ -1930,6 +1930,20 @@ one subtype dropped from the set → exactly that subtype's case; forward loop �
 cases; `/FS` kept → exactly the `/IRT` case; `/Subtype` compared unresolved → exactly the indirect
 case; annotation never removed → the three paperclip cases and no control.
 
+**The first version shipped a P0 of its own, found by a post-push single-lens review the same
+night.** `/AF` (PDF 2.0 associated files) is a SECOND path from the paperclip dict to its Filespec; the
+strip cut `/FS` and handled `/AF` on the catalog and pages, never on an annotation — so a paperclip
+carrying `/FS` AND `/AF`, kept alive by a reply note's `/IRT` or a Popup on another page, re-serialised
+its file while `report.fileAttachments` said `true`. Three more from the same review: a Popup listed on
+a DIFFERENT page than its paperclip survived (attachments are now collected across all pages before any
+page is edited); a `/Next` ARRAY containing itself overflowed the stack because `seen` recorded dicts
+only (arrays are now memoised, `null` while expanding); and the SECURITY.md sentence "every claim in
+this row has a test" was false for the kept-media list (it has one now). Both `/FS` and `/AF` go on the
+dict, and `/AF` goes on every annotation, field and bookmark via `stripNodeActions`. Sabotage: `/AF`
+kept on the paperclip → exactly the P0 case; `/AF` kept on ordinary annotations → the P2 case; no array
+memo → exactly the self-cyclic array case. **When a strip cuts one path to a payload, list every key
+that can reach it before writing "leaves the bytes".**
+
 ### True text editing engine
 
 `src/utils/contentStreamEditor.ts` can genuinely delete/

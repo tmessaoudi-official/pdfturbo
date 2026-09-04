@@ -845,3 +845,141 @@ describe('sanitizePdf — non-JavaScript egress actions and paperclip attachment
     expect(await annotSubtypes(out.bytes)).toEqual(['Text']);
   });
 });
+
+/**
+ * Post-push single-lens review of `3fc0863` (2026-09-05) — five findings, the first a P0.
+ *
+ * `/AF` (PDF 2.0 associated files) is a SECOND path from an annotation dict to a Filespec. The
+ * commit deleted `/FS` on a paperclip and handled `/AF` on the catalog and every page, but never on
+ * an annotation — so with `/AF [fs]` on the attachment and ANY surviving reference to the dict (a
+ * reply note's `/IRT`, a Popup listed on another page) the sweep followed dict → `/AF` → `/EF` and
+ * re-serialised the file while `report.fileAttachments` said `true`. The same shape the commit
+ * message claims to close, one key over. Every annotation now loses `/AF`, paperclip or not.
+ */
+describe('sanitizePdf — /AF on annotations, cross-page Popups, array cycles, kept media (review of 3fc0863)', () => {
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+  const PAYLOAD = 'SANITIZE_AF_PAYLOAD_MUST_NOT_SURVIVE_9103';
+
+  function filespec(ctx: PDFDocument['context']) {
+    const ef = ctx.register(ctx.stream(PAYLOAD, { Type: PDFName.of('EmbeddedFile') }));
+    return ctx.register(ctx.obj({
+      Type: PDFName.of('Filespec'), F: PDFString.of('secret.txt'), EF: ctx.obj({ F: ef }),
+    }));
+  }
+  async function subtypesOf(bytes: Uint8Array, pageIdx: number): Promise<string[]> {
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const annots = doc.getPages()[pageIdx].node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annots) return [];
+    return annots.asArray().map(ref => {
+      const dict = doc.context.lookup(ref, PDFDict);
+      return (doc.context.lookup(dict.get(PDFName.of('Subtype'))) as PDFName).decodeText();
+    });
+  }
+
+  it('P0 — a paperclip carrying /AF as well as /FS, kept alive by a reply note, still loses its file', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const fs = filespec(ctx);
+    const attach = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FileAttachment'), Rect: ctx.obj([0, 0, 9, 9]),
+      FS: fs, AF: ctx.obj([fs]),
+    });
+    const attachRef = ctx.register(attach);
+    const reply = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Text'), Rect: ctx.obj([20, 0, 29, 9]),
+      IRT: attachRef, RT: PDFName.of('R'),
+    }));
+    page.node.set(PDFName.of('Annots'), ctx.obj([attachRef, reply]));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(PAYLOAD);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.fileAttachments).toBe(true);
+    expect(await subtypesOf(out.bytes, 0)).toEqual(['Text']);
+  });
+
+  it('P2 — /AF on an ORDINARY annotation is removed and reported as an associated file', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const note = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Text'), Rect: ctx.obj([0, 0, 9, 9]),
+      AF: ctx.obj([filespec(ctx)]),
+    }));
+    page.node.set(PDFName.of('Annots'), ctx.obj([note]));
+    const out = await sanitizePdf(await doc.save({ useObjectStreams: false }));
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.associatedFiles).toBe(true);
+    expect(out.report.fileAttachments).toBe(false);
+    expect(await subtypesOf(out.bytes, 0)).toEqual(['Text']);
+  });
+
+  it('P3 — a Popup listed on ANOTHER page than its paperclip is removed with it', async () => {
+    const doc = await PDFDocument.create();
+    const p1 = doc.addPage([200, 200]);
+    const p2 = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const attach = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FileAttachment'), Rect: ctx.obj([0, 0, 9, 9]),
+      FS: filespec(ctx),
+    });
+    const attachRef = ctx.register(attach);
+    const popup = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Popup'), Rect: ctx.obj([0, 0, 40, 40]),
+      Parent: attachRef,
+    }));
+    attach.set(PDFName.of('Popup'), popup);
+    p1.node.set(PDFName.of('Annots'), ctx.obj([attachRef]));
+    p2.node.set(PDFName.of('Annots'), ctx.obj([popup]));
+    const out = await sanitizePdf(await doc.save({ useObjectStreams: false }));
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(await subtypesOf(out.bytes, 0)).toEqual([]);
+    expect(await subtypesOf(out.bytes, 1)).toEqual([]);
+  });
+
+  it('P3 — a /Next ARRAY that contains itself terminates instead of overflowing the stack', async () => {
+    const JS = 'SANITIZE_ARRAY_SELF_CYCLE_JS_9103()';
+    const KEEP = 'https://example.invalid/kept-beside-a-self-cyclic-array-9103';
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const arr = ctx.obj([]) as PDFArray;
+    const arrRef = ctx.register(arr);
+    arr.push(arrRef);
+    arr.push(ctx.register(ctx.obj({ S: PDFName.of('JavaScript'), JS: PDFString.of(JS) })));
+    arr.push(ctx.register(ctx.obj({ S: PDFName.of('URI'), URI: PDFString.of(KEEP) })));
+    const head = ctx.obj({ S: PDFName.of('URI'), URI: PDFString.of('https://example.invalid/head-9103') });
+    head.set(PDFName.of('Next'), arrRef);
+    const annot = ctx.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: ctx.obj([0, 0, 9, 9]) });
+    annot.set(PDFName.of('A'), ctx.register(head));
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    const out = await sanitizePdf(await doc.save({ useObjectStreams: false }));
+    const text = asText(out.bytes);
+    expect(text).not.toContain(JS);
+    expect(text).toContain(KEEP);
+    expect(out.report.annotActions).toBe(true);
+  });
+
+  it('keeps in-document media actions — the sentence in SECURITY.md that had no test', async () => {
+    const MEDIA = 'https://example.invalid/media-must-survive-9103.mp3';
+    const kinds = ['Sound', 'Movie', 'GoTo3DView', 'RichMediaExecute', 'Rendition'];
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const annots = kinds.map((k, i) => {
+      const action = ctx.obj({ S: PDFName.of(k), F: PDFString.of(`${k}-${MEDIA}`) });
+      const annot = ctx.obj({
+        Type: PDFName.of('Annot'), Subtype: PDFName.of('Screen'), Rect: ctx.obj([i * 10, 0, i * 10 + 9, 9]),
+      });
+      annot.set(PDFName.of('A'), ctx.register(action));
+      return ctx.register(annot);
+    });
+    page.node.set(PDFName.of('Annots'), ctx.obj(annots));
+    const out = await sanitizePdf(await doc.save({ useObjectStreams: false }));
+    const text = asText(out.bytes);
+    for (const k of kinds) expect(text).toContain(`${k}-${MEDIA}`);
+    expect(out.report.annotActions).toBe(false);
+    expect(out.report.externalActions).toBe(false);
+  });
+});

@@ -18,8 +18,13 @@
  *    (reads a file into the form) [developer ruling, 2026-09-05]. A continuation chained
  *    behind a removed action is promoted into its place, so hyperlink /A actions
  *    (/S /URI, /S /GoTo, /S /Named) SURVIVE even when a script preceded them.
- *  - /FileAttachment ("paperclip") annotations, together with their /Popup and the /FS→/EF
- *    file they carry, so the attached bytes leave the FILE and not only the annotation list.
+ *  - /FileAttachment ("paperclip") annotations, together with their /Popup (on whichever page
+ *    it is listed) and the /FS→/EF file they carry, so the attached bytes leave the FILE and not
+ *    only the annotation list.
+ *  - /AF associated-files arrays on EVERY annotation, form field and bookmark, not only the
+ *    catalog and pages: /AF is a second path from a dict to a Filespec, and a paperclip that
+ *    carried both /FS and /AF kept its file through the first version of the paperclip strip
+ *    whenever anything still referenced the dict [review of 3fc0863, 2026-09-05].
  *  - AcroForm /XFA (XFA can carry script), and recursively each form field's
  *    /AA and JavaScript-only /A action (/Kids walked depth-first).
  *  - /AF associated-files arrays on the catalog and every page (PDF 2.0
@@ -139,6 +144,8 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   const NAME_PARENT = PDFName.of('Parent');
   const NAME_POPUP = PDFName.of('Popup');
   const NAME_FS = PDFName.of('FS');
+  const NAME_AF = PDFName.of('AF');
+  let associatedFiles = false;
   /**
    * The non-JavaScript EGRESS class — actions that reach outside the document without running
    * script. Ruled 2026-09-05 after the round-8 panel found `/SubmitForm` and `/Launch` surviving
@@ -207,15 +214,28 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
    * instead of cutting it, so a legitimate diamond (two array entries chaining to one continuation)
    * survives; only a revisited script is dropped.
    */
-  const spliceActions = (value: unknown, seen: Set<unknown>, state: { hit: boolean }): unknown[] => {
+  const spliceActions = (
+    value: unknown, seen: Set<unknown>, state: { hit: boolean }, arrays: Map<object, unknown[] | null>,
+  ): unknown[] => {
     if (value === undefined) return [];
     // `instanceof` narrowing against pdf-lib's runtime classes collapses to `never` (they carry a
     // private `context`), so the walk goes through `object | undefined` and the type-only aliases
     // the rest of this module already uses — the same dodge as the /Outlines walk below.
     const resolved = ctx.lookup(value as never) as object | undefined;
     if (resolved instanceof PDFArray) {
+      // Arrays are memoised, not merely marked: `seen` recorded dicts only, so an array that
+      // contained ITSELF recursed until `RangeError` (fail-closed, but the CHANGELOG said cycles
+      // terminate) [review of 3fc0863]. `null` marks an array still being expanded — a revisit
+      // during its own expansion is the cycle, and contributes nothing; a revisit afterwards gets
+      // the survivors it already yielded, so a legitimate diamond is preserved.
+      const memo = arrays.get(resolved);
+      if (memo === null) return [];
+      if (memo !== undefined) return memo;
+      arrays.set(resolved, null);
       const arr = resolved as unknown as PDFArrayT;
-      return arr.asArray().flatMap(el => spliceActions(el, seen, state));
+      const survivors = arr.asArray().flatMap(el => spliceActions(el, seen, state, arrays));
+      arrays.set(resolved, survivors);
+      return survivors;
     }
     if (!(resolved instanceof PDFDict)) return [value];
     const action = resolved as unknown as PDFDictT;
@@ -226,10 +246,10 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
       // `annotActions` flag it always had. Either way the continuation is promoted.
       if (isScriptAction(action)) state.hit = true;
       else externalActions = true;
-      return spliceActions(action.get(NAME_NEXT), seen, state);
+      return spliceActions(action.get(NAME_NEXT), seen, state, arrays);
     }
     const before = action.get(NAME_NEXT);
-    const kept = spliceActions(before, seen, state);
+    const kept = spliceActions(before, seen, state, arrays);
     if (!(kept.length === 1 && kept[0] === before)) setActions(action, NAME_NEXT, kept);
     return [value];
   };
@@ -245,9 +265,11 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
    */
   const stripNodeActions = (node: PDFDictT): boolean => {
     const state = { hit: node.delete(NAME_AA) };
+    // /AF on the node itself — an embedded file hung on an ordinary annotation or field.
+    if (node.delete(NAME_AF)) associatedFiles = true;
     const raw = node.get(NAME_A);
     if (raw !== undefined) {
-      const kept = spliceActions(raw, new Set(), state);
+      const kept = spliceActions(raw, new Set(), state, new Map());
       if (!(kept.length === 1 && kept[0] === raw)) setActions(node, NAME_A, kept);
     }
     return state.hit;
@@ -273,7 +295,32 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   let aa = cat.delete(NAME_AA);
   let annotActions = false;
   let pageMetadata = false;
-  let associatedFiles = cat.delete(PDFName.of('AF'));
+  if (cat.delete(NAME_AF)) associatedFiles = true;
+
+  // ── /FileAttachment ("paperclip") annotations go whole [developer ruling, 2026-09-05] ──────
+  // Collected across ALL pages before any page is edited, because a Popup may be listed on a
+  // different page than the paperclip it belongs to [review of 3fc0863]. Removing the annotation
+  // from /Annots is NOT enough on its own: a /Popup /Parent or a reply note's /IRT keeps the dict
+  // reachable, and the sweep below then serialises the file bytes with the annotation gone — the
+  // exact reference-deleted, payload-serialised shape WS5 P1 found. So BOTH paths from the dict to
+  // the file are cut on the dict itself — /FS and /AF; the first version cut /FS only and a
+  // paperclip carrying both kept its file. The Popup entry goes with them.
+  const attachments = new Set<unknown>();
+  for (const page of doc.getPages()) {
+    const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annots) continue;
+    for (const ref of annots.asArray()) {
+      const annot = ctx.lookup(ref) as object | undefined;
+      if (!(annot instanceof PDFDict)) continue;
+      const dict = annot as unknown as PDFDictT;
+      if (ctx.lookup(dict.get(NAME_SUBTYPE)) !== NAME_FILE_ATTACHMENT) continue;
+      attachments.add(dict);
+      dict.delete(NAME_FS);
+      dict.delete(NAME_AF);
+      dict.delete(NAME_POPUP);
+    }
+  }
+  report.fileAttachments = attachments.size > 0;
 
   // Per-page: additional actions, per-page XMP, associated files, and every
   // annotation's action vectors.
@@ -281,30 +328,14 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
     const node = page.node;
     if (node.delete(NAME_AA)) aa = true;
     if (node.delete(PDFName.of('Metadata'))) pageMetadata = true;
-    if (node.delete(PDFName.of('AF'))) associatedFiles = true;
+    if (node.delete(NAME_AF)) associatedFiles = true;
 
     const annots = node.lookupMaybe(PDFName.of('Annots'), PDFArray);
     if (annots) {
-      // ── /FileAttachment ("paperclip") annotations go whole [developer ruling, 2026-09-05] ──
-      // Removing the annotation from /Annots is NOT enough on its own: an Acrobat-authored
-      // attachment has a /Popup whose /Parent points back at it, which keeps the /FS→/EF stream
-      // reachable and the sweep below then serialises the file bytes with the annotation gone —
-      // the exact reference-deleted, payload-serialised shape WS5 P1 found. So /FS is deleted on
-      // the dict itself (nothing can reach the file through a stray back-reference), the Popup is
-      // dropped with it, and the array is walked in REVERSE because `PDFArray.remove` shifts later
-      // indices down — a forward loop skips the neighbour after each removal (a recorded trap).
-      const attachments = new Set<unknown>();
-      for (const ref of annots.asArray()) {
-        const annot = ctx.lookup(ref) as object | undefined;
-        if (!(annot instanceof PDFDict)) continue;
-        const dict = annot as unknown as PDFDictT;
-        if (ctx.lookup(dict.get(NAME_SUBTYPE)) !== NAME_FILE_ATTACHMENT) continue;
-        attachments.add(dict);
-        dict.delete(NAME_FS);
-        dict.delete(NAME_POPUP);
-      }
+      // Drop every paperclip and every Popup whose /Parent is one, on this page. The array is
+      // walked in REVERSE because `PDFArray.remove` shifts later indices down — a forward loop
+      // skips the neighbour after each removal (a recorded trap, and the Popup IS that neighbour).
       if (attachments.size > 0) {
-        report.fileAttachments = true;
         for (let i = annots.size() - 1; i >= 0; i--) {
           const annot = ctx.lookup(annots.get(i)) as object | undefined;
           if (!(annot instanceof PDFDict)) continue;
