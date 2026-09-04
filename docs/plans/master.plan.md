@@ -578,7 +578,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | done | b99db82 | src/core/pageService.ts, src/utils/geometry.ts |
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
-| 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | WS5SHA | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
+| 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
 | 16 | WS7 — certification, 2 clean rounds over dfe34ae..HEAD | L | todo | - | - |
 <!-- /progress-block -->
 ### Blocked
