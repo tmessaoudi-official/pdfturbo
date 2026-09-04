@@ -18,6 +18,7 @@ const OPS: Record<string, number> = {
   nextLineSetSpacingShowText: 18, fill: 20, eoFill: 21, fillStroke: 22,
   eoFillStroke: 23, stroke: 24, closeStroke: 25,
   beginAnnotation: 26, endAnnotation: 27,
+  paintFormXObjectBegin: 28, paintFormXObjectEnd: 29,
 };
 
 const opList = (fnArray: number[], argsArray: unknown[]): OpListLike => ({ fnArray, argsArray });
@@ -148,5 +149,133 @@ describe('walkPageOps — CropBox origin (C22)', () => {
     const absolute = walkPageOps(build(), OPS);
     expect(walkPageOps(build(), OPS, { x: 0, y: 0 })).toEqual(absolute);
     expect(absolute.images[0].ctm).toEqual([50, 0, 0, 60, 10, 20]);
+  });
+});
+
+/**
+ * WS4-F — the Form XObject `/BBox` clip.
+ *
+ * pdf.js clips a form to its `/BBox` (`pdf.mjs:12350-12362`: `save()` → `transform(...matrix)` →
+ * `ctx.clip(rect(bbox))`), so a rule drawn past the boundary is invisible on screen and in every
+ * rasterised export. The walker reported it at full length, and an over-long `vRule` is read by
+ * `buildTableGrid` as a column boundary — after which `reconstructPage` REMOVES the in-region words
+ * from the paragraph flow. Over-approximation here deletes prose, which is why the clip is modelled
+ * for rules/vRules/colorMap and deliberately NOT for images (a leak filter, where over-approximating
+ * is the safe direction).
+ */
+describe('walkPageOps — Form XObject /BBox clip (WS4-F)', () => {
+  const IDENT = [1, 0, 0, 1, 0, 0];
+  /** A form Begin/End wrapped around `inner`. */
+  const form = (
+    matrix: unknown, bbox: unknown, innerFns: number[], innerArgs: unknown[],
+  ): OpListLike => opList(
+    [OPS.paintFormXObjectBegin, ...innerFns, OPS.paintFormXObjectEnd],
+    [[matrix, bbox], ...innerArgs, []],
+  );
+  /** A thin horizontal rule spanning form-local x `x0..x1` at y `y..y+2`. */
+  const ruleOps = (x0: number, x1: number, y: number): [number[], unknown[]] =>
+    [[OPS.constructPath], [[OPS.fill, null, { 0: x0, 1: y, 2: x1, 3: y + 2 }]]];
+
+  it('clips a rule that runs past the form boundary to the visible part', () => {
+    const [f, a] = ruleOps(50, 400, 20);
+    const r = walkPageOps(form(IDENT, [0, 0, 100, 100], f, a), OPS);
+    expect(r.rules).toEqual([{ x: 50, y: 20, width: 50, height: 2 }]);
+  });
+
+  it('drops a rule drawn entirely outside the /BBox', () => {
+    const [f, a] = ruleOps(200, 400, 20);
+    expect(walkPageOps(form(IDENT, [0, 0, 100, 100], f, a), OPS).rules).toEqual([]);
+  });
+
+  it('classifies BEFORE clipping, so a clipped shading block never becomes a phantom rule', () => {
+    // 40x40 is not line-like and yields nothing today. Its visible sliver under this /BBox is
+    // 40x2, which IS line-like — so a walk that classified the CLIPPED rect would invent an
+    // underline where the page has a filled block. This is the direction that eats prose.
+    const r = walkPageOps(
+      form(IDENT, [0, 0, 40, 2], [OPS.constructPath], [[OPS.fill, null, { 0: 0, 1: 0, 2: 40, 3: 40 }]]),
+      OPS,
+    );
+    expect(r.rules).toEqual([]);
+    expect(r.vRules).toEqual([]);
+  });
+
+  it('intersects nested form clips', () => {
+    const r = walkPageOps(
+      opList(
+        [OPS.paintFormXObjectBegin, OPS.paintFormXObjectBegin, OPS.constructPath,
+          OPS.paintFormXObjectEnd, OPS.paintFormXObjectEnd],
+        [[IDENT, [0, 0, 100, 100]], [IDENT, [50, 0, 300, 100]],
+          [OPS.fill, null, { 0: 0, 1: 20, 2: 400, 3: 22 }], [], []],
+      ),
+      OPS,
+    );
+    expect(r.rules).toEqual([{ x: 50, y: 20, width: 50, height: 2 }]);
+  });
+
+  it('applies the /BBox AFTER the form /Matrix — the box is in form space, not page space', () => {
+    // Form placed at (150,500) with /BBox [0 0 100 100] ⇒ it covers page x 150..250. Computing the
+    // clip from the PRE-matrix ctm would put it at x 0..100, which misses this rule entirely and
+    // drops it — so this case goes red for exactly that mistake.
+    const [f, a] = ruleOps(0, 400, 10);
+    const r = walkPageOps(form([1, 0, 0, 1, 150, 500], [0, 0, 100, 100], f, a), OPS);
+    expect(r.rules).toEqual([{ x: 150, y: 510, width: 100, height: 2 }]);
+  });
+
+  it('leaves the IMAGE channel unclipped — over-approximation is safe for a leak filter', () => {
+    const r = walkPageOps(
+      form(IDENT, [0, 0, 10, 10], [OPS.transform, OPS.paintImageXObject],
+        [[60, 0, 0, 40, 120, 200], ['img0']]),
+      OPS,
+    );
+    expect(r.images[0].ctm).toEqual([60, 0, 0, 40, 120, 200]);
+  });
+
+  it('pops the clip at the form End, so later page content is unclipped', () => {
+    const r = walkPageOps(
+      opList(
+        [OPS.paintFormXObjectBegin, OPS.paintFormXObjectEnd, OPS.constructPath],
+        [[IDENT, [0, 0, 100, 100]], [], [OPS.fill, null, { 0: 200, 1: 20, 2: 400, 3: 22 }]],
+      ),
+      OPS,
+    );
+    expect(r.rules).toEqual([{ x: 200, y: 20, width: 200, height: 2 }]);
+  });
+
+  it('does not clip when the form carries no /BBox, or a malformed one', () => {
+    const [f, a] = ruleOps(200, 400, 20);
+    const full = [{ x: 200, y: 20, width: 200, height: 2 }];
+    expect(walkPageOps(form(IDENT, undefined, f, a), OPS).rules).toEqual(full);
+    expect(walkPageOps(form(IDENT, [0, 0, 100], f, a), OPS).rules).toEqual(full);
+    expect(walkPageOps(form(IDENT, [0, 0, NaN, 100], f, a), OPS).rules).toEqual(full);
+    // …and a form that clips nothing is byte-identical to the same ops with no form at all.
+    expect(walkPageOps(form(IDENT, undefined, f, a), OPS)).toEqual(walkPageOps(opList(f, a), OPS));
+  });
+
+  it('normalises a REVERSED /BBox, which the canvas backend accepts as a negative-extent rect', () => {
+    const [f, a] = ruleOps(50, 400, 20);
+    expect(walkPageOps(form(IDENT, [100, 100, 0, 0], f, a), OPS).rules)
+      .toEqual([{ x: 50, y: 20, width: 50, height: 2 }]);
+  });
+
+  it('drops a colour key whose text origin falls outside the /BBox, and keeps one inside', () => {
+    const show = (x: number): [number[], unknown[]] => [
+      [OPS.beginText, OPS.setTextMatrix, OPS.setFillRGBColor, OPS.showText],
+      [[], [[1, 0, 0, 1, x, 50]], ['#FF0000'], [[]]],
+    ];
+    const [fIn, aIn] = show(50);
+    const [fOut, aOut] = show(200);
+    expect(walkPageOps(form(IDENT, [0, 0, 100, 100], fIn, aIn), OPS).colorMap.get('50,50'))
+      .toBe('FF0000');
+    expect(walkPageOps(form(IDENT, [0, 0, 100, 100], fOut, aOut), OPS).colorMap.size).toBe(0);
+  });
+
+  it('expresses the clip in the CROP frame under an origin, in lockstep with the rules (C22)', () => {
+    // Origin (50,70); form /BBox [0 0 100 100] at identity ⇒ absolute x 0..100 ⇒ crop x -50..50.
+    // Rule absolute x 20..400 ⇒ crop -30..350, visible to crop x 50 ⇒ width 80. A clip built from
+    // the raw args instead of from `ctm` would sit at crop x 0..100 and yield width 50 — the mixed
+    // frame C22 exists to make unexpressible.
+    const [f, a] = ruleOps(20, 400, 80);
+    const r = walkPageOps(form(IDENT, [0, 0, 100, 100], f, a), OPS, { x: 50, y: 70 });
+    expect(r.rules).toEqual([{ x: -30, y: 10, width: 80, height: 2 }]);
   });
 });

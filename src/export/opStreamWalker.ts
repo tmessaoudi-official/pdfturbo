@@ -42,6 +42,62 @@ export interface OpListLike {
   argsArray: ArrayLike<unknown>;
 }
 
+/** An axis-aligned box in the walk's own frame — crop-relative when `walkPageOps` is given an origin. */
+interface ClipBox { x0: number; y0: number; x1: number; y1: number }
+
+/**
+ * The AABB of a `/BBox`'s four corners under `m`, or null when the argument is not four finite
+ * numbers — then nothing is clipped, the conservative direction, since clipping only ever removes.
+ *
+ * All four corners are taken rather than the two given ones because a form `/Matrix` may rotate or
+ * mirror, and because a REVERSED box (`x1 < x0`) is legal to the canvas backend, which issues
+ * `rect(x0, y0, x1 - x0, y1 - y0)` and accepts a negative extent. Same normalisation the
+ * negative-height `re` case needed in `locateDecorationRects`.
+ *
+ * A transformed box with ZERO extent is kept as such: pdf.js clips that form away entirely, so an
+ * empty clip removing every rule inside it is both faithful and the safe direction.
+ */
+function bboxToClip(bbox: unknown, m: Matrix6): ClipBox | null {
+  const v = bbox as ArrayLike<number> | null | undefined;
+  if (v?.length !== 4) return null;
+  const n = Array.from(v, Number);
+  if (!n.every(Number.isFinite)) return null;
+  const corners: Array<[number, number]> = [
+    [n[0], n[1]], [n[2], n[1]], [n[2], n[3]], [n[0], n[3]],
+  ];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [lx, ly] of corners) {
+    const dx = m[0] * lx + m[2] * ly + m[4];
+    const dy = m[1] * lx + m[3] * ly + m[5];
+    if (dx < x0) x0 = dx; if (dx > x1) x1 = dx;
+    if (dy < y0) y0 = dy; if (dy > y1) y1 = dy;
+  }
+  return { x0, y0, x1, y1 };
+}
+
+/** Nested forms intersect. The result may be EMPTY (`x1 <= x0`); the two readers below drop against that. */
+function intersectClip(a: ClipBox, b: ClipBox): ClipBox {
+  return {
+    x0: Math.max(a.x0, b.x0), y0: Math.max(a.y0, b.y0),
+    x1: Math.min(a.x1, b.x1), y1: Math.min(a.y1, b.y1),
+  };
+}
+
+/** The visible part of a rule, or null when the clip removes it. A null clip means unclipped. */
+function clipRuleRect(r: RuleRect, c: ClipBox | null): RuleRect | null {
+  if (!c) return r;
+  const x0 = Math.max(r.x, c.x0), y0 = Math.max(r.y, c.y0);
+  const x1 = Math.min(r.x + r.width, c.x1), y1 = Math.min(r.y + r.height, c.y1);
+  if (x1 <= x0 || y1 <= y0) return null;
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/** Is a text origin inside the clip? Tested UNROUNDED — a rounded point crosses the edge by half a unit. */
+function pointInClip(x: number, y: number, c: ClipBox | null): boolean {
+  if (!c) return true;
+  return x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1;
+}
+
 export function walkPageOps(
   opList: OpListLike,
   OPS: Record<string, number>,
@@ -118,6 +174,36 @@ export function walkPageOps(
    */
   let annotationDepth = 0;
 
+  /**
+   * The active Form-XObject `/BBox` clip, in the SAME frame as `ctm` (so crop-relative under an
+   * `origin`) — the C22 lockstep is bought by deriving it FROM `ctm` rather than from the raw args.
+   *
+   * WS4-F. pdf.js's canvas backend clips a form to its `/BBox` — `pdf.mjs:12350-12362` does
+   * `save()`, then `transform(...matrix)`, then `ctx.clip(rect(bbox))`, so the box is expressed in
+   * the POST-matrix space; `paintFormXObjectEnd`'s `restore()` pops it. This walker had zero `BBox`
+   * reads, so a rule drawn past its form's boundary — invisible on screen and in every rasterised
+   * export — was still reported at its unclipped length. That is the direction that DELETES PROSE:
+   * `buildTableGrid` reads `vRules` as column boundaries and `reconstructPage` REMOVES in-region
+   * words from the paragraph flow, so one over-long phantom rule can swallow a real paragraph.
+   *
+   * The IMAGE channel is deliberately left UNCLIPPED. It feeds `imagePlacementRedacted`, a LEAK
+   * filter, where over-approximating a footprint is the SAFE direction — the same asymmetry
+   * `rotatedElementFootprint` encodes for redactions (WS4-B). Clipping both would be symmetric and
+   * wrong.
+   *
+   * Only the form clip is modelled; a content-stream `W n` is not, and an unbalanced `Q` inside a
+   * form pops the ctm here but not the clip (pdf.js pops both). Both are malformed-input shapes
+   * whose ctm already diverged before this change.
+   */
+  let clip: ClipBox | null = null;
+  const clipStack: Array<ClipBox | null> = [];
+  const popClip = () => {
+    if (clipStack.length > 0) {
+      const prev = clipStack.pop();
+      clip = prev === undefined ? null : prev;
+    }
+  };
+
   /** `m × [a b c d e f]`, the PDF `cm` composition. Shared so the sites cannot drift. */
   const composeCtm = (
     m: Matrix6, a: number, b: number, c: number, d: number, e: number, f: number,
@@ -163,6 +249,12 @@ export function walkPageOps(
       // ORIGINAL source page, not the stripped export copy.
       annotationDepth++;
       ctmStack.push([...ctm] as Matrix6);
+      // The clip is re-established with the frame, for the same reason the ctm is. UNOBSERVABLE
+      // and NOT pinned by a test, said plainly rather than implied: all three clipped channels
+      // gate on `annotationDepth === 0`, so no assertion can distinguish this from leaving the
+      // page's clip in place. It stays so the stack stays balanced and paired with the ctm.
+      clipStack.push(clip);
+      clip = null;
       // Reset first: the backend sets the base transform rather than composing onto whatever the
       // content stream left behind. `base`, NOT identity — an annotation's appearance stream is
       // placed in the same page frame as everything else, so a literal identity here would leave
@@ -189,6 +281,7 @@ export function walkPageOps(
       // the backend's own `restore`, which the backend does not do here.
       const prev = ctmStack.pop();
       if (prev) ctm = prev;
+      popClip();
     } else if (fn === OPS['paintFormXObjectBegin']) {
       // A form XObject is an implicit q/cm: pdf.js's canvas backend saves the state and
       // applies the form's /Matrix here (CanvasGraphics.paintFormXObjectBegin), restoring at
@@ -207,9 +300,16 @@ export function walkPageOps(
       // truthiness test; `asMatrix6` is deliberately stricter (see its doc comment).
       const m = asMatrix6(args[0]);
       if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);
+      // AFTER the matrix, never before: the backend issues its clip once the form matrix is on the
+      // canvas CTM, so the `/BBox` numbers live in form space. Computing it from the pre-matrix ctm
+      // puts the clip at the form's placement offset instead of over the form.
+      clipStack.push(clip);
+      const cb = bboxToClip(args[1], ctm);
+      if (cb) clip = clip === null ? cb : intersectClip(clip, cb);
     } else if (fn === OPS['paintFormXObjectEnd']) {
       const prev = ctmStack.pop();
       if (prev) ctm = prev;
+      popClip();
     } else if (fn === OPS['paintImageXObject']) {
       images.push({ name: args[0] as unknown as string, ctm: [...ctm] as Matrix6 });
     } else if (fn === OPS['constructPath']) {
@@ -237,10 +337,16 @@ export function walkPageOps(
         const rw = maxX - minX, rh = maxY - minY;
         // Keep only thin, line-like rules — excludes shading blocks / vector art.
         // Horizontal → underline/strike candidates; vertical → table-grid (#56).
-        if (rw > 2 && rh < 8 && rw > rh * 3) {
-          if (annotationDepth === 0) rules.push({ x: minX, y: minY, width: rw, height: rh });
-        } else if (rh > 2 && rw < 8 && rh > rw * 3) {
-          if (annotationDepth === 0) vRules.push({ x: minX, y: minY, width: rw, height: rh });
+        // The thin/line-like predicate runs on the UNCLIPPED rect ON PURPOSE, so the form clip may
+        // only shrink a rule or remove it and can never admit one. Classifying the clipped sliver
+        // instead would let a 40x40 shading block whose form exposes a 40x2 strip become a phantom
+        // underline — the direction that INVENTS rules, which is how prose gets eaten.
+        const sink = (rw > 2 && rh < 8 && rw > rh * 3) ? rules
+          : (rh > 2 && rw < 8 && rh > rw * 3) ? vRules
+            : null;
+        if (sink && annotationDepth === 0) {
+          const visible = clipRuleRect({ x: minX, y: minY, width: rw, height: rh }, clip);
+          if (visible) sink.push(visible);
         }
       }
     } else if (fn === OPS['setFillRGBColor']) {
@@ -279,11 +385,14 @@ export function walkPageOps(
       // Text origin in page user space = Tm translation × CTM, matching the
       // position getTextContent reports for this item.
       const ox = textMatrix[4], oy = textMatrix[5];
-      const px = Math.round(ctm[0] * ox + ctm[2] * oy + ctm[4]);
-      const py = Math.round(ctm[1] * ox + ctm[3] * oy + ctm[5]);
-      // Only record non-black so reconstructPage defaults to black text.
-      if (fillHex !== '000000') {
-        if (annotationDepth === 0) colorMap.set(`${px},${py}`, fillHex);
+      const rawX = ctm[0] * ox + ctm[2] * oy + ctm[4];
+      const rawY = ctm[1] * ox + ctm[3] * oy + ctm[5];
+      const px = Math.round(rawX), py = Math.round(rawY);
+      // Only record non-black so reconstructPage defaults to black text. The clip is tested on the
+      // UNROUNDED origin: a key rounded onto the boundary would pass or fail by half a unit. A
+      // colour dropped here costs a black run, never a missing word — the tolerable direction.
+      if (fillHex !== '000000' && annotationDepth === 0 && pointInClip(rawX, rawY, clip)) {
+        colorMap.set(`${px},${py}`, fillHex);
       }
     }
   }
