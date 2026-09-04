@@ -320,8 +320,16 @@ opens through `openAppDB`.
 Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (9),
 `tests/utils/fileSystemAccess.test.ts` (+11). Sabotage-verified six ways, each landing where
 predicted: collapsing cancelled/unavailable → 2; name-keyed de-duplication → the same-name case;
-non-monotonic `at` → 3; `innerHTML` for the file name → the untrusted-name case; rendering recents
-with no open picker → that case; skipping the permission re-request → the denied case.
+non-monotonic `at` → 3 (newest-first, the frozen-clock case, AND de-duplication's move-to-front,
+which is the non-obvious one: moving an entry to the front is itself a same-millisecond write); `innerHTML` for the file name → the untrusted-name case; rendering recents
+with no open picker → that case; skipping the permission re-request → the denied case; dropping one
+MIME from the picker filter → the index.html parity case.
+
+**The picker's type filter must match the fallback input's `accept`, and it did not.** `OPEN_TYPES`
+listed PDF and PNG while `#fileInput` accepts JPEG, GIF, WebP and BMP too, all of which `loadFiles`
+converts — so on Chromium the native dialog REFUSED four formats that Firefox's plain input opens.
+The enhanced path was strictly worse than the one it enhances. The two lists live in different
+files, so a test reads `index.html` and asserts the picker covers every MIME it accepts.
 
 ### Deleting a DOCX image left its bytes in the package — WS4-D, and the scan IS the fix (2026-09-04)
 

@@ -8,7 +8,9 @@
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { openViaPicker, renderRecentFiles, type RecentMenuCtx } from '../../src/ui/recentFilesMenu';
+import { openViaPicker, renderRecentFiles, OPEN_TYPES, type RecentMenuCtx } from '../../src/ui/recentFilesMenu';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { addRecentFile, clearRecentFiles, listRecentFiles } from '../../src/infra/recentFiles';
 import type { IErrorReporter } from '../../src/core/errorReporter';
 
@@ -74,6 +76,34 @@ describe('openViaPicker', () => {
     expect(c.loaded).toHaveLength(0);
     expect(c.warns).toContain('toast.recentFileUnavailable');
     expect(await listRecentFiles()).toHaveLength(0);
+  });
+});
+
+describe('the picker type filter', () => {
+  it('covers every MIME the fallback <input type=file> accepts', () => {
+    // The two lists live in different files, so nothing but this notices them diverging. They DID:
+    // OPEN_TYPES was PDF + PNG only, so on Chromium the native dialog refused a JPEG that the
+    // fallback input accepts and `loadFiles` converts — the enhanced path worse than the plain one.
+    const html = readFileSync(resolve(__dirname, '../../index.html'), 'utf8');
+    const accept = /<input[^>]*id="fileInput"[^>]*accept="([^"]*)"/.exec(html)?.[1];
+    expect(accept, 'could not read #fileInput accept from index.html').toBeTruthy();
+    const wanted = (accept as string).split(',').map(x => x.trim()).filter(Boolean);
+    const offered = OPEN_TYPES.map(t => t.mime);
+    expect(wanted.filter(m => !offered.includes(m))).toEqual([]);
+  });
+
+  it('passes those types to the picker, not a narrower hardcoded set', () => {
+    // Pins the WIRING as well as the constant: OPEN_TYPES could be right and the call site could
+    // pass something else.
+    let seen: Array<{ accept: Record<string, string[]> }> | undefined;
+    g.showOpenFilePicker = (opts?: { types?: Array<{ accept: Record<string, string[]> }> }) => {
+      seen = opts?.types;
+      return Promise.reject(new DOMException('x', 'AbortError'));
+    };
+    return openViaPicker(ctx()).then(() => {
+      const mimes = (seen ?? []).flatMap(t => Object.keys(t.accept));
+      expect(mimes).toEqual(OPEN_TYPES.map(t => t.mime));
+    });
   });
 });
 

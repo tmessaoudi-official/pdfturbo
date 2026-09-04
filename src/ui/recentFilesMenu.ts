@@ -30,9 +30,22 @@ export interface RecentMenuCtx {
   closeMenu(): void;
 }
 
-const OPEN_TYPES = [
+/**
+ * The picker's type filter MUST cover every MIME the fallback `<input type=file accept>` accepts.
+ *
+ * It did not: PDF and PNG only. `loadFiles` routes any `image/*` through the images→PDF conversion,
+ * so a Chromium user picking a JPEG through the native dialog was REFUSED while a Firefox user
+ * opening the same file succeeded — the enhanced path strictly worse than the one it enhances, for
+ * four formats. Parity with `index.html`'s `#fileInput` is asserted by a test that reads the markup,
+ * because the two lists live in different files and nothing else would notice them diverging.
+ */
+export const OPEN_TYPES = [
   { description: 'PDF document', mime: 'application/pdf', ext: '.pdf' },
-  { description: 'Image', mime: 'image/png', ext: '.png' },
+  { description: 'JPEG image', mime: 'image/jpeg', ext: '.jpg' },
+  { description: 'PNG image', mime: 'image/png', ext: '.png' },
+  { description: 'GIF image', mime: 'image/gif', ext: '.gif' },
+  { description: 'WebP image', mime: 'image/webp', ext: '.webp' },
+  { description: 'Bitmap image', mime: 'image/bmp', ext: '.bmp' },
 ];
 
 /** Outcome of the picker-first open, so the caller knows whether to use the fallback input. */
