@@ -144,6 +144,40 @@ describe('AUDIT — a filled SHAPE over text hides nothing (the classic false re
     expect(text).toContain(PUBLIC);
   });
 
+  it('a PDF clip path hides text without REMOVING it — the blank-page drop stays blunt (WS4-C)', async () => {
+    // WS4-C asked whether a partly-covered element could be CLIPPED to its un-redacted region instead
+    // of being dropped whole. The idea is not idle: WS4-A did exactly that for freehand ink and it
+    // worked, stroke-exact. The difference is the medium. Ink is rasterised to its own canvas, where a
+    // `destination-out` fill genuinely DELETES pixels; a blank page's elements are drawn as VECTOR
+    // content, and a PDF clip is an instruction to the RENDERER, not a deletion. The glyphs stay in the
+    // content stream, so every text-extraction channel still reports them.
+    //
+    // Pinned because the two cases look identical from the outside and the ink precedent is exactly
+    // what would tempt the next reader to "fix" the bluntness this way. It is the same trap as the
+    // black rectangle above, one layer down: invisible on screen, fully present in the file.
+    const { PDFDocument, StandardFonts, rgb, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } =
+      await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([W, H]);
+    page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(1, 1, 1), borderWidth: 0 });
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+
+    // Clip to the BOTTOM band only, then draw the secret in the TOP band: the strongest form of the
+    // proposed fix, where the clip excludes the covered content entirely rather than partly.
+    page.pushOperators(pushGraphicsState(), rectangle(0, 0, W, 100), clip(), endPath());
+    page.drawText(SECRET, { x: 40, y: H - 60, size: 14, font, color: rgb(0, 0, 0) });
+    page.pushOperators(popGraphicsState());
+
+    // FIRST prove the clip really took effect — otherwise the extraction assertion below would also
+    // pass on a document where the text simply rendered normally, and the test would prove nothing.
+    // (Same failure shape the black-rectangle case above had to be corrected for.)
+    const inked = await patchDarkness(doc, 60, 60);
+    expect(inked, 'the clip must actually suppress the glyphs on screen').toBeLessThan(10);
+
+    // …and yet the string is still there, which is what refutes the clip-based partial render.
+    expect(await extractedText(doc)).toContain(SECRET);
+  });
+
   it('a REDACTION over the same text does remove it — the claimed difference is real', async () => {
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     const src = await secretPdf();
