@@ -465,7 +465,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   live deploy. GitHub Pages deploys from that push automatically; a red CI afterwards is a finding to
   fix, not a separate goal step.
 
-- [2026-09-04 09:55] AGREED: WS4-F is PROMOTED, not refuted. `walkPageOps` now models the Form
+- [2026-09-04 10:34] AGREED: WS4-F is PROMOTED, not refuted. `walkPageOps` now models the Form
   XObject `/BBox` clip for the rules/vRules/colorMap channels and leaves the image channel
   UNCLIPPED (over-approximation is the safe direction for a leak filter, the mirror of WS4-B's
   "may only grow"). Harm was demonstrated end-to-end before the fix: a rule drawn 300pt outside a
@@ -473,13 +473,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   STRING — the prose deleted, not merely displaced. The fixture is SYNTHETIC; no real-world file
   exhibiting it was found, so the field frequency is unmeasured and the plan's "real-file case"
   wording is not satisfied. Recorded as a promoted fix on a demonstrated mechanism.
-- [2026-09-04 09:55] AGREED: the WS4-F bound was NOT disclosed in `SECURITY.md`, contrary to this
+- [2026-09-04 10:34] AGREED: the WS4-F bound was NOT disclosed in `SECURITY.md`, contrary to this
   plan's "six bounds currently DISCLOSED in SECURITY.md" — `git grep BBox SECURITY.md` returns
   nothing. It does not belong there: it deletes PROSE in the DOCX/MD/TXT exports rather than
   leaking content, so it is an export-fidelity bound and `CLAUDE.md` § Gotchas is its home. Same
   plan-vs-reality drift WS4-B recorded for its own bound; the remaining PoCs (C, E, D) must have
   their disclosure location checked rather than assumed.
-- [2026-09-04 11:30] AGREED: WS4-C is REFUTED and the disclosure stays. Clipping a partly-covered
+- [2026-09-04 11:24] AGREED: WS4-C is REFUTED and the disclosure stays. Clipping a partly-covered
   element instead of dropping it whole was measured: a PDF clip suppresses the glyphs on screen
   (darkness 47.7 -> under 10) and leaves the string fully extractable, because a clip is a rendering
   instruction and not a deletion. WS4-A's ink clip works only because ink is rasterised to a canvas.
@@ -487,20 +487,20 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   implementation of `renderText`'s layout — three drawing paths, four alignments, list markers,
   Tc/Tz widths — and a leak filter that depends on two implementations agreeing under-drops.
   `SECURITY.md` records the outcome; the refutation is pinned as a test, not just prose.
-- [2026-09-04 11:30] AGREED: bound C IS disclosed in `SECURITY.md` ("Dropping is blunt by design"),
+- [2026-09-04 11:24] AGREED: bound C IS disclosed in `SECURITY.md` ("Dropping is blunt by design"),
   unlike bound F. The per-PoC disclosure check is therefore worth keeping for D and E rather than
   generalising either way from F.
-- [2026-09-04 11:55] AGREED: WS4-E is REFUTED and the bound stays — but the DISCLOSURE was wrong
+- [2026-09-04 11:38] AGREED: WS4-E is REFUTED and the bound stays — but the DISCLOSURE was wrong
   and is corrected. Measured from the real assembly: a redaction-bearing page becomes a fresh raster
   page at origin (0,0) sized to the crop box, 300x240 at /Rotate 0 and 240x300 at /Rotate 90 (the
   rotation is baked into the pixels). So the recorded "off by the crop origin" holds only at
   rotation 0; at 90/270 the mappings differ in shape and no translation reconciles them.
-- [2026-09-04 11:55] AGREED: the coupling cannot be kept to one seam. The correct frame is trivial
+- [2026-09-04 11:38] AGREED: the coupling cannot be kept to one seam. The correct frame is trivial
   for redacted-and-uncropped, but for a cropped page the assembled dimensions come from the
   rasteriser's own `convertToViewportPoint` + `Math.round` at SCALE 2, so the sign path would have
   to replicate its pixel rounding. A fix that skipped that would be right for one combination and
   wrong for the other — worse than one uniform bound. Pinned as a frame measurement, not a fix.
-- [2026-09-04 11:55] AGREED: bound E is NOT in `SECURITY.md` and does not belong there — it
+- [2026-09-04 11:38] AGREED: bound E is NOT in `SECURITY.md` and does not belong there — it
   misplaces a signature visibly, it does not leak or fail to remove content. Its home is
   `CLAUDE.md` § "The drag-placed signature rect was crop-relative", amended in place. Two of the
   four bounds checked so far (F, E) were not where the plan's preamble said they were.
