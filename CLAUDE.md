@@ -268,6 +268,61 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### Open via the native picker + recent files (#54b, 2026-09-04)
+
+The save side has used `showSaveFilePicker` since #54; the open side now mirrors it.
+`canUseFsOpen`/`pickOpenFiles`/`ensureReadPermission` sit beside their save twins in
+`src/utils/fileSystemAccess.ts`, remembered handles live in `src/infra/recentFiles.ts`, and the File
+menu grows a recents list (`src/ui/recentFilesMenu.ts`). No new dependency; the hidden
+`<input type=file>` path is untouched and is still the whole story on Firefox and Safari.
+
+**`'cancelled'` and `'unavailable'` are DIFFERENT return values, and that is the point.** Collapsing
+them — the obvious simplification, since both mean "no handle" — makes dismissing the native dialog
+immediately open the fallback `<input type=file>`: the user says no and is answered with a second
+file dialog. Only `'unavailable'` may click the input. Sabotage S1 fails exactly the two cases that
+pin it.
+
+**A handle is a capability the user re-grants, not a stored path.** `FileSystemFileHandle` is
+structured-cloneable, so IndexedDB can persist the CHOICE across sessions while the page never
+learns a filesystem path — which is what makes this safe in a tool whose promise is that nothing
+leaves the device. Permission does NOT survive the reload: Chromium answers `'prompt'`, and
+`requestPermission` needs transient user activation, so it is called from the click that opens the
+file and never speculatively. Probing at startup would either throw or train the user to dismiss a
+prompt they did not ask for.
+
+**De-duplicate by `isSameEntry`, never by name.** Two handles for the same file are different
+objects; `isSameEntry` is the only identity the API exposes. Keying on the name collapses two
+different `invoice.pdf`s from two folders into one row and then opens the wrong document. Where
+`isSameEntry` is unavailable, the entry is added WITHOUT de-duplication — a duplicate row is
+cosmetic, opening the wrong file is not. S2 fails exactly the same-name case.
+
+**Two traps found by the tests, both worth carrying forward:**
+
+- **A fake handle must put its methods on the PROTOTYPE.** IndexedDB stores by structured clone,
+  which throws `DataCloneError` on a function-valued OWN property — so a fake built as
+  `{ getFile: () => … }` makes every `put` fail and every list come back empty. A real handle is a
+  platform object and clones fine. The jsdom consequence is stated in the test: a handle read back
+  out of the store there keeps `name` but no methods, so anything that CALLS a method on a STORED
+  handle is a browser-only concern.
+- **`Date.now()` ties, and the ordering guard was a coin flip.** Opening a multi-file selection adds
+  several entries inside one millisecond; `at` ties, the stable sort falls back to insertion order,
+  and the list came out OLDEST first for exactly the case that adds more than one entry. `at` is now
+  strictly increasing. The test caught it on a fast run and PASSED on a slower one where the adds
+  landed in different milliseconds — so the case now freezes the clock rather than hoping for the
+  tie. Same family as § "A flaky gate": a guard that depends on machine load pins nothing.
+
+`DB_VERSION` moved 2 → 3 for the new `recent` store; an upgrade never drops a store, so an existing
+session in `state` is carried across. **`tests/core/storage.test.ts` had `indexedDB.open('pdf-editor', 2)`
+hardcoded** and failed with a VersionError the moment it moved — a test-side copy of a production
+constant, which only ever breaks later and for a reason unrelated to what the test is about. It now
+opens through `openAppDB`.
+
+Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (9),
+`tests/utils/fileSystemAccess.test.ts` (+11). Sabotage-verified six ways, each landing where
+predicted: collapsing cancelled/unavailable → 2; name-keyed de-duplication → the same-name case;
+non-monotonic `at` → 3; `innerHTML` for the file name → the untrusted-name case; rendering recents
+with no open picker → that case; skipping the permission re-request → the denied case.
+
 ### Deleting a DOCX image left its bytes in the package — WS4-D, and the scan IS the fix (2026-09-04)
 
 `reconcileImageAnchors` removed the image's anchor `w:p`, which strips its `r:embed` from
@@ -1567,8 +1622,9 @@ file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserti
 XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
-`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **12 values pending as of
-2026-08-05**, these 8 plus the 3 re-worded in § The hide-vs-remove audit; that § is the count's home, so
+`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **14 values pending as of
+2026-09-04**, these 8 plus `badge.signRect`, the 3 re-worded in § The hide-vs-remove audit and the 2
+#54b keys; that § is the count's home, so
 update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
@@ -2612,8 +2668,11 @@ under the new taxonomy means *recoverable* — the wrong word for the tool that 
 The three Arabic edits are single-verb substitutions (`للإبقاء على` → `لإظهار`, `الإبقاء عليها` →
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified, and the pending count
-is **11**: these 3 plus `toolbar.exportXlsxTitle`, the 6 `toolbar.cropMargin*` keys and
-`toast.cropMarginsTooLarge`. A reviewer found this tracking gap because the two other sections that
+is **14**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
+keys, `toast.cropMarginsTooLarge`, and the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
+`toast.recentFileUnavailable`). **This count read 11 here and 12 in the two sections below** — the
+home had dropped `badge.signRect` while they kept it, which is the very drift this paragraph warns
+about, found again on 2026-09-04. Reconciled at 14. A reviewer found this tracking gap because the two other sections that
 enumerate the pending set were not updated — **when the pending list lives in prose in three places, a
 change to one is a change to all three.**
 
@@ -2809,8 +2868,8 @@ this class twice over.
    live: overlay present → absent). Worth knowing because it reads exactly like a broken undo.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (**ar [Unverified]** — needs a
-native pass, alongside `toolbar.exportXlsxTitle`, `badge.signRect` and the 3 re-worded crop/redaction strings — 12 pending
-in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+native pass, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings and
+the 2 #54b keys — 14 pending in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

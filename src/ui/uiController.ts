@@ -38,6 +38,8 @@ export interface AppDOMRefs {
   fileMenuBtn: HTMLButtonElement;
   fileMenuWrap: HTMLElement;
   fileMenuOpen: HTMLButtonElement;
+  /** #54b — container the recent-files list renders into (empty where the API is absent). */
+  recentFilesList: HTMLDivElement;
   fileMenuClose: HTMLButtonElement;
   fileMenuClearAnnotations: HTMLButtonElement;
   fileMenuResetSession: HTMLButtonElement;
@@ -295,6 +297,7 @@ export class UIController {
       fileMenuBtn:              document.getElementById('fileMenuBtn')              as HTMLButtonElement,
       fileMenuWrap:             document.getElementById('fileMenuWrap')             as HTMLElement,
       fileMenuOpen:             document.getElementById('fileMenuOpen')             as HTMLButtonElement,
+      recentFilesList:          document.getElementById('recentFilesList')          as HTMLDivElement,
       fileMenuClose:            document.getElementById('fileMenuClose')            as HTMLButtonElement,
       fileMenuClearAnnotations: document.getElementById('fileMenuClearAnnotations') as HTMLButtonElement,
       fileMenuResetSession:     document.getElementById('fileMenuResetSession')     as HTMLButtonElement,

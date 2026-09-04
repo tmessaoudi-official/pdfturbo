@@ -215,6 +215,13 @@ body {
 .file-menu-item:hover:not(:disabled) { background: #f1f5f9; }
 .file-menu-item:disabled { color: #9ca3af; cursor: not-allowed; }
 .file-menu-sep { border: 0; border-top: 1px solid #e5e7eb; margin: 3px 0; }
+/* #54b — recent files. The container is EMPTY unless the browser can remember handles, so the
+   separator and label must live inside it: rendering them from the markup would leave a dangling
+   heading over nothing on Firefox and Safari. `:empty` keeps the menu tight in that case. */
+.file-menu-recents:not(:empty) { display: flex; flex-direction: column; border-top: 1px solid #e5e7eb; margin: 3px 0; padding-top: 3px; }
+.file-menu-label { padding: 4px 14px 2px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: #616a78; }
+/* A remembered name can be long; clamp it rather than letting the menu grow past the viewport. */
+.file-menu-recent { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .draw-flyout-wrap { position: relative; }
 .draw-flyout {
   display: none; position: fixed; z-index: 300;

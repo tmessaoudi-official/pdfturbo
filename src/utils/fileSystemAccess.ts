@@ -86,3 +86,85 @@ export async function writeToHandle(handle: FsFileHandle, data: Uint8Array | Blo
   await writable.write(data instanceof Blob ? data : (data.buffer as ArrayBuffer));
   await writable.close();
 }
+
+// ── #54b: the OPEN side ───────────────────────────────────────────────────────────────────────
+// Deliberately the mirror image of the save side above, including its failure contract: an
+// unavailable or blocked picker degrades to the existing hidden `<input type=file>` rather than
+// failing the open. The one asymmetry is permissions — a SAVE handle is used immediately inside the
+// activation that produced it, while a REMEMBERED open handle is used minutes or days later, from a
+// different session, so it has to be re-authorised. See {@link ensureReadPermission}.
+
+/** A handle from the open picker: readable, and re-authorisable after a reload. */
+export interface FsOpenHandle {
+  readonly name: string;
+  getFile(): Promise<File>;
+  /** Present on Chromium; absent on implementations that do not gate re-use. */
+  queryPermission?(d?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>;
+  requestPermission?(d?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>;
+  /** Identity comparison across sessions — a path string is never exposed to the page. */
+  isSameEntry?(other: FsOpenHandle): Promise<boolean>;
+}
+type ShowOpenFilePicker = (opts?: {
+  multiple?: boolean;
+  types?: { description?: string; accept: Record<string, string[]> }[];
+}) => Promise<FsOpenHandle[]>;
+
+function openPicker(): ShowOpenFilePicker | undefined {
+  return (globalThis as { showOpenFilePicker?: ShowOpenFilePicker }).showOpenFilePicker;
+}
+
+/** True when the browser can open via the native file picker (and so can remember the handle). */
+export function canUseFsOpen(): boolean {
+  return typeof openPicker() === 'function';
+}
+
+/**
+ * Handles the user chose, `'cancelled'` when they dismissed the dialog, or `'unavailable'` when the
+ * API is absent or refused for any non-abort reason — the caller then falls back to the plain input.
+ *
+ * `'cancelled'` and `'unavailable'` are distinct on purpose: a dismissed dialog must NOT re-open the
+ * fallback input, or cancelling would immediately confront the user with a second file dialog.
+ */
+export type OpenTarget = FsOpenHandle[] | 'cancelled' | 'unavailable';
+
+export async function pickOpenFiles(
+  types: SaveFileType[], multiple = true,
+): Promise<OpenTarget> {
+  const show = openPicker();
+  if (!show) return 'unavailable';
+  try {
+    const handles = await show({
+      multiple,
+      types: types.map(t => ({ description: t.description, accept: { [t.mime]: [t.ext] } })),
+    });
+    return handles.length > 0 ? handles : 'cancelled';
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
+    return 'unavailable';
+  }
+}
+
+/**
+ * Re-authorise a remembered handle before reading it.
+ *
+ * A stored handle survives a reload but its permission does NOT: Chromium returns `'prompt'` for a
+ * handle from an earlier session, and `getFile()` then throws `NotAllowedError`. `requestPermission`
+ * needs transient user activation, which is why this is called from the click that opens the recent
+ * file and never speculatively — probing on startup would either throw or, worse, train the user to
+ * dismiss a prompt they did not ask for.
+ *
+ * An implementation without the permission methods (they are non-standard) is treated as granted;
+ * the subsequent `getFile()` is the real check and its failure is handled by the caller.
+ */
+export async function ensureReadPermission(handle: FsOpenHandle): Promise<boolean> {
+  try {
+    if (typeof handle.queryPermission === 'function') {
+      if (await handle.queryPermission({ mode: 'read' }) === 'granted') return true;
+    }
+    if (typeof handle.requestPermission !== 'function') return true;
+    return await handle.requestPermission({ mode: 'read' }) === 'granted';
+  } catch {
+    // A revoked or stale handle throws rather than resolving 'denied'. Same answer either way.
+    return false;
+  }
+}

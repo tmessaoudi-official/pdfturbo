@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';   // patches globalThis.indexedDB before imports
 import {
   saveState, loadState, clearState,
-  SCHEMA_VERSION, migrateOrDiscard,
+  SCHEMA_VERSION, migrateOrDiscard, openAppDB,
   type SavedState,
 } from '../../src/infra/storage';
 
@@ -135,23 +135,21 @@ describe('clearState', () => {
 });
 
 // ── M0 #3: schema versioning — stamp on write, migrate-or-discard on load ─────
-/** Write a raw record bypassing saveState's version stamping (simulates legacy/foreign blobs). */
+/**
+ * Write a raw record bypassing saveState's version stamping (simulates legacy/foreign blobs).
+ *
+ * Opens through `openAppDB` rather than `indexedDB.open('pdf-editor', <n>)`. The hardcoded `2` this
+ * replaced made the helper fail with a VersionError the moment DB_VERSION moved to 3 for the #54b
+ * recent-files store — a test-side copy of a production constant, which only ever breaks later and
+ * for a reason unrelated to what the test is about.
+ */
 function rawPut(value: unknown): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('pdf-editor', 2);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains('state')) db.createObjectStore('state');
-    };
-    req.onsuccess = () => {
-      const db = req.result;
-      const tx = db.transaction('state', 'readwrite');
-      tx.objectStore('state').put(value, 'current');
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    };
-    req.onerror = () => reject(req.error);
-  });
+  return openAppDB().then(db => new Promise<void>((resolve, reject) => {
+    const tx = db.transaction('state', 'readwrite');
+    const req = tx.objectStore('state').put(value, 'current');
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(req.error ?? tx.error); };
+  }));
 }
 
 describe('schema versioning', () => {

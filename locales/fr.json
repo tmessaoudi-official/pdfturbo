@@ -104,7 +104,8 @@
     "customColorTitle": "Couleur personnalisée… (choisir n'importe quelle couleur)",
     "exportChevronTitle": "Options d'export",
     "fillColorTitle": "Couleur de remplissage de la forme",
-    "fillNoneTitle": "Sans remplissage / transparent"
+    "fillNoneTitle": "Sans remplissage / transparent",
+    "recentFiles": "Fichiers récents"
   },
   "docxEditor": {
     "deleteImage": "Supprimer l'image",
@@ -596,7 +597,8 @@
     "passwordRequired": "Le mot de passe utilisateur est requis",
     "passwordTooWeak": "Le mot de passe d'ouverture doit comporter au moins {{min}} caractères",
     "eyedropperUnsupported": "Pipette non supportée dans ce navigateur",
-    "cropMarginsTooLarge": "Ces marges ne laissent rien à afficher"
+    "cropMarginsTooLarge": "Ces marges ne laissent rien à afficher",
+    "recentFileUnavailable": "Impossible d'ouvrir « {{name}} » — le fichier a peut-être été déplacé, ou l'autorisation a été refusée."
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",

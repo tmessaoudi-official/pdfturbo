@@ -28,8 +28,14 @@ export interface SavedState {
 export const SCHEMA_VERSION = 1;
 
 const DB_NAME = 'pdf-editor';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE = 'state';
+/**
+ * #54b — remembered `FileSystemFileHandle`s ("recent files"). A separate store rather than a field
+ * on the session record: recents outlive a session, survive "clear session", and are keyed
+ * per-entry, so putting them in `state` would couple two lifetimes that differ on purpose.
+ */
+export const RECENT_STORE = 'recent';
 const KEY = 'current';
 
 /**
@@ -48,6 +54,14 @@ export function migrateOrDiscard(raw: unknown): SavedState | null {
   return null;
 }
 
+/**
+ * Open the app database, running any structural upgrade. Exported as `openAppDB` for
+ * `infra/recentFiles.ts`, which owns a different store in the SAME database — a second database
+ * would double the upgrade surface and the "blocked upgrade" failure modes for no gain.
+ *
+ * The caller MUST `close()` the connection (see the note in `saveState`'s finally block: leaked
+ * connections accumulate for the life of the tab and block every later upgrade).
+ */
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -61,12 +75,18 @@ function openDB(): Promise<IDBDatabase> {
         case 0:
         default:
           if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+          // Added at DB_VERSION 3. An upgrade never DROPS a store, so an existing user's session
+          // in `state` is carried across untouched; the idempotent guard covers a DB that already
+          // reached this version by another path.
+          if (!db.objectStoreNames.contains(RECENT_STORE)) db.createObjectStore(RECENT_STORE);
       }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
+
+export { openDB as openAppDB };
 
 export async function saveState(state: SavedState): Promise<void> {
   let db: IDBDatabase;

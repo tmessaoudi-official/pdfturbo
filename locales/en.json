@@ -104,7 +104,8 @@
     "customColorTitle": "Custom color… (pick any color)",
     "exportChevronTitle": "Export options",
     "fillColorTitle": "Shape fill color",
-    "fillNoneTitle": "No fill / transparent"
+    "fillNoneTitle": "No fill / transparent",
+    "recentFiles": "Recent files"
   },
   "docxEditor": {
     "deleteImage": "Delete image",
@@ -596,7 +597,8 @@
     "passwordRequired": "User password is required",
     "passwordTooWeak": "Open password must be at least {{min}} characters",
     "eyedropperUnsupported": "Color picker not supported in this browser",
-    "cropMarginsTooLarge": "Those margins leave nothing to show"
+    "cropMarginsTooLarge": "Those margins leave nothing to show",
+    "recentFileUnavailable": "Could not open “{{name}}” — it may have moved, or permission was declined."
   },
   "thumbnail": {
     "pageAlt": "Page {{page}}",

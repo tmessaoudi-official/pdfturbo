@@ -269,12 +269,26 @@ export class DocumentLoader {
     return { bytes, name: `${baseName}.pdf` };
   }
 
-  async load(e: Event): Promise<void> {
-    if (this._ctx.isLoading) return;
-    this._ctx.setIsLoading(true);
+  /**
+   * Open from the hidden `<input type=file>`.
+   *
+   * A thin wrapper over {@link loadFiles} since #54b: the native open picker
+   * (`showOpenFilePicker`) yields `File` objects with no input element behind them, and duplicating
+   * the image/PDF routing, the size cap and the password retry for that second entry point is how a
+   * pair of paths drifts apart. The `input.value` reset stays HERE, because it is a property of this
+   * entry point only — without it, re-choosing the same file fires no `change` event.
+   */
+  load(e: Event): Promise<void> {
     const inputEl = e.target as HTMLInputElement;
     const files = Array.from(inputEl.files ?? []);
     inputEl.value = '';
+    return this.loadFiles(files);
+  }
+
+  /** Open from already-resolved files — the shared body of both entry points. */
+  async loadFiles(files: File[]): Promise<void> {
+    if (this._ctx.isLoading) return;
+    this._ctx.setIsLoading(true);
 
     // Route image files through image→PDF conversion
     const imageFiles = files.filter(f => f.type.startsWith('image/'));

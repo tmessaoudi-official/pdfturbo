@@ -104,7 +104,8 @@
     "customColorTitle": "لون مخصص… (اختر أي لون)",
     "exportChevronTitle": "خيارات التصدير",
     "fillColorTitle": "لون تعبئة الشكل",
-    "fillNoneTitle": "بدون تعبئة / شفاف"
+    "fillNoneTitle": "بدون تعبئة / شفاف",
+    "recentFiles": "الملفات الأخيرة"
   },
   "docxEditor": {
     "deleteImage": "حذف الصورة",
@@ -596,7 +597,8 @@
     "passwordRequired": "كلمة مرور المستخدم مطلوبة",
     "passwordTooWeak": "يجب ألا تقل كلمة مرور الفتح عن {{min}} أحرف",
     "eyedropperUnsupported": "أداة انتقاء اللون غير مدعومة في هذا المتصفح",
-    "cropMarginsTooLarge": "هذه الهوامش لا تترك شيئًا لعرضه"
+    "cropMarginsTooLarge": "هذه الهوامش لا تترك شيئًا لعرضه",
+    "recentFileUnavailable": "تعذّر فتح «{{name}}» — ربما تم نقله، أو رُفض الإذن."
   },
   "thumbnail": {
     "pageAlt": "صفحة {{page}}",

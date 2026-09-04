@@ -4,6 +4,20 @@ import { randomOwnerPassword, validateUserPassword, MIN_PASSWORD_LENGTH } from '
 import { confirmDestructive } from '../confirmDialog';
 import { bindExtractPagesModal } from './extractPagesBinder';
 import { attachDisplayModalFocusTrap } from '../../utils/displayModalFocusTrap';
+import { openViaPicker, renderRecentFiles, type RecentMenuCtx } from '../recentFilesMenu';
+
+/**
+ * #54b — the narrow view of the app the recent-files menu needs. Built per call rather than stored:
+ * it holds no state, and a factory keeps `recentFilesMenu` free of any import of the app itself.
+ */
+function recentMenuCtx(app: PDFTurboApp): RecentMenuCtx {
+  return {
+    loadFiles: (files) => app._loadDocumentFiles(files),
+    reportError: app.reportError,
+    container: app.ui.recentFilesList,
+    closeMenu: () => app.ui.fileMenuWrap.classList.remove('open'),
+  };
+}
 
 export function bindModalEvents(app: PDFTurboApp): void {
   // ── Signature modal ────────────────────────────────────────────
@@ -80,6 +94,10 @@ export function bindModalEvents(app: PDFTurboApp): void {
       const drop = app.ui.fileMenuWrap.querySelector('.file-menu-dropdown') as HTMLElement;
       drop.style.top  = (rect.bottom + 4) + 'px';
       drop.style.left = rect.left + 'px';
+      // #54b — refresh the recents as the menu opens rather than at startup: it is the moment the
+      // list is about to be READ, it costs one IndexedDB read on a user gesture, and it needs no
+      // invalidation hook when a document is opened from anywhere else.
+      void renderRecentFiles(recentMenuCtx(app));
     }
   });
   const flyoutManager = new FlyoutManager();
@@ -122,7 +140,13 @@ export function bindModalEvents(app: PDFTurboApp): void {
   });
   app.ui.fileMenuOpen.addEventListener('click', () => {
     app.ui.fileMenuWrap.classList.remove('open');
-    app.ui.fileInput.click();
+    // #54b — the native picker where it exists, so the choice can be REMEMBERED; the hidden input
+    // otherwise. `openViaPicker` is called with no await before it so the click's transient
+    // activation is still live. Only 'fallback' opens the input: falling through on 'cancelled'
+    // would answer "no thanks" with a second file dialog.
+    void openViaPicker(recentMenuCtx(app)).then((outcome) => {
+      if (outcome === 'fallback') app.ui.fileInput.click();
+    });
   });
   app.ui.fileMenuClose.addEventListener('click', () => {
     app.ui.fileMenuWrap.classList.remove('open');

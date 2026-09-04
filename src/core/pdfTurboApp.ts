@@ -649,6 +649,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   _closeDocument(): void { this._documentLoader.closeDocument(); }
 
   _loadDocument(e: Event): Promise<void> { return this._documentLoader.load(e); }
+  /** #54b — open from files the native picker resolved (no input element behind them). */
+  _loadDocumentFiles(files: File[]): Promise<void> { return this._documentLoader.loadFiles(files); }
 
   enableUI() { this.uiController.enableUI(); }
 

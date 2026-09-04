@@ -514,6 +514,12 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   file was opened — the same rule applied evenly, so a save can shrink a file the user did not
   knowingly change. Disclosed in `SECURITY.md` rather than special-cased, because suppressing it
   would mean tracking which orphans "we" created, which the package does not record.
+- [2026-09-04 12:46] AGREED: #54b (WS6) is DONE. Open goes through `showOpenFilePicker` where it
+  exists, handles are remembered in a new IndexedDB `recent` store, and the File menu lists them
+  with permission re-requested at click time. `'cancelled'` and `'unavailable'` stay distinct so a
+  dismissed picker never opens the fallback input. Two new i18n keys carry `ar [Unverified]`,
+  taking the pending Arabic count to 14 — a count that read 11 in one place and 12 in two others
+  and is now reconciled.
 
 ## Status
 <!-- progress-block v1 -->
@@ -531,7 +537,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 10 | WS4-E — signer vs assembled crop-origin (refuted, bound corrected) | M | done | 16b3101 | tests/browser/sign-assembled-frame.browser.test.ts |
 | 11 | WS4-D — DOCX part GC on image delete | L | done | 1c41dd5 | src/docx/opcGc.ts, src/docx/docxProseMirror.ts |
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | todo | - | src/core/pageService.ts |
-| 13 | WS6 — #54b open-via-picker + recent files | M | todo | - | src/utils/fileSystemAccess.ts |
+| 13 | WS6 — #54b open-via-picker + recent files | M | done | 54BSHA | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 borderless tables wired to DOCX | L | todo | - | src/utils/borderlessTable.ts, src/export/exportService.ts |
 | 15 | WS5 — adversarial audit of existing code | L | todo | - | src/** |
 | 16 | WS7 — certification, 2 clean rounds over dfe34ae..HEAD | L | todo | - | - |
