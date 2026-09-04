@@ -764,6 +764,25 @@ crop-relative number happened to be right. Left alone deliberately: making the p
 which assembly branch a page will take couples the UI to export internals, which is how this family
 of bug breeds. Recorded as a bound rather than papered over.
 
+**WS4-E re-examined it on 2026-09-04, and the sentence above UNDERSTATED it — "off by the crop
+origin" is true only at rotation 0.** Measured from the real assembly: at `/Rotate 0` the assembled
+page is the crop box (300×240) at origin (0,0), so the error is exactly the origin, as recorded. At
+`/Rotate 90` it is **240×300 — the dimensions SWAP**, because `rasterizePageWithRedactions` bakes
+the rotation into the pixels and adds a page carrying no `/Rotate` of its own
+(`exportPipeline.ts:499-503`). `_pageGeomForSign` reports the unswapped `viewBox` and lets the
+caller apply `totalRot`, so the two mappings differ in SHAPE and no origin translation can reconcile
+them. A bound stated smaller than it is, is the thing that stops the next person looking.
+
+**Still refused, and now for a measured reason rather than a stylistic one.** The correct frame for
+a redacted page is `displayRectToUserSpaceRect(rect, w_eff, h_eff, 0)`, which is easy — *until the
+page is also cropped*, where the assembled dimensions are the crop WINDOW derived from
+`convertToViewportPoint` and `Math.round` at `SCALE = 2` inside the rasteriser. Reproducing that at
+sign time means replicating the rasteriser's pixel rounding in the UI path, and NOT reproducing it
+buys a fix that is right for redacted-uncropped and wrong for redacted-cropped — a
+combination-dependent failure, strictly worse than one uniform bound. Guard:
+`tests/browser/sign-assembled-frame.browser.test.ts` (2), which pins the assembled FRAME rather than
+a fix, so a future attempt starts from the measurement instead of from this prose.
+
 **The count is now FIVE** (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
 filter, this, and the flow-export LAYOUT closed as C22 on 2026-09-02) — so when touching anything that
 converts between what is DRAWN and what is STORED, `grep -rn "cropOrigin\|viewBox\[0\]\|cropOriginX" src/`

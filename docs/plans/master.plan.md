@@ -490,6 +490,20 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-04 11:30] AGREED: bound C IS disclosed in `SECURITY.md` ("Dropping is blunt by design"),
   unlike bound F. The per-PoC disclosure check is therefore worth keeping for D and E rather than
   generalising either way from F.
+- [2026-09-04 11:55] AGREED: WS4-E is REFUTED and the bound stays — but the DISCLOSURE was wrong
+  and is corrected. Measured from the real assembly: a redaction-bearing page becomes a fresh raster
+  page at origin (0,0) sized to the crop box, 300x240 at /Rotate 0 and 240x300 at /Rotate 90 (the
+  rotation is baked into the pixels). So the recorded "off by the crop origin" holds only at
+  rotation 0; at 90/270 the mappings differ in shape and no translation reconciles them.
+- [2026-09-04 11:55] AGREED: the coupling cannot be kept to one seam. The correct frame is trivial
+  for redacted-and-uncropped, but for a cropped page the assembled dimensions come from the
+  rasteriser's own `convertToViewportPoint` + `Math.round` at SCALE 2, so the sign path would have
+  to replicate its pixel rounding. A fix that skipped that would be right for one combination and
+  wrong for the other — worse than one uniform bound. Pinned as a frame measurement, not a fix.
+- [2026-09-04 11:55] AGREED: bound E is NOT in `SECURITY.md` and does not belong there — it
+  misplaces a signature visibly, it does not leak or fail to remove content. Its home is
+  `CLAUDE.md` § "The drag-placed signature rect was crop-relative", amended in place. Two of the
+  four bounds checked so far (F, E) were not where the plan's preamble said they were.
 
 ## Status
 <!-- progress-block v1 -->
@@ -504,7 +518,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
 | 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |
 | 9 | WS4-C — blank-page blunt whole-drop (refuted, pinned) | M | done | bedc208 | tests/browser/hide-vs-remove.browser.test.ts |
-| 10 | WS4-E — signer vs assembled crop-origin | M | todo | - | src/core/pdfTurboApp.ts, src/signing/** |
+| 10 | WS4-E — signer vs assembled crop-origin (refuted, bound corrected) | M | done | PLACEHOLDER | tests/browser/sign-assembled-frame.browser.test.ts |
 | 11 | WS4-D — DOCX part GC on image delete | L | todo | - | src/docx/** |
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | todo | - | src/core/pageService.ts |
 | 13 | WS6 — #54b open-via-picker + recent files | M | todo | - | src/utils/fileSystemAccess.ts |
