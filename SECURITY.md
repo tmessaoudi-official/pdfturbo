@@ -152,6 +152,13 @@ worth stating rather than leaving you to discover them:
   Both sides of the test now use the upright box that *contains* the rotated one. That errs towards
   removing more than the box strictly covers rather than less — and for a long, thin redaction it is
   considerably more, not slightly: a 20x260 bar turned on its side is tested as a 260x260 square.
+- **A little MORE than the box is removed, by design.** The filter treats a line of text as reaching
+  a quarter of its font size below the baseline, because that is where the tails of g, j, p, q and y
+  sit and a box covering only those tails must still remove the line. The cost is that a redaction
+  placed immediately under a line can also remove text just below it from the Word / Markdown / text
+  / CSV / Excel exports. Removing slightly more than you drew is the safe direction for a redaction;
+  the PDF export is unaffected.
+
 - **Vertical (top-to-bottom) text is NOT covered — a known gap, disclosed rather than assumed away.**
   A redaction over text set in a vertical writing mode, as some Japanese and Chinese documents use,
   may leave that text extractable in the Word / Markdown / text / CSV / Excel exports. The filter

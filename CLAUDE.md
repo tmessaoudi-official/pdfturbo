@@ -323,7 +323,7 @@ second imports the constant, which is exported for exactly this reason. **A test
 production constant only ever breaks later, and for a reason unrelated to what the test is about.**
 
 Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (11),
-`tests/utils/fileSystemAccess.test.ts` (+11). Sabotage-verified six ways, each landing where
+`tests/utils/fileSystemAccess.test.ts` (+10). Sabotage-verified six ways, each landing where
 predicted: collapsing cancelled/unavailable → 2; name-keyed de-duplication → the same-name case;
 non-monotonic `at` → 3 (newest-first, the frozen-clock case, AND de-duplication's move-to-front,
 which is the non-obvious one: moving an entry to the front is itself a same-millisecond write); `innerHTML` for the file name → the untrusted-name case; rendering recents
@@ -382,11 +382,15 @@ would satisfy the delete case while destroying every picture in every document m
 opened the file is collected too. That is the same rule applied evenly, and it means a save can shrink
 a file the user did not knowingly change.
 
-Guards: `tests/docx/opcGc.test.ts` (17) + two cases in
+Guards: `tests/docx/opcGc.test.ts` (25) + two cases in
 `tests/browser/docx-image-edit.browser.test.ts` (the end-to-end removal, and the no-op control).
-Sabotage-verified five ways, each landing where predicted: document-only scan → the header case;
-every relationship dangling → 6; no media-only restriction → 9; unquoted Id match → the rId7/rId70
-case; the call removed from `save()` → the end-to-end case only, with the control still green.
+**Sabotage RE-MEASURED against the DOMParser implementation.** The earlier figures were taken on the
+regex version that replaced it, and leaving them here as current was itself a WS7 finding — unproven
+rather than false, which by this file's own standard is worse than saying nothing. Current: the
+owner-side reference test disabled → 12 of 25; the `word/media/**`-only restriction dropped → 22 of
+25; the call removed from `save()` → the end-to-end case only, control green. And the five legal-XML
+shapes that defeated the regex scan are guards proven non-vacuous by running them against THAT
+implementation — 5 of 22 fail, exactly the five the panel reported.
 
 ### A redaction filter that read pdf.js's item box backwards — twice (2026-09-04)
 
@@ -415,8 +419,10 @@ output — the file's OLDER shared `mkItem` helper still fabricates a width, whi
 cases it serves but is not "every fixture in the file", as an earlier version of this sentence said.
 
 The footprint is now `width` along column one and `height` along column two, transformed — which
-reduces EXACTLY to the old `[x0, x0+width] × [baseline, baseline+size]` for unrotated horizontal
-text, so the common case is byte-identical rather than merely close. Sabotage-verified both ways:
+reduced EXACTLY to the old `[x0, x0+width] × [baseline, baseline+size]` for unrotated horizontal text
+— **until the same round extended it downward by a quarter em to cover the DESCENDER**, because a
+redaction covering only below the baseline had left the run extractable. So it is the old box plus
+that band, NOT byte-identical, and this sentence said otherwise for one commit. Sabotage-verified both ways:
 re-introducing `max()` fails only the short-run case; extending `+x` again fails only the two
 sideways cases.
 
@@ -632,7 +638,7 @@ S1 reverts only the call site and fails exactly the 4 e2e cases and nothing else
 **byte-identical** PNG — pinned as a string compare, not asserted in prose. A redaction that covers every
 stroke makes the function return `null` and stamp no image at all; that early-out predates this change.
 
-Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (17 — 4 rotations × erased/over-reach-control,
+Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (17 — 5 CASES × erased/over-reach-control,
 byte-identity, non-vacuity, a far-away redaction, plus 4 end-to-end through `renderThumbnailWithOverlays`).
 It shares `_redactedAnnotationFixture.ts` with the two annotation-strip files, which gained an optional
 `strokes` field; a copied fixture is how a frame fix lands on one caller and not the other. Sabotage-verified
@@ -943,7 +949,7 @@ combination-dependent failure, strictly worse than one uniform bound. Guard:
 `tests/browser/sign-assembled-frame.browser.test.ts` (2), which pins the assembled FRAME rather than
 a fix, so a future attempt starts from the measurement instead of from this prose.
 
-**The count is now FIVE** (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
+**The count is now SEVEN** (re-count before citing it; it has been wrong at three surfaces at once) (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
 filter, this, and the flow-export LAYOUT closed as C22 on 2026-09-02) — so when touching anything that
 converts between what is DRAWN and what is STORED, `grep -rn "cropOrigin\|viewBox\[0\]\|cropOriginX" src/`
 first and assume the frame is wrong until checked.

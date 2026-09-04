@@ -23,9 +23,19 @@ function pkg(text: Record<string, string>, media: string[] = []): OpcPackage {
   return { files };
 }
 
-/** A body that embeds `ids` and a matching document.xml.rels. */
+/**
+ * A body that embeds `ids`, with the namespaces DECLARED as a real `word/document.xml` declares
+ * them. The declarations are load-bearing now that liveness is decided by parsing: an undeclared
+ * `w:` prefix makes `DOMParser` reject the document, the owner counts as unreadable, and everything
+ * it declares stays live — the safe direction, but it means a fixture without them silently stops
+ * testing removal at all. Three REMOVE cases went green-to-empty when the parse landed, which is how
+ * this was caught.
+ */
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const bodyWith = (...ids: string[]): string =>
-  `<?xml version="1.0"?><w:document><w:body>${ids
+  `<?xml version="1.0"?><w:document xmlns:w="${W_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"><w:body>${ids
     .map(i => `<w:p><w:r><w:drawing><a:blip r:embed="${i}"/></w:drawing></w:r></w:p>`)
     .join('')}</w:body></w:document>`;
 
@@ -64,7 +74,7 @@ describe('gcOrphanMediaParts', () => {
     const p = pkg({
       'word/document.xml': bodyWith(),
       'word/_rels/document.xml.rels': rels(),
-      'word/header1.xml': '<?xml version="1.0"?><w:hdr><w:p><w:r><w:drawing><a:blip r:embed="rId1"/></w:drawing></w:r></w:p></w:hdr>',
+      'word/header1.xml': `<?xml version="1.0"?><w:hdr xmlns:w="${W_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"><w:p><w:r><w:drawing><a:blip r:embed="rId1"/></w:drawing></w:r></w:p></w:hdr>`,
       'word/_rels/header1.xml.rels': rels({ id: 'rId1', target: 'media/image1.png' }),
     }, ['word/media/image1.png']);
 
@@ -165,7 +175,7 @@ describe('gcOrphanMediaParts', () => {
     const p = pkg({
       'word/document.xml': bodyWith(),
       'word/_rels/document.xml.rels': rels({ id: 'rId1', target: 'media/image1.png' }),
-      'word/header1.xml': '<?xml version="1.0"?><w:hdr/>',
+      'word/header1.xml': `<?xml version="1.0"?><w:hdr xmlns:w="${W_NS}"/>`,
     }, ['word/media/image1.png', 'word/_rels/header1.xml.rels']);
 
     const r = gcOrphanMediaParts(p);
@@ -180,7 +190,7 @@ describe('gcOrphanMediaParts', () => {
     const p = pkg({
       'word/document.xml': bodyWith(),
       'word/_rels/document.xml.rels': rels(),
-      'word/header1.xml': "<?xml version='1.0'?><w:hdr><w:r><w:drawing><a:blip r:embed='rId1'/></w:drawing></w:r></w:hdr>",
+      'word/header1.xml': `<?xml version='1.0'?><w:hdr xmlns:w="${W_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"><w:r><w:drawing><a:blip r:embed='rId1'/></w:drawing></w:r></w:hdr>`,
       'word/_rels/header1.xml.rels': rels({ id: 'rId1', target: 'media/image1.png' }),
     }, ['word/media/image1.png']);
 
@@ -280,6 +290,42 @@ describe('gcOrphanMediaParts', () => {
     const r = gcOrphanMediaParts(p);
     expect(r.removedRels).toEqual([]);   // the external rel is skipped, never reported dangling
     expect(r.removedParts).toEqual(['word/media/ext.png']);
+  });
+
+  it('KEEPS an image whose ZIP ENTRY is itself percent-encoded', () => {
+    // OPC allows the entry to be stored encoded OR decoded. Round 3 decoded only the Target, which
+    // lost the image on a conformant package where BOTH are encoded — deleting where the previous
+    // implementation had kept, the one direction a rewrite must never take. Both sides are now
+    // compared through one canonical key.
+    const p = pkg({
+      'word/document.xml': bodyWith('rId1'),
+      'word/_rels/document.xml.rels': rels({ id: 'rId1', target: 'media/%E5%9B%B3.png' }),
+    }, ['word/media/%E5%9B%B3.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+    expect(p.files['word/media/%E5%9B%B3.png']).toBeDefined();
+  });
+
+  it('KEEPS an image whose Target differs from the entry only in CASE', () => {
+    // OPC defines part-name equivalence as case-insensitive ASCII.
+    const p = pkg({
+      'word/document.xml': bodyWith('rId1'),
+      'word/_rels/document.xml.rels': rels({ id: 'rId1', target: 'Media/Image1.PNG' }),
+    }, ['word/media/image1.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+  });
+
+  it('KEEPS an image whose rId is written as a CHARACTER REFERENCE in the owner', () => {
+    // The owner side decided liveness by raw text `includes`, so `r:embed="rId&#55;"` — legal XML
+    // meaning rId7 — made a live image look orphaned. Parsing resolves it on both halves.
+    const p = pkg({
+      'word/document.xml':
+        `<?xml version="1.0"?><w:document xmlns:w="${W_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"><w:body><w:p><w:r><w:drawing><a:blip r:embed="rId&#55;"/></w:drawing></w:r></w:p></w:body></w:document>`,
+      'word/_rels/document.xml.rels': rels({ id: 'rId7', target: 'media/image1.png' }),
+    }, ['word/media/image1.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
   });
 
   it('KEEPS a media part named by a [Content_Types].xml Override', () => {

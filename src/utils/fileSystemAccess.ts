@@ -46,6 +46,13 @@ export interface SaveFileType {
   description: string;
   mime: string;
   ext: string;
+  /**
+   * Further extensions the same MIME is written with, for the OPEN picker's type filter.
+   * `image/jpeg` is `.jpg` AND `.jpeg`; listing only one filtered `photo.jpeg` out of its own entry
+   * while the fallback `<input accept="image/jpeg">` accepted it. The SAVE picker keeps `ext` alone
+   * — a save needs one suggested extension, not a set. [WS7 round 4]
+   */
+  altExts?: string[];
 }
 
 const PDF_TYPE: SaveFileType = { description: 'PDF document', mime: 'application/pdf', ext: '.pdf' };
@@ -135,7 +142,10 @@ export async function pickOpenFiles(
   try {
     const handles = await show({
       multiple,
-      types: types.map(t => ({ description: t.description, accept: { [t.mime]: [t.ext] } })),
+      types: types.map(t => ({
+        description: t.description,
+        accept: { [t.mime]: [t.ext, ...(t.altExts ?? [])] },
+      })),
     });
     return handles.length > 0 ? handles : 'cancelled';
   } catch (err) {

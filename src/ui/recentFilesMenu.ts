@@ -41,7 +41,11 @@ export interface RecentMenuCtx {
  */
 export const OPEN_TYPES = [
   { description: 'PDF document', mime: 'application/pdf', ext: '.pdf' },
-  { description: 'JPEG image', mime: 'image/jpeg', ext: '.jpg' },
+  // `.jpeg` as well as `.jpg`: the fallback input accepts by MIME, so `photo.jpeg` was filtered out
+  // of the picker's own type entry and reachable only through its "All files" escape — the same
+  // narrower-than-the-fallback shape the round-3 finding widened this list to fix, one extension
+  // deeper. [WS7 round 4, 2026-09-04]
+  { description: 'JPEG image', mime: 'image/jpeg', ext: '.jpg', altExts: ['.jpeg'] },
   { description: 'PNG image', mime: 'image/png', ext: '.png' },
   { description: 'GIF image', mime: 'image/gif', ext: '.gif' },
   { description: 'WebP image', mime: 'image/webp', ext: '.webp' },

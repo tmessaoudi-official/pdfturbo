@@ -352,7 +352,11 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   // `SECURITY.md` said horizontal text was covered. 0.25em is a deliberate over-approximation: for
   // a LEAK filter the footprint may only grow, and no font metric is available here. It costs a
   // quarter-em of extra drop below a redacted line. [WS7 round 3, 2026-09-04]
-  const desc = 0.25 * extent2;
+  // A quarter of the FONT SIZE, not of `extent2`. `extent2` holds the glyph size for horizontal text
+  // but the ACCUMULATED ADVANCE for a vertical run, so scaling by it gave a five-glyph vertical line
+  // 15pt of extra footprint instead of 3pt — an over-DROP on the one path disclosed as possibly
+  // under-covering. `size` is the em scale in both cases. [WS7 round 4, 2026-09-04]
+  const desc = 0.25 * size;
   const vxLo = (c / col2) * -desc, vyLo = (d / col2) * -desc;
   const vxHi = (c / col2) * extent2, vyHi = (d / col2) * extent2;
   const xs = [e + vxLo, e + ux + vxLo, e + ux + vxHi, e + vxHi];

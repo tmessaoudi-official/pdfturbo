@@ -92,6 +92,14 @@ describe('the picker type filter', () => {
     expect(wanted.filter(m => !offered.includes(m))).toEqual([]);
   });
 
+  it('offers BOTH .jpg and .jpeg for image/jpeg', () => {
+    // The fallback input accepts by MIME, so `photo.jpeg` matched it while the picker's own JPEG
+    // entry listed `.jpg` alone — narrower than the path it enhances, one extension deeper than the
+    // finding that widened this list in the first place.
+    const jpeg = OPEN_TYPES.find(t => t.mime === 'image/jpeg');
+    expect([jpeg?.ext, ...(jpeg?.altExts ?? [])].sort()).toEqual(['.jpeg', '.jpg']);
+  });
+
   it('passes those types to the picker, not a narrower hardcoded set', () => {
     // Pins the WIRING as well as the constant: OPEN_TYPES could be right and the call site could
     // pass something else.

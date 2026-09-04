@@ -64,28 +64,45 @@ function ownerOf(relsPath: string): string | null {
 /**
  * Resolve a relationship Target against its owning part's directory, collapsing `.` and `..`.
  *
- * **Percent-DECODED.** OPC requires percent-encoding for a part name outside the pchar set, so a
- * document from a non-English generator carries `Target="media/%E5%9B%B3.png"` while the ZIP entry
- * is `word/media/図.png`. Comparing those two raw made the part look absent from the package, so it
- * never entered the live set and a referenced image was DELETED. A malformed escape is used
- * verbatim rather than allowed to resolve to something else.
+ * Returns the path AS WRITTEN. Matching it to a real ZIP entry is {@link canonicalPart}'s job, not
+ * this function's — an earlier version percent-decoded here and REPLACED the raw form, which lost a
+ * live image on a package whose ZIP entry is itself percent-encoded (OPC allows either, and the
+ * regex version this replaced had kept it). A parse that succeeds where a pattern failed must never
+ * turn a previously-KEPT part into a removed one. [WS7 round 4, 2026-09-04]
  */
 export function resolveRelTarget(relsPath: string, target: string): string {
-  let decoded = target;
-  try {
-    decoded = decodeURIComponent(target);
-  } catch {
-    // Not valid percent-encoding — keep it as written; over-keeping is the safe direction.
-  }
-  if (decoded.startsWith('/')) return decoded.slice(1);
+  if (target.startsWith('/')) return target.slice(1);
   const dir = relsPath.replace(/_rels\/[^/]*\.rels$/, '');
   const out: string[] = [];
-  for (const seg of `${dir}${decoded}`.split('/')) {
+  for (const seg of `${dir}${target}`.split('/')) {
     if (seg === '' || seg === '.') continue;
     if (seg === '..') out.pop();
     else out.push(seg);
   }
   return out.join('/');
+}
+
+/**
+ * The key two OPC part names are compared by: percent-DECODED and ASCII-case-FOLDED.
+ *
+ * Two independent ways the same part is spelled differently, both legal, both of which destroyed a
+ * live image when compared raw:
+ *  - **encoding** — ECMA-376 requires percent-encoding for a name outside the pchar set, and the
+ *    ZIP entry may be stored either encoded or decoded, so `media/%E5%9B%B3.png` and `media/図.png`
+ *    are the same part. Decoding BOTH sides matches whichever pair the package happens to use.
+ *  - **case** — OPC defines part-name equivalence as case-insensitive ASCII, so a generator writing
+ *    `Media/Image1.PNG` for the entry `word/media/image1.png` still means that part.
+ *
+ * A malformed escape decodes to itself rather than throwing: over-keeping is the safe direction.
+ */
+function canonicalPart(path: string): string {
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // Not valid percent-encoding — compare it as written.
+  }
+  return decoded.toLowerCase();
 }
 
 /** Decode a part as XML text, or null when it is absent or does not look like XML. */
@@ -104,6 +121,25 @@ function partText(opc: OpcPackage, path: string): string | null {
   // relationship it owns would be judged dangling: live images deleted. A try/catch around a decoder
   // that does not throw is not a guard.
   return text.includes('<') && !text.includes('�') ? text : null;
+}
+
+/**
+ * Does the owning part reference this relationship Id?
+ *
+ * PARSED, not a text `includes`. The rewrite retired entity references on the `.rels` side and left
+ * this half — the half that actually decides liveness — matching raw text, so an rId written as a
+ * legal character reference (`r:embed="rId&#55;"`) made a LIVE image look orphaned and it was
+ * deleted. Both lenses found it independently. Still deliberately over-approximating: ANY attribute
+ * on ANY element counts, so no enumeration of the attribute names Word can hang an rId on is needed.
+ * An owner that will not parse is treated as referencing everything. [WS7 round 4, 2026-09-04]
+ */
+function ownerReferencesId(ownerDom: Document, id: string): boolean {
+  for (const el of Array.from(ownerDom.getElementsByTagName('*'))) {
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.value === id) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -127,6 +163,18 @@ function relationshipElements(dom: Document): Element[] {
 export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
   const relsPaths = Object.keys(opc.files).filter(p => /(^|\/)_rels\/[^/]*\.rels$/.test(p));
 
+  // Canonical key → the ACTUAL entry name in the package. Every lookup goes through this, so a
+  // Target and its ZIP entry match whichever spelling each happens to use. `live` holds actual
+  // paths, so the deletion loop below needs no second normalisation.
+  const mediaByKey = new Map<string, string>();
+  for (const path of Object.keys(opc.files)) {
+    const key = canonicalPart(path);
+    if (key.startsWith(MEDIA_PREFIX)) mediaByKey.set(key, path);
+  }
+  /** The package entry a resolved Target names, or null when the package has no such part. */
+  const mediaEntryFor = (resolved: string): string | null =>
+    mediaByKey.get(canonicalPart(resolved)) ?? null;
+
   /** Media part path → the dangling relationships referencing it, if it proves orphaned. */
   const dangling = new Map<string, string[]>();
   const live = new Set<string>();
@@ -143,7 +191,8 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
       const part = el.getAttribute('PartName');
       if (part === null) continue;
       const named = part.startsWith('/') ? part.slice(1) : part;
-      if (named.startsWith(MEDIA_PREFIX)) live.add(named);
+      const entry = mediaByKey.get(canonicalPart(named));
+      if (entry !== undefined) live.add(entry);
     }
   }
 
@@ -158,32 +207,36 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
 
     const owner = ownerOf(relsPath);
     const ownerXml = owner === null ? null : partText(opc, owner);
-    const ownerUnreadable = owner === null || ownerXml === null;
+    let ownerDom: Document | null = null;
+    if (ownerXml !== null) {
+      const dom = parseXml(ownerXml);
+      // A part that will not parse is one we cannot scan, so everything it declares stays live.
+      if (!parseFailed(dom)) ownerDom = dom;
+    }
+    const ownerUnreadable = owner === null || ownerDom === null;
 
     for (const rel of relationshipElements(relsDom)) {
       if (rel.getAttribute('TargetMode') === 'External') continue;
       const id = rel.getAttribute('Id');
       const target = rel.getAttribute('Target');
       if (id === null || target === null) continue;
-      const resolved = resolveRelTarget(relsPath, target);
-      if (!resolved.startsWith(MEDIA_PREFIX)) continue;
+      const entry = mediaEntryFor(resolveRelTarget(relsPath, target));
+      if (entry === null) continue;   // not a media part of this package
 
-      const referenced = ownerXml !== null
-        && (ownerXml.includes(`"${id}"`) || ownerXml.includes(`'${id}'`));
+      const referenced = ownerDom !== null && ownerReferencesId(ownerDom, id);
       if (ownerUnreadable || referenced) {
-        live.add(resolved);
+        live.add(entry);
       } else {
-        const list = dangling.get(resolved) ?? [];
+        const list = dangling.get(entry) ?? [];
         list.push(`${relsPath}#${id}`);
-        dangling.set(resolved, list);
+        dangling.set(entry, list);
       }
     }
   }
 
   const removedParts: string[] = [];
   const removedRels: string[] = [];
-  for (const path of Object.keys(opc.files)) {
-    if (!path.startsWith(MEDIA_PREFIX)) continue;
+  for (const path of mediaByKey.values()) {
     if (live.has(path)) continue;
     removedParts.push(path);
     removedRels.push(...(dangling.get(path) ?? []));

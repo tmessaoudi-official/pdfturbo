@@ -108,7 +108,11 @@ describe('reconstructPage — drops text under redaction boxes', () => {
  * run was tested in a box disjoint from its glyphs and never dropped — through DOCX, Markdown, TXT,
  * CSV and XLSX, at every page rotation including 0.
  *
- * **Every fixture below carries a MEASURED item shape.** The first version of this guard hardcoded
+ * **The horizontal fixtures carry MEASURED item shapes** — `1` and `hello world` below are probe
+ * output. The rotated and vertical ones use plausible advances rather than measured ones, because
+ * the probe cannot produce a rotated Tm or a vertical font from this repo's fonts; what matters
+ * there is the SHAPE of the transform, not the exact advance. Said precisely because an earlier
+ * version of this sentence claimed every fixture was measured, which was not true. The first version of this guard hardcoded
  * `height: 0` for horizontal text on an inverted reading of the source; pdf.js never emits that, so
  * the "byte-identity control" could not detect the over-drop the fix introduced and the panel had to
  * find it instead. Real values, from a probe over a pdf-lib page:
@@ -155,6 +159,18 @@ describe('isItemRedacted — run footprint from the transform (WS5 P0 / WS7)', (
     expect(isItemRedacted(horiz, { x: 95, y: PAGE_TOP - 200, width: 40, height: 3 }, PAGE_TOP)).toBe(true);
     // Well below it is still clear — the over-approximation is a quarter em, not unbounded.
     expect(isItemRedacted(horiz, { x: 95, y: PAGE_TOP - 180, width: 40, height: 3 }, PAGE_TOP)).toBe(false);
+  });
+
+  it('scales the descender by the FONT SIZE, not by the run advance', () => {
+    // On a horizontal item `size` and `extent2` are both the font size, so the existing descender
+    // case cannot tell them apart — sabotage showed it passing either way. This item has them
+    // differ the way a vertical run does (glyph size 12, advance 70): a quarter of the advance is
+    // 17.5pt of extra footprint where a quarter of the em is 3pt.
+    const vertical = { str: 'x', transform: [12, 0, 0, 12, 300, 700], width: 12, height: 70, fontName: 'F1' } as unknown as RawTextItem;
+    // 6-10pt beyond the run's origin edge: inside a 17.5pt band, outside a 3pt one.
+    expect(isItemRedacted(vertical, { x: 295, y: 106, width: 20, height: 4 }, PAGE_TOP)).toBe(false);
+    // …and 2pt beyond is still covered, so the band exists.
+    expect(isItemRedacted(vertical, { x: 295, y: 99, width: 20, height: 2 }, PAGE_TOP)).toBe(true);
   });
 
   it('is UNCHANGED for ordinary horizontal text — the byte-identity control, measured shapes', () => {

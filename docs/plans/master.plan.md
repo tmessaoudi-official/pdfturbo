@@ -34,7 +34,11 @@
 7. Work-stream order below is the execution order. WS3 (Arabic) is user-gated and can interleave
    anywhere. WS7 (certification) is strictly LAST.
 
-## Verified current state (2026-08-31, at `08a9af2`)
+## Verified current state
+
+> **A SNAPSHOT taken 2026-08-31, not a live view.** Rows have since been amended in place with
+> later facts, which makes it read as current when it is not — re-derive anything you are about to
+> act on. The jsdom figures in particular are stale by ~130 tests. [WS7 round 4] (2026-08-31, at `08a9af2`)
 
 | Check | Result |
 |---|---|
@@ -53,7 +57,7 @@ No product defect was found by the verification pass — only the nine doc-drift
 
 ## Fragile surfaces — handle with care (each has bitten before)
 
-- **Coordinate frames are this repo's recurring bug family** (4 recorded instances). Anything
+- **Coordinate frames are this repo's recurring bug family** (re-count; CLAUDE.md § the sign-rect entry is the register). Anything
   converting between what is DRAWN and what is STORED: run
   `grep -rn "cropOrigin\|viewBox\[0\]" src/` and assume the frame is wrong until checked. Fixtures
   for frame code need a NON-SQUARE box and an ASYMMETRIC origin on both axes, driven at all four
@@ -626,6 +630,27 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   PRE-EXISTING, not introduced by this range — `isEnabled('crop')` entered `exportPipeline` in
   `d945127`, `_renderCropFrame` in `61ac44c`, and `pageRenderPipeline.ts` is untouched in
   `dfe34ae..HEAD`. Recorded as a deferred product call rather than fixed as a regression.
+- [2026-09-04 18:05] RECORDED: WS7 round 4 = **19 findings** (4 + 12 + 3), counter still 0 of 2. The percent-
+  decode from round 3 was itself a regression: it returned ONLY the decoded form, so on an
+  OPC-conformant package whose ZIP entry is also percent-encoded the live image was DELETED where the
+  regex version had kept it. Resolution and COMPARISON are now separate concerns — `resolveRelTarget`
+  returns the path as written, and one `canonicalPart` key (percent-decoded + ASCII case-folded)
+  matches both sides, which retires the encoding AND case classes together.
+- [2026-09-04 18:05] AGREED: the owner-side liveness test is PARSED too. The rewrite retired entity references
+  on the `.rels` side and left the half that actually decides liveness matching raw text, so
+  `r:embed="rId&#55;"` made a live image look orphaned. Both lenses found it independently.
+- [2026-09-04 18:05] RECORDED: my round-3 REFUTATION was wrong. I called the crop editor/export divergence
+  pre-existing on the strength of `d945127` existing, without checking it was in range —
+  `git merge-base --is-ancestor d945127 dfe34ae` says it is NOT an ancestor, so the divergence was
+  introduced here. Withdrawn in `KNOWN_ISSUES.md`. **Checking that a commit exists is not checking
+  that it is out of range.**
+- [2026-09-04 18:05] RECORDED: the `opcGc` sabotage figures in `CLAUDE.md` had been measured against the regex
+  implementation the rewrite deleted and were presented as current — unproven rather than false,
+  which by this repo's own standard is worse than saying nothing. Re-measured against shipping code:
+  owner test disabled → 12 of 25, media-only restriction dropped → 22 of 25.
+- [2026-09-04 18:05] RECORDED: the FULL browser suite ran green for round 4 — 88 files / 326 tests, in
+  foreground chunks, with one 30s timeout at load 26.5 re-run and passing. The export lens could not
+  complete it (killed at 40 min under load) and said the counter should not advance without it.
 
 ## Status
 <!-- progress-block v1 -->
