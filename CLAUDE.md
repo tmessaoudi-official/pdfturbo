@@ -268,6 +268,42 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### Clipping is not removing, for anything vector — WS4-C refuted (2026-09-04)
+
+The blank-page redaction filter drops a partly-covered element WHOLE. WS4-C asked whether it could
+clip the element to its un-redacted region instead. **Refuted, and the reason is measured rather
+than argued:** a PDF clip is an instruction to the RENDERER, not a deletion. Drawing the secret
+inside a clip path that excludes it leaves the page visually blank at that point (patch darkness
+47.7 unclipped → under 10 clipped) while `getTextContent` still returns the string in full.
+
+**The tempting precedent is WS4-A, and the difference is the medium.** Ink IS clipped to the
+redactions and it works stroke-exact — because the ink layer is rasterised to its own canvas, where
+a `destination-out` fill genuinely deletes pixels. A blank page's text, shapes and images are drawn
+as vector content. Same word, opposite mechanism; the next reader will reach for the ink fix here,
+which is why the pin carries both halves in one test.
+
+**The second avenue — omitting the covered glyphs at the MODEL level, so nothing is emitted rather
+than merely hidden — is refused for a structural reason, not a lazy one.** To know which glyphs a
+box covers you must reproduce `renderText`'s layout exactly: list-marker prefixing
+(`pdfElementRenderer.ts:200`), three different drawing paths per line — `drawArabicLine` (:211,
+which reorders glyphs bidirectionally), `drawStyledTextLine` (:239) and plain `drawText` — four
+alignment modes including justify's distributed word spacing (:227-234), and the `effectiveLineWidth`
+model under `charSpacing`/`horizontalScale` (:222). A leak filter whose safety depends on a SECOND
+implementation of that agreeing with the first is this repo's most-repeated defect shape, and it
+errs by under-dropping.
+
+**And the filter is model-level on purpose:** `dropElementsUnderRedactions` feeds THREE channels —
+XFDF (`exportService.ts:498`), the blank-page PDF assembly (:788) and the DOCX/MD/TXT flow (:1228).
+Whole-drop satisfies "never emit covered content in any channel" once; a partial render would have
+to re-establish it in each, and express partiality in the persisted element model.
+
+Images are unaffected by any of this and stay blunt regardless — there is no way to remove part of
+an embedded image without re-encoding it, which `SECURITY.md` already disclosed.
+
+Guard: the WS4-C case in `tests/browser/hide-vs-remove.browser.test.ts`. It asserts BOTH halves, so
+it cannot pass on a document where the text simply never drew — removing the clip fails the
+visibility half at 47.7, which is also what proves the darkness probe is aimed at real ink.
+
 ### A rule the reader never sees deleted a paragraph — the Form `/BBox` clip (2026-09-04)
 
 WS4-F, and the first of the six PoCs to land as a fidelity fix rather than a leak fix. pdf.js clips

@@ -474,6 +474,17 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   leaking content, so it is an export-fidelity bound and `CLAUDE.md` § Gotchas is its home. Same
   plan-vs-reality drift WS4-B recorded for its own bound; the remaining PoCs (C, E, D) must have
   their disclosure location checked rather than assumed.
+- [2026-09-04 11:30] AGREED: WS4-C is REFUTED and the disclosure stays. Clipping a partly-covered
+  element instead of dropping it whole was measured: a PDF clip suppresses the glyphs on screen
+  (darkness 47.7 -> under 10) and leaves the string fully extractable, because a clip is a rendering
+  instruction and not a deletion. WS4-A's ink clip works only because ink is rasterised to a canvas.
+  The model-level alternative (omit covered glyphs) is refused because it requires a second
+  implementation of `renderText`'s layout — three drawing paths, four alignments, list markers,
+  Tc/Tz widths — and a leak filter that depends on two implementations agreeing under-drops.
+  `SECURITY.md` records the outcome; the refutation is pinned as a test, not just prose.
+- [2026-09-04 11:30] AGREED: bound C IS disclosed in `SECURITY.md` ("Dropping is blunt by design"),
+  unlike bound F. The per-PoC disclosure check is therefore worth keeping for D and E rather than
+  generalising either way from F.
 
 ## Status
 <!-- progress-block v1 -->
@@ -487,7 +498,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 6 | WS4-A — ink composited above the burn | M | done | 347fa63 | src/export/**, tests/browser/redaction-ink-clip.browser.test.ts |
 | 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
 | 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |
-| 9 | WS4-C — blank-page blunt whole-drop | M | todo | - | src/export/exportService.ts |
+| 9 | WS4-C — blank-page blunt whole-drop (refuted, pinned) | M | done | bedc208 | tests/browser/hide-vs-remove.browser.test.ts |
 | 10 | WS4-E — signer vs assembled crop-origin | M | todo | - | src/core/pdfTurboApp.ts, src/signing/** |
 | 11 | WS4-D — DOCX part GC on image delete | L | todo | - | src/docx/** |
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | todo | - | src/core/pageService.ts |

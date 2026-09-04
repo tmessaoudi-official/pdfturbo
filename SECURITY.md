@@ -140,6 +140,12 @@ stating rather than leaving you to discover them:
 - **Dropping is blunt by design.** An element only *partly* under the box is removed entirely, because
   leaving it would leak the covered part. An element you deliberately placed *on top of* a redaction is
   also removed from these exports, even though the PDF export draws it above the box.
+  This was re-examined on 2026-09-04 and deliberately left as it is. Clipping the element down to just
+  its uncovered part was tried and measured: a PDF clip stops the covered words being *drawn*, but they
+  stay in the file — still copyable, and still reaching the Word / Markdown export. It works for
+  freehand ink, which is stored as pixels and really can have the covered ones erased (see above), and
+  it does not work for anything stored as text or shapes. Removing the whole element is what actually
+  removes it.
 - **Rotation is now accounted for (since 2026-09-02).** A redaction — like any element — can be rotated,
   and the box burned into the export is the rotated one. Until this date every filter tested the upright
   box instead, so content under the parts that stick out was painted over yet left fully extractable.
