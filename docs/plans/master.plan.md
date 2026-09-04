@@ -666,6 +666,15 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   DOM walk on a 2402-element body, ~4s of blocked main thread per save on a 4-page document with 20
   images. Now one attribute-value Set per owner. A correctness fix that makes the product unusable
   is not a fix, and I did not measure it when I made the trade.
+- [2026-09-04 19:06] RECORDED: the cost above grows SUPERLINEARLY, so the 4s figure is a floor rather
+  than the worst case. A stray benchmark left running from the round-5 lens finally reported one data
+  point at 10022 elements / 10 images: 119992ms, i.e. ~12s per walk where the 302/1202/2402-element
+  series (37/79/205ms) extrapolates to under 1s. [Unverified as a clean figure: it ran concurrently
+  with the deploy gate's 398s jsdom suite on an 8-core box this repo already documents as
+  load-sensitive, so read it as an order of magnitude, not a measurement.] The lens's own run is the
+  corroborating half and needs no such caveat: it never completed a single pass over a
+  2000-paragraph document in 170s. The fix is landed either way; this only says the severity was
+  understated, which is the direction that matters.
 - [2026-09-04 18:48] AGREED: the vertical-writing bound is disclosed as TWO-DIRECTIONAL in `SECURITY.md` and
   `KNOWN_ISSUES.md`. The tested box sits a full run-length on the wrong side of the origin, so a
   redaction ABOVE a vertical run silently REMOVES it — data loss, not just a leak, and previously
