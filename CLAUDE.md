@@ -1909,6 +1909,27 @@ silently re-injecting the metadata you're stripping. The same applies to any ver
 Wired via `ExportService.sanitizeAndDownload()` (🧹 export-flyout button) over the **assembled**
 export, not the raw source. Redaction-completeness check is deferred (#53b).
 
+**Scope since 2026-09-05 (developer ruling): scripts, the non-JavaScript EGRESS class, and paperclip
+attachments.** The WS7 round-8 panel found `/SubmitForm` and `/Launch` surviving with their URLs
+intact; the ruling was made for the CLASS — `/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`,
+`/ImportData` — because fixing one member and leaving its siblings is the defect shape this module
+had already suffered three times (rounds 6, 7 and 8 each fixed one position of the `/A` script
+chain). Egress actions ride the SAME `spliceActions` as scripts, so every position (head, `/Next`,
+array element, form field, bookmark, cycle) is covered by construction and a `/URI` chained behind a
+removed action survives. `/FileAttachment` annotations go whole, with their `/Popup`. **Removing the
+annotation from `/Annots` is NOT enough**: a `/Popup` `/Parent` or a reply note's `/IRT` keeps the
+attachment dict reachable, the sweep then keeps `/FS`→`/EF`, and the file is re-serialised with the
+paperclip gone — the WS5 P1 shape again. So `/FS` is deleted on the dict itself. Two fixture lessons
+from the sabotage round: a forward-loop `remove` is only observable when the Popup sits DIRECTLY
+after the attachment (a note in between left the guard green), and the `/FS` delete is only
+observable through a reference that is NOT itself removed (the `/IRT` reply) — the first version of
+each fixture pinned nothing. Deliberately kept: in-document media actions (`/Rendition` without
+`/JS`, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`). Guards: the ruled-2026-09-05 block in
+`tests/utils/pdfSanitizer.test.ts` (15). Sabotage-verified five ways, each landing where predicted:
+one subtype dropped from the set → exactly that subtype's case; forward loop → the Popup and `/IRT`
+cases; `/FS` kept → exactly the `/IRT` case; `/Subtype` compared unresolved → exactly the indirect
+case; annotation never removed → the three paperclip cases and no control.
+
 ### True text editing engine
 
 `src/utils/contentStreamEditor.ts` can genuinely delete/

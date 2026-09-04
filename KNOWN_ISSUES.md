@@ -120,12 +120,14 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   every inserted `TextElement` lands off-target. Deferred because the fix needs the same composed
   mapping plus a real-browser guard at all four rotations, and "visible" mode is the non-default,
   explicitly-relabelled OCR output.
-- **FileAttachment annotations survive `sanitizePdf`** (P2). `grep "FileAttachment|Filespec|/EF"
-  src/` is empty: `stripNodeActions` removes `/AA` and a JS `/A`, so a page-level `/Annots`
-  FileAttachment carrying `/FS`→`/EF` is a REACHABLE attachment and the new reachability sweep
-  correctly leaves it alone. The docs promise "embedded files stripped", which today means the
-  `/Names` tree only. Deferred because deciding whether to delete the whole annotation or only its
-  `/FS` is a product call about visibly removing a user's paperclip.
+- ~~**FileAttachment annotations survive `sanitizePdf`** (P2).~~ **CLOSED 2026-09-05** by developer
+  ruling: the whole paperclip annotation goes, with its `/Popup`, and `/FS` is deleted on the dict
+  itself so the file leaves the bytes even when a reply note (`/IRT`) or a popup still references the
+  annotation — removing it from `/Annots` alone left the payload reachable for the sweep, which is the
+  reference-deleted, payload-serialised shape WS5 P1 found. The same ruling widened sanitize to the
+  non-JavaScript egress action class (`/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`, `/ImportData`),
+  spliced at every chain position like scripts. Guards: 15 cases in `tests/utils/pdfSanitizer.test.ts`,
+  sabotage-verified five ways.
 - **An overlay text link is lost on the RASTER export path** (`exportPipeline.ts:555-557`, P2).
   `renderText` adds a `/Link` to the temp page, but the rasteriser embeds only the PNG into a fresh
   page — so on a redaction-bearing page the link exports as flat pixels, refuting the "survives BOTH

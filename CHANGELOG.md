@@ -32,11 +32,18 @@ most of the work went into proving that what the product claims to remove is act
 ### Fixed — redaction and export safety
 - **Sanitize did not remove every script it promised to.** A JavaScript action survived when it was
   written as an indirect reference, when it was chained behind a legitimate link (`/Next`), when it
-  was listed in an array, and when it sat on a bookmark — and in each case the confirmation said the
-  document was clean. Hyperlinks chained alongside a removed script keep working.
-- **Sanitize's own reporting was corrected**, and the docs with it: files embedded through the
-  document's name tree are removed, but a file attached as a paperclip annotation is not. That is now
-  stated wherever the feature is described, instead of "embedded files stripped".
+  was listed in an array, when it sat on a bookmark, and when it rode a `/Rendition` action — and in
+  each case the confirmation said the document was clean. Hyperlinks chained alongside a removed
+  script keep working, at every position of the chain.
+- **Sanitize could freeze the tab.** The first fix for the chained-script case looped forever on a
+  document whose action chain pointed back at itself, with no error and no way out but closing the
+  tab. Fixed the same day; a chain that cycles now terminates and is cleaned like any other.
+- **Sanitize could fail on a book-sized bookmark list** (around ten thousand entries) after that
+  same fix, because bookmarks were walked recursively. They are walked iteratively now.
+- **Sanitize now removes actions that reach outside the document without JavaScript** — form
+  submission to a URL, launching an external program or file, opening another document, and
+  importing form data — and **removes paperclip attachments together with their file**, not only
+  files in the document's name tree. Ordinary hyperlinks are kept.
 - **Deleting an image in the DOCX editor now removes it from the file.** It used to drop the
   picture from the document while leaving its bytes in the package, recoverable by renaming the
   `.docx` to `.zip` — disclosed since 2026-08-05 and closed on 2026-09-04. The collector errs

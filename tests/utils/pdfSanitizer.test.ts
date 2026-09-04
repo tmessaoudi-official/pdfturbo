@@ -105,6 +105,10 @@ describe('sanitizePdf', () => {
       javascript: true,
       embeddedFiles: true,
       annotActions: true,
+      // The dirty fixture carries no egress action and no paperclip: both false, and asserted so
+      // the ruling's two flags cannot silently become true on a document that has neither.
+      externalActions: false,
+      fileAttachments: false,
       xfa: true,
       pageMetadata: true,
       associatedFiles: true,
@@ -607,5 +611,237 @@ describe('sanitizePdf — script-bearing Renditions and book-sized outlines (WS7
     // 8000 passed on the shipped code and 10000 did not, so the guard sits above the measured cliff.
     const out = await sanitizePdf(await outlineOfDepth(10_000));
     expect(out.bytes.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Developer ruling, 2026-09-05 — sanitize strips the whole NON-JavaScript EGRESS class, and
+ * `/FileAttachment` annotations with it.
+ *
+ * Five action subtypes reach outside the document without executing script, and none was named
+ * anywhere in the sanitizer or the docs: `/SubmitForm` posts form data to a URL, `/Launch` starts an
+ * external application or file, `/GoToR` and `/GoToE` open another document, `/ImportData` reads a
+ * file into the form. A sanitized copy that still phones home on a button is the shape the
+ * "cleaned" toast makes worse, not better. They ride the SAME splice as scripts, so a hyperlink
+ * chained behind one survives and every position (head, chain, array, field, bookmark, cycle) is
+ * covered by construction rather than one at a time — the defect shape this module has already
+ * suffered three times.
+ *
+ * A paperclip annotation carries its file through `/FS`→`/EF`. Deleting the annotation from
+ * `/Annots` is NOT enough on its own: an Acrobat-authored attachment has a `/Popup` whose `/Parent`
+ * points back at it, which keeps the stream reachable for the sweep — exactly the reference-deleted,
+ * payload-serialised shape WS5 P1 found. So `/FS` is deleted on the dict as well, and the Popup goes.
+ */
+describe('sanitizePdf — non-JavaScript egress actions and paperclip attachments (ruled 2026-09-05)', () => {
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+  const uri = (u: string) => ({ S: PDFName.of('URI'), URI: PDFString.of(u) });
+  const CHAINED = 'https://example.invalid/chained-behind-an-egress-action-9101';
+
+  const EGRESS: Array<[string, string, (ctx: PDFDocument['context'], marker: string) => PDFDict]> = [
+    ['SubmitForm', 'https://example.invalid/collect-9101', (ctx, m) => ctx.obj({
+      S: PDFName.of('SubmitForm'), F: { FS: PDFName.of('URL'), F: PDFString.of(m) }, Flags: 4,
+    })],
+    ['Launch', 'SANITIZE_LAUNCH_TARGET_9101.exe', (ctx, m) => ctx.obj({
+      S: PDFName.of('Launch'), F: PDFString.of(m),
+    })],
+    ['GoToR', 'SANITIZE_GOTOR_TARGET_9101.pdf', (ctx, m) => ctx.obj({
+      S: PDFName.of('GoToR'), F: PDFString.of(m), D: ctx.obj([0, PDFName.of('Fit')]),
+    })],
+    ['GoToE', 'SANITIZE_GOTOE_TARGET_9101.pdf', (ctx, m) => ctx.obj({
+      S: PDFName.of('GoToE'), F: PDFString.of(m), D: ctx.obj([0, PDFName.of('Fit')]),
+    })],
+    ['ImportData', 'SANITIZE_IMPORTDATA_TARGET_9101.fdf', (ctx, m) => ctx.obj({
+      S: PDFName.of('ImportData'), F: PDFString.of(m),
+    })],
+  ];
+
+  /** One Link annotation whose `/A` is the egress action, with a real hyperlink chained behind. */
+  async function annotWith(build: (ctx: PDFDocument['context']) => PDFDict): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const action = build(ctx);
+    action.set(PDFName.of('Next'), ctx.register(ctx.obj(uri(CHAINED))));
+    const annot = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: ctx.obj([0, 0, 9, 9]),
+    });
+    annot.set(PDFName.of('A'), ctx.register(action));
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  it('the fixtures really carry their targets — the negative controls', async () => {
+    for (const [, marker, build] of EGRESS) {
+      expect(asText(await annotWith(ctx => build(ctx, marker)))).toContain(marker);
+    }
+  });
+
+  for (const [subtype, marker, build] of EGRESS) {
+    it(`strips /S /${subtype} from an annotation, reports it, and keeps the link chained behind it`, async () => {
+      const out = await sanitizePdf(await annotWith(ctx => build(ctx, marker)));
+      const text = asText(out.bytes);
+      expect(text).not.toContain(marker);
+      expect(text).toContain(CHAINED);
+      expect(out.report.externalActions).toBe(true);
+    });
+  }
+
+  it('keeps /GoTo and /URI — the over-reach controls, and the hyperlink promise', async () => {
+    // The helper chains CHAINED (a /URI) behind whatever it is given; here that is a /GoTo, so
+    // BOTH hyperlink kinds are in the file and both must come out.
+    const out = await sanitizePdf(await annotWith(ctx =>
+      ctx.obj({ S: PDFName.of('GoTo'), D: ctx.obj([0, PDFName.of('Fit')]) })));
+    const doc = await PDFDocument.load(out.bytes, { updateMetadata: false });
+    const annots = doc.getPages()[0].node.lookup(PDFName.of('Annots'), PDFArray);
+    const action = annots.lookup(0, PDFDict).lookup(PDFName.of('A'), PDFDict);
+    expect(action.lookup(PDFName.of('S'))).toBe(PDFName.of('GoTo'));
+    expect(asText(out.bytes)).toContain(CHAINED);
+    expect(out.report.externalActions).toBe(false);
+    expect(out.report.annotActions).toBe(false);
+  });
+
+  it('strips a /SubmitForm on a FORM FIELD and on a BOOKMARK — the class covers every position', async () => {
+    const FIELD = 'https://example.invalid/field-submit-9101';
+    const BOOKMARK = 'https://example.invalid/bookmark-submit-9101';
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const submit = (m: string) => ctx.register(ctx.obj({
+      S: PDFName.of('SubmitForm'), F: { FS: PDFName.of('URL'), F: PDFString.of(m) },
+    }));
+    const field = ctx.obj({ FT: PDFName.of('Btn'), T: PDFString.of('go') });
+    field.set(PDFName.of('A'), submit(FIELD));
+    doc.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: ctx.obj([ctx.register(field)]) }));
+    const item = ctx.obj({ Title: PDFString.of('Send') });
+    item.set(PDFName.of('A'), submit(BOOKMARK));
+    const itemRef = ctx.register(item);
+    doc.catalog.set(PDFName.of('Outlines'), ctx.obj({ First: itemRef, Last: itemRef }));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(FIELD);
+    expect(asText(src)).toContain(BOOKMARK);
+
+    const out = asText((await sanitizePdf(src)).bytes);
+    expect(out).not.toContain(FIELD);
+    expect(out).not.toContain(BOOKMARK);
+  });
+
+  // ── paperclip attachments ─────────────────────────────────────────────────────────────────
+  const PAYLOAD = 'SANITIZE_PAPERCLIP_PAYLOAD_MUST_NOT_SURVIVE_9102';
+  const NOTE = 'SANITIZE_STICKY_NOTE_MUST_SURVIVE_9102';
+
+  /**
+   * `/Annots` = [Text, FileAttachment, Popup(parent → FileAttachment), Text]. The Popup sits
+   * DIRECTLY after the attachment because that is the only order in which a forward loop over
+   * `remove` (which shifts later indices down) is observable: removing index 1 moves the Popup
+   * to index 1 and the loop steps past it. A note in between made the first version of this
+   * fixture pass under that exact sabotage. `irt` adds a reply note carrying `/IRT` → the
+   * attachment, which keeps the attachment dict reachable through something that is NOT removed —
+   * the shape that makes deleting `/FS` on the dict load-bearing rather than belt-and-braces.
+   * `indirectSubtype` writes `/Subtype` as an indirect ref — round 6 found an indirect `/S`
+   * survived every check, and `/Subtype` is the same trap.
+   */
+  async function withPaperclip(opts: { popup: boolean; indirectSubtype?: boolean; irt?: boolean }): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const note = (y: number) => ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Text'), Rect: ctx.obj([0, y, 9, y + 9]),
+      Contents: PDFString.of(NOTE),
+    }));
+    // UNCOMPRESSED, so the byte scan can see it — a flate stream would hide the marker and the
+    // assertion would pass whether the payload survived or not.
+    const ef = ctx.register(ctx.stream(PAYLOAD, { Type: PDFName.of('EmbeddedFile') }));
+    const fs = ctx.register(ctx.obj({
+      Type: PDFName.of('Filespec'), F: PDFString.of('secret.txt'), EF: ctx.obj({ F: ef }),
+    }));
+    const attach = ctx.obj({
+      Type: PDFName.of('Annot'), Rect: ctx.obj([20, 0, 29, 9]), FS: fs,
+    });
+    attach.set(PDFName.of('Subtype'),
+      opts.indirectSubtype ? ctx.register(PDFName.of('FileAttachment')) : PDFName.of('FileAttachment'));
+    const attachRef = ctx.register(attach);
+    const annots = [note(0), attachRef];
+    if (opts.popup) {
+      const popup = ctx.obj({
+        Type: PDFName.of('Annot'), Subtype: PDFName.of('Popup'), Rect: ctx.obj([50, 0, 90, 40]),
+        Parent: attachRef, Open: false,
+      });
+      const popupRef = ctx.register(popup);
+      attach.set(PDFName.of('Popup'), popupRef);
+      annots.push(popupRef);
+    }
+    const last = note(40);
+    if (opts.irt) {
+      const reply = ctx.lookup(last, PDFDict);
+      reply.set(PDFName.of('IRT'), attachRef);
+      reply.set(PDFName.of('RT'), PDFName.of('R'));
+    }
+    annots.push(last);
+    page.node.set(PDFName.of('Annots'), ctx.obj(annots));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  async function annotSubtypes(bytes: Uint8Array): Promise<string[]> {
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const annots = doc.getPages()[0].node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annots) return [];
+    return annots.asArray().map(ref => {
+      const dict = doc.context.lookup(ref, PDFDict);
+      return (doc.context.lookup(dict.get(PDFName.of('Subtype'))) as PDFName).decodeText();
+    });
+  }
+
+  it('the fixture really carries the payload — the negative control', async () => {
+    expect(asText(await withPaperclip({ popup: true }))).toContain(PAYLOAD);
+  });
+
+  it('removes the paperclip annotation and its file from the BYTES, and reports it', async () => {
+    const out = await sanitizePdf(await withPaperclip({ popup: false }));
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.fileAttachments).toBe(true);
+    expect(await annotSubtypes(out.bytes)).toEqual(['Text', 'Text']);
+  });
+
+  it('keeps BOTH sticky notes around the attachment — the over-reach control', async () => {
+    const out = await sanitizePdf(await withPaperclip({ popup: false }));
+    const text = asText(out.bytes);
+    expect(text.split(NOTE).length - 1).toBe(2);
+  });
+
+  it('removes the /Popup that sits DIRECTLY after the attachment — the forward-loop shape', async () => {
+    // `PDFArray.remove` shifts later indices down: a forward loop that removes index 1 finds the
+    // Popup at index 1 next and steps past it to index 2. Sabotage-measured — with a note between
+    // the two this case stayed green under exactly that mutation.
+    const out = await sanitizePdf(await withPaperclip({ popup: true }));
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(await annotSubtypes(out.bytes)).toEqual(['Text', 'Text']);
+  });
+
+  it('removes the payload when a REPLY note still references the attachment through /IRT', async () => {
+    // Pages → Annots → Text(/IRT) → attachment → /FS → /EF reaches the stream after the attachment
+    // and its Popup are off the array, and the sweep keeps everything reachable. So `/FS` has to go
+    // on the dict itself; removing the annotation alone re-serialises the file bytes.
+    const out = await sanitizePdf(await withPaperclip({ popup: true, irt: true }));
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(await annotSubtypes(out.bytes)).toEqual(['Text', 'Text']);
+  });
+
+  it('recognises an INDIRECT /Subtype', async () => {
+    const out = await sanitizePdf(await withPaperclip({ popup: true, indirectSubtype: true }));
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.fileAttachments).toBe(true);
+  });
+
+  it('leaves a document with no paperclip untouched on that axis — the over-reach control', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Text'), Rect: ctx.obj([0, 0, 9, 9]),
+      Contents: PDFString.of(NOTE),
+    }))]));
+    const out = await sanitizePdf(await doc.save({ useObjectStreams: false }));
+    expect(out.report.fileAttachments).toBe(false);
+    expect(await annotSubtypes(out.bytes)).toEqual(['Text']);
   });
 });

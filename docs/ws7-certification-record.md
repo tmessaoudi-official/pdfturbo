@@ -51,8 +51,8 @@ to close one, which is why the bar was not lowered.
 2. **Text outside a Form XObject's `/BBox`** is invisible on screen and in every raster export, yet
    exports verbatim into DOCX/MD/TXT — `getTextContent` does not apply the clip. A flow-vs-raster
    divergence, undisclosed until now and untested.
-3. **`/FileAttachment` annotations survive `sanitizePdf`** — see `KNOWN_ISSUES.md`; deciding between
-   deleting the annotation and deleting only its `/FS` is a product call.
+3. ~~**`/FileAttachment` annotations survive `sanitizePdf`**~~ — CLOSED 2026-09-05 by developer
+   ruling (annotation, Popup and `/FS` all go); see `KNOWN_ISSUES.md` for the two fixture lessons.
 4. **Rotated-page XFDF coordinates** (C20 / #57b) — no un-rotation exists in `xfdfMapping.ts`; the
    app's own round-trip is self-consistent, third-party interop on rotated pages is not.
 5. Everything under `KNOWN_ISSUES.md` § "From the WS5 adversarial audit" — 10 deferred items.
@@ -92,12 +92,12 @@ recursion → exactly the 10000-sibling case.
 
 ### Still open after round 8
 
-**One scope decision for the developer, not a defect:** `/S /SubmitForm` and `/S /Launch` survive
-sanitize with their remote URLs intact (measured: `https://…/collect` present after). Neither is
-JavaScript, so no current claim is false — but SubmitForm is off-device form-data submission in a
-document the app has just told the user it cleaned. Widening the sanitizer to strip them changes what
-"sanitize" means and could break legitimate forms; disclosing them in `SECURITY.md` is the cheaper
-half. **Not decided unilaterally.**
+**The scope decision was RULED on 2026-09-05** ("fix the security issues"): sanitize strips the whole
+non-JavaScript egress class — `/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`, `/ImportData`, ruled as a
+class rather than the two the panel named — and `/FileAttachment` annotations with their file. The
+measured survival (`https://…/collect` present after sanitize) is now a red test. Like `a99ccea`, this
+change is post-panel: certified by execution (15 cases, five sabotage mutations, the full deploy gate)
+and NOT by the WS7 ladder, which stays paused at 0 of 2.
 
 **Documentation and claim drift — 13 findings, none of them a code defect**, carried here rather
 than left in gitignored reports:

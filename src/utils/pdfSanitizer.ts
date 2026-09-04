@@ -10,8 +10,16 @@
  *  - XMP /Metadata stream on the catalog AND on every page (per-page XMP).
  *  - /OpenAction (a common JavaScript launch vector).
  *  - /AA additional-actions dictionaries on the catalog and every page.
- *  - /AA on every annotation, and a JavaScript /A action on an annotation
- *    (/S /JavaScript). Hyperlink /A actions (/S /URI, /S /GoTo) SURVIVE.
+ *  - /AA on every annotation, form field and /Outlines bookmark, and — spliced out of the
+ *    /A action chain at EVERY position (head, /Next, array element, cycle) — any action that
+ *    executes script (/S /JavaScript, /S /Rendition carrying /JS) or reaches OUTSIDE the
+ *    document without one: /S /SubmitForm (posts form data to a URL), /S /Launch (starts an
+ *    external application), /S /GoToR and /S /GoToE (open another document), /S /ImportData
+ *    (reads a file into the form) [developer ruling, 2026-09-05]. A continuation chained
+ *    behind a removed action is promoted into its place, so hyperlink /A actions
+ *    (/S /URI, /S /GoTo, /S /Named) SURVIVE even when a script preceded them.
+ *  - /FileAttachment ("paperclip") annotations, together with their /Popup and the /FS→/EF
+ *    file they carry, so the attached bytes leave the FILE and not only the annotation list.
  *  - AcroForm /XFA (XFA can carry script), and recursively each form field's
  *    /AA and JavaScript-only /A action (/Kids walked depth-first).
  *  - /AF associated-files arrays on the catalog and every page (PDF 2.0
@@ -21,8 +29,10 @@
  *  - The trailer /ID (a privacy/tracking document identifier).
  *
  * It does NOT touch /Pages, page content streams, AcroForm field values,
- * hyperlink actions, or annotations' visual appearance — only metadata and
- * active-content vectors.
+ * hyperlink actions, or annotations' visual appearance — only metadata, active-content and
+ * egress vectors. Not stripped, and deliberately: /S /Rendition WITHOUT /JS, /Sound, /Movie,
+ * /GoTo3DView and /RichMediaExecute are media playback inside the document (pdf.js runs none
+ * of them), and stripping them would delete legitimate content to no security end.
  */
 
 // Type-only import (erased at build — keeps the runtime classes lazily loaded
@@ -50,6 +60,14 @@ export interface SanitizeReport {
    * preserved and never counted here.
    */
   annotActions: boolean;
+  /**
+   * A non-JavaScript EGRESS action removed from an annotation, form field or bookmark:
+   * /SubmitForm, /Launch, /GoToR, /GoToE or /ImportData [developer ruling, 2026-09-05].
+   * Counted separately from `annotActions` so the toast's artifact count says which it found.
+   */
+  externalActions: boolean;
+  /** ≥1 /FileAttachment annotation removed together with its /Popup and embedded file. */
+  fileAttachments: boolean;
   /** AcroForm /XFA stream removed. */
   xfa: boolean;
   /** Per-page XMP /Metadata stream removed from ≥1 page. */
@@ -75,6 +93,8 @@ export function anyRemoved(r: SanitizeReport): boolean {
     r.javascript ||
     r.embeddedFiles ||
     r.annotActions ||
+    r.externalActions ||
+    r.fileAttachments ||
     r.xfa ||
     r.pageMetadata ||
     r.associatedFiles ||
@@ -98,6 +118,8 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
     javascript: false,
     embeddedFiles: false,
     annotActions: false,
+    externalActions: false,
+    fileAttachments: false,
     xfa: false,
     pageMetadata: false,
     associatedFiles: false,
@@ -112,6 +134,25 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   const NAME_NEXT = PDFName.of('Next');
   const NAME_JS_ENTRY = PDFName.of('JS');
   const NAME_RENDITION = PDFName.of('Rendition');
+  const NAME_SUBTYPE = PDFName.of('Subtype');
+  const NAME_FILE_ATTACHMENT = PDFName.of('FileAttachment');
+  const NAME_PARENT = PDFName.of('Parent');
+  const NAME_POPUP = PDFName.of('Popup');
+  const NAME_FS = PDFName.of('FS');
+  /**
+   * The non-JavaScript EGRESS class — actions that reach outside the document without running
+   * script. Ruled 2026-09-05 after the round-8 panel found `/SubmitForm` and `/Launch` surviving
+   * with their URLs intact: `/SubmitForm` posts form data to a remote URL, `/Launch` starts an
+   * external application or file, `/GoToR`/`/GoToE` open another document, `/ImportData` reads a
+   * file into the form. Ruled as a CLASS rather than the two the panel named, because fixing one
+   * member and leaving its siblings is the defect shape this module has already suffered three
+   * times. `/URI` is egress too and is the one hyperlink SECURITY.md promises survives.
+   */
+  const EGRESS_SUBTYPES = new Set([
+    PDFName.of('SubmitForm'), PDFName.of('Launch'), PDFName.of('GoToR'), PDFName.of('GoToE'),
+    PDFName.of('ImportData'),
+  ]);
+  let externalActions = false;
 
   /**
    * Does this action execute script?
@@ -131,6 +172,13 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
     if (s === NAME_JS) return true;
     return s === NAME_RENDITION && v.get(NAME_JS_ENTRY) !== undefined;
   };
+
+  /** Does this action reach outside the document? `/S` resolved, same as above. */
+  const isEgressAction = (v: unknown): boolean =>
+    v instanceof PDFDict && EGRESS_SUBTYPES.has(ctx.lookup(v.get(NAME_S)) as never);
+
+  /** Script or egress: the whole set the splice removes. */
+  const isStrippedAction = (v: unknown): boolean => isScriptAction(v) || isEgressAction(v);
 
   /** Write 0, 1 or many surviving actions back into `key`, collapsing a single-element chain. */
   const setActions = (node: PDFDictT, key: typeof NAME_A, kept: unknown[]): void => {
@@ -171,10 +219,13 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
     }
     if (!(resolved instanceof PDFDict)) return [value];
     const action = resolved as unknown as PDFDictT;
-    if (seen.has(action)) return isScriptAction(action) ? [] : [value];
+    if (seen.has(action)) return isStrippedAction(action) ? [] : [value];
     seen.add(action);
-    if (isScriptAction(action)) {
-      state.hit = true;
+    if (isStrippedAction(action)) {
+      // Egress is reported on its own flag so the artifact count names it; a script keeps the
+      // `annotActions` flag it always had. Either way the continuation is promoted.
+      if (isScriptAction(action)) state.hit = true;
+      else externalActions = true;
       return spliceActions(action.get(NAME_NEXT), seen, state);
     }
     const before = action.get(NAME_NEXT);
@@ -234,6 +285,36 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
 
     const annots = node.lookupMaybe(PDFName.of('Annots'), PDFArray);
     if (annots) {
+      // ── /FileAttachment ("paperclip") annotations go whole [developer ruling, 2026-09-05] ──
+      // Removing the annotation from /Annots is NOT enough on its own: an Acrobat-authored
+      // attachment has a /Popup whose /Parent points back at it, which keeps the /FS→/EF stream
+      // reachable and the sweep below then serialises the file bytes with the annotation gone —
+      // the exact reference-deleted, payload-serialised shape WS5 P1 found. So /FS is deleted on
+      // the dict itself (nothing can reach the file through a stray back-reference), the Popup is
+      // dropped with it, and the array is walked in REVERSE because `PDFArray.remove` shifts later
+      // indices down — a forward loop skips the neighbour after each removal (a recorded trap).
+      const attachments = new Set<unknown>();
+      for (const ref of annots.asArray()) {
+        const annot = ctx.lookup(ref) as object | undefined;
+        if (!(annot instanceof PDFDict)) continue;
+        const dict = annot as unknown as PDFDictT;
+        if (ctx.lookup(dict.get(NAME_SUBTYPE)) !== NAME_FILE_ATTACHMENT) continue;
+        attachments.add(dict);
+        dict.delete(NAME_FS);
+        dict.delete(NAME_POPUP);
+      }
+      if (attachments.size > 0) {
+        report.fileAttachments = true;
+        for (let i = annots.size() - 1; i >= 0; i--) {
+          const annot = ctx.lookup(annots.get(i)) as object | undefined;
+          if (!(annot instanceof PDFDict)) continue;
+          const dict = annot as unknown as PDFDictT;
+          const parent = ctx.lookup(dict.get(NAME_PARENT)) as object | undefined;
+          if (attachments.has(dict) || (parent !== undefined && attachments.has(parent))) {
+            annots.remove(i);
+          }
+        }
+      }
       for (const ref of annots.asArray()) {
         const annot = ctx.lookup(ref);
         if (annot instanceof PDFDict && stripNodeActions(annot)) annotActions = true;
@@ -298,6 +379,7 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   }
 
   report.annotActions = annotActions;
+  report.externalActions = externalActions;
 
   // /Names sub-trees: drop active-content trees, keep the rest (e.g. /Dests).
   const names = cat.lookupMaybe(PDFName.of('Names'), PDFDict);
