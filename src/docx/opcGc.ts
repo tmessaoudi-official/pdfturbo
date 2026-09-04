@@ -132,14 +132,19 @@ function partText(opc: OpcPackage, path: string): string | null {
  * deleted. Both lenses found it independently. Still deliberately over-approximating: ANY attribute
  * on ANY element counts, so no enumeration of the attribute names Word can hang an rId on is needed.
  * An owner that will not parse is treated as referencing everything. [WS7 round 4, 2026-09-04]
+ *
+ * Built ONCE per owner document, not once per relationship. The first version walked the whole DOM
+ * for every media rel, making the unconditional save-time GC O(elements x images) where the text
+ * scan it replaced was linear: measured at 205ms per walk on a 2402-element body, so a four-page
+ * document with 20 images blocked the main thread for ~4 seconds on every save. A correctness fix
+ * that made the product unusable is not a fix. [WS7 round 5, 2026-09-04]
  */
-function ownerReferencesId(ownerDom: Document, id: string): boolean {
+function attributeValuesOf(ownerDom: Document): Set<string> {
+  const values = new Set<string>();
   for (const el of Array.from(ownerDom.getElementsByTagName('*'))) {
-    for (const attr of Array.from(el.attributes)) {
-      if (attr.value === id) return true;
-    }
+    for (const attr of Array.from(el.attributes)) values.add(attr.value);
   }
-  return false;
+  return values;
 }
 
 /**
@@ -207,13 +212,13 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
 
     const owner = ownerOf(relsPath);
     const ownerXml = owner === null ? null : partText(opc, owner);
-    let ownerDom: Document | null = null;
+    let ownerAttrs: Set<string> | null = null;
     if (ownerXml !== null) {
       const dom = parseXml(ownerXml);
       // A part that will not parse is one we cannot scan, so everything it declares stays live.
-      if (!parseFailed(dom)) ownerDom = dom;
+      if (!parseFailed(dom)) ownerAttrs = attributeValuesOf(dom);
     }
-    const ownerUnreadable = owner === null || ownerDom === null;
+    const ownerUnreadable = owner === null || ownerAttrs === null;
 
     for (const rel of relationshipElements(relsDom)) {
       if (rel.getAttribute('TargetMode') === 'External') continue;
@@ -223,7 +228,7 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
       const entry = mediaEntryFor(resolveRelTarget(relsPath, target));
       if (entry === null) continue;   // not a media part of this package
 
-      const referenced = ownerDom !== null && ownerReferencesId(ownerDom, id);
+      const referenced = ownerAttrs !== null && ownerAttrs.has(id);
       if (ownerUnreadable || referenced) {
         live.add(entry);
       } else {

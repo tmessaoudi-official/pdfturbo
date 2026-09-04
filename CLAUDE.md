@@ -322,7 +322,7 @@ version it expects" — which quietly stopped being true. The first now goes thr
 second imports the constant, which is exported for exactly this reason. **A test-side copy of a
 production constant only ever breaks later, and for a reason unrelated to what the test is about.**
 
-Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (11),
+Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (12),
 `tests/utils/fileSystemAccess.test.ts` (+10). Sabotage-verified six ways, each landing where
 predicted: collapsing cancelled/unavailable → 2; name-keyed de-duplication → the same-name case;
 non-monotonic `at` → 3 (newest-first, the frozen-clock case, AND de-duplication's move-to-front,
@@ -414,9 +414,11 @@ over-drop direction this file grades as harmful ("innocent cells deleted").
 pdf.js never emits, so the case named "the byte-identity control" was vacuous by construction. Same
 family as the flate-compressed sanitizer marker and the load-dependent ordering test caught the same
 day: **a fixture that does not carry a MEASURED shape cannot certify a claim about that shape.**
-Every fixture in the WS5/WS7 block of `tests/utils/flowDocRedaction.test.ts` now carries probe
-output — the file's OLDER shared `mkItem` helper still fabricates a width, which is fine for the
-cases it serves but is not "every fixture in the file", as an earlier version of this sentence said.
+The HORIZONTAL fixtures in `tests/utils/flowDocRedaction.test.ts` carry probe output; the rotated
+and vertical ones use plausible advances, because the probe cannot produce a rotated Tm or a
+vertical font from this repo's fonts. Two earlier versions of this sentence overclaimed — first
+"every fixture", then "every fixture in the WS5/WS7 block" — and the file's own docstring says it
+correctly, which is where to read it.
 
 The footprint is now `width` along column one and `height` along column two, transformed — which
 reduced EXACTLY to the old `[x0, x0+width] × [baseline, baseline+size]` for unrotated horizontal text
@@ -638,11 +640,13 @@ S1 reverts only the call site and fails exactly the 4 e2e cases and nothing else
 **byte-identical** PNG — pinned as a string compare, not asserted in prose. A redaction that covers every
 stroke makes the function return `null` and stamp no image at all; that early-out predates this change.
 
-Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (17 — 5 CASES × erased/over-reach-control,
+Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (17 — 4 rotations × erased/over-reach-control, 4 standalone, and 5 end-to-end CASES,
 byte-identity, non-vacuity, a far-away redaction, plus 4 end-to-end through `renderThumbnailWithOverlays`).
 It shares `_redactedAnnotationFixture.ts` with the two annotation-strip files, which gained an optional
 `strokes` field; a copied fixture is how a frame fix lands on one caller and not the other. Sabotage-verified
-four ways: call site reverted → 4; clip disabled → 9; clip the whole canvas → 13 (including all four
+four ways — **RE-MEASURED 2026-09-04 against shipping code, because `347fa63` added a 5th
+end-to-end case and neither figure had been updated**: call site reverted → 5 of 17; clip disabled
+→ 11 of 17; clip the whole canvas → 13 (including all four
 over-reach controls, because an all-transparent canvas makes the helper return `null`); wrong frame → 6.
 
 ### The flow export mixed absolute and crop-relative coordinates — C22, and the lockstep is now structural (2026-09-02)
@@ -949,7 +953,7 @@ combination-dependent failure, strictly worse than one uniform bound. Guard:
 `tests/browser/sign-assembled-frame.browser.test.ts` (2), which pins the assembled FRAME rather than
 a fix, so a future attempt starts from the measurement instead of from this prose.
 
-**The count is now SEVEN** (re-count before citing it; it has been wrong at three surfaces at once) (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
+**Do not cite a count here** — it has been wrong at three surfaces simultaneously. Enumerate the instances from this section instead (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
 filter, this, and the flow-export LAYOUT closed as C22 on 2026-09-02) — so when touching anything that
 converts between what is DRAWN and what is STORED, `grep -rn "cropOrigin\|viewBox\[0\]\|cropOriginX" src/`
 first and assume the frame is wrong until checked.

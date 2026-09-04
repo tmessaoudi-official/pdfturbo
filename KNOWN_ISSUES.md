@@ -80,7 +80,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
   footprint is read from the text transform, and pdf.js swaps the roles of its two size fields for a
   vertical font AND advances downward — so the sign along the second axis is unverified and a
   redaction over vertical CJK text may leave it extractable in the DOCX / MD / TXT / CSV / XLSX
-  exports. **No vertical font exists anywhere in this repo to measure it against**, which is why the
+  exports — and the mis-framing is TWO-DIRECTIONAL: the tested box is placed a full run-length on the
+  wrong side of the origin, so a redaction drawn ABOVE a vertical run silently REMOVES it from those
+  exports, which is data loss rather than a leak. **No vertical font exists anywhere in this repo to
+  measure it against**, which is why the
   claim is withdrawn rather than guessed; an earlier guard "covering" it used a rotated Tm with
   `width: 0`, which is not a vertical-writing item and passed for an unrelated reason. Horizontal
   text, at any angle, IS covered. Disclosed to users in `SECURITY.md`.

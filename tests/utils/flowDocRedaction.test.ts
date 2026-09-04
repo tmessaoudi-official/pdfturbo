@@ -173,6 +173,17 @@ describe('isItemRedacted — run footprint from the transform (WS5 P0 / WS7)', (
     expect(isItemRedacted(vertical, { x: 295, y: 99, width: 20, height: 2 }, PAGE_TOP)).toBe(true);
   });
 
+  it('keeps the descender band at a quarter EM under horizontal scaling (Tz)', () => {
+    // `hypot(a,b)` is `fontSize * textHScale`, so scaling the band by it HALVED the band at Tz 50
+    // and re-opened the descender leak for condensed text — the one direction a leak filter may
+    // never move. Same 12pt em, same baseline, only the horizontal scale differs.
+    const plain = { str: 'pygmy', transform: [12, 0, 0, 12, 100, 300], width: 30, height: 12, fontName: 'F1' } as unknown as RawTextItem;
+    const condensed = { str: 'pygmy', transform: [6, 0, 0, 12, 100, 300], width: 15, height: 12, fontName: 'F1' } as unknown as RawTextItem;
+    const band = { x: 90, y: PAGE_TOP - 300 + 2, width: 60, height: 2 };   // 2-4pt below the baseline
+    expect(isItemRedacted(plain, band, PAGE_TOP)).toBe(true);
+    expect(isItemRedacted(condensed, band, PAGE_TOP)).toBe(true);
+  });
+
   it('is UNCHANGED for ordinary horizontal text — the byte-identity control, measured shapes', () => {
     const horiz = { str: 'hello world', transform: [12, 0, 0, 12, 100, 200], width: 57.348, height: 12, fontName: 'F1' } as unknown as RawTextItem;
     expect(isItemRedacted(horiz, { x: 90, y: PAGE_TOP - 215, width: 80, height: 20 }, PAGE_TOP)).toBe(true);

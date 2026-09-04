@@ -153,7 +153,7 @@ worth stating rather than leaving you to discover them:
   removing more than the box strictly covers rather than less — and for a long, thin redaction it is
   considerably more, not slightly: a 20x260 bar turned on its side is tested as a 260x260 square.
 - **A little MORE than the box is removed, by design.** The filter treats a line of text as reaching
-  a quarter of its font size below the baseline, because that is where the tails of g, j, p, q and y
+  a quarter of its type size below the baseline, because that is where the tails of g, j, p, q and y
   sit and a box covering only those tails must still remove the line. The cost is that a redaction
   placed immediately under a line can also remove text just below it from the Word / Markdown / text
   / CSV / Excel exports. Removing slightly more than you drew is the safe direction for a redaction;
@@ -168,6 +168,13 @@ worth stating rather than leaving you to discover them:
   including text set at an angle, IS covered** — that was fixed on 2026-09-04. If you are redacting a
   vertically-set document, use the PDF export, which rasterises the page and removes the content in
   every case.
+
+  **It can also go the other way, and that is the more surprising half.** Because the tested area for
+  a vertical run is placed on the wrong side of where the text starts, a redaction drawn *above* such
+  a run can REMOVE it from the Word / Markdown / text / CSV / Excel exports even though the box is
+  nowhere near it. So on a vertically-set document a redaction may leave text you meant to remove,
+  and may remove text you did not touch. Neither is what you asked for; the PDF export is the one to
+  use until this is fixed.
 
 - **Freehand ink IS covered (since 2026-09-02).** It previously was not: the ink layer is stamped after
   the burn, so handwriting under a box was composited on top of it and baked into the exported pixels.

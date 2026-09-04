@@ -651,6 +651,29 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-04 18:05] RECORDED: the FULL browser suite ran green for round 4 — 88 files / 326 tests, in
   foreground chunks, with one 30s timeout at load 26.5 re-run and passing. The export lens could not
   complete it (killed at 40 min under load) and said the counter should not advance without it.
+- [2026-09-04 18:48] RECORDED: WS7 round 5 = **11 findings** (3 + 2 + 6). The panel did NOT converge:
+  18 → 17 → 23 → 19 → 11 findings over five rounds, counter never above 0 of 2. Per the developer's
+  ruling at the round-3 fork, **certification STOPS here and the open findings are handed over
+  rather than certified.** No `WS7: 2/2 clean at <sha>` entry is written, because on this evidence
+  it would be a false record.
+- [2026-09-04 18:48] RECORDED: round 5's own headline was mine again — `desc = 0.25 * size` used
+  `hypot(a,b)`, which pdf.js builds as `fontSize * textHScale`, so under `Tz < 100` the descender
+  band NARROWED (halving at Tz 50) and re-opened the leak for condensed text. Third wrong value in
+  three rounds for one expression: `extent2` (advance, wrong for vertical), `size` (h-scaled, wrong
+  for condensed), and now `col2` — the em along the descender direction in both cases. Fixed and
+  guarded; found by two lenses independently.
+- [2026-09-04 18:48] RECORDED: the parsed owner-side check from round 4 was O(elements x images) — 205ms per
+  DOM walk on a 2402-element body, ~4s of blocked main thread per save on a 4-page document with 20
+  images. Now one attribute-value Set per owner. A correctness fix that makes the product unusable
+  is not a fix, and I did not measure it when I made the trade.
+- [2026-09-04 18:48] AGREED: the vertical-writing bound is disclosed as TWO-DIRECTIONAL in `SECURITY.md` and
+  `KNOWN_ISSUES.md`. The tested box sits a full run-length on the wrong side of the origin, so a
+  redaction ABOVE a vertical run silently REMOVES it — data loss, not just a leak, and previously
+  disclosed as only the leak half.
+- [2026-09-04 18:48] RECORDED: the fixes in this final commit are POST-PANEL and UNCERTIFIED — no round has
+  reviewed them. They are here because leaving a measured leak (Tz) and a measured ~4s-per-save
+  regression in place to preserve a process boundary would be the wrong trade, but they carry no
+  certification and the next session should treat them as unreviewed.
 
 ## Status
 <!-- progress-block v1 -->
@@ -671,7 +694,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification, 2 clean rounds over dfe34ae..HEAD | L | todo | - | - |
+| 16 | WS7 — certification: 5 rounds run, NOT certified (0/2 clean) | L | blocked | - | - |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

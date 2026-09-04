@@ -352,11 +352,15 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   // `SECURITY.md` said horizontal text was covered. 0.25em is a deliberate over-approximation: for
   // a LEAK filter the footprint may only grow, and no font metric is available here. It costs a
   // quarter-em of extra drop below a redacted line. [WS7 round 3, 2026-09-04]
-  // A quarter of the FONT SIZE, not of `extent2`. `extent2` holds the glyph size for horizontal text
-  // but the ACCUMULATED ADVANCE for a vertical run, so scaling by it gave a five-glyph vertical line
-  // 15pt of extra footprint instead of 3pt — an over-DROP on the one path disclosed as possibly
-  // under-covering. `size` is the em scale in both cases. [WS7 round 4, 2026-09-04]
-  const desc = 0.25 * size;
+  // A quarter of `col2` — the em along the DESCENDER direction — and neither of the two things this
+  // line held before. `extent2` is the glyph size for horizontal text but the ACCUMULATED ADVANCE
+  // for a vertical run, so it gave a five-glyph vertical line 15pt of band instead of 3pt. `size` is
+  // `hypot(a,b)`, which pdf.js builds as `fontSize * textHScale` (`pdf.worker.mjs:35780`), so under
+  // `Tz < 100` it NARROWED the band — halving it at Tz 50 — which is the one direction a leak filter
+  // may never move, and it re-opened the descender leak for condensed text. `hypot(c,d)` is the em
+  // in both the horizontal and the vertical case. Found by two lenses independently.
+  // [WS7 round 5, 2026-09-04]
+  const desc = 0.25 * col2;
   const vxLo = (c / col2) * -desc, vyLo = (d / col2) * -desc;
   const vxHi = (c / col2) * extent2, vyHi = (d / col2) * extent2;
   const xs = [e + vxLo, e + ux + vxLo, e + ux + vxHi, e + vxHi];
