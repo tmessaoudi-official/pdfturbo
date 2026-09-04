@@ -100,6 +100,20 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
   const dangling = new Map<string, string[]>();
   const live = new Set<string>();
 
+  // `[Content_Types].xml` is part of the reachability model, not just the relationship graph. A
+  // media part whose extension has no `Default` is typed by an `<Override PartName="/word/media/…">`
+  // instead, and deleting the part while that Override still names it leaves a dangling declaration
+  // that strict readers reject. Such a part is therefore treated as LIVE — the same
+  // fail-towards-keeping rule as everywhere else here. The narrow cost is stated rather than hidden:
+  // an Override-typed media part that really is orphaned is never collected.
+  const ctXml = partText(opc, '[Content_Types].xml');
+  if (ctXml !== null) {
+    for (const m of ctXml.matchAll(/<Override\b[^>]*\bPartName\s*=\s*"([^"]*)"[^>]*>/g)) {
+      const named = m[1].startsWith('/') ? m[1].slice(1) : m[1];
+      if (named.startsWith(MEDIA_PREFIX)) live.add(named);
+    }
+  }
+
   for (const relsPath of relsPaths) {
     const relsXml = partText(opc, relsPath);
     if (relsXml === null) continue;

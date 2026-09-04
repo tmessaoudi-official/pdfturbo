@@ -153,6 +153,22 @@ describe('gcOrphanMediaParts', () => {
     expect(p.files['word/styles.xml']).toBeDefined();
   });
 
+  it('KEEPS a media part named by a [Content_Types].xml Override', () => {
+    // A media extension with no `Default` is typed by an Override instead. Deleting the part while
+    // the Override still names it leaves a dangling declaration that strict readers reject, so an
+    // Override-named media part counts as reachable — the same fail-towards-keeping rule as the
+    // unreadable-owner cases above.
+    const p = pkg({
+      '[Content_Types].xml':
+        '<?xml version="1.0"?><Types><Override PartName="/word/media/image1.emf" ContentType="image/x-emf"/></Types>',
+      'word/document.xml': bodyWith(),
+      'word/_rels/document.xml.rels': rels({ id: 'rId1', target: 'media/image1.emf' }),
+    }, ['word/media/image1.emf']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+    expect(p.files['word/media/image1.emf']).toBeDefined();
+  });
+
   it('ignores an EXTERNAL relationship rather than resolving it as a part path', () => {
     const p = pkg({
       'word/document.xml': bodyWith(),

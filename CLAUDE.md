@@ -290,6 +290,11 @@ document. Four consequences, each pinned:
   over-approximation is the safe direction.
 - **Match the Id WITH its quotes.** `rId7` is a substring of `rId70`, so a bare `includes` keeps an
   orphan alive forever — the silent-failure direction of the same bug. S4 fails exactly that case.
+- **`[Content_Types].xml` is part of the reachability model, not just the relationship graph.** A
+  media extension with no `Default` is typed by an `<Override PartName="/word/media/…">`; deleting
+  the part while that Override still names it leaves a dangling declaration strict readers reject.
+  Such a part counts as live. The narrow cost is stated rather than hidden — an Override-typed media
+  part that really IS orphaned is never collected. S6 fails exactly that case.
 - **Only `word/media/**` is ever eligible.** An unreferenced `styles.xml` or `customXml` item is not
   this pass's garbage; deleting one would break the document for a refcount it has no business
   reasoning about. S3 fails 9 of 12.
