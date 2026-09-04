@@ -119,7 +119,11 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   const stripNodeActions = (node: PDFDictT): boolean => {
     let hit = node.delete(NAME_AA);
     const action = ctx.lookup(node.get(NAME_A));
-    if (action instanceof PDFDict && action.get(NAME_S) === NAME_JS) {
+    // `/S` is resolved, not read raw. Any value may be written as an indirect reference, so
+    // `/S 12 0 R` -> /JavaScript came back as a PDFRef and never matched — the script survived and
+    // `annotActions` stayed false, i.e. the report called it clean. `/A` was already resolved here;
+    // resolving one key and comparing its sibling raw is the whole defect. [WS7 round 6]
+    if (action instanceof PDFDict && ctx.lookup(action.get(NAME_S)) === NAME_JS) {
       if (node.delete(NAME_A)) hit = true;
     }
     return hit;

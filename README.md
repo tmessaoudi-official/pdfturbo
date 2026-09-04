@@ -49,6 +49,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Lock PDF** — AES-256 password encryption on export
 - **Sanitize** — download a copy with metadata (`/Info`, XMP), document-level JavaScript (`/OpenAction`, `/AA`), and embedded files stripped. It does **not** alter page content
 - **Native save dialog** — on Chromium, Download opens the OS "Save As" picker and writes the file directly (File System Access API); other browsers download as usual
+- **Native open dialog + recent files** — on Chromium, Open uses the OS file picker and the File menu keeps a list of recently-opened documents so you can reopen one in a click; other browsers keep the ordinary file input. What is remembered is the browser's own file handle, **not** a path: the page never learns where the file lives, the list stays on your device, and the browser asks you to re-grant access the first time you reopen a file in a new session
 - **Export to DOCX / Markdown / TXT** — reconstruct a flow document (headings, lists, tables, columns, images, hyperlinks, RTL) from the PDF text; uses the PDF's structure tags when present
 - **DOCX editor** — open a `.docx` and edit it: rich text, headings, fonts/colour, **tables** (add/remove rows & columns, merge/split cells), **images** (insert/move/resize/cut-paste/drag), **hyperlinks**, find & replace, paste-from-Word cleanup; export back to `.docx` or to PDF
 - **Per-page crop** — show only a chosen region: drag it, drag the frame's handles to adjust, or type per-edge margins

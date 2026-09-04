@@ -63,6 +63,13 @@ export default defineConfig({
     // they're just slow under load, not hung). 30s gives headroom for contention while
     // still failing fast on a genuine hang.
     testTimeout: 30_000,
+    // The SIBLING of `vitest.config.ts`'s hookTimeout, and it was missed when that one landed.
+    // The 2026-08-22 entry's whole lesson was "when a per-site workaround appears three times, fix
+    // the origin" — and the origin fix was then applied to one of the TWO configs, leaving every
+    // browser `beforeAll` on vitest's 10s default. `signing.browser.test.ts` does the same
+    // RSA-2048 keygen as its jsdom twin. Full-set coverage means both members, not the one that
+    // failed. [WS7 round 6]
+    hookTimeout: 60_000,
     // M1 #14 — coverage gate on the export RENDER path (the P0 surface). Only active
     // when --coverage is passed (npm run test:coverage:export); a normal test:browser
     // run ignores it. The export element renderer can ONLY be exercised in a real

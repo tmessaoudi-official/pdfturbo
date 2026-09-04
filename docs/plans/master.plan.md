@@ -48,7 +48,7 @@
 | `redaction-orphan-leak` flaky test | 3/3 green isolated AND green inside the full run (flake only ever seen under full-suite load) |
 | All redaction-audit guard files | exist with exact claimed runtime counts (27/12/6/8/17/10/8) |
 | `.gitignore` `tests/**/zz*` | present; zero probe files tracked |
-| Annotation strip | reads page frame BEFORE `buildPageOverlays` at both call sites (`exportPipeline.ts:412-415`, `exportService.ts:1182-1187`) |
+| Annotation strip | reads page frame BEFORE `buildPageOverlays` at both call sites (`exportPipeline.ts` around the `annots.remove(i)` at :412, `exportService.ts` `_applyOverlaysToPage`) |
 | `walkPageOps` | `annotationDepth` gating live (images collected in annotations; rules/vRules/colorMap suppressed); `/BBox` clip NOT modelled (→ WS4-F) |
 | KNOWN_ISSUES.md | C22 present, C12 corrected, Arabic pending count = 14 (correct figure since #54b added two on 2026-09-04) |
 | Certification counter | **0/2 clean** under MAXIMAL — the pushed milestone is uncertified, recorded with developer authorization (→ WS7) |
@@ -101,7 +101,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
-| WS7 — certification | in progress | MAXIMAL panel over `dfe34ae..HEAD`. Round 1: 18 findings (incl. a regression WS5's own P0 fix introduced). Round 2: 17 findings, most of them round-1 fixes applied to ONE member of a class. Counter still 0 of 2; round 3 pending. |
+| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, six rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18** findings. Three of the six found defects in the PREVIOUS round's fixes. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings: `var/claude/ws7/OPEN-FINDINGS.md`; per-round reports `var/claude/ws7/round*.md`. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
@@ -329,6 +329,22 @@ Scope is "what already exists", UNQUALIFIED — not only where bugs were found b
 Everything else is executor-autonomous under this repo's git-autonomy and no-interrupts rules.
 
 ## Decisions Log
+- [2026-09-04 20:31] AGREED: the crop kill switch's EDITOR half is gated too — `_renderCropFrame` now
+  takes `isEnabled('crop')`, matching both export paths. Round 5 recorded this as deferred pending a
+  product call; that was wrong. `main.ts` already removes the crop button and `#cropControls` when the
+  flag is off, and `exportPipeline.ts:299-303` says in as many words that a switch killing the button
+  rather than the feature is the opposite of what a kill switch is for — the seam had already decided,
+  and the frame was simply the one surface that had missed the gate. Recorded because HEAD overturned a
+  logged deferral with no entry, which is this plan's own rule 6.
+- [2026-09-04 20:31] RECORDED: round 6 = 18 findings across the three lenses. The P1 is a real safety
+  defect — `pdfSanitizer` resolved `/A` through `ctx.lookup` but compared `/S` raw, so a JavaScript
+  action written as `/S 12 0 R` survived a sanitize that reported itself CLEAN. Two more were mine
+  from this session: npm cache artifacts swept into `f85d37e` by `git add -A`, and an `xfdfMapping`
+  docstring claiming the rotated-page ceiling was closed when no un-rotation exists anywhere in that
+  module. Both are now fixed; the rotation ceiling stays open and C20/#57b were right all along.
+- [2026-09-04 20:31] RECORDED: a reviewer's measured number is not a measurement. It reported the
+  `word/media`-only sabotage as 21 of 25; running it here gave 22. Two shapes of the same mutation
+  need not fail the same count — cite the one you ran.
 
 - [2026-08-31 18:10] AGREED: all four work streams in scope PLUS a whole-codebase audit stream
   (WS5); doc-drift fixes and consolidation unconditional.

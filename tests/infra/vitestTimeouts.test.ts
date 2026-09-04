@@ -17,11 +17,22 @@
  * `hookTimeout` cannot satisfy it.
  */
 import { describe, it, expect } from 'vitest';
-import config from '../../vitest.config';
+import jsdomConfig from '../../vitest.config';
+import browserConfig from '../../vitest.browser.config';
 
-const test = (config as { test?: { testTimeout?: number; hookTimeout?: number } }).test;
+/**
+ * BOTH configs, because checking one is the defect this file exists to describe. The guard
+ * imported `vitest.config.ts` alone, so `vitest.browser.config.ts` sat on the 10s default for the
+ * two weeks after the "fix the origin" commit — and `signing.browser.test.ts` runs the same
+ * RSA-2048 keygen there. A guard that covers one member of the class it names is the same shape as
+ * the three-of-four `}, 60_000)` patches it was written to replace. [WS7 round 6]
+ */
+const CONFIGS: Array<[string, { testTimeout?: number; hookTimeout?: number } | undefined]> = [
+  ['vitest.config.ts', (jsdomConfig as { test?: { testTimeout?: number; hookTimeout?: number } }).test],
+  ['vitest.browser.config.ts', (browserConfig as { test?: { testTimeout?: number; hookTimeout?: number } }).test],
+];
 
-describe('vitest timeouts', () => {
+describe.each(CONFIGS)('vitest timeouts — %s', (_name, test) => {
   it('sets an explicit hookTimeout (the 10s default is what broke the push)', () => {
     expect(test?.hookTimeout).toBeTypeOf('number');
     expect(test?.hookTimeout).toBeGreaterThan(10_000);

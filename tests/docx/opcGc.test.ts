@@ -111,9 +111,12 @@ describe('gcOrphanMediaParts', () => {
   });
 
   it('does not match rId7 inside rId70', () => {
-    // The id is matched with its quotes. Without that, deleting the image that owns rId7 would
-    // leave it "referenced" by an unrelated rId70 elsewhere in the body — an orphan that never
-    // gets collected, which is the silent-failure direction of the same bug.
+    // Ids are compared as whole ATTRIBUTE VALUES, so `rId7` cannot match inside `rId70`. The
+    // property is what matters and is why this case stays: the regex scan this module replaced had
+    // to match the id WITH its surrounding quotes to get here, and a bare `includes` left the image
+    // owning rId7 "referenced" by an unrelated rId70 forever — an orphan never collected, the
+    // silent-failure direction. The comment used to describe that quoting trick; the code it
+    // described is gone, the guarantee is not. [WS7 round 6]
     const p = pkg({
       'word/document.xml': bodyWith('rId70'),
       'word/_rels/document.xml.rels': rels(

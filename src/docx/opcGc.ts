@@ -12,8 +12,14 @@
  *   - every `_rels/*.rels` part is walked, not just `word/_rels/document.xml.rels` — a header,
  *     footer, footnote, endnote, comment or unmodelled part reaches its images through its own
  *     `.rels`, and those parts are passed through verbatim by the editor;
- *   - a relationship counts as LIVE if its Id appears ANYWHERE in the owning part's text, which
- *     over-approximates deliberately rather than enumerating every attribute Word hangs an rId on;
+ *   - a relationship counts as LIVE if its Id equals ANY ATTRIBUTE VALUE anywhere in the owning
+ *     part, which over-approximates deliberately rather than enumerating every attribute Word can
+ *     hang an rId on (`r:embed`, `r:id`, `r:link`, `r:pict`, `v:imagedata/@r:id`, ...). This said
+ *     "appears anywhere in the part's TEXT" until WS7 round 6 — true of the regex scan this module
+ *     replaced, and never true of the DOMParser one, which compares attribute values by exact
+ *     equality (see `attributeValuesOf`). No OOXML construct is known to carry an rId in a text
+ *     node, so the narrowing looks harmless; it is recorded because the file's own contract is the
+ *     thing a reader checks a scan's completeness against;
  *   - an owner that is missing, binary or unreadable makes ALL of its relationships live, and an
  *     unreadable `.rels` ABORTS the pass — we cannot know what it references;
  *   - a part named by a `[Content_Types].xml` `<Override>` is live;

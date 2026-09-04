@@ -352,12 +352,17 @@ document. Four consequences, each pinned:
   comments reach their images through their own `.rels`, and those parts are passed through verbatim
   by the editor — so they are exactly the ones a naive scan never sees. Sabotage S1 (scan only
   `word/_rels/document.xml.rels`) fails exactly the header case.
-- **A relationship is live if its Id appears ANYWHERE in the owning part's text.** Matching `r:embed`
-  by name would mean enumerating every attribute Word can hang an rId on (`r:id`, `r:link`, `r:pict`,
-  `r:dm`, `r:lo`, `r:qs`, `v:imagedata/@r:id`, …) and one missed name deletes a live image. The
-  over-approximation is the safe direction.
-- **Match the Id WITH its quotes.** `rId7` is a substring of `rId70`, so a bare `includes` keeps an
-  orphan alive forever — the silent-failure direction of the same bug. S4 fails exactly that case.
+- **A relationship is live if its Id equals ANY ATTRIBUTE VALUE in the owning part.** Matching
+  `r:embed` by name would mean enumerating every attribute Word can hang an rId on (`r:id`, `r:link`,
+  `r:pict`, `r:dm`, `r:lo`, `r:qs`, `v:imagedata/@r:id`, …) and one missed name deletes a live image.
+  The over-approximation is the safe direction. **This paragraph and the module header both said
+  "anywhere in the owning part's TEXT" until 2026-09-04**, which was true of the regex scan and never
+  of the DOMParser one that replaced it — the doc kept describing the implementation it superseded.
+- **Substring safety comes free from comparing VALUES, and the note that said otherwise described
+  deleted code.** `rId7` is a substring of `rId70`, so the regex scan had to match the id *with its
+  surrounding quotes*; exact equality against a parsed attribute value cannot make that mistake at
+  all. The guard at `tests/docx/opcGc.test.ts` still earns its place — it pins the property, not the
+  mechanism — but its comment described the quoting trick of an implementation that no longer exists.
 - **`[Content_Types].xml` is part of the reachability model, not just the relationship graph.** A
   media extension with no `Default` is typed by an `<Override PartName="/word/media/…">`; deleting
   the part while that Override still names it leaves a dangling declaration strict readers reject.
@@ -365,7 +370,11 @@ document. Four consequences, each pinned:
   part that really IS orphaned is never collected. S6 fails exactly that case.
 - **Only `word/media/**` is ever eligible.** An unreferenced `styles.xml` or `customXml` item is not
   this pass's garbage; deleting one would break the document for a refcount it has no business
-  reasoning about. S3 fails 9 of 12.
+  reasoning about. S3 (`MEDIA_PREFIX = ''`) fails **22 of 25** [measured 2026-09-04]. It read "9 of
+  12" — the pre-DOMParser figure, contradicting this section's own re-measured "22 of 25" four
+  paragraphs down. Worth the words because of how the correction went: a reviewer reported 21 of 25
+  from an "equivalent" mutation, and running it here gave 22. **Two shapes of the same sabotage do
+  not have to fail the same count**, so cite the mutation you ran, not the one someone described.
 
 **`strFromU8` does NOT throw on non-UTF-8 — it substitutes replacement characters.** So a binary part
 that happens to be named `.xml` decodes to garbage, the garbage contains no `"rIdN"`, and every
@@ -461,7 +470,7 @@ implementation of that agreeing with the first is this repo's most-repeated defe
 errs by under-dropping.
 
 **And the filter is model-level on purpose:** `dropElementsUnderRedactions` feeds THREE channels —
-XFDF (`exportService.ts:498`), the blank-page PDF assembly (:788) and the DOCX/MD/TXT flow (:1228).
+XFDF (`exportService.ts:502`), the blank-page PDF assembly (:793) and the DOCX/MD/TXT flow (:1233).
 Whole-drop satisfies "never emit covered content in any channel" once; a partial render would have
 to re-establish it in each, and express partiality in the persisted element model.
 
@@ -482,7 +491,7 @@ content as page geometry.
 
 **That is data loss, not a cosmetic drift, and the chain is short.** `_detectLatticeRegions` derives
 a table region from the clustered CENTRES of the rules, and `reconstructPage` then REMOVES every
-word whose origin falls inside that region from the paragraph flow (`flowDoc.ts:1596`). One vertical
+word whose origin falls inside that region from the paragraph flow (`flowDoc.ts:1636`). One vertical
 rule nobody can see therefore widens the region across ordinary prose, and the paragraph vanishes
 from DOCX / Markdown / TXT with no warning. Measured on shipping code with a form whose `/BBox` is
 100×60 and whose content draws one extra rule 300pt out: `vRules` came back with **3** entries and
@@ -640,8 +649,13 @@ S1 reverts only the call site and fails exactly the 4 e2e cases and nothing else
 **byte-identical** PNG — pinned as a string compare, not asserted in prose. A redaction that covers every
 stroke makes the function return `null` and stamp no image at all; that early-out predates this change.
 
-Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (17 — 4 rotations × erased/over-reach-control, 4 standalone, and 5 end-to-end CASES,
-byte-identity, non-vacuity, a far-away redaction, plus 4 end-to-end through `renderThumbnailWithOverlays`).
+Guard: `tests/browser/redaction-ink-clip.browser.test.ts` — **17, measured as 12 + 5**: twelve in the
+clip block (4 rotations x erased/over-reach-control, plus byte-identity, non-vacuity, a far-away
+redaction and one more) and five end-to-end through `renderThumbnailWithOverlays`. The breakdown read
+"4 rotations x …, 4 standalone, and 5 end-to-end CASES, …, plus 4 end-to-end", which listed both
+groups twice and summed past 17 — the same over-counting this file already had to correct for the
+env-update suite's per-section tallies. Read the split off the runner
+(`--reporter=verbose`, group by describe), never off the prose.
 It shares `_redactedAnnotationFixture.ts` with the two annotation-strip files, which gained an optional
 `strokes` field; a copied fixture is how a frame fix lands on one caller and not the other. Sabotage-verified
 four ways — **RE-MEASURED 2026-09-04 against shipping code, because `347fa63` added a 5th

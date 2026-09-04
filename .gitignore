@@ -56,3 +56,8 @@ vitest.browser.container.ts
 
 # Throwaway probe files from review rounds — never commit (they encode transient state).
 tests/**/zz*
+
+# npm writes here when NPM_CACHE_DIR is unset in the environment (an `env -i` run leaves the
+# literal string unexpanded, so npm creates a directory named `${NPM_CACHE_DIR}`). Committed once
+# by a `git add -A` in f85d37e; it carries debug logs with host paths and nothing the repo wants.
+${NPM_CACHE_DIR}/

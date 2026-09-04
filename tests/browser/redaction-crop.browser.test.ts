@@ -17,7 +17,7 @@
  *   - must be BLACK (burned). Pre-fix it is GREEN (the misplaced burn missed it → leak).
  * jsdom cannot run getViewport/render — hence a real-browser pixel test.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import { rasterizePageWithRedactions } from '../../src/export/exportPipeline';
@@ -121,5 +121,47 @@ describe('QA-2026-06-23 P1 — redaction burn on a cropped page', () => {
     expect(s.r).toBeLessThan(50);
     expect(s.g).toBeLessThan(50);
     expect(s.b).toBeLessThan(50);
+  });
+});
+
+/**
+ * WS7 round 6 — the RASTER half of the crop kill switch was unreachable by any test.
+ *
+ * `exportPipeline.ts` gates crop twice: the vector `setCropBox` and, separately, the canvas clip in
+ * `rasterizePageWithRedactions` — which needs its own check because that path deliberately does NOT
+ * call `setCropBox`. `git grep 'isEnabled' -- tests/browser/` was EMPTY, and the jsdom gate test
+ * drives `buildPageOverlays` only, so the flag-OFF branch of the path its own docstring calls
+ * "destructive" had never executed.
+ *
+ * The second assertion is the load-bearing one. Crop is destructive on a redaction-bearing page, so
+ * the interesting failure is not "the crop is skipped" but "skipping the crop moved the burn" — the
+ * #QA-2026-06-23 leak shape, where burn and content end up in different coordinate spaces.
+ */
+describe('crop kill switch — the raster path (WS7)', () => {
+  const setFlag = (v: 'on' | 'off') => localStorage.setItem('pdfturbo.feature.crop', v);
+  afterEach(() => { localStorage.removeItem('pdfturbo.feature.crop'); });
+
+  it('ignores a stored crop when the feature is off — full page out', async () => {
+    setFlag('off');
+    const docPage: DocumentPage = { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0, crop: { ...CROP } };
+    const s = await samplePoint(await rasterize(docPage), SECRET.x + SECRET.w / 2, SECRET.y + SECRET.h / 2);
+    expect(Math.round(s.w)).toBe(W_ORIG);
+  });
+
+  it('still BURNS the secret with the flag off — the switch must not weaken redaction', async () => {
+    setFlag('off');
+    const docPage: DocumentPage = { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0, crop: { ...CROP } };
+    const s = await samplePoint(await rasterize(docPage), SECRET.x + SECRET.w / 2, SECRET.y + SECRET.h / 2);
+    expect(s.r).toBeLessThan(50);
+    expect(s.g).toBeLessThan(50);
+    expect(s.b).toBeLessThan(50);
+  });
+
+  it('applies the crop with the flag explicitly ON — the control', async () => {
+    setFlag('on');
+    const docPage: DocumentPage = { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0, crop: { ...CROP } };
+    const s = await samplePoint(await rasterize(docPage), SECRET.x + SECRET.w / 2 - CROP.x, SECRET.y + SECRET.h / 2 - CROP.y);
+    expect(Math.round(s.w)).toBe(CROP.width);
+    expect(s.g).toBeLessThan(50);
   });
 });

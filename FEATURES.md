@@ -3,12 +3,14 @@
 A client-side PDF editor that runs **100% in the browser** — no backend, nothing uploaded.
 TypeScript + Vite + PWA. Localised in English, French, and Arabic (with full RTL).
 
-_Last updated: 2026-06-26 · Version 1.0.0_
+_Last updated: 2026-09-04 · Version 1.0.0_
 
 ---
 
 ## Viewing & navigation
-- Open any PDF; render with pdf.js
+- Open any PDF; render with pdf.js — via the OS file picker on Chromium, with a **Recent files**
+  list in the File menu (the browser's own handle is remembered, never a filesystem path, and access
+  is re-granted by you on the first open of a session); the ordinary file input elsewhere
 - Page thumbnails strip: navigate, reorder (drag), rotate, duplicate, delete; per-page export
 - Zoom in/out, fit-to-width (auto re-fit on resize), pinch-to-zoom (mobile), Ctrl+Wheel (desktop)
 - Text search with highlighted matches (RTL/Arabic-aware), and "add highlight" on a match

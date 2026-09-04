@@ -147,9 +147,27 @@ export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: num
  * why it survived. Both the export and the import call this one function, so the internal
  * round-trip stays self-consistent either way.
  *
- * Ceiling (#QA-2026-06-23 P3 #12), NARROWED: the app-level per-page crop (`docPage.crop`) is still
- * ignored, so annotations on a page the user cropped inside PDFturbo remain offset. Page rotation
- * and the source CropBox origin are no longer part of that ceiling.
+ * Ceiling (#QA-2026-06-23 P3 #12), NARROWED — **on the origin only**: the app-level per-page crop
+ * (`docPage.crop`) is still ignored, so annotations on a page the user cropped inside PDFturbo
+ * remain offset.
+ *
+ * **PAGE ROTATION IS STILL PART OF THAT CEILING, and a previous version of this comment said it was
+ * not.** That claim was false when written [withdrawn WS7 round 6, 2026-09-04]. There is no
+ * un-rotation anywhere in this module or in `xfdf.ts`, and neither caller passes a rotation, while
+ * element rects are DISPLAY space — so on a `/Rotate 90` page the exported `/Rect` is off by the
+ * difference between the two page dimensions. Worse, the fix that added the origin term MOVED the
+ * flip base from `getViewport({ scale: 1 }).height` (the swapped, display height at 90/270) to
+ * `viewBox[3]` (the unrotated top): both are wrong on a rotated page, so it exchanged one wrong
+ * answer for another while claiming the ceiling was closed. `KNOWN_ISSUES.md` C20 and `CLAUDE.md`
+ * #57b both still list rotated-page coordinates as OPEN, and they are right.
+ *
+ * What is NOT affected, and is what the product actually promises: export and import call this same
+ * function, so PDFturbo's own XFDF round-trip is self-consistent at either base. The breakage is
+ * third-party interop (Acrobat) on rotated pages, which was already broken.
+ *
+ * Closing it needs a POINT-level display<->user-space mapping in both directions, not a rect one:
+ * `displayRectToPageUserSpaceRect` returns an AABB, and XFDF also carries arrow endpoints and ink
+ * point lists, where an AABB would destroy direction. That is the C20/#57b work, not a docstring.
  */
 /**
  * The source box's LEFT edge in absolute user space (`viewBox[0]`), the x-axis companion to

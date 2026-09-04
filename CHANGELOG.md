@@ -3,16 +3,23 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-01)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-04)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
 most of the work went into proving that what the product claims to remove is actually removed.
 
 ### Added
-- **Crop, completed** — numeric per-edge margins in points (#G23 v1b) and eight resizable
-  drag handles on the crop frame (#G23 v1c). Margins convert per page, so a mixed-size document
-  crops consistently; a page left with nothing to show is skipped rather than emptied.
+- **Open from the native file picker, with a Recent-files list** (#54b) — the open side now mirrors
+  the Save-dialog support that shipped in #54. Chromium offers the OS picker; Firefox and Safari keep
+  the ordinary file input, unchanged. Recently-opened files are remembered so you can reopen one in a
+  click. What is stored is the browser's own handle, never a filesystem path, and the browser asks
+  you to re-grant access on the first open of a session — nothing about the file leaves the device.
+- **Crop, completed** — numeric per-edge margins in points (#G23 v1b), eight resizable
+  drag handles on the crop frame (#G23 v1c), and apply-to-all now scaling the crop to each page's
+  own size rather than reusing one absolute rectangle (#G23 v1d), so "the top third of every page"
+  means that on a mixed-size document. Margins convert per page; a page left with nothing to show is
+  skipped rather than emptied.
 - **XLSX table export** (#56b) — real numeric cells (a currency column stays summable), written
   as OPC with no new dependency, in its own lazy chunk.
 - **Borderless table detection** (EH-E, closing ceiling C13) — tables with no ruled lines are
@@ -23,6 +30,14 @@ most of the work went into proving that what the product claims to remove is act
   or a critical/serious axe violation.
 
 ### Fixed — redaction and export safety
+- **Deleting an image in the DOCX editor now removes it from the file.** It used to drop the
+  picture from the document while leaving its bytes in the package, recoverable by renaming the
+  `.docx` to `.zip` — disclosed since 2026-08-05 and closed on 2026-09-04. The collector errs
+  towards keeping: it walks every part's relationships, treats anything a `[Content_Types]`
+  override names as live, and only ever removes files under `word/media/`.
+- **Content hidden by a Form XObject's own boundary is no longer read as page geometry**, which
+  could widen an inferred table region across ordinary prose and drop a whole paragraph from the
+  Word/Markdown/text exports.
 - **Redacted content reached every export path that does not rasterise the page.** Each was
   reproduced against shipping code before being fixed: table → CSV/XLSX; OCR "copy text" and
   "export to Word"; a redaction on a blank page; overlay text under a redaction in the

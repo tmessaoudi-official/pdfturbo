@@ -257,3 +257,58 @@ describe('sanitizePdf — detached payloads must not survive in the bytes (WS5 P
     expect(reloaded.getPage(0).getSize().width).toBe(200);
   });
 });
+
+/**
+ * WS7 round 6 — `/S` was compared RAW while its sibling `/A` was resolved.
+ *
+ * `stripNodeActions` did `ctx.lookup(node.get(NAME_A))` and then `action.get(NAME_S) === NAME_JS`.
+ * A PDF may write any value as an indirect reference, so `/S 12 0 R` → `/JavaScript` yields a
+ * `PDFRef` from `get`, which never equals `PDFName.of('JavaScript')` — the action survived AND
+ * `report.annotActions` stayed false, so the UI reported a clean sanitize. Resolved on one key and
+ * raw on its sibling is the same asymmetry this repo has now hit in four separate places.
+ *
+ * The URI case is the over-reach control: the fix makes `/S` resolve, and a hyperlink written the
+ * same way must still survive, or "URI/GoTo hyperlinks must survive" (the function's own docstring)
+ * quietly becomes false in the other direction.
+ */
+describe('sanitizePdf — an action whose /S is an INDIRECT reference (WS7)', () => {
+  const JS_MARKER = 'SANITIZER_INDIRECT_S_MUST_NOT_SURVIVE_8831()';
+  const URI_MARKER = 'https://example.invalid/indirect-s-must-survive-8831';
+
+  /** `kind` is registered as its OWN indirect object, so `/S` reads back as a PDFRef. */
+  async function pdfWithIndirectS(kind: 'JavaScript' | 'URI'): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const action = ctx.obj(kind === 'JavaScript'
+      ? { S: ctx.register(PDFName.of('JavaScript')), JS: PDFString.of(JS_MARKER) }
+      : { S: ctx.register(PDFName.of('URI')), URI: PDFString.of(URI_MARKER) });
+    const annot = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'),
+      Rect: ctx.obj([0, 0, 10, 10]), A: ctx.register(action),
+    });
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+
+  it('the fixture really carries the payload — the negative control', async () => {
+    expect(asText(await pdfWithIndirectS('JavaScript'))).toContain(JS_MARKER);
+  });
+
+  it('strips the JavaScript action even when /S is an indirect reference', async () => {
+    const out = await sanitizePdf(await pdfWithIndirectS('JavaScript'));
+    expect(asText(out.bytes)).not.toContain(JS_MARKER);
+  });
+
+  it('REPORTS the strip — a clean-looking report over a surviving script is the worse half', async () => {
+    const out = await sanitizePdf(await pdfWithIndirectS('JavaScript'));
+    expect(out.report.annotActions).toBe(true);
+  });
+
+  it('keeps a URI hyperlink whose /S is equally indirect — the over-reach control', async () => {
+    const out = await sanitizePdf(await pdfWithIndirectS('URI'));
+    expect(asText(out.bytes)).toContain(URI_MARKER);
+  });
+});
