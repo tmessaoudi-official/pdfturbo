@@ -525,6 +525,20 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   scaling would stretch it across differing aspect ratios), POSITION by the crop's centre rather than
   its corner. Exactly the identity when the boxes match, short-circuited because the float round-trip
   is not. Undo stays one `MacroCmd`; the margins path was already per-page and is untouched.
+- [2026-09-04 13:40] AGREED: the C9 corpus is 15 public PDFs (360 pages) fetched from canonical
+  government/arXiv URLs into gitignored `var/corpus/`, rebuildable with `scripts/c9-corpus-fetch.sh`.
+  Shapes covered: forms, articles (1- and 2-column), reports. **NOT covered: real invoices and bank
+  statements** — genuine ones are private documents and no public sample was obtained, so that half
+  of the plan's named shapes is a disclosed gap rather than a satisfied requirement.
+- [2026-09-04 13:40] AGREED: C9 STAYS UNWIRED. The gate fired on 15 of 360 pages; 5 are genuine data
+  tables and 10 are multi-column LAYOUT (9 pages of Pub-17's alphabetical index, one paper's table of
+  contents). That is not zero false positives, so per the plan the measured shapes are recorded in
+  `KNOWN_ISSUES.md` C9 and the wiring is not attempted.
+- [2026-09-04 13:40] AGREED: the failure is NOT a threshold-tuning gap and must not be answered with
+  one. The index pages score median 3 words/cell — the identical value as the 1099-MISC and W-4
+  grids that are true positives — so no threshold on that statistic separates them and tightening it
+  would refuse the real forms. A future attempt needs a different discriminator. The 2-column
+  articles fired zero times, so the existing rules do work on the shape they were built for.
 
 ## Status
 <!-- progress-block v1 -->
@@ -543,7 +557,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 11 | WS4-D — DOCX part GC on image delete | L | done | 1c41dd5 | src/docx/opcGc.ts, src/docx/docxProseMirror.ts |
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | done | b99db82 | src/core/pageService.ts, src/utils/geometry.ts |
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
-| 14 | WS6 — C9 borderless tables wired to DOCX | L | todo | - | src/utils/borderlessTable.ts, src/export/exportService.ts |
+| 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | C9SHA | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit of existing code | L | todo | - | src/** |
 | 16 | WS7 — certification, 2 clean rounds over dfe34ae..HEAD | L | todo | - | - |
 <!-- /progress-block -->

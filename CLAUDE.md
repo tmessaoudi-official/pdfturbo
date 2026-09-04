@@ -1664,9 +1664,37 @@ a **side-by-side two-column article** (6×2) and a **bulleted list** (4×2). Bot
 `MIN_SPANNING_RATIO` for the same reason — every line genuinely does span both bands — and the
 two-column unit fixture had passed only because it stacked the columns sequentially, which no real layout
 does. That fixture is now realistic and the gate has a second rule (`MAX_MEDIAN_CELL_WORDS`, measured:
-tables median 1 word/cell, prose 4–5), after which the corpus is clean. **The remaining blocker is
-corpus BREADTH, not gate tightness** — 6 synthetic shapes passing is not real-file evidence, and the
-harm asymmetry below is unchanged.
+tables median 1 word/cell, prose 4–5), after which the synthetic corpus is clean.
+
+**The real-file corpus was collected and measured on 2026-09-04, and it REFUTES the "breadth is the
+blocker" reading that stood here.** 15 public PDFs, 360 pages — IRS/GSA/USPTO forms, arXiv articles
+in 1- and 2-column layouts, Census/Budget/Publication-17 reports. `scripts/c9-corpus-fetch.sh`
+rebuilds it into gitignored `var/corpus/`; `tests/tools/c9Corpus.test.ts` runs the REAL gate over
+every page (it SKIPS when the corpus is absent, so it is inert in CI) and writes
+`var/claude/c9-corpus-report.json`. Result: **15 firings — 5 genuine data tables (1099-MISC box
+grids ×3, the W-4 withholding tables, a Pub-17 rate schedule) and 10 multi-column LAYOUT**, being 9
+pages of Publication 17's alphabetical INDEX and one paper's table of contents. C9 therefore stays
+unwired, which is the outcome the plan prescribes for a non-zero count.
+
+**The mechanism is the useful part, and it is measured rather than argued.** An alphabetical index
+satisfies both discriminators HONESTLY: entries in different columns share baselines, so every line
+spans all four bands and `MIN_SPANNING_RATIO` passes; and its entries are as short as a data table's
+cells, so `MAX_MEDIAN_CELL_WORDS` passes too. The index pages score **median 3 words/cell — the
+identical value as the 1099-MISC and W-4 tables, which are TRUE positives.** No threshold on that
+statistic separates them, and tightening it to 2 would refuse the real forms. **So this is not a
+tuning gap: the next attempt needs a different discriminator, not a smaller number.** Reading an
+index row-wise (`Accounting periods | American Indians | Bequests | Certificates`) destroys its order
+AND removes the words from the paragraph flow — the exact harm the gate exists to prevent.
+
+Encouraging half: the 2-column ARTICLES fired **zero** times, so the existing rules do work on the
+shape they were built for. The gap is indexes and contents pages, where short entries in aligned
+columns are genuinely indistinguishable from a table by geometry alone.
+
+(The first hypothesis — that empty cells deflate the median — was WRONG, and is recorded as such
+rather than quietly dropped: the filter already excludes them with `.filter(Boolean)`. It was checked
+before being written down, which is the only reason it is not in this file as fact.)
+
+The harm asymmetry below is unchanged.
 
 **The harm asymmetry, which is why the bar is this high for DOCX and not for CSV.**
 `exportTableCsv` runs only when the user explicitly asked for a table, so a false positive costs them
