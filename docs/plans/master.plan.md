@@ -726,3 +726,21 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 ### Needs research
 ### Fragile
 ### Known issues
+
+- [2026-09-04 21:55] SUPERSEDES the [10:34] WS4-F ruling: the Form `/BBox` clip covers `rules` and
+  `vRules` ONLY. WS7 round 7 REVERTED it for `colorMap`, because colour is matched to a word BY
+  POSITION and the words come from `getTextContent`, which no `/BBox` clips — so a clipped colour key
+  left the run exporting BLACK. Clip what INVENTS geometry; never clip an attribute of a word that
+  exports regardless. Three places in this plan still describe the old three-channel rule (`:266`,
+  `:489`, and the `:52` inventory row); they are HISTORY of the WS4-F design, and this entry is the
+  live rule. Recorded because a resuming session reading the plan alone would re-add the reverted clip.
+- [2026-09-04 21:58] RECORDED: WS7 round 8 returned 19 findings; the five CODE defects (all in
+  `pdfSanitizer.ts`, all introduced by round 7, including a P0 that FROZE the tab on a cyclic action
+  `/Next`) are fixed in `a99ccea`. The 13 documentation findings and the one scope decision
+  (`/SubmitForm` and `/Launch` survive sanitize — not JavaScript, so no claim is false, but undisclosed)
+  are enumerated in `docs/ws7-certification-record.md` § "Round 8", which is TRACKED — the per-round
+  reports under `var/claude/ws7/` are gitignored and reach no clone.
+- [2026-09-04 21:58] RECORDED: the two-consecutive-clean counter is still **0 of 2** after eight
+  rounds, four of which found defects in the previous round's fixes. Round 9 was NOT run: the `/goal`
+  stop condition was cleared mid-round-8, so the ladder is PAUSED, not failed. `a99ccea` is itself
+  post-panel and uncertified — no round has reviewed it.
