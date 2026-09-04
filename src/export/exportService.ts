@@ -16,7 +16,7 @@ import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '.
 import { inferBorderlessGrid } from '../utils/borderlessTable';
 import { stripDocMetadata, dpiToScale, clampQuality, COMPRESS_DPI_DEFAULT, COMPRESS_QUALITY_DEFAULT, type CompressOptions } from './compress';
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
-import { elementToXfdfAnnot, pageHeightPt } from './xfdfMapping';
+import { elementToXfdfAnnot, pageHeightPt, pageLeftPt } from './xfdfMapping';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import { PDFCheckBox, PDFRadioGroup, PDFDropdown, PDFOptionList, PDFTextField, type PDFForm } from '@cantoo/pdf-lib';
 import type { PDFElement } from '../elements/annotationElement';
@@ -502,8 +502,9 @@ export class ExportService {
         const pageEls = dropElementsUnderRedactions(elements.filter(el => el.pageId === docPage.id));
         if (!pageEls.length) continue;
         const h = await pageHeightPt(docPage, documentModel.sourcePdfs);
+        const left = await pageLeftPt(docPage, documentModel.sourcePdfs);
         for (const el of pageEls) {
-          const a = elementToXfdfAnnot(el.toJSON(), i, h);
+          const a = elementToXfdfAnnot(el.toJSON(), i, h, left);
           if (a) annots.push(a);
         }
       }

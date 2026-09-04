@@ -173,6 +173,21 @@ describe('gcOrphanMediaParts', () => {
     expect(p.files['word/media/image1.png']).toBeDefined();
   });
 
+  it("KEEPS an image referenced with SINGLE-quoted attribute values", () => {
+    // XML permits `r:embed='rId1'`, and header/footer parts are passed through verbatim by the
+    // editor — so a document written by a tool that single-quotes had its header image collected.
+    // Every fixture in this file was double-quoted, which is why nothing here caught it.
+    const p = pkg({
+      'word/document.xml': bodyWith(),
+      'word/_rels/document.xml.rels': rels(),
+      'word/header1.xml': "<?xml version='1.0'?><w:hdr><w:r><w:drawing><a:blip r:embed='rId1'/></w:drawing></w:r></w:hdr>",
+      'word/_rels/header1.xml.rels': rels({ id: 'rId1', target: 'media/image1.png' }),
+    }, ['word/media/image1.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+    expect(p.files['word/media/image1.png']).toBeDefined();
+  });
+
   it('KEEPS a media part named by a [Content_Types].xml Override', () => {
     // A media extension with no `Default` is typed by an Override instead. Deleting the part while
     // the Override still names it leaves a dangling declaration that strict readers reject, so an

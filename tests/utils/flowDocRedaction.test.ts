@@ -100,66 +100,63 @@ describe('reconstructPage — drops text under redaction boxes', () => {
 });
 
 /**
- * WS5 P0 — a source run drawn with a ROTATED text matrix escaped the redaction filter entirely.
+ * WS5 P0 / WS7 round 1 — a source run drawn with a ROTATED text matrix escaped the redaction filter,
+ * and the first fix for it over-dropped ordinary text.
  *
- * `isItemRedacted` extended the run +x by `|item.width|` from `transform[4]`. But pdf.js sets
- * `width` to the advance ALONG THE TEXT DIRECTION and carries the direction in `transform`
- * (`pdf.worker.mjs:35814-35819`: for HORIZONTAL text `width = hypot(trm[0],trm[1])` and `height = 0`;
- * for VERTICAL text `width = 0` and `height = hypot(trm[2],trm[3])` — exactly one is non-zero). So a
- * sideways run was tested in a box DISJOINT from its glyphs and was never dropped.
+ * pdf.js's TextItem box is `width` along the transform's FIRST column and `height` along its SECOND
+ * (`pdf.worker.mjs:35812-35821`). `isItemRedacted` instead extended `+x` by `|width|`, so a sideways
+ * run was tested in a box disjoint from its glyphs and never dropped — through DOCX, Markdown, TXT,
+ * CSV and XLSX, at every page rotation including 0.
  *
- * One predicate feeds three channels — the heuristic flow, the struct-tree flow and the table
- * extractor — so the leak reached DOCX, Markdown, TXT, CSV and XLSX. It is orthogonal to the page's
- * own `/Rotate` and to the CropBox origin: it leaks at every rotation, including 0.
+ * **Every fixture below carries a MEASURED item shape.** The first version of this guard hardcoded
+ * `height: 0` for horizontal text on an inverted reading of the source; pdf.js never emits that, so
+ * the "byte-identity control" could not detect the over-drop the fix introduced and the panel had to
+ * find it instead. Real values, from a probe over a pdf-lib page:
+ *   `{str:"1",           width:6.672,  height:12, transform:[12,0,0,12,100,300]}`
+ *   `{str:"hello world", width:57.348, height:12, transform:[12,0,0,12,100,200]}`
  */
-describe('isItemRedacted — rotated and vertical runs (WS5 P0)', () => {
+describe('isItemRedacted — run footprint from the transform (WS5 P0 / WS7)', () => {
   const PAGE_TOP = 800;
-  /** 12pt text rotated 90° CCW: glyphs run UP the page from (300,100), occupying x∈[288,300]. */
+  /** 12pt horizontal text rotated 90° CCW by the Tm: glyphs run UP from (300,100), x∈[288,300]. */
   const sideways = (): RawTextItem => ({
     str: 'SECRETWORD',
     transform: [0, 12, -12, 0, 300, 100],
-    width: 70,     // advance along the TEXT direction (here: +y)
-    height: 0,
+    width: 70,      // advance, along the FIRST column — here +y
+    height: 12,     // glyph size, along the SECOND column — here -x. NOT zero.
     fontName: 'F1',
   } as unknown as RawTextItem);
 
   it('drops a sideways run whose glyphs are under the box — THE LEAK CASE', () => {
-    // The box must cover the glyphs (x 288..300) WITHOUT touching the phantom strip the old maths
-    // tested (x 300..370), or it passes for the wrong reason: a box at x 285..305 overlaps BOTH and
-    // was green before the fix too. That first attempt is why this one stops at 298.
-    const red = { x: 280, y: PAGE_TOP - 175, width: 18, height: 80 };
-    expect(isItemRedacted(sideways(), red, PAGE_TOP)).toBe(true);
+    // Covers the glyphs (x 288..300) WITHOUT touching the phantom strip the old maths tested
+    // (x 300..370), or it would pass for the wrong reason.
+    expect(isItemRedacted(sideways(), { x: 280, y: PAGE_TOP - 175, width: 18, height: 80 }, PAGE_TOP)).toBe(true);
   });
 
   it('does NOT drop it where the old maths looked — the +x strip beside the glyphs', () => {
-    // The pre-fix predicate tested x∈[300,370]; a box THERE covers no glyph at all, so a filter that
-    // still fired here would be matching the phantom box rather than the text.
-    const red = { x: 320, y: PAGE_TOP - 175, width: 40, height: 80 };
-    expect(isItemRedacted(sideways(), red, PAGE_TOP)).toBe(false);
+    expect(isItemRedacted(sideways(), { x: 320, y: PAGE_TOP - 175, width: 40, height: 80 }, PAGE_TOP)).toBe(false);
   });
 
-  it('drops a VERTICAL-writing run, whose advance arrives in height, not width', () => {
-    const vertical = {
-      str: '縦書き', transform: [0, 12, -12, 0, 300, 100], width: 0, height: 70, fontName: 'F1',
-    } as unknown as RawTextItem;
-    // The box must sit at the FAR END of the run, not over its origin. The run spans user-space
-    // y 100..170, i.e. y-down 630..700; a box at 630..645 covers only the end. Sabotage found this:
-    // a box over the origin stayed green even with the advance forced to zero, so it proved nothing
-    // about reading `height`. With the advance dropped the run collapses to its origin and this
-    // case goes red, which is what makes it a guard.
-    const red = { x: 280, y: 630, width: 18, height: 15 };
-    expect(isItemRedacted(vertical, red, PAGE_TOP)).toBe(true);
+  it('does NOT over-drop a SHORT horizontal run — the regression the panel caught', () => {
+    // `1` at 12pt: glyphs end at x = 100 + 6.672. A redaction starting 2pt clear of that must not
+    // touch it. Taking max(|width|,|height|) as the advance inflated the run to a full em (12pt),
+    // swallowing this box and silently deleting text from every flow export.
+    const one = { str: '1', transform: [12, 0, 0, 12, 100, 300], width: 6.672, height: 12, fontName: 'F1' } as unknown as RawTextItem;
+    expect(isItemRedacted(one, { x: 108.7, y: PAGE_TOP - 312, width: 30, height: 14 }, PAGE_TOP)).toBe(false);
+    // …and it IS dropped when the box genuinely covers it.
+    expect(isItemRedacted(one, { x: 98, y: PAGE_TOP - 312, width: 20, height: 14 }, PAGE_TOP)).toBe(true);
   });
 
-  it('is UNCHANGED for ordinary horizontal text — the byte-identity control', () => {
-    const horiz = {
-      str: 'hello', transform: [12, 0, 0, 12, 100, 700], width: 40, height: 0, fontName: 'F1',
-    } as unknown as RawTextItem;
-    // Covering box → dropped.
-    expect(isItemRedacted(horiz, { x: 90, y: PAGE_TOP - 715, width: 60, height: 20 }, PAGE_TOP)).toBe(true);
-    // Box to the left of the run, not touching it → kept.
-    expect(isItemRedacted(horiz, { x: 0, y: PAGE_TOP - 715, width: 50, height: 20 }, PAGE_TOP)).toBe(false);
-    // Box below the baseline → kept.
-    expect(isItemRedacted(horiz, { x: 90, y: PAGE_TOP - 650, width: 60, height: 20 }, PAGE_TOP)).toBe(false);
+  it('is UNCHANGED for ordinary horizontal text — the byte-identity control, measured shapes', () => {
+    const horiz = { str: 'hello world', transform: [12, 0, 0, 12, 100, 200], width: 57.348, height: 12, fontName: 'F1' } as unknown as RawTextItem;
+    expect(isItemRedacted(horiz, { x: 90, y: PAGE_TOP - 215, width: 80, height: 20 }, PAGE_TOP)).toBe(true);
+    expect(isItemRedacted(horiz, { x: 0, y: PAGE_TOP - 215, width: 50, height: 20 }, PAGE_TOP)).toBe(false);   // left of it
+    expect(isItemRedacted(horiz, { x: 90, y: PAGE_TOP - 150, width: 80, height: 20 }, PAGE_TOP)).toBe(false);  // below the baseline
   });
+
+  // VERTICAL-WRITING runs are UNCERTIFIED-BY-EXECUTION and deliberately not asserted here. pdf.js
+  // swaps the two roles for a vertical font (`width` becomes the glyph size, `height` the advance)
+  // AND advances downward, so the sign along the second column is the open question — and no
+  // vertical font exists anywhere in this repo to measure it with. An earlier version of this file
+  // claimed to cover it using a rotated Tm with `width: 0`, which is not a vertical-writing item at
+  // all: it passed for an unrelated reason. Recorded as a bound in CLAUDE.md rather than guessed.
 });

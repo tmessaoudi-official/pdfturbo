@@ -385,6 +385,44 @@ Sabotage-verified five ways, each landing where predicted: document-only scan �
 every relationship dangling → 6; no media-only restriction → 9; unquoted Id match → the rId7/rId70
 case; the call removed from `save()` → the end-to-end case only, with the control still green.
 
+### A redaction filter that read pdf.js's item box backwards — twice (2026-09-04)
+
+`isItemRedacted` extended a source run `+x` by `|item.width|` from `transform[4]`. pdf.js's TextItem
+box is **`width` along the transform's FIRST column and `height` along its SECOND**
+(`pdf.worker.mjs:35812-35821`), so a run drawn with a rotated Tm was tested in a box DISJOINT from
+its glyphs and was never dropped — through DOCX, Markdown, TXT, CSV and XLSX, at every page rotation
+**including 0**, and orthogonal to the CropBox origin. One predicate feeds the heuristic flow, the
+struct-tree flow and the table extractor, which is why one bug reached five exports.
+
+**The first fix was wrong in the opposite direction, and that is the part worth remembering.** It
+took `max(|width|, |height|)` as the advance, on a reading of those lines that had the branches
+INVERTED: I read 35814-35819 without the `if (!font.vertical)` immediately above them. For horizontal
+text pdf.js sets `width = 0` and `height = hypot(trm[2],trm[3])` — the glyph size — and then
+accumulates the advance into `totalWidth`. **`height` is therefore the font size for horizontal text,
+never 0**, measured: `{str:"1", width:6.672, height:12, transform:[12,0,0,12,100,300]}`. So `max()`
+inflated every SHORT run to a full em and silently deleted text that was clear of the burn — the
+over-drop direction this file grades as harmful ("innocent cells deleted").
+
+**And the control could not see it.** The guard hardcoded `height: 0` for horizontal text, a shape
+pdf.js never emits, so the case named "the byte-identity control" was vacuous by construction. Same
+family as the flate-compressed sanitizer marker and the load-dependent ordering test caught the same
+day: **a fixture that does not carry a MEASURED shape cannot certify a claim about that shape.**
+Every fixture in `tests/utils/flowDocRedaction.test.ts` now carries probe output.
+
+The footprint is now `width` along column one and `height` along column two, transformed — which
+reduces EXACTLY to the old `[x0, x0+width] × [baseline, baseline+size]` for unrotated horizontal
+text, so the common case is byte-identical rather than merely close. Sabotage-verified both ways:
+re-introducing `max()` fails only the short-run case; extending `+x` again fails only the two
+sideways cases.
+
+**UNCERTIFIED-BY-EXECUTION: vertical-writing runs.** pdf.js swaps the two roles for a vertical font
+(`width` becomes the glyph size, `height` the advance) AND advances downward, so the sign along the
+second column is an open question — and **no vertical font exists anywhere in this repo to measure
+it with**. An earlier version of the guard claimed to cover this using a rotated Tm with `width: 0`,
+which is not a vertical-writing item at all and passed for an unrelated reason. The claim is
+withdrawn rather than re-stated: a redaction over vertical CJK text may still leak into the flow
+exports, and that is a bound, not a guarantee.
+
 ### Clipping is not removing, for anything vector — WS4-C refuted (2026-09-04)
 
 The blank-page redaction filter drops a partly-covered element WHOLE. WS4-C asked whether it could
@@ -589,7 +627,7 @@ S1 reverts only the call site and fails exactly the 4 e2e cases and nothing else
 **byte-identical** PNG — pinned as a string compare, not asserted in prose. A redaction that covers every
 stroke makes the function return `null` and stamp no image at all; that early-out predates this change.
 
-Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (15 — 4 rotations × erased/over-reach-control,
+Guard: `tests/browser/redaction-ink-clip.browser.test.ts` (17 — 4 rotations × erased/over-reach-control,
 byte-identity, non-vacuity, a far-away redaction, plus 4 end-to-end through `renderThumbnailWithOverlays`).
 It shares `_redactedAnnotationFixture.ts` with the two annotation-strip files, which gained an optional
 `strokes` field; a copied fixture is how a frame fix lands on one caller and not the other. Sabotage-verified
@@ -960,7 +998,8 @@ is now `pageTopY` (`= viewBox[3]`), not `pageHeight` — those two numbers are e
 origin is zero, which is why passing the height was right until it wasn't. `reconstructPage` takes an
 optional trailing `viewBox`, defaulting to `[0,0,pageWidth,pageHeight]` so every existing caller and
 every existing call site is byte-identical. Precise counts, since a wrong one here would be exactly
-the kind of claim this file exists to prevent: 57 calls in all, of which **one** is production
+the kind of claim this file exists to prevent: 58 calls in all (56 → 57 → 58 as guards were
+added; re-count rather than citing this), of which **one** is production
 (`exportService.ts` — the only site that passes the new argument) and 56 are tests
 [Verified: `grep -rn "reconstructPage(" src/ tests/`, minus the definition].
 
@@ -1592,7 +1631,7 @@ enhancement). The picker is now used by **all the major byte exports** — `down
 the heavy assembly, to stay within the transient-activation window). Only `exportAsMarkdown`/TXT and the
 XFDF export stay plain `_downloadBlob`. **Automation note:** the native Save dialog can't be driven by
 Playwright — to capture a download in a browser test, `delete window.showSaveFilePicker` to force the
-anchor-download fallback. Open-via-picker + recent-files deferred (#54b).
+anchor-download fallback. Open-via-picker + recent files SHIPPED 2026-09-04 — see § "Open via the native picker + recent files (#54b)".
 
 ### XLSX table export (#56b, 2026-08-04) — and the numeric rule that a unit test cannot catch
 
@@ -2635,7 +2674,7 @@ measurement.
 
 Crop's disclosure gap begged the obvious question: **what else claims, or merely implies, removal?** So
 every surface a user could believe deletes content was graded — building a file, performing the operation,
-and trying to recover the content with pdf.js. `tests/browser/hide-vs-remove.browser.test.ts` (6 tests)
+and trying to recover the content with pdf.js. `tests/browser/hide-vs-remove.browser.test.ts` (7 tests)
 pins six of them; **two of those drive the real export bake** (shape, redaction) and the rest exercise the
 underlying operation directly, so they pin the MECHANISM, not that every export path invokes it. The
 remaining rows come from code reading. The grades are a user-facing table in `SECURITY.md` § *"Hiding is
@@ -3306,7 +3345,7 @@ C2 delete). The shared image primitives (`sniffImageMime`/`imgBytesToB64`/`image
 were LIFTED from `docxToolbar.ts` into `docxImagePaste.ts` (toolbar now imports them — behavior-identical,
 the 📷 Insert button unchanged). No new dep, no `SCHEMA_VERSION` bump, rides `VITE_FEATURE_DOCX_EDIT`.
 **Ceiling:** `http(s)` `<img src>` from web HTML (CORS — can't read the bytes client-side, never matched);
-GIF/SVG/WebP (only PNG/JPEG minted, matches the slice-1 sniff); orphaned-media GC after a cut (no part GC
+GIF/SVG/WebP (only PNG/JPEG minted, matches the slice-1 sniff); ~~orphaned-media GC after a cut~~ **CLOSED 2026-09-04 — `gcOrphanMediaParts` runs on every editor save and collects the cut orphan too (no part GC
 in v1); mixed text+image HTML fragments (an embedded image embeds only if it is a `data:`-uri
 `<img data-docx-image>`). Guards: `tests/docx/docxImagePaste.test.ts` (jsdom: `resetPastedImageAnchors`
 reset + non-image untouched, `parseDOM` data-uri parse + http/no-attr rejection, `firstImageFile`,

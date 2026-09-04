@@ -3,8 +3,8 @@
 > **Status**: LIVE — this is the only live plan. Written 2026-09-01 against baseline
 > `08a9af2` (= `origin/master`, clean tree). It consolidates and supersedes the four plans now in
 > `docs/archive/plans/` (`redaction-audit`, `qa-hardening-followups`, `eh-e-borderless-tables`,
-> `crop-margins`) — **until Step 0 runs, those four files are still in `docs/plans/` beside this
-> one; treat them as READ-ONLY history, never as instructions.** Every open item they carried was
+> `crop-margins`) — **Step 0 has RUN (row 1, `7f49360`): `docs/plans/` now holds this file alone, and
+> those four are archived. Treat them as READ-ONLY history, never as instructions.** Every open item they carried was
 > re-verified against the tree on 2026-08-31 and lives here now. Decision history stays in git and
 > in `CLAUDE.md` § Gotchas (the repo's decision register).
 
@@ -93,10 +93,11 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS0 — doc drift | **DONE** 2026-09-01 | Ten drifts, not nine — see the Decisions Log. Gate green on the same commit. |
 | WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 9 file runs (3 in-suite — a thin sample) and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
 | WS2 — C22 flow layout | **DONE** 2026-09-02 | Normalised at the `_extractFlowDoc` boundary; C22 CLOSED in `KNOWN_ISSUES.md`. Five sabotages, each red exactly where predicted. Sabotage exposed an UNPINNED frame in the image-channel redaction filter — guarded now. |
-| WS3 — Arabic ×12 | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. All 12 keys resolve in all three locales. |
-| WS4 — bound PoCs | in progress | **A + B PROMOTED** — ink clipped on its own canvas (16 guards); rotated-element/redaction footprint, a LIVE leak on the flow+table exports (8+8 guards). F/E/D/C pending. |
-| WS5 — adversarial audit | not started | |
-| WS6 — feature backlog | not started | |
+| WS3 — Arabic (now ×14) | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. It covers the 12 keys pending at extraction time; **two more were added on 2026-09-04 by #54b** (`toolbar.recentFiles`, `toast.recentFileUnavailable`), so 14 are pending in total and the table needs those two appended before the review. |
+| WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
+| WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
+| WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
+| WS7 — certification | in progress | Round 1 of the MAXIMAL panel returned 18 findings across the three lenses, including a regression WS5's own P0 fix introduced. Counter reset; round 2 pending. |
 | WS7 — certification | not started | Range `dfe34ae..HEAD` still resolves. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
@@ -203,7 +204,7 @@ mixed absolute/crop-relative (probe: a word at y=300 on a 300-high crop).
 
 ## WS3 — Arabic ×12 native review (user-gated; interleave anywhere)
 
-1. Extract a review table from `locales/*.json` for the 12 pending keys (the enumeration of record
+1. Extract a review table from `locales/*.json` for the 12 keys pending at extraction time (14 since #54b) (the enumeration of record
    is `KNOWN_ISSUES.md:69-74`): `toolbar.exportXlsxTitle`, `badge.signRect`, the six
    `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, and the three re-worded values
    (`toolbar.cropTitle`, `toast.modeHint.crop`, `toast.redactionPlaced`). Columns:
@@ -421,36 +422,36 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-02 13:40] RECORDED: sabotage S1 (reverting only the CALL SITE) fails exactly the 4
   end-to-end cases and nothing else, so the wiring is pinned and not merely the pure helper — the
   gap that left the sign-rect prefill uncertified until 2026-09-02.
-- [2026-09-02 14:25] AGREED: PoC **B (rotated footprint) is PROMOTED**, and it is a LIVE LEAK rather
+- [2026-09-02 14:24] AGREED: PoC **B (rotated footprint) is PROMOTED**, and it is a LIVE LEAK rather
   than the bluntness bound the plan described. A redaction element can itself be rotated; the burn
   and the editor honour that, every filter did not, so content under the protruding parts was
   painted over and left fully extractable in the flow and table exports. Measured on shipping code.
-- [2026-09-02 14:25] AGREED: the footprint is the UNION of the stored box and the rotated AABB, never
+- [2026-09-02 14:24] AGREED: the footprint is the UNION of the stored box and the rotated AABB, never
   the rotated AABB alone — at 90° a 120x20 box becomes 20x120, i.e. NARROWER, and a leak filter's
   tested footprint may only grow. Union also makes the change additive: every existing drop survives.
-- [2026-09-02 14:25] RECORDED: normalising inside `redactionRectToContent` (which all five conversion
+- [2026-09-02 14:24] RECORDED: normalising inside `redactionRectToContent` (which all five conversion
   sites reach) did NOT fix the table path — four sites rebuilt a stripped `{x,y,width,height}` literal
   and dropped `rotation` before the call. **A one-seam normalisation is only structural if callers
   pass the object through**; those sites now pass `el`.
-- [2026-09-02 14:25] RECORDED: the WS4-A ink clip shipped the same defect 40 minutes earlier — it
+- [2026-09-02 14:24] RECORDED: the WS4-A ink clip shipped the same defect 40 minutes earlier — it
   mapped the STORED rect, so a rotated redaction under-clipped the ink. Fixed in the same change and
   pinned. When a fix introduces a new consumer of a shape, that consumer joins the class the next fix
   must sweep.
-- [2026-09-02 14:25] RECORDED: **UNCERTIFIED-BY-EXECUTION** — the OCR burn (`ocrHandler.ts`) takes the
+- [2026-09-02 14:24] RECORDED: **UNCERTIFIED-BY-EXECUTION** — the OCR burn (`ocrHandler.ts`) takes the
   footprint but no test drives it; sabotage re-stripping `rotation` there leaves the suite green.
   Pinning it needs the OCR engine. The rasterizer/annotation-strip site was in the same position and
   IS now pinned.
-- [2026-09-02 14:25] RECORDED: bound B was listed in this plan as "currently DISCLOSED in
+- [2026-09-02 14:24] RECORDED: bound B was listed in this plan as "currently DISCLOSED in
   SECURITY.md" and was NOT in SECURITY.md at all — only in CLAUDE.md's hide-vs-remove bounds
   paragraph. Disclosed there now, as closed.
-- [2026-09-02 15:05] RECORDED: the struct-tree (tagged-PDF) path is NOT a second leak —
+- [2026-09-02 14:54] RECORDED: the struct-tree (tagged-PDF) path is NOT a second leak —
   `reconstructPage` hands `structTreeToFlow` the already-mapped `contentRedactions`, so tagged files
   inherit the WS4-B and C22 fixes without a second call site to keep in step. Checked because that is
   exactly where a sibling path would hide.
-- [2026-09-02 15:05] AGREED: A's plan criterion said "all 4 rotations + crop" and the first round ran
+- [2026-09-02 14:54] AGREED: A's plan criterion said "all 4 rotations + crop" and the first round ran
   only the rotations. The crop case was added and passes — as reasoned, but now measured; "reasoning
   says it passes" is the sentence this repo's Gotchas exist to distrust.
-- [2026-09-02 15:05] AGREED: `SECURITY.md` said the rotated-redaction over-approximation removes
+- [2026-09-02 14:54] AGREED: `SECURITY.md` said the rotated-redaction over-approximation removes
   "slightly more". For a 20x260 bar at 90 degrees the tested box is 260x260 — thirteen times the
   burn's area. A security document must not understate its own imprecision; reworded.
 - [2026-09-03 10:53] AGREED: WS3 (Arabic x12) stays IN SCOPE as work but sits OUTSIDE the goal's done-when. It is
@@ -559,6 +560,21 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   DAY — the `opcGc` unreadable-`.rels` path failed toward DELETING against its own stated invariant,
   and CLAUDE.md still carried "not fixed on purpose" for a leak WS4-D had just closed. Both fixed.
   A same-session audit catches what a same-session author cannot.
+- [2026-09-04 14:51] RECORDED: WS7 round 1 = **18 findings** across the three lenses, so the
+  two-clean counter stays at 0. The most serious was a REGRESSION introduced by WS5's own P0 fix:
+  taking `max(|width|,|height|)` as a run's advance inflated every short horizontal run to a full em
+  and silently deleted text clear of the burn. The cause was reading `pdf.worker.mjs:35814-35819`
+  without the `if (!font.vertical)` above it — the branches are inverted from what the fix assumed,
+  and `height` is the FONT SIZE for horizontal text, never 0. Measured, not argued.
+- [2026-09-04 14:51] AGREED: the vertical-writing claim is WITHDRAWN, not restated. pdf.js swaps the
+  roles for a vertical font and advances downward, and no vertical font exists in this repo to
+  measure the sign with. The test that claimed to cover it used a rotated Tm with `width: 0` — not a
+  vertical-writing item — and passed for an unrelated reason. Recorded as an
+  UNCERTIFIED-BY-EXECUTION bound in `CLAUDE.md`.
+- [2026-09-04 14:51] AGREED: round 1's other fixes — XFDF x now carries the CropBox origin (the y-only
+  fix had left the `/Rect` in a MIXED frame), `opcGc` accepts single-quoted XML attribute values (a
+  legal document could lose a live header image), and the sanitizer's GC roots include
+  `trailerInfo.Encrypt` (latent: no caller encrypts today, but `PDFWriter` writes it to the trailer).
 
 ## Status
 <!-- progress-block v1 -->

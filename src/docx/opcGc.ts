@@ -139,7 +139,17 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
       const resolved = resolveRelTarget(relsPath, target);
       if (!resolved.startsWith(MEDIA_PREFIX)) continue;
 
-      if (ownerUnreadable || (ownerXml as string).includes(`"${id}"`)) {
+      // BOTH quote forms. XML permits `r:embed='rId4'`, and header/footer/footnote/comment parts are
+      // passed through VERBATIM by the editor — so a single-quoted reference in one made its media
+      // part look orphaned and the pass DELETED a live image, the one direction this module's own
+      // header forbids. Same "legal XML a valid document can contain" argument already accepted for
+      // a UTF-16 `.rels`. [WS7 round 1, 2026-09-04]
+      // Guarded on `ownerXml !== null`, not merely ordered after `ownerUnreadable`: hoisting the
+      // lookup out of the `||` lost the short-circuit and dereferenced a null owner, which the two
+      // fail-safe cases caught on the next run.
+      const referenced = ownerXml !== null
+        && (ownerXml.includes(`"${id}"`) || ownerXml.includes(`'${id}'`));
+      if (ownerUnreadable || referenced) {
         live.add(resolved);
       } else {
         const list = dangling.get(resolved) ?? [];

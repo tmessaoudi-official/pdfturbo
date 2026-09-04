@@ -118,7 +118,15 @@ export async function removeRecentFile(id: string): Promise<void> {
   }
 }
 
-/** Forget everything. Wired to the same place that clears the session. */
+/**
+ * Forget everything.
+ *
+ * NO PRODUCTION CALLER TODAY, deliberately — and said here rather than left for the next reader to
+ * discover. Recents are designed to OUTLIVE a session, so clearing them alongside "reset session"
+ * would contradict the reason they live in their own store; a dedicated "clear recent files"
+ * affordance is the right home and is not built yet (recorded in `KNOWN_ISSUES.md` § Deferred).
+ * The tests use it as their reset, which is why it is exported. [WS7 round 1, 2026-09-04]
+ */
 export async function clearRecentFiles(): Promise<void> {
   let db: IDBDatabase | undefined;
   try {

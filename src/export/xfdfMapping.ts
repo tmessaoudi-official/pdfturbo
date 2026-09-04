@@ -27,8 +27,8 @@ const SHAPE_TO_XFDF: Record<ShapeType, 'square' | 'circle' | 'line' | 'ink'> = {
  * the type has no clean XFDF equivalent. `pageHeight` is the page height in
  * points (for the y-flip); `pageIndex` is the 0-based document page index.
  */
-export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeight: number): XfdfAnnot | null {
-  const x = el.x, y = el.y, w = el.width, h = el.height;
+export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeight: number, pageLeft = 0): XfdfAnnot | null {
+  const x = el.x + pageLeft, y = el.y, w = el.width, h = el.height;
   // display top-left (y-down) → user-space corners (y-up)
   const rect: [number, number, number, number] = [x, pageHeight - (y + h), x + w, pageHeight - y];
   const color = el.color as string | undefined;
@@ -74,13 +74,13 @@ export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeigh
  * null for an unsupported subtype. `pageHeight` flips user space back to
  * display space; `pageId` is the target document page's id.
  */
-export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: number): PDFElement | null {
+export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: number, pageLeft = 0): PDFElement | null {
   // Normalize the rect (#QA-2026-06-23 P3 #7): a foreign/malformed XFDF may store it
   // inverted (urx<llx or ury<lly), which would otherwise yield a negative-size element.
   const [rx1, ry1, rx2, ry2] = a.rect;
   const x1 = Math.min(rx1, rx2), x2 = Math.max(rx1, rx2);
   const y1 = Math.min(ry1, ry2), y2 = Math.max(ry1, ry2);
-  const x = x1, w = x2 - x1, h = y2 - y1, y = pageHeight - y2;
+  const x = x1 - pageLeft, w = x2 - x1, h = y2 - y1, y = pageHeight - y2;
   if (a.type === 'highlight') {
     return new HighlightElement(x, y, w, h, pageId, a.color ?? '#FFFF00', a.opacity ?? 0.3);
   }
@@ -144,6 +144,34 @@ export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: num
  * ignored, so annotations on a page the user cropped inside PDFturbo remain offset. Page rotation
  * and the source CropBox origin are no longer part of that ceiling.
  */
+/**
+ * The source box's LEFT edge in absolute user space (`viewBox[0]`), the x-axis companion to
+ * {@link pageHeightPt}.
+ *
+ * An XFDF `/Rect` is absolute on BOTH axes. Fixing only the y axis left the exported rect in a MIXED
+ * frame — y absolute, x crop-relative — which is worse than being consistently wrong, and it made
+ * the sibling docstring's claim that "the source CropBox origin is no longer part of that ceiling"
+ * true of one axis only. Both directions take the same term, so the internal round-trip stays
+ * self-consistent either way; zero on a `[0 0 w h]` page, which is almost every page.
+ * [WS7 round 1, 2026-09-04]
+ */
+export async function pageLeftPt(
+  docPage: DocumentPage,
+  sourcePdfs: Map<string, {
+    doc: {
+      getPage(n: number): Promise<{
+        getViewport(o: { scale: number; rotation?: number }): { height: number; viewBox: readonly number[] };
+      }>;
+    };
+  }>,
+): Promise<number> {
+  if (docPage.sourcePdfId === 'blank') return 0;
+  const src = sourcePdfs.get(docPage.sourcePdfId);
+  if (!src) return 0;
+  const page = await src.doc.getPage(docPage.sourcePageNum);
+  return page.getViewport({ scale: 1, rotation: 0 }).viewBox[0];
+}
+
 export async function pageHeightPt(
   docPage: DocumentPage,
   sourcePdfs: Map<string, {

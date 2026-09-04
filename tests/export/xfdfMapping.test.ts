@@ -143,3 +143,32 @@ describe('pageHeightPt — frame correctness (WS5)', () => {
     expect(await pageHeightPt(blank, new Map() as never)).toBe(500);
   });
 });
+
+/**
+ * WS7 round 1 — the y-axis fix left x crop-relative, so an exported `/Rect` was in a MIXED frame:
+ * y absolute, x not. Worse than being consistently wrong, and it made the sibling docstring's claim
+ * about the CropBox origin true of one axis only.
+ */
+describe('XFDF x axis carries the CropBox origin too (WS7)', () => {
+  const el = { type: 'highlight', x: 10, y: 20, width: 30, height: 40, color: '#ffff00' } as unknown as ElementJSON;
+
+  it('offsets the exported rect by the page LEFT edge', () => {
+    // Page [50 50 350 350]: top = 350, left = 50. Display x 10 ⇒ absolute 60.
+    const a = elementToXfdfAnnot(el, 0, 350, 50);
+    expect(a?.rect[0]).toBe(60);
+    expect(a?.rect[2]).toBe(90);
+  });
+
+  it('round-trips through import, so the annotation lands back where it started', () => {
+    const a = elementToXfdfAnnot(el, 0, 350, 50);
+    const back = xfdfAnnotToElement(a as never, 'p1', 350, 50) as unknown as { x: number; y: number };
+    expect({ x: back.x, y: back.y }).toEqual({ x: 10, y: 20 });
+  });
+
+  it('is unchanged on a zero-origin page — the identity control', () => {
+    const a = elementToXfdfAnnot(el, 0, 842);
+    expect(a?.rect[0]).toBe(10);
+    const back = xfdfAnnotToElement(a as never, 'p1', 842) as unknown as { x: number };
+    expect(back.x).toBe(10);
+  });
+});

@@ -17,7 +17,7 @@ import {
   type Command,
 } from './historyManager';
 import { parseXfdf } from '../utils/xfdf';
-import { xfdfAnnotToElement, pageHeightPt } from '../export/xfdfMapping';
+import { xfdfAnnotToElement, pageHeightPt, pageLeftPt } from '../export/xfdfMapping';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
 import { DocumentModel, type SourcePdf, type PageCrop, type DocumentPage } from './documentModel';
@@ -994,7 +994,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         const docPage = this.documentModel.pages[a.page];
         if (!docPage) continue;
         const h = await pageHeightPt(docPage, this.documentModel.sourcePdfs);
-        const el = xfdfAnnotToElement(a, docPage.id, h);
+        const left = await pageLeftPt(docPage, this.documentModel.sourcePdfs);
+        const el = xfdfAnnotToElement(a, docPage.id, h, left);
         if (el) cmds.push(new AddElementCmd(this.elements, el));
       }
       if (!cmds.length) { this.reportError.warn('toast.xfdfImportEmpty'); return; }

@@ -325,25 +325,32 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   const [a, b, c, d, e, f] = item.transform;
   const size = Math.hypot(a, b) || Math.abs(item.height) || 12;
 
-  // The run's footprint is built from the TRANSFORM, not from `+x`. pdf.js reports `width` as the
-  // advance ALONG THE TEXT DIRECTION and carries the direction itself in `transform`
-  // (`pdf.worker.mjs:35814-35819`): for HORIZONTAL text `width = hypot(trm[0],trm[1])` and
-  // `height = 0`; for VERTICAL text `width = 0` and `height = hypot(trm[2],trm[3])` — exactly one is
-  // non-zero. Extending `+x` by `|width|` therefore tested a box DISJOINT from the glyphs of any run
-  // drawn with a rotated Tm, and collapsed a vertical run to a single point. Neither was ever
-  // dropped, and this one predicate feeds the heuristic flow, the struct-tree flow and the table
-  // extractor — so the leak reached DOCX, Markdown, TXT, CSV and XLSX. It is orthogonal to the
-  // page's own `/Rotate`: it leaked at every rotation, 0 included. [WS5 P0, 2026-09-04]
-  const adv = Math.max(Math.abs(item.width), Math.abs(item.height));
-  const along = Math.hypot(a, b) || 1;
-  const ux = a / along, uy = b / along;            // unit vector along the text direction
-  const across = Math.hypot(c, d) || size;
-  const vx = (c / across) * size, vy = (d / across) * size;   // glyph height, perpendicular
-  // Baseline origin plus the advance and the glyph height — four corners, then their AABB. On
-  // ordinary horizontal text this reduces exactly to the old [x0, x0+width] x [baseline,
-  // baseline+size], so the common case is byte-identical (pinned by the control case in the guard).
-  const xs = [e, e + ux * adv, e + ux * adv + vx, e + vx];
-  const ys = [f, f + uy * adv, f + uy * adv + vy, f + vy];
+  // The run's footprint comes from the TRANSFORM, not from `+x`. pdf.js's TextItem box is `width`
+  // along the transform's FIRST column and `height` along its SECOND — read from
+  // `pdf.worker.mjs:35812-35821`, where `if (!font.vertical)` sets `width = 0` and
+  // `height = hypot(trm[2],trm[3])` (the glyph size) and then ACCUMULATES the advance into
+  // `totalWidth`; for vertical writing the two roles swap. Transforming those four corners is what
+  // makes a rotated Tm work: extending `+x` by `|width|` tested a box DISJOINT from the glyphs of
+  // any sideways run, and this one predicate feeds the heuristic flow, the struct-tree flow and the
+  // table extractor, so the leak reached DOCX, Markdown, TXT, CSV and XLSX at every page rotation
+  // including 0. [WS5 P0, 2026-09-04]
+  //
+  // **`height` is NOT zero for horizontal text — it is the font size**, measured:
+  // `{str:"1", width:6.672, height:12, transform:[12,0,0,12,100,300]}`. A first version of this fix
+  // took `max(|width|,|height|)` as the advance on the strength of an inverted reading of those
+  // lines, which inflated every SHORT run to a full em and silently deleted text that was clear of
+  // the burn — the over-drop direction this file grades as harmful. Caught by the WS7 panel.
+  // [WS7 round 1, 2026-09-04]
+  const col1 = Math.hypot(a, b) || 1;
+  const col2 = Math.hypot(c, d) || 1;
+  const extent1 = Math.abs(item.width);
+  const extent2 = Math.abs(item.height) || Math.hypot(c, d) || size;
+  const ux = (a / col1) * extent1, uy = (b / col1) * extent1;
+  const vx = (c / col2) * extent2, vy = (d / col2) * extent2;
+  // On ordinary horizontal text this reduces EXACTLY to the old [x0, x0+width] x [baseline,
+  // baseline+size] — pinned by the control case in the guard, with a real measured item shape.
+  const xs = [e, e + ux, e + ux + vx, e + vx];
+  const ys = [f, f + uy, f + uy + vy, f + vy];
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs);
   // Convert to top-origin (y-down) space: topY is the box top, botY the box bottom.

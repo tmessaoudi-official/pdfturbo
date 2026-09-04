@@ -213,7 +213,13 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   // Reachability from the roots is the right test rather than deleting the specific refs we
   // detached: an object may be referenced from somewhere else (a shared stream), and deleting it
   // blindly would corrupt the output — the one direction worse than leaving the orphan.
-  const roots: unknown[] = [ctx.trailerInfo.Root, ctx.trailerInfo.Info, ctx.trailerInfo.ID];
+  // `Encrypt` belongs here: pdf-lib's PDFWriter writes `Encrypt: this.context.trailerInfo.Encrypt`
+  // into the trailer, so omitting it would sweep the object the trailer still names and leave a
+  // dangling reference. LATENT rather than live — the only caller assembles without encryption —
+  // but `sanitizePdf` is an exported generic entry point. [WS7 round 1, 2026-09-04]
+  const roots: unknown[] = [
+    ctx.trailerInfo.Root, ctx.trailerInfo.Info, ctx.trailerInfo.ID, ctx.trailerInfo.Encrypt,
+  ];
   const reached = new Set<string>();
   const queue: unknown[] = [];
 

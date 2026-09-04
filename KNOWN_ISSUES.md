@@ -114,6 +114,10 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
 - **The PWA guard pins the tesseract caching rule's presence, not its ORDER** (P3), though the
   comment says the order is load-bearing — reordering keeps the test green while the cores fall into
   the wrong cache. Deferred with the same one-line-follow-up reasoning as `MODE_HINT_KEYS`.
+- **No "clear recent files" affordance** (#54b). `clearRecentFiles` exists and is tested but has no
+  production caller: recents deliberately outlive a session, so clearing them with "reset session"
+  would contradict their own design, and a dedicated control needs a menu entry and a string.
+  Until then a user clears them through the browser's site-data controls.
 - **The live OCR `status` string is dropped** (P3): `ocrHandler` emits `{progress, status}` while the
   callback is typed `{progress}`, so the modal shows a static "Recognizing text…" through model
   download and recognition alike. Deferred as a UX improvement, not a defect.
