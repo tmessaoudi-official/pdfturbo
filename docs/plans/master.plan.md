@@ -448,3 +448,41 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-02 15:05] AGREED: `SECURITY.md` said the rotated-redaction over-approximation removes
   "slightly more". For a 20x260 bar at 90 degrees the tested box is 260x260 — thirteen times the
   burn's area. A security document must not understate its own imprecision; reworded.
+- [2026-09-03 10:53] AGREED: WS3 (Arabic x12) stays IN SCOPE as work but sits OUTSIDE the goal's done-when. It is
+  the only step no executor can close — it waits on the developer's review answers — so a stop
+  condition containing it would block on the developer rather than on the work. Recorded via
+  /goal-brief so the brief's done-when is reachable autonomously.
+- [2026-09-03 10:53] AGREED: "done" means WS7 returns TWO CONSECUTIVE FULLY-CLEAN rounds over dfe34ae..HEAD. It
+  does NOT additionally require flipping every status-block row from `done` to `certified` with a
+  `test:<date>` record — that is collector bookkeeping the plan never asked for, and the panel is
+  the certification of record under MAXIMAL.
+- [2026-09-03 10:53] AGREED: the goal stops at PUSHED TO master WITH THE FULL DEPLOY GATE GREEN, not at a verified
+  live deploy. GitHub Pages deploys from that push automatically; a red CI afterwards is a finding to
+  fix, not a separate goal step.
+
+## Status
+<!-- progress-block v1 -->
+| # | Step | Size | State | Evidence | Files |
+|---|------|------|-------|----------|-------|
+| 1 | Step 0 — consolidation: archive 4 superseded plans | S | done | 7f49360 | docs/plans/**, docs/archive/plans/** |
+| 2 | WS0 — doc-drift reconciliation (ten drifts) | M | done | 46962b0 | CLAUDE.md, SECURITY.md, VISION.md, src/utils/geometry.ts |
+| 3 | WS1 — close uncertified dimensions + orphan-leak flake | M | done | 94600f2 | tests/browser/**  |
+| 4 | WS2 — C22 flow layout on non-zero CropBox origin | L | done | c03fd5e | src/export/**, src/utils/flowDoc.ts |
+| 5 | WS3 — Arabic x12 native review | S | blocked | - | locales/** |
+| 6 | WS4-A — ink composited above the burn | M | done | 347fa63 | src/export/**, tests/browser/redaction-ink-clip.browser.test.ts |
+| 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
+| 8 | WS4-F — Form /BBox clip in walkPageOps | M | todo | - | src/export/opStreamWalker.ts |
+| 9 | WS4-C — blank-page blunt whole-drop | M | todo | - | src/export/exportService.ts |
+| 10 | WS4-E — signer vs assembled crop-origin | M | todo | - | src/core/pdfTurboApp.ts, src/signing/** |
+| 11 | WS4-D — DOCX part GC on image delete | L | todo | - | src/docx/** |
+| 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | todo | - | src/core/pageService.ts |
+| 13 | WS6 — #54b open-via-picker + recent files | M | todo | - | src/utils/fileSystemAccess.ts |
+| 14 | WS6 — C9 borderless tables wired to DOCX | L | todo | - | src/utils/borderlessTable.ts, src/export/exportService.ts |
+| 15 | WS5 — adversarial audit of existing code | L | todo | - | src/** |
+| 16 | WS7 — certification, 2 clean rounds over dfe34ae..HEAD | L | todo | - | - |
+<!-- /progress-block -->
+### Blocked
+### Needs input
+### Needs research
+### Fragile
+### Known issues
