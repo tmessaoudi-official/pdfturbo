@@ -66,6 +66,16 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From the WS5 adversarial audit (2026-09-04)
 
+- **Redaction over VERTICAL-writing text is UNCERTIFIED** (`flowDoc.ts` `isItemRedacted`). The run
+  footprint is read from the text transform, and pdf.js swaps the roles of its two size fields for a
+  vertical font AND advances downward — so the sign along the second axis is unverified and a
+  redaction over vertical CJK text may leave it extractable in the DOCX / MD / TXT / CSV / XLSX
+  exports. **No vertical font exists anywhere in this repo to measure it against**, which is why the
+  claim is withdrawn rather than guessed; an earlier guard "covering" it used a rotated Tm with
+  `width: 0`, which is not a vertical-writing item and passed for an unrelated reason. Horizontal
+  text, at any angle, IS covered. Disclosed to users in `SECURITY.md`.
+
+
 Thirty findings across three lenses. The P0 and both P1s were fixed in that stream under TDD, as
 were the trivial P2/P3s; what follows is everything left open, each with the reason it was NOT
 landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignored).
@@ -114,6 +124,14 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
 - **The PWA guard pins the tesseract caching rule's presence, not its ORDER** (P3), though the
   comment says the order is load-bearing — reordering keeps the test green while the cores fall into
   the wrong cache. Deferred with the same one-line-follow-up reasoning as `MODE_HINT_KEYS`.
+- **Two exports have no production caller** (#54 / #54b): `canUseFsSave`
+  (`src/utils/fileSystemAccess.ts`) and `clearRecentFiles` (`src/infra/recentFiles.ts`). The first is
+  a capability probe nothing branches on — `pickSaveTarget` degrades internally instead, which is the
+  better design, so the probe is simply unused. Both are kept as the tests' entry points and as the
+  natural hooks for a "save location" hint and a "clear recents" control. Recorded rather than
+  deleted, and recorded TOGETHER: the audit found `clearRecentFiles` first and the sibling only on
+  the next round, which is the pattern this list exists to break.
+
 - **No "clear recent files" affordance** (#54b). `clearRecentFiles` exists and is tested but has no
   production caller: recents deliberately outlive a session, so clearing them with "reset session"
   would contradict their own design, and a dedicated control needs a menu entry and a string.

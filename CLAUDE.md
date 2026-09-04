@@ -234,7 +234,11 @@ src/
 │   ├── historyManager.ts   # command-pattern undo/redo (50-command stack)
 │   ├── pdfRenderer.ts      # pdfjs page rendering
 │   ├── uiController.ts     # toolbar/modal DOM wiring
-│   ├── pageThumbnailPanel.ts, inkLayer.ts, storage.ts (IndexedDB)
+│   ├── pageThumbnailPanel.ts
+├── infra/                  # browser-platform edges (no domain logic)
+│   ├── storage.ts          # IndexedDB: the session `state` store …
+│   ├── recentFiles.ts      # …and the #54b `recent` store of remembered file handles
+│   └── inkLayer.ts
 ├── elements/               # one file per annotation element type (text, shape, image,
 │                           #   signature, highlight, redaction, comment, code/QR, pdf)
 ├── handlers/               # pointer/tool interaction (drawing, eraser, ink, text edit,
@@ -379,7 +383,7 @@ would satisfy the delete case while destroying every picture in every document m
 opened the file is collected too. That is the same rule applied evenly, and it means a save can shrink
 a file the user did not knowingly change.
 
-Guards: `tests/docx/opcGc.test.ts` (14) + two cases in
+Guards: `tests/docx/opcGc.test.ts` (17) + two cases in
 `tests/browser/docx-image-edit.browser.test.ts` (the end-to-end removal, and the no-op control).
 Sabotage-verified five ways, each landing where predicted: document-only scan → the header case;
 every relationship dangling → 6; no media-only restriction → 9; unquoted Id match → the rId7/rId70
@@ -998,8 +1002,11 @@ is now `pageTopY` (`= viewBox[3]`), not `pageHeight` — those two numbers are e
 origin is zero, which is why passing the height was right until it wasn't. `reconstructPage` takes an
 optional trailing `viewBox`, defaulting to `[0,0,pageWidth,pageHeight]` so every existing caller and
 every existing call site is byte-identical. Precise counts, since a wrong one here would be exactly
-the kind of claim this file exists to prevent: 58 calls in all (56 → 57 → 58 as guards were
-added; re-count rather than citing this), of which **one** is production
+the kind of claim this file exists to prevent — and the correction below was itself wrong on its
+first attempt, which is the joke this paragraph keeps making: **58 call sites in all, of which one is
+production (`exportService.ts`) and 57 are tests** (plus the definition itself, which `git grep`
+counts and this sentence does not). It read "58 … one … and 56", which does not add up. RE-COUNT with
+`git grep -h 'reconstructPage(' -- src/ tests/` rather than citing any of these numbers
 (`exportService.ts` — the only site that passes the new argument) and 56 are tests
 [Verified: `grep -rn "reconstructPage(" src/ tests/`, minus the definition].
 
@@ -3345,8 +3352,9 @@ C2 delete). The shared image primitives (`sniffImageMime`/`imgBytesToB64`/`image
 were LIFTED from `docxToolbar.ts` into `docxImagePaste.ts` (toolbar now imports them — behavior-identical,
 the 📷 Insert button unchanged). No new dep, no `SCHEMA_VERSION` bump, rides `VITE_FEATURE_DOCX_EDIT`.
 **Ceiling:** `http(s)` `<img src>` from web HTML (CORS — can't read the bytes client-side, never matched);
-GIF/SVG/WebP (only PNG/JPEG minted, matches the slice-1 sniff); ~~orphaned-media GC after a cut~~ **CLOSED 2026-09-04 — `gcOrphanMediaParts` runs on every editor save and collects the cut orphan too (no part GC
-in v1); mixed text+image HTML fragments (an embedded image embeds only if it is a `data:`-uri
+GIF/SVG/WebP (only PNG/JPEG minted, matches the slice-1 sniff); **~~orphaned-media GC after a cut
+(no part GC in v1)~~ — CLOSED 2026-09-04**, `gcOrphanMediaParts` runs on every editor save and
+collects the cut orphan along with every other unreferenced `word/media` part; mixed text+image HTML fragments (an embedded image embeds only if it is a `data:`-uri
 `<img data-docx-image>`). Guards: `tests/docx/docxImagePaste.test.ts` (jsdom: `resetPastedImageAnchors`
 reset + non-image untouched, `parseDOM` data-uri parse + http/no-attr rejection, `firstImageFile`,
 `transformPasted` wired) + `tests/browser/docx-image-cutpaste.browser.test.ts` (real Chrome: copy→paste →

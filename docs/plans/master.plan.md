@@ -46,7 +46,7 @@
 | `.gitignore` `tests/**/zz*` | present; zero probe files tracked |
 | Annotation strip | reads page frame BEFORE `buildPageOverlays` at both call sites (`exportPipeline.ts:412-415`, `exportService.ts:1182-1187`) |
 | `walkPageOps` | `annotationDepth` gating live (images collected in annotations; rules/vRules/colorMap suppressed); `/BBox` clip NOT modelled (→ WS4-F) |
-| KNOWN_ISSUES.md | C22 present, C12 corrected, Arabic pending count = 12 (correct figure) |
+| KNOWN_ISSUES.md | C22 present, C12 corrected, Arabic pending count = 14 (correct figure since #54b added two on 2026-09-04) |
 | Certification counter | **0/2 clean** under MAXIMAL — the pushed milestone is uncertified, recorded with developer authorization (→ WS7) |
 
 No product defect was found by the verification pass — only the nine doc-drifts in WS0.
@@ -97,8 +97,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
-| WS7 — certification | in progress | Round 1 of the MAXIMAL panel returned 18 findings across the three lenses, including a regression WS5's own P0 fix introduced. Counter reset; round 2 pending. |
-| WS7 — certification | not started | Range `dfe34ae..HEAD` still resolves. |
+| WS7 — certification | in progress | MAXIMAL panel over `dfe34ae..HEAD`. Round 1: 18 findings (incl. a regression WS5's own P0 fix introduced). Round 2: 17 findings, most of them round-1 fixes applied to ONE member of a class. Counter still 0 of 2; round 3 pending. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
@@ -202,7 +201,7 @@ mixed absolute/crop-relative (probe: a word at y=300 on a 300-high crop).
 - Byte-identical output for zero-origin pages (the entire existing flow/DOCX suite is the guard).
 - Update `KNOWN_ISSUES.md` (close or narrow C22) + `tests/blockers/README.md` row.
 
-## WS3 — Arabic ×12 native review (user-gated; interleave anywhere)
+## WS3 — Arabic ×14 native review (user-gated; interleave anywhere)
 
 1. Extract a review table from `locales/*.json` for the 12 keys pending at extraction time (14 since #54b) (the enumeration of record
    is `KNOWN_ISSUES.md:69-74`): `toolbar.exportXlsxTitle`, `badge.signRect`, the six
@@ -272,7 +271,7 @@ Scope is "what already exists", UNQUALIFIED — not only where bugs were found b
 2. Run the three reviewer agents from `.claude/agents/` — `export-fidelity-reviewer`,
    `safety-promises-reviewer`, `completeness-reviewer` — **spawned UNNAMED** (a named agent's
    report vanishes; recorded trap), fresh context, over the high-risk cluster: `src/export/**`,
-   `src/utils/contentStreamEditor.ts`, `src/docx/**` (the in-place save), `src/core/storage.ts` +
+   `src/utils/contentStreamEditor.ts`, `src/docx/**` (the in-place save), `src/infra/storage.ts` +
    session persistence, `src/handlers/**`.
 3. A second sampling pass OUTSIDE that cluster: `src/ui/binders/**`, i18n plumbing, PWA/SW +
    caching config, OCR pipeline, signing UI. Plus one fresh `qa:sweep` run and a skim of its
@@ -575,6 +574,25 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   fix had left the `/Rect` in a MIXED frame), `opcGc` accepts single-quoted XML attribute values (a
   legal document could lose a live header image), and the sanitizer's GC roots include
   `trailerInfo.Encrypt` (latent: no caller encrypts today, but `PDFWriter` writes it to the trailer).
+- [2026-09-04 15:21] RECORDED: WS7 round 2 = **17 findings** (2 + 4 + 11), counter still 0 of 2. Most were
+  round-1 fixes applied to ONE member of a class: the `opcGc` single-quote fix reached the owner scan
+  but not the `.rels` parser or the Content-Types scan (a legal single-quoted `.rels` DELETED a live
+  image); the XFDF origin reached `rect` but not the arrow endpoints or ink points; and the
+  sanitizer's reachability sweep was not carried to `compressLossless`, whose own docstring says it
+  mirrors the sanitizer. Every one of those is the "sibling shares the promise but not the filter"
+  shape this repo names as its most-repeated defect.
+- [2026-09-04 15:21] AGREED: the sweep now lives in ONE place (`src/utils/pdfObjectGc.ts`) used by both the
+  sanitizer and the compressor, rather than being copied. Copying is how the two diverged; a third
+  repetition in one session was not acceptable.
+- [2026-09-04 15:21] AGREED: the vertical-writing redaction bound is disclosed in `SECURITY.md` and
+  `KNOWN_ISSUES.md`, not only in `CLAUDE.md`. The panel graded "recorded in CLAUDE.md but not in
+  SECURITY.md" as the defect for bound B and was right to apply it here — it is a possible leak of
+  redacted text, so it belongs where users read.
+- [2026-09-04 15:21] RECORDED: round 2 also caught the round-1 fix commit re-introducing the future-stamp
+  defect it had just fixed (stamps of 14:51 in a commit authored 14:50), a `58 = 1 + 56` arithmetic
+  contradiction inside the paragraph warning against wrong counts, a malformed retraction that still
+  asserted the bound it declared closed, and the `Encrypt` GC root shipped with NO test. All fixed;
+  the root now has a direct guard in `tests/utils/pdfObjectGc.test.ts`.
 
 ## Status
 <!-- progress-block v1 -->
@@ -584,7 +602,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 2 | WS0 — doc-drift reconciliation (ten drifts) | M | done | 46962b0 | CLAUDE.md, SECURITY.md, VISION.md, src/utils/geometry.ts |
 | 3 | WS1 — close uncertified dimensions + orphan-leak flake | M | done | 94600f2 | tests/browser/**  |
 | 4 | WS2 — C22 flow layout on non-zero CropBox origin | L | done | c03fd5e | src/export/**, src/utils/flowDoc.ts |
-| 5 | WS3 — Arabic x12 native review | S | blocked | - | locales/** |
+| 5 | WS3 — Arabic x14 native review | S | blocked | - | locales/** |
 | 6 | WS4-A — ink composited above the burn | M | done | 347fa63 | src/export/**, tests/browser/redaction-ink-clip.browser.test.ts |
 | 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
 | 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |

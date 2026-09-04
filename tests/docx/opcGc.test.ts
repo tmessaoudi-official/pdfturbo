@@ -188,6 +188,31 @@ describe('gcOrphanMediaParts', () => {
     expect(p.files['word/media/image1.png']).toBeDefined();
   });
 
+  it("KEEPS an image whose .rels itself uses SINGLE-quoted Id/Target", () => {
+    // Round 1 taught the OWNER scan both quote styles and left the .rels parser double-quote-only,
+    // so Id and Target came back undefined, the entry was skipped, and the part entered neither
+    // `live` nor `dangling` — deleted, with its relationship left behind. A well-formed document.
+    const p = pkg({
+      'word/document.xml': bodyWith('rId4'),
+      'word/_rels/document.xml.rels':
+        `<?xml version="1.0"?><Relationships xmlns="${REL_NS}"><Relationship Id='rId4' Type='${IMG_TYPE}' Target='media/image1.png'/></Relationships>`,
+    }, ['word/media/image1.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+    expect(p.files['word/media/image1.png']).toBeDefined();
+  });
+
+  it("KEEPS a media part named by a SINGLE-quoted Content-Types Override", () => {
+    const p = pkg({
+      '[Content_Types].xml':
+        "<?xml version='1.0'?><Types><Override PartName='/word/media/image9.emf' ContentType='image/x-emf'/></Types>",
+      'word/document.xml': bodyWith(),
+      'word/_rels/document.xml.rels': rels(),
+    }, ['word/media/image9.emf']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+  });
+
   it('KEEPS a media part named by a [Content_Types].xml Override', () => {
     // A media extension with no `Default` is typed by an Override instead. Deleting the part while
     // the Override still names it leaves a dangling declaration that strict readers reject, so an

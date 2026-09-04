@@ -29,6 +29,7 @@
 // via the dynamic import() below). pdf-lib's concrete classes have non-public
 // constructors, so InstanceType<typeof X> is rejected; the named types work.
 import type { PDFDict as PDFDictT, PDFArray as PDFArrayT } from '@cantoo/pdf-lib';
+import { sweepUnreachableObjects } from './pdfObjectGc';
 
 export interface SanitizeReport {
   /** /Info dictionary had ≥1 entry and was cleared. */
@@ -203,45 +204,18 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   }
 
   // ── Sweep the detached payloads out of the FILE, not just out of the catalog ────────────────
-  // Everything above deletes REFERENCES (`cat.delete('/Metadata')`, `node.delete('/A')`). pdf-lib
-  // serialises every indirect object it holds and performs no reachability collection, so the
-  // detached XMP stream and JavaScript action were written straight back out — in PLAINTEXT, since
-  // this save passes `useObjectStreams: false`. Measured end-to-end: both markers survived a
-  // sanitize. Three user-facing docs say those artifacts are "stripped", so this was the promise
-  // being broken, not a tidiness issue. [WS5 P1, 2026-09-04]
+  // Everything above deletes REFERENCES. pdf-lib serialises every indirect object it holds and
+  // performs no reachability collection, so the detached XMP stream and JavaScript action were
+  // written straight back out — in PLAINTEXT, since this save passes `useObjectStreams: false`.
+  // Measured end-to-end: both markers survived a sanitize. Three user-facing docs say those
+  // artifacts are "stripped", so this was the promise being broken. [WS5 P1, 2026-09-04]
   //
-  // Reachability from the roots is the right test rather than deleting the specific refs we
-  // detached: an object may be referenced from somewhere else (a shared stream), and deleting it
-  // blindly would corrupt the output — the one direction worse than leaving the orphan.
-  // `Encrypt` belongs here: pdf-lib's PDFWriter writes `Encrypt: this.context.trailerInfo.Encrypt`
-  // into the trailer, so omitting it would sweep the object the trailer still names and leave a
-  // dangling reference. LATENT rather than live — the only caller assembles without encryption —
-  // but `sanitizePdf` is an exported generic entry point. [WS7 round 1, 2026-09-04]
-  const roots: unknown[] = [
-    ctx.trailerInfo.Root, ctx.trailerInfo.Info, ctx.trailerInfo.ID, ctx.trailerInfo.Encrypt,
-  ];
-  const reached = new Set<string>();
-  const queue: unknown[] = [];
-
-  const visit = (value: unknown): void => {
-    if (value instanceof PDFRef) {
-      const key = value.toString();
-      if (reached.has(key)) return;
-      reached.add(key);
-      queue.push(ctx.lookup(value));
-      return;
-    }
-    if (value instanceof PDFStream) { visit(value.dict); return; }
-    if (value instanceof PDFDict) { for (const v of value.values()) visit(v); return; }
-    if (value instanceof PDFArray) { for (let i = 0; i < value.size(); i++) visit(value.get(i)); }
-  };
-
-  for (const r of roots) visit(r);
-  while (queue.length > 0) visit(queue.pop());
-
-  for (const [ref] of ctx.enumerateIndirectObjects()) {
-    if (!reached.has(ref.toString())) ctx.delete(ref);
-  }
+  // Shared with `compressLossless`, which had the identical defect on the identical payload — see
+  // the note in `pdfObjectGc.ts` for why it is one function and not two.
+  sweepUnreachableObjects(
+    ctx as never,
+    { PDFRef, PDFStream, PDFDict, PDFArray } as never,
+  );
 
   const bytes = await doc.save({ useObjectStreams: false });
   return { bytes, report };

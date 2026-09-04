@@ -165,6 +165,29 @@ describe('XFDF x axis carries the CropBox origin too (WS7)', () => {
     expect({ x: back.x, y: back.y }).toEqual({ x: 10, y: 20 });
   });
 
+  it('offsets the ARROW endpoints and the INK points too, not just the rect', () => {
+    // The round-1 fix reached `rect` only, leaving arrow `/L` and freehand `inkList` with
+    // crop-relative x beside absolute y. Self-consistent internally, so the round-trip case above
+    // cannot see it — the defect is what an external reader gets.
+    const arrow = { type: 'shape', shapeType: 'arrow', x: 10, y: 20, width: 50, height: 0,
+      x1: 10, y1: 20, x2: 60, y2: 20, strokeColor: '#ff0000' } as unknown as ElementJSON;
+    const a = elementToXfdfAnnot(arrow, 0, 350, 50);
+    expect(a?.line?.[0]).toBe(60);   // 10 + 50
+    expect(a?.line?.[2]).toBe(110);  // 60 + 50
+    expect(a?.rect[0]).toBe(60);     // and it agrees with the rect — one frame, not two
+
+    const ink = { type: 'shape', shapeType: 'freehand', x: 10, y: 20, width: 10, height: 10,
+      points: [{ x: 10, y: 20 }, { x: 20, y: 30 }], strokeColor: '#ff0000' } as unknown as ElementJSON;
+    expect(elementToXfdfAnnot(ink, 0, 350, 50)?.inkList?.[0]?.[0]).toBe(60);
+  });
+
+  it('round-trips an arrow through the origin', () => {
+    const arrow = { type: 'shape', shapeType: 'arrow', x: 10, y: 20, width: 50, height: 0,
+      x1: 10, y1: 20, x2: 60, y2: 20, strokeColor: '#ff0000' } as unknown as ElementJSON;
+    const back = xfdfAnnotToElement(elementToXfdfAnnot(arrow, 0, 350, 50) as never, 'p1', 350, 50) as unknown as { x1: number; x2: number };
+    expect({ x1: back.x1, x2: back.x2 }).toEqual({ x1: 10, x2: 60 });
+  });
+
   it('is unchanged on a zero-origin page — the identity control', () => {
     const a = elementToXfdfAnnot(el, 0, 842);
     expect(a?.rect[0]).toBe(10);

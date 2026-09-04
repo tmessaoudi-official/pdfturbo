@@ -82,3 +82,45 @@ describe('compressLossless (#60)', () => {
     expect(re.catalog.get(PDFName.of('Metadata'))).toBeUndefined();
   });
 });
+
+/**
+ * WS7 round 2 — `compressLossless` kept the defect the sanitizer had just fixed.
+ *
+ * It deletes the catalog `/Metadata` REFERENCE, and pdf-lib performs no reachability collection, so
+ * the detached XMP packet was re-serialised. Its own docstring says it "mirrors the metadata subset
+ * of the sanitizer" — which is precisely why a sibling that shares a promise but not the filter is
+ * this repo's most-repeated defect. Both paths now call one shared sweep.
+ */
+describe('compressLossless — the stripped metadata must leave the FILE (WS7)', () => {
+  const MARKER = 'COMPRESS-XMP-PAYLOAD-MUST-NOT-SURVIVE-4417';
+
+  async function pdfWithCatalogXmp(): Promise<Uint8Array> {
+    const { PDFDocument, PDFName } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    // UNCOMPRESSED, so a raw byte scan can see it — a flate stream would hide the marker and the
+    // assertion would pass whether the payload survived or not.
+    const xmp = doc.context.stream(`<?xpacket?><x:xmpmeta>${MARKER}</x:xmpmeta>`, {
+      Type: PDFName.of('Metadata'), Subtype: PDFName.of('XML'),
+    });
+    doc.catalog.set(PDFName.of('Metadata'), doc.context.register(xmp));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+
+  it('the fixture really carries the payload — the negative control', async () => {
+    expect(asText(await pdfWithCatalogXmp())).toContain(MARKER);
+  });
+
+  it('does not re-serialise the detached XMP packet', async () => {
+    expect(asText(await compressLossless(await pdfWithCatalogXmp()))).not.toContain(MARKER);
+  });
+
+  it('still produces a loadable one-page document — the over-reach control', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const out = await compressLossless(await pdfWithCatalogXmp());
+    const reloaded = await PDFDocument.load(out, { updateMetadata: false });
+    expect(reloaded.getPageCount()).toBe(1);
+  });
+});

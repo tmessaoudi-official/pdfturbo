@@ -15,6 +15,7 @@
  */
 
 import type { PDFDocument as PDFDocumentT } from '@cantoo/pdf-lib';
+import { sweepUnreachableObjects } from '../utils/pdfObjectGc';
 
 export type CompressMode = 'lossless' | 'lossy';
 
@@ -90,8 +91,17 @@ export async function stripDocMetadata(doc: PDFDocumentT): Promise<void> {
  * is applied by the caller on the shared save (see ExportService.compressAndDownload).
  */
 export async function compressLossless(bytes: Uint8Array): Promise<Uint8Array> {
-  const { PDFDocument } = await import('@cantoo/pdf-lib');
+  const { PDFDocument, PDFRef, PDFStream, PDFDict, PDFArray } = await import('@cantoo/pdf-lib');
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   await stripDocMetadata(doc);
+  // `stripDocMetadata` deletes REFERENCES; pdf-lib has no reachability collection, so without this
+  // the detached XMP packet is re-serialised and the "quick optimize" hands back the metadata it
+  // just removed. The sanitizer fixed exactly this and this sibling kept the defect — the docstring
+  // above even says it "mirrors the metadata subset of the sanitizer". One shared sweep now, so the
+  // two cannot drift again. [WS7 round 2, 2026-09-04]
+  sweepUnreachableObjects(
+    doc.context as never,
+    { PDFRef, PDFStream, PDFDict, PDFArray } as never,
+  );
   return doc.save({ useObjectStreams: true });
 }

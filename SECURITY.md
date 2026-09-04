@@ -128,8 +128,8 @@ export and both about *where a picture sits* rather than whether it was filtered
   missed it — and, in the other direction, a redaction that happened to sit in that corner wrongly
   removed a picture nowhere near it.
 
-All of those now remove the content, at every rotation and at any CropBox origin. Three limits are worth
-stating rather than leaving you to discover them:
+All of those now remove the content, at every rotation and at any CropBox origin. The limits below are
+worth stating rather than leaving you to discover them:
 
 - **A redacted picture is dropped whole.** There is no way to remove part of an embedded image from
   these text-oriented exports, so the whole picture is left out. The practical consequence: on a scanned
@@ -152,6 +152,16 @@ stating rather than leaving you to discover them:
   Both sides of the test now use the upright box that *contains* the rotated one. That errs towards
   removing more than the box strictly covers rather than less — and for a long, thin redaction it is
   considerably more, not slightly: a 20x260 bar turned on its side is tested as a 260x260 square.
+- **Vertical (top-to-bottom) text is NOT covered — a known gap, disclosed rather than assumed away.**
+  A redaction over text set in a vertical writing mode, as some Japanese and Chinese documents use,
+  may leave that text extractable in the Word / Markdown / text / CSV / Excel exports. The filter
+  reads the run's direction from the PDF, and for vertical text the two size fields swap roles and
+  the text advances downward; we have no vertical-font document to measure the exact behaviour
+  against, so rather than claim it works we are telling you it is unverified. **Horizontal text,
+  including text set at an angle, IS covered** — that was fixed on 2026-09-04. If you are redacting a
+  vertically-set document, use the PDF export, which rasterises the page and removes the content in
+  every case.
+
 - **Freehand ink IS covered (since 2026-09-02).** It previously was not: the ink layer is stamped after
   the burn, so handwriting under a box was composited on top of it and baked into the exported pixels.
   Ink is now clipped to the redactions on the layer's own canvas, which removes the covered pixels and

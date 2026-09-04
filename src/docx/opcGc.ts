@@ -39,6 +39,22 @@ export interface GcResult {
 
 const MEDIA_PREFIX = 'word/media/';
 
+/**
+ * Read an XML attribute, accepting EITHER quote style.
+ *
+ * One helper rather than a regex per site, because the per-site version is what went wrong: round 1
+ * taught the owner scan to accept `'rId4'` and left the `.rels` parser and the `[Content_Types].xml`
+ * scan matching `"…"` only — so a well-formed single-quoted `.rels` yielded `undefined` for both Id
+ * and Target, the part entered neither `live` nor `dangling`, and a LIVE image was deleted with its
+ * relationship left dangling. Fixing one member of a class and leaving its siblings is this repo's
+ * most-repeated defect, and this module had it twice in two rounds. [WS7 round 2, 2026-09-04]
+ */
+function xmlAttr(tag: string, name: string): string | undefined {
+  const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag);
+  if (!m) return undefined;
+  return m[1] ?? m[2];
+}
+
 /** `word/_rels/document.xml.rels` → `word/document.xml`; `_rels/.rels` → null (the package root). */
 function ownerOf(relsPath: string): string | null {
   const m = /^(.*)_rels\/([^/]+)\.rels$/.exec(relsPath);
@@ -108,8 +124,10 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
   // an Override-typed media part that really is orphaned is never collected.
   const ctXml = partText(opc, '[Content_Types].xml');
   if (ctXml !== null) {
-    for (const m of ctXml.matchAll(/<Override\b[^>]*\bPartName\s*=\s*"([^"]*)"[^>]*>/g)) {
-      const named = m[1].startsWith('/') ? m[1].slice(1) : m[1];
+    for (const m of ctXml.matchAll(/<Override\b[^>]*>/g)) {
+      const part = xmlAttr(m[0], 'PartName');
+      if (part === undefined) continue;
+      const named = part.startsWith('/') ? part.slice(1) : part;
       if (named.startsWith(MEDIA_PREFIX)) live.add(named);
     }
   }
@@ -133,8 +151,8 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
     for (const m of relsXml.matchAll(/<Relationship\b[^>]*>/g)) {
       const tag = m[0];
       if (/TargetMode\s*=\s*"External"/.test(tag)) continue;
-      const id = /\bId\s*=\s*"([^"]*)"/.exec(tag)?.[1];
-      const target = /\bTarget\s*=\s*"([^"]*)"/.exec(tag)?.[1];
+      const id = xmlAttr(tag, 'Id');
+      const target = xmlAttr(tag, 'Target');
       if (!id || !target) continue;
       const resolved = resolveRelTarget(relsPath, target);
       if (!resolved.startsWith(MEDIA_PREFIX)) continue;
