@@ -82,7 +82,7 @@ export function anyRemoved(r: SanitizeReport): boolean {
 }
 
 export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
-  const { PDFDocument, PDFName, PDFDict, PDFArray } = await import('@cantoo/pdf-lib');
+  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFRef, PDFStream } = await import('@cantoo/pdf-lib');
   // updateMetadata:false — otherwise pdf-lib re-stamps Producer + ModDate into
   // /Info at load time, re-injecting the very identifying metadata we strip.
   const doc = await PDFDocument.load(input, { updateMetadata: false });
@@ -200,6 +200,41 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   if (ctx.trailerInfo.ID) {
     ctx.trailerInfo.ID = undefined;
     report.documentId = true;
+  }
+
+  // ── Sweep the detached payloads out of the FILE, not just out of the catalog ────────────────
+  // Everything above deletes REFERENCES (`cat.delete('/Metadata')`, `node.delete('/A')`). pdf-lib
+  // serialises every indirect object it holds and performs no reachability collection, so the
+  // detached XMP stream and JavaScript action were written straight back out — in PLAINTEXT, since
+  // this save passes `useObjectStreams: false`. Measured end-to-end: both markers survived a
+  // sanitize. Three user-facing docs say those artifacts are "stripped", so this was the promise
+  // being broken, not a tidiness issue. [WS5 P1, 2026-09-04]
+  //
+  // Reachability from the roots is the right test rather than deleting the specific refs we
+  // detached: an object may be referenced from somewhere else (a shared stream), and deleting it
+  // blindly would corrupt the output — the one direction worse than leaving the orphan.
+  const roots: unknown[] = [ctx.trailerInfo.Root, ctx.trailerInfo.Info, ctx.trailerInfo.ID];
+  const reached = new Set<string>();
+  const queue: unknown[] = [];
+
+  const visit = (value: unknown): void => {
+    if (value instanceof PDFRef) {
+      const key = value.toString();
+      if (reached.has(key)) return;
+      reached.add(key);
+      queue.push(ctx.lookup(value));
+      return;
+    }
+    if (value instanceof PDFStream) { visit(value.dict); return; }
+    if (value instanceof PDFDict) { for (const v of value.values()) visit(v); return; }
+    if (value instanceof PDFArray) { for (let i = 0; i < value.size(); i++) visit(value.get(i)); }
+  };
+
+  for (const r of roots) visit(r);
+  while (queue.length > 0) visit(queue.pop());
+
+  for (const [ref] of ctx.enumerateIndirectObjects()) {
+    if (!reached.has(ref.toString())) ctx.delete(ref);
   }
 
   const bytes = await doc.save({ useObjectStreams: false });

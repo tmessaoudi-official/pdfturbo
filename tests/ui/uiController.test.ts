@@ -17,7 +17,7 @@ function seedDOM(): void {
   // These match the exact ids in UIController constructor (not the property names)
   const ids = [
     'fileInput', 'addTextBtn', 'addSignatureBtn', 'downloadBtn', 'prevPage', 'nextPage',
-    'pageInfo', 'pdfCanvas', 'canvasContainer', 'signatureModal', 'signatureCanvas',
+    'pdfCanvas', 'canvasContainer', 'signatureModal', 'signatureCanvas',
     'fontSize', 'color', 'colorEyedropperBtn', 'sigLineWidth', 'sigColor',
     'zoomOutBtn', 'zoomInBtn', 'zoomDisplay', 'fitBtn', 'undoBtn', 'redoBtn',
     'fontFamily', 'boldBtn', 'italicBtn', 'underlineBtn', 'strikeBtn', 'alignBtn', 'modeBadge',

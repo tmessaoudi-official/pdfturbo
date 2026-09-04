@@ -5,7 +5,8 @@
  * space must preserve geometry and payload for the supported types.
  */
 import { describe, it, expect } from 'vitest';
-import { elementToXfdfAnnot, xfdfAnnotToElement } from '../../src/export/xfdfMapping';
+import { elementToXfdfAnnot, xfdfAnnotToElement, pageHeightPt } from '../../src/export/xfdfMapping';
+import type { DocumentPage } from '../../src/core/documentModel';
 import type { ElementJSON } from '../../src/elements/annotationElement';
 
 const H = 800;
@@ -94,5 +95,51 @@ describe('XFDF shape mapping (G21)', () => {
     expect(el.points[0].x).toBeCloseTo(5, 5); expect(el.points[0].y).toBeCloseTo(85, 5);
     expect(el.points[1].x).toBeCloseTo(50, 5); expect(el.points[1].y).toBeCloseTo(10, 5);
     expect(el.points[2].x).toBeCloseTo(95, 5); expect(el.points[2].y).toBeCloseTo(40, 5);
+  });
+});
+
+/**
+ * WS5 — `pageHeightPt` had NO guard, and two defects behind that absence.
+ *
+ * The stub below MIMICS pdf.js: `viewBox` is rotation-invariant, `height` swaps with `width` at
+ * 90/270, and an omitted `rotation` means the page's own `/Rotate`. A stub returning a fixed height
+ * would make every case here pass while the bug stayed — the mistake this repo already had to
+ * correct once in the redaction rotation guards.
+ */
+describe('pageHeightPt — frame correctness (WS5)', () => {
+  const pageStub = (viewBox: number[], rotate: number) => ({
+    getViewport: (o: { scale: number; rotation?: number }) => {
+      const rot = o.rotation ?? rotate;
+      const w = viewBox[2] - viewBox[0], h = viewBox[3] - viewBox[1];
+      const swap = rot === 90 || rot === 270;
+      return { width: swap ? h : w, height: swap ? w : h, viewBox };
+    },
+  });
+  const srcs = (viewBox: number[], rotate = 0) =>
+    new Map([['s1', { doc: { getPage: () => Promise.resolve(pageStub(viewBox, rotate)) } }]]);
+  const page = { sourcePdfId: 's1', sourcePageNum: 1 } as unknown as DocumentPage;
+
+  it('is unchanged on an unrotated page with a zero origin — the common case', async () => {
+    expect(await pageHeightPt(page, srcs([0, 0, 595, 842]) as never)).toBe(842);
+  });
+
+  it('returns the UNROTATED top on a /Rotate 90 page, not the swapped dimension', async () => {
+    // Without `rotation: 0` pdf.js applies the page's own /Rotate and hands back the WIDTH here,
+    // so every exported annotation's y was flipped about the wrong number — and the docstring
+    // claimed it "returns the FULL unrotated source height", which was simply false at 90/270.
+    expect(await pageHeightPt(page, srcs([0, 0, 595, 842], 90) as never)).toBe(842);
+    expect(await pageHeightPt(page, srcs([0, 0, 595, 842], 270) as never)).toBe(842);
+  });
+
+  it('carries the CropBox ORIGIN: an XFDF /Rect is absolute, so the flip is about viewBox[3]', async () => {
+    // A page cropped to [50 50 350 350] is 300pt tall but its top is at absolute y=350. Flipping
+    // about the HEIGHT put every annotation 50pt out — the same origin-vs-height confusion that
+    // produced the redaction leak and the sign-rect displacement.
+    expect(await pageHeightPt(page, srcs([50, 50, 350, 350]) as never)).toBe(350);
+  });
+
+  it('still reads a blank page height directly', async () => {
+    const blank = { sourcePdfId: 'blank', blankHeight: 500 } as unknown as DocumentPage;
+    expect(await pageHeightPt(blank, new Map() as never)).toBe(500);
   });
 });

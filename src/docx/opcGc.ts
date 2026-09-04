@@ -116,7 +116,14 @@ export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
 
   for (const relsPath of relsPaths) {
     const relsXml = partText(opc, relsPath);
-    if (relsXml === null) continue;
+    // ABORT the whole pass, do not `continue`. Skipping an unreadable `.rels` was the ONE path in
+    // this module that failed towards DELETING, against the invariant stated at the top: its media
+    // targets never entered `live`, so they were collected. Unlike an unreadable OWNER — where we
+    // know the targets and can simply keep them — we cannot know WHICH targets an unreadable `.rels`
+    // declares, so the reachability graph is incomplete and any deletion is a guess. A UTF-16
+    // `.rels` is legal XML and decodes to replacement characters here, so this is reachable by a
+    // valid document, not just a corrupt one. [WS5 audit, 2026-09-04]
+    if (relsXml === null) return { removedParts: [], removedRels: [] };
     const owner = ownerOf(relsPath);
     // No owning part to scan (the package `.rels`), or an owner we cannot read as text (binary, or
     // absent): every relationship it declares is treated as LIVE. Fail towards keeping.

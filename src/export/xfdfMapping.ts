@@ -125,20 +125,40 @@ export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: num
  * Page height in points for the display↔user-space flip: blank pages carry it
  * directly; source pages read it from the loaded pdf.js page viewport.
  *
- * Ceiling (#QA-2026-06-23 P3 #12): this returns the FULL unrotated source height and ignores a
- * per-page crop (`docPage.crop`) and page rotation. XFDF coordinates are therefore expressed
- * against the uncropped, unrotated page box — correct for an uncropped/unrotated page (the common
- * case) and for a faithful internal export→import round-trip, but a cropped or rotated page will
- * have its imported/exported annotations offset. Documented, same class as the rotated-page
- * ceiling (#57b); a fix would need to thread the effective crop box + rotation transform here.
+ * Returns the source box's TOP in absolute user space (`viewBox[3]`), which is what an XFDF `/Rect`
+ * is measured against — NOT the box's height, and NOT a rotated dimension.
+ *
+ * **Two defects lived here until the WS5 audit (2026-09-04), and both were invisible on an ordinary
+ * page.** `getViewport({ scale: 1 })` omitted `rotation: 0`, so pdf.js applied the page's own
+ * `/Rotate` and returned the SWAPPED dimension at 90/270 — making this function's own docstring
+ * ("the FULL unrotated source height") false exactly where it mattered. And it returned the HEIGHT
+ * where an absolute flip needs the TOP, so a page with a non-zero CropBox origin was off by that
+ * origin. This is the sixth instance of the repo's recurring frame bug and the first that was not
+ * disclosed anywhere; `viewBox` is rotation-invariant, so reading it settles both at once.
+ *
+ * Byte-identical on a page with `/Rotate 0` and a `[0 0 w h]` box — i.e. almost every page, which is
+ * why it survived. Both the export and the import call this one function, so the internal
+ * round-trip stays self-consistent either way.
+ *
+ * Ceiling (#QA-2026-06-23 P3 #12), NARROWED: the app-level per-page crop (`docPage.crop`) is still
+ * ignored, so annotations on a page the user cropped inside PDFturbo remain offset. Page rotation
+ * and the source CropBox origin are no longer part of that ceiling.
  */
 export async function pageHeightPt(
   docPage: DocumentPage,
-  sourcePdfs: Map<string, { doc: { getPage(n: number): Promise<{ getViewport(o: { scale: number }): { height: number } }> } }>,
+  sourcePdfs: Map<string, {
+    doc: {
+      getPage(n: number): Promise<{
+        getViewport(o: { scale: number; rotation?: number }): { height: number; viewBox: readonly number[] };
+      }>;
+    };
+  }>,
 ): Promise<number> {
   if (docPage.sourcePdfId === 'blank') return docPage.blankHeight ?? 842;
   const src = sourcePdfs.get(docPage.sourcePdfId);
   if (!src) return docPage.blankHeight ?? 842;
   const page = await src.doc.getPage(docPage.sourcePageNum);
-  return page.getViewport({ scale: 1 }).height;
+  // `rotation: 0` is load-bearing, not tidiness: the default is the page's own `/Rotate`, which
+  // swaps the reported dimensions at 90/270. `viewBox` itself is rotation-invariant.
+  return page.getViewport({ scale: 1, rotation: 0 }).viewBox[3];
 }

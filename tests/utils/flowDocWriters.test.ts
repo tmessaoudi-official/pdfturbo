@@ -389,3 +389,38 @@ describe('flowDocToDocxBase64 — native ordered-list numbering', () => {
     expect(new Set(numIds).size).toBeGreaterThanOrEqual(2);
   });
 });
+
+/**
+ * WS5 P2 — the DOCX writer emitted a source PDF's Link URL with no scheme check, while its sibling
+ * Markdown writer ran the same value through the shared allowlist. The URL is unvalidated input
+ * from the opened document.
+ */
+describe('DOCX link scheme allowlist (WS5)', () => {
+  const docXml = async (b64: string): Promise<string> => (await unpackDocx(b64))['word/document.xml'];
+  const para = (url: string): FlowDoc['pages'][number] => ({
+    width: 600, height: 800,
+    paragraphs: [{
+      runs: [run('click me', { linkUrl: url })],
+      heading: 0, alignment: 'left', rtl: false,
+    }],
+  } as unknown as FlowDoc['pages'][number]);
+
+  it('keeps an http(s) link as a real hyperlink', async () => {
+    const xml = await docXml(await flowDocToDocxBase64({ pages: [para('https://example.test/a')] }));
+    expect(xml).toContain('click me');
+    expect(xml).toContain('w:hyperlink');
+  });
+
+  it('drops a javascript: link to plain text, keeping the words', async () => {
+    const xml = await docXml(await flowDocToDocxBase64({ pages: [para('javascript:alert(1)')] }));
+    expect(xml).toContain('click me');           // the text survives — this is not a redaction
+    expect(xml).not.toContain('w:hyperlink');
+    expect(xml).not.toContain('javascript:');
+  });
+
+  it('drops a file:// link the same way — the shape the Markdown writer already refused', async () => {
+    const xml = await docXml(await flowDocToDocxBase64({ pages: [para('file://attacker/share/x')] }));
+    expect(xml).toContain('click me');
+    expect(xml).not.toContain('w:hyperlink');
+  });
+});

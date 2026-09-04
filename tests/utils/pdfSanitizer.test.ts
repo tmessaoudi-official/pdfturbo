@@ -187,3 +187,74 @@ describe('sanitizePdf', () => {
     expect(re.getProducer()).toBeUndefined();
   });
 });
+
+/**
+ * WS5 P1 — the stripped payloads were still IN the file.
+ *
+ * `sanitizePdf` deletes REFERENCES (`cat.delete('/Metadata')`, `node.delete('/A')`), but pdf-lib
+ * serialises every indirect object it holds and has no reachability GC — so the detached XMP stream
+ * and JavaScript action were written back out, in plaintext because the save is
+ * `useObjectStreams: false`. README, SECURITY.md and FEATURES.md all say those are "stripped".
+ *
+ * These scan the RAW BYTES on purpose: `getTextContent`/`catalog.lookup` cannot see an orphan, which
+ * is exactly why the defect survived the existing tests. The markers are long and distinctive so a
+ * coincidental match is not a plausible mechanism (CLAUDE.md § "A flaky gate").
+ */
+describe('sanitizePdf — detached payloads must not survive in the bytes (WS5 P1)', () => {
+  const XMP_MARKER = 'SANITIZER-XMP-PAYLOAD-MUST-NOT-SURVIVE-4417';
+  const JS_MARKER = 'SANITIZER_JS_PAYLOAD_MUST_NOT_SURVIVE_4417()';
+
+  async function pdfWithOrphanablePayloads(): Promise<Uint8Array> {
+    const { PDFName, PDFString } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+
+    // Per-page XMP, as an indirect stream — the shape a real authoring tool writes.
+    // UNCOMPRESSED (`ctx.stream`, not `ctx.flateStream`) so a raw byte scan can actually see it —
+    // and real XMP is written uncompressed precisely so other tools can find it. With a flate
+    // stream the marker is unreadable in the bytes and the assertion below passes whether the
+    // payload survives or not: a scan that cannot fail, which is how this defect stayed hidden.
+    const xmp = ctx.stream(`<?xpacket?><x:xmpmeta>${XMP_MARKER}</x:xmpmeta>`, {
+      Type: PDFName.of('Metadata'), Subtype: PDFName.of('XML'),
+    });
+    page.node.set(PDFName.of('Metadata'), ctx.register(xmp));
+
+    // An annotation carrying a JavaScript action.
+    const action = ctx.obj({ S: PDFName.of('JavaScript'), JS: PDFString.of(JS_MARKER) });
+    const annot = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'),
+      Rect: ctx.obj([0, 0, 10, 10]), A: ctx.register(action),
+    });
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+
+  it('the fixture really carries both payloads — the negative control', async () => {
+    // Without this the assertions below would pass on a document that never had them.
+    const raw = asText(await pdfWithOrphanablePayloads());
+    expect(raw).toContain(JS_MARKER);
+    expect(raw).toContain(XMP_MARKER);
+  });
+
+  it('removes the detached XMP stream from the bytes, not just from the catalog', async () => {
+    const out = await sanitizePdf(await pdfWithOrphanablePayloads());
+    expect(asText(out.bytes)).not.toContain(XMP_MARKER);
+  });
+
+  it('removes the detached JavaScript action from the bytes', async () => {
+    const out = await sanitizePdf(await pdfWithOrphanablePayloads());
+    expect(asText(out.bytes)).not.toContain(JS_MARKER);
+  });
+
+  it('leaves the page and its non-JS content intact', async () => {
+    // The over-reach control: a GC that deleted too much would satisfy the two cases above by
+    // destroying the document.
+    const out = await sanitizePdf(await pdfWithOrphanablePayloads());
+    const reloaded = await PDFDocument.load(out.bytes, { updateMetadata: false });
+    expect(reloaded.getPageCount()).toBe(1);
+    expect(reloaded.getPage(0).getSize().width).toBe(200);
+  });
+});

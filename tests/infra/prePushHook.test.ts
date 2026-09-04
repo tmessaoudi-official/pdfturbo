@@ -1,9 +1,15 @@
 /**
  * M4 #40 — pushing to master auto-deploys to GitHub Pages with NO PR gate, and
  * the test suite otherwise runs only in CI *after* that push. The tracked
- * pre-push hook runs the exact CI gate locally first. These guard that the hook
- * exists, runs all three gate steps, and is auto-installed via `prepare`
+ * pre-push hook runs the three FAST gates locally first. These guard that the hook
+ * exists, runs all three of them, and is auto-installed via `prepare`
  * (core.hooksPath) — and that the pinned Node version stays consistent.
+ *
+ * It is NOT the exact CI gate, which this header used to claim and which these cases could never
+ * have caught: they assert exactly the three steps the hook runs, so the assertion and the claim
+ * agreed with each other while both disagreed with `deploy.yml` (audit, ocr:assets, test:browser,
+ * test:coverage:export, build and qa:sweep are also deploy-blocking). A guard that pins the same
+ * three things the prose claims is not evidence the prose is true. [WS5 audit, 2026-09-04]
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, statSync } from 'node:fs';

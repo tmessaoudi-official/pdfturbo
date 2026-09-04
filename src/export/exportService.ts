@@ -124,22 +124,6 @@ const IMG_QUALITY_MAX = 1;
 const IMG_DEFAULTS: Required<ImageExportOptions> = { scale: 2, format: 'png', quality: 0.92 };
 
 /**
- * Drop every non-redaction element whose box intersects a redaction on the same page, keeping the
- * redactions themselves. Used for BLANK pages, which have no source document to rasterise, so this is
- * the only way a redaction there can actually REMOVE rather than merely cover (see the call site).
- *
- * Intersection, not containment: a word only partly under the box still has part of itself hidden, so
- * leaving it would leak that part — the same rule `isItemRedacted` applies to source text.
- *
- * Both sides are tested by {@link rotatedElementFootprint}, not by the stored box: an element's own
- * `rotation` is applied when it is DRAWN but was not applied when it was TESTED until WS4-B, so a
- * rotated element could protrude into a redaction — or a rotated redaction cover an element — with
- * neither side noticing. That helper also does the negative-extent normalisation this used to do
- * inline (a negative width/height is reachable via `interactionHandler.resize` and would make the
- * raw comparisons fail OPEN).
- * Exported for direct testing; the geometry is trivial but the SAFETY depends on it.
- */
-/**
  * Does a source image XObject placement fall under a redaction, and so have to be kept out of the
  * flow (DOCX/MD/TXT) export?
  *
@@ -170,6 +154,26 @@ export function imagePlacementRedacted(
     x0 < r.x + r.width && x1 > r.x && yTop < r.y + r.height && yBot > r.y);
 }
 
+/**
+ * Drop every non-redaction element whose box intersects a redaction on the same page, keeping the
+ * redactions themselves. Used for BLANK pages, which have no source document to rasterise, so this is
+ * the only way a redaction there can actually REMOVE rather than merely cover (see the call site).
+ *
+ * Intersection, not containment: a word only partly under the box still has part of itself hidden, so
+ * leaving it would leak that part — the same rule `isItemRedacted` applies to source text.
+ *
+ * Both sides are tested by {@link rotatedElementFootprint}, not by the stored box: an element's own
+ * `rotation` is applied when it is DRAWN but was not applied when it was TESTED until WS4-B, so a
+ * rotated element could protrude into a redaction — or a rotated redaction cover an element — with
+ * neither side noticing. That helper also does the negative-extent normalisation this used to do
+ * inline (a negative width/height is reachable via `interactionHandler.resize` and would make the
+ * raw comparisons fail OPEN).
+ * Exported for direct testing; the geometry is trivial but the SAFETY depends on it.
+ *
+ * (This block sat ABOVE `imagePlacementRedacted`'s own jsdoc until 2026-09-04, so it documented
+ * nothing — TypeScript attached it to no symbol and a reader at that line was reading the contract
+ * of a different function. A casualty of the WS4-B edit.)
+ */
 export function dropElementsUnderRedactions(pageElements: PDFElement[]): PDFElement[] {
   const reds = pageElements.filter(el => el.type === 'redaction');
   if (reds.length === 0) return pageElements;

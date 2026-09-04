@@ -733,7 +733,10 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       if (err instanceof SearchableLayerError && err.code === 'ROTATED_PAGE') {
         this.reportError.warn('toast.ocrRotatedUnsupported');
       } else {
-        this.reportError.error('toast.ocrFailed');
+        // Carry the CAUSE. 20 of the 22 sibling catches in src/ do; this one discarded `err`, so
+        // the console line and the ring buffer recorded only the i18n key — on the path with three
+        // documented silent production failures. [WS5 P2, 2026-09-04]
+        this.reportError.error('toast.ocrFailed', err);
       }
     } finally {
       this.ui.runOcrModal.disabled = false;

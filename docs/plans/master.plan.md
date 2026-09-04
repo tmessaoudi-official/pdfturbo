@@ -539,6 +539,26 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   grids that are true positives — so no threshold on that statistic separates them and tightening it
   would refuse the real forms. A future attempt needs a different discriminator. The 2-column
   articles fired zero times, so the existing rules do work on the shape they were built for.
+- [2026-09-04 14:26] AGREED: WS5 ran the three `.claude/agents/` lenses UNNAMED over the high-risk
+  cluster plus a sampling pass and a fresh `qa:sweep`. 30 findings: 1 P0, 2 P1, 9 P2, 18 P3. Reports
+  kept at `var/claude/ws5/` (gitignored). The P0, both P1s and every trivial P2/P3 are FIXED under
+  TDD here; the 10 remaining are in `KNOWN_ISSUES.md` § Deferred, each with the reason it was not
+  landed rather than a bare todo.
+- [2026-09-04 14:26] AGREED: the P0 is a real redaction leak. `isItemRedacted` extended a run +x by
+  |width| from transform[4], but pdf.js reports `width` as the advance ALONG THE TEXT DIRECTION and
+  carries the direction in `transform` (pdf.worker.mjs:35814-35819 — for horizontal text height is 0,
+  for vertical width is 0). Any run drawn with a rotated Tm was tested in a box DISJOINT from its
+  glyphs and never dropped, through DOCX/MD/TXT/CSV/XLSX, at every page rotation including 0. Now
+  built from the transform's four corners; byte-identical for ordinary horizontal text.
+- [2026-09-04 14:26] AGREED: the P1 is that `sanitizePdf` deleted REFERENCES while pdf-lib has no
+  reachability GC, so the detached XMP stream and JavaScript action were re-serialised — in
+  plaintext, since the save is `useObjectStreams: false`. Three user-facing docs said they were
+  "stripped". A reachability sweep from the trailer roots now discards unreachable objects; deleting
+  the specific detached refs instead was rejected because a shared object would be destroyed.
+- [2026-09-04 14:26] AGREED: two of the audit's findings were against work landed EARLIER THE SAME
+  DAY — the `opcGc` unreadable-`.rels` path failed toward DELETING against its own stated invariant,
+  and CLAUDE.md still carried "not fixed on purpose" for a leak WS4-D had just closed. Both fixed.
+  A same-session audit catches what a same-session author cannot.
 
 ## Status
 <!-- progress-block v1 -->
@@ -558,7 +578,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | done | b99db82 | src/core/pageService.ts, src/utils/geometry.ts |
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
-| 15 | WS5 — adversarial audit of existing code | L | todo | - | src/** |
+| 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | WS5SHA | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
 | 16 | WS7 — certification, 2 clean rounds over dfe34ae..HEAD | L | todo | - | - |
 <!-- /progress-block -->
 ### Blocked

@@ -319,7 +319,7 @@ version it expects" — which quietly stopped being true. The first now goes thr
 second imports the constant, which is exported for exactly this reason. **A test-side copy of a
 production constant only ever breaks later, and for a reason unrelated to what the test is about.**
 
-Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (9),
+Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (11),
 `tests/utils/fileSystemAccess.test.ts` (+11). Sabotage-verified six ways, each landing where
 predicted: collapsing cancelled/unavailable → 2; name-keyed de-duplication → the same-name case;
 non-monotonic `at` → 3 (newest-first, the frozen-clock case, AND de-duplication's move-to-front,
@@ -379,7 +379,7 @@ would satisfy the delete case while destroying every picture in every document m
 opened the file is collected too. That is the same rule applied evenly, and it means a save can shrink
 a file the user did not knowingly change.
 
-Guards: `tests/docx/opcGc.test.ts` (12) + two cases in
+Guards: `tests/docx/opcGc.test.ts` (14) + two cases in
 `tests/browser/docx-image-edit.browser.test.ts` (the end-to-end removal, and the no-op control).
 Sabotage-verified five ways, each landing where predicted: document-only scan → the header case;
 every relationship dangling → 6; no media-only restriction → 9; unquoted Id match → the rId7/rId70
@@ -1628,7 +1628,7 @@ workbook, reports `A1:C4`, types labels as `str` / Qty as `int` / Price as `floa
 column to 39.49**. Note `libreoffice` is present in the cloud container but **`libreoffice-calc` is
 not**, so `soffice --convert-to` fails on every spreadsheet — including a plain CSV. That failure looks
 exactly like "the file I generated is corrupt" and is not; check whether the tool can open a trivial
-file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (15, asserting on the unzipped sheet
+file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (18, asserting on the unzipped sheet
 XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
@@ -2408,7 +2408,7 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   `مرحباWorld `). Every engine call falls back to the raw string on a bidi-js throw (never regress below prior
   behavior). **Ceiling:** overlay bracket display-mirroring (fontkit draws the logical glyph; the string surfaces
   DO mirror), tashkeel GPOS, shaped-ligature reorder → Feature 3 Slice 3 (evaluate-then-defer). Guards:
-  `tests/utils/bidi.test.ts` (13) + the per-surface guards (`rtlClipboard`/`flowDocArabic`/`textSearchHandler`) +
+  `tests/utils/bidi.test.ts` (17) + the per-surface guards (`rtlClipboard`/`flowDocArabic`/`textSearchHandler`) +
   the extended `tests/browser/arabic-overlay.browser.test.ts`.
 - **RTL-aware text toolbar (Feature 3 Slice 2, `ebae519`)**: `TextElement.direction?: 'auto'|'rtl'|'ltr'`
   (default `'auto'`, OPTIONAL, **no `SCHEMA_VERSION` bump** — `toJSON` omits when auto, `elementFactory`
@@ -2495,7 +2495,7 @@ recovers as real Arabic Unicode (selectable + screen-reader-accessible) but full
 is imperfect — fontkit GSUB shaping yields contextual glyphs with incomplete pdf-lib ToUnicode (same
 ceiling as the visible Arabic overlay). A clean-ToUnicode PoC (per-codepoint isolated encoding) was
 tried + REJECTED: it traded the artifact for RTL order reversal in pdf.js `getTextContent`. Rotated
-pages: NOT yet supported (warn + skip). Guards: `tests/ocr/searchableTextLayer.test.ts` (14 jsdom:
+pages: NOT yet supported (warn + skip). Guards: `tests/ocr/searchableTextLayer.test.ts` (32 jsdom:
 transform/partition/apply/rotation) + `tests/browser/searchable-ocr.browser.test.ts` (Latin exact +
 Arabic honest contract + invisible-ink).
 
@@ -2580,7 +2580,7 @@ append-only prefix preserved), multi-page. `beforeAll` gets 60s (two RSA-2048 ke
 testTimeout). Classic-xref + ASCII-object only remains the documented input contract. **Approval model B (D1/D2) stays the default**
 for the no-backend tool; D3 is now an opt-in productionisation candidate. Editable free-text caption date = v1b.
 **Arabic `modal.signers.mentionDefault`/labels: status UNRECONCILED** — see § i18n. The key exists with
-an Arabic value (`locales/ar.json:440`) and predates the 2026-07-30 sign-off, so this marker is probably
+an Arabic value (`locales/ar.json:442`) and predates the 2026-07-30 sign-off, so this marker is probably
 just stale; the repo cannot prove it. Note the prose said `mentionDefault` for two years — the actual key
 is `modal.signers.mentionDefault`, which is why a grep for the short name finds only `signersPanel.ts`.
 
@@ -2785,6 +2785,13 @@ every path a user can reach, at every rotation?" — and the answer was no for f
 to a green suite because no test existed on those paths at all. **A sibling path that shares a promise but
 not the filter is this repo's recurring leak shape**, and rotation is where it hides: every test written
 for the first fix was at rotation 0, which is exactly why a rotation bug shipped inside a rotation fix.
+
+**A fourth leak — DISCLOSED on 2026-08-05, and CLOSED on 2026-09-04. The paragraph below is kept for
+its reasoning, but its verdict is SUPERSEDED: `src/docx/opcGc.ts` now collects the orphan, `grep -rn
+"delete opc.files" src/docx/` finds it, and `SECURITY.md` reads "now removes it from the file
+(fixed 2026-09-04)". See § "Deleting a DOCX image left its bytes in the package — WS4-D".** Leaving a
+retracted security grade live in the decision register is the same defect this file recorded for #62b
+and C10; found by the WS5 audit the same day the fix landed.
 
 **A fourth leak, verified and DISCLOSED rather than fixed: deleting an image in the DOCX editor leaves
 its bytes in the saved file.** `reconcileImageAnchors` does `el.remove()` on the anchor `w:p` and nothing
@@ -3036,8 +3043,13 @@ misrendered). (c) **Images** — `src/docx/docxImages.ts` `extractDocImages(opc.
 the editable model** (the in-place `buildRun` save rewrites runs as text `w:r` — routing image bytes through
 the model would corrupt the `w:drawing`), exposed read-only via `DocxEditorHandle.getImages()` and passed to
 `docModelToPdfBytes(model, { images })`, which embeds (`embedPng`/`embedJpg`) + interleaves each image after its
-top-level `blockIndex`. **The save path + PM round-trip are UNTOUCHED → zero cardinal-rule regression.** Default
-`images:[]` → byte-identical for image-less docs. **Ceiling:** per-column `w:tblGrid` widths (equal columns
+top-level `blockIndex`. **The save path + PM round-trip are UNTOUCHED → zero cardinal-rule regression.**
+~~Default `images:[]` → byte-identical for image-less docs.~~ **That option NO LONGER EXISTS and this
+sentence was a rotted byte-identity claim** — `DocxToPdfOptions` (`docxToPdf.ts:118`) has no `images`
+field. It was removed by the "Export-PDF staleness FIXED" follow-up below, which made the export read
+each `DocImageBlock.image` directly so an in-session resize or delete shows immediately; that entry
+records the removal, and this earlier paragraph was simply never updated. [Found by the WS5 audit,
+2026-09-04 — the guard the claim describes has been guarding nothing.] **Ceiling:** per-column `w:tblGrid` widths (equal columns
 only), a rowspan cell straddling a page break, images nested in table cells / inline-with-text / non-PNG-JPEG,
 per-run formatting beyond b/i/u/size/color/font-family, image positional drift after heavy editing (index-based),
 non-WinAnsi scripts → `?` (true face embedding is the future path); Approach B (docx-preview raster) remains the
@@ -3061,7 +3073,7 @@ flag (keydown on `view.dom`) → `handlePaste` does `tr.insertText` (NOT `view.p
 drops SOURCE formatting, inherits the cursor context). **Ceiling:** pasted tables fall back to ProseMirror default
 (grid dropped, cell text → paragraphs — feature #3 upgrades this); colour/highlight/strikethrough dropped (no
 schema mark); link URL survives in the editor but NOT the OPC save (`DocRun` carries no `linkUrl`). Guards:
-`tests/docx/wordPaste.test.ts` (7 jsdom: MSO strip + format survival + totality), `tests/docx/docxPaste.test.ts`
+`tests/docx/wordPaste.test.ts` (12 jsdom: MSO strip + format survival + totality), `tests/docx/docxPaste.test.ts`
 (wiring + plain-text via fake event), `tests/browser/docx-paste.browser.test.ts` (real Chrome: `view.pasteHTML`
 real pipeline → bold/underline/list through save→reopen; plain-text drops formatting).
 **Find/replace (Slice C #2)**: a Word-style find & replace bar in the DOCX editor — plain + case +
@@ -3429,6 +3441,6 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
 (`rent-watch`, `stack`, `twes-in`, `phorj`), governed since 2026-08-18 by the global-is-reference
 ruling: generic machinery lives in `~/.claude/`, a repo carries only renamed, heavily-repurposed,
 repo-specific skills. `rent-watch` executed the recipe first and is the reference when siblings
-disagree; the recipe itself is pinned in `/stack`'s `docs/plans/decontainerization.plan.md`. The
+disagree; the recipe itself is pinned in `/stack`'s `docs/archive/plans/decontainerization.plan.md` (archived; READ-ONLY history there). The
 2026-08-06 bundle-alignment story in § "The Claude bundle is a CROSS-REPO artefact" (Gotchas) is the
 historical record of the container era.

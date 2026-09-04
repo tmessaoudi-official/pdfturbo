@@ -292,7 +292,12 @@ export async function applySearchableLayerToPdf(
   words: ReadonlyArray<OcrWordLike>,
   scale: number,
 ): Promise<Uint8Array | null> {
-  const doc = await PDFDocument.load(srcBytes);
+  // `updateMetadata: false` is NOT optional here, and this load is the one place it bites. pdf-lib
+  // re-stamps /Info Producer + ModDate at LOAD time when the default `true` is left in place, and
+  // unlike the other loads in this repo THIS one's `.save()` replaces the in-memory source bytes via
+  // `ReplaceSourcePdfBytesCmd` — so the re-stamp lands on the user's document and would defeat a
+  // later sanitize-then-verify on it. [WS5 audit, 2026-09-04]
+  const doc = await PDFDocument.load(srcBytes, { updateMetadata: false });
   const page = doc.getPage(sourcePageNum - 1);
 
   const rotation = asCardinalAngle(page.getRotation().angle);

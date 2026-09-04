@@ -153,6 +153,26 @@ describe('gcOrphanMediaParts', () => {
     expect(p.files['word/styles.xml']).toBeDefined();
   });
 
+  it('KEEPS everything when a .rels part itself is unreadable — the one path that failed toward DELETING', () => {
+    // Found by the WS5 audit, in this module's own code and against its own stated invariant. An
+    // undecodable `.rels` was `continue`d, so every media target it declares never entered the live
+    // set and was then collected. A UTF-16-encoded `.rels` is legal XML and decodes to replacement
+    // characters through strFromU8 — so a perfectly valid DOCX could lose its header image.
+    //
+    // We cannot know WHICH targets an unreadable .rels declares, so the only safe answer is to
+    // collect NOTHING on that pass: the reachability graph is incomplete, and a partial graph is
+    // exactly what makes a GC delete live data.
+    const p = pkg({
+      'word/document.xml': bodyWith(),
+      'word/_rels/document.xml.rels': rels({ id: 'rId1', target: 'media/image1.png' }),
+      'word/header1.xml': '<?xml version="1.0"?><w:hdr/>',
+    }, ['word/media/image1.png', 'word/_rels/header1.xml.rels']);
+
+    const r = gcOrphanMediaParts(p);
+    expect(r.removedParts).toEqual([]);
+    expect(p.files['word/media/image1.png']).toBeDefined();
+  });
+
   it('KEEPS a media part named by a [Content_Types].xml Override', () => {
     // A media extension with no `Default` is typed by an Override instead. Deleting the part while
     // the Override still names it leaves a dangling declaration that strict readers reject, so an

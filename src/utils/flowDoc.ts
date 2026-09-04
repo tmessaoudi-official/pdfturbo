@@ -322,14 +322,33 @@ export interface RedactionRect {
  * appeared, and then silently matched nothing.
  */
 export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: number): boolean {
-  const size = Math.hypot(item.transform[0], item.transform[1]) || Math.abs(item.height) || 12;
-  const x0 = item.transform[4];
-  const x1 = x0 + Math.abs(item.width);
-  // Baseline in y-up PDF space; glyph box spans roughly [baseline, baseline+size].
-  const baseline = item.transform[5];
+  const [a, b, c, d, e, f] = item.transform;
+  const size = Math.hypot(a, b) || Math.abs(item.height) || 12;
+
+  // The run's footprint is built from the TRANSFORM, not from `+x`. pdf.js reports `width` as the
+  // advance ALONG THE TEXT DIRECTION and carries the direction itself in `transform`
+  // (`pdf.worker.mjs:35814-35819`): for HORIZONTAL text `width = hypot(trm[0],trm[1])` and
+  // `height = 0`; for VERTICAL text `width = 0` and `height = hypot(trm[2],trm[3])` — exactly one is
+  // non-zero. Extending `+x` by `|width|` therefore tested a box DISJOINT from the glyphs of any run
+  // drawn with a rotated Tm, and collapsed a vertical run to a single point. Neither was ever
+  // dropped, and this one predicate feeds the heuristic flow, the struct-tree flow and the table
+  // extractor — so the leak reached DOCX, Markdown, TXT, CSV and XLSX. It is orthogonal to the
+  // page's own `/Rotate`: it leaked at every rotation, 0 included. [WS5 P0, 2026-09-04]
+  const adv = Math.max(Math.abs(item.width), Math.abs(item.height));
+  const along = Math.hypot(a, b) || 1;
+  const ux = a / along, uy = b / along;            // unit vector along the text direction
+  const across = Math.hypot(c, d) || size;
+  const vx = (c / across) * size, vy = (d / across) * size;   // glyph height, perpendicular
+  // Baseline origin plus the advance and the glyph height — four corners, then their AABB. On
+  // ordinary horizontal text this reduces exactly to the old [x0, x0+width] x [baseline,
+  // baseline+size], so the common case is byte-identical (pinned by the control case in the guard).
+  const xs = [e, e + ux * adv, e + ux * adv + vx, e + vx];
+  const ys = [f, f + uy * adv, f + uy * adv + vy, f + vy];
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
   // Convert to top-origin (y-down) space: topY is the box top, botY the box bottom.
-  const topY = pageTopY - (baseline + size);
-  const botY = pageTopY - baseline;
+  const topY = pageTopY - Math.max(...ys);
+  const botY = pageTopY - Math.min(...ys);
   const redLeft = red.x;
   const redRight = red.x + red.width;
   const redTop = red.y;

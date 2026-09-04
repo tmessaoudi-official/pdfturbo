@@ -12,7 +12,6 @@ export interface AppDOMRefs {
   downloadBtn: HTMLButtonElement;
   prevPageBtn: HTMLButtonElement;
   nextPageBtn: HTMLButtonElement;
-  pageInfo: HTMLElement;
   canvas: HTMLCanvasElement;
   container: HTMLElement;
   signatureModal: HTMLElement;
@@ -271,7 +270,6 @@ export class UIController {
       downloadBtn:      document.getElementById('downloadBtn')      as HTMLButtonElement,
       prevPageBtn:      document.getElementById('prevPage')         as HTMLButtonElement,
       nextPageBtn:      document.getElementById('nextPage')         as HTMLButtonElement,
-      pageInfo:         document.getElementById('pageInfo')         as HTMLElement,
       canvas:           document.getElementById('pdfCanvas')        as HTMLCanvasElement,
       container:        document.getElementById('canvasContainer')  as HTMLElement,
       signatureModal:   document.getElementById('signatureModal')   as HTMLElement,

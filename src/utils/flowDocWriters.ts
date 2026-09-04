@@ -409,6 +409,12 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
           const group: FlowRun[] = [];
           while (ri < p.runs.length && p.runs[ri].linkUrl === url) { group.push(p.runs[ri]); ri++; }
           ri--; // for-loop will re-increment
+          // The URL is UNVALIDATED input from the opened PDF (`exportService` maps a Link
+          // annotation's `/URI` verbatim), so it goes through the same allowlist the Markdown writer
+          // has used since #QA-2026-06-23. It did not: a `file://` or `javascript:` URI in a source
+          // document became a live hyperlink in the .docx while the SAME document exported to
+          // Markdown dropped it — two sibling writers, one promise, one filter. [WS5 P2, 2026-09-04]
+          if (!isAllowedUrlScheme(url)) { group.forEach(r => textRuns.push(mkTextRun(r))); continue; }
           textRuns.push(new ExternalHyperlink({ link: url, children: group.map(mkTextRun) }));
         }
 

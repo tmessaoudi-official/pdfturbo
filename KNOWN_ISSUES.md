@@ -64,14 +64,72 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From the WS5 adversarial audit (2026-09-04)
+
+Thirty findings across three lenses. The P0 and both P1s were fixed in that stream under TDD, as
+were the trivial P2/P3s; what follows is everything left open, each with the reason it was NOT
+landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignored).
+
+- **OCR "visible" mode places words with no user-rotation term** (`ocrHandler.ts:110-114`, P2). The
+  redaction burn 140 lines below composes `redactionRectToContent` + `convertToViewportPoint`
+  precisely because that canvas is rendered at the page's INTRINSIC `/Rotate` with no user rotation;
+  the burn was fixed for the asymmetry, the word placement never was. On a page the user rotated,
+  every inserted `TextElement` lands off-target. Deferred because the fix needs the same composed
+  mapping plus a real-browser guard at all four rotations, and "visible" mode is the non-default,
+  explicitly-relabelled OCR output.
+- **FileAttachment annotations survive `sanitizePdf`** (P2). `grep "FileAttachment|Filespec|/EF"
+  src/` is empty: `stripNodeActions` removes `/AA` and a JS `/A`, so a page-level `/Annots`
+  FileAttachment carrying `/FS`→`/EF` is a REACHABLE attachment and the new reachability sweep
+  correctly leaves it alone. The docs promise "embedded files stripped", which today means the
+  `/Names` tree only. Deferred because deciding whether to delete the whole annotation or only its
+  `/FS` is a product call about visibly removing a user's paperclip.
+- **An overlay text link is lost on the RASTER export path** (`exportPipeline.ts:555-557`, P2).
+  `renderText` adds a `/Link` to the temp page, but the rasteriser embeds only the PNG into a fresh
+  page — so on a redaction-bearing page the link exports as flat pixels, refuting the "survives BOTH
+  export paths" claim. Deferred because re-adding annotations after rasterisation means re-deriving
+  their rects in the clipped canvas frame, which is the coordinate work that has produced this
+  repo's worst bugs; the CLAIM is corrected in CLAUDE.md rather than left standing.
+- **A text element's lines below its stored box escape the blank-page drop** (P3).
+  `dropElementsUnderRedactions` tests the stored box while `renderText` draws each line at
+  `te.y + i*lineHeight` with no clip and no auto-grow. On a blank page — the one path where the drop
+  IS the removal — an overflowing line is baked under the burn. Reachability UNVERIFIED: the editor
+  textarea hides the overflow, so a user is unlikely to place text there. Deferred pending a
+  reproduction; fixing it means either clipping the bake to the box or growing the box.
+- **A failed redaction render degrades to an un-redacted THUMBNAIL** (P3).
+  `renderThumbnailWithOverlays` catches everything and returns null, and the panel then falls back to
+  the plain source raster. On-screen only — never written to a file — but it is the wrong direction
+  for a fail-closed path. Deferred because the honest fix is a visibly-failed thumbnail, which needs
+  a placeholder and a string.
+- **`getPageCropBox` falls back to a MediaBox-derived box with a hardcoded (0,0) origin** (P3).
+  An undiagnosed-failure fallback on a safety path; pdf-lib's own `getCropBox` falls back
+  internally so it essentially never throws. Deferred under the anti-bandaid gate: there is no
+  observed instance, and replacing a fallback with a different fallback is not a root-cause fix.
+- **`MODE_HINT_KEYS` is not exhaustive by type or test** (P3). All 16 modes are present today, so
+  this is a guard gap, not a defect — the sibling `badgeKeys` was made exhaustive AND pinned after
+  the signRect drift. Deferred as a one-line follow-up rather than mixed into an audit commit.
+- **The vendored Arabic `.ttf` is not precached and no runtime rule matches it** (P3), so the Arabic
+  overlay and searchable-OCR need network after install, which README's "app shell offline" does not
+  say. Deferred: adding it to `globPatterns` grows the install payload, the opposite of the #48
+  decision that moved the OCR assets OUT of precache.
+- **The PWA guard pins the tesseract caching rule's presence, not its ORDER** (P3), though the
+  comment says the order is load-bearing — reordering keeps the test green while the cores fall into
+  the wrong cache. Deferred with the same one-line-follow-up reasoning as `MODE_HINT_KEYS`.
+- **The live OCR `status` string is dropped** (P3): `ocrHandler` emits `{progress, status}` while the
+  callback is typed `{progress}`, so the modal shows a static "Recognizing text…" through model
+  download and recognition alike. Deferred as a UX improvement, not a defect.
+
+
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a
-  native speaker, and that pass changed no value. **That sign-off is no longer blanket.** Twelve
+  native speaker, and that pass changed no value. **That sign-off is no longer blanket.** FOURTEEN
   values have been added or re-worded since and are pending a native pass: `toolbar.exportXlsxTitle`,
   `badge.signRect` (added 2026-08-28 — the mode badge had no string for the e-sign rectangle mode),
-  the six `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, and the three re-worded on
+  the six `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, the three re-worded on
   2026-08-05 to match the hide-vs-remove grades (`toolbar.cropTitle`, `toast.modeHint.crop`,
   `toast.redactionPlaced` — single-verb substitutions, the first changes to a reviewed Arabic value
-  since the sign-off). **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
+  since the sign-off), and the two added by #54b on 2026-09-04 (`toolbar.recentFiles`,
+  `toast.recentFileUnavailable`). **This was the FOURTH copy of that prose list**: CLAUDE.md's three
+  copies were reconciled to 14 the same day and this one still read "Twelve" — the drift the count's
+  own paragraph warns about, one file further out than it was looking [WS5 audit, 2026-09-04]. **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
 - Crop: numeric per-edge **margins** SHIPPED 2026-08-04 (converted per page); resizable **handles**
   SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). **Aspect-ratio-aware
@@ -82,7 +140,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - **XLSX table export** — DONE (2026-08-04): `src/export/xlsxWriter.ts`, no new dependency (XLSX is OPC,
   written with the fflate `zipSync` this repo already uses for DOCX). Shares table detection with the CSV
   export, and writes numeric cells as real numbers so a price column can be summed.
-- Open-via-picker + recent-files for the native save dialog.
+- ~~Open-via-picker + recent-files for the native save dialog.~~ **SHIPPED 2026-09-04 (#54b)** —
+  `showOpenFilePicker` where available, handles remembered in an IndexedDB `recent` store, and a
+  recent-files list in the File menu with permission re-requested at click time. The plain
+  `<input type=file>` path is untouched, so browsers without the API are unaffected.
 
 > Releasing any escape hatch is a deliberate, per-need decision — most cost multi-MB dependencies,
 > significant build complexity, or the no-backend privacy promise. **EH-E is released (2026-08-04) for

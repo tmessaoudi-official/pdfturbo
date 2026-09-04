@@ -11,6 +11,12 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_BATES?: string;
   readonly VITE_FEATURE_CROP?: string;
   readonly VITE_FEATURE_DOCX_EDIT?: string;
+  // These three were MISSING while `features.ts` read them. Vite's own `ImportMetaEnv extends
+  // Record<ImportMetaEnvFallbackKey, any>` swallows an undeclared key, so a typo in one of them
+  // type-checked clean and silently disabled nothing. [WS5 P2, 2026-09-04]
+  readonly VITE_FEATURE_COMPRESS?: string;
+  readonly VITE_FEATURE_SIGNERS?: string;
+  readonly VITE_FEATURE_TEXT_DECOR?: string;
 }
 
 interface ImportMeta {
