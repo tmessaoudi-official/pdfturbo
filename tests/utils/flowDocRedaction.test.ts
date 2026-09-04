@@ -146,6 +146,17 @@ describe('isItemRedacted — run footprint from the transform (WS5 P0 / WS7)', (
     expect(isItemRedacted(one, { x: 98, y: PAGE_TOP - 312, width: 20, height: 14 }, PAGE_TOP)).toBe(true);
   });
 
+  it('covers the DESCENDER, so a box under the baseline still drops the run', () => {
+    // pdf.js reports an item from its BASELINE, so a box spanning [baseline, baseline+size] stops
+    // where the descenders of g/j/p/q/y begin. A redaction covering only that strip left the whole
+    // run in the DOCX/MD/TXT/CSV/XLSX exports while SECURITY.md said horizontal text was covered.
+    const horiz = { str: 'pygmy', transform: [12, 0, 0, 12, 100, 200], width: 30, height: 12, fontName: 'F1' } as unknown as RawTextItem;
+    // y-up 197..200 is below the baseline (200) and inside the descender band.
+    expect(isItemRedacted(horiz, { x: 95, y: PAGE_TOP - 200, width: 40, height: 3 }, PAGE_TOP)).toBe(true);
+    // Well below it is still clear — the over-approximation is a quarter em, not unbounded.
+    expect(isItemRedacted(horiz, { x: 95, y: PAGE_TOP - 180, width: 40, height: 3 }, PAGE_TOP)).toBe(false);
+  });
+
   it('is UNCHANGED for ordinary horizontal text — the byte-identity control, measured shapes', () => {
     const horiz = { str: 'hello world', transform: [12, 0, 0, 12, 100, 200], width: 57.348, height: 12, fontName: 'F1' } as unknown as RawTextItem;
     expect(isItemRedacted(horiz, { x: 90, y: PAGE_TOP - 215, width: 80, height: 20 }, PAGE_TOP)).toBe(true);

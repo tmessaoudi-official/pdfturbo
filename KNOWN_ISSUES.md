@@ -66,6 +66,14 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From the WS5 adversarial audit (2026-09-04)
 
+- **A disabled crop flag leaves the editor drawing a frame the export ignores** (PRE-EXISTING, not
+  from this range — `isEnabled('crop')` entered `exportPipeline` in `d945127` and `_renderCropFrame`
+  in the original crop feature `61ac44c`; `pageRenderPipeline.ts` is untouched in `dfe34ae..HEAD`).
+  With `VITE_FEATURE_CROP` off, a restored session shows a dimmed crop frame while the export emits
+  the full page — and the crop UI is removed, so the user cannot clear it. Deferred because the fix
+  is a product call: gate the editor frame too (the crop silently disappears) or keep honouring a
+  stored crop on export (the flag stops being a kill switch).
+
 - **Redaction over VERTICAL-writing text is UNCERTIFIED** (`flowDoc.ts` `isItemRedacted`). The run
   footprint is read from the text transform, and pdf.js swaps the roles of its two size fields for a
   vertical font AND advances downward — so the sign along the second axis is unverified and a
@@ -128,14 +136,11 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`src/utils/fileSystemAccess.ts`) and `clearRecentFiles` (`src/infra/recentFiles.ts`). The first is
   a capability probe nothing branches on — `pickSaveTarget` degrades internally instead, which is the
   better design, so the probe is simply unused. Both are kept as the tests' entry points and as the
-  natural hooks for a "save location" hint and a "clear recents" control. Recorded rather than
+  natural hooks for a "save location" hint and a "clear recents" control — until a control exists a
+  user clears recents through the browser's site-data settings. Recorded rather than
   deleted, and recorded TOGETHER: the audit found `clearRecentFiles` first and the sibling only on
   the next round, which is the pattern this list exists to break.
 
-- **No "clear recent files" affordance** (#54b). `clearRecentFiles` exists and is tested but has no
-  production caller: recents deliberately outlive a session, so clearing them with "reset session"
-  would contradict their own design, and a dedicated control needs a menu entry and a string.
-  Until then a user clears them through the browser's site-data controls.
 - **The live OCR `status` string is dropped** (P3): `ocrHandler` emits `{progress, status}` while the
   callback is typed `{progress}`, so the modal shows a static "Recognizing text…" through model
   download and recognition alike. Deferred as a UX improvement, not a defect.

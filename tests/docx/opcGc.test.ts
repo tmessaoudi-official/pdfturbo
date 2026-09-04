@@ -213,6 +213,75 @@ describe('gcOrphanMediaParts', () => {
     expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
   });
 
+  it("REMOVES through a single-quoted .rels, and drops the element too", () => {
+    // The case the panel found MISSING: both single-quote tests were KEEP cases, so the removal
+    // REWRITE — which carried its own double-quote-only Id pattern — went unexercised. It deleted
+    // the part, left the <Relationship> behind, and reported a removal that had not happened: a
+    // dangling package, which Word reports as unreadable content and which is worse than the orphan.
+    const p = pkg({
+      'word/document.xml': bodyWith(),                       // nothing references rId9
+      'word/_rels/document.xml.rels':
+        `<?xml version="1.0"?><Relationships xmlns="${REL_NS}"><Relationship Id='rId9' Type='${IMG_TYPE}' Target='media/image1.png'/></Relationships>`,
+    }, ['word/media/image1.png']);
+
+    const r = gcOrphanMediaParts(p);
+    expect(r.removedParts).toEqual(['word/media/image1.png']);
+    expect(r.removedRels).toEqual(['word/_rels/document.xml.rels#rId9']);
+    // …and `removedRels` must be TRUE, not just reported.
+    expect(strFromU8(p.files['word/_rels/document.xml.rels'])).not.toContain('rId9');
+  });
+
+  it('KEEPS an image whose Target is PERCENT-ENCODED — OPC requires it for non-ASCII names', () => {
+    // `word/media/図.png` is written `media/%E5%9B%B3.png`. Comparing the two raw made the part look
+    // absent from the package, so it never entered the live set and a referenced image was deleted.
+    const p = pkg({
+      'word/document.xml': bodyWith('rId1'),
+      'word/_rels/document.xml.rels': rels({ id: 'rId1', target: 'media/%E5%9B%B3.png' }),
+    }, ['word/media/図.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+    expect(p.files['word/media/図.png']).toBeDefined();
+  });
+
+  it('KEEPS an image whose Target carries an XML ENTITY', () => {
+    // A filename with `&` must be written `&amp;` in the attribute. The parser resolves it; a regex
+    // reading the raw text did not, and deleted the live part.
+    const p = pkg({
+      'word/document.xml': bodyWith('rId1'),
+      'word/_rels/document.xml.rels': rels({ id: 'rId1', target: 'media/logo&amp;v2.png' }),
+    }, ['word/media/logo&v2.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+  });
+
+  it('KEEPS an image behind a NAMESPACE-PREFIXED <pr:Relationship> element', () => {
+    // Legal OPC. `<Relationship\b` never matched it, so nothing parsed, nothing entered live, and a
+    // referenced image was deleted. Matching by namespace rather than by spelling settles it.
+    const p = pkg({
+      'word/document.xml': bodyWith('rId1'),
+      'word/_rels/document.xml.rels':
+        `<?xml version="1.0"?><pr:Relationships xmlns:pr="${REL_NS}"><pr:Relationship Id="rId1" Type="${IMG_TYPE}" Target="media/image1.png"/></pr:Relationships>`,
+    }, ['word/media/image1.png']);
+
+    expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+  });
+
+  it('ignores a SINGLE-quoted external relationship, as it does a double-quoted one', () => {
+    // The two legal quote styles gave OPPOSITE results on identical semantics: the single-quoted
+    // external target was resolved as an internal part path and its co-located media part deleted.
+    const p = pkg({
+      'word/document.xml': bodyWith(),
+      'word/_rels/document.xml.rels':
+        `<?xml version="1.0"?><Relationships xmlns="${REL_NS}"><Relationship Id='rId7' Type='${IMG_TYPE}' Target='media/ext.png' TargetMode='External'/></Relationships>`,
+    }, ['word/media/ext.png']);
+
+    // No INTERNAL relationship names it, so it is a genuine orphan and goes — but it must go as an
+    // orphan, not because an external target was mistaken for a local path.
+    const r = gcOrphanMediaParts(p);
+    expect(r.removedRels).toEqual([]);   // the external rel is skipped, never reported dangling
+    expect(r.removedParts).toEqual(['word/media/ext.png']);
+  });
+
   it('KEEPS a media part named by a [Content_Types].xml Override', () => {
     // A media extension with no `Default` is typed by an Override instead. Deleting the part while
     // the Override still names it leaves a dangling declaration that strict readers reject, so an

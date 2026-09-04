@@ -11,6 +11,7 @@ import {
   clampDpi,
   clampQuality,
   compressLossless,
+  stripDocMetadata,
   COMPRESS_DPI_DEFAULT,
   COMPRESS_DPI_MIN,
   COMPRESS_DPI_MAX,
@@ -95,7 +96,6 @@ describe('compressLossless — the stripped metadata must leave the FILE (WS7)',
   const MARKER = 'COMPRESS-XMP-PAYLOAD-MUST-NOT-SURVIVE-4417';
 
   async function pdfWithCatalogXmp(): Promise<Uint8Array> {
-    const { PDFDocument, PDFName } = await import('@cantoo/pdf-lib');
     const doc = await PDFDocument.create();
     doc.addPage([200, 200]);
     // UNCOMPRESSED, so a raw byte scan can see it — a flate stream would hide the marker and the
@@ -117,8 +117,17 @@ describe('compressLossless — the stripped metadata must leave the FILE (WS7)',
     expect(asText(await compressLossless(await pdfWithCatalogXmp()))).not.toContain(MARKER);
   });
 
+  it('strips through stripDocMetadata itself, which is what the PRODUCTION path calls', async () => {
+    // The panel found the previous guard exercised `compressLossless`, which `git grep` shows has
+    // only TEST callers: the Compress button routes to a private `_compressLossless` in
+    // exportService that never called the sweep. Driving `stripDocMetadata` directly is what pins
+    // BOTH paths, because both call it — the placement is the fix.
+    const doc = await PDFDocument.load(await pdfWithCatalogXmp(), { updateMetadata: false });
+    await stripDocMetadata(doc);
+    expect(asText(await doc.save({ useObjectStreams: false }))).not.toContain(MARKER);
+  });
+
   it('still produces a loadable one-page document — the over-reach control', async () => {
-    const { PDFDocument } = await import('@cantoo/pdf-lib');
     const out = await compressLossless(await pdfWithCatalogXmp());
     const reloaded = await PDFDocument.load(out, { updateMetadata: false });
     expect(reloaded.getPageCount()).toBe(1);

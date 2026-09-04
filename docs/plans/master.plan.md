@@ -38,7 +38,7 @@
 
 | Check | Result |
 |---|---|
-| type-check / lint | ✓ / ✓ (4 known pre-existing `no-shadow` warnings) |
+| type-check / lint | ✓ / ✓ (a handful of pre-existing `no-shadow` warnings — COUNT them (`npm run lint | grep -c no-shadow`) rather than citing a number here, which has drifted three times) |
 | jsdom suite | 215 files, **2464 passed + 2 expected-fail** |
 | real-Chrome suite | 83 files, **280 passed + 1 expected-fail** |
 | `redaction-orphan-leak` flaky test | 3/3 green isolated AND green inside the full run (flake only ever seen under full-suite load) |
@@ -204,7 +204,7 @@ mixed absolute/crop-relative (probe: a word at y=300 on a 300-high crop).
 ## WS3 — Arabic ×14 native review (user-gated; interleave anywhere)
 
 1. Extract a review table from `locales/*.json` for the 12 keys pending at extraction time (14 since #54b) (the enumeration of record
-   is `KNOWN_ISSUES.md:69-74`): `toolbar.exportXlsxTitle`, `badge.signRect`, the six
+   is `KNOWN_ISSUES.md § "Arabic locale strings"`): `toolbar.exportXlsxTitle`, `badge.signRect`, the six
    `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, and the three re-worded values
    (`toolbar.cropTitle`, `toast.modeHint.crop`, `toast.redactionPlaced`). Columns:
    key | en | fr | current ar | (blank) proposed ar.
@@ -213,7 +213,7 @@ mixed absolute/crop-relative (probe: a word at y=300 on a 300-high crop).
 3. Present via `AskUserQuestion` / a review file; apply the answers; new values drop their
    `[Unverified]` status dated with the review.
 4. Update ALL count surfaces in ONE commit (the three-places-drift trap is a recorded repo lesson):
-   `KNOWN_ISSUES.md:68-74`; `CLAUDE.md` § i18n (the AMENDED 2026-08-05 paragraph), § "The
+   `KNOWN_ISSUES.md § "Arabic locale strings"`; `CLAUDE.md` § i18n (the AMENDED 2026-08-05 paragraph), § "The
    hide-vs-remove audit" (the pending-count sentences), § "XLSX table export" (the "12 values
    pending as of 2026-08-05" sentence); then the discriminating sweep:
    `grep -n "pending\|Unverified\|UNRECONCILED" CLAUDE.md KNOWN_ISSUES.md` — every remaining hit
@@ -504,13 +504,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   misplaces a signature visibly, it does not leak or fail to remove content. Its home is
   `CLAUDE.md` § "The drag-placed signature rect was crop-relative", amended in place. Two of the
   four bounds checked so far (F, E) were not where the plan's preamble said they were.
-- [2026-09-04 12:10] AGREED: WS4-D is PROMOTED. `src/docx/opcGc.ts` collects `word/media/*` parts
+- [2026-09-04 12:07] AGREED: WS4-D is PROMOTED. `src/docx/opcGc.ts` collects `word/media/*` parts
   that no live relationship reaches, and drops the dead relationships with them. The scan walks
   EVERY `_rels/*.rels` in the package (headers, footers, footnotes, comments and unmodelled parts —
   the ones the editor passes through verbatim), treats a relationship as live if its Id appears
   anywhere in the owning part's text, keeps everything it cannot read with confidence, and is
   restricted to `word/media/**`. `SECURITY.md` now records the bound as closed.
-- [2026-09-04 12:10] AGREED: the GC also collects a picture orphaned by ANOTHER program before the
+- [2026-09-04 12:07] AGREED: the GC also collects a picture orphaned by ANOTHER program before the
   file was opened — the same rule applied evenly, so a save can shrink a file the user did not
   knowingly change. Disclosed in `SECURITY.md` rather than special-cased, because suppressing it
   would mean tracking which orphans "we" created, which the package does not record.
@@ -559,18 +559,18 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   DAY — the `opcGc` unreadable-`.rels` path failed toward DELETING against its own stated invariant,
   and CLAUDE.md still carried "not fixed on purpose" for a leak WS4-D had just closed. Both fixed.
   A same-session audit catches what a same-session author cannot.
-- [2026-09-04 14:51] RECORDED: WS7 round 1 = **18 findings** across the three lenses, so the
+- [2026-09-04 14:50] RECORDED: WS7 round 1 = **18 findings** across the three lenses, so the
   two-clean counter stays at 0. The most serious was a REGRESSION introduced by WS5's own P0 fix:
   taking `max(|width|,|height|)` as a run's advance inflated every short horizontal run to a full em
   and silently deleted text clear of the burn. The cause was reading `pdf.worker.mjs:35814-35819`
   without the `if (!font.vertical)` above it — the branches are inverted from what the fix assumed,
   and `height` is the FONT SIZE for horizontal text, never 0. Measured, not argued.
-- [2026-09-04 14:51] AGREED: the vertical-writing claim is WITHDRAWN, not restated. pdf.js swaps the
+- [2026-09-04 14:50] AGREED: the vertical-writing claim is WITHDRAWN, not restated. pdf.js swaps the
   roles for a vertical font and advances downward, and no vertical font exists in this repo to
   measure the sign with. The test that claimed to cover it used a rotated Tm with `width: 0` — not a
   vertical-writing item — and passed for an unrelated reason. Recorded as an
   UNCERTIFIED-BY-EXECUTION bound in `CLAUDE.md`.
-- [2026-09-04 14:51] AGREED: round 1's other fixes — XFDF x now carries the CropBox origin (the y-only
+- [2026-09-04 14:50] AGREED: round 1's other fixes — XFDF x now carries the CropBox origin (the y-only
   fix had left the `/Rect` in a MIXED frame), `opcGc` accepts single-quoted XML attribute values (a
   legal document could lose a live header image), and the sanitizer's GC roots include
   `trailerInfo.Encrypt` (latent: no caller encrypts today, but `PDFWriter` writes it to the trailer).
@@ -593,6 +593,39 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   contradiction inside the paragraph warning against wrong counts, a malformed retraction that still
   asserted the bound it declared closed, and the `Encrypt` GC root shipped with NO test. All fixed;
   the root now has a direct guard in `tests/utils/pdfObjectGc.test.ts`.
+- [2026-09-04 16:10] AGREED (developer): the DOCX orphan-media GC is REWRITTEN on the platform `DOMParser`
+  this repo already uses for OPC (`opcEdit`/`opcParts`), not patched shape-by-shape and not reverted.
+  Three consecutive certification rounds each found a NEW legal-XML shape that made it delete a live
+  image — single-quoted attributes, the rewrite pass, percent-encoded targets, XML entities,
+  namespace-prefixed elements — so a regex scan over arbitrary OPC cannot be made correct one round
+  at a time. Parsing retires the whole class by construction; percent-decoding of `Target` still
+  needs doing explicitly.
+- [2026-09-04 16:10] AGREED (developer): continue to rounds 4 and 5 of the MAXIMAL panel rather than stopping
+  or lowering the two-clean-round bar. If round 5 is still not clean, STOP and hand over the open
+  findings rather than certifying.
+- [2026-09-04 16:10] RECORDED: WS7 round 3 = **23 findings** (5 + 6 + 12), counter still 0 of 2, and the trend
+  is the wrong way (18 → 17 → 23) because most new findings come from the fix commits themselves.
+  The sharpest: round 2's compress fix was applied to `compress.ts::compressLossless`, which
+  `git grep` shows has ONLY TEST CALLERS — the production Compress button routes to a private
+  `_compressLossless` in `exportService.ts:433` that never calls the sweep. The fix and its three
+  guards both exercised code the app does not run, while `pdfObjectGc.ts`'s own docstring claimed the
+  divergence was eliminated. **Verify which function the product calls before believing a fix.**
+- [2026-09-04 16:10] RECORDED: the redaction footprint spans baseline→baseline+size, so it misses the
+  DESCENDER — a redaction covering only below the baseline leaves the run extractable, which makes
+  `SECURITY.md`'s "horizontal text, including text set at an angle, IS covered" an overclaim by that
+  much. To fix or to narrow, not to leave standing.
+- [2026-09-04 16:28] RECORDED: the `opcGc` rewrite is done and the five shapes that defeated the regex scan
+  are now guards — single-quoted removal, percent-encoded Target, XML entity, namespace-prefixed
+  `<pr:Relationship>`, single-quoted `TargetMode`. Non-vacuity proven by running the NEW guards
+  against the OLD implementation from `c604699`: 5 of 22 fail, exactly the five the panel found.
+- [2026-09-04 16:28] AGREED: the compress sweep moved INTO `stripDocMetadata`, beside the strip, rather than
+  into either caller. Both the public `compressLossless` and the private `_compressLossless` the
+  Compress button actually calls already invoke it, so that placement is the only one that cannot be
+  half-applied. The new guard drives `stripDocMetadata` directly for the same reason.
+- [2026-09-04 16:28] RECORDED: one round-3 finding is REFUTED. The crop editor/export divergence is
+  PRE-EXISTING, not introduced by this range — `isEnabled('crop')` entered `exportPipeline` in
+  `d945127`, `_renderCropFrame` in `61ac44c`, and `pageRenderPipeline.ts` is untouched in
+  `dfe34ae..HEAD`. Recorded as a deferred product call rather than fixed as a regression.
 
 ## Status
 <!-- progress-block v1 -->

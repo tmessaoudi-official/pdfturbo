@@ -232,12 +232,11 @@ src/
 │   ├── pdfTurboApp.ts      # app orchestration hub (thin delegators over extracted services)
 │   ├── documentModel.ts    # page/element data model
 │   ├── historyManager.ts   # command-pattern undo/redo (50-command stack)
-│   ├── pdfRenderer.ts      # pdfjs page rendering
-│   ├── uiController.ts     # toolbar/modal DOM wiring
-│   ├── pageThumbnailPanel.ts
+├── ui/                     # DOM wiring: uiController, binders, panels, thumbnails, documentLoader
 ├── infra/                  # browser-platform edges (no domain logic)
 │   ├── storage.ts          # IndexedDB: the session `state` store …
 │   ├── recentFiles.ts      # …and the #54b `recent` store of remembered file handles
+│   ├── pdfRenderer.ts      # pdf.js page rendering
 │   └── inkLayer.ts
 ├── elements/               # one file per annotation element type (text, shape, image,
 │                           #   signature, highlight, redaction, comment, code/QR, pdf)
@@ -411,7 +410,9 @@ over-drop direction this file grades as harmful ("innocent cells deleted").
 pdf.js never emits, so the case named "the byte-identity control" was vacuous by construction. Same
 family as the flate-compressed sanitizer marker and the load-dependent ordering test caught the same
 day: **a fixture that does not carry a MEASURED shape cannot certify a claim about that shape.**
-Every fixture in `tests/utils/flowDocRedaction.test.ts` now carries probe output.
+Every fixture in the WS5/WS7 block of `tests/utils/flowDocRedaction.test.ts` now carries probe
+output — the file's OLDER shared `mkItem` helper still fabricates a width, which is fine for the
+cases it serves but is not "every fixture in the file", as an earlier version of this sentence said.
 
 The footprint is now `width` along column one and `height` along column two, transformed — which
 reduces EXACTLY to the old `[x0, x0+width] × [baseline, baseline+size]` for unrotated horizontal
@@ -1006,9 +1007,8 @@ the kind of claim this file exists to prevent — and the correction below was i
 first attempt, which is the joke this paragraph keeps making: **58 call sites in all, of which one is
 production (`exportService.ts`) and 57 are tests** (plus the definition itself, which `git grep`
 counts and this sentence does not). It read "58 … one … and 56", which does not add up. RE-COUNT with
-`git grep -h 'reconstructPage(' -- src/ tests/` rather than citing any of these numbers
-(`exportService.ts` — the only site that passes the new argument) and 56 are tests
-[Verified: `grep -rn "reconstructPage(" src/ tests/`, minus the definition].
+`git grep -h 'reconstructPage(' -- src/ tests/` rather than citing any of these numbers. The
+production site is `exportService.ts`, the only one that passes the viewBox argument.
 
 **A useful side effect, verified rather than assumed: the redaction filter is now structurally
 independent of `getViewport`'s `rotation: 0`.** `viewBox` is rotation-invariant (only `width`/
@@ -1716,7 +1716,8 @@ tables median 1 word/cell, prose 4–5), after which the synthetic corpus is cle
 blocker" reading that stood here.** 15 public PDFs, 360 pages — IRS/GSA/USPTO forms, arXiv articles
 in 1- and 2-column layouts, Census/Budget/Publication-17 reports. `scripts/c9-corpus-fetch.sh`
 rebuilds it into gitignored `var/corpus/`; `tests/tools/c9Corpus.test.ts` runs the REAL gate over
-every page (it SKIPS when the corpus is absent, so it is inert in CI) and writes
+every page (double-gated: it needs the corpus AND `C9_CORPUS=1`, so it is inert in CI and in the
+pre-push hook — invoke it as `C9_CORPUS=1 npx vitest run tests/tools/c9Corpus.test.ts`) and writes
 `var/claude/c9-corpus-report.json`. Result: **15 firings — 5 genuine data tables (1099-MISC box
 grids ×3, the W-4 withholding tables, a Pub-17 rate schedule) and 10 multi-column LAYOUT**, being 9
 pages of Publication 17's alphabetical INDEX and one paper's table of contents. C9 therefore stays

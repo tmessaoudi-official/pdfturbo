@@ -205,7 +205,6 @@ describe('sanitizePdf — detached payloads must not survive in the bytes (WS5 P
   const JS_MARKER = 'SANITIZER_JS_PAYLOAD_MUST_NOT_SURVIVE_4417()';
 
   async function pdfWithOrphanablePayloads(): Promise<Uint8Array> {
-    const { PDFName, PDFString } = await import('@cantoo/pdf-lib');
     const doc = await PDFDocument.create();
     const page = doc.addPage([200, 200]);
     const ctx = doc.context;

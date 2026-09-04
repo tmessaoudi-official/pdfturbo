@@ -328,10 +328,13 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
   }
 
   // WS4-A: ink is stamped after the burn, so it must be clipped to the redactions rather than
-  // composited over them. `elements` is this page's set, already filtered by the caller.
+  // composited over them. The `pageId` check is DEFENSIVE and matches `stripRedactedAnnotations`
+  // below: every current caller does pass this page's set, so resting on that was latent rather
+  // than live — but a leak filter whose correctness depends on a comment about its callers is the
+  // sibling-asymmetry shape this range has had to correct four times. [WS7 round 3, 2026-09-04]
   const inkDataUrl = renderInkForExport(
     inkLayer, docPage.id, W_orig, H_orig, totalRot,
-    elements.filter(el => el.type === 'redaction'),
+    elements.filter(el => el.type === 'redaction' && el.pageId === docPage.id),
   );
   if (inkDataUrl) {
     const inkImg = await pdfDoc.embedPng(dataUrlToUint8Array(inkDataUrl));

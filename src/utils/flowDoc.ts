@@ -346,11 +346,17 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   const extent1 = Math.abs(item.width);
   const extent2 = Math.abs(item.height) || Math.hypot(c, d) || size;
   const ux = (a / col1) * extent1, uy = (b / col1) * extent1;
-  const vx = (c / col2) * extent2, vy = (d / col2) * extent2;
-  // On ordinary horizontal text this reduces EXACTLY to the old [x0, x0+width] x [baseline,
-  // baseline+size] — pinned by the control case in the guard, with a real measured item shape.
-  const xs = [e, e + ux, e + ux + vx, e + vx];
-  const ys = [f, f + uy, f + uy + vy, f + vy];
+  // The box spans the DESCENDER as well as the ascender. pdf.js reports the item from its BASELINE,
+  // so `[baseline, baseline+size]` stops where the descenders of g, j, p, q, y begin — and a
+  // redaction covering only below the baseline left the whole run in the flow exports while
+  // `SECURITY.md` said horizontal text was covered. 0.25em is a deliberate over-approximation: for
+  // a LEAK filter the footprint may only grow, and no font metric is available here. It costs a
+  // quarter-em of extra drop below a redacted line. [WS7 round 3, 2026-09-04]
+  const desc = 0.25 * extent2;
+  const vxLo = (c / col2) * -desc, vyLo = (d / col2) * -desc;
+  const vxHi = (c / col2) * extent2, vyHi = (d / col2) * extent2;
+  const xs = [e + vxLo, e + ux + vxLo, e + ux + vxHi, e + vxHi];
+  const ys = [f + vyLo, f + uy + vyLo, f + uy + vyHi, f + vyHi];
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs);
   // Convert to top-origin (y-down) space: topY is the box top, botY the box bottom.

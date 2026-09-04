@@ -68,7 +68,7 @@ export function dpiToScale(dpi: number): number {
  * silently undone on the next save.
  */
 export async function stripDocMetadata(doc: PDFDocumentT): Promise<void> {
-  const { PDFName, PDFDict } = await import('@cantoo/pdf-lib');
+  const { PDFName, PDFDict, PDFRef, PDFStream, PDFArray } = await import('@cantoo/pdf-lib');
   const ctx = doc.context;
 
   const infoObj = ctx.trailerInfo.Info;
@@ -81,6 +81,17 @@ export async function stripDocMetadata(doc: PDFDocumentT): Promise<void> {
   }
   doc.catalog.delete(PDFName.of('Metadata'));
   if (ctx.trailerInfo.ID) ctx.trailerInfo.ID = undefined;
+
+  // The sweep lives HERE, with the strip, and not in a caller. Everything above deletes REFERENCES,
+  // and pdf-lib performs no reachability collection — so without it the detached XMP packet is
+  // re-serialised and "quick optimize" hands back the metadata it just removed.
+  //
+  // It was first placed in `compressLossless`, and the panel found that the PRODUCTION Compress
+  // button routes to a private `_compressLossless` in `exportService.ts` instead: the fix AND its
+  // three guards exercised a function the app never calls. Both paths call THIS one, so putting the
+  // sweep beside the strip is the only placement that cannot be half-applied. **Verify which
+  // function the product calls before believing a fix.** [WS7 round 3, 2026-09-04]
+  sweepUnreachableObjects(ctx as never, { PDFRef, PDFStream, PDFDict, PDFArray } as never);
 }
 
 /**
@@ -91,17 +102,8 @@ export async function stripDocMetadata(doc: PDFDocumentT): Promise<void> {
  * is applied by the caller on the shared save (see ExportService.compressAndDownload).
  */
 export async function compressLossless(bytes: Uint8Array): Promise<Uint8Array> {
-  const { PDFDocument, PDFRef, PDFStream, PDFDict, PDFArray } = await import('@cantoo/pdf-lib');
+  const { PDFDocument } = await import('@cantoo/pdf-lib');
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  await stripDocMetadata(doc);
-  // `stripDocMetadata` deletes REFERENCES; pdf-lib has no reachability collection, so without this
-  // the detached XMP packet is re-serialised and the "quick optimize" hands back the metadata it
-  // just removed. The sanitizer fixed exactly this and this sibling kept the defect — the docstring
-  // above even says it "mirrors the metadata subset of the sanitizer". One shared sweep now, so the
-  // two cannot drift again. [WS7 round 2, 2026-09-04]
-  sweepUnreachableObjects(
-    doc.context as never,
-    { PDFRef, PDFStream, PDFDict, PDFArray } as never,
-  );
+  await stripDocMetadata(doc);   // strips AND sweeps — see the note there
   return doc.save({ useObjectStreams: true });
 }

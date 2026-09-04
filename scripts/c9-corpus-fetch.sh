@@ -11,7 +11,9 @@
 # documents and no public sample was obtained. That gap is disclosed rather than papered over.
 #
 # Usage:  bash scripts/c9-corpus-fetch.sh
-# Then:   npx vitest run tests/tools/c9Corpus.test.ts
+# Then:   C9_CORPUS=1 npx vitest run tests/tools/c9Corpus.test.ts
+#         (without C9_CORPUS the probe SKIPS silently — it is double-gated so it never runs
+#          inside `npm run test` or the pre-push hook)
 set -euo pipefail
 
 DEST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/var/corpus"
