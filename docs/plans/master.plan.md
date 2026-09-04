@@ -520,6 +520,11 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   dismissed picker never opens the fallback input. Two new i18n keys carry `ar [Unverified]`,
   taking the pending Arabic count to 14 — a count that read 11 in one place and 12 in two others
   and is now reconciled.
+- [2026-09-04 12:52] AGREED: aspect-ratio-aware crop apply-to-all (WS6) is DONE. A drawn crop maps
+  onto each page as a proportion of that page's own box: SHAPE preserved by a uniform scale (per-axis
+  scaling would stretch it across differing aspect ratios), POSITION by the crop's centre rather than
+  its corner. Exactly the identity when the boxes match, short-circuited because the float round-trip
+  is not. Undo stays one `MacroCmd`; the margins path was already per-page and is untouched.
 
 ## Status
 <!-- progress-block v1 -->
@@ -536,7 +541,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 9 | WS4-C — blank-page blunt whole-drop (refuted, pinned) | M | done | bedc208 | tests/browser/hide-vs-remove.browser.test.ts |
 | 10 | WS4-E — signer vs assembled crop-origin (refuted, bound corrected) | M | done | 16b3101 | tests/browser/sign-assembled-frame.browser.test.ts |
 | 11 | WS4-D — DOCX part GC on image delete | L | done | 1c41dd5 | src/docx/opcGc.ts, src/docx/docxProseMirror.ts |
-| 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | todo | - | src/core/pageService.ts |
+| 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | done | CROPSHA | src/core/pageService.ts, src/utils/geometry.ts |
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 borderless tables wired to DOCX | L | todo | - | src/utils/borderlessTable.ts, src/export/exportService.ts |
 | 15 | WS5 — adversarial audit of existing code | L | todo | - | src/** |

@@ -417,6 +417,45 @@ describe('PageService.cropPageByMargins (#G23 v1b)', () => {
     for (const p of ctx.documentModel.pages) expect(p.crop).toBeUndefined();
   });
 
+  it('DRAG apply-to-all maps the crop PROPORTIONALLY across mixed page sizes (#G23 v1d)', async () => {
+    // The wiring guard. `scaleCropToPageBox` can be perfectly correct and simply not called — the
+    // "two guards that could not fail" shape this repo has already had to correct once — so this
+    // drives the service and reads the stored crops.
+    //
+    // Page 1 is 400x400 and gets a 100x100 crop at (100,100). Page 2 is 200x200, so the same
+    // proportion is a 50x50 crop at (50,50). The OLD behaviour reused the absolute rect and clamped
+    // it, giving page 2 a 100x100 crop at (100,100) — half its page, in the wrong place.
+    const ctx = makeCtx();
+    ctx.documentModel.addBlankPage(400, 400);
+    ctx.documentModel.addBlankPage(200, 200);
+    const svc = new PageService(ctx);
+    const id = ctx.documentModel.pages[0].id;
+    vi.spyOn(ctx.historyManager, 'execute');
+
+    await svc.cropPage(id, { x: 100, y: 100, width: 100, height: 100 }, true);
+
+    expect(ctx.documentModel.pages[0].crop).toEqual({ x: 100, y: 100, width: 100, height: 100 });
+    expect(ctx.documentModel.pages[1].crop).toEqual({ x: 50, y: 50, width: 50, height: 50 });
+    // One undoable step for the whole document, as before.
+    expect(ctx.historyManager.execute).toHaveBeenCalledWith(expect.any(MacroCmd));
+    ctx.historyManager.undo();
+    for (const p of ctx.documentModel.pages) expect(p.crop).toBeUndefined();
+  });
+
+  it('DRAG apply-to-all is unchanged on a UNIFORM document', async () => {
+    // The regression control: nearly every document is uniform, and there the new mapping must be
+    // the exact identity — not merely close, since a float round-trip drifted the last bits before
+    // the equal-box short-circuit was added.
+    const ctx = makeCtx();
+    ctx.documentModel.addBlankPage(595, 842);
+    ctx.documentModel.addBlankPage(595, 842);
+    const svc = new PageService(ctx);
+    await svc.cropPage(ctx.documentModel.pages[0].id, { x: 50, y: 60, width: 200, height: 300 }, true);
+    const expected = { x: 50, y: 60, width: 200, height: 300 };
+    expect(ctx.documentModel.pages[0].crop).toEqual(expected);
+    expect(ctx.documentModel.pages[1].crop).toEqual(expected);
+  });
+
   it('ROTATION: a typed top margin crops the visual top, matching the drag path', async () => {
     // The bug this pins: the margins path used to ignore srcRot/p.rotation and emit ONE content rect
     // for every rotation, so on a 90-rotated page a typed "top" removed a side strip. A /Rotate 90

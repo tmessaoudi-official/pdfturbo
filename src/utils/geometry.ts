@@ -292,6 +292,50 @@ export function clampContentRect(
 }
 
 /**
+ * Map a crop drawn on one page's content box onto another page's box, preserving the crop's SHAPE
+ * and its RELATIVE POSITION (#G23 v1d — aspect-ratio-aware apply-to-all).
+ *
+ * The previous apply-to-all reused one ABSOLUTE rect and clamped it to each page. On a uniform
+ * document that is right; on a mixed-size one it is not — the same 200×100 rect at (50,50) frames a
+ * different part of a smaller page, and on a page narrower than the rect it is silently truncated to
+ * a different shape. "Take the top third of every page" is what the user means, and the top third is
+ * a proportion, not a measurement.
+ *
+ * Two properties, and they can conflict, so the resolution is explicit:
+ *  - **shape** is preserved by scaling with a UNIFORM factor, `min(toW/fromW, toH/fromH)`. Scaling
+ *    each axis independently would preserve the fractions but stretch the crop when the two pages
+ *    have different aspect ratios — a portrait selection becoming a squat one on a landscape page.
+ *  - **position** is preserved by keeping the crop's CENTRE at the same fractional position, then
+ *    clamping so the box stays inside the page. Anchoring the top-left instead drifts the framing
+ *    towards the bottom-right as pages shrink.
+ *
+ * IDENTITY when the boxes match: `scale` is exactly 1 and the centre maths returns the input, so a
+ * uniform document — the overwhelmingly common case — is byte-identical to the old behaviour. That
+ * is asserted rather than reasoned about.
+ */
+export function scaleCropToPageBox(
+  crop: { x: number; y: number; width: number; height: number },
+  from: { W: number; H: number },
+  to: { W: number; H: number },
+): { x: number; y: number; width: number; height: number } {
+  if (from.W <= 0 || from.H <= 0) return clampContentRect(crop, to.W, to.H);
+  // EXACT identity for equal boxes, short-circuited rather than left to the arithmetic. The centre
+  // round-trip `((y + h/2) / H) * H - h/2` is not exact in floating point — it returned
+  // 59.999999999999986 for 60 — so without this a uniform document's stored crop would drift in the
+  // last bits on every apply-to-all, and the byte-identical claim would simply be false.
+  if (from.W === to.W && from.H === to.H) return { ...crop };
+  const scale = Math.min(to.W / from.W, to.H / from.H);
+  const width = Math.min(crop.width * scale, to.W);
+  const height = Math.min(crop.height * scale, to.H);
+  // Centre-relative, not corner-relative.
+  const cx = ((crop.x + crop.width / 2) / from.W) * to.W;
+  const cy = ((crop.y + crop.height / 2) / from.H) * to.H;
+  const x = Math.max(0, Math.min(cx - width / 2, to.W - width));
+  const y = Math.max(0, Math.min(cy - height / 2, to.H - height));
+  return { x, y, width, height };
+}
+
+/**
  * Parse a CSS hex color string (#RRGGBB or RRGGBB) into normalized [0, 1] RGB components
  * suitable for pdf-lib color APIs.
  */

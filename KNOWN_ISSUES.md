@@ -74,8 +74,11 @@ work in a private/incognito window when editing sensitive documents on a shared 
   since the sign-off). **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
 - Crop: numeric per-edge **margins** SHIPPED 2026-08-04 (converted per page); resizable **handles**
-  SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). Aspect-ratio-aware
-  apply-to-all remains open.
+  SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). **Aspect-ratio-aware
+  apply-to-all SHIPPED 2026-09-04**: a drawn crop now maps onto every page as a PROPORTION of that
+  page's own box rather than as one absolute rect clamped to it, preserving the crop's shape (a
+  uniform scale, so it is not stretched on a page of a different aspect ratio) and its relative
+  position (the centre, not the corner). Exactly the identity on a uniform document.
 - **XLSX table export** — DONE (2026-08-04): `src/export/xlsxWriter.ts`, no new dependency (XLSX is OPC,
   written with the fflate `zipSync` this repo already uses for DOCX). Shares table detection with the CSV
   export, and writes numeric cells as real numbers so a price column can be summed.

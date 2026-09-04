@@ -11,7 +11,7 @@ import type { InkLayer } from '../infra/inkLayer';
 import { DocumentModel, PAGE_SIZES, type DocumentPage, type PageCrop } from './documentModel';
 import type { IErrorReporter } from './errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
-import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToRect } from '../utils/geometry';
+import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToRect, scaleCropToPageBox } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
 
 /**
@@ -174,14 +174,19 @@ export class PageService {
       return;
     }
 
-    // Apply the SAME content-space crop to every page, clamped to each page's own box.
+    // #G23 v1d — map the crop onto each page PROPORTIONALLY rather than reusing one absolute rect.
+    // The old behaviour clamped the same numbers to every page, which reframes a mixed-size document
+    // and can silently truncate the selection into a different shape. `scaleCropToPageBox` is the
+    // identity when the boxes match, so a uniform document is unchanged.
+    const srcGeom = await this._pageGeom(target);
     const entries: { pageId: string; crop: PageCrop | null }[] = [];
     for (const p of ctx.documentModel.pages) {
       let perPage: PageCrop | null = contentCrop;
       if (contentCrop) {
         const g = await this._pageGeom(p);
-        if (!g) continue;
-        const c = clampContentRect(contentCrop, g.W, g.H);
+        if (!g || !srcGeom) continue;
+        const scaled = scaleCropToPageBox(contentCrop, { W: srcGeom.W, H: srcGeom.H }, { W: g.W, H: g.H });
+        const c = clampContentRect(scaled, g.W, g.H);
         if (c.width < 1 || c.height < 1) continue;
         perPage = c;
       }

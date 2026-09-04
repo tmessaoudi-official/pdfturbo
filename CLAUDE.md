@@ -2569,7 +2569,7 @@ rides the CURRENT page's command (fires on execute AND undo). Live editor previe
 frame** (`pageRenderPipeline._renderCropFrame`, mapped via `contentRectToDisplay`), NOT a pdf.js sub-region
 render (Design β). Tool mode `'crop'` rides `DrawingHandler` (pointerdown gate + `_updatePreview` + pointer-up
 branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off).
-**Ceiling:** aspect-ratio-aware apply-to-all. Numeric margins SHIPPED 2026-08-04 (§ Numeric crop
+**Ceiling:** none of the three originally listed remain. Numeric margins SHIPPED 2026-08-04 (§ Numeric crop
 margins) and resizable HANDLES 2026-08-05 (§ Resizable crop handles).
 
 ### Crop HIDES, redaction REMOVES — and the obvious check gives a false negative (2026-08-04)
@@ -2874,8 +2874,37 @@ the 2 #54b keys — 14 pending in total, enumerated in § The hide-vs-remove aud
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +
 `tests/core/pageService.test.ts` (5: inset, undo, per-page apply-to-all in one MacroCmd, the warn, the
-all-pages toast). **Still ceiling (v1c):** resizable drag handles on an existing crop frame, and
-aspect-ratio-aware apply-to-all.
+all-pages toast).
+
+**Aspect-ratio-aware apply-to-all — the last of these ceilings — SHIPPED 2026-09-04 (#G23 v1d).**
+The DRAG path's apply-to-all reused ONE absolute content rect and clamped it to each page. On a
+uniform document that is right; on a mixed-size one the same 200x100 rect at (50,50) frames a
+different part of a smaller page, and on a page narrower than the rect it is silently truncated into
+a different SHAPE. "Take the top third of every page" is a proportion, not a measurement.
+`scaleCropToPageBox` (geometry.ts) maps the crop onto each page's own box.
+
+**Two properties that can conflict, so the resolution is explicit.** SHAPE is preserved with a
+UNIFORM scale `min(toW/fromW, toH/fromH)` — scaling each axis independently keeps the fractions but
+stretches a portrait selection into a squat one on a landscape page. POSITION is preserved by keeping
+the crop's CENTRE at the same fractional position, then clamping; anchoring the top-left drifts the
+framing towards the bottom-right as pages shrink.
+
+**Centre-vs-corner is invisible to almost every test, and that is worth knowing.** The two agree
+EXACTLY whenever the source and target aspect ratios match — so a sabotage that anchored the corner
+passed the entire file until a case with differing ratios was added (400x400 → 800x400 puts the crop
+at x=250 centre-anchored and x=200 corner-anchored). A design claim no case can distinguish is not
+pinned, however reasonable it reads.
+
+**The equal-box identity is short-circuited rather than left to the arithmetic**: the centre
+round-trip `((y + h/2) / H) * H - h/2` is not exact in floating point — it returned 59.999999999999986
+for 60 — so without the short-circuit a uniform document's stored crop would drift in the last bits
+on every apply-to-all and the byte-identical claim would simply be false.
+
+Guards: `tests/utils/scaleCropToPageBox.test.ts` (8, including a swept in-bounds property and the
+degenerate source box) + two wiring cases in `tests/core/pageService.test.ts` — the mixed-size one and
+a UNIFORM control, because the helper can be correct and simply not called. Sabotage-verified:
+per-axis scaling fails the shape case; corner anchoring fails it too once the position is asserted;
+reverting the service to clamp one absolute rect fails exactly the mixed-size wiring case.
 
 ### PDF compress (#60)
 
