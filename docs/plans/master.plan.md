@@ -541,7 +541,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 9 | WS4-C — blank-page blunt whole-drop (refuted, pinned) | M | done | bedc208 | tests/browser/hide-vs-remove.browser.test.ts |
 | 10 | WS4-E — signer vs assembled crop-origin (refuted, bound corrected) | M | done | 16b3101 | tests/browser/sign-assembled-frame.browser.test.ts |
 | 11 | WS4-D — DOCX part GC on image delete | L | done | 1c41dd5 | src/docx/opcGc.ts, src/docx/docxProseMirror.ts |
-| 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | done | CROPSHA | src/core/pageService.ts, src/utils/geometry.ts |
+| 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | done | b99db82 | src/core/pageService.ts, src/utils/geometry.ts |
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 borderless tables wired to DOCX | L | todo | - | src/utils/borderlessTable.ts, src/export/exportService.ts |
 | 15 | WS5 — adversarial audit of existing code | L | todo | - | src/** |
