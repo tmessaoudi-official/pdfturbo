@@ -504,6 +504,16 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   misplaces a signature visibly, it does not leak or fail to remove content. Its home is
   `CLAUDE.md` § "The drag-placed signature rect was crop-relative", amended in place. Two of the
   four bounds checked so far (F, E) were not where the plan's preamble said they were.
+- [2026-09-04 12:36] AGREED: WS4-D is PROMOTED. `src/docx/opcGc.ts` collects `word/media/*` parts
+  that no live relationship reaches, and drops the dead relationships with them. The scan walks
+  EVERY `_rels/*.rels` in the package (headers, footers, footnotes, comments and unmodelled parts —
+  the ones the editor passes through verbatim), treats a relationship as live if its Id appears
+  anywhere in the owning part's text, keeps everything it cannot read with confidence, and is
+  restricted to `word/media/**`. `SECURITY.md` now records the bound as closed.
+- [2026-09-04 12:36] AGREED: the GC also collects a picture orphaned by ANOTHER program before the
+  file was opened — the same rule applied evenly, so a save can shrink a file the user did not
+  knowingly change. Disclosed in `SECURITY.md` rather than special-cased, because suppressing it
+  would mean tracking which orphans "we" created, which the package does not record.
 
 ## Status
 <!-- progress-block v1 -->
@@ -519,7 +529,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |
 | 9 | WS4-C — blank-page blunt whole-drop (refuted, pinned) | M | done | bedc208 | tests/browser/hide-vs-remove.browser.test.ts |
 | 10 | WS4-E — signer vs assembled crop-origin (refuted, bound corrected) | M | done | 16b3101 | tests/browser/sign-assembled-frame.browser.test.ts |
-| 11 | WS4-D — DOCX part GC on image delete | L | todo | - | src/docx/** |
+| 11 | WS4-D — DOCX part GC on image delete | L | done | GCSHA | src/docx/opcGc.ts, src/docx/docxProseMirror.ts |
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | todo | - | src/core/pageService.ts |
 | 13 | WS6 — #54b open-via-picker + recent files | M | todo | - | src/utils/fileSystemAccess.ts |
 | 14 | WS6 — C9 borderless tables wired to DOCX | L | todo | - | src/utils/borderlessTable.ts, src/export/exportService.ts |

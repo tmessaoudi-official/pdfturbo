@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { page } from 'vitest/browser';
-import { zipSync, strToU8 } from 'fflate';
+import { zipSync, strToU8, strFromU8 } from 'fflate';
 import { NodeSelection } from 'prosemirror-state';
 import { undo } from 'prosemirror-history';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
@@ -123,6 +123,36 @@ describe('DOCX editor — image resize/delete (real browser)', () => {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, imgPosOf(view))).deleteSelection());
     const xml = getDocumentXml(openOpc(handle.save()));
     expect(xml).not.toContain('w:drawing');
+    handle.destroy();
+    container.remove();
+  });
+
+  it('deleting the image also removes word/media from the package — WS4-D', () => {
+    // Before this, the anchor paragraph went and the BYTES stayed: the picture vanished in the
+    // editor and in Word while `word/media/image1.png` survived as an unreferenced part, recovered
+    // by renaming the file to `.zip`. Disclosed in SECURITY.md; closed by gcOrphanMediaParts.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const handle = mountDocxEditor(container, makeDocxOneImage());
+    const view = handle.view;
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, imgPosOf(view))).deleteSelection());
+    const saved = openOpc(handle.save());
+    expect(Object.keys(saved.files)).not.toContain('word/media/image1.png');
+    // …and the relationship goes with it, so nothing points at a part that is no longer there.
+    expect(strFromU8(saved.files['word/_rels/document.xml.rels'])).not.toContain('rId1');
+    handle.destroy();
+    container.remove();
+  });
+
+  it('a save that deletes nothing keeps every media part — the GC does not over-reach', () => {
+    // The CONTROL. A pass that deleted eagerly would satisfy the case above while destroying every
+    // picture in every document that was merely opened and saved.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const handle = mountDocxEditor(container, makeDocxOneImage());
+    const saved = openOpc(handle.save());
+    expect(Object.keys(saved.files)).toContain('word/media/image1.png');
+    expect(getDocumentXml(saved)).toContain('w:drawing');
     handle.destroy();
     container.remove();
   });

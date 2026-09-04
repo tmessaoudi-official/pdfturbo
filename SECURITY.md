@@ -159,14 +159,25 @@ stating rather than leaving you to discover them:
   so more ink is removed than the box strictly covers — considerably more for a long, thin one, and the
   safe direction.
 
-### Deleting an image in the DOCX editor does not remove it from the file
+### Deleting an image in the DOCX editor now removes it from the file (fixed 2026-09-04)
 
-The grades above are about PDFs. The **Word editor** has one case worth knowing: deleting an image
-removes it from the document, but **the image data stays inside the `.docx`**. An OPC package is a ZIP,
-and the picture remains as an unreferenced part that anyone can extract by renaming the file to `.zip`.
+The grades above are about PDFs. The **Word editor** used to have a case worth knowing: deleting an
+image removed it from the document, but **the image data stayed inside the `.docx`**. An OPC package
+is a ZIP, so the picture remained as an unreferenced part that anyone could extract by renaming the
+file to `.zip`. It disappeared in the editor and in Word, which is what made it convincing.
 
-Not yet fixed — removing a package part safely means proving nothing else references it. If an image is
-confidential, delete it before it goes into the document, or rebuild the file without it.
+**Fixed.** Saving now also removes any picture in the package that nothing refers to any more, along
+with the dead reference that pointed at it.
+
+The care is all in deciding what "nothing refers to it" means, because deleting a picture that is
+still in use is far worse than leaving a stray one. So the check reads **every** part of the package,
+not just the main document — a picture used only in a header, a footer, a footnote or a comment is
+kept — and anything it cannot read with confidence is kept as well. Only pictures are ever removed;
+no other part of the file is touched. A save that deletes nothing leaves the file exactly as it was.
+
+One thing it does not do: a picture that was already orphaned by some other program before you opened
+the file is also collected on the next save. That is the same rule applied evenly, but it means a save
+can shrink a file you did not knowingly change.
 
 ### A black rectangle over text hides nothing
 

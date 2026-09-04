@@ -268,6 +268,53 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### Deleting a DOCX image left its bytes in the package — WS4-D, and the scan IS the fix (2026-09-04)
+
+`reconcileImageAnchors` removed the image's anchor `w:p`, which strips its `r:embed` from
+`document.xml` — but the relationship in `word/_rels/document.xml.rels` and the bytes in
+`word/media/imageN.*` both stayed. The picture vanished in the editor AND in Word while remaining
+recoverable by renaming the file to `.zip`. Disclosed since 2026-08-05 with "removing a package part
+safely means proving nothing else references it"; `src/docx/opcGc.ts` is that proof.
+
+**Every decision in the scan errs towards KEEPING, because the failure modes are wildly asymmetric:**
+an orphan left behind is the bug we already disclosed, a live picture deleted destroys the user's
+document. Four consequences, each pinned:
+
+- **Walk every `_rels/*.rels`, not just the document's.** Headers, footers, footnotes, endnotes and
+  comments reach their images through their own `.rels`, and those parts are passed through verbatim
+  by the editor — so they are exactly the ones a naive scan never sees. Sabotage S1 (scan only
+  `word/_rels/document.xml.rels`) fails exactly the header case.
+- **A relationship is live if its Id appears ANYWHERE in the owning part's text.** Matching `r:embed`
+  by name would mean enumerating every attribute Word can hang an rId on (`r:id`, `r:link`, `r:pict`,
+  `r:dm`, `r:lo`, `r:qs`, `v:imagedata/@r:id`, …) and one missed name deletes a live image. The
+  over-approximation is the safe direction.
+- **Match the Id WITH its quotes.** `rId7` is a substring of `rId70`, so a bare `includes` keeps an
+  orphan alive forever — the silent-failure direction of the same bug. S4 fails exactly that case.
+- **Only `word/media/**` is ever eligible.** An unreferenced `styles.xml` or `customXml` item is not
+  this pass's garbage; deleting one would break the document for a refcount it has no business
+  reasoning about. S3 fails 9 of 12.
+
+**`strFromU8` does NOT throw on non-UTF-8 — it substitutes replacement characters.** So a binary part
+that happens to be named `.xml` decodes to garbage, the garbage contains no `"rIdN"`, and every
+relationship it owns is judged dangling: live images deleted. The fail-safe test passed for the wrong
+reason until `partText` learned to reject text that does not look like XML. **A `try/catch` around a
+decoder that does not throw is not a guard.**
+
+The GC runs LAST in the editor's `save()`, after every part that save will rewrite has been written,
+because it decides reachability by reading those parts. It is a no-op on a package with no orphan, so
+an open-and-save is byte-identical — pinned by a CONTROL case, without which an eagerly-deleting pass
+would satisfy the delete case while destroying every picture in every document merely opened.
+
+**Stated in `SECURITY.md` rather than hidden:** a picture orphaned by some OTHER program before you
+opened the file is collected too. That is the same rule applied evenly, and it means a save can shrink
+a file the user did not knowingly change.
+
+Guards: `tests/docx/opcGc.test.ts` (12) + two cases in
+`tests/browser/docx-image-edit.browser.test.ts` (the end-to-end removal, and the no-op control).
+Sabotage-verified five ways, each landing where predicted: document-only scan → the header case;
+every relationship dangling → 6; no media-only restriction → 9; unquoted Id match → the rId7/rId70
+case; the call removed from `save()` → the end-to-end case only, with the control still green.
+
 ### Clipping is not removing, for anything vector — WS4-C refuted (2026-09-04)
 
 The blank-page redaction filter drops a partly-covered element WHOLE. WS4-C asked whether it could

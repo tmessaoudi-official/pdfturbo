@@ -33,6 +33,7 @@ import { type DocModel, type DocParagraph, type DocRun, type DocBlock, type DocT
 import { openOpc, getDocumentXml, setDocumentXml, packOpc } from './opcEdit';
 import { extractDocImages, type DocImage } from './docxImages';
 import { ensureHeadingStyles, ensureListNumbering, buildNumberingMap, buildHyperlinkMap, ensureHyperlinkRel, ensureImagePart } from './opcParts';
+import { gcOrphanMediaParts } from './opcGc';
 import { sanitizeLinkUrl } from '../utils/linkUrl';
 
 const m = docxSchema.marks;
@@ -430,6 +431,13 @@ export function mountDocxEditor(container: HTMLElement, bytes: Uint8Array): Docx
         editImages: true,
         mintImage: (bytes, mime) => ensureImagePart(opc, bytes, mime).rId,
       }));
+      // WS4-D — the delete pre-pass above removes an image's anchor paragraph, which strips its
+      // `r:embed` from document.xml but leaves the relationship and `word/media/imageN.*` behind:
+      // the picture is gone from Word and still in the file, recoverable by renaming to `.zip`.
+      // Runs LAST, once every part this save is going to rewrite has been written, because it
+      // decides what is reachable by reading those parts. It is a no-op on a package with no
+      // orphan, so a save that deletes nothing stays byte-identical.
+      gcOrphanMediaParts(opc);
       return packOpc(opc);
     },
     getModel(): DocModel {
