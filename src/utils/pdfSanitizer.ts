@@ -109,90 +109,97 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   const NAME_S = PDFName.of('S');
   const NAME_JS = PDFName.of('JavaScript');
 
-  /**
-   * Strip action vectors from a single annotation or form-field node:
-   *  - always delete /AA (additional actions);
-   *  - delete /A ONLY when it resolves to a /S /JavaScript action — URI/GoTo
-   *    hyperlinks must survive.
-   * Returns true if either key was removed.
-   */
   const NAME_NEXT = PDFName.of('Next');
-
-  /** `/S` is RESOLVED: any value may be indirect, and `/S 12 0 R` -> /JavaScript is a PDFRef. */
-  const isJsAction = (v: unknown): boolean =>
-    v instanceof PDFDict && ctx.lookup(v.get(NAME_S)) === NAME_JS;
+  const NAME_JS_ENTRY = PDFName.of('JS');
+  const NAME_RENDITION = PDFName.of('Rendition');
 
   /**
-   * Prune JavaScript out of an action's `/Next` chain, SPLICING rather than truncating: a removed
-   * JS link's own `/Next` is reattached, so a `/URI` chained after a script still works. `/Next` may
-   * be a single action or an ARRAY of them; both are walked, and a real engine runs both
-   * (`pdf.worker.mjs` `_collectJS` recurses `getRaw("Next")` and array elements).
+   * Does this action execute script?
    *
-   * `seen` guards a malformed cyclic chain — a sanitizer that hangs on a hostile file is its own
-   * denial of service.
+   * `/S` is RESOLVED: any value may be indirect, and `/S 12 0 R` -> /JavaScript is a PDFRef.
+   *
+   * `/S /Rendition` counts when it carries a `/JS` entry, which a reader runs at `/OP 4`. That is
+   * JavaScript by any reading, it survived every sanitize with `report.javascript` saying `false`,
+   * and `SECURITY.md` marks the JavaScript row `[pinned]` to claim a test vouches for it [WS7 r8].
+   * The discriminator is the `/JS` entry and NOT the `/Rendition` subtype: a rendition without one
+   * is ordinary multimedia content, and stripping those would delete legitimate media to no
+   * security end.
    */
-  const pruneActionChain = (action: PDFDictT, seen: Set<unknown>): boolean => {
-    if (seen.has(action)) return false;
-    seen.add(action);
-    let hit = false;
-    for (;;) {
-      const next = ctx.lookup(action.get(NAME_NEXT));
-      if (next instanceof PDFArray) {
-        const kept = next.asArray().filter(r => !isJsAction(ctx.lookup(r)));
-        if (kept.length !== next.size()) {
-          hit = true;
-          if (kept.length === 0) action.delete(NAME_NEXT);
-          else action.set(NAME_NEXT, ctx.obj(kept));
-        }
-        for (const r of kept) {
-          const el = ctx.lookup(r);
-          if (el instanceof PDFDict && pruneActionChain(el, seen)) hit = true;
-        }
-        return hit;
-      }
-      if (!(next instanceof PDFDict)) return hit;
-      if (!isJsAction(next)) return pruneActionChain(next, seen) || hit;
-      // Splice this JS link out and re-test whatever it pointed at.
-      hit = true;
-      const after = next.get(NAME_NEXT);
-      if (after === undefined) { action.delete(NAME_NEXT); return hit; }
-      action.set(NAME_NEXT, after);
-    }
+  const isScriptAction = (v: unknown): boolean => {
+    if (!(v instanceof PDFDict)) return false;
+    const s = ctx.lookup(v.get(NAME_S));
+    if (s === NAME_JS) return true;
+    return s === NAME_RENDITION && v.get(NAME_JS_ENTRY) !== undefined;
+  };
+
+  /** Write 0, 1 or many surviving actions back into `key`, collapsing a single-element chain. */
+  const setActions = (node: PDFDictT, key: typeof NAME_A, kept: unknown[]): void => {
+    if (kept.length === 0) node.delete(key);
+    else if (kept.length === 1) node.set(key, kept[0] as never);
+    else node.set(key, ctx.obj(kept as never[]));
   };
 
   /**
-   * Strip action vectors from one annotation, form field or outline item.
+   * The actions that SURVIVE in place of `value`, with every script action spliced out and its own
+   * `/Next` continuation promoted into the gap — so a `/URI` chained behind a script still works.
+   * `/Next` may be a single action or an ARRAY of them, and a real engine runs both
+   * (`pdf.worker.mjs` `_collectJS` recurses `getRaw("Next")` and array elements).
    *
-   * Round 6 fixed the top-level `/S` and stopped there; round 7 found the CLASS still open — a
-   * script reached through `/Next`, or listed in an array-valued `/A`, survived with the report
-   * saying `false`. Fixing one member of a class and leaving its siblings is this repo's most
-   * repeated defect, and this is now the second time it has happened to this one function.
+   * **One function for every position, which is the actual fix.** Round 7 spliced the middle of a
+   * chain and truncated at the head of `/A`, inside an array, and at a cycle; all three lenses of
+   * the round-8 panel found the head case independently. Returning the survivors — rather than
+   * mutating in place and reporting a boolean — makes head, middle, array element and cycle the
+   * same operation, so the distinction that let this class reopen twice is no longer expressible.
+   *
+   * `seen` is what makes it terminate, and round 7's version only *looked* like it did: it recorded
+   * the dict each call was ENTERED on, while the splice branch re-pointed `/Next` at the same script
+   * every iteration without ever recording it. A self-cycle therefore looped forever in a
+   * synchronous `for(;;)` on the main thread — a frozen tab, not a slow sanitize, and unreachable by
+   * the caller's catch because nothing throws. Revisiting a NON-script action returns it unchanged
+   * instead of cutting it, so a legitimate diamond (two array entries chaining to one continuation)
+   * survives; only a revisited script is dropped.
+   */
+  const spliceActions = (value: unknown, seen: Set<unknown>, state: { hit: boolean }): unknown[] => {
+    if (value === undefined) return [];
+    // `instanceof` narrowing against pdf-lib's runtime classes collapses to `never` (they carry a
+    // private `context`), so the walk goes through `object | undefined` and the type-only aliases
+    // the rest of this module already uses — the same dodge as the /Outlines walk below.
+    const resolved = ctx.lookup(value as never) as object | undefined;
+    if (resolved instanceof PDFArray) {
+      const arr = resolved as unknown as PDFArrayT;
+      return arr.asArray().flatMap(el => spliceActions(el, seen, state));
+    }
+    if (!(resolved instanceof PDFDict)) return [value];
+    const action = resolved as unknown as PDFDictT;
+    if (seen.has(action)) return isScriptAction(action) ? [] : [value];
+    seen.add(action);
+    if (isScriptAction(action)) {
+      state.hit = true;
+      return spliceActions(action.get(NAME_NEXT), seen, state);
+    }
+    const before = action.get(NAME_NEXT);
+    const kept = spliceActions(before, seen, state);
+    if (!(kept.length === 1 && kept[0] === before)) setActions(action, NAME_NEXT, kept);
+    return [value];
+  };
+
+  /**
+   * Strip action vectors from one annotation, form field or outline item: always delete `/AA`, and
+   * splice every script out of `/A` while URI/GoTo hyperlinks survive.
+   *
+   * Round 6 fixed the top-level `/S`, round 7 the middle of the chain, round 8 the rest. Fixing one
+   * member of a class and leaving its siblings is this repo's most repeated defect, and this one
+   * function has now suffered it three times — which is why the traversal above is shaped so the
+   * positions cannot drift apart again.
    */
   const stripNodeActions = (node: PDFDictT): boolean => {
-    let hit = node.delete(NAME_AA);
-    const action = ctx.lookup(node.get(NAME_A));
-    if (action instanceof PDFArray) {
-      // `/A` should be a dictionary, but readers accept an array and run every entry.
-      const kept = action.asArray().filter(r => !isJsAction(ctx.lookup(r)));
-      if (kept.length !== action.size()) hit = true;
-      if (kept.length === 0) { if (node.delete(NAME_A)) hit = true; }
-      else {
-        node.set(NAME_A, ctx.obj(kept));
-        for (const r of kept) {
-          const el = ctx.lookup(r);
-          if (el instanceof PDFDict && pruneActionChain(el, new Set())) hit = true;
-        }
-      }
-      return hit;
+    const state = { hit: node.delete(NAME_AA) };
+    const raw = node.get(NAME_A);
+    if (raw !== undefined) {
+      const kept = spliceActions(raw, new Set(), state);
+      if (!(kept.length === 1 && kept[0] === raw)) setActions(node, NAME_A, kept);
     }
-    if (action instanceof PDFDict) {
-      if (isJsAction(action)) {
-        if (node.delete(NAME_A)) hit = true;
-      } else if (pruneActionChain(action, new Set())) {
-        hit = true;
-      }
-    }
-    return hit;
+    return state.hit;
   };
 
   // /Info — clear every entry, then drop the dictionary from the trailer.
@@ -265,20 +272,29 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   const outlines = cat.lookupMaybe(PDFName.of('Outlines'), PDFDict);
   if (outlines) {
     const seenItems = new Set<unknown>();
-    const walkOutline = (itemRef: ReturnType<PDFDictT['get']>): void => {
-      if (itemRef === undefined) return;
-      const looked = ctx.lookup(itemRef) as object | undefined;
-      if (!(looked instanceof PDFDict) || seenItems.has(looked)) return;
-      // `instanceof` narrowing against pdf-lib's runtime class collapses to `never` here (its
-      // classes carry a private `context`), so the walk goes through the type-only alias the rest
-      // of this module already uses.
-      const item = looked as unknown as PDFDictT;
-      seenItems.add(item);
-      if (stripNodeActions(item)) annotActions = true;
-      walkOutline(item.get(PDFName.of('First')));
-      walkOutline(item.get(NAME_NEXT));
-    };
-    walkOutline(outlines.get(PDFName.of('First')));
+    // Siblings are a LINEAR list, so they are walked with a LOOP; only the /First descent needs a
+    // stack, and that stack lives on the heap. Round 7 recursed on the sibling `/Next` as well,
+    // which put the length of a document's bookmark list on the JS call stack: measured fine at
+    // 8000 siblings and `RangeError` at 10000 [WS7 r8]. It failed CLOSED, which is the right
+    // direction, but the outcome was that a book-sized document which sanitized before round 7
+    // stopped being sanitizable after it — a regression dressed as a safe failure.
+    const pending: Array<ReturnType<PDFDictT['get']>> = [outlines.get(PDFName.of('First'))];
+    while (pending.length > 0) {
+      let itemRef = pending.pop();
+      while (itemRef !== undefined) {
+        const looked = ctx.lookup(itemRef) as object | undefined;
+        if (!(looked instanceof PDFDict) || seenItems.has(looked)) break;
+        // `instanceof` narrowing against pdf-lib's runtime class collapses to `never` here (its
+        // classes carry a private `context`), so the walk goes through the type-only alias the rest
+        // of this module already uses.
+        const item = looked as unknown as PDFDictT;
+        seenItems.add(item);
+        if (stripNodeActions(item)) annotActions = true;
+        const child = item.get(PDFName.of('First'));
+        if (child !== undefined) pending.push(child);
+        itemRef = item.get(NAME_NEXT);
+      }
+    }
   }
 
   report.annotActions = annotActions;

@@ -403,3 +403,209 @@ describe('sanitizePdf — JavaScript anywhere in an action chain, and /Outlines 
     expect((await sanitizePdf(await build())).report.annotActions).toBe(true);
   });
 });
+
+/**
+ * WS7 round 8 — round 7 spliced the MIDDLE of an action chain and truncated everywhere else, so the
+ * class it was written to close was still open in three places, and one of them hung the browser.
+ *
+ * All three lenses of the round-8 panel found the head-of-`/A` case independently, which is the
+ * clearest signal yet that "fix one member of the class, leave the siblings" is not a slip here but
+ * a habit. The cases below pin the whole class at once:
+ *
+ *  - a CYCLIC `/Next` looped forever. `seen` guarded only the dict a call was ENTERED on; the splice
+ *    branch re-pointed `/Next` at the same JavaScript dict every iteration and never recorded it.
+ *    Measured on the shipped code: `timeout 60` → killed, against 11 ms for the acyclic control.
+ *    A synchronous `for(;;)` on the main thread, reachable from the 🧹 button — so it is not a slow
+ *    sanitize, it is a frozen tab, and `sanitizeAndDownload`'s catch can never fire because nothing
+ *    throws.
+ *  - a script at the HEAD of `/A` was deleted whole, taking a `/URI` chained behind it.
+ *  - an ARRAY-valued `/Next` dropped its script entries instead of splicing their continuations in.
+ *
+ * The fix is one function rather than three patches: `spliceActions` returns the actions that
+ * SURVIVE in place of a value, so head, middle, array element and cycle are the same operation
+ * applied at different positions. A defect class stays closed only when the code cannot express the
+ * distinction that let it reopen.
+ */
+describe('sanitizePdf — the whole splice class, at every position (WS7 r8)', () => {
+  const HEAD_JS = 'SANITIZE_HEAD_JS_MUST_NOT_SURVIVE_8801()';
+  const ARR_JS = 'SANITIZE_ARRAY_TAIL_JS_MUST_NOT_SURVIVE_8801()';
+  const CYCLE_JS = 'SANITIZE_CYCLIC_JS_MUST_NOT_SURVIVE_8801()';
+  const AFTER_HEAD = 'https://example.invalid/chained-behind-the-head-script-8801';
+  const AFTER_ARR = 'https://example.invalid/chained-behind-an-array-script-8801';
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+
+  const uri = (u: string) => ({ S: PDFName.of('URI'), URI: PDFString.of(u) });
+  const js = (m: string) => ({ S: PDFName.of('JavaScript'), JS: PDFString.of(m) });
+
+  /** One Link annotation carrying `action` as its `/A`. */
+  async function withAction(build: (ctx: PDFDocument['context']) => PDFDict): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const annot = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: ctx.obj([0, 0, 9, 9]),
+    });
+    annot.set(PDFName.of('A'), ctx.register(build(ctx)));
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  /** `/A` IS the script, and a legitimate hyperlink is chained behind it. */
+  const headScript = () => withAction(ctx => {
+    const head = ctx.obj(js(HEAD_JS));
+    head.set(PDFName.of('Next'), ctx.register(ctx.obj(uri(AFTER_HEAD))));
+    return head;
+  });
+
+  /** An array-valued `/Next` whose single entry is a script with a hyperlink behind IT. */
+  const arrayScript = () => withAction(ctx => {
+    const tail = ctx.register(ctx.obj(uri(AFTER_ARR)));
+    const inner = ctx.obj(js(ARR_JS)); inner.set(PDFName.of('Next'), tail);
+    const head = ctx.obj(uri('https://example.invalid/array-head-8801'));
+    head.set(PDFName.of('Next'), ctx.obj([ctx.register(inner)]));
+    return head;
+  });
+
+  /** A script whose `/Next` points back at itself — the shape that hung the shipped code. */
+  const selfCycle = () => withAction(ctx => {
+    const script = ctx.obj(js(CYCLE_JS));
+    const ref = ctx.register(script);
+    script.set(PDFName.of('Next'), ref);
+    const head = ctx.obj(uri('https://example.invalid/cycle-head-8801'));
+    head.set(PDFName.of('Next'), ref);
+    return head;
+  });
+
+  /** Two scripts pointing at each other — a cycle no single-step guard would catch. */
+  const twoCycle = () => withAction(ctx => {
+    const a = ctx.obj(js(CYCLE_JS));
+    const b = ctx.obj(js(`B_${CYCLE_JS}`));
+    const aRef = ctx.register(a); const bRef = ctx.register(b);
+    a.set(PDFName.of('Next'), bRef);
+    b.set(PDFName.of('Next'), aRef);
+    const head = ctx.obj(uri('https://example.invalid/two-cycle-head-8801'));
+    head.set(PDFName.of('Next'), aRef);
+    return head;
+  });
+
+  it('the fixtures really carry their payloads — the negative controls', async () => {
+    expect(asText(await headScript())).toContain(HEAD_JS);
+    expect(asText(await arrayScript())).toContain(ARR_JS);
+    expect(asText(await selfCycle())).toContain(CYCLE_JS);
+  });
+
+  it('TERMINATES on a self-cyclic /Next — the shipped code looped forever', async () => {
+    const out = await sanitizePdf(await selfCycle());
+    expect(asText(out.bytes)).not.toContain(CYCLE_JS);
+  });
+
+  it('TERMINATES on a two-action cycle', async () => {
+    const out = await sanitizePdf(await twoCycle());
+    expect(asText(out.bytes)).not.toContain(CYCLE_JS);
+  });
+
+  it('strips a script at the HEAD of /A', async () => {
+    expect(asText((await sanitizePdf(await headScript())).bytes)).not.toContain(HEAD_JS);
+  });
+
+  it('SPLICES the head — a hyperlink chained behind the script survives', async () => {
+    // The whole point of splicing, and the case the shipped code got wrong in the one position its
+    // own commit message advertised. Deleting `/A` satisfies the strip assertion above while
+    // destroying the link, so this is the half that has to be asserted.
+    expect(asText((await sanitizePdf(await headScript())).bytes)).toContain(AFTER_HEAD);
+  });
+
+  it('leaves the annotation with a usable /A rather than none at all', async () => {
+    const doc = await PDFDocument.load((await sanitizePdf(await headScript())).bytes, {
+      updateMetadata: false,
+    });
+    const annots = doc.getPages()[0].node.lookup(PDFName.of('Annots'), PDFArray);
+    const action = annots.lookup(0, PDFDict).lookup(PDFName.of('A'), PDFDict);
+    expect(action.lookup(PDFName.of('S'))).toBe(PDFName.of('URI'));
+  });
+
+  it('SPLICES inside an ARRAY-valued /Next, keeping the continuation behind the script', async () => {
+    const out = asText((await sanitizePdf(await arrayScript())).bytes);
+    expect(out).not.toContain(ARR_JS);
+    expect(out).toContain(AFTER_ARR);
+  });
+
+  it('REPORTS every one of them — a clean report over a surviving script is the worse half', async () => {
+    for (const fixture of [headScript, arrayScript, selfCycle, twoCycle]) {
+      expect((await sanitizePdf(await fixture())).report.annotActions).toBe(true);
+    }
+  });
+});
+
+/**
+ * WS7 round 8 — two more shapes, both of which make a SHIPPED claim false rather than merely
+ * incomplete.
+ *
+ * `/S /Rendition` with a `/JS` entry executes that script at `/OP 4`. It is JavaScript by any
+ * reading, it survived untouched, and `report.javascript` came back `false` — while `README.md`,
+ * `SECURITY.md` and the sanitize tooltip in all three locales promise JavaScript is removed, with
+ * `SECURITY.md` marking the row `[pinned]` to say a test vouches for it. No test did.
+ *
+ * The `/Outlines` walk added in round 7 recursed on the sibling `/Next`, i.e. over a LINEAR list, so
+ * a book-sized bookmark tree overflowed the stack: measured 8000 siblings fine, 10000 → RangeError.
+ * It failed closed (`toast.sanitizeFailed`), which is the right direction but the wrong outcome —
+ * a document that sanitized before round 7 stopped being sanitizable after it. Sibling traversal is
+ * a loop; only the `/First` descent needs a stack.
+ */
+describe('sanitizePdf — script-bearing Renditions and book-sized outlines (WS7 r8)', () => {
+  const REND_JS = 'SANITIZE_RENDITION_JS_MUST_NOT_SURVIVE_8802()';
+  const MEDIA = 'SANITIZE_RENDITION_MEDIA_MUST_SURVIVE_8802';
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+
+  async function withRendition(withJs: boolean): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const action = ctx.obj({ S: PDFName.of('Rendition'), OP: 4, N: PDFString.of(MEDIA) });
+    if (withJs) action.set(PDFName.of('JS'), PDFString.of(REND_JS));
+    const annot = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Screen'), Rect: ctx.obj([0, 0, 9, 9]),
+    });
+    annot.set(PDFName.of('A'), ctx.register(action));
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  /** A flat bookmark list of `n` siblings — the shape a long document's outline actually has. */
+  async function outlineOfDepth(n: number): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    const ctx = doc.context;
+    let nextRef: ReturnType<typeof ctx.register> | undefined;
+    for (let i = n - 1; i >= 0; i--) {
+      const item = ctx.obj({ Title: PDFString.of(`item ${i}`) });
+      if (nextRef) item.set(PDFName.of('Next'), nextRef);
+      nextRef = ctx.register(item);
+    }
+    const outlines = ctx.obj({ Type: PDFName.of('Outlines') });
+    if (nextRef) outlines.set(PDFName.of('First'), nextRef);
+    doc.catalog.set(PDFName.of('Outlines'), ctx.register(outlines));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  it('the fixture really carries the Rendition script — the negative control', async () => {
+    expect(asText(await withRendition(true))).toContain(REND_JS);
+  });
+
+  it('strips a /Rendition action carrying a /JS payload', async () => {
+    expect(asText((await sanitizePdf(await withRendition(true))).bytes)).not.toContain(REND_JS);
+  });
+
+  it('keeps a /Rendition that carries NO script — the over-reach control', async () => {
+    // A media rendition is ordinary document content. Stripping every /Rendition would satisfy the
+    // case above while silently deleting legitimate multimedia, so the discriminator is the /JS
+    // entry, not the /S subtype.
+    expect(asText((await sanitizePdf(await withRendition(false))).bytes)).toContain(MEDIA);
+  });
+
+  it('walks a 10000-sibling outline without overflowing the stack', async () => {
+    // 8000 passed on the shipped code and 10000 did not, so the guard sits above the measured cliff.
+    const out = await sanitizePdf(await outlineOfDepth(10_000));
+    expect(out.bytes.length).toBeGreaterThan(0);
+  });
+});

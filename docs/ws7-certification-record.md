@@ -1,6 +1,6 @@
 # WS7 — certification record for `dfe34ae..HEAD`
 
-**Status: NOT CERTIFIED.** Seven MAXIMAL panel rounds were run against this range and the
+**Status: NOT CERTIFIED.** Eight MAXIMAL panel rounds were run against this range and the
 two-consecutive-clean counter never rose above **0 of 2**. No `WS7: 2/2 clean at <sha>` entry exists
 in `docs/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
 
@@ -18,6 +18,9 @@ was ever written at all. A certification debt whose only record is machine-local
 | 3 | 23 | |
 | 4 | 19 | |
 | 5 | 11 | Stopped here originally; findings handed over rather than certified. |
+| 6 | 18 | Two of them self-inflicted in round-6 prep. |
+| 7 | 10 | Fixed one member of the `/A` script class and left three siblings. |
+| 8 | 19 | All THREE lenses independently found the same head-of-`/A` defect from round 7. |
 | 6 | 18 | Cleared the three post-round-5 fixes with executed sabotage; found a P1 sanitizer leak plus two defects introduced while preparing that round. |
 | 7 | 10 | Found the round-6 sanitizer fix had closed ONE shape of its class, and a colour regression from WS4-F. |
 
@@ -62,3 +65,66 @@ left in a `.docx`). Rounds 6 and 7 could not construct a delete-a-live-image cas
 DOMParser implementation, so it may well have converged — but it has the worst finding-per-line ratio
 in the range, and reverting it while restoring the disclosure remains defensible. It was offered at
 the round-3 fork and the rewrite was chosen instead.
+
+
+## Round 8 — what was fixed, and what is still open (2026-09-04)
+
+Round 8 returned **19 findings** across the three lenses. Five were code defects, all in
+`pdfSanitizer.ts`, all introduced by round 7's own fix, and all are now closed:
+
+| Defect | Evidence it was real |
+|---|---|
+| A cyclic action `/Next` looped **forever** — a frozen tab, reachable from the 🧹 button | `timeout 60` killed the run; the acyclic control returned in 11 ms |
+| A script at the **head** of `/A` was deleted whole, destroying a `/URI` chained behind it | chained URI present before, absent after |
+| An **array**-valued `/Next` dropped script entries instead of splicing their continuations | chained URI present before, absent after |
+| `/S /Rendition` carrying `/JS` survived, with `report.javascript` saying `false` | payload present after sanitize |
+| The round-7 `/Outlines` walk recursed over the **sibling** list | 8000 bookmarks fine, 10000 → `RangeError` |
+
+The first three were one defect wearing three hats: round 7 spliced the middle of a chain and
+truncated at every other position, in the commit whose own message says splicing is the point. The
+fix replaces the boolean-returning mutator with `spliceActions`, which returns the actions that
+SURVIVE — so head, middle, array element and cycle became the same operation and the distinction
+that let this class reopen twice is no longer expressible. Sabotage-verified four ways, each landing
+where predicted: dropping the cycle guard → 3; restoring the round-7 head deletion → 2 (and NOT the
+"strips a script at the HEAD" case, which deletion also satisfies — that is why the splice half has
+to be asserted separately); `/JavaScript`-only detection → exactly the Rendition case; outline
+recursion → exactly the 10000-sibling case.
+
+### Still open after round 8
+
+**One scope decision for the developer, not a defect:** `/S /SubmitForm` and `/S /Launch` survive
+sanitize with their remote URLs intact (measured: `https://…/collect` present after). Neither is
+JavaScript, so no current claim is false — but SubmitForm is off-device form-data submission in a
+document the app has just told the user it cleaned. Widening the sanitizer to strip them changes what
+"sanitize" means and could break legitimate forms; disclosing them in `SECURITY.md` is the cheaper
+half. **Not decided unilaterally.**
+
+**Documentation and claim drift — 13 findings, none of them a code defect**, carried here rather
+than left in gitignored reports:
+
+1. `src/utils/pdfSanitizer.ts` module header — "What it removes" still has no `/Outlines` entry and
+   still describes `/A` as a single dict.
+2. `index.html:145` — the sanitize button's static `title` still says "& embedded files", the exact
+   claim `8ae525c` removed from all three locales, README, FEATURES and SECURITY.
+3. `src/export/exportService.ts:351` — same surviving claim on `sanitizeAndDownload`'s docstring.
+4. `docs/plans/master.plan.md:489` (also `:266`, `:70`) — the live Decisions Log still rules that the
+   `/BBox` clip covers the **colorMap** channel, which round 7 reverted. A resuming session reading
+   the plan would re-add the reverted clip.
+5. `src/export/opStreamWalker.ts:248` and `CLAUDE.md:572` — "all three clipped channels" is stale
+   after the colour revert; one call site, two channels. The conclusion holds, the count does not.
+6. `CLAUDE.md:548` — "dropping the intersection fails the 7 leak cases" was never measured; it is 8
+   at HEAD (6 jsdom + 2 browser) and 6 at the commit where it was written.
+7. `CLAUDE.md:971`, `KNOWN_ISSUES.md:129` — two stale `exportPipeline.ts` line citations.
+8. `vitest.browser.config.ts:70-74` — the comment rewritten in round 7 *for* an unverified claim
+   carries a new one: `hookTimeout` governs `after*` too, so **14** browser files have hooks, not 10.
+9. `tests/utils/pdfSanitizer.test.ts:330` — cites a `SECURITY.md` hyperlink promise that
+   `git grep` cannot find.
+10. `docs/plans/master.plan.md:104` vs this file — "three of the **six**" vs "seven" for the same
+    statistic.
+11. This file's own round-6/7 counts ("three of the seven rounds", opcGc's "four consecutive rounds")
+    are stated flat while the surviving artifacts substantiate 2 and 3 — unproven, not false, and
+    called out here rather than quietly corrected.
+
+**The counter remains 0 of 2**, and round 8 is the fourth round of eight to find defects in the
+previous round's fixes. A ninth round has NOT been run: the `/goal` stop condition was cleared by the
+developer mid-round-8, so the ladder is paused rather than failed.
