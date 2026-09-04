@@ -50,7 +50,7 @@ rows were established by reading the code. Both are said plainly instead of impl
 | **Crop** | *hidden only* | A view setting. See below. |
 | **Shape / rectangle over text** | ***not even hidden*** | **[pinned]** See below — this is the one that catches people. |
 | **Highlight** | *not hidden* | A semi-transparent annotation drawn over the text. |
-| **Sanitize** | metadata only | **[pinned]** Strips `/Info`, XMP, document JavaScript and embedded files. It does **not** touch page content, and does not claim to. |
+| **Sanitize** | metadata only | **[pinned]** Strips `/Info`, XMP and document JavaScript — including a script reached through an action chain (`/Next`), listed in an array-valued `/A`, or attached to an `/Outlines` bookmark, all of which survived until 2026-09-04. Embedded files are removed from the `/Names` tree **only**: a `/FileAttachment` annotation's own `/FS`→`/EF` SURVIVES, so "embedded files stripped" is not unconditional — see `KNOWN_ISSUES.md`. The `[pinned]` marker covers the metadata and JavaScript claims, which have tests; the FileAttachment gap has none. It does **not** touch page content, and does not claim to. |
 | **Form flatten** | *converts, not conceals* | **[pinned]** See below. |
 
 Every grade above is about **the file you export** — none is about the copy in your browser. To restore

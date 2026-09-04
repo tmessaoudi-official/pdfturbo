@@ -129,6 +129,34 @@ export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: num
 }
 
 /**
+ * The source box's LEFT edge in absolute user space (`viewBox[0]`), the x-axis companion to
+ * {@link pageHeightPt}.
+ *
+ * An XFDF `/Rect` is absolute on BOTH axes. Fixing only the y axis left the exported rect in a MIXED
+ * frame — y absolute, x crop-relative — which is worse than being consistently wrong, and it made
+ * the sibling docstring's claim that "the source CropBox origin is no longer part of that ceiling"
+ * true of one axis only. Both directions take the same term, so the internal round-trip stays
+ * self-consistent either way; zero on a `[0 0 w h]` page, which is almost every page.
+ * [WS7 round 1, 2026-09-04]
+ */
+export async function pageLeftPt(
+  docPage: DocumentPage,
+  sourcePdfs: Map<string, {
+    doc: {
+      getPage(n: number): Promise<{
+        getViewport(o: { scale: number; rotation?: number }): { height: number; viewBox: readonly number[] };
+      }>;
+    };
+  }>,
+): Promise<number> {
+  if (docPage.sourcePdfId === 'blank') return 0;
+  const src = sourcePdfs.get(docPage.sourcePdfId);
+  if (!src) return 0;
+  const page = await src.doc.getPage(docPage.sourcePageNum);
+  return page.getViewport({ scale: 1, rotation: 0 }).viewBox[0];
+}
+
+/**
  * Page height in points for the display↔user-space flip: blank pages carry it
  * directly; source pages read it from the loaded pdf.js page viewport.
  *
@@ -169,34 +197,6 @@ export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: num
  * `displayRectToPageUserSpaceRect` returns an AABB, and XFDF also carries arrow endpoints and ink
  * point lists, where an AABB would destroy direction. That is the C20/#57b work, not a docstring.
  */
-/**
- * The source box's LEFT edge in absolute user space (`viewBox[0]`), the x-axis companion to
- * {@link pageHeightPt}.
- *
- * An XFDF `/Rect` is absolute on BOTH axes. Fixing only the y axis left the exported rect in a MIXED
- * frame — y absolute, x crop-relative — which is worse than being consistently wrong, and it made
- * the sibling docstring's claim that "the source CropBox origin is no longer part of that ceiling"
- * true of one axis only. Both directions take the same term, so the internal round-trip stays
- * self-consistent either way; zero on a `[0 0 w h]` page, which is almost every page.
- * [WS7 round 1, 2026-09-04]
- */
-export async function pageLeftPt(
-  docPage: DocumentPage,
-  sourcePdfs: Map<string, {
-    doc: {
-      getPage(n: number): Promise<{
-        getViewport(o: { scale: number; rotation?: number }): { height: number; viewBox: readonly number[] };
-      }>;
-    };
-  }>,
-): Promise<number> {
-  if (docPage.sourcePdfId === 'blank') return 0;
-  const src = sourcePdfs.get(docPage.sourcePdfId);
-  if (!src) return 0;
-  const page = await src.doc.getPage(docPage.sourcePageNum);
-  return page.getViewport({ scale: 1, rotation: 0 }).viewBox[0];
-}
-
 export async function pageHeightPt(
   docPage: DocumentPage,
   sourcePdfs: Map<string, {

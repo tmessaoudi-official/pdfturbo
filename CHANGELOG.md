@@ -30,6 +30,13 @@ most of the work went into proving that what the product claims to remove is act
   or a critical/serious axe violation.
 
 ### Fixed — redaction and export safety
+- **Sanitize did not remove every script it promised to.** A JavaScript action survived when it was
+  written as an indirect reference, when it was chained behind a legitimate link (`/Next`), when it
+  was listed in an array, and when it sat on a bookmark — and in each case the confirmation said the
+  document was clean. Hyperlinks chained alongside a removed script keep working.
+- **Sanitize's own reporting was corrected**, and the docs with it: files embedded through the
+  document's name tree are removed, but a file attached as a paperclip annotation is not. That is now
+  stated wherever the feature is described, instead of "embedded files stripped".
 - **Deleting an image in the DOCX editor now removes it from the file.** It used to drop the
   picture from the document while leaving its bytes in the package, recoverable by renaming the
   `.docx` to `.zip` — disclosed since 2026-08-05 and closed on 2026-09-04. The collector errs

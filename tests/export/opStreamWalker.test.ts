@@ -160,8 +160,9 @@ describe('walkPageOps — CropBox origin (C22)', () => {
  * rasterised export. The walker reported it at full length, and an over-long `vRule` is read by
  * `buildTableGrid` as a column boundary — after which `reconstructPage` REMOVES the in-region words
  * from the paragraph flow. Over-approximation here deletes prose, which is why the clip is modelled
- * for rules/vRules/colorMap and deliberately NOT for images (a leak filter, where over-approximating
- * is the safe direction).
+ * for rules/vRules and deliberately NOT for images (a leak filter, where over-approximating is the
+ * safe direction) and NOT for the colorMap (an attribute of a word `getTextContent` reports whether
+ * or not the /BBox hides it — clipping it turned a coloured run black; WS7 round 7).
  */
 describe('walkPageOps — Form XObject /BBox clip (WS4-F)', () => {
   const IDENT = [1, 0, 0, 1, 0, 0];
@@ -257,7 +258,17 @@ describe('walkPageOps — Form XObject /BBox clip (WS4-F)', () => {
       .toEqual([{ x: 50, y: 20, width: 50, height: 2 }]);
   });
 
-  it('drops a colour key whose text origin falls outside the /BBox, and keeps one inside', () => {
+  it('KEEPS a colour key outside the /BBox — the words are not clipped, so the colour must not be', () => {
+    // This case asserted the OPPOSITE until WS7 round 7, and the inversion is the point.
+    //
+    // Colour is matched to a word BY POSITION, and the words come from `getTextContent`, which the
+    // form's /BBox does not clip. So clipping the colour key alone is exactly the partial
+    // normalisation this walker's own C22 comment says must be unexpressible: the run still
+    // exports, it just silently loses its colour and comes out BLACK. Measured red -> none.
+    //
+    // The clip exists to stop INVENTED GEOMETRY — a phantom rule widens a table region and
+    // `reconstructPage` then deletes the prose inside it. A colour key invents nothing; it
+    // annotates a word that is exported either way. Geometry is clipped, attributes are not.
     const show = (x: number): [number[], unknown[]] => [
       [OPS.beginText, OPS.setTextMatrix, OPS.setFillRGBColor, OPS.showText],
       [[], [[1, 0, 0, 1, x, 50]], ['#FF0000'], [[]]],
@@ -266,7 +277,8 @@ describe('walkPageOps — Form XObject /BBox clip (WS4-F)', () => {
     const [fOut, aOut] = show(200);
     expect(walkPageOps(form(IDENT, [0, 0, 100, 100], fIn, aIn), OPS).colorMap.get('50,50'))
       .toBe('FF0000');
-    expect(walkPageOps(form(IDENT, [0, 0, 100, 100], fOut, aOut), OPS).colorMap.size).toBe(0);
+    expect(walkPageOps(form(IDENT, [0, 0, 100, 100], fOut, aOut), OPS).colorMap.get('200,50'))
+      .toBe('FF0000');
   });
 
   it('expresses the clip in the CROP frame under an origin, in lockstep with the rules (C22)', () => {

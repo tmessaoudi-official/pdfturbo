@@ -85,7 +85,7 @@
     "compressTitle": "ضغط — تنزيل نسخة أصغر (تحسين أو تسطيح إلى صور)",
     "exportDocxTitle": "تصدير كمستند Word (تجريبي)",
     "exportMdTitle": "تصدير كـ Markdown (تجريبي)",
-    "sanitizeTitle": "تنظيف — تنزيل نسخة بدون بيانات وصفية أو JavaScript أو ملفات مضمَّنة",
+    "sanitizeTitle": "تنظيف — تنزيل نسخة بدون بيانات وصفية أو JavaScript",
     "extractPagesTitle": "استخراج صفحات إلى ملف PDF جديد",
     "exportTableTitle": "استخراج جدول بخطوط إلى CSV",
     "exportXlsxTitle": "استخراج جدول إلى Excel (.xlsx)",

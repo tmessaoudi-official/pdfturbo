@@ -92,11 +92,6 @@ function clipRuleRect(r: RuleRect, c: ClipBox | null): RuleRect | null {
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
-/** Is a text origin inside the clip? Tested UNROUNDED — a rounded point crosses the edge by half a unit. */
-function pointInClip(x: number, y: number, c: ClipBox | null): boolean {
-  if (!c) return true;
-  return x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1;
-}
 
 export function walkPageOps(
   opList: OpListLike,
@@ -388,10 +383,18 @@ export function walkPageOps(
       const rawX = ctm[0] * ox + ctm[2] * oy + ctm[4];
       const rawY = ctm[1] * ox + ctm[3] * oy + ctm[5];
       const px = Math.round(rawX), py = Math.round(rawY);
-      // Only record non-black so reconstructPage defaults to black text. The clip is tested on the
-      // UNROUNDED origin: a key rounded onto the boundary would pass or fail by half a unit. A
-      // colour dropped here costs a black run, never a missing word — the tolerable direction.
-      if (fillHex !== '000000' && annotationDepth === 0 && pointInClip(rawX, rawY, clip)) {
+      // Only record non-black so reconstructPage defaults to black text.
+      //
+      // NOT clipped to the form /BBox, and the reasoning is the C22 lockstep note above. Colour is
+      // matched to a word BY POSITION, and the words come from `getTextContent`, which no /BBox
+      // clips — so clipping only the colour key is precisely the partial normalisation that comment
+      // calls unexpressible: the run still exports and silently turns BLACK. WS4-F clipped it here
+      // on the reasoning that "a colour dropped costs a black run, never a missing word"; that is
+      // true and still the wrong trade, because nothing was gained. The clip earns its place on
+      // rules and vRules, where a phantom line widens a table region and `reconstructPage` then
+      // DELETES the prose inside it — invented geometry. A colour key invents nothing.
+      // [regression introduced by WS4-F in this range, found and reverted in WS7 round 7]
+      if (fillHex !== '000000' && annotationDepth === 0) {
         colorMap.set(`${px},${py}`, fillHex);
       }
     }

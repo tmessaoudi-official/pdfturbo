@@ -312,3 +312,94 @@ describe('sanitizePdf — an action whose /S is an INDIRECT reference (WS7)', ()
     expect(asText(out.bytes)).toContain(URI_MARKER);
   });
 });
+
+/**
+ * WS7 round 7 — round 6 closed ONE shape of "a script survives sanitize"; the CLASS was open.
+ *
+ * `stripNodeActions` looked at the top-level action dict only, and the node set covered annotations
+ * and form fields. So three shapes survived, each with the report saying `false` — i.e. the UI
+ * calling the sanitize clean:
+ *   - a JavaScript action reached through `/Next` (an action CHAIN);
+ *   - a `/Next` that is an ARRAY of actions;
+ *   - `/Outlines` — bookmarks were never walked at all.
+ * A real engine runs all three: `pdf.worker.mjs` `_collectJS` recurses `getRaw("Next")` and array
+ * elements, and collects outline actions.
+ *
+ * The chain is SPLICED, not truncated: removing a JS link reattaches its `/Next`, so a `/URI` that
+ * followed the script still works. Deleting the whole chain would be the over-reach direction, and
+ * `SECURITY.md` promises hyperlinks survive. Beware the two meanings of `/Next` — on an OUTLINE ITEM
+ * it is the next sibling bookmark, on an ACTION it is the next action; they are walked separately.
+ */
+describe('sanitizePdf — JavaScript anywhere in an action chain, and /Outlines (WS7 r7)', () => {
+  const CHAIN = 'SANITIZE_CHAIN_JS_MUST_NOT_SURVIVE_9042()';
+  const ARRAY = 'SANITIZE_ARRAY_JS_MUST_NOT_SURVIVE_9042()';
+  const OUTLINE = 'SANITIZE_OUTLINE_JS_MUST_NOT_SURVIVE_9042()';
+  const URI_A = 'https://example.invalid/first-must-survive-9042';
+  const URI_B = 'https://example.invalid/after-the-script-must-survive-9042';
+  const URI_O = 'https://example.invalid/outline-link-must-survive-9042';
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+
+  async function build(): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const uri = (u: string) => ({ S: PDFName.of('URI'), URI: PDFString.of(u) });
+    const js = (m: string) => ({ S: PDFName.of('JavaScript'), JS: PDFString.of(m) });
+
+    // 1. /A -> URI, /Next -> JS, whose own /Next is a second URI. Splice must keep BOTH URIs.
+    const tail = ctx.register(ctx.obj(uri(URI_B)));
+    const mid = ctx.obj(js(CHAIN)); mid.set(PDFName.of('Next'), tail);
+    const head = ctx.obj(uri(URI_A)); head.set(PDFName.of('Next'), ctx.register(mid));
+    const a1 = ctx.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: ctx.obj([0, 0, 9, 9]) });
+    a1.set(PDFName.of('A'), ctx.register(head));
+
+    // 2. /Next as an ARRAY carrying a JS entry.
+    const head2 = ctx.obj(uri(URI_A));
+    head2.set(PDFName.of('Next'), ctx.obj([ctx.register(ctx.obj(js(ARRAY)))]));
+    const a2 = ctx.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: ctx.obj([0, 0, 9, 9]) });
+    a2.set(PDFName.of('A'), ctx.register(head2));
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(a1), ctx.register(a2)]));
+
+    // 3. Outline: a JS bookmark whose SIBLING (/Next on the item) is a legitimate link.
+    const sibling = ctx.obj({ Title: PDFString.of('link') });
+    sibling.set(PDFName.of('A'), ctx.register(ctx.obj(uri(URI_O))));
+    const first = ctx.obj({ Title: PDFString.of('script') });
+    first.set(PDFName.of('A'), ctx.register(ctx.obj(js(OUTLINE))));
+    first.set(PDFName.of('Next'), ctx.register(sibling));
+    const outlines = ctx.obj({ Type: PDFName.of('Outlines') });
+    outlines.set(PDFName.of('First'), ctx.register(first));
+    doc.catalog.set(PDFName.of('Outlines'), ctx.register(outlines));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  it('the fixture carries all three payloads — the negative control', async () => {
+    const raw = asText(await build());
+    for (const m of [CHAIN, ARRAY, OUTLINE]) expect(raw).toContain(m);
+  });
+
+  it('strips a JavaScript action reached through /Next', async () => {
+    expect(asText((await sanitizePdf(await build())).bytes)).not.toContain(CHAIN);
+  });
+
+  it('strips a JavaScript action inside an ARRAY-valued /Next', async () => {
+    expect(asText((await sanitizePdf(await build())).bytes)).not.toContain(ARRAY);
+  });
+
+  it('strips a JavaScript action on an /Outlines bookmark', async () => {
+    expect(asText((await sanitizePdf(await build())).bytes)).not.toContain(OUTLINE);
+  });
+
+  it('SPLICES rather than truncates — a URI after the script survives', async () => {
+    const out = asText((await sanitizePdf(await build())).bytes);
+    expect(out).toContain(URI_A);
+    expect(out).toContain(URI_B);
+  });
+
+  it('leaves an unrelated outline bookmark link alone — the over-reach control', async () => {
+    expect(asText((await sanitizePdf(await build())).bytes)).toContain(URI_O);
+  });
+
+  it('REPORTS the strip rather than claiming a clean document', async () => {
+    expect((await sanitizePdf(await build())).report.annotActions).toBe(true);
+  });
+});

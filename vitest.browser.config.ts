@@ -63,12 +63,16 @@ export default defineConfig({
     // they're just slow under load, not hung). 30s gives headroom for contention while
     // still failing fast on a genuine hang.
     testTimeout: 30_000,
-    // The SIBLING of `vitest.config.ts`'s hookTimeout, and it was missed when that one landed.
-    // The 2026-08-22 entry's whole lesson was "when a per-site workaround appears three times, fix
-    // the origin" — and the origin fix was then applied to one of the TWO configs, leaving every
-    // browser `beforeAll` on vitest's 10s default. `signing.browser.test.ts` does the same
-    // RSA-2048 keygen as its jsdom twin. Full-set coverage means both members, not the one that
-    // failed. [WS7 round 6]
+    // The SIBLING of `vitest.config.ts`'s hookTimeout, missed when that one landed. The 2026-08-22
+    // lesson was "when a per-site workaround appears three times, fix the ORIGIN" — and the origin
+    // fix reached one of the TWO configs, leaving every browser hook on vitest's 10s default.
+    //
+    // The first version of this comment named `signing.browser.test.ts` as the at-risk case. That
+    // was FALSE and never checked: `grep -c 'beforeAll\|beforeEach'` on that file is 0, and its
+    // keygen sits in an `it` already carrying `}, 60_000)`. Ten browser files DO have hooks — the
+    // OCR ones (`ocr-csp`, `ocr-export`) load a worker and traineddata in `beforeAll`, which is the
+    // genuinely slow case here. Asserting an unverified proposition inside a fix is the same defect
+    // the fix was addressing, one level up. [WS7 round 6, corrected in round 7]
     hookTimeout: 60_000,
     // M1 #14 — coverage gate on the export RENDER path (the P0 surface). Only active
     // when --coverage is passed (npm run test:coverage:export); a normal test:browser

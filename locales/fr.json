@@ -74,7 +74,7 @@
     "compressTitle": "Compresser — télécharger une copie plus légère (optimiser ou aplatir en images)",
     "exportDocxTitle": "Exporter en document Word (bêta)",
     "exportMdTitle": "Exporter en Markdown (bêta)",
-    "sanitizeTitle": "Nettoyer — télécharger une copie sans métadonnées, JavaScript ni fichiers intégrés",
+    "sanitizeTitle": "Nettoyer — télécharger une copie sans métadonnées ni JavaScript",
     "extractPagesTitle": "Extraire des pages vers un nouveau PDF",
     "exportTableTitle": "Extraire un tableau à grille en CSV",
     "exportXlsxTitle": "Extraire un tableau vers Excel (.xlsx)",

@@ -101,7 +101,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
-| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, six rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18** findings. Three of the six found defects in the PREVIOUS round's fixes. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings: `var/claude/ws7/OPEN-FINDINGS.md`; per-round reports `var/claude/ws7/round*.md`. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
+| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, seven rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10** findings. Three of the six found defects in the PREVIOUS round's fixes. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
@@ -294,7 +294,7 @@ Scope is "what already exists", UNQUALIFIED — not only where bugs were found b
   `inferBorderlessGrid`'s gate against every page; wire C9 (in `_extractFlowDoc`, behind a
   STRICTER threshold than the CSV path) **only at zero false positives**; otherwise record the
   measured failure shapes in `KNOWN_ISSUES.md` C9 and stop. Engine is shared
-  (`src/utils/borderlessTable.ts`, `_resolveTableGrid` at `exportService.ts:515`) — this is a
+  (`src/utils/borderlessTable.ts`, `_resolveTableGrid` at `exportService.ts:531`) — this is a
   wiring + threshold change, not new detection work.
 - **Aspect-ratio-aware crop apply-to-all** (`KNOWN_ISSUES.md` § Deferred). Extend
   `PageService._commitCrops`/apply-to-all so a drawn crop maps to other page sizes preserving the
@@ -719,7 +719,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 5 rounds run, NOT certified (0/2 clean) | L | blocked | - | - |
+| 16 | WS7 — certification: 7 rounds run, NOT certified (0/2 clean) | L | blocked | - | - |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

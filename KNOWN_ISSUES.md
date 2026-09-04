@@ -66,6 +66,17 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From the WS5 adversarial audit (2026-09-04)
 
+- **Text drawn outside its Form XObject's `/BBox` exports to Word/Markdown/text although it is
+  invisible everywhere else** (P2, pre-existing, found by WS7 round 7). pdf.js clips a form to its
+  `/BBox` when rendering, so such a run shows up in no page render and in no rasterised export — but
+  `getTextContent`, which the DOCX/MD/TXT reconstruction reads, applies no clip and returns it
+  verbatim. Measured: 0 red pixels rendered against a control of 565, and the run present in the flow
+  model. So a document can export text a reader can never see. Not fixed: suppressing it means
+  attributing every text item to the form that drew it, which `getTextContent` does not tell us, and
+  guessing would delete visible words — the direction that loses data. Related and now closed: the
+  same clip was briefly applied to the colour channel alone, which turned such a run BLACK in the
+  export rather than hiding it (see `CLAUDE.md` § the Form `/BBox` clip).
+
 - ~~**A disabled crop flag leaves the editor drawing a frame the export ignores**~~ — **CLOSED
   2026-09-04.** It was INTRODUCED in this range (an earlier note called it pre-existing and that was
   WRONG: `d945127`, which added `isEnabled('crop')` to `exportPipeline`, is INSIDE `dfe34ae..HEAD` —

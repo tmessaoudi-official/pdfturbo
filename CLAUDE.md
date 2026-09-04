@@ -553,6 +553,21 @@ mutation pins the control rather than the fix — making `clipRuleRect` drop eve
 stays GREEN, which is what makes "the prose survived" evidence of a correct clip rather than of no
 clip at all.
 
+**The clip is for GEOMETRY, and applying it to the colour channel was a regression [WS7 round 7].**
+WS4-F also clipped the `colorMap`, reasoning that "a colour dropped costs a black run, never a missing
+word". True, and still wrong: colour is matched to a word BY POSITION, and the words come from
+`getTextContent`, which no `/BBox` clips — so the run exported anyway and silently came out BLACK.
+That is precisely the partial normalisation the C22 lockstep comment above says must be
+unexpressible, committed by the very change that quotes it. Reverted for colour; the clip earns its
+place on rules and vRules, where a phantom line widens a table region and `reconstructPage` then
+DELETES the prose inside it. **Clip what invents geometry; never clip an attribute of a word that
+exports regardless.** The guard case now asserts the opposite of what it asserted when it landed.
+
+**And that exposed a pre-existing bound nobody had written down:** a run drawn past its form's
+`/BBox` is invisible on screen and in every raster export, yet exports verbatim into DOCX/MD/TXT
+(0 red pixels rendered, control 565). Now disclosed in `KNOWN_ISSUES.md`; not fixed, because
+suppressing it needs a text-item-to-form attribution `getTextContent` does not provide.
+
 **UNCERTIFIED-BY-EXECUTION, named rather than omitted:** the clip reset inside an annotation's
 appearance stream. All three clipped channels gate on `annotationDepth === 0`, so no assertion can
 distinguish resetting the clip there from leaving the page's in place; it stays to keep the stack
