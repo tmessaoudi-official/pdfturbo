@@ -312,10 +312,12 @@ cosmetic, opening the wrong file is not. S2 fails exactly the same-name case.
   tie. Same family as § "A flaky gate": a guard that depends on machine load pins nothing.
 
 `DB_VERSION` moved 2 → 3 for the new `recent` store; an upgrade never drops a store, so an existing
-session in `state` is carried across. **`tests/core/storage.test.ts` had `indexedDB.open('pdf-editor', 2)`
-hardcoded** and failed with a VersionError the moment it moved — a test-side copy of a production
-constant, which only ever breaks later and for a reason unrelated to what the test is about. It now
-opens through `openAppDB`.
+session in `state` is carried across. **TWO test files had the version copied by hand** and broke on
+that move: `storage.test.ts` opened `indexedDB.open('pdf-editor', 2)` and failed with a VersionError,
+and `storageErrors.test.ts` declared its own `const DB_VERSION = 2` to seed the database "at the
+version it expects" — which quietly stopped being true. The first now goes through `openAppDB`; the
+second imports the constant, which is exported for exactly this reason. **A test-side copy of a
+production constant only ever breaks later, and for a reason unrelated to what the test is about.**
 
 Guards: `tests/infra/recentFiles.test.ts` (10), `tests/ui/recentFilesMenu.test.ts` (9),
 `tests/utils/fileSystemAccess.test.ts` (+11). Sabotage-verified six ways, each landing where

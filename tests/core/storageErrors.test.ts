@@ -36,11 +36,11 @@
  */
 import 'fake-indexeddb/auto';   // a real IndexedDB implementation, not a stub
 import { describe, it, expect } from 'vitest';
-import { saveState, loadState, clearState, type SavedState } from '../../src/infra/storage';
+import { saveState, loadState, clearState, DB_VERSION, type SavedState } from '../../src/infra/storage';
 
 /** Must track `src/infra/storage.ts`. Asserted below rather than assumed. */
 const DB_NAME = 'pdf-editor';
-const DB_VERSION = 2;
+// Imported, never copied — see the note on the export.
 const STORE = 'state';
 
 /**
@@ -63,7 +63,8 @@ function deleteDb(name: string): Promise<{ blocked: boolean }> {
 }
 
 /**
- * Create the database `storage.ts` will open, at the version it expects, with a unique index
+ * Create the database `storage.ts` will open, at the version it expects (read from the module, not
+ * copied), with a unique index
  * on `currentPageIndex`, and squat index value 42 under a different key. `saveState` writing a
  * state whose `currentPageIndex` is 42 then fails for real.
  */

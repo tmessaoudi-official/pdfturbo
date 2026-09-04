@@ -28,7 +28,13 @@ export interface SavedState {
 export const SCHEMA_VERSION = 1;
 
 const DB_NAME = 'pdf-editor';
-const DB_VERSION = 3;
+/**
+ * The IndexedDB schema version — distinct from {@link SCHEMA_VERSION}, which versions the RECORD.
+ * Exported so tests that must seed or inspect the raw database use the live value instead of a
+ * copy: two test files had hardcoded `2` and broke the moment this moved to 3 for the #54b recent
+ * store, each for a reason unrelated to what the test was about.
+ */
+export const DB_VERSION = 3;
 const STORE = 'state';
 /**
  * #54b — remembered `FileSystemFileHandle`s ("recent files"). A separate store rather than a field
