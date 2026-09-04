@@ -7,6 +7,7 @@ import type { TextLayerManager } from '../utils/textLayer';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import { CROP_HANDLES, handleCursor, handlePositions, resizeDisplayRect } from '../utils/cropResize';
 import { contentRectToDisplay } from '../utils/geometry';
+import { isEnabled } from '../config/features';
 
 export interface IPageRenderContext {
   readonly documentModel: DocumentModel;
@@ -115,7 +116,12 @@ export class PageRenderPipeline {
     container.querySelector('#cropFrameOverlay')?.remove();
 
     const docPage = this._ctx.documentModel.currentPage;
-    if (!docPage?.crop) return;
+    // #28 kill switch, the same gate `exportPipeline` applies to BOTH its paths. Without it the
+    // switch killed the button (`main.ts` removes it and `#cropControls`) while leaving a stored
+    // crop painted here with live grips that still commit `SetPageCropCmd` — a frame the user can
+    // drag while the export ignores the crop entirely. The removal above is deliberately BEFORE
+    // this return, so flipping the switch off clears a frame an earlier render left on screen.
+    if (!docPage?.crop || !isEnabled('crop')) return;
 
     let W: number, H: number, srcRot = 0;
     if (docPage.sourcePdfId === 'blank') {

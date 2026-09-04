@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PageRenderPipeline, type IPageRenderContext } from '../../src/core/pageRenderPipeline';
 
 function deferred<T>() {
@@ -43,6 +43,7 @@ function makeCtx(overrides: Partial<IPageRenderContext> = {}) {
     setWarnedUnsupportedFields: vi.fn(),
     autosave: vi.fn(),
     renderInkLayer: vi.fn(),
+    commitCropRect: vi.fn(),
     bumpGen: () => ++gen,
     ...overrides,
   };
@@ -112,5 +113,57 @@ describe('PageRenderPipeline live watermark overlay', () => {
     (ctx.documentModel as unknown as { watermark: { enabled: boolean } }).watermark.enabled = true;
     await new PageRenderPipeline(ctx).renderCurrentPage();
     expect(container.querySelector('#watermarkOverlay')).toBeNull();
+  });
+});
+
+/**
+ * WS7 round 5 — the `crop` kill switch was half-applied.
+ *
+ * `exportPipeline` gates BOTH its paths on `isEnabled('crop')` (the vector CropBox at :303 and the
+ * raster canvas clip at :531), with a comment saying a switch that kills the button rather than the
+ * feature is the opposite of what a kill switch is for. `_renderCropFrame` never got that gate. So
+ * with `VITE_FEATURE_CROP=false` and a session restored from IndexedDB carrying a stored crop, the
+ * editor painted a dimmed frame with LIVE resize grips that still commit `SetPageCropCmd`, while the
+ * export ignored the crop entirely — the user drags a handle and the output never changes.
+ *
+ * `main.ts` already removes the crop button and `#cropControls` when the flag is off, so this is the
+ * one surface where the feature outlived its own switch rather than a deliberate asymmetry.
+ */
+describe('PageRenderPipeline crop frame — the #28 kill switch (WS7)', () => {
+  const withCrop = () => makeCtx({
+    documentModel: {
+      currentPageIndex: 0,
+      currentPage: { id: 'p1', sourcePdfId: 'blank', blankWidth: 200, blankHeight: 300, rotation: 0,
+        crop: { x: 20, y: 30, width: 100, height: 150 } },
+      sourcePdfs: new Map(),
+      watermark: { enabled: false, text: '', color: '#000', fontSize: 10, opacity: 1, angle: 0, density: 3 },
+    } as unknown as IPageRenderContext['documentModel'],
+  });
+
+  afterEach(() => { localStorage.removeItem('pdfturbo.feature.crop'); });
+
+  it('paints the frame when the feature is ON — the non-vacuity control', async () => {
+    const { ctx, container } = withCrop();
+    await new PageRenderPipeline(ctx).renderCurrentPage();
+    expect(container.querySelector('#cropFrameOverlay')).not.toBeNull();
+  });
+
+  it('paints NO frame when the crop feature is switched off', async () => {
+    localStorage.setItem('pdfturbo.feature.crop', 'off');
+    const { ctx, container } = withCrop();
+    await new PageRenderPipeline(ctx).renderCurrentPage();
+    expect(container.querySelector('#cropFrameOverlay')).toBeNull();
+  });
+
+  it('removes a frame already on screen when the switch goes off between renders', async () => {
+    // The overlay is removed and rebuilt every render, so a stale frame from a pre-switch render
+    // must not survive — otherwise the grips stay live on exactly the path this guard exists for.
+    const { ctx, container } = withCrop();
+    const pipeline = new PageRenderPipeline(ctx);
+    await pipeline.renderCurrentPage();
+    expect(container.querySelector('#cropFrameOverlay')).not.toBeNull();
+    localStorage.setItem('pdfturbo.feature.crop', 'off');
+    await pipeline.renderCurrentPage();
+    expect(container.querySelector('#cropFrameOverlay')).toBeNull();
   });
 });

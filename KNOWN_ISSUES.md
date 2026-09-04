@@ -66,15 +66,24 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From the WS5 adversarial audit (2026-09-04)
 
-- **A disabled crop flag leaves the editor drawing a frame the export ignores** (INTRODUCED in this
-  range — an earlier note here called it pre-existing and that was WRONG: `d945127`, which added
-  `isEnabled('crop')` to `exportPipeline`, is INSIDE `dfe34ae..HEAD`
-  (`git merge-base --is-ancestor d945127 dfe34ae` → not an ancestor). Before it the export honoured a
-  stored crop unconditionally. Checking that a commit exists is not checking that it is out of range).
-  With `VITE_FEATURE_CROP` off, a restored session shows a dimmed crop frame while the export emits
-  the full page — and the crop UI is removed, so the user cannot clear it. Deferred because the fix
-  is a product call: gate the editor frame too (the crop silently disappears) or keep honouring a
-  stored crop on export (the flag stops being a kill switch).
+- ~~**A disabled crop flag leaves the editor drawing a frame the export ignores**~~ — **CLOSED
+  2026-09-04.** It was INTRODUCED in this range (an earlier note called it pre-existing and that was
+  WRONG: `d945127`, which added `isEnabled('crop')` to `exportPipeline`, is INSIDE `dfe34ae..HEAD` —
+  `git merge-base --is-ancestor d945127 dfe34ae` → not an ancestor. Before it the export honoured a
+  stored crop unconditionally. Checking that a commit exists is not checking that it is out of
+  range). With `VITE_FEATURE_CROP` off, a restored session showed a dimmed crop frame with LIVE
+  grips that still committed `SetPageCropCmd`, while the export emitted the full page.
+  **It was deferred as a product call and it was not one.** `main.ts` already removes the crop button
+  and `#cropControls` when the flag is off, and `exportPipeline` gates BOTH its paths, so the frame
+  was the one surface where the feature outlived its own switch — the seam had already decided, and
+  `_renderCropFrame` had simply missed the gate. The alternative reading (keep honouring a stored
+  crop on export) contradicts the comment at `exportPipeline.ts:299-303`, which says in as many words
+  that a switch killing the button rather than the feature is the opposite of what a kill switch is
+  for. Now gated, with the gate placed AFTER the stale-overlay removal so flipping the switch off
+  clears a frame an earlier render left behind. Guarded by three cases in
+  `tests/core/pageRenderPipeline.test.ts`; sabotage-verified twice — reverting the gate fails the two
+  switched-off cases and not the ON control, and moving the gate ABOVE the removal fails exactly the
+  leftover-frame case.
 
 - **Redaction over VERTICAL-writing text is UNCERTIFIED** (`flowDoc.ts` `isItemRedacted`). The run
   footprint is read from the text transform, and pdf.js swaps the roles of its two size fields for a

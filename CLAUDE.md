@@ -2663,7 +2663,10 @@ Undoable via `SetPageCropCmd` (clone of `RotatePageCmd`); apply-to-all = a `Macr
 rides the CURRENT page's command (fires on execute AND undo). Live editor preview is a **dimmed-margin SVG
 frame** (`pageRenderPipeline._renderCropFrame`, mapped via `contentRectToDisplay`), NOT a pdf.js sub-region
 render (Design β). Tool mode `'crop'` rides `DrawingHandler` (pointerdown gate + `_updatePreview` + pointer-up
-branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off).
+branches). Gated `VITE_FEATURE_CROP` (#28; `main.ts` removes the button + `#cropControls` when off, `exportPipeline`
+gates both the vector CropBox and the raster clip, and since 2026-09-04 `_renderCropFrame` gates the live
+frame too — it was the one surface where the feature outlived its own switch, painting a draggable frame
+whose grips still committed `SetPageCropCmd` while the export ignored the crop).
 **Ceiling:** none of the three originally listed remain. Numeric margins SHIPPED 2026-08-04 (§ Numeric crop
 margins) and resizable HANDLES 2026-08-05 (§ Resizable crop handles).
 
