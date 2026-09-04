@@ -504,13 +504,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   misplaces a signature visibly, it does not leak or fail to remove content. Its home is
   `CLAUDE.md` § "The drag-placed signature rect was crop-relative", amended in place. Two of the
   four bounds checked so far (F, E) were not where the plan's preamble said they were.
-- [2026-09-04 12:36] AGREED: WS4-D is PROMOTED. `src/docx/opcGc.ts` collects `word/media/*` parts
+- [2026-09-04 12:10] AGREED: WS4-D is PROMOTED. `src/docx/opcGc.ts` collects `word/media/*` parts
   that no live relationship reaches, and drops the dead relationships with them. The scan walks
   EVERY `_rels/*.rels` in the package (headers, footers, footnotes, comments and unmodelled parts —
   the ones the editor passes through verbatim), treats a relationship as live if its Id appears
   anywhere in the owning part's text, keeps everything it cannot read with confidence, and is
   restricted to `word/media/**`. `SECURITY.md` now records the bound as closed.
-- [2026-09-04 12:36] AGREED: the GC also collects a picture orphaned by ANOTHER program before the
+- [2026-09-04 12:10] AGREED: the GC also collects a picture orphaned by ANOTHER program before the
   file was opened — the same rule applied evenly, so a save can shrink a file the user did not
   knowingly change. Disclosed in `SECURITY.md` rather than special-cased, because suppressing it
   would mean tracking which orphans "we" created, which the package does not record.
