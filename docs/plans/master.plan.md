@@ -730,6 +730,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   both post-panel — certified by EXECUTION (tests, sabotage, the full deploy gate before push) and
   NOT by the WS7 ladder, which stays paused at 0 of 2. `origin/master` was `8ae525c` until this push,
   i.e. production carried the tab-freeze for the interval; the push is what closes it.
+- [2026-09-05 01:05] RECORDED: `advisor()` was UNAVAILABLE at the 6C gate for `3fc0863`, so per the
+  availability chain ONE unnamed safety-promises reviewer replaced it (not a WS7 round). It returned
+  five findings including a P0 — `/AF` is a second path from a paperclip dict to its file and only
+  `/FS` was cut, so with any surviving reference the file was re-serialised while the flag said
+  removed. Fixed in `128219d` (both keys cut; `/AF` on every annotation, field and bookmark; paperclips
+  collected across all pages; self-cyclic `/Next` arrays memoised; the kept-media sentence now has a
+  test). Row 17's evidence moves to `128219d`. Still post-panel, still certified by execution only.
 
 ## Status
 <!-- progress-block v1 -->
@@ -751,7 +758,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
 | 16 | WS7 — certification: 8 rounds run, NOT certified (0/2 clean), paused | L | blocked | - | - |
-| 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 3fc0863 | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
+| 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
