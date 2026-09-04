@@ -268,6 +268,79 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### A rule the reader never sees deleted a paragraph — the Form `/BBox` clip (2026-09-04)
+
+WS4-F, and the first of the six PoCs to land as a fidelity fix rather than a leak fix. pdf.js clips
+a Form XObject to its `/BBox` — `pdf.mjs:12350-12362` does `save()`, then `transform(...matrix)`,
+then `ctx.clip(rect(bbox))` — so anything a form draws outside that box is invisible on screen and
+in every rasterised export. `walkPageOps` had **zero `BBox` reads**, so it reported that invisible
+content as page geometry.
+
+**That is data loss, not a cosmetic drift, and the chain is short.** `_detectLatticeRegions` derives
+a table region from the clustered CENTRES of the rules, and `reconstructPage` then REMOVES every
+word whose origin falls inside that region from the paragraph flow (`flowDoc.ts:1596`). One vertical
+rule nobody can see therefore widens the region across ordinary prose, and the paragraph vanishes
+from DOCX / Markdown / TXT with no warning. Measured on shipping code with a form whose `/BBox` is
+100×60 and whose content draws one extra rule 300pt out: `vRules` came back with **3** entries and
+the reconstructed flow was the **empty string** — the paragraph gone in its entirety.
+
+**pdf.js does NOT cull the out-of-clip path from the operator list, and that had to be measured
+rather than assumed.** Clipping happens at paint time in the canvas backend; the worker's evaluator
+emits `constructPath` for the phantom rect regardless. Had it culled, the whole fix would be
+unnecessary and the guard vacuous — which is exactly the shape that produced this file's earlier
+"a synthetic operator table can only confirm what you already believe" lesson. The pre-fix count of
+3 is the non-vacuity evidence and is asserted in the guard.
+
+**The clip is applied AFTER the form `/Matrix`, because the `/BBox` numbers are in FORM space.** The
+backend issues its clip once the matrix is on the canvas CTM. Building it from the pre-matrix ctm
+puts the clip at the form's placement offset instead of over the form — for a form at (150,500) the
+clip lands at page x 0..100 and drops the form's own content. Read out of `pdf.mjs`, not inferred.
+
+**Classification runs on the UNCLIPPED rect, and that ordering is the direction guard.** The thin /
+line-like predicate is applied first, then the accepted rule is intersected with the clip, so the
+clip may only shrink a rule or remove it and can never admit one. Classify the clipped sliver
+instead and a 40×40 shading block whose form exposes a 40×2 strip becomes a phantom underline —
+the direction that INVENTS rules, which is how prose gets eaten in the first place. This is the
+mirror image of `rotatedElementFootprint`'s "may only grow" rule (WS4-B): for a LEAK filter the
+footprint may only grow, for a PROSE-DELETING filter the geometry may only shrink.
+
+**So the image channel is deliberately left UNCLIPPED** — it feeds `imagePlacementRedacted`, which
+is a leak filter, where over-approximating a footprint is the safe direction. Clipping all four
+channels would be symmetric and wrong. Sabotage S3 (clipping images too) fails exactly one case.
+
+**C22 is preserved by construction, not by discipline:** the clip is derived from `ctm`, which
+already carries the CropBox `base`, so under an origin it lands in the crop frame in lockstep with
+the four channels it filters. A clip built from the raw args would be a mixed frame — the exact
+failure C22 exists to make unexpressible — and the guard pins the crop-frame width (80, not 50).
+
+**Two smaller things worth carrying forward.** A REVERSED `/BBox` (`x1 < x0`) is legal to the canvas
+backend, which issues `rect(x0, y0, x1 - x0, y1 - y0)` with a negative extent; the clip is therefore
+built from all four transformed corners, the same normalisation the negative-height `re` case needed
+in `locateDecorationRects`. And **pdf.js's own `getTextContent` TRUNCATES a text item at the page
+edge** — a 51-character fixture line at x=200 on a 400pt page came back as `"…restated after t"`
+with width 201.75, which reads exactly like a flow-reconstruction bug and is not one. The fixture
+line is short on purpose.
+
+**The bound was NOT disclosed in `SECURITY.md`, contrary to the plan that scheduled the PoC** — a
+`git grep` for `BBox` / `Form XObject` there returns nothing. It does not belong there either: this
+is an export-fidelity bound, not a leak, so this section is its home. Same class of plan-vs-reality
+drift WS4-B found for its own bound; check where a bound actually lives before writing "updated".
+
+Guards: `tests/browser/form-bbox-clip.browser.test.ts` (3 — real pdf.js: the phantom rule dropped
+with the pre-fix count of 3 pinned as non-vacuity, the prose kept, and a CONTROL that the real
+table is still detected and its text still excluded from the flow, which fails if the clip
+over-reaches) and `tests/export/opStreamWalker.test.ts` (+11 pure). **The fixture is SYNTHETIC** —
+the mechanism is real and pinned, no real-world file exhibiting it was found, and the field
+frequency is unmeasured. Sabotage-verified five ways, each landing where predicted: dropping the
+intersection fails the 7 leak cases; classifying after the clip fails exactly the sliver case;
+clipping images too fails exactly the image case; computing the clip before the `/Matrix` fails
+exactly the offset case; never popping at the form End fails exactly the End case.
+
+**UNCERTIFIED-BY-EXECUTION, named rather than omitted:** the clip reset inside an annotation's
+appearance stream. All three clipped channels gate on `annotationDepth === 0`, so no assertion can
+distinguish resetting the clip there from leaving the page's in place; it stays to keep the stack
+paired with the ctm, and the code says so. Content-stream `W n` clips are still not modelled at all.
+
 ### A rotated redaction burned a rotated box while every filter tested the upright one (2026-09-02)
 
 WS4-B, and it turned out to be a live leak rather than the bluntness bound the plan described. A

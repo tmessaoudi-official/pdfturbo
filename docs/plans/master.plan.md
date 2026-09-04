@@ -460,6 +460,21 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   live deploy. GitHub Pages deploys from that push automatically; a red CI afterwards is a finding to
   fix, not a separate goal step.
 
+- [2026-09-04 09:55] AGREED: WS4-F is PROMOTED, not refuted. `walkPageOps` now models the Form
+  XObject `/BBox` clip for the rules/vRules/colorMap channels and leaves the image channel
+  UNCLIPPED (over-approximation is the safe direction for a leak filter, the mirror of WS4-B's
+  "may only grow"). Harm was demonstrated end-to-end before the fix: a rule drawn 300pt outside a
+  100x60 `/BBox` gave `vRules` 3 entries and reduced the reconstructed paragraph flow to the EMPTY
+  STRING — the prose deleted, not merely displaced. The fixture is SYNTHETIC; no real-world file
+  exhibiting it was found, so the field frequency is unmeasured and the plan's "real-file case"
+  wording is not satisfied. Recorded as a promoted fix on a demonstrated mechanism.
+- [2026-09-04 09:55] AGREED: the WS4-F bound was NOT disclosed in `SECURITY.md`, contrary to this
+  plan's "six bounds currently DISCLOSED in SECURITY.md" — `git grep BBox SECURITY.md` returns
+  nothing. It does not belong there: it deletes PROSE in the DOCX/MD/TXT exports rather than
+  leaking content, so it is an export-fidelity bound and `CLAUDE.md` § Gotchas is its home. Same
+  plan-vs-reality drift WS4-B recorded for its own bound; the remaining PoCs (C, E, D) must have
+  their disclosure location checked rather than assumed.
+
 ## Status
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
@@ -471,7 +486,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 5 | WS3 — Arabic x12 native review | S | blocked | - | locales/** |
 | 6 | WS4-A — ink composited above the burn | M | done | 347fa63 | src/export/**, tests/browser/redaction-ink-clip.browser.test.ts |
 | 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
-| 8 | WS4-F — Form /BBox clip in walkPageOps | M | todo | - | src/export/opStreamWalker.ts |
+| 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |
 | 9 | WS4-C — blank-page blunt whole-drop | M | todo | - | src/export/exportService.ts |
 | 10 | WS4-E — signer vs assembled crop-origin | M | todo | - | src/core/pdfTurboApp.ts, src/signing/** |
 | 11 | WS4-D — DOCX part GC on image delete | L | todo | - | src/docx/** |
