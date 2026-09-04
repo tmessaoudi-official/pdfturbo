@@ -334,7 +334,11 @@ the mechanism is real and pinned, no real-world file exhibiting it was found, an
 frequency is unmeasured. Sabotage-verified five ways, each landing where predicted: dropping the
 intersection fails the 7 leak cases; classifying after the clip fails exactly the sliver case;
 clipping images too fails exactly the image case; computing the clip before the `/Matrix` fails
-exactly the offset case; never popping at the form End fails exactly the End case.
+exactly the offset case; never popping at the form End fails exactly the End case. A SIXTH
+mutation pins the control rather than the fix — making `clipRuleRect` drop every rule inside a form
+(the over-reaching clip) fails the phantom-rule case and the real-table case while the prose case
+stays GREEN, which is what makes "the prose survived" evidence of a correct clip rather than of no
+clip at all.
 
 **UNCERTIFIED-BY-EXECUTION, named rather than omitted:** the clip reset inside an annotation's
 appearance stream. All three clipped channels gate on `annotationDepth === 0`, so no assertion can
