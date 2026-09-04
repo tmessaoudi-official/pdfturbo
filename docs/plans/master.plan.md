@@ -101,7 +101,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
-| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, seven rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10** findings. Three of the six found defects in the PREVIOUS round's fixes. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
+| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, eight rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10 → 19** findings. Four of the eight found defects in the PREVIOUS round's fixes. Paused after round 8 (goal cleared); `a99ccea` and `3fc0863` are post-panel. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
@@ -700,6 +700,37 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   regression in place to preserve a process boundary would be the wrong trade, but they carry no
   certification and the next session should treat them as unreviewed.
 
+- [2026-09-04 21:55] SUPERSEDES the [10:34] WS4-F ruling: the Form `/BBox` clip covers `rules` and
+  `vRules` ONLY. WS7 round 7 REVERTED it for `colorMap`, because colour is matched to a word BY
+  POSITION and the words come from `getTextContent`, which no `/BBox` clips — so a clipped colour key
+  left the run exporting BLACK. Clip what INVENTS geometry; never clip an attribute of a word that
+  exports regardless. Three places in this plan still describe the old three-channel rule (`:266`,
+  `:489`, and the `:52` inventory row); they are HISTORY of the WS4-F design, and this entry is the
+  live rule. Recorded because a resuming session reading the plan alone would re-add the reverted clip.
+- [2026-09-04 21:58] RECORDED: WS7 round 8 returned 19 findings; the five CODE defects (all in
+  `pdfSanitizer.ts`, all introduced by round 7, including a P0 that FROZE the tab on a cyclic action
+  `/Next`) are fixed in `a99ccea`. The 13 documentation findings and the one scope decision
+  (`/SubmitForm` and `/Launch` survive sanitize — not JavaScript, so no claim is false, but undisclosed)
+  are enumerated in `docs/ws7-certification-record.md` § "Round 8", which is TRACKED — the per-round
+  reports under `var/claude/ws7/` are gitignored and reach no clone.
+- [2026-09-04 21:58] RECORDED: the two-consecutive-clean counter is still **0 of 2** after eight
+  rounds, four of which found defects in the previous round's fixes. Round 9 was NOT run: the `/goal`
+  stop condition was cleared mid-round-8, so the ladder is PAUSED, not failed. `a99ccea` is itself
+  post-panel and uncertified — no round has reviewed it.
+- [2026-09-05 00:10] AGREED (developer, "fix the issues/fragilities and security issues and stop at
+  that"): the round-8 scope decision is RULED for the CLASS — sanitize strips the non-JavaScript egress
+  actions `/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`, `/ImportData` (spliced at every chain position
+  like scripts, `/URI` and `/GoTo` untouched) AND `/FileAttachment` annotations whole, with their
+  `/Popup`, deleting `/FS` on the dict so a `/Popup` `/Parent` or reply-note `/IRT` cannot keep the
+  file reachable for the sweep. Landed in `3fc0863` with 15 cases, sabotage-verified five ways.
+  In-document media actions (`/Rendition` without `/JS`, `/Sound`, `/Movie`, `/GoTo3DView`,
+  `/RichMediaExecute`) are deliberately kept. Out of scope by the same instruction: the KNOWN_ISSUES
+  P2/P3 deferrals and the non-security doc drifts.
+- [2026-09-05 00:10] RECORDED: `a99ccea` (cyclic-`/Next` freeze + splice class) and `3fc0863` are
+  both post-panel — certified by EXECUTION (tests, sabotage, the full deploy gate before push) and
+  NOT by the WS7 ladder, which stays paused at 0 of 2. `origin/master` was `8ae525c` until this push,
+  i.e. production carried the tab-freeze for the interval; the push is what closes it.
+
 ## Status
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
@@ -719,28 +750,11 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 7 rounds run, NOT certified (0/2 clean) | L | blocked | - | - |
+| 16 | WS7 — certification: 8 rounds run, NOT certified (0/2 clean), paused | L | blocked | - | - |
+| 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 3fc0863 | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
 ### Needs research
 ### Fragile
 ### Known issues
-
-- [2026-09-04 21:55] SUPERSEDES the [10:34] WS4-F ruling: the Form `/BBox` clip covers `rules` and
-  `vRules` ONLY. WS7 round 7 REVERTED it for `colorMap`, because colour is matched to a word BY
-  POSITION and the words come from `getTextContent`, which no `/BBox` clips — so a clipped colour key
-  left the run exporting BLACK. Clip what INVENTS geometry; never clip an attribute of a word that
-  exports regardless. Three places in this plan still describe the old three-channel rule (`:266`,
-  `:489`, and the `:52` inventory row); they are HISTORY of the WS4-F design, and this entry is the
-  live rule. Recorded because a resuming session reading the plan alone would re-add the reverted clip.
-- [2026-09-04 21:58] RECORDED: WS7 round 8 returned 19 findings; the five CODE defects (all in
-  `pdfSanitizer.ts`, all introduced by round 7, including a P0 that FROZE the tab on a cyclic action
-  `/Next`) are fixed in `a99ccea`. The 13 documentation findings and the one scope decision
-  (`/SubmitForm` and `/Launch` survive sanitize — not JavaScript, so no claim is false, but undisclosed)
-  are enumerated in `docs/ws7-certification-record.md` § "Round 8", which is TRACKED — the per-round
-  reports under `var/claude/ws7/` are gitignored and reach no clone.
-- [2026-09-04 21:58] RECORDED: the two-consecutive-clean counter is still **0 of 2** after eight
-  rounds, four of which found defects in the previous round's fixes. Round 9 was NOT run: the `/goal`
-  stop condition was cleared mid-round-8, so the ladder is PAUSED, not failed. `a99ccea` is itself
-  post-panel and uncertified — no round has reviewed it.
