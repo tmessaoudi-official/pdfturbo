@@ -22,6 +22,11 @@
 # CI regenerates them before tests/build. See CLAUDE.md → "OCR (Sprint 4…)" for the
 # CSP/engine constraints that force local serving.
 /public/tesseract/
+# …and WITHOUT the trailing slash too. A trailing-slash pattern matches a DIRECTORY only, so a
+# SYMLINK named `public/tesseract` — the natural way to lend the assets to a git worktree, which
+# has no copy of its own — was not ignored, got picked up by `git add -A`, and was committed as a
+# mode-120000 entry that then replaced the real directory on checkout [2026-09-04].
+/public/tesseract
 # Local QA / visual-evidence screenshots — never committed (binary, ad-hoc).
 # NOTE: because these are gitignored AND the cloud container is reclaimed, a screenshot
 # left here is evidence nobody will see — deliver it with SendUserFile in the same turn.
