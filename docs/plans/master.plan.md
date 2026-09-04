@@ -537,7 +537,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 10 | WS4-E — signer vs assembled crop-origin (refuted, bound corrected) | M | done | 16b3101 | tests/browser/sign-assembled-frame.browser.test.ts |
 | 11 | WS4-D — DOCX part GC on image delete | L | done | 1c41dd5 | src/docx/opcGc.ts, src/docx/docxProseMirror.ts |
 | 12 | WS6 — aspect-ratio-aware crop apply-to-all | M | todo | - | src/core/pageService.ts |
-| 13 | WS6 — #54b open-via-picker + recent files | M | done | 54BSHA | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
+| 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 borderless tables wired to DOCX | L | todo | - | src/utils/borderlessTable.ts, src/export/exportService.ts |
 | 15 | WS5 — adversarial audit of existing code | L | todo | - | src/** |
 | 16 | WS7 — certification, 2 clean rounds over dfe34ae..HEAD | L | todo | - | - |
