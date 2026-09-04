@@ -221,7 +221,12 @@ mixed absolute/crop-relative (probe: a word at y=300 on a 300-high crop).
 
 ## WS4 — Disclosed-bounds PoCs ("try to overcome the odds")
 
-Six bounds are currently DISCLOSED in `SECURITY.md` with recorded reasons. Developer ruling
+Six bounds were scheduled here as "currently DISCLOSED in `SECURITY.md` with recorded reasons".
+That premise is only PARTLY true and was corrected by measurement: C **is** disclosed there
+("Dropping is blunt by design"), F was **not** disclosed anywhere — it deletes prose in the flow
+exports rather than leaking content, so it is an export-fidelity bound whose home is `CLAUDE.md`
+§ Gotchas. **D and E must each have their disclosure location checked, not assumed** (`git grep`
+the bound in `SECURITY.md` before writing that it was updated). Developer ruling
 (2026-08-31): keep all disclosed **but attempt a PoC for each**. Rules of engagement: one isolated
 git worktree per PoC (`Agent` tool `isolation: "worktree"` or manual `git worktree add`); a PoC is
 PROMOTED to a real fix only if it meets its success criteria with sabotage-verified guards;
