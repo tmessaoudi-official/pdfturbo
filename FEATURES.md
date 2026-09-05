@@ -55,10 +55,13 @@ _Last updated: 2026-09-04 · Version 1.0.0_
   means: a source-PDF page is rasterized (its text becomes unextractable), while a **blank** page has
   nothing to rasterize, so the covered annotations are omitted from the export instead. The bounds of
   each — notably that the blank-page omission is whole-element — are graded in `SECURITY.md`
-- **Sanitize** — strip metadata (`/Info`, XMP), document JavaScript (`/OpenAction`, `/AA`, and scripts on
-  annotations, form fields and bookmarks — including one chained behind a real link), four kinds of non-JavaScript
-  action (form submission, launch, open-another-document, import-data; ordinary hyperlinks and in-document
-  media are kept), and embedded files — via the name tree, as paperclip annotations, and as associated files.
+- **Sanitize** — strip metadata (`/Info`, XMP on every object, private application data), document JavaScript
+  (`/OpenAction`, `/AA` wherever it appears — including on a page-tree or field parent a reader inherits it from —
+  scripts on annotations, form fields and bookmarks, including one chained behind a real link, and 3D artwork
+  scripts), four kinds of non-JavaScript action (form submission, launch, open-another-document, import-data;
+  ordinary hyperlinks and in-document media are kept), and embedded files — via the name tree, as paperclip
+  annotations (on a page or hidden in a form field), and as associated files on any object. The file's bytes
+  leave the copy even when something else still pointed at them.
   It does **not** alter page content
 - **Lock PDF** — AES-256 password encryption on export
 - Which tools actually *delete* content versus only hide it is graded surface-by-surface in

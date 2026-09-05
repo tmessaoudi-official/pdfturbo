@@ -85,6 +85,9 @@ async function makeDirtyPdf(): Promise<Uint8Array> {
     Dests: { Names: [] }, // legitimate — must survive
   })));
 
+  // /PieceInfo private application data (Illustrator/InDesign embed the source document here).
+  cat.set(PDFName.of('PieceInfo'), ctx.obj({ SomeApp: { Private: PDFString.of('source document with author paths') } }));
+
   // Trailer /ID — a privacy/tracking identifier.
   ctx.trailerInfo.ID = ctx.obj([
     PDFHexString.of('00112233445566778899aabbccddeeff'),
@@ -112,6 +115,7 @@ describe('sanitizePdf', () => {
       xfa: true,
       pageMetadata: true,
       associatedFiles: true,
+      pieceInfo: true,
       documentId: true,
     });
   });
@@ -981,5 +985,289 @@ describe('sanitizePdf — /AF on annotations, cross-page Popups, array cycles, k
     for (const k of kinds) expect(text).toContain(`${k}-${MEDIA}`);
     expect(out.report.annotActions).toBe(false);
     expect(out.report.externalActions).toBe(false);
+  });
+});
+
+/**
+ * WS7 round 9 (2026-09-05) — the three lenses returned 22 findings against `2a19552`; eleven of the
+ * twelve code-shaped ones are pinned here (the twelfth, opcGc's `.RELS` scan, in its own file), the
+ * ten documentation ones in `docs/ws7-certification-record.md`.
+ *
+ * The thread through the safety lens's two P1s and the export lens's P1 is one defect: the sanitizer
+ * stripped the dictionaries its WALKS reached — catalog, leaf pages, listed annotations, `/Fields`
+ * downward, bookmarks — while pdf.js reads `/AA` by INHERITANCE. `collectActions` walks `/Parent`
+ * up to the `/Pages` root (`pdf.worker.mjs:1520-1526`, `:1327-1348`), so a script hung on the
+ * page-tree root, or on a widget's parent field that no `/Fields` entry names, ran after sanitize
+ * with every report flag false. A fourth walk would close two shapes; a backstop over EVERY
+ * dictionary in the file closes the class, for the keys whose meaning is the same wherever they
+ * appear (`/AA`, `/AF`, `/Metadata`, `/PieceInfo`, `/OnInstantiate`).
+ *
+ * A second thread: a Filespec is an OBJECT, and cutting the paperclip's reference to it leaves the
+ * file in the bytes whenever anything ELSE still points at it — a kept `/Rendition` media clip, a
+ * `/Fields`-only paperclip. So the Filespec itself now loses `/EF`, wherever it was reached from.
+ *
+ * Probe trap, from the lens: `ctx.obj({ JS: 'x' })` makes `/JS` a NAME, which pdf.js ignores. The
+ * scripts below are `PDFString`s, as an execution check would need them to be.
+ */
+describe('sanitizePdf — inherited /AA, shared Filespecs, XMP and /AF on any object, 3D script, /PieceInfo (WS7 r9)', () => {
+  const asText = (b: Uint8Array) => new TextDecoder('latin1').decode(b);
+  const load = (b: Uint8Array) => PDFDocument.load(b, { updateMetadata: false });
+  const PAYLOAD = 'SANITIZE_R9_FILE_PAYLOAD_MUST_NOT_SURVIVE_9104';
+  const js = (ctx: PDFDocument['context'], marker: string) =>
+    ctx.obj({ S: PDFName.of('JavaScript'), JS: PDFString.of(marker) });
+  function filespec(ctx: PDFDocument['context'], payload = PAYLOAD) {
+    const ef = ctx.register(ctx.stream(payload, { Type: PDFName.of('EmbeddedFile') }));
+    return ctx.register(ctx.obj({
+      Type: PDFName.of('Filespec'), F: PDFString.of('secret.txt'), EF: ctx.obj({ F: ef }),
+    }));
+  }
+  async function subtypesOf(bytes: Uint8Array): Promise<string[]> {
+    const doc = await load(bytes);
+    const annots = doc.getPages()[0].node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annots) return [];
+    return annots.asArray().map(ref => {
+      const dict = doc.context.lookup(ref, PDFDict);
+      return (doc.context.lookup(dict.get(PDFName.of('Subtype'))) as PDFName).decodeText();
+    });
+  }
+
+  it('P1 — a JavaScript /AA on the /Pages ROOT is stripped and reported (pdf.js inherits it as a page action)', async () => {
+    const M = 'SANITIZE_R9_PAGES_ROOT_AA_9104()';
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    const ctx = doc.context;
+    doc.catalog.Pages().set(PDFName.of('AA'), ctx.obj({ O: js(ctx, M) }));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(M);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(M);
+    expect(out.report.additionalActions).toBe(true);
+    expect((await load(out.bytes)).getPageCount()).toBe(1);
+  });
+
+  it("P1 — a JavaScript /AA on a widget's PARENT field that /Fields never names is stripped and reported", async () => {
+    const M = 'SANITIZE_R9_PARENT_FIELD_AA_9104()';
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const parentRef = ctx.register(ctx.obj({ T: PDFString.of('p'), AA: { K: js(ctx, M) } }));
+    const widget = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), Rect: ctx.obj([0, 0, 9, 9]),
+      FT: PDFName.of('Tx'), T: PDFString.of('w'), Parent: parentRef,
+    }));
+    page.node.set(PDFName.of('Annots'), ctx.obj([widget]));
+    // /Fields lists the WIDGET, not its parent — so the downward /Kids walk never sees the parent.
+    doc.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: ctx.obj([widget]) }));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(M);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(M);
+    expect(out.report.additionalActions).toBe(true);
+  });
+
+  it('P1 — a paperclip kept alive by a reply note loses its OWN /A and /AA scripts, and reports them', async () => {
+    // 3fc0863 pulled the paperclip out of /Annots BEFORE the strip loop, so with a reply /IRT keeping
+    // the dict alive its script text was serialised with `annotActions: false` — a regression: before
+    // 3fc0863 the paperclip stayed listed and took the strip loop like any annotation.
+    const M1 = 'SANITIZE_R9_PAPERCLIP_A_JS_9104()';
+    const M2 = 'SANITIZE_R9_PAPERCLIP_AA_JS_9104()';
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const attach = ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FileAttachment'), Rect: ctx.obj([0, 0, 9, 9]),
+      FS: filespec(ctx), A: js(ctx, M1), AA: { Fo: js(ctx, M2) },
+    });
+    const attachRef = ctx.register(attach);
+    const reply = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Text'), Rect: ctx.obj([20, 0, 29, 9]),
+      IRT: attachRef, RT: PDFName.of('R'),
+    }));
+    page.node.set(PDFName.of('Annots'), ctx.obj([attachRef, reply]));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(M1);
+    const out = await sanitizePdf(src);
+    const text = asText(out.bytes);
+    expect(text).not.toContain(M1);
+    expect(text).not.toContain(M2);
+    expect(text).not.toContain(PAYLOAD);
+    expect(out.report.annotActions).toBe(true);
+    expect(out.report.fileAttachments).toBe(true);
+    expect(await subtypesOf(out.bytes)).toEqual(['Text']);
+  });
+
+  it('P2 — a paperclip whose Filespec is ALSO a kept /Rendition media clip still loses the file bytes', async () => {
+    // The Filespec is reachable through /Screen /A /Rendition /R /C /D, which is deliberately kept,
+    // so cutting the paperclip's /FS alone leaves the sweep a live path to /EF. The Filespec itself
+    // loses /EF; the Rendition action survives with a name-only Filespec.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const fs = filespec(ctx);
+    const attach = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FileAttachment'), Rect: ctx.obj([0, 0, 9, 9]), FS: fs,
+    }));
+    const screen = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('Screen'), Rect: ctx.obj([20, 0, 60, 40]),
+      A: { S: PDFName.of('Rendition'), OP: 0, R: { S: PDFName.of('MR'), C: {
+        Type: PDFName.of('MediaClip'), S: PDFName.of('MCD'), D: fs, CT: PDFString.of('audio/mpeg'),
+      } } },
+    }));
+    page.node.set(PDFName.of('Annots'), ctx.obj([attach, screen]));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(PAYLOAD);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.fileAttachments).toBe(true);
+    // The media action is KEPT — the over-reach control on the kept-media promise.
+    const re = await load(out.bytes);
+    const annots = re.getPages()[0].node.lookup(PDFName.of('Annots'), PDFArray);
+    expect(annots.size()).toBe(1);
+    const action = annots.lookup(0, PDFDict).lookup(PDFName.of('A'), PDFDict);
+    expect(action.lookup(PDFName.of('S'))).toBe(PDFName.of('Rendition'));
+  });
+
+  it('P2 — XMP /Metadata on a form XObject and on an image XObject is stripped and reported', async () => {
+    const MF = 'SANITIZE_R9_FORM_XMP_9104';
+    const MI = 'SANITIZE_R9_IMAGE_XMP_9104';
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const xmp = (m: string) => ctx.register(ctx.stream(`<x:xmpmeta>${m}</x:xmpmeta>`, {
+      Type: PDFName.of('Metadata'), Subtype: PDFName.of('XML'),
+    }));
+    const form = ctx.register(ctx.stream('0 0 1 1 re f', {
+      Type: PDFName.of('XObject'), Subtype: PDFName.of('Form'), BBox: ctx.obj([0, 0, 10, 10]), Metadata: xmp(MF),
+    }));
+    const image = ctx.register(ctx.stream('\x80', {
+      Type: PDFName.of('XObject'), Subtype: PDFName.of('Image'), Width: 1, Height: 1,
+      ColorSpace: PDFName.of('DeviceGray'), BitsPerComponent: 8, Metadata: xmp(MI),
+    }));
+    page.node.setXObject(PDFName.of('Fx1'), form);
+    page.node.setXObject(PDFName.of('Im1'), image);
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(MF);
+    expect(asText(src)).toContain(MI);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(MF);
+    expect(asText(out.bytes)).not.toContain(MI);
+    expect(out.report.pageMetadata).toBe(true);
+    expect((await load(out.bytes)).getPageCount()).toBe(1);
+  });
+
+  it('P3 — /AF on an XObject is stripped and its file leaves the bytes', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const form = ctx.register(ctx.stream('0 0 1 1 re f', {
+      Type: PDFName.of('XObject'), Subtype: PDFName.of('Form'), BBox: ctx.obj([0, 0, 10, 10]),
+      AF: ctx.obj([filespec(ctx)]),
+    }));
+    page.node.setXObject(PDFName.of('Fx1'), form);
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(PAYLOAD);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.associatedFiles).toBe(true);
+  });
+
+  it("P3 — a 3D annotation's /3DD /OnInstantiate script is stripped and reported", async () => {
+    const M = 'SANITIZE_R9_3D_ON_INSTANTIATE_9104()';
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const script = ctx.register(ctx.stream(M, {}));
+    const artwork = ctx.register(ctx.stream('u3d-bytes', {
+      Type: PDFName.of('3D'), Subtype: PDFName.of('U3D'), OnInstantiate: script,
+    }));
+    const annot = ctx.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('3D'), Rect: ctx.obj([0, 0, 90, 90]) });
+    annot.set(PDFName.of('3DD'), artwork);
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(M);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(M);
+    expect(out.report.annotActions).toBe(true);
+    // The artwork itself is content and stays.
+    expect(await subtypesOf(out.bytes)).toEqual(['3D']);
+  });
+
+  it('P3 — /PieceInfo private application data is stripped from the catalog and a page, and reported', async () => {
+    const MC = 'SANITIZE_R9_PIECEINFO_CATALOG_9104';
+    const MP = 'SANITIZE_R9_PIECEINFO_PAGE_9104';
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const piece = (m: string) => ctx.obj({ SomeApp: { LastModified: PDFString.of('D:20260905'), Private: PDFString.of(m) } });
+    doc.catalog.set(PDFName.of('PieceInfo'), piece(MC));
+    page.node.set(PDFName.of('PieceInfo'), piece(MP));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(MC);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(MC);
+    expect(asText(out.bytes)).not.toContain(MP);
+    expect(out.report.pieceInfo).toBe(true);
+  });
+
+  it('P2 — a /FileAttachment dict reachable only through /Fields → /Kids loses its file and is reported', async () => {
+    // Listed on no page, so no reader shows it — the "payload serialised" grade, with the flag false.
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const attach = ctx.register(ctx.obj({
+      Type: PDFName.of('Annot'), Subtype: PDFName.of('FileAttachment'), Rect: ctx.obj([0, 0, 9, 9]), FS: filespec(ctx),
+    }));
+    const field = ctx.register(ctx.obj({ T: PDFString.of('f'), Kids: ctx.obj([attach]) }));
+    doc.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: ctx.obj([field]) }));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(PAYLOAD);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.fileAttachments).toBe(true);
+  });
+
+  it('P3 — /AF on a BOOKMARK and on a parent FIELD is reported, not only removed', async () => {
+    // `report.associatedFiles` was assigned before the field and outline walks that delete /AF, so
+    // the flag stayed false and a document whose only artifact this was would toast "nothing found"
+    // after changing the bytes.
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const item = ctx.register(ctx.obj({ Title: PDFString.of('Attached'), AF: ctx.obj([filespec(ctx)]) }));
+    doc.catalog.set(PDFName.of('Outlines'), ctx.obj({ First: item, Last: item }));
+    const field = ctx.register(ctx.obj({ T: PDFString.of('p'), AF: ctx.obj([filespec(ctx, `${PAYLOAD}-FIELD`)]) }));
+    doc.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: ctx.obj([field]) }));
+    const src = await doc.save({ useObjectStreams: false });
+    expect(asText(src)).toContain(PAYLOAD);
+    const out = await sanitizePdf(src);
+    expect(asText(out.bytes)).not.toContain(PAYLOAD);
+    expect(out.report.associatedFiles).toBe(true);
+  });
+
+  it('P3 — a diamond through a SHARED script keeps the continuation on BOTH paths', async () => {
+    // Arrays were memoised with their survivors; a revisited script DICT returned [] instead of its
+    // continuation, so the second array entry chaining to the same script lost the /URI behind it.
+    const JS = 'SANITIZE_R9_SHARED_SCRIPT_9104()';
+    const KEEP = 'https://example.invalid/shared-continuation-9104';
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    const ctx = doc.context;
+    const tail = ctx.register(ctx.obj({ S: PDFName.of('URI'), URI: PDFString.of(KEEP) }));
+    const script = ctx.register(ctx.obj({ S: PDFName.of('JavaScript'), JS: PDFString.of(JS), Next: tail }));
+    const entry = (u: string) => ctx.register(ctx.obj({ S: PDFName.of('URI'), URI: PDFString.of(u), Next: script }));
+    const annot = ctx.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: ctx.obj([0, 0, 9, 9]) });
+    annot.set(PDFName.of('A'), ctx.obj([entry('https://example.invalid/a1-9104'), entry('https://example.invalid/a2-9104')]));
+    page.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+    const out = await sanitizePdf(await doc.save({ useObjectStreams: false }));
+    expect(asText(out.bytes)).not.toContain(JS);
+    const re = await load(out.bytes);
+    const annots = re.getPages()[0].node.lookup(PDFName.of('Annots'), PDFArray);
+    const actions = annots.lookup(0, PDFDict).lookup(PDFName.of('A'), PDFArray);
+    expect(actions.size()).toBe(2);
+    for (let i = 0; i < 2; i++) {
+      const next = actions.lookup(i, PDFDict).lookup(PDFName.of('Next'), PDFDict);
+      expect(next.lookup(PDFName.of('S'))).toBe(PDFName.of('URI'));
+      expect((next.lookup(PDFName.of('URI')) as PDFString).decodeText()).toBe(KEEP);
+    }
   });
 });

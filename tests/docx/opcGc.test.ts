@@ -82,6 +82,32 @@ describe('gcOrphanMediaParts', () => {
     expect(p.files['word/media/image1.png']).toBeDefined();
   });
 
+  it('walks a relationships part spelled .RELS or _RELS/ — OPC part names are case-insensitive (WS7 r9)', () => {
+    // `canonicalPart` and `partText` already fold case; the `relsPaths` filter did not, so a header's
+    // `.RELS` was never scanned, its image got no `live` entry, and the GC deleted a picture that is
+    // on every page. The module's own header says every decision errs towards keeping.
+    for (const relsPath of ['word/_rels/header1.xml.RELS', 'word/_RELS/header1.xml.rels']) {
+      const p = pkg({
+        'word/document.xml': bodyWith(),
+        'word/_rels/document.xml.rels': rels(),
+        'word/header1.xml': `<?xml version="1.0"?><w:hdr xmlns:w="${W_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"><w:p><w:r><w:drawing><a:blip r:embed="rId1"/></w:drawing></w:r></w:p></w:hdr>`,
+        [relsPath]: rels({ id: 'rId1', target: 'media/image1.png' }),
+      }, ['word/media/image1.png']);
+      expect(gcOrphanMediaParts(p).removedParts).toEqual([]);
+      expect(p.files['word/media/image1.png']).toBeDefined();
+    }
+  });
+
+  it('drops a dangling relationship through a .RELS part too — the cleanup must see what the scan sees', () => {
+    const p = pkg({
+      'word/document.xml': bodyWith(),
+      'word/_rels/document.xml.RELS': rels({ id: 'rId5', target: 'media/image1.png' }),
+    }, ['word/media/image1.png']);
+    expect(gcOrphanMediaParts(p)).toEqual({
+      removedParts: ['word/media/image1.png'], removedRels: ['word/_rels/document.xml.RELS#rId5'],
+    });
+  });
+
   it('KEEPS a media part whose relationship id is still used in the document', () => {
     const p = pkg({
       'word/document.xml': bodyWith('rId9'),

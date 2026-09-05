@@ -129,8 +129,12 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   `/AF` kept its file with the flag saying removed (P0), fixed the same night. `/AF` now goes on every
   annotation, field and bookmark, not only the catalog and pages. The same ruling widened sanitize to the
   non-JavaScript egress action class (`/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`, `/ImportData`),
-  spliced at every chain position like scripts. Guards: 15 cases in `tests/utils/pdfSanitizer.test.ts`,
-  sabotage-verified five ways.
+  spliced at every chain position like scripts. WS7 round 9 then found the walks' blind spots — `/AA`
+  inherited through `/Parent` (page-tree root, unlisted field parent), a Filespec shared with kept media,
+  XMP and `/AF` on XObjects, a paperclip reachable only through `/Fields`, and the paperclip's own
+  scripts — closed by a backstop over every dictionary in the file and by cutting the embedded stream on
+  the Filespec itself. Guards: three blocks in `tests/utils/pdfSanitizer.test.ts` — 15 (the ruling), 5
+  (the `/AF` review), 11 (round 9; the twelfth code finding, opcGc, is pinned in `tests/docx/opcGc.test.ts`) — sabotage-verified with the figures in CLAUDE.md § PDF sanitizer.
 - **An overlay text link is lost on the RASTER export path** (`exportPipeline.ts:552-559`, P2).
   `renderText` adds a `/Link` to the temp page, but the rasteriser embeds only the PNG into a fresh
   page — so on a redaction-bearing page the link exports as flat pixels, refuting the "survives BOTH
@@ -177,16 +181,20 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
 
 
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a
-  native speaker, and that pass changed no value. **That sign-off is no longer blanket.** FOURTEEN
+  native speaker, and that pass changed no value. **That sign-off is no longer blanket.** FIFTEEN
   values have been added or re-worded since and are pending a native pass: `toolbar.exportXlsxTitle`,
   `badge.signRect` (added 2026-08-28 — the mode badge had no string for the e-sign rectangle mode),
   the six `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, the three re-worded on
   2026-08-05 to match the hide-vs-remove grades (`toolbar.cropTitle`, `toast.modeHint.crop`,
   `toast.redactionPlaced` — single-verb substitutions, the first changes to a reviewed Arabic value
-  since the sign-off), and the two added by #54b on 2026-09-04 (`toolbar.recentFiles`,
-  `toast.recentFileUnavailable`). **This was the FOURTH copy of that prose list**: CLAUDE.md's three
-  copies were reconciled to 14 the same day and this one still read "Twelve" — the drift the count's
-  own paragraph warns about, one file further out than it was looking [WS5 audit, 2026-09-04]. **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
+  since the sign-off), the two added by #54b on 2026-09-04 (`toolbar.recentFiles`,
+  `toast.recentFileUnavailable`), and `toolbar.sanitizeTitle` — a word DELETION made by `8ae525c` on
+  2026-09-04 that all four copies of this list missed until WS7 round 9, and which now UNDER-claims:
+  the English and French tooltips were re-worded for the 2026-09-05 scope, the Arabic one deliberately
+  was not, so it needs a re-wording as well as a review. **This was the FOURTH copy of that prose
+  list**: CLAUDE.md's three copies were reconciled to 14 the same day and this one still read "Twelve"
+  — the drift the count's own paragraph warns about, one file further out than it was looking [WS5
+  audit, 2026-09-04]; reconciled again at 15 on 2026-09-05. **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
 - Crop: numeric per-edge **margins** SHIPPED 2026-08-04 (converted per page); resizable **handles**
   SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). **Aspect-ratio-aware

@@ -1717,9 +1717,9 @@ file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (18, asserti
 XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
-`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **14 values pending as of
-2026-09-04**, these 8 plus `badge.signRect`, the 3 re-worded in § The hide-vs-remove audit and the 2
-#54b keys; that § is the count's home, so
+`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **15 values pending as of
+2026-09-05**, these 8 plus `badge.signRect`, the 3 re-worded in § The hide-vs-remove audit, the 2
+#54b keys and `toolbar.sanitizeTitle`; that § is the count's home, so
 update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
@@ -1927,8 +1927,12 @@ each fixture pinned nothing. Deliberately kept: in-document media actions (`/Ren
 `/JS`, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`). Guards: the ruled-2026-09-05 block in
 `tests/utils/pdfSanitizer.test.ts` (15). Sabotage-verified five ways, each landing where predicted:
 one subtype dropped from the set → exactly that subtype's case; forward loop → the Popup and `/IRT`
-cases; `/FS` kept → exactly the `/IRT` case; `/Subtype` compared unresolved → exactly the indirect
-case; annotation never removed → the three paperclip cases and no control.
+cases; `/FS` kept → exactly the `/IRT` case (2 once `128219d` added its P0 case, and **0 since round 9**
+— the bytes are now cut on the Filespec one object down, so a dangling `/FS` reaches a stream that is
+no longer there; the guard for the bytes moved with them, see below); `/Subtype` compared unresolved →
+exactly the indirect case; annotation never removed → the three paperclip cases and no control (5 once
+`128219d` added its cases, 7 after round 9 — the same mutation, re-measured each time cases were added
+to the file, which is the discipline the ink-clip figures had to learn).
 
 **The first version shipped a P0 of its own, found by a post-push single-lens review the same
 night.** `/AF` (PDF 2.0 associated files) is a SECOND path from the paperclip dict to its Filespec; the
@@ -1940,9 +1944,61 @@ page is edited); a `/Next` ARRAY containing itself overflowed the stack because 
 only (arrays are now memoised, `null` while expanding); and the SECURITY.md sentence "every claim in
 this row has a test" was false for the kept-media list (it has one now). Both `/FS` and `/AF` go on the
 dict, and `/AF` goes on every annotation, field and bookmark via `stripNodeActions`. Sabotage: `/AF`
-kept on the paperclip → exactly the P0 case; `/AF` kept on ordinary annotations → the P2 case; no array
-memo → exactly the self-cyclic array case. **When a strip cuts one path to a payload, list every key
-that can reach it before writing "leaves the bytes".**
+kept on the paperclip → exactly the P0 case (**0 since round 9**: the backstop below cuts `/AF` on every
+dictionary, so the per-node cut is no longer load-bearing on its own — the backstop's own `/AF` line
+is, → the XObject case); `/AF` kept on ordinary annotations → the P2 case; no array memo → exactly the
+self-cyclic array case. **When a strip cuts one path to a payload, list every key that can reach it
+before writing "leaves the bytes".**
+
+**WS7 round 9 (2026-09-05) found the walks' blind spots — 22 findings across the three lenses, twelve
+of them code-shaped, two P1 from the safety lens and one P1 from the export lens.** The thread: the
+sanitizer stripped the dictionaries its WALKS reached (catalog, leaf pages, listed annotations, `/Fields`
+downward, bookmarks) while pdf.js reads `/AA` by INHERITANCE — `collectActions` calls
+`getInheritableProperty({ key: "AA" })`, which walks `/Parent` up to the `/Pages` root
+(`pdf.worker.mjs:1520-1526`, `:1327-1348`). So a `PageOpen` script on the page-tree root, and a
+`Keystroke` script on a widget's parent field that no `/Fields` entry names, both RAN in pdf.js after
+sanitize with every report flag false — measured with `page.getJSActions()` and `getFieldObjects()`
+before and after. A fourth walk would have closed two shapes; **one pass over every dictionary in the
+file closes the class**, for the keys whose meaning is the same wherever they appear (`/AA`, `/AF`,
+`/Metadata`, `/PieceInfo`, `/OnInstantiate`), plus the action splice on annotation-shaped dicts. `/A` is
+deliberately NOT in that set — a structure element's `/A` is an attribute dictionary. The walks keep the
+per-surface reporting; the backstop carries the guarantee.
+
+**The second thread is that a Filespec is an OBJECT.** Cutting the paperclip's `/FS` and `/AF` leaves
+the file in the bytes whenever anything ELSE still points at the Filespec — a kept `/Rendition` media
+clip's `/D`, measured with `fileAttachments: true` and the payload present. So the Filespec itself now
+loses `/EF` and `/RF`, wherever it was reached from (paperclip, `/AF`, the `/EmbeddedFiles` name tree),
+and a media clip that shared it degrades to a name-only reference. Two consequences for the older
+sabotage figures above: keeping `/FS` on the paperclip no longer fails anything (the stream it reaches
+is empty), and keeping `/AF` on a node no longer fails anything (the backstop cuts it). Neither guard
+went vacuous by accident — the guarantee moved one object down and one pass later, and the mutations
+that guard it now are "Filespec never severed" and "backstop `/AF` dropped". The remaining round-9
+shapes: `/AF` and XMP on a form or image XObject (PDF 32000 §14.3.2 and PDF 2.0 §14.13 allow both,
+Photoshop images carry XMP routinely), `/PieceInfo` (stripped as metadata — Illustrator/InDesign embed
+the source document with author paths there; a disclosure candidate in the lens's grading, cut here
+because it is one line inside the same pass), a 3D annotation's `/3DD` `/OnInstantiate`, a paperclip
+reachable only through `/Fields → /Kids` (listed on no page, flag false), a paperclip's OWN `/A` and
+`/AA` scripts (a regression from `3fc0863`, which pulled the dict out of `/Annots` before the strip loop),
+`report.associatedFiles` assigned before the walks that set it, and a diamond through a shared script
+dropping the `/URI` behind it on the second path (dicts are now memoised like arrays).
+
+**Probe trap, from the safety lens:** `ctx.obj({ JS: 'app.alert(1)' })` makes `/JS` a NAME, which pdf.js
+ignores — its first execution probes reported `null` before AND after, a vacuous check. The shipped
+fixtures use that idiom harmlessly (the sanitizer keys on `/S`), but any test asserting EXECUTION must use
+`PDFString.of`. The round-9 block does.
+
+Guards: the round-9 block in `tests/utils/pdfSanitizer.test.ts` (11 — measured off the runner: 2645 → 2658 with the two opcGc cases, after an earlier draft of this sentence said 12) and two cases in
+`tests/docx/opcGc.test.ts` (the export lens's P2: a `.RELS`/`_RELS/` relationships part was never
+scanned, so the image only it referenced was DELETED — part names are case-insensitive and the module's
+own header says every decision errs towards keeping). Sabotage-verified, each landing where predicted:
+backstop `/AA` dropped → the two P1 inheritance cases; Filespec never severed → exactly the shared-media
+case; backstop `/Metadata` dropped → exactly the XObject XMP case; backstop `/AF` dropped → exactly the
+XObject `/AF` case; `/OnInstantiate` dropped → exactly the 3D case; `/PieceInfo` dropped → the PieceInfo
+case and the dirty-fixture report; the paperclip branch dropped → 4 (the `/IRT`, own-scripts,
+shared-media and `/Fields`-only cases); the collection loop no longer stripping the paperclip → **0, by
+design** (the backstop catches it), and the two together → 3; `associatedFiles` assigned in the pre-fix
+order → the bookmark/field case and the XObject case; the revisited script yielding `[]` → exactly the
+diamond case; opcGc case-sensitive again → both `.RELS` cases.
 
 ### True text editing engine
 
@@ -2830,9 +2886,12 @@ under the new taxonomy means *recoverable* — the wrong word for the tool that 
 The three Arabic edits are single-verb substitutions (`للإبقاء على` → `لإظهار`, `الإبقاء عليها` →
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified, and the pending count
-is **14**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
-keys, `toast.cropMarginsTooLarge`, and the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
-`toast.recentFileUnavailable`). **This count read 11 here and 12 in the two sections below** — the
+is **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
+keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
+`toast.recentFileUnavailable`), and `toolbar.sanitizeTitle` — a word DELETION made by `8ae525c` on
+2026-09-04 that every copy of this list missed until WS7 round 9 found it in the range diff, and which
+now UNDER-claims: the English and French tooltips were re-worded for the 2026-09-05 scope, the Arabic
+one deliberately was not, so it needs a re-wording as well as a review. **This count read 11 here and 12 in the two sections below** — the
 home had dropped `badge.signRect` while they kept it, which is the very drift this paragraph warns
 about, found again on 2026-09-04. Reconciled at 14. A reviewer found this tracking gap because the two other sections that
 enumerate the pending set were not updated — **when the pending list lives in prose in three places, a
@@ -3038,7 +3097,7 @@ this class twice over.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (**ar [Unverified]** — needs a
 native pass, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings and
-the 2 #54b keys — 14 pending in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+the 2 #54b keys and `toolbar.sanitizeTitle` — 15 pending in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

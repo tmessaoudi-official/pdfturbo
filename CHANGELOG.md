@@ -3,7 +3,7 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-04)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-05)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
@@ -45,6 +45,17 @@ most of the work went into proving that what the product claims to remove is act
   importing form data — and **removes paperclip attachments together with their file**, not only
   files in the document's name tree, and associated files (`/AF`) hung on any annotation. Ordinary
   hyperlinks and in-document media actions are kept.
+- **Sanitize now strips what a reader INHERITS, and cuts an attached file at its source.** A script
+  hung on the page tree above a page, or on a form field's parent that the form never lists, was
+  left alone by every walk and still ran in pdf.js after sanitize. An attached file that a kept media
+  clip also pointed at kept its bytes. XMP metadata and associated files on an image or form
+  XObject, private application data (`/PieceInfo`), a 3D artwork's start-up script, a paperclip
+  hidden inside a form field, and a paperclip's own scripts all survived. Every one is now removed,
+  by a pass over every dictionary in the file and by deleting the embedded stream on the file
+  specification itself rather than only the reference to it (WS7 round 9, 2026-09-05).
+- **A DOCX relationships part spelled `.RELS` was never scanned by the orphan-image collector**, so
+  an image only it referenced was deleted on save. Part names are case-insensitive; the scan is now
+  too.
 - **Deleting an image in the DOCX editor now removes it from the file.** It used to drop the
   picture from the document while leaving its bytes in the package, recoverable by renaming the
   `.docx` to `.zip` — disclosed since 2026-08-05 and closed on 2026-09-04. The collector errs

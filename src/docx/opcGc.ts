@@ -59,7 +59,7 @@ function parseFailed(dom: Document): boolean {
 
 /** `word/_rels/document.xml.rels` → `word/document.xml`; `_rels/.rels` → null (the package root). */
 function ownerOf(relsPath: string): string | null {
-  const m = /^(.*)_rels\/([^/]+)\.rels$/.exec(relsPath);
+  const m = /^(.*)_rels\/([^/]+)\.rels$/i.exec(relsPath);
   if (!m) return null;
   const [, dir, name] = m;
   // `_rels/.rels` describes the PACKAGE itself: no owning part to scan, so its relationships are
@@ -78,7 +78,7 @@ function ownerOf(relsPath: string): string | null {
  */
 export function resolveRelTarget(relsPath: string, target: string): string {
   if (target.startsWith('/')) return target.slice(1);
-  const dir = relsPath.replace(/_rels\/[^/]*\.rels$/, '');
+  const dir = relsPath.replace(/_rels\/[^/]*\.rels$/i, '');
   const out: string[] = [];
   for (const seg of `${dir}${target}`.split('/')) {
     if (seg === '' || seg === '.') continue;
@@ -172,7 +172,11 @@ function relationshipElements(dom: Document): Element[] {
  * pointed at them. Both arrays empty means nothing was touched and `packOpc` produces the same bytes.
  */
 export function gcOrphanMediaParts(opc: OpcPackage): GcResult {
-  const relsPaths = Object.keys(opc.files).filter(p => /(^|\/)_rels\/[^/]*\.rels$/.test(p));
+  // Case-INSENSITIVE, like `canonicalPart` and `partText` already were: OPC part names are
+  // case-insensitive ASCII, and a `.RELS` that this filter skipped was never scanned, so the image
+  // only it referenced got no `live` entry and was DELETED — the one direction this module must
+  // never err in [WS7 round 9]. The two regexes above fold case for the same reason.
+  const relsPaths = Object.keys(opc.files).filter(p => /(^|\/)_rels\/[^/]*\.rels$/i.test(p));
 
   // Canonical key → the ACTUAL entry name in the package. Every lookup goes through this, so a
   // Target and its ZIP entry match whichever spelling each happens to use. `live` holds actual

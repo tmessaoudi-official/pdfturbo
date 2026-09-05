@@ -74,7 +74,7 @@
     "compressTitle": "Compress — download a smaller copy (optimize or flatten to images)",
     "exportDocxTitle": "Export as Word document (beta)",
     "exportMdTitle": "Export as Markdown (beta)",
-    "sanitizeTitle": "Sanitize — download a copy with metadata and JavaScript removed",
+    "sanitizeTitle": "Sanitize — download a copy with metadata, scripts, external actions and attached files removed",
     "extractPagesTitle": "Extract pages to a new PDF",
     "exportTableTitle": "Extract a ruled table to CSV",
     "exportXlsxTitle": "Extract a table to Excel (.xlsx)",

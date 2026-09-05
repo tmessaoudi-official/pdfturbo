@@ -101,7 +101,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
-| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, eight rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10 → 19** findings. Four of the eight found defects in the PREVIOUS round's fixes. Paused after round 8 (goal cleared); `a99ccea` and `3fc0863` are post-panel. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
+| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, nine rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10 → 19 → 22** findings. Five of the nine found defects in the PREVIOUS round's fixes. Round 9 (at `2a19552`, all three lenses) reviewed the post-panel commits `a99ccea`, `3fc0863`, `128219d` and `2a19552` and returned two P1s (pdf.js inherits `/AA` through `/Parent`) — fixed in row 18. Round 10 is next; a clean round there would be the first of the two required. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
@@ -737,6 +737,29 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   removed. Fixed in `128219d` (both keys cut; `/AF` on every annotation, field and bookmark; paperclips
   collected across all pages; self-cyclic `/Next` arrays memoised; the kept-media sentence now has a
   test). Row 17's evidence moves to `128219d`. Still post-panel, still certified by execution only.
+- [2026-09-05 07:40] RECORDED: WS7 round 9 ran at `2a19552` with all three lenses (unnamed, isolated
+  worktrees) and returned **22 findings** — 4 export, 8 safety, 10 completeness — two of them P1: pdf.js
+  reads `/AA` by INHERITANCE through `/Parent`, so a script on the `/Pages` root or on a widget's parent
+  field that `/Fields` never lists RAN after sanitize (measured with `page.getJSActions()` and
+  `getFieldObjects()`) while the report said clean. A third P1 was a regression from `3fc0863` (a
+  paperclip's own scripts survived when a reply note kept the dict alive). Fixed in row 18 by a backstop
+  pass over EVERY dictionary in the file (`/AA`, `/AF`, `/Metadata`, `/PieceInfo`, `/OnInstantiate`, the
+  action splice on annotation-shaped dicts) and by cutting `/EF` on the Filespec itself, so a reference
+  something else still holds (a kept `/Rendition` clip) cannot keep the bytes. Thirteen red tests (eleven sanitizer, two opcGc), twelve
+  sabotage mutations; two older sabotage figures dropped to 0 for a stated reason (the guarantee moved
+  one object down and one pass later) and are re-recorded in CLAUDE.md. The counter stays 0 of 2; round
+  10 is next.
+- [2026-09-05 07:40] RECORDED (within the [00:10] ruling's "metadata", flagged for the developer rather
+  than asked): `/PieceInfo` private application data is now stripped too — the safety lens graded it a
+  disclosure candidate; Illustrator/InDesign embed the full source document with author paths there, and
+  it is one line inside the same backstop pass. It is reported as its own `pieceInfo` flag. If the
+  developer would rather keep `/PieceInfo`, it is one line to drop and one test to delete.
+- [2026-09-05 07:40] RECORDED: the record's `[2026-09-05]` correction of the opcGc round list ("rounds
+  4, 6 and 7") was itself WRONG against the round-6/7 reports (only round 4 was a demonstrated
+  live-image deletion; round 9 added a synthetic `.RELS` one); and the plan's `[21:55]` entry cites
+  `:52` among the stale colour-clip passages while the record cited `:70` — both lines are TRUE
+  statements about a different mechanism; only `:266` and `:489` carry the stale three-channel rule,
+  and they stay as declared history.
 
 ## Status
 <!-- progress-block v1 -->
@@ -757,8 +780,9 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 8 rounds run, NOT certified (0/2 clean), paused | L | blocked | - | - |
+| 16 | WS7 — certification: 9 rounds run, NOT certified (0/2 clean), round 10 next | L | blocked | - | - |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
+| 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | - | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
