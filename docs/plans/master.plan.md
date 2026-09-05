@@ -741,7 +741,8 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   worktrees) and returned **22 findings** — 4 export, 8 safety, 10 completeness — two of them P1: pdf.js
   reads `/AA` by INHERITANCE through `/Parent`, so a script on the `/Pages` root or on a widget's parent
   field that `/Fields` never lists RAN after sanitize (measured with `page.getJSActions()` and
-  `getFieldObjects()`) while the report said clean. A third P1 was a regression from `3fc0863` (a
+  `getFieldObjects()`) while the report said clean. Fixed in `6f08fc7`, post-panel like its predecessors —
+  certified by execution only until round 10 reviews it. A third P1 was a regression from `3fc0863` (a
   paperclip's own scripts survived when a reply note kept the dict alive). Fixed in row 18 by a backstop
   pass over EVERY dictionary in the file (`/AA`, `/AF`, `/Metadata`, `/PieceInfo`, `/OnInstantiate`, the
   action splice on annotation-shaped dicts) and by cutting `/EF` on the Filespec itself, so a reference
@@ -782,7 +783,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
 | 16 | WS7 — certification: 9 rounds run, NOT certified (0/2 clean), round 10 next | L | blocked | - | - |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
-| 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | - | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
+| 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

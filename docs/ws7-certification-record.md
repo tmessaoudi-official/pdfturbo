@@ -144,8 +144,8 @@ open after `2a19552` claimed to clear it):
 ## Round 9 — what was fixed (2026-09-05)
 
 Round 9 ran at `2a19552` with all three lenses in isolated worktrees and returned **22 findings**:
-4 export, 8 safety, 10 completeness. Twelve were code-shaped and are fixed in the commit that carries
-this section; the ten documentation ones are folded into this file, `CLAUDE.md`, `KNOWN_ISSUES.md`
+4 export, 8 safety, 10 completeness. Twelve were code-shaped and are fixed in `6f08fc7` (post-panel,
+like the four commits it reviewed — certified by execution only until round 10); the ten documentation ones are folded into this file, `CLAUDE.md`, `KNOWN_ISSUES.md`
 and the plan.
 
 | Defect | Evidence it was real |
