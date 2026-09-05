@@ -131,7 +131,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   non-JavaScript egress action class (`/SubmitForm`, `/Launch`, `/GoToR`, `/GoToE`, `/ImportData`),
   spliced at every chain position like scripts. Guards: 15 cases in `tests/utils/pdfSanitizer.test.ts`,
   sabotage-verified five ways.
-- **An overlay text link is lost on the RASTER export path** (`exportPipeline.ts:555-557`, P2).
+- **An overlay text link is lost on the RASTER export path** (`exportPipeline.ts:552-559`, P2).
   `renderText` adds a `/Link` to the temp page, but the rasteriser embeds only the PNG into a fresh
   page — so on a redaction-bearing page the link exports as flat pixels, refuting the "survives BOTH
   export paths" claim. Deferred because re-adding annotations after rasterisation means re-deriving

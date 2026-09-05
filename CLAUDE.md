@@ -545,7 +545,7 @@ table is still detected and its text still excluded from the flow, which fails i
 over-reaches) and `tests/export/opStreamWalker.test.ts` (+11 pure). **The fixture is SYNTHETIC** —
 the mechanism is real and pinned, no real-world file exhibiting it was found, and the field
 frequency is unmeasured. Sabotage-verified five ways, each landing where predicted: dropping the
-intersection fails the 7 leak cases; classifying after the clip fails exactly the sliver case;
+intersection fails 8 leak cases (6 pure + 2 browser, MEASURED 2026-09-05 — this read "the 7 leak cases" from the day it was written and was never run); classifying after the clip fails exactly the sliver case;
 clipping images too fails exactly the image case; computing the clip before the `/Matrix` fails
 exactly the offset case; never popping at the form End fails exactly the End case. A SIXTH
 mutation pins the control rather than the fix — making `clipRuleRect` drop every rule inside a form
@@ -569,7 +569,7 @@ exports regardless.** The guard case now asserts the opposite of what it asserte
 suppressing it needs a text-item-to-form attribution `getTextContent` does not provide.
 
 **UNCERTIFIED-BY-EXECUTION, named rather than omitted:** the clip reset inside an annotation's
-appearance stream. All three clipped channels gate on `annotationDepth === 0`, so no assertion can
+appearance stream. Both clipped channels (rules and vRules) gate on `annotationDepth === 0`, so no assertion can
 distinguish resetting the clip there from leaving the page's in place; it stays to keep the stack
 paired with the ctm, and the code says so. Content-stream `W n` clips are still not modelled at all.
 
@@ -968,7 +968,7 @@ origin" is true only at rotation 0.** Measured from the real assembly: at `/Rota
 page is the crop box (300×240) at origin (0,0), so the error is exactly the origin, as recorded. At
 `/Rotate 90` it is **240×300 — the dimensions SWAP**, because `rasterizePageWithRedactions` bakes
 the rotation into the pixels and adds a page carrying no `/Rotate` of its own
-(`exportPipeline.ts:499-503`). `_pageGeomForSign` reports the unswapped `viewBox` and lets the
+(`exportPipeline.ts:511-512` renders the rotated viewport, `:559` adds the page from its pixel size). `_pageGeomForSign` reports the unswapped `viewBox` and lets the
 caller apply `totalRot`, so the two mappings differ in SHAPE and no origin translation can reconcile
 them. A bound stated smaller than it is, is the thing that stops the next person looking.
 

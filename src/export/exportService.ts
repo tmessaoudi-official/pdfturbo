@@ -347,8 +347,9 @@ export class ExportService {
 
   /**
    * Sanitize the assembled (edits-baked-in) document and download a clean copy:
-   * strips /Info metadata, XMP, /OpenAction, /AA, document-level JavaScript and
-   * embedded files (see utils/pdfSanitizer). Operates on the share-ready export
+   * strips /Info metadata, XMP, /OpenAction, /AA, JavaScript at every action-chain position,
+   * the non-JavaScript egress actions (SubmitForm/Launch/GoToR/GoToE/ImportData), embedded
+   * files and paperclip attachments (see utils/pdfSanitizer). Operates on the share-ready export
    * rather than the raw source, so the downloaded copy carries the user's edits.
    */
   async sanitizeAndDownload(): Promise<void> {

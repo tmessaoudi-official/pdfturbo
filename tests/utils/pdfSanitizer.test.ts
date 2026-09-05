@@ -331,7 +331,7 @@ describe('sanitizePdf — an action whose /S is an INDIRECT reference (WS7)', ()
  *
  * The chain is SPLICED, not truncated: removing a JS link reattaches its `/Next`, so a `/URI` that
  * followed the script still works. Deleting the whole chain would be the over-reach direction, and
- * `SECURITY.md` promises hyperlinks survive. Beware the two meanings of `/Next` — on an OUTLINE ITEM
+ * `SECURITY.md` promises `/URI` and `/GoTo` links are never touched. Beware the two meanings of `/Next` — on an OUTLINE ITEM
  * it is the next sibling bookmark, on an ACTION it is the next action; they are walked separately.
  */
 describe('sanitizePdf — JavaScript anywhere in an action chain, and /Outlines (WS7 r7)', () => {

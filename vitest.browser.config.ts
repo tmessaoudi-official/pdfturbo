@@ -69,7 +69,8 @@ export default defineConfig({
     //
     // The first version of this comment named `signing.browser.test.ts` as the at-risk case. That
     // was FALSE and never checked: `grep -c 'beforeAll\|beforeEach'` on that file is 0, and its
-    // keygen sits in an `it` already carrying `}, 60_000)`. Ten browser files DO have hooks — the
+    // keygen sits in an `it` already carrying `}, 60_000)`. Fourteen browser files DO have hooks
+    // (`hookTimeout` governs `after*` too; ten carry a `before*`, measured 2026-09-05) — the
     // OCR ones (`ocr-csp`, `ocr-export`) load a worker and traineddata in `beforeAll`, which is the
     // genuinely slow case here. Asserting an unverified proposition inside a fix is the same defect
     // the fix was addressing, one level up. [WS7 round 6, corrected in round 7]

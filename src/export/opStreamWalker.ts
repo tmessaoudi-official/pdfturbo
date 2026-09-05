@@ -245,7 +245,8 @@ export function walkPageOps(
       annotationDepth++;
       ctmStack.push([...ctm] as Matrix6);
       // The clip is re-established with the frame, for the same reason the ctm is. UNOBSERVABLE
-      // and NOT pinned by a test, said plainly rather than implied: all three clipped channels
+      // and NOT pinned by a test, said plainly rather than implied: both clipped channels (rules
+      // and vRules — colour was un-clipped in WS7 round 7)
       // gate on `annotationDepth === 0`, so no assertion can distinguish this from leaving the
       // page's clip in place. It stays so the stack stays balanced and paired with the ctm.
       clipStack.push(clip);

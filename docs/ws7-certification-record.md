@@ -5,7 +5,7 @@ two-consecutive-clean counter never rose above **0 of 2**. No `WS7: 2/2 clean at
 in `docs/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
 
 This file is committed because the per-round reports live under `var/claude/ws7/`, which
-`.gitignore` excludes — so they do not reach a clone, and for four of the seven rounds no report file
+`.gitignore` excludes — so they do not reach a clone, and for four of the eight rounds no report file
 was ever written at all. A certification debt whose only record is machine-local is not a record.
 [Created WS7 round 7, 2026-09-04, after the completeness lens found the plan citing a gitignored path.]
 
@@ -18,17 +18,16 @@ was ever written at all. A certification debt whose only record is machine-local
 | 3 | 23 | |
 | 4 | 19 | |
 | 5 | 11 | Stopped here originally; findings handed over rather than certified. |
-| 6 | 18 | Two of them self-inflicted in round-6 prep. |
-| 7 | 10 | Fixed one member of the `/A` script class and left three siblings. |
+| 6 | 18 | Cleared the three post-round-5 fixes with executed sabotage; found a P1 sanitizer leak plus two defects self-inflicted in round-6 prep. |
+| 7 | 10 | Found the round-6 sanitizer fix had closed ONE shape of its class (and left three siblings), and a colour regression from WS4-F. |
 | 8 | 19 | All THREE lenses independently found the same head-of-`/A` defect from round 7. |
-| 6 | 18 | Cleared the three post-round-5 fixes with executed sabotage; found a P1 sanitizer leak plus two defects introduced while preparing that round. |
-| 7 | 10 | Found the round-6 sanitizer fix had closed ONE shape of its class, and a colour regression from WS4-F. |
 
-Three of the seven rounds found defects in the **previous** round's fixes. That is the single most
+Four of the eight rounds found defects in the **previous** round's fixes (rounds 2, 6, 7 and 8 by the
+surviving reports; the round-3/4/5 reports were never written, so their share is unknown). That is the single most
 important fact in this file: in this range, a fix has been about as likely to introduce a finding as
 to close one, which is why the bar was not lowered.
 
-## Fixed in round 7 (post-panel — no round has reviewed these)
+## Fixed in round 7 (reviewed by round 8, which found the head-of-`/A` sibling left behind)
 
 - `pdfSanitizer.ts` — a JavaScript action survived sanitize when reached through `/Next`, listed in
   an array-valued `/A`, or attached to an `/Outlines` bookmark, with the report saying `false` (the
@@ -59,7 +58,7 @@ to close one, which is why the bar was not lowered.
 
 ## The standing recommendation
 
-`src/docx/opcGc.ts` produced a "deletes a live user image" finding in **four consecutive rounds** and
+`src/docx/opcGc.ts` produced a "deletes a live user image" finding in **rounds 4, 6 and 7 by the surviving reports** (the round-5 report was never written) and
 one ~4s-per-save performance regression, and it buys a disclosed low-severity nit (stray image bytes
 left in a `.docx`). Rounds 6 and 7 could not construct a delete-a-live-image case against the current
 DOMParser implementation, so it may well have converged — but it has the worst finding-per-line ratio
@@ -104,7 +103,7 @@ Popup, a self-cyclic `/Next` array, and an overclaiming sentence. All fixed and 
 (five more cases, three more sabotage mutations). The pattern this record exists to name: the fix for
 "reference deleted, payload serialised" had that shape itself, one key over.
 
-**Documentation and claim drift — 13 findings, none of them a code defect**, carried here rather
+**Documentation and claim drift — 11 findings (the panel counted 13 across lenses; de-duplicated here), none of them a code defect**, carried here rather
 than left in gitignored reports:
 
 1. `src/utils/pdfSanitizer.ts` module header — "What it removes" still has no `/Outlines` entry and
@@ -126,9 +125,9 @@ than left in gitignored reports:
    `git grep` cannot find.
 10. `docs/plans/master.plan.md:104` vs this file — "three of the **six**" vs "seven" for the same
     statistic.
-11. This file's own round-6/7 counts ("three of the seven rounds", opcGc's "four consecutive rounds")
-    are stated flat while the surviving artifacts substantiate 2 and 3 — unproven, not false, and
-    called out here rather than quietly corrected.
+11. ~~This file's own round-6/7 counts~~ — reconciled 2026-09-05: the round table above now carries
+    one row per round, the "defects in the previous round's fixes" count names the rounds it rests
+    on, and the opcGc count below says which reports substantiate it.
 
 **The counter remains 0 of 2**, and round 8 is the fourth round of eight to find defects in the
 previous round's fixes. A ninth round has NOT been run: the `/goal` stop condition was cleared by the
