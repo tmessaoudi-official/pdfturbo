@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -74,7 +74,7 @@ jobs:
       # The container is discarded, so a red sweep is undebuggable without its screenshots.
       - name: Upload QA sweep report + screenshots
         if: ${{ failure() && steps.qa_sweep.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qa-sweep-${{ github.sha }}
           path: var/claude/qa-sweep/

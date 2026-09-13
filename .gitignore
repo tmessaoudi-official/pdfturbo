@@ -4,6 +4,8 @@
 /node_modules
 /dist
 /.vite
+# Vitest 5 consolidates its artifacts (attachments, failure screenshots, blob and html reports) here.
+/.vitest
 /coverage
 /.claude/settings.local.json
 /.claude/worktrees
