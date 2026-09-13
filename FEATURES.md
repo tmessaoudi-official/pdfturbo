@@ -3,7 +3,7 @@
 A client-side PDF editor that runs **100% in the browser** — no backend, nothing uploaded.
 TypeScript + Vite + PWA. Localised in English, French, and Arabic (with full RTL).
 
-_Last updated: 2026-09-04 · Version 1.0.0_
+_Last updated: 2026-09-05 · Version 1.0.0_
 
 ---
 

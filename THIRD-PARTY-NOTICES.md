@@ -6,7 +6,8 @@ texts are available in each package's repository (and, for fonts, in the vendore
 below).
 
 _Last generated: 2026-06-26, from `package.json`; versions refreshed 2026-09-13 after the upgrade to
-latest (every licence re-read from the installed `package.json` — none changed)._
+latest (every licence re-read from the installed `package.json` — none changed). fflate and the four
+packages under "Bundled transitively" were added the same day, after WS7 round 10 found them missing._
 
 ---
 
@@ -73,10 +74,29 @@ latest (every licence re-read from the installed `package.json` — none changed
 - **Repository**: https://github.com/SortableJS/Sortable
 - Copyright © 2019 All contributors to Sortable
 
+### fflate
+- **Version**: ^0.8.3 · **License**: MIT
+- **Repository**: https://github.com/101arrowz/fflate
+- Copyright © 2026 Arjun Barrett
+
 ### tesseract.js
 - **Version**: ^7.0.0 · **License**: Apache-2.0
 - **Repository**: https://github.com/naptha/tesseract.js
 - Copyright © 2015 Project Naptha and Tesseract.js contributors
+
+### Bundled transitively (runtime dependencies of @cantoo/pdf-lib)
+
+Each grade says how its presence in the built application was established.
+
+- **culori** 4.0.2 · MIT · https://github.com/Evercoder/culori · Copyright © 2018 Dan Burzo —
+  *verified*: its colour-space names are in the entry bundle.
+- **html-entities** 2.6.0 · MIT · https://github.com/mdevils/html-entities · Copyright © 2021 Dulin Marat —
+  *verified*: its entity table is in the entry bundle.
+- **node-html-better-parser** 1.5.9 · MIT · https://github.com/Sharcoux/node-html-parser ·
+  Copyright 2019 Tao Qiufeng — *inferred*: imported by pdf-lib's `PDFDocument`, which the application
+  uses; its warning strings were not found, so presence rests on the import, not on a string match.
+- **tslib** 2.8.1 · 0BSD · https://github.com/Microsoft/tslib · Copyright © Microsoft Corporation —
+  *inferred*: pdf-lib's ES build imports its helpers, which carry no string a bundle search can match.
 
 ---
 

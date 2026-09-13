@@ -3,7 +3,7 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-05)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-13)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
@@ -84,6 +84,13 @@ most of the work went into proving that what the product claims to remove is act
   every viewer reported it gone, while the text sat in the file.
 - Images inside a Form XObject escaped the redaction filter; the drag-placed signature rect used a
   crop-relative frame where PDF requires absolute user space.
+- **Sanitize passed a script hidden inside a damaged object.** An object the PDF library cannot parse
+  was carried through verbatim and invisible to every check, so a script inside it survived with a
+  clean report. Such a file is now refused with an explanation instead of being passed as clean.
+- **Lock PDF left link addresses and note text readable without the password** — and, for a reader
+  who HAD the password, showed them blank, because the file claimed they were encrypted. A locked
+  export now encrypts them. `SECURITY.md` § "Lock PDF" states what the format still leaves outside the
+  encryption.
 
 ### Fixed — accessibility, correctness, supply chain
 - Three serious and one critical WCAG 2.1 AA rules cleared; 24 controls given explicit
@@ -97,6 +104,14 @@ most of the work went into proving that what the product claims to remove is act
   rather than pinning back or embedding whole fonts.
 - Transitive `npm audit` advisories pinned via `overrides` (`brace-expansion`, `fast-uri`).
 
+### Changed
+- **Every dependency and CI action upgraded to its latest release** (2026-09-13). Two behaviour
+  changes it brought were caught before release and handled: the PDF library became stricter about
+  damaged PNG images (DOCX→PDF would have dropped them silently and opening one would have failed —
+  they are now re-encoded through the browser, and an image that still cannot be decoded is reported),
+  and it began silently DROPPING a PDF object it cannot parse (a file affected that way is now refused
+  with an error rather than exported without the object).
+
 ### Fixed — cropped-page export
 - **Word/Markdown/text export on a cropped page** (closing ceiling **C22**) — on a PDF whose
   CropBox has a non-zero origin, every position in the reconstructed document was offset by that
@@ -109,6 +124,9 @@ most of the work went into proving that what the product claims to remove is act
 - **`SECURITY.md` § "Hiding is not removing"** — every surface graded: six genuinely remove
   content, the rest hide it. Crop, a filled shape over text, and form flattening are each called
   out, because each reads as removal and is not.
+- **In-document media is not inert.** `SECURITY.md` said no browser reader plays the media actions
+  sanitize keeps; pdf.js does, on a click. They are still kept — they stay inside the document — and
+  the claim is corrected.
 - `KNOWN_ISSUES.md` grew ceiling **C22** (flow layout on a non-zero CropBox origin), pinned by a
   confirming blocker test so it cannot rot unnoticed — and **C22 is now CLOSED** (see Fixed).
 

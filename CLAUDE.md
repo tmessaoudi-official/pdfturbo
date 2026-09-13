@@ -168,7 +168,8 @@ UI crawl is over **disclosure depth** (only 8 of 141 buttons are visible on a fr
 rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s. **CI runs it with
 `--allow-destructive`** — correct there because the flag protects a developer's own open document,
 and CI drives a throwaway browser on a fixture; without it the gate skipped 44 controls including
-redaction and flatten. That run measures 145 checks / 107 pass / 0 fail.
+redaction and flatten. That run measured 145 checks / 107 pass / 0 fail on 2026-07-31 and 151 / 114 / 0
+at the 2026-09-13 round-10 gate — read the report's own summary line rather than citing either.
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here
@@ -405,7 +406,7 @@ implementation — 5 of 22 fail, exactly the five the panel reported.
 
 `isItemRedacted` extended a source run `+x` by `|item.width|` from `transform[4]`. pdf.js's TextItem
 box is **`width` along the transform's FIRST column and `height` along its SECOND**
-(`pdf.worker.mjs:35812-35821`), so a run drawn with a rotated Tm was tested in a box DISJOINT from
+(`pdf.worker.mjs:35904-35913` in pdfjs-dist 6.3.289), so a run drawn with a rotated Tm was tested in a box DISJOINT from
 its glyphs and was never dropped — through DOCX, Markdown, TXT, CSV and XLSX, at every page rotation
 **including 0**, and orthogonal to the CropBox origin. One predicate feeds the heuristic flow, the
 struct-tree flow and the table extractor, which is why one bug reached five exports.
@@ -484,7 +485,7 @@ visibility half at 47.7, which is also what proves the darkness probe is aimed a
 ### A rule the reader never sees deleted a paragraph — the Form `/BBox` clip (2026-09-04)
 
 WS4-F, and the first of the six PoCs to land as a fidelity fix rather than a leak fix. pdf.js clips
-a Form XObject to its `/BBox` — `pdf.mjs:12350-12362` does `save()`, then `transform(...matrix)`,
+a Form XObject to its `/BBox` — `pdf.mjs:12534-12545` (6.3.289) does `save()`, then `transform(...matrix)`,
 then `ctx.clip(rect(bbox))` — so anything a form draws outside that box is invisible on screen and
 in every rasterised export. `walkPageOps` had **zero `BBox` reads**, so it reported that invisible
 content as page geometry.
@@ -1261,7 +1262,8 @@ shape of the bug this gate already had once.
 
 Every dependency went to its latest release on 2026-09-13 (vitest 5.0.0 and its four `@vitest/*`
 packages, `@cantoo/pdf-lib` 2.11.0, pdfjs-dist 6.3.289, vite 8.3.0, oxlint 1.82.0, playwright 1.63.0;
-CI `setup-node@v7`, `upload-artifact@v7`). Three things broke, none of them in `src/`:
+CI `setup-node@v7`, `upload-artifact@v7`). Three things broke in the harness, none of them in `src/` — and
+WS7 round 10 then found two that DID reach users (the last two bullets):
 
 - **Run the local gate on the CI Node, never the shell's `node`.** CI pins Node 24 (`deploy.yml`,
   `.nvmrc`). On Node 25+ Node defines its OWN `localStorage` global, which is `undefined` without
@@ -1273,23 +1275,46 @@ CI `setup-node@v7`, `upload-artifact@v7`). Three things broke, none of them in `
   machine, not the product.
 - **`@cantoo/pdf-lib` 2.11.0 is not valid Node ESM.** Its ES build does
   `import X from './Courier-Bold.compressed.json'` with no `with { type: 'json' }`, so an externalized
-  import dies with `needs an import attribute of "type: json"` — 37 jsdom suites at collection, 11 more
-  as caught dynamic imports returning nothing. The browser bundle is unaffected (Vite handles JSON), so
+  import dies with `needs an import attribute of "type: json"` — 48 jsdom files went red. (This bullet
+  split them 37 at collection and 11 downstream; the failing run's log was not kept, so the split is
+  withdrawn [WS7 round 10].) The browser bundle is unaffected (Vite handles JSON), so
   `vitest.config.ts` sets `server.deps.inline: ['@cantoo/pdf-lib']`. **`deps.optimizer.client` looks
   like the faster fix and is not one**: its pre-bundle resolves fflate's `node` export condition
   (`esm/index.mjs` opens with `createRequire`) and throws `createRequire is not a function` at import.
-  The cost of inlining is a cold transform per worker — 13089 ms for the DOCX editor's lazy
-  `import('./docxToPdf')` — so a test that waits on a lazy pdf-lib import must warm it in a hook
+  The cost of inlining is a cold transform per worker — enough to push the DOCX editor's lazy
+  `import('./docxToPdf')` past `vi.waitFor`'s 1 s (a 13089 ms figure quoted here is in no retained log)
+  — so a test that waits on a lazy pdf-lib import must warm it in a hook
   (`tests/docx/docxEditorController.test.ts`); left cold it timed out inside `vi.waitFor`'s 1 s,
   skipped its `destroy()`, and every later case in the file queried the stale modal. **2.9.2 has no JSON
   imports**, which is the fallback if inlining ever stops working.
-- **Ten base64 PNG fixtures were truncated, and only a strict decoder noticed.** pdf-lib 2.11.0 swapped
-  pako for fflate, which rejects an unterminated zlib stream (`unexpected EOF`); pako and Chrome decode
-  the same bytes leniently. So `appearanceImage.test.ts` lost its image through the signer's
-  decode-failure fallback (correct product behaviour, wrong fixture), and `docx-to-pdf.browser.test.ts`
-  lost two image cases. Python's `zlib.decompress` rejected all ten; each is now a generated PNG of the
-  same width, height and colour type. **Validate a hand-pasted binary fixture with a strict decoder
-  before trusting it** — a lenient consumer makes a broken fixture look fine until the consumer changes.
+- **Nine base64 PNG fixtures were broken, only a strict decoder noticed — and they hid a PRODUCT regression.**
+  Eight had a truncated zlib stream (zlib error -5) and `docx-to-pdf.browser.test.ts`'s had a bad CRC
+  (-3). pdf-lib 2.11.0 swapped pako for fflate, whose inflate rejects them where pako did not; Chrome's
+  `decode()` recovers three of the four distinct truncated images (the 1×1 ones — the 2×2 RGB one fails
+  there too). Each fixture is now a generated PNG of the same size and colour type. **This bullet first
+  called the lost image "correct product behaviour, wrong fixture", and WS7 round 10 refuted it**: a PNG a
+  user can SEE in the browser stopped embedding, so DOCX→PDF dropped it silently (`drawImage`'s
+  `catch { return; }`) and opening it as a document failed with `toast.imageConversionFailed`. Fixed by
+  `src/utils/pngEmbed.ts` `embedPngTolerant` — pdf-lib first, so every PNG that embedded is byte-identical,
+  then a browser `decode()` + canvas re-encode, gated on `HTMLImageElement.prototype.decode` so jsdom
+  rethrows instead of waiting on image events that never fire — and DOCX→PDF now COUNTS what it still
+  cannot embed (`skippedImages` → `docxEditor.pdfImagesSkipped`). Guards:
+  `tests/browser/png-embed-tolerant.browser.test.ts` (7) + the skip cases in `tests/docx/docxToPdf.test.ts`
+  and `docxEditorController.test.ts`. **Validate a hand-pasted binary fixture with a strict decoder, and
+  when a stricter dependency rejects one, ask what the same bytes do in a user's file.**
+- **pdf-lib 2.11.0 silently DROPS an object it cannot parse when no `endobj` follows before EOF** — 2.8.1
+  threw `Failed to parse invalid PDF object` on the same bytes. pdf.js still renders the page, so the loss
+  shows only in exports: measured, a page whose content stream was that object exported EMPTY. **A check
+  after a default load cannot see it**: `updateMetadata: true` registers a new `/Info` dict under the next
+  free object number, which after a drop IS the dropped number, so `/Contents 5 0 R` resolves to the Info
+  dict and nothing dangles. `src/utils/pdfLoadGuard.ts` `loadPdfDocument` loads without the stamp, refuses
+  (`PdfObjectDroppedError`) when a reachable reference resolves to nothing AND its `N G obj` header is in
+  the bytes, then applies pdf-lib's own `updateInfoDict()`. **Every pdf-lib load in `src/` goes through
+  it**; `tests/utils/pdfLoadGuard.test.ts` fails by file name on a direct `PDFDocument.load`. Two bounds:
+  if the NEWEST revision of an incrementally-updated object is the one dropped, the older revision stands
+  in unnoticed; and a legal dangling reference with no header is still left for pdf-lib's stamp to reuse.
+  Found while preparing the round-10 fixes, not by a lens — the first probe used a WELL-FORMED
+  unterminated object, which pdf-lib has always tolerated, and read clean.
 
 ### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
 
@@ -1663,9 +1688,10 @@ grades (see that § for why). They are single-verb substitutions and were pendin
 pending count before assuming a key is reviewed.
 **AMENDED 2026-09-13 — WS3 CLOSED by developer ruling** ("consider the arabic review done"): the 15
 values that had accumulated since, and the two UNRECONCILED sets, are accepted as reviewed. That is a
-RULING, not a second native read — say so whenever citing it. **Pending count: 1** —
+RULING, not a second native read — say so whenever citing it. **Pending count: 3** —
 `toolbar.sanitizeTitle`, re-worded the same day to en/fr parity by the session, so it is a new value and
-starts unverified. The count's home is § "The hide-vs-remove audit".
+starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), also
+session-written. The count's home is § "The hide-vs-remove audit".
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
 remain open: C18 (per-glyph select/copy/search precision), C19 (tashkeel/GPOS micro-positioning),
 bracket mirroring in the overlay, and RTL list-marker placement. A reviewed string can still render
@@ -1723,8 +1749,10 @@ anchor-download fallback. Open-via-picker + recent files SHIPPED 2026-09-04 — 
 `📊 exportXlsxBtn` (export flyout) → `ExportService.exportTableXlsx` → `src/export/xlsxWriter.ts`.
 **No new dependency:** XLSX is OPC, the same ZIP-of-XML-parts container as DOCX, and this repo already
 writes OPC zips with fflate's `zipSync` (`src/docx/opcEdit.ts`). The writer is **dynamically imported**
-so fflate stays out of the entry bundle — verified: `xlsxWriter-*.js` is its own chunk and `zipSync`
-does not appear in `index-*.js`.
+and is its own chunk (`xlsxWriter-*.js`). **fflate itself is in the entry bundle** since the 2026-09-13
+upgrade: `@cantoo/pdf-lib` 2.11.0 imports it statically for PNG decoding, and `zipSync` appears in
+`index-*.js`. This read "fflate stays out of the entry bundle — verified", which that upgrade made false
+[WS7 round 10].
 
 Detection is SHARED with the CSV export via a new private `ExportService._resolveTableGrid()` (lattice
 first, then EH-E whitespace inference). The precedence lives in exactly one place on purpose — see
@@ -1757,7 +1785,7 @@ XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (th
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (ar accepted by the 2026-09-13 WS3 closure ruling, together
 with the 7 `toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day and the rest of that
-15-value set — **1 value pending as of 2026-09-13**, the re-worded `toolbar.sanitizeTitle`; § The
+15-value set — **3 values pending as of 2026-09-13**, the re-worded `toolbar.sanitizeTitle` and WS7 round 10's two new keys; § The
 hide-vs-remove audit is the count's home, so update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
@@ -1993,7 +2021,7 @@ of them code-shaped, two P1 from the safety lens and one P1 from the export lens
 sanitizer stripped the dictionaries its WALKS reached (catalog, leaf pages, listed annotations, `/Fields`
 downward, bookmarks) while pdf.js reads `/AA` by INHERITANCE — `collectActions` calls
 `getInheritableProperty({ key: "AA" })`, which walks `/Parent` up to the `/Pages` root
-(`pdf.worker.mjs:1520-1526`, `:1327-1348`). So a `PageOpen` script on the page-tree root, and a
+(`pdf.worker.mjs:1550-1556`, `:1357-1379` in 6.3.289). So a `PageOpen` script on the page-tree root, and a
 `Keystroke` script on a widget's parent field that no `/Fields` entry names, both RAN in pdf.js after
 sanitize with every report flag false — measured with `page.getJSActions()` and `getFieldObjects()`
 before and after. A fourth walk would have closed two shapes; **one pass over every dictionary in the
@@ -2034,9 +2062,45 @@ case; backstop `/Metadata` dropped → exactly the XObject XMP case; backstop `/
 XObject `/AF` case; `/OnInstantiate` dropped → exactly the 3D case; `/PieceInfo` dropped → the PieceInfo
 case and the dirty-fixture report; the paperclip branch dropped → 4 (the `/IRT`, own-scripts,
 shared-media and `/Fields`-only cases); the collection loop no longer stripping the paperclip → **0, by
-design** (the backstop catches it), and the two together → 3; `associatedFiles` assigned in the pre-fix
+design** (the backstop catches it), and the two together → 4 (the `/IRT`, own-scripts, shared-media and `/Fields`-only cases — re-measured WS7 round 10, where this read 3); `associatedFiles` assigned in the pre-fix
 order → the bookmark/field case and the XObject case; the revisited script yielding `[]` → exactly the
 diamond case; opcGc case-sensitive again → both `.RELS` cases.
+
+**WS7 round 10 (2026-09-13): an object pdf-lib cannot PARSE bypassed every walk.** pdf-lib keeps it as an
+opaque `PDFInvalidObject` and writes it back verbatim, and every walk and the backstop test
+`instanceof PDFDict` — so a JavaScript action inside a malformed Widget (a stray `}` in the dict, which
+pdf.js skips with an `info()` and reads past) survived a sanitize with every flag but `/Info` false, and
+pdf.js still reported `hasJSActions() === true` on the output. The sanitizer cannot strip what it cannot
+read, so it REFUSES (`SanitizeRefusedError` → `toast.sanitizeRefusedInvalidObject`) — after the sweep, so
+an unreferenced unparseable object is deleted and the file still sanitizes. **Probe trap:** pdf.js's
+`getAnnotations()` reports a widget's `actions` as `{}` with or without a script; `hasJSActions()`, with
+the widget listed in `/AcroForm /Fields`, is the probe that can answer both ways. **The kept-media
+rationale was also wrong:** this section and `SECURITY.md` said pdf.js runs none of `/Rendition`,
+`/Sound`, `/Movie`, …; pdf.js's `MediaAnnotationElement` loads and plays a clip on a click. Keeping them
+may still be right (in-document, user-initiated), but the 2026-09-05 ruling rested on the false premise,
+so it is flagged back to the developer rather than silently re-justified. Guards:
+`tests/utils/pdfSanitizerInvalidObject.test.ts` (3) + the real-assembly case in
+`tests/export/exportSaveRouting.test.ts`, which also proves the object survives `copyPages`. Sabotage: the
+refusal removed → exactly those two cases, with the P1 reproduced on the output.
+
+### Lock PDF wrote strings in plaintext — and broke them for the reader (WS7 round 10, 2026-09-13)
+
+pdf-lib's writer encrypts `PDFStream` objects only. Every other string — a link's `/URI`, a note's
+`/Contents` — was written as-is while `/Encrypt` told a reader every string was encrypted, so a locked
+export leaked them to a text editor AND pdf.js with the correct password "decrypted" them into `""`.
+`ExportService._saveForExport` now saves a password-protected export WITH object streams, which puts
+ordinary objects inside encrypted streams — one seam for `downloadPDF`, `downloadPageRange`,
+`downloadFlattened` and `downloadPage` (`_compressLossless` already used them). **Password-gated on
+purpose:** `assemblePdfBytes` feeds the signer, whose `assertClassicXref` refuses xref streams, so an
+unencrypted save stays classic and byte-identical. What pdf-lib keeps OUT of object streams, and so stays
+plaintext, is bounded in `SECURITY.md` § "Lock PDF". Guard: `tests/export/exportPasswordSave.test.ts`
+(16 — per entry point: no token in the bytes, pdf.js with the password reads them back, no
+document-information string in plaintext, and a no-password control that keeps a classic `xref`). The
+metadata case is split by path, because only `downloadPage` writes an `/Info` at all — the three
+user-facing downloads build with `cleanMetadata`, so for them the case asserts there was nothing to leak
+rather than passing vacuously. Sabotage: the password branch without object streams → 9 (the 8 string
+cases plus `downloadPage`'s metadata case); the no-password branch with them → the 4 controls. `encryption.ts` claimed `/R 5`; since
+2.11.0 pdf-lib writes `/R 6`.
 
 ### True text editing engine
 
@@ -2603,8 +2667,9 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   `tests/utils/rtlClipboard.test.ts` (multi-char span + embedded-LTR), `tests/browser/arabic-search.browser.test.ts`
   + `tests/browser/arabic-copy.browser.test.ts` (real pdf.js items). Fixture+gen: `scripts/gen-arabic-fixture.mjs`.
 - **Shared char-level bidi engine (Feature 3 Slice 1, `11a3253`)**: `src/utils/bidi.ts` adopts
-  **bidi-js@1.0.3 (MIT, full UAX#9)** — promoted transitive(jsdom)→**direct prod dep**; `src/types/bidi-js.d.ts`
-  supplies types (none upstream). FOUR functions: `logicalToVisual(text,base)` (typed/user text → display order,
+  **bidi-js (MIT, full UAX#9; 1.0.3 then, 1.1.0 since 2026-09-13)** — promoted transitive(jsdom)→**direct prod dep**; `src/types/bidi-js.d.ts`
+  supplies the named types `bidi.ts` imports (1.1.0 ships its own `src/bidi.d.ts`, but default-export-shaped —
+  without our file `tsc` fails TS2614 on `BidiApi`). FOUR functions: `logicalToVisual(text,base)` (typed/user text → display order,
   brackets mirrored via `getReorderedString`); `visualToLogical(text,base)` (pdf.js visual order → logical;
   BOUNDED inverse: reverse line + re-reverse maximal LTR-type runs *trimming boundary WHITESPACE* + un-mirror
   RTL-context brackets — LTR-base input is identity); `visualRuns(text,base)` (logical → runs in visual L→R
@@ -2924,8 +2989,9 @@ The three Arabic edits are single-verb substitutions (`للإبقاء على` �
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified. **The pending set is
 CLOSED as of 2026-09-13 by developer ruling** ("consider the arabic review done") — accepted by ruling, not
-by a second native read — **and the pending count is 1**: `toolbar.sanitizeTitle`, re-worded that day to
-en/fr parity by the session, which makes it a new value. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
+by a second native read — **and the pending count is 3**: `toolbar.sanitizeTitle`, re-worded that day to
+en/fr parity by the session, which makes it a new value, and the two keys WS7 round 10 added the same day
+(`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), both session-written. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
 keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
 `toast.recentFileUnavailable`), and `toolbar.sanitizeTitle` — a word DELETION made by `8ae525c` on
 2026-09-04 that every copy of this list missed until WS7 round 9 found it in the range diff, and which
@@ -3136,7 +3202,7 @@ this class twice over.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (ar accepted by the 2026-09-13 WS3
 closure ruling, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings,
-the 2 #54b keys and the old `toolbar.sanitizeTitle` — 1 value pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+the 2 #54b keys and the old `toolbar.sanitizeTitle` — 3 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +
@@ -3592,8 +3658,8 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
   vulnerable one. The second was `fast-uri` (GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
   authority introducer) via `ajv` ← `workbox-build`. Both were devDependency-only and both were fixed
   the same way — bump to `^5.0.9` / add `^3.1.5`, one deduped copy each, audit clean, and the PWA
-  precache unchanged at the 22 entries it had then (24 since the XLSX export added its lazy chunk and
-  split fflate out — recount rather than assuming the old figure). Lesson: a pinned version is a snapshot of the advisory database, not a
+  precache unchanged at the 22 entries it had then (24 at the 2026-09-13 upgrade build — recount rather
+  than assuming any figure here). Lesson: a pinned version is a snapshot of the advisory database, not a
   permanent fix, and because `npm audit` is the FIRST CI step a new advisory turns every deploy red
   before a single test runs — including deploys of changes that have nothing to do with it.
 
@@ -3601,7 +3667,7 @@ Live eyes-on: `qa-shots/b-drag/{dragging,drop-indicator}.png`.
   vulnerable one.** Four new advisories (GHSA-5jgf-p345-68v8, -f65p-4m7j-42xc, -fph4-wmhf-6fwf,
   -jqff-g426-hqxp) put the whole `3.0.0 - 3.1.5` range in scope, so the `^3.1.5` pin added on
   2026-07-31 was itself inside it. Bumped to `^3.1.7`, one deduped copy, audit back to
-  `found 0 vulnerabilities`, build green with 25 precache entries. **Stay inside the dependent's
+  `found 0 vulnerabilities`, build green with 25 precache entries that day (24 at the 2026-09-13 build). **Stay inside the dependent's
   own range**: `ajv` declares `fast-uri: ^3.0.1`, so 3.1.7 satisfies it natively while the current
   4.1.4 would force a major past that range — an override can express it, and the PWA build is what
   pays. Same shape as the `brace-expansion` `^5.0.8` → `^5.0.9` bump.

@@ -55,7 +55,8 @@ jobs:
       # developer's own open document from redact/erase/reset/clear; CI drives a throwaway browser on
       # a fixture PDF, so there is no user work to protect. With it the gate reaches REDACTION and the
       # eraser, and it runs the workflow scenarios (draw/redact/crop/rotate → export) that a
-      # single-click crawl cannot. Measured: 150 checks / 112 pass / 0 fail vs 143 / 97 / 0 without.
+      # single-click crawl cannot. Measured: 150 checks / 112 pass / 0 fail vs 143 / 97 / 0 without
+      # (151 / 114 / 0 at the 2026-09-13 gate — the report's own summary line is the authority).
       #
       # It does NOT reach the export flyout's items (flatten, sanitize, watermark, Bates, compress,
       # DOCX/MD/XFDF) — `modalBinder.ts` shuts that flyout on any click, so only its first item is

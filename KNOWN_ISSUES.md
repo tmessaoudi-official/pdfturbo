@@ -64,6 +64,28 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From WS7 round 10 (2026-09-13)
+
+- **A damaged object in an incrementally-updated PDF can export its OLDER revision** (P3, a bound of
+  the load guard). Since the 2026-09-13 upgrade, `@cantoo/pdf-lib` silently drops an object it cannot
+  parse when no `endobj` follows; PDFturbo now refuses such a file rather than exporting it without the
+  object. The refusal looks for a reference that resolves to nothing — so when an incremental update
+  rewrote an object and the NEW revision is the one dropped, the old revision with the same number
+  still resolves, nothing dangles, and the export carries the stale content. Not fixed: telling the two
+  revisions apart needs the file's cross-reference sections, which pdf-lib does not keep after load.
+  [Inferred from pdf-lib's object table, which keeps one entry per object number; no such file was
+  built.]
+- **A legal dangling reference can be taken over by pdf-lib's metadata stamp** (P3, pre-existing).
+  When pdf-lib stamps `/Info` on load it registers the dictionary under the next free object number;
+  a reference to that number which pointed at nothing (legal — it reads as null) then resolves to the
+  Info dictionary. The load guard closes this for DROPPED objects by checking before the stamp, and
+  deliberately leaves header-less dangling references alone, because refusing them would reject
+  ordinary old files. [Inferred from the mechanism measured for the dropped case.]
+- **Sanitize refuses a file that holds an object it cannot parse**, rather than cleaning it. Such an
+  object can hide an active script no walk can see, so a clean report would be false; the cost is that
+  a merely damaged file cannot be sanitized. An unreferenced damaged object is swept first and does not
+  trigger the refusal.
+
 ### From the WS5 adversarial audit (2026-09-04)
 
 - **Text drawn outside its Form XObject's `/BBox` exports to Word/Markdown/text although it is
@@ -188,10 +210,11 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **One value is pending:** `toolbar.sanitizeTitle` had UNDER-claimed
+  read, and it is recorded as one. **Three values are pending.** `toolbar.sanitizeTitle` had UNDER-claimed
   since `8ae525c` deleted a word and the 2026-09-05 scope widening left it behind, so it was re-worded
   the same day to the English and French scope — by the session, not by a native speaker, so the new
-  wording starts `[Unverified]` like any new value. This list lived in four prose copies and drifted
+  wording starts `[Unverified]` like any new value. WS7 round 10 added two more the same day,
+  `docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`, also written by the session. This list lived in four prose copies and drifted
   three times (11 / 12 / 14 / 15) before the closure; `CLAUDE.md` § "The hide-vs-remove audit" is the
   count's home. **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.

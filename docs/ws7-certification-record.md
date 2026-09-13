@@ -1,11 +1,11 @@
 # WS7 — certification record for `dfe34ae..HEAD`
 
-**Status: NOT CERTIFIED.** Nine MAXIMAL panel rounds were run against this range and the
+**Status: NOT CERTIFIED.** Ten MAXIMAL panel rounds were run against this range and the
 two-consecutive-clean counter never rose above **0 of 2**. No `WS7: 2/2 clean at <sha>` entry exists
 in `docs/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
 
 This file is committed because the per-round reports live under `var/claude/ws7/`, which
-`.gitignore` excludes — so they do not reach a clone, and for four of the nine rounds no report file
+`.gitignore` excludes — so they do not reach a clone, and for four of the ten rounds no report file
 was ever written at all. A certification debt whose only record is machine-local is not a record.
 [Created WS7 round 7, 2026-09-04, after the completeness lens found the plan citing a gitignored path.]
 
@@ -22,9 +22,10 @@ was ever written at all. A certification debt whose only record is machine-local
 | 7 | 10 | Found the round-6 sanitizer fix had closed ONE shape of its class (and left three siblings), and a colour regression from WS4-F. |
 | 8 | 19 | All THREE lenses independently found the same head-of-`/A` defect from round 7. |
 | 9 | 22 | At `2a19552`, all three lenses (4 export, 8 safety, 10 completeness). Two P1s: pdf.js INHERITS `/AA` through `/Parent`, so a script on the `/Pages` root or an unlisted field parent ran after sanitize. Plus a regression from `3fc0863` (the paperclip's own scripts) and one from `2a19552` itself (a "corrected" opcGc count that was wrong). |
+| 10 | 18 | At `d377ced`, after the dependency upgrade, all three lenses on Node 24 (1 export, 4 safety, 13 completeness). Two P1s: pdf-lib 2.11.0's strict PNG decode silently dropped user images from DOCX→PDF — which `d00cd26` and `d377ced` had recorded as a fixture problem — and an object pdf-lib cannot parse hid a live script from every sanitizer walk. |
 
-Five of the nine rounds found defects in the **previous** round's fixes — rounds 6, 7, 8 and 9 by the
-surviving reports (which exist for rounds 4, 6, 7, 8 and 9; none was written for 1, 2, 3 or 5), and
+Six of the ten rounds found defects in the **previous** round's fixes — rounds 6, 7, 8, 9 and 10 by the
+surviving reports (which exist for rounds 4, 6, 7, 8, 9 and 10; none was written for 1, 2, 3 or 5), and
 round 2 by the note in the table above, which was written from memory when this file was created. That
 is the single most important fact in this file: in this range, a fix has been about as likely to
 introduce a finding as to close one, which is why the bar was not lowered.
@@ -177,5 +178,42 @@ itself wrong. Round 9 also confirmed, by execution: jsdom 2645 at `2a19552`, 8 l
 dropping the `/BBox` intersection, 14 browser files with hooks, the sanitizer's 20 cases and 8
 mutations, every citation `2a19552` fixed, the collector clean.
 
-**The counter remains 0 of 2.** Round 9 found defects, so the next clean round would be the first of the
-two required. Round 10 is the next step.
+**The counter remained 0 of 2** after round 9.
+
+## Round 10 — what was fixed (2026-09-13)
+
+Round 10 ran at `d377ced` — the round-9 fixes plus the upgrade of every dependency to its latest
+release — with all three lenses in isolated worktrees, every command on Node 24. It returned
+**18 findings**: 1 export, 4 safety, 13 completeness. The code-shaped ones are fixed in the commits on
+top of `d377ced` (post-panel, certified by execution only until round 11); the documentation ones are
+folded into this file, `CLAUDE.md`, `SECURITY.md`, `KNOWN_ISSUES.md`, `CHANGELOG.md`,
+`THIRD-PARTY-NOTICES.md` and the plan.
+
+| Defect | Evidence it was real |
+|---|---|
+| **P1** pdf-lib 2.11.0 (fflate) rejects PNGs 2.8.1 embedded: DOCX→PDF dropped the image silently, opening one as a document failed | the 2×2 and 1×1 truncated literals throw `unexpected EOF`; Chrome's `decode()` draws 3 of the 4 |
+| **P1** an object pdf-lib cannot parse is kept as an opaque `PDFInvalidObject`, invisible to every `instanceof PDFDict` walk — a Widget script inside it survived sanitize, report all-false | pdf.js `hasJSActions()` true on the sanitized output |
+| **P2** Lock PDF wrote non-stream strings (`/URI`, `/Contents`) in plaintext while `/Encrypt` claimed them encrypted | tokens present in the raw bytes; pdf.js with the password read `""` |
+| **P2** stale pdf.js line citations after 6.2.108 → 6.3.289; "fflate stays out of the entry bundle" false; THIRD-PARTY-NOTICES missing fflate and four transitive packages | each re-read at the cited site |
+| **P3** "pdf.js runs none of" the kept media actions — `MediaAnnotationElement` plays a clip on click; `encryption.ts` said `/R 5` where 2.11.0 writes `/R 6`; nine broken PNG fixtures written as "ten truncated"; opaque fixtures commented "transparent"; bidi-js and Vitest version wording; the gate SUMMARY's 37/11 split and a 13089 ms figure in no retained log; a sabotage count of 3 that measures 4; CHANGELOG, FEATURES and this file not updated; three QA-sweep baselines | each measured or re-read |
+
+**One more was found while preparing the fixes, by no lens:** pdf-lib 2.11.0 silently DROPS an
+unparseable object with no `endobj` before EOF, where 2.8.1 threw — so a page whose content stream was
+that object exported empty. Its default load-time `/Info` stamp takes the dropped object's number, which
+made the drop invisible to a check after load. Fixed by one guarded loader for every pdf-lib load in
+`src/` (`CLAUDE.md` § "The 2026-09-13 upgrade to latest").
+
+Fixes, each with a failing test first and a sabotage run after (figures in `CLAUDE.md`):
+`embedPngTolerant` plus a skipped-image count for DOCX→PDF; `loadPdfDocument`; the sanitizer REFUSES a
+file holding a reachable unparseable object; password-protected exports save with object streams. The
+kept-media rationale is corrected rather than silently re-justified, and the keep-ruling is flagged back
+to the developer in the plan.
+
+Two findings were against the PREVIOUS commits: `d00cd26`/`d377ced` described the PNG loss as correct
+product behaviour, and `d377ced` recorded figures (the 37/11 split, 13089 ms) that no kept log supports.
+The plan's `[2026-09-13 14:55]` RECORDED entry repeats both and is left as dated history; the corrected
+figures live here and in `CLAUDE.md`. The same holds for `master.plan.md`'s dated round-8 entries citing
+`pdf.worker.mjs:35814-35819` (6.2.108 line numbers).
+
+**The counter remains 0 of 2.** Round 10 found defects, so the next clean round would be the first of
+the two required. Round 11 is the next step.

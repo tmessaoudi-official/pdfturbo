@@ -812,14 +812,18 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 9 rounds run, NOT certified (0/2 clean), round 10 next | L | blocked | - | - |
+| 16 | WS7 — certification: 10 rounds run, NOT certified (0/2 clean), round 11 next | L | blocked | - | - |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 | 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 | 19 | Upgrade every dependency and CI action to latest (ruled 2026-09-13) | M | done | caf4350 | package.json, package-lock.json, .github/workflows/deploy.yml |
-| 20 | Upgrade consequences: pdf-lib 2.11.0 inlined in jsdom, ten truncated PNG fixtures replaced | S | done | d00cd26 | vitest.config.ts, tests/** |
+| 20 | Upgrade consequences: pdf-lib 2.11.0 inlined in jsdom, nine broken PNG fixtures replaced | S | done | d00cd26 | vitest.config.ts, tests/** |
+| 21 | WS7 round 10 — 18 findings + a parser drop fixed: tolerant PNG embed, guarded pdf-lib load, sanitizer refuses unparseable objects, Lock PDF encrypts strings | M | done | 9e03376 | src/utils/pdfLoadGuard.ts src/utils/pngEmbed.ts src/utils/pdfSanitizer.ts src/export/exportService.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
+- **Kept in-document media actions** (`/Rendition` without script, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`): the `[2026-09-05 00:10]` ruling kept them on the premise that no browser reader runs them. WS7 round 10 measured that false — pdf.js plays a clip on a click. They stay kept and the docs are corrected; whether to keep them is the developer's to re-rule.
+- **`/PieceInfo` stripping**: flagged since round 9, unruled.
+- **CI Node line**: CI stays on Node 24 (`.nvmrc`, `deploy.yml`); moving to 26 is the developer's call.
 ### Needs research
 ### Fragile
 ### Known issues

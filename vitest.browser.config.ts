@@ -91,7 +91,7 @@ export default defineConfig({
     },
     browser: {
       enabled: true,
-      // Vitest 4: provider is a factory from @vitest/browser-playwright.
+      // Vitest 4+ (unchanged in 5): provider is a factory from @vitest/browser-playwright.
       // `launchOptions` belongs on the FACTORY (PlaywrightProviderOptions), not
       // the instance. `channel: 'chrome'` selects the system Google Chrome and
       // avoids the binary download (Playwright's chrome-headless-shell isn't

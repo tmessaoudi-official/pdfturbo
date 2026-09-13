@@ -27,16 +27,16 @@ export default defineConfig({
     // @cantoo/pdf-lib 2.11.0 restructured its ES build and now ships
     //     import CourierBoldCompressed from './Courier-Bold.compressed.json';
     // with no `with { type: 'json' }` attribute. Node's ESM loader rejects that, so an EXTERNALIZED
-    // pdf-lib killed 37 suites at import ("needs an import attribute of type: json") and silently
-    // nulled 11 more wherever a dynamic import was caught [measured 2026-09-13; 2.9.2 has no JSON
-    // imports]. Production never loads it through Node — Vite bundles it and handles JSON natively —
+    // pdf-lib turned 48 jsdom files red, dying at import with "needs an import attribute of type:
+    // json" [2026-09-13; that run's log was not kept, so no split by cause is claimed; 2.9.2 has no
+    // JSON imports]. Production never loads it through Node — Vite bundles it and handles JSON natively —
     // so inlining makes the jsdom suite load pdf-lib through Vite's transform, which handles JSON the
     // way the shipped build does. Two things measured before settling here [2026-09-13]:
     //  - `deps.optimizer.client` (pre-bundling) is NOT an alternative: its bundle picks up fflate's
     //    Node entry and dies at import with `createRequire is not a function`.
     //  - inlining costs a one-time transform per worker: the DOCX editor's lazy `import('./docxToPdf')`
-    //    took 13089 ms cold, so a test that waits on it must warm the import in a hook first
-    //    (`tests/docx/docxEditorController.test.ts`), not rely on `vi.waitFor`'s 1 s default.
+    //    ran past `vi.waitFor`'s 1 s cold, so a test that waits on it must warm the import in a hook first
+    //    (`tests/docx/docxEditorController.test.ts`).
     // Drop this once an upstream release adds the attribute: remove it and the jsdom suite is the check.
     server: { deps: { inline: ['@cantoo/pdf-lib'] } },
     coverage: {
