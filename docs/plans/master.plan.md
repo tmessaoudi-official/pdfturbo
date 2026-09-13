@@ -101,7 +101,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
-| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, twelve rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10 → 19 → 22 → 18 → 12 → 13** findings. Eight of the twelve found defects in the PREVIOUS round's fixes. Rounds 10–14 are authorised by the `[2026-09-13 14:00]` ruling, and nothing is pushed before 2/2 clean. Round 9 (at `2a19552`) returned two P1s (pdf.js inherits `/AA` through `/Parent`) — fixed in row 18; round 10 (at `d377ced`) two more — fixed in row 21; round 11 (at `ac08b61`) found Sanitize & download ignoring Lock PDF and two defects in round 10's own load guard — fixed in row 22; round 12 (at `d7eb108`) found that guard's text scan for object headers wrong six ways, five of them accepting a file pdf-lib had dropped from — replaced in row 23 by recording drops inside pdf-lib's parser. Round 13 is next; a clean round there would be the first of the two required. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
+| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, thirteen rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10 → 19 → 22 → 18 → 12 → 13 → 6** findings. Nine of the thirteen found defects in the PREVIOUS round's fixes. Rounds 10–14 are authorised by the `[2026-09-13 14:00]` ruling, and nothing is pushed before 2/2 clean. Round 9 (at `2a19552`) returned two P1s (pdf.js inherits `/AA` through `/Parent`) — fixed in row 18; round 10 (at `d377ced`) two more — fixed in row 21; round 11 (at `ac08b61`) found Sanitize & download ignoring Lock PDF and two defects in round 10's own load guard — fixed in row 22; round 12 (at `d7eb108`) found that guard's text scan for object headers wrong six ways, five of them accepting a file pdf-lib had dropped from — replaced in row 23 by recording drops inside pdf-lib's parser; round 13 (at `94dcc89`) found that pdf.js and pdf-lib could read a crafted file differently with nothing dropped (P1, pre-existing) and two defects in row 23's recorder — fixed in row 24. Round 14 is next and is the last round the ruling authorises: even a clean round leaves the counter at 1 of 2, so the developer is re-asked after it. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
@@ -806,6 +806,15 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   recording drops at pdf-lib's two drop points, which also closes the dropped-newest-revision bound.
   Compress joined the Lock PDF class test. Record:
   `docs/ws7-certification-record.md` § Round 12.
+- [2026-09-13 21:00] RECORDED: WS7 round 13 at `94dcc89` = **6 findings** (2 export + 1 safety + 3
+  completeness), counter stays 0 of 2. Code: a pdf.js / pdf-lib parse differential (P1, safety,
+  pre-existing) — a file whose cross-reference table names an earlier copy of an object, or whose final
+  trailer names another /Root, showed one page and exported or signed another with nothing dropped; a drop
+  reachable only through a kept damaged object was never walked (P2, export); a drop superseded by the same
+  interned value still refused (P3, export). The P1 was implemented rather than disclosed, as a narrow
+  comparison against the cross-reference sections pdf-lib itself parses, gated on zero refusals over the
+  20-file real corpus (14 of 15 `var/corpus` files reach it). Record: `docs/ws7-certification-record.md`
+  § Round 13.
 
 ## Status
 <!-- progress-block v1 -->
@@ -826,14 +835,15 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 12 rounds run, NOT certified (0/2 clean), round 13 next | L | blocked | - | - |
+| 16 | WS7 — certification: 13 rounds run, NOT certified (0/2 clean), round 14 next | L | blocked | - | - |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 | 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 | 19 | Upgrade every dependency and CI action to latest (ruled 2026-09-13) | M | done | caf4350 | package.json, package-lock.json, .github/workflows/deploy.yml |
 | 20 | Upgrade consequences: pdf-lib 2.11.0 inlined in jsdom, nine broken PNG fixtures replaced | S | done | d00cd26 | vitest.config.ts, tests/** |
 | 21 | WS7 round 10 — 18 findings + a parser drop fixed: tolerant PNG embed, guarded pdf-lib load, sanitizer refuses unparseable objects, Lock PDF encrypts strings | M | done | 9e03376 | src/utils/pdfLoadGuard.ts src/utils/pngEmbed.ts src/utils/pdfSanitizer.ts src/export/exportService.ts |
 | 22 | WS7 round 11 — 12 findings fixed: sanitize honours Lock PDF, load guard single-pass anchored header scan | M | done | 0ee442c | src/utils/pdfLoadGuard.ts src/export/exportService.ts |
-| 23 | WS7 round 12 — 13 findings fixed: load guard records pdf-lib drops in its parser, compress in the Lock PDF class | M | done | 02dd373 | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts |
+| 23 | WS7 round 12 — 13 findings fixed: load guard records pdf-lib drops in its parser, compress in the Lock PDF class | M | done | 02dd373 | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/browser/pdf-load-guard.browser.test.ts tests/export/exportPasswordSave.test.ts tests/browser/compress.browser.test.ts |
+| 24 | WS7 round 13 — 6 findings fixed: load guard refuses a pdf.js/pdf-lib parse differential, supersede by assignment order, damaged objects refuse standing drops | M | done | 42756ed | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/utils/pdfLoadGuardCorpus.test.ts tests/browser/pdf-load-guard.browser.test.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

@@ -94,8 +94,8 @@ most of the work went into proving that what the product claims to remove is act
 - **Sanitize & download ignored Lock PDF.** With a password set, the sanitized copy was written
   unencrypted and opened without one. It is now encrypted like every other export, without re-adding
   the document information sanitize removes.
-- **Opening a legal PDF could fail** when a page's text happened to read like a PDF object header
-  (for example `9 0 obj`), and the check behind that refusal slowed sharply on large files with many
+- **Exporting, editing, signing, OCR, sanitizing or compressing a legal PDF could fail** — opening it
+  never did — when a page's text happened to read like a PDF object header (for example `9 0 obj`), and the check behind that refusal slowed sharply on large files with many
   broken references — about 1.3 s on a 20 MB file with 300. Both came from the load check added the
   same day, which no longer reads the file's text at all (next entry).
 - **A damaged PDF could still export with parts silently missing.** The load check that refuses a file
@@ -103,7 +103,13 @@ most of the work went into proving that what the product claims to remove is act
   legal spacing or comments between objects, by an object stored inside a compressed object stream, or
   when an edited file's newest version of an object was the broken one — and the export then came out
   with that content missing. The check now asks the PDF library which objects it dropped, instead of
-  searching the file for them.
+  searching the file for them. It also refuses a file whose dropped part is referenced only from inside a
+  second damaged object, and no longer refuses one whose later revision simply restates the same value.
+- **A crafted PDF could show one page and export or sign another.** The viewer finds objects through the
+  file's cross-reference table; the library that builds exports and signatures reads objects in order and
+  keeps the last copy. A file whose table pointed at an earlier copy, or whose last trailer named a
+  different document, was shown one way and exported — or signed — the other. Such a file is now refused;
+  `SECURITY.md` § "One file, two readers" states what is still not checked.
 
 ### Fixed — accessibility, correctness, supply chain
 - Three serious and one critical WCAG 2.1 AA rules cleared; 24 controls given explicit

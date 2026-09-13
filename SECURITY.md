@@ -260,6 +260,32 @@ non-zero generation number; objects PDFturbo could not parse; and the trailer's 
 an opened file may carry inline ones. If a string must not be readable without the password, do not
 rely on it sitting in one of those places.
 
+## One file, two readers — what you see is what you export and sign
+
+PDFturbo **shows** a PDF with pdf.js and **builds** every export, edit, signature, OCR layer, sanitized
+copy and compressed copy with a second library, pdf-lib. The two read a file differently where the file
+is damaged or ambiguous, and until 2026-09-13 nothing checked that they agreed — so a file could show one
+page on screen while the exported or signed copy carried another. Since then, those operations **refuse**
+a file, with an error, in the cases below; opening and viewing it are unaffected.
+
+- **pdf-lib dropped part of the file.** A damaged object that never closes is skipped by pdf-lib while
+  pdf.js still draws it, so the export would lose it. A file is refused when anything it uses was dropped
+  and nothing later in the file replaced it — including when the drop sits behind a second damaged object
+  whose contents cannot be read at all.
+- **The file's cross-reference table and its object order disagree** (fixed in WS7 round 13). pdf.js
+  finds objects through the table at the end of the file; pdf-lib reads objects in order and keeps the
+  last copy of each, and the last trailer. A file whose table points at an *earlier* copy of an object, or
+  whose final trailer names a different document root, showed one page and exported or signed another —
+  a valid signature over content the signer never saw. A legitimately updated file keeps both in step,
+  and so do all 20 real-world PDFs this was measured against (forms, papers and reports, several of them
+  updated or linearized).
+
+What is still not checked, stated rather than hidden: bytes pdf-lib never reads as an object at all; an
+object the table places inside a compressed object stream; a table pdf.js cannot follow, which makes it
+rebuild its table by scanning (it then keeps the last copy of each object, like pdf-lib — measured — but
+chooses its trailer by a rule PDFturbo does not reproduce); and a linearized ("fast web view") file whose
+first-page table pdf.js reaches from the linearization dictionary rather than the end of the file.
+
 ## Data at rest (session persistence)
 
 To restore your work after a reload, PDFturbo saves the open document — **including the raw

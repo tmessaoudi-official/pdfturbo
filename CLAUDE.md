@@ -1321,22 +1321,53 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   a string, a comment between header tokens, object-stream members (which have no header), and a string
   reading ` 9 0 obj `. The first five made it ACCEPT a file pdf-lib had dropped from; round 11 had added the
   stream skip and the boundary rule that caused three of them. **Each was a second tokenizer disagreeing
-  with pdf-lib's — do not bring a text scan back.** Every drop keeps what its reference resolved to at that
-  moment, so a dropped NEWEST revision with an older one standing in now refuses (the scan could not see
-  it) while a drop a later revision replaced still loads. Sabotage, each measured: classic drops never
-  recorded → 12; an object-stream throw recording nothing → 2; its constructor failure not flagged → 1;
-  supersede ignored → 2 (the superseded case and the object-stream control); reachability skipped → 3.
-  A per-member "was it assigned before the throw?" check was DELETED when its sabotage stayed green — the
-  end-of-load comparison already decides it, which is also why ignoring supersede reds the control.
-  `tests/browser/pdf-load-guard.browser.test.ts` runs the refusal in the Vite bundle, where a second copy of
+  with pdf-lib's — do not bring a text scan back.** **Supersede is decided by assignment ORDER, never by
+  value** (WS7 round 13): round 12 kept what each reference resolved to at the drop and compared it at the
+  end, and that refused a legal file — pdf-lib interns `null`, booleans and names, so an older revision and
+  its replacement can be the very same object. Each drop now carries the parser's assignment clock, and it
+  is superseded only when pdf-lib assigned that object again AFTER it (an object-stream member takes the
+  clock of the member TABLE, not of the throw). A dropped NEWEST revision with an older one standing in
+  still refuses. **A reachable damaged object refuses any standing drop** (round 13): pdf-lib keeps a
+  terminated but unparseable object as a `PDFInvalidObject`, whose references cannot be read, so a drop
+  reachable only through it was invisible to the walk and the file loaded — measured, the dropped page
+  content exported empty.
+  **The second half is `PdfXrefMismatchError`** (round 13): pdf-lib keeps the LAST definition of an object
+  and the LAST trailer; pdf.js follows `startxref` and the xref chain. Measured in pdf.js 6.3.289 before
+  writing it: first-wins per section, a table's `/XRefStm` queued before `/Prev`, offsets relative to the
+  first `%PDF-` in the first 1024 bytes, and — when a table offset is WRONG — a rebuild by scanning that
+  keeps the last definition, exactly like pdf-lib. So a file whose table points at an EARLIER copy showed
+  one page and exported or SIGNED another with nothing dropped (probe: pdf.js read VIEWED, pdf-lib SIGNED).
+  The recorder also keeps each definition's offset and the xref sections pdf-lib parses and then discards;
+  a reachable object refuses when the chain lands exactly on a definition pdf-lib did not keep and the
+  values differ, and a `/Root` the startxref trailer names differently refuses too. Kept on purpose: an
+  identical duplicate, an unreachable one, and a wrong offset (the recovery case). Bounds, all in
+  `KNOWN_ISSUES.md`: no comparison when the chain cannot be followed through parsed sections, for entries
+  inside an object stream, for a linearized file's first-page table, or for pdf.js's trailer choice in
+  recovery mode. **Measured on 15 real files** (`LOAD_GUARD_CORPUS=1 npx vitest run
+  tests/utils/pdfLoadGuardCorpus.test.ts`, report in `var/claude/ws7/load-guard-corpus.json`): guard outcome
+  equals raw pdf-lib on 15 of 15, and 14 reached the comparison — so zero false refusals is a measurement,
+  not an absence of input. Load time tracked raw within run-to-run spread (the slowest, Publication 17, 1853
+  ms raw vs 2173 ms guarded in one run); the tracked 5-file public corpus runs on every jsdom pass.
+  Sabotage on `tests/utils/pdfLoadGuard.test.ts` (51 cases), each landed and restored byte-identical:
+  damaged object walked as readable → 2; standing drop behind a damaged object ignored → 1; member list
+  unknown ignoring damaged objects → 1; object-stream drop clock taken at the throw → 2; supersede ignored →
+  7; per-object comparison never refusing → 5; `/Root` check off → 1; header offset ignored → 2; oldest
+  section winning → 1; identical copies refusing → 1; unreachable duplicates compared → 1; exact (not
+  whitespace-skipping) offset → 1; early return ignoring revisions and trailers → 6; trailer dict not
+  attached → 5; assignments not counted while parsing → 11. Across the guard, `exportPasswordSave`,
+  `exportSaveRouting`, `pdfSanitizerInvalidObject` and the corpus file (103 cases, the gated corpus case skipped): classic drops never
+  recorded → 18 (17 guard + 1 `exportSaveRouting`); an object-stream throw recording nothing → 3; its
+  constructor failure not flagged → 2; reachability skipped → 4. Round 12 cited 12/2/1/3 for those four
+  without saying which files ran — **scope a sabotage figure by the files it ran against.**
+  `tests/browser/pdf-load-guard.browser.test.ts` runs both refusals in the Vite bundle, where a second copy of
   pdf-lib would leave the jsdom suite green and every browser load unguarded. **Every pdf-lib load in `src/`
   goes through it**; `tests/utils/pdfLoadGuard.test.ts` fails by file name on a direct `PDFDocument.load`.
   Bounds: bytes pdf-lib never parses as an object (skipped as junk, or swallowed by a stream whose end it
   places too late) are not a drop and are not detected; when an object stream fails before its member list
-  is known, any reachable dangling reference refuses the file; and a legal dangling reference nothing was
-  dropped for is still left for pdf-lib's stamp to reuse. Found while preparing the round-10 fixes, not by a
-  lens — the first probe used a WELL-FORMED unterminated object, which pdf-lib has always tolerated, and
-  read clean.
+  is known, any reachable dangling or damaged reference refuses the file; and a legal dangling reference
+  nothing was dropped for is still left for pdf-lib's stamp to reuse. Found while preparing the round-10
+  fixes, not by a lens — the first probe used a WELL-FORMED unterminated object, which pdf-lib has always
+  tolerated, and read clean.
 
 ### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
 

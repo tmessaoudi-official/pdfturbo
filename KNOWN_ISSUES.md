@@ -64,6 +64,21 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From WS7 round 13 (2026-09-13)
+
+- **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). Since round 13,
+  export, edit, sign, OCR, sanitize and compress refuse a file whose cross-reference table names a copy of
+  an object pdf-lib did not keep, or whose final trailer names a different document root than the one
+  pdf-lib kept — the shapes that let a crafted file show one page and export or sign another. Not compared:
+  objects the table places inside an object stream; a chain that leaves the sections pdf-lib parsed (pdf.js
+  then rebuilds by scanning and keeps the last definition like pdf-lib, measured, but picks its trailer by
+  its own rule); and a linearized file whose first-page table pdf.js reaches from the linearization
+  dictionary. Zero refusals over the 15 files of `var/corpus` and the 5 of `tests/fixtures/corpus-public`,
+  14 of the 15 reaching the comparison (`tests/utils/pdfLoadGuardCorpus.test.ts`).
+- **A reachable damaged object makes any dropped object refuse the file** (P3, deliberate). Its contents
+  cannot be read, so whether it points at a dropped object cannot be decided; the guard refuses rather than
+  guess. A file with one reachable damaged object and one unrelated, unused dropped object is refused.
+
 ### From WS7 round 10 (2026-09-13)
 
 - ~~**A damaged object in an incrementally-updated PDF can export its OLDER revision**~~ — **CLOSED by
@@ -71,9 +86,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
   it cannot parse when no `endobj` follows, and PDFturbo refuses such a file rather than exporting it
   without the object. The refusal used to look for a reference that resolves to nothing, so when an
   incremental update rewrote an object and the NEW revision was the one dropped, the old revision stood
-  in and the export carried stale content. The guard now records what each reference resolved to at the
-  moment pdf-lib dropped it, and refuses when that is still what stands after the load; a drop that a
-  later revision replaced still loads. Both are pinned in `tests/utils/pdfLoadGuard.test.ts`, on a file
+  in and the export carried stale content. The guard now records when pdf-lib dropped each object and
+  refuses unless pdf-lib assigned that object again afterwards; a drop that a later revision replaced still
+  loads — since round 13 even when the replacement is the same value as the older revision, which the
+  round-12 comparison by value refused. Both are pinned in `tests/utils/pdfLoadGuard.test.ts`, on a file
   built for it.
 - **A legal dangling reference can be taken over by pdf-lib's metadata stamp** (P3, pre-existing).
   When pdf-lib stamps `/Info` on load it registers the dictionary under the next free object number;
