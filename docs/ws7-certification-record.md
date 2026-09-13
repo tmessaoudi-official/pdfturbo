@@ -313,4 +313,10 @@ vulnerabilities), OCR assets, type-check, lint, jsdom 2724 passed / 2 expected f
 Still flagged to the developer, unchanged: `/PieceInfo` stripping (unruled) and the kept-media ruling,
 whose premise round 10 corrected.
 
+Before round 13 was spawned, the two Lock PDF sabotage figures in CLAUDE.md were re-run against
+`tests/export/exportPasswordSave.test.ts` as it stands after round 12. Saving the password branch without
+object streams fails 11, not the 9 recorded: sanitize has routed through the seam since round 11, so its
+two string cases join. Saving the no-password branch with object streams still fails the 4 controls. The
+source was restored and checked with `cmp`. Only the CLAUDE.md figure changed.
+
 **The counter remains 0 of 2.** Round 13 is next.

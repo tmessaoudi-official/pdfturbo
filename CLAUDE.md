@@ -2129,8 +2129,10 @@ canvas raster — is a case in `tests/browser/compress.browser.test.ts`. Droppin
 `_applyExportPassword` call fails exactly that mode's case. The
 metadata case is split by path, because only `downloadPage` writes an `/Info` at all — the other
 paths build with `cleanMetadata` or strip it, so for them the case asserts there was nothing to leak
-rather than passing vacuously. Sabotage: the password branch without object streams → 9 (the 8 string
-cases plus `downloadPage`'s metadata case); the no-password branch with them → the 4 controls; sanitize ignoring the password → 1 (its plaintext
+rather than passing vacuously. Sabotage: the password branch without object streams → 11 (the 10 string
+cases — five entry points, sanitize among them since round 11 routed it through the seam — plus
+`downloadPage`'s metadata case; it read 9 until re-measured after round 12, which is why a figure is
+re-run whenever cases join the file); the no-password branch with them → the 4 controls; sanitize ignoring the password → 1 (its plaintext
 case — its read-back case passes on an unencrypted file, because pdf.js ignores a password it does not
 need); sanitize re-loading with the stamp → 1 (its metadata case). `encryption.ts` claimed `/R 5`; since
 2.11.0 pdf-lib writes `/R 6`.
