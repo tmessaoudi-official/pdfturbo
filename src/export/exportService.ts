@@ -11,6 +11,7 @@ import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOut
 import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
+import { loadPdfDocument } from '../utils/pdfLoadGuard';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '../utils/tableExtract';
 import { inferBorderlessGrid } from '../utils/borderlessTable';
@@ -254,8 +255,7 @@ export class ExportService {
       );
       // Pages assembled; the final save/encrypt step has no page granularity.
       _prog.setFraction(null);
-      await this._applyExportPassword(pdfDoc);
-      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      const bytes = await this._saveForExport(pdfDoc);
       await this._saveBytesTo(target, bytes, filename);
       if (target === 'download') reportError.info('toast.pdfDownloaded');
       else reportError.info('toast.pdfSaved', { name: target.name });
@@ -292,8 +292,7 @@ export class ExportService {
         { cleanMetadata: true },
       );
       _prog.setFraction(null);
-      await this._applyExportPassword(pdfDoc);
-      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      const bytes = await this._saveForExport(pdfDoc);
       await this._saveBytesTo(target, bytes, filename);
       if (target === 'download') reportError.info('toast.extractDone', { count: pages.length });
       else reportError.info('toast.pdfSaved', { name: target.name });
@@ -330,8 +329,7 @@ export class ExportService {
         { flattenAllForms: true, cleanMetadata: true },
       );
       _prog.setFraction(null);
-      await this._applyExportPassword(pdfDoc);
-      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      const bytes = await this._saveForExport(pdfDoc);
       await this._saveBytesTo(target, bytes, filename);
       if (target === 'download') reportError.info('toast.flattenDone');
       else reportError.info('toast.pdfSaved', { name: target.name });
@@ -376,7 +374,10 @@ export class ExportService {
       }
       _prog.done();
     } catch (err) {
-      reportError.error('toast.sanitizeFailed', err);
+      // The sanitizer REFUSES a file holding an object it cannot parse — say that, not "failed".
+      // Keyed on the name: importing the class here would pull the lazy sanitizer into this chunk.
+      const refused = err instanceof Error && err.name === 'SanitizeRefusedError';
+      reportError.error(refused ? 'toast.sanitizeRefusedInvalidObject' : 'toast.sanitizeFailed', err);
       _prog.failed();
     }
   }
@@ -434,8 +435,7 @@ export class ExportService {
    * Producer/ModDate re-stamp (which would re-inject the metadata we strip).
    */
   private async _compressLossless(assembled: Uint8Array): Promise<Uint8Array> {
-    const { PDFDocument } = await import('@cantoo/pdf-lib');
-    const doc = await PDFDocument.load(assembled, { updateMetadata: false });
+    const doc = await loadPdfDocument(assembled, { updateMetadata: false });
     await stripDocMetadata(doc);
     await this._applyExportPassword(doc);
     return doc.save({ useObjectStreams: true });
@@ -701,7 +701,7 @@ export class ExportService {
       // Load each source PDF once
       const srcDocs = new Map<string, import('@cantoo/pdf-lib').PDFDocument>();
       for (const [id, src] of documentModel.sourcePdfs) {
-        srcDocs.set(id, await PDFDocument.load(src.bytes));
+        srcDocs.set(id, await loadPdfDocument(src.bytes));
       }
 
       // Fill and flatten form fields. By default this only touches sources the
@@ -838,7 +838,7 @@ export class ExportService {
     try {
       const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
       if (!srcEntry) { _prog.failed(); return; }
-      const srcDocLib = await PDFDocument.load(srcEntry.bytes);
+      const srcDocLib = await loadPdfDocument(srcEntry.bytes);
       const pdfDoc    = await PDFDocument.create();
       const pageElements = elements.filter(el => el.pageId === docPage.id);
       const hasRedaction = pageElements.some(el => el.type === 'redaction');
@@ -851,8 +851,7 @@ export class ExportService {
         await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageIdx + 1, documentModel.pageCount);
       }
 
-      await this._applyExportPassword(pdfDoc);
-      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      const bytes = await this._saveForExport(pdfDoc);
       await this._saveOrDownload(target, bytes, filename, 'application/pdf');
       if (target === 'download') reportError.info('toast.pageDownloaded', { page: pageIdx + 1 });
       else reportError.info('toast.pdfSaved', { name: target.name });
@@ -898,7 +897,7 @@ export class ExportService {
         _prog.failed();
         return;
       }
-      const srcDoc = await PDFDocument.load(srcEntry.bytes);
+      const srcDoc = await loadPdfDocument(srcEntry.bytes);
       const pdfDoc = await PDFDocument.create();
       const [page] = await pdfDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
       pdfDoc.addPage(page);
@@ -985,7 +984,7 @@ export class ExportService {
       } else {
         const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
         if (!srcEntry) return null;
-        const srcDoc = await PDFDocument.load(srcEntry.bytes);
+        const srcDoc = await loadPdfDocument(srcEntry.bytes);
         const [page] = await pdfDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
         await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, libs, pageNumber, documentModel.pageCount);
@@ -1162,6 +1161,27 @@ export class ExportService {
     link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Serialise a user-facing PDF export, encrypting it when an export password is set.
+   *
+   * With a password the save uses OBJECT STREAMS, and that is the encryption, not an optimisation.
+   * pdf-lib's writer encrypts `PDFStream` objects only; every other string (a link's /URI, a note's
+   * /Contents) was written in plaintext while /Encrypt told a reader all strings were encrypted —
+   * so the file leaked them to a text editor AND a reader holding the password decrypted them into
+   * garbage (pdf.js read the annotations as ""). Inside an object stream they are encrypted with it.
+   * What stays outside one, and so stays plaintext, is bounded in SECURITY.md.
+   *
+   * Without a password the save stays classic: `assemblePdfBytes` feeds the signer, whose
+   * `assertClassicXref` refuses xref streams, and every unencrypted export keeps its existing bytes.
+   * One seam for the four export paths — four copies of this conditional is how they would drift.
+   * [WS7 round 10]
+   */
+  private async _saveForExport(pdfDoc: BuildPageCtx['pdfDoc']): Promise<Uint8Array> {
+    if (!this._ctx.exportPassword) return pdfDoc.save({ useObjectStreams: false });
+    await this._applyExportPassword(pdfDoc);
+    return pdfDoc.save({ useObjectStreams: true });
   }
 
   private async _applyExportPassword(pdfDoc: BuildPageCtx['pdfDoc']): Promise<void> {

@@ -104,7 +104,7 @@ describe('reconstructPage — drops text under redaction boxes', () => {
  * and the first fix for it over-dropped ordinary text.
  *
  * pdf.js's TextItem box is `width` along the transform's FIRST column and `height` along its SECOND
- * (`pdf.worker.mjs:35812-35821`). `isItemRedacted` instead extended `+x` by `|width|`, so a sideways
+ * (`pdf.worker.mjs:35904-35913`). `isItemRedacted` instead extended `+x` by `|width|`, so a sideways
  * run was tested in a box disjoint from its glyphs and never dropped — through DOCX, Markdown, TXT,
  * CSV and XLSX, at every page rotation including 0.
  *

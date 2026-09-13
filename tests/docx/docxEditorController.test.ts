@@ -18,7 +18,7 @@ async function makeDocx(text: string): Promise<Uint8Array> {
 
 describe('createDocxEditorController', () => {
   // Warm the lazy PDF exporter once. Under `server.deps.inline` (vitest.config.ts) its first import
-  // transforms all of @cantoo/pdf-lib — measured 13089 ms cold — and the Export PDF case below waits
+  // transforms all of @cantoo/pdf-lib — seconds, cold — and the Export PDF case below waits
   // with `vi.waitFor`'s 1 s default. Left cold, that case timed out, skipped its `c.destroy()`, and
   // every later case then queried the stale modal. This file tests the wiring, not import latency.
   beforeAll(async () => { await import('../../src/docx/docxToPdf'); });
@@ -96,6 +96,50 @@ describe('createDocxEditorController', () => {
     const model = parseDocModel(getDocumentXml(openOpc(out as unknown as Uint8Array)));
     expect(model.paragraphs.map(paragraphText)).toContain('Original');
     c.destroy();
+  });
+
+  // WS7 round 10 — an image the PDF exporter could not embed used to disappear with only the
+  // "PDF exported" toast; the user is now told, alongside that toast.
+  it('Export PDF warns when an image had to be left out of the PDF', async () => {
+    const BROKEN_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD8GO2jAAAAD0lEQVR42mP8z8BQz0AEAAUDAQGc8sJEAAAAAElFTkSuQmCC';
+    const blocks = [{ kind: 'image' as const, image: { dataB64: BROKEN_B64, mime: 'image/png' as const, widthPt: 40, heightPt: 40 }, anchorId: 0 }];
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]),
+      getModel: () => ({ blocks, paragraphs: [] }),
+      getImages: () => [],
+      view: {} as never,
+      destroy: vi.fn(),
+    };
+    const notify = vi.fn();
+    const download = vi.fn();
+    const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download, notify });
+    try { // a failed assertion must not leave this modal behind for the cases below
+      await c.loadBytes(new Uint8Array([9]), 'img.docx');
+      document.querySelector<HTMLButtonElement>('.docx-editor-export-pdf')?.click();
+      await vi.waitFor(() => expect(download).toHaveBeenCalled());
+      expect(notify).toHaveBeenCalledWith('docxEditor.pdfExported', 'info');
+      expect(notify).toHaveBeenCalledWith('docxEditor.pdfImagesSkipped', 'warn');
+    } finally { c.destroy(); }
+  });
+
+  it('Export PDF does not warn about images when none were skipped (control)', async () => {
+    const paras = [{ runs: [{ text: 'Plain' }] }];
+    const handle: DocxEditorHandle = {
+      save: () => new Uint8Array([1]),
+      getModel: () => ({ blocks: paras, paragraphs: paras }),
+      getImages: () => [],
+      view: {} as never,
+      destroy: vi.fn(),
+    };
+    const notify = vi.fn();
+    const download = vi.fn();
+    const c = createDocxEditorController({ loadEditor: vi.fn(() => Promise.resolve(handle)), download, notify });
+    try {
+      await c.loadBytes(new Uint8Array([9]), 'plain.docx');
+      document.querySelector<HTMLButtonElement>('.docx-editor-export-pdf')?.click();
+      await vi.waitFor(() => expect(download).toHaveBeenCalled());
+      expect(notify).not.toHaveBeenCalledWith('docxEditor.pdfImagesSkipped', 'warn');
+    } finally { c.destroy(); }
   });
 
   it('mounts the editor toolbar above the editor when the handle provides one', async () => {

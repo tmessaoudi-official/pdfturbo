@@ -120,6 +120,7 @@
     "exportPdf": "Exporter en PDF",
     "pdfExported": "PDF exporté",
     "pdfUnsupportedChars": "Certains caractères ne sont pas pris en charge par les polices PDF et ont été remplacés par « ? »",
+    "pdfImagesSkipped": "Certaines images n’ont pas pu être décodées et ont été omises du PDF",
     "pdfFailed": "Échec de l’export PDF",
     "tableStructureUnsupported": "Enregistré — mais les modifications de structure de tableau (suppression d’un tableau ou d’une ligne) ne sont pas encore conservées ; le tableau est gardé tel qu’à l’ouverture"
   },
@@ -584,6 +585,7 @@
     "sanitized": "Copie nettoyée téléchargée — {{count}} type(s) d'élément supprimé(s)",
     "sanitizeNothing": "Rien à supprimer — copie propre téléchargée",
     "sanitizeFailed": "Échec du nettoyage",
+    "sanitizeRefusedInvalidObject": "Nettoyage refusé — ce PDF contient un objet endommagé impossible à inspecter, qui pourrait masquer du contenu actif",
     "pageDownloaded": "Page {{page}} téléchargée !",
     "pageExportFailed": "Échec de l'export de page",
     "exportSourceNotFound": "Export échoué — PDF source introuvable",

@@ -996,7 +996,7 @@ describe('sanitizePdf — /AF on annotations, cross-page Popups, array cycles, k
  * The thread through the safety lens's two P1s and the export lens's P1 is one defect: the sanitizer
  * stripped the dictionaries its WALKS reached — catalog, leaf pages, listed annotations, `/Fields`
  * downward, bookmarks — while pdf.js reads `/AA` by INHERITANCE. `collectActions` walks `/Parent`
- * up to the `/Pages` root (`pdf.worker.mjs:1520-1526`, `:1327-1348`), so a script hung on the
+ * up to the `/Pages` root (`pdf.worker.mjs:1550-1556`, `:1357-1379`), so a script hung on the
  * page-tree root, or on a widget's parent field that no `/Fields` entry names, ran after sanitize
  * with every report flag false. A fourth walk would close two shapes; a backstop over EVERY
  * dictionary in the file closes the class, for the keys whose meaning is the same wherever they

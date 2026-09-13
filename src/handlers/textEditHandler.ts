@@ -1,4 +1,5 @@
-import { PDFDocument } from '@cantoo/pdf-lib';
+import type { PDFDocument } from '@cantoo/pdf-lib';
+import { loadPdfDocument } from '../utils/pdfLoadGuard';
 import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
@@ -234,7 +235,7 @@ export class TextEditHandler {
 
     // ── True edit first: content-stream surgery on the source PDF ──
     try {
-      const libDoc = await PDFDocument.load(src.bytes.slice(0));
+      const libDoc = await loadPdfDocument(src.bytes.slice(0));
 
       // pdfjs splits a single Tj string at word boundaries, so the clicked item
       // may be a sub-word whose transform[4,5] doesn't match the Tm origin in the

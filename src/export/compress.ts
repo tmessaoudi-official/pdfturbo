@@ -16,6 +16,7 @@
 
 import type { PDFDocument as PDFDocumentT } from '@cantoo/pdf-lib';
 import { sweepUnreachableObjects } from '../utils/pdfObjectGc';
+import { loadPdfDocument } from '../utils/pdfLoadGuard';
 
 export type CompressMode = 'lossless' | 'lossy';
 
@@ -102,8 +103,7 @@ export async function stripDocMetadata(doc: PDFDocumentT): Promise<void> {
  * is applied by the caller on the shared save (see ExportService.compressAndDownload).
  */
 export async function compressLossless(bytes: Uint8Array): Promise<Uint8Array> {
-  const { PDFDocument } = await import('@cantoo/pdf-lib');
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const doc = await loadPdfDocument(bytes, { updateMetadata: false });
   await stripDocMetadata(doc);   // strips AND sweeps — see the note there
   return doc.save({ useObjectStreams: true });
 }

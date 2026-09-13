@@ -257,3 +257,27 @@ describe('buildCellGrid (Feature 5 — merged cells)', () => {
     expect(z?.col).toBe(1);
   });
 });
+
+// WS7 round 10 — pdf-lib 2.11.0 decodes PNG with strict fflate, so a truncated zlib stream that 2.8.1
+// (pako) accepted now throws. `drawImage` used to swallow that and return, so the image vanished
+// from the PDF with no word to the user. The count is what lets the editor say so.
+describe('docModelToPdfBytes — images it cannot embed are COUNTED, not silently dropped', () => {
+  // 2×2 RGB PNG whose zlib stream is truncated — no decoder recovers it, strict or lenient.
+  const BROKEN_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD8GO2jAAAAD0lEQVR42mP8z8BQz0AEAAUDAQGc8sJEAAAAAElFTkSuQmCC';
+  // 2×2 opaque red PNG, valid.
+  const GOOD_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR42mP4z8AARAwQCgAf7gP9Y167WwAAAABJRU5ErkJggg==';
+  const img = (dataB64: string) => ({ kind: 'image' as const, image: { dataB64, mime: 'image/png' as const, widthPt: 40, heightPt: 40 }, anchorId: 0 });
+
+  it('reports one skipped image for an undecodable PNG, and still produces the PDF', async () => {
+    const p = para('Figure:');
+    const res = await docModelToPdfBytes({ blocks: [p, img(BROKEN_B64)], paragraphs: [p] });
+    expect(res.skippedImages).toBe(1);
+    expect(new TextDecoder().decode(res.bytes.slice(0, 5))).toBe('%PDF-');
+  });
+
+  it('reports zero for a decodable PNG (control)', async () => {
+    const p = para('Figure:');
+    const res = await docModelToPdfBytes({ blocks: [p, img(GOOD_B64)], paragraphs: [p] });
+    expect(res.skippedImages).toBe(0);
+  });
+});

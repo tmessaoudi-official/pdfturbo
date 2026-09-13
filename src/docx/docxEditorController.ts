@@ -202,10 +202,11 @@ export function createDocxEditorController(options: DocxEditorControllerOptions 
     // reflects in-session resize/delete. (`getImages()` stays on the handle for phase B insert/move.)
     import('./docxToPdf')
       .then(({ docModelToPdfBytes }) => docModelToPdfBytes(model))
-      .then(({ bytes, hadUnsupportedChars }) => {
+      .then(({ bytes, hadUnsupportedChars, skippedImages }) => {
         download(bytes, pdfName(currentName));
         notify('docxEditor.pdfExported', 'info');
         if (hadUnsupportedChars) notify('docxEditor.pdfUnsupportedChars', 'warn');
+        if (skippedImages > 0) notify('docxEditor.pdfImagesSkipped', 'warn');
       })
       .catch(() => notify('docxEditor.pdfFailed', 'error'));
   };

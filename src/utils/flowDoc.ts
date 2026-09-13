@@ -327,7 +327,7 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
 
   // The run's footprint comes from the TRANSFORM, not from `+x`. pdf.js's TextItem box is `width`
   // along the transform's FIRST column and `height` along its SECOND — read from
-  // `pdf.worker.mjs:35812-35821`, where `if (!font.vertical)` sets `width = 0` and
+  // `pdf.worker.mjs:35904-35913`, where `if (!font.vertical)` sets `width = 0` and
   // `height = hypot(trm[2],trm[3])` (the glyph size) and then ACCUMULATES the advance into
   // `totalWidth`; for vertical writing the two roles swap. Transforming those four corners is what
   // makes a rotated Tm work: extending `+x` by `|width|` tested a box DISJOINT from the glyphs of
@@ -355,7 +355,7 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   // A quarter of `col2` — the em along the DESCENDER direction — and neither of the two things this
   // line held before. `extent2` is the glyph size for horizontal text but the ACCUMULATED ADVANCE
   // for a vertical run, so it gave a five-glyph vertical line 15pt of band instead of 3pt. `size` is
-  // `hypot(a,b)`, which pdf.js builds as `fontSize * textHScale` (`pdf.worker.mjs:35780`), so under
+  // `hypot(a,b)`, which pdf.js builds as `fontSize * textHScale` (`pdf.worker.mjs:35872`), so under
   // `Tz < 100` it NARROWED the band — halving it at Tz 50 — which is the one direction a leak filter
   // may never move, and it re-opened the descender leak for condensed text. `hypot(c,d)` is the em
   // in both the horizontal and the vertical case. Found by two lenses independently.

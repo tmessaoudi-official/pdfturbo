@@ -120,6 +120,7 @@
     "exportPdf": "تصدير PDF",
     "pdfExported": "تم تصدير PDF",
     "pdfUnsupportedChars": "بعض الأحرف غير مدعومة في خطوط PDF وتم استبدالها بـ «؟»",
+    "pdfImagesSkipped": "تعذّر فك ترميز بعض الصور فلم تُضمَّن في ملف PDF",
     "pdfFailed": "تعذّر تصدير PDF",
     "tableStructureUnsupported": "تم الحفظ — لكن تغييرات بنية الجدول (مثل حذف جدول أو صف) لا تُحفظ بعد؛ يُحتفظ بالجدول كما فُتح"
   },
@@ -584,6 +585,7 @@
     "sanitized": "تم تنزيل نسخة منظَّفة — تمت إزالة {{count}} نوعًا من العناصر",
     "sanitizeNothing": "لا شيء لإزالته — تم تنزيل نسخة نظيفة",
     "sanitizeFailed": "فشل التنظيف",
+    "sanitizeRefusedInvalidObject": "رُفض التنظيف — يحتوي ملف PDF هذا على كائن تالف تتعذّر معاينته وقد يُخفي محتوى نشطًا",
     "pageDownloaded": "تم تنزيل الصفحة {{page}}!",
     "pageExportFailed": "فشل تصدير الصفحة",
     "exportSourceNotFound": "فشل التصدير — ملف PDF المصدر غير موجود",

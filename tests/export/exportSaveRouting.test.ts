@@ -13,6 +13,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { ExportService, type IExportContext } from '../../src/export/exportService';
+import { buildInvalidObjectPdf, buildContentStreamPdf } from '../utils/_invalidObjectFixture';
 
 type GlobalWithPicker = typeof globalThis & { showSaveFilePicker?: unknown };
 const g = globalThis as GlobalWithPicker;
@@ -196,6 +197,33 @@ describe('sanitizeAndDownload save routing', () => {
     expect(probe.downloads).toHaveLength(0);
     expect(probe.infos).toHaveLength(0);
     expect(probe.errors).toEqual([]);
+  });
+});
+
+// ── WS7 round 10: the two load-time failures a real assembly must surface ──────
+
+describe('export over a source pdf-lib cannot fully parse', () => {
+  it('sanitize REFUSES a reachable unparseable object with its own toast, and writes nothing', async () => {
+    // Runs the real assembly first, so this also proves the opaque object survives copyPages into
+    // the bytes the sanitizer sees — a copier that dropped it would make the refusal unreachable.
+    const probe = buildProbe(buildInvalidObjectPdf({ reachable: true }));
+    await probe.svc.sanitizeAndDownload();
+    expect(probe.errors).toEqual(['toast.sanitizeRefusedInvalidObject']);
+    expect(probe.downloads).toHaveLength(0);
+  });
+
+  it('the export FAILS loudly when pdf-lib dropped the page content, instead of writing an empty page', async () => {
+    const probe = buildProbe(buildContentStreamPdf({ brokenLast: true }));
+    await probe.svc.downloadPDF();
+    expect(probe.errors).toEqual(['toast.pdfExportFailed']);
+    expect(probe.downloads).toHaveLength(0);
+  });
+
+  it('the same source with its content intact exports normally (control)', async () => {
+    const probe = buildProbe(buildContentStreamPdf());
+    await probe.svc.downloadPDF();
+    expect(probe.errors).toEqual([]);
+    expect(probe.downloads).toHaveLength(1);
   });
 });
 

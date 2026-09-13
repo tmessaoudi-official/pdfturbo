@@ -20,6 +20,7 @@
 
 import { PDFDocument, StandardFonts, rgb, type Color, type PDFFont, type PDFPage } from '@cantoo/pdf-lib';
 import { isDocTable, isDocImageBlock, type DocModel, type DocBlock, type DocParagraph, type DocTable, type DocCell } from './docModel';
+import { embedPngTolerant } from '../utils/pngEmbed';
 
 /** Point size for a heading level relative to the body `base` size (H1>H2>H3>base). */
 export function headingFontSize(level: 1 | 2 | 3, base: number): number {
@@ -137,6 +138,8 @@ function _b64ToBytes(b64: string): Uint8Array {
 export interface DocxToPdfResult {
   bytes: Uint8Array;
   hadUnsupportedChars: boolean;
+  /** Images that could not be embedded and are absent from the PDF — the editor warns when > 0. */
+  skippedImages: number;
 }
 
 const A4_W = 595.28;
@@ -232,6 +235,7 @@ export async function docModelToPdfBytes(
   };
 
   let hadUnsupportedChars = false;
+  let skippedImages = 0;
   let page: PDFPage = doc.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin;
 
@@ -481,9 +485,13 @@ export async function docModelToPdfBytes(
     let embedded;
     try {
       const data = _b64ToBytes(img.dataB64);
-      embedded = img.mime === 'image/png' ? await doc.embedPng(data) : await doc.embedJpg(data);
+      embedded = img.mime === 'image/png' ? await embedPngTolerant(doc, data) : await doc.embedJpg(data);
     } catch {
-      return; // a corrupt/unsupported image is skipped, never fatal to the export
+      // Never fatal to the export — but COUNTED, so the editor can say an image is missing. This
+      // `return` used to be silent, which pdf-lib 2.11.0's strict PNG decoder made reachable for
+      // PNGs that embedded under 2.8.1. [WS7 round 10]
+      skippedImages++;
+      return;
     }
     let w = img.widthPt > 0 ? img.widthPt : embedded.width;
     let h = img.heightPt > 0 ? img.heightPt : embedded.height;
@@ -506,7 +514,7 @@ export async function docModelToPdfBytes(
   }
 
   const bytes = await doc.save();
-  return { bytes, hadUnsupportedChars };
+  return { bytes, hadUnsupportedChars, skippedImages };
 }
 
 /** CP1252 high chars (the 0x80–0x9F slots) mapped to their Unicode codepoints. */

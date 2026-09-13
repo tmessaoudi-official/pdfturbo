@@ -13,6 +13,7 @@ import type { IProgressManager } from './progressManager';
 import { ElementFactory } from '../utils/elementFactory';
 import { loadState, clearState } from '../infra/storage';
 import { trapFocus } from '../utils/focusTrap';
+import { embedPngTolerant, rasterToPngBytes } from '../utils/pngEmbed';
 
 // Untrusted-PDF input caps — defence-in-depth against OOM/DoS from a malicious
 // or pathological file. Deliberately generous: a real document never approaches
@@ -235,30 +236,14 @@ export class DocumentLoader {
     for (const file of imageFiles) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const isJpeg = file.type === 'image/jpeg' || file.type === 'image/jpg';
-      const img = isJpeg ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(
-        // oxlint-disable-next-line eslint/require-await -- normalizes both return paths (sync bytes / Promise) to Promise<Uint8Array> for embedPng
-        await (async () => {
-          // convert non-PNG/JPEG to PNG via canvas
-          if (file.type === 'image/png') return bytes;
-          return new Promise<Uint8Array>((resolve, reject) => {
-            const blob = URL.createObjectURL(file);
-            const imgEl = new Image();
-            imgEl.onerror = () => { URL.revokeObjectURL(blob); reject(new Error(`Failed to decode image: ${file.name}`)); };
-            imgEl.onload = () => {
-              const canvas = document.createElement('canvas');
-              canvas.width = imgEl.naturalWidth;
-              canvas.height = imgEl.naturalHeight;
-              canvas.getContext('2d')?.drawImage(imgEl, 0, 0);
-              canvas.toBlob((b) => {
-                if (!b) { reject(new Error('canvas.toBlob returned null')); return; }
-                b.arrayBuffer().then(ab => resolve(new Uint8Array(ab)), reject);
-              }, 'image/png');
-              URL.revokeObjectURL(blob);
-            };
-            imgEl.src = blob;
-          });
-        })()
-      );
+      // PNG goes straight to pdf-lib, falling back to a browser decode when pdf-lib 2.11.0's strict
+      // inflate rejects a stream the browser displays fine [WS7 round 10]; any other format is
+      // decoded by the browser and re-encoded as PNG. One canvas path serves both.
+      const img = isJpeg
+        ? await pdfDoc.embedJpg(bytes)
+        : file.type === 'image/png'
+          ? await embedPngTolerant(pdfDoc, bytes)
+          : await pdfDoc.embedPng(await rasterToPngBytes(file));
       const page = pdfDoc.addPage([img.width, img.height]);
       page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
     }

@@ -173,7 +173,7 @@ export function walkPageOps(
    * The active Form-XObject `/BBox` clip, in the SAME frame as `ctm` (so crop-relative under an
    * `origin`) — the C22 lockstep is bought by deriving it FROM `ctm` rather than from the raw args.
    *
-   * WS4-F. pdf.js's canvas backend clips a form to its `/BBox` — `pdf.mjs:12350-12362` does
+   * WS4-F. pdf.js's canvas backend clips a form to its `/BBox` — `pdf.mjs:12534-12545` does
    * `save()`, then `transform(...matrix)`, then `ctx.clip(rect(bbox))`, so the box is expressed in
    * the POST-matrix space; `paintFormXObjectEnd`'s `restore()` pops it. This walker had zero `BBox`
    * reads, so a rule drawn past its form's boundary — invisible on screen and in every rasterised
@@ -235,7 +235,7 @@ export function walkPageOps(
       ctm = composeCtm(ctm, a, b, c, d, e, f);
     } else if (fn === OPS['beginAnnotation']) {
       // An annotation's appearance stream is placed by ops the page content stream never shows.
-      // pdf.js's canvas backend (pdf.mjs:12638-12696) resets to the base transform, saves, then
+      // pdf.js's canvas backend (pdf.mjs:12824-12880) resets to the base transform, saves, then
       // applies `transform` and `matrix` — args[2] and args[3]. Without this an image painted by
       // a Stamp/FreeText appearance reported its ctm at the PAGE ORIGIN, so
       // `imagePlacementRedacted` both MISSED a redaction over a stamped image and falsely

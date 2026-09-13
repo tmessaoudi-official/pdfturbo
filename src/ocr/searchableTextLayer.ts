@@ -16,7 +16,6 @@
  * `git show ac4ef68^:docs/superpowers/specs/2026-06-15-searchable-ocr-spike-design.md`
  */
 import {
-  PDFDocument,
   StandardFonts,
   TextRenderingMode,
   beginText,
@@ -31,6 +30,7 @@ import {
   type PDFOperator,
 } from '@cantoo/pdf-lib';
 import { hasNonWinAnsi } from '../utils/contentStreamEditor';
+import { loadPdfDocument } from '../utils/pdfLoadGuard';
 import { isArabicText } from '../utils/flowDoc';
 
 /** An OCR word bbox in image-pixel space, top-left origin, at the render scale. */
@@ -297,7 +297,7 @@ export async function applySearchableLayerToPdf(
   // unlike the other loads in this repo THIS one's `.save()` replaces the in-memory source bytes via
   // `ReplaceSourcePdfBytesCmd` — so the re-stamp lands on the user's document and would defeat a
   // later sanitize-then-verify on it. [WS5 audit, 2026-09-04]
-  const doc = await PDFDocument.load(srcBytes, { updateMetadata: false });
+  const doc = await loadPdfDocument(srcBytes, { updateMetadata: false });
   const page = doc.getPage(sourcePageNum - 1);
 
   const rotation = asCardinalAngle(page.getRotation().angle);

@@ -30,6 +30,7 @@ import {
 } from './appearance';
 import { loadP12, scrubP12Material, type P12Material } from './p12';
 import { buildDetachedCms } from './cms';
+import { loadPdfDocument } from '../utils/pdfLoadGuard';
 import {
   BYTE_RANGE_SENTINEL,
   byteRangeReplacement,
@@ -99,7 +100,7 @@ export class PdfSigner {
 
     try {
       const pdfLib = await import('@cantoo/pdf-lib');
-      const doc = await this._loadDocument(pdfLib, pdfBytes);
+      const doc = await this._loadDocument(pdfBytes);
       const page = doc.getPage(opts.page);
 
       const signerName = (opts.name ?? '').trim() || material.commonName;
@@ -143,8 +144,7 @@ export class PdfSigner {
       );
     }
 
-    const pdfLib = await import('@cantoo/pdf-lib');
-    const doc = await this._loadDocument(pdfLib, pdfBytes);
+    const doc = await this._loadDocument(pdfBytes);
     validatePageIndex(page, doc.getPageCount());
     // getMediaBox(), not getSize(): a /Rect is ABSOLUTE user space, so on a page whose media
     // box origin is non-zero the bare dimensions reject legitimate placements near the far edge.
@@ -153,11 +153,10 @@ export class PdfSigner {
   }
 
   private async _loadDocument(
-    pdfLib: typeof import('@cantoo/pdf-lib'),
     pdfBytes: Uint8Array,
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     try {
-      return await pdfLib.PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      return await loadPdfDocument(pdfBytes, { ignoreEncryption: true });
     } catch (cause) {
       throw new SignError('PDF_PARSE_FAILED', 'Could not load the PDF for signing.', { cause });
     }

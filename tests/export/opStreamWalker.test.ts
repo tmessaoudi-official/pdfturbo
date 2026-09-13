@@ -155,7 +155,7 @@ describe('walkPageOps — CropBox origin (C22)', () => {
 /**
  * WS4-F — the Form XObject `/BBox` clip.
  *
- * pdf.js clips a form to its `/BBox` (`pdf.mjs:12350-12362`: `save()` → `transform(...matrix)` →
+ * pdf.js clips a form to its `/BBox` (`pdf.mjs:12534-12545`: `save()` → `transform(...matrix)` →
  * `ctx.clip(rect(bbox))`), so a rule drawn past the boundary is invisible on screen and in every
  * rasterised export. The walker reported it at full length, and an over-long `vRule` is read by
  * `buildTableGrid` as a column boundary — after which `reconstructPage` REMOVES the in-region words

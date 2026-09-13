@@ -49,8 +49,12 @@
  * It does NOT touch page content streams, AcroForm field values, hyperlink actions, or
  * annotations' visual appearance — only metadata, active-content and egress vectors. Not
  * stripped, and deliberately: /S /Rendition WITHOUT /JS, /Sound, /Movie, /GoTo3DView and
- * /RichMediaExecute are media playback inside the document (pdf.js runs none of them), and
- * stripping them would delete legitimate content to no security end.
+ * /RichMediaExecute are media playback inside the document, and stripping them would delete
+ * legitimate content. They are NOT inert, and an earlier version of this comment said pdf.js runs
+ * none of them: pdf.js's `MediaAnnotationElement` loads and plays a clip when its button is
+ * clicked (`pdf.mjs`, `#load` on "click"). What they cannot do is reach outside the document on
+ * their own — the reason they are kept is that playback needs a click and stays in-document, not
+ * that nothing plays. [WS7 round 10]
  *
  * Structure: targeted walks first (catalog, pages, listed annotations, /Fields downward,
  * bookmarks), then ONE pass over every dictionary in the file as the backstop for whatever no
@@ -62,6 +66,7 @@
 // constructors, so InstanceType<typeof X> is rejected; the named types work.
 import type { PDFDict as PDFDictT, PDFArray as PDFArrayT } from '@cantoo/pdf-lib';
 import { sweepUnreachableObjects } from './pdfObjectGc';
+import { loadPdfDocument } from './pdfLoadGuard';
 
 export interface SanitizeReport {
   /** /Info dictionary had ≥1 entry and was cleared. */
@@ -137,11 +142,25 @@ export function anyRemoved(r: SanitizeReport): boolean {
   );
 }
 
+/**
+ * Thrown when the file holds an object pdf-lib could not parse and the document still references it.
+ * Its `name` is what `ExportService.sanitizeAndDownload` keys the specific toast on — the class is
+ * not imported there, because that would pull this lazily-loaded module into the service's chunk.
+ */
+export class SanitizeRefusedError extends Error {
+  readonly refs: string[];
+  constructor(refs: string[]) {
+    super(`SANITIZE_REFUSED: ${refs.join(', ')} could not be parsed, so it could not be inspected`);
+    this.name = 'SanitizeRefusedError';
+    this.refs = refs;
+  }
+}
+
 export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
-  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFRef, PDFStream } = await import('@cantoo/pdf-lib');
+  const { PDFName, PDFDict, PDFArray, PDFRef, PDFStream, PDFInvalidObject } = await import('@cantoo/pdf-lib');
   // updateMetadata:false — otherwise pdf-lib re-stamps Producer + ModDate into
   // /Info at load time, re-injecting the very identifying metadata we strip.
-  const doc = await PDFDocument.load(input, { updateMetadata: false });
+  const doc = await loadPdfDocument(input, { updateMetadata: false });
   const ctx = doc.context;
   const cat = doc.catalog;
 
@@ -590,6 +609,19 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
     ctx as never,
     { PDFRef, PDFStream, PDFDict, PDFArray } as never,
   );
+
+  // ── Refuse what cannot be inspected ──────────────────────────────────────────────────────────
+  // pdf-lib keeps an object it could not parse as opaque bytes and writes them back verbatim. Every
+  // walk above, and the backstop, test `instanceof PDFDict`, so such an object is invisible to all of
+  // them — while pdf.js parses the same bytes leniently. Measured: a JavaScript action inside a
+  // malformed Widget survived a sanitize with every report flag false, and pdf.js still found it.
+  // Stripping it is impossible (we cannot see its keys), and passing it through would be a clean
+  // report on a file that is not clean. So refuse. The check runs AFTER the sweep, so an unparseable
+  // orphan nothing references has already been deleted and does not block a sanitize. [WS7 round 10]
+  const opaque = ctx.enumerateIndirectObjects()
+    .filter(([, obj]) => obj instanceof PDFInvalidObject)
+    .map(([ref]) => ref.toString());
+  if (opaque.length > 0) throw new SanitizeRefusedError(opaque);
 
   const bytes = await doc.save({ useObjectStreams: false });
   return { bytes, report };

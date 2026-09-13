@@ -120,6 +120,7 @@
     "exportPdf": "Export PDF",
     "pdfExported": "PDF exported",
     "pdfUnsupportedChars": "Some characters aren’t supported by the PDF fonts and were replaced with “?”",
+    "pdfImagesSkipped": "Some images couldn’t be decoded and were left out of the PDF",
     "pdfFailed": "Couldn’t export the PDF",
     "tableStructureUnsupported": "Saved — but table structure changes (e.g. deleting a table or row) aren’t kept yet; the table is preserved as it was opened"
   },
@@ -584,6 +585,7 @@
     "sanitized": "Sanitized copy downloaded — {{count}} artifact type(s) removed",
     "sanitizeNothing": "Nothing to strip — downloaded a clean copy",
     "sanitizeFailed": "Sanitize failed",
+    "sanitizeRefusedInvalidObject": "Sanitize refused — this PDF contains a damaged object that can’t be inspected and could hide active content",
     "pageDownloaded": "Page {{page}} downloaded!",
     "pageExportFailed": "Page export failed",
     "exportSourceNotFound": "Export failed — source PDF not found",

@@ -308,7 +308,7 @@ describe('image MIME validation (BUG-43)', () => {
 
 // Extracted from pdfTurboApp.ts _transformPoint / _inverseTransformPoint.
 // Two variants: BUGGY (current code — swapped 90/270, wrong 180 y) and
-// CORRECT (fixed — derived from pdfjs rotation matrices in pdf.mjs:818-844).
+// CORRECT (fixed — derived from pdfjs rotation matrices in pdf.mjs:834-861).
 const buggyTransformPoint = (px: number, py: number, W: number, H: number, rot: number) => {
   switch (((rot % 360) + 360) % 360) {
     case 90:  return { x: W - py, y: H - px }; // WRONG: this is 270's formula

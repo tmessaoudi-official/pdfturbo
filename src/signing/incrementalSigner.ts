@@ -35,6 +35,7 @@ import { SignError, type SignatureRect } from './types';
 import { formatPdfDate, rectToPdfArray, validatePageIndex, validateRect } from './appearance';
 import type { P12Material } from './p12';
 import { buildDetachedCms } from './cms';
+import { loadPdfDocument } from '../utils/pdfLoadGuard';
 import {
   collectSignedBytes,
   computeByteRange,
@@ -199,7 +200,7 @@ export async function addIncrementalSignature(
 
   let doc: import('@cantoo/pdf-lib').PDFDocument;
   try {
-    doc = await pdfLib.PDFDocument.load(signedBytes, { ignoreEncryption: true, updateMetadata: false });
+    doc = await loadPdfDocument(signedBytes, { ignoreEncryption: true, updateMetadata: false });
   } catch (cause) {
     throw new SignError('PDF_PARSE_FAILED', 'Could not load the signed PDF for incremental signing.', { cause });
   }

@@ -15,6 +15,14 @@ vi.mock('@cantoo/pdf-lib', () => ({
   PDFDocument: { load: vi.fn().mockResolvedValue({}) },
 }));
 
+// The handler loads through the load guard, which imports pdf-lib itself; route it to the mocked
+// `PDFDocument.load` above so each case's `mockResolvedValue` still decides what the handler gets.
+vi.mock('../../src/utils/pdfLoadGuard', () => ({
+  loadPdfDocument: async (bytes: Uint8Array, opts?: unknown) => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    return (PDFDocument.load as (b: Uint8Array, o?: unknown) => Promise<unknown>)(bytes, opts);
+  },
+}));
 vi.mock('../../src/utils/contentStreamEditor', () => ({
   findTextOpAt:     mockFindTextOpAt,
   deleteTextAt:     mockDeleteTextAt,

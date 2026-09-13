@@ -13,7 +13,7 @@ import { undo } from 'prosemirror-history';
 import { mountDocxEditor } from '../../src/docx/docxProseMirror';
 import { openOpc, getDocumentXml } from '../../src/docx/opcEdit';
 
-// 1×1 transparent PNG.
+// 1×1 opaque black PNG (grey + alpha, alpha 255).
 const PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg+A8AAQIBANEay48AAAAASUVORK5CYII=';
 function b64ToBytes(b64: string): Uint8Array {

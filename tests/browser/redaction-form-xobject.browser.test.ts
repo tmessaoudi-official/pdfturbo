@@ -154,7 +154,7 @@ describe('walkPageOps — annotation placement transforms (real pdf.js)', () => 
   /**
    * `beginAnnotation`/`endAnnotation` are the same class of implicit-CTM op as
    * `paintFormXObjectBegin`/`End`, one step further out. pdf.js's canvas backend does
-   * `save()` then `transform(...transform); transform(...matrix)` (pdf.mjs:12638-12696), and
+   * `save()` then `transform(...transform); transform(...matrix)` (pdf.mjs:12824-12880), and
    * restores at `endAnnotation` — so an image painted by an annotation's appearance stream is
    * placed by ops the walker never composed. It reported the ctm at the PAGE ORIGIN, so
    * `imagePlacementRedacted` missed a redaction over a stamped image in the DOCX/MD/TXT export

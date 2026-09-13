@@ -7,11 +7,11 @@
  * option — the header is the lever. We therefore bump the header to 1.7ext3 so a
  * locked PDF gets modern AES-256 instead of the silent AES-128 default.
  *
- * Revision note: the library hardcodes /R 5 (Adobe Extension Level 3) in
- * initializeV5 — the PDF-2.0-hardened /R 6 (iterated key-derivation, Algorithm
- * 2.B) has NO code path here and is unreachable without swapping the write
- * library. R5 AES-256 is a large step up from the AES-128 default; its only
- * weakness vs R6 is weaker password-hash hardening, not the AES cipher itself.
+ * Revision note: since @cantoo/pdf-lib 2.11.0 the V5 handler writes /R 6 — AES-256 with
+ * the PDF-2.0 iterated key derivation (Algorithm 2.B), `PDFSecurity.js` "revision 6". Until
+ * the 2026-09-13 upgrade this comment said the library hardcoded /R 5 with no R6 path; that
+ * was true of 2.8.1 and stopped being true with the bump. Re-check `/R` in a locked export
+ * after any pdf-lib upgrade rather than trusting this sentence.
  *
  * We also pass an EXPLICIT permissions object. Omitting `permissions` makes the
  * library clear every allow-bit (`0xfffff0c0`), producing a doc that denies

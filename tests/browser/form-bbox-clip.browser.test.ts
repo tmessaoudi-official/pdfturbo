@@ -1,7 +1,7 @@
 /**
  * WS4-F — a rule drawn PAST its Form XObject's `/BBox` deleted a paragraph from the export.
  *
- * pdf.js clips a form to its `/BBox` (`pdf.mjs:12350-12362`: `save()` → `transform(...matrix)` →
+ * pdf.js clips a form to its `/BBox` (`pdf.mjs:12534-12545`: `save()` → `transform(...matrix)` →
  * `ctx.clip(rect(bbox))`), so content outside the box is invisible on screen and in every
  * rasterised export. `walkPageOps` had ZERO `BBox` reads, so it reported that invisible content
  * as page geometry.
