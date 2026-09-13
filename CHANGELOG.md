@@ -97,7 +97,13 @@ most of the work went into proving that what the product claims to remove is act
 - **Opening a legal PDF could fail** when a page's text happened to read like a PDF object header
   (for example `9 0 obj`), and the check behind that refusal slowed sharply on large files with many
   broken references — about 1.3 s on a 20 MB file with 300. Both came from the load check added the
-  same day; it now reads the file once and ignores stream contents.
+  same day, which no longer reads the file's text at all (next entry).
+- **A damaged PDF could still export with parts silently missing.** The load check that refuses a file
+  the PDF library had quietly dropped part of could be fooled — by a truncated stream, by unusual but
+  legal spacing or comments between objects, by an object stored inside a compressed object stream, or
+  when an edited file's newest version of an object was the broken one — and the export then came out
+  with that content missing. The check now asks the PDF library which objects it dropped, instead of
+  searching the file for them.
 
 ### Fixed — accessibility, correctness, supply chain
 - Three serious and one critical WCAG 2.1 AA rules cleared; 24 controls given explicit

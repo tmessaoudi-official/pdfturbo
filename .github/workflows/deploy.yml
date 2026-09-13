@@ -58,6 +58,7 @@ jobs:
       # single-click crawl cannot. Measured: 150 checks / 112 pass / 0 fail vs 143 / 97 / 0 without
       # (151 / 114 / 0 at the 2026-09-13 gate — the report's own summary line is the authority).
       # scripts/qa-sweep.mjs records 145 / 107 for a flagged run the same 2026-07-31 day; neither log was kept.
+      # CLAUDE.md records 142 / 98 for a default-flag run where this line says 143 / 97; no log of either.
       #
       # It does NOT reach the export flyout's items (flatten, sanitize, watermark, Bates, compress,
       # DOCX/MD/XFDF) — `modalBinder.ts` shuts that flyout on any click, so only its first item is

@@ -1,11 +1,11 @@
 # WS7 — certification record for `dfe34ae..HEAD`
 
-**Status: NOT CERTIFIED.** Ten MAXIMAL panel rounds were run against this range and the
+**Status: NOT CERTIFIED.** Twelve MAXIMAL panel rounds were run against this range and the
 two-consecutive-clean counter never rose above **0 of 2**. No `WS7: 2/2 clean at <sha>` entry exists
 in `docs/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
 
 This file is committed because the per-round reports live under `var/claude/ws7/`, which
-`.gitignore` excludes — so they do not reach a clone, and for four of the ten rounds no report file
+`.gitignore` excludes — so they do not reach a clone, and for four of the twelve rounds no report file
 was ever written at all. A certification debt whose only record is machine-local is not a record.
 [Created WS7 round 7, 2026-09-04, after the completeness lens found the plan citing a gitignored path.]
 
@@ -22,11 +22,12 @@ was ever written at all. A certification debt whose only record is machine-local
 | 7 | 10 | Found the round-6 sanitizer fix had closed ONE shape of its class (and left three siblings), and a colour regression from WS4-F. |
 | 8 | 19 | All THREE lenses independently found the same head-of-`/A` defect from round 7. |
 | 9 | 22 | At `2a19552`, all three lenses (4 export, 8 safety, 10 completeness). Two P1s: pdf.js INHERITS `/AA` through `/Parent`, so a script on the `/Pages` root or an unlisted field parent ran after sanitize. Plus a regression from `3fc0863` (the paperclip's own scripts) and one from `2a19552` itself (a "corrected" opcGc count that was wrong). |
-| 11 | 12 | At `ac08b61`, all three lenses on Node 24 (2 export, 2 safety, 8 completeness). Sanitize & download never applied Lock PDF, and two defects were in round 10's own load guard: a per-reference rescan of the whole file, and an unanchored header match that refused a legal file. |
 | 10 | 18 | At `d377ced`, after the dependency upgrade, all three lenses on Node 24 (1 export, 4 safety, 13 completeness). Two P1s: pdf-lib 2.11.0's strict PNG decode silently dropped user images from DOCX→PDF — which `d00cd26` and `d377ced` had recorded as a fixture problem — and an object pdf-lib cannot parse hid a live script from every sanitizer walk. |
+| 11 | 12 | At `ac08b61`, all three lenses on Node 24 (2 export, 2 safety, 8 completeness). Sanitize & download never applied Lock PDF, and two defects were in round 10's own load guard: a per-reference rescan of the whole file, and an unanchored header match that refused a legal file. |
+| 12 | 13 | At `d7eb108`, all three lenses on Node 24 (5 export, 1 safety, 7 completeness). Every code finding was in the load guard's text scan for object headers — a second tokenizer that disagreed with pdf-lib's six ways, five of them ACCEPTING a file pdf-lib had dropped from, three of those caused by round 11's own stream skip and boundary rule. |
 
-Seven of the eleven rounds found defects in the **previous** round's fixes — rounds 6, 7, 8, 9, 10 and 11
-by the surviving reports (which exist for rounds 4 and 6 to 11; none was written for 1, 2, 3 or 5), and
+Eight of the twelve rounds found defects in the **previous** round's fixes — rounds 6, 7, 8, 9, 10, 11 and 12
+by the surviving reports (which exist for rounds 4 and 6 to 12; none was written for 1, 2, 3 or 5), and
 round 2 by the note in the table above, which was written from memory when this file was created. That
 is the single most important fact in this file: in this range, a fix has been about as likely to
 introduce a finding as to close one, which is why the bar was not lowered.
@@ -263,3 +264,53 @@ Still flagged to the developer, unchanged: `/PieceInfo` stripping (unruled) and 
 whose premise round 10 corrected.
 
 **The counter remains 0 of 2.** Round 12 is next.
+
+## Round 12 — what was fixed (2026-09-13)
+
+Round 12 ran at `d7eb108` over `dfe34ae..d7eb108`, focused on the round-11 commits (`0ee442c`, `d7eb108`),
+all three lenses in isolated worktrees on Node 24. It returned **13 findings**: 5 export, 1 safety,
+7 completeness — one of them found by all three lenses independently. The round-11 fixes it re-verified
+held: Sanitize & download applies Lock PDF (executed by two lenses, one with a sabotage; with no password
+the output is byte-identical to `sanitizePdf(assemblePdfBytes())`), and the guard's single pass. Every
+code finding was in that guard.
+
+| Defect | Evidence it was real |
+|---|---|
+| **P1** (export lens; P2/P3 in the others) a stream with no `endstream` ended the header scan for the rest of the file, so a later drop was ACCEPTED and exported empty | probe: raw pdf-lib dropped the object, the guard accepted, the export lost the page text or the annotation; the same file with `endstream` was refused |
+| **P2** a real header glued to `endobj`, `>>`, `]` or `)` was missed — round 11's whitespace-only boundary | four probes, each accepted and exported empty; round 10's regex matched all four |
+| **P2** `>> stream` inside a string started a fake stream skip that hid the dropped object's header — found by all three lenses; three doc sites said what remained "errs towards refusing" | the control refused, the same file with the string accepted |
+| **P2** a member lost from an object stream has no header, so the scan could never see it, and no doc said so | members ordered 7, 9, 8 with 9 malformed: 8 missing from the export while pdf.js showed it |
+| **P3** a string reading ` 9 0 obj ` still refused a legal file; a comment between header tokens was missed (pre-existing) | executed |
+| **P3** docs and pins: this file said "Ten" rounds twice and listed round 11 above round 10; `CLAUDE.md` cited 3 for the rescan sabotage where it measures 4; the default-flag QA baseline disagreed between `CLAUDE.md` and `deploy.yml`; no test set a password on compress, lossless or lossy | read, or re-run |
+
+**The text scan was replaced, not patched a third time.** Rounds 10, 11 and 12 had each found it wrong in a
+new place, because it was a second tokenizer that had to agree with pdf-lib's. Before any code, a probe ran
+all sixteen shapes through pdf-lib with its two drop points instrumented: every round-12 fail-open was a
+real drop at one of them, none a shape pdf-lib reads differently. The guard now wraps those two points
+(`PDFParser.tryToParseInvalidIndirectObject` returning nothing, `PDFObjectStreamParser.parseIntoContext`
+throwing part-way), records what each dropped reference resolved to at that moment, and refuses when a
+reachable drop still resolves to the same thing after the load. That also closes a bound the scan could
+not: a dropped NEWEST revision with an older one standing in. Failing tests first, each confirmed red for
+the stated reason (the old guard accepted the file, or refused the legal one); sabotage figures in
+`CLAUDE.md`. One sabotage stayed green — skipping a per-member "was it assigned?" check — and the check was
+deleted, since the end-of-load comparison already decides it. A browser-suite case runs the refusal in the
+Vite bundle, where a second copy of pdf-lib would leave jsdom green. Compress joined the Lock PDF class test
+(lossless in jsdom, lossy in the browser suite), each pin proven by removing that mode's password call.
+
+**Not certified by this round, named:** bytes pdf-lib never parses as an object — skipped as junk, or
+swallowed by a stream whose end it places too late — are not a drop and are not detected; that bound is
+disclosed, not tested. No encrypted file with a drop was built, so the check running against the second,
+decrypting parse rests on reading `PDFDocument.load`.
+
+No browser suite or QA sweep ran inside the panel; the fix gate's runs are the evidence for those. That gate
+(Node 24, the working tree over `d7eb108` that became `02dd373` and the docs commit after it — all of it
+except two later markdown edits: plan row 23 and this paragraph) was green at every step: audit (0
+vulnerabilities), OCR assets, type-check, lint, jsdom 2724 passed / 2 expected fail / 1 skipped, browser
+90 files / 340 tests, export branch coverage 44.07 %, build (precache 24), and the QA sweep with
+`--allow-destructive` at 151 checks / 114 pass / 0 fail. The logs are under the gitignored
+`var/claude/ws7/round12-fix-gate/`.
+
+Still flagged to the developer, unchanged: `/PieceInfo` stripping (unruled) and the kept-media ruling,
+whose premise round 10 corrected.
+
+**The counter remains 0 of 2.** Round 13 is next.

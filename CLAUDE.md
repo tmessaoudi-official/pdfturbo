@@ -165,7 +165,8 @@ work?", which **neither** vitest suite does: jsdom has no canvas and the browser
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
 UI crawl is over **disclosure depth** (only 8 of 141 buttons are visible on a freshly loaded document)
-rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s. **CI runs it with
+rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s
+— `deploy.yml` records 143 / 97 / 0 for a default-flag run; neither log was kept, so read the report's own summary line. **CI runs it with
 `--allow-destructive`** — correct there because the flag protects a developer's own open document,
 and CI drives a throwaway browser on a fixture; without it the gate skipped 44 controls including
 redaction and flatten. That run measured 145 checks / 107 pass / 0 fail on 2026-07-31 and 151 / 114 / 0
@@ -1309,20 +1310,33 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   after a default load cannot see it**: `updateMetadata: true` registers a new `/Info` dict under the next
   free object number, which after a drop IS the dropped number, so `/Contents 5 0 R` resolves to the Info
   dict and nothing dangles. `src/utils/pdfLoadGuard.ts` `loadPdfDocument` loads without the stamp, refuses
-  (`PdfObjectDroppedError`) when a reachable reference resolves to nothing AND its `N G obj` header is in
-  the bytes — collected in ONE pass, and only at a token boundary outside every stream body — then
-  applies pdf-lib's own `updateInfoDict()`. WS7 round 11 found both halves of that wrong in the first
-  version: each dangling reference re-scanned the whole file (measured 1267 ms on 20 MB at 300
-  references), and the unanchored match refused a legal file whose page merely SHOWED `9 0 obj`.
-  Sabotage: the per-reference rescan back → 3 (the cost case and both page-text cases); stream bodies
-  scanned → 1; the boundary dropped → 1, and only because a case puts the text in a catalog string — the
-  first run of that sabotage stayed green, since the stream skip hid page text either way. **Every pdf-lib load in `src/` goes through
-  it**; `tests/utils/pdfLoadGuard.test.ts` fails by file name on a direct `PDFDocument.load`. Three bounds:
-  if the NEWEST revision of an incrementally-updated object is the one dropped, the older revision stands
-  in unnoticed; and a legal dangling reference with no header is still left for pdf-lib's stamp to reuse. A third errs
-  towards refusing: stream data containing `endstream` before its real end resumes the scan inside it.
-  Found while preparing the round-10 fixes, not by a lens — the first probe used a WELL-FORMED
-  unterminated object, which pdf-lib has always tolerated, and read clean.
+  (`PdfObjectDroppedError`) when an object pdf-lib DROPPED is reachable from the trailer and nothing later
+  replaced it, then applies pdf-lib's own `updateInfoDict()`. **The drops are recorded inside pdf-lib's
+  parser, never found by reading the file.** `installDropRecorder` wraps the only two places pdf-lib drops
+  an object — `PDFParser.tryToParseInvalidIndirectObject` returning nothing, and
+  `PDFObjectStreamParser.parseIntoContext` throwing part-way, which loses every member not yet assigned —
+  returns what they return, rethrows what they throw, and throws itself if a pdf-lib release renames one.
+  Rounds 10 and 11 scanned the text for `N G obj` headers instead, and WS7 round 12 found that scan wrong
+  six ways: a stream with no `endstream`, a header glued to `endobj` / `>>` / `]` / `)`, `>> stream` inside
+  a string, a comment between header tokens, object-stream members (which have no header), and a string
+  reading ` 9 0 obj `. The first five made it ACCEPT a file pdf-lib had dropped from; round 11 had added the
+  stream skip and the boundary rule that caused three of them. **Each was a second tokenizer disagreeing
+  with pdf-lib's — do not bring a text scan back.** Every drop keeps what its reference resolved to at that
+  moment, so a dropped NEWEST revision with an older one standing in now refuses (the scan could not see
+  it) while a drop a later revision replaced still loads. Sabotage, each measured: classic drops never
+  recorded → 12; an object-stream throw recording nothing → 2; its constructor failure not flagged → 1;
+  supersede ignored → 2 (the superseded case and the object-stream control); reachability skipped → 3.
+  A per-member "was it assigned before the throw?" check was DELETED when its sabotage stayed green — the
+  end-of-load comparison already decides it, which is also why ignoring supersede reds the control.
+  `tests/browser/pdf-load-guard.browser.test.ts` runs the refusal in the Vite bundle, where a second copy of
+  pdf-lib would leave the jsdom suite green and every browser load unguarded. **Every pdf-lib load in `src/`
+  goes through it**; `tests/utils/pdfLoadGuard.test.ts` fails by file name on a direct `PDFDocument.load`.
+  Bounds: bytes pdf-lib never parses as an object (skipped as junk, or swallowed by a stream whose end it
+  places too late) are not a drop and are not detected; when an object stream fails before its member list
+  is known, any reachable dangling reference refuses the file; and a legal dangling reference nothing was
+  dropped for is still left for pdf-lib's stamp to reuse. Found while preparing the round-10 fixes, not by a
+  lens — the first probe used a WELL-FORMED unterminated object, which pdf-lib has always tolerated, and
+  read clean.
 
 ### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
 
@@ -2107,8 +2121,12 @@ ordinary objects inside encrypted streams — one seam for `downloadPDF`, `downl
 purpose:** `assemblePdfBytes` feeds the signer, whose `assertClassicXref` refuses xref streams, so an
 unencrypted save stays classic and byte-identical. What pdf-lib keeps OUT of object streams, and so stays
 plaintext, is bounded in `SECURITY.md` § "Lock PDF". Guard: `tests/export/exportPasswordSave.test.ts`
-(20 — per entry point, sanitize included: no token in the bytes, pdf.js with the password reads them back, no
-document-information string in plaintext, and a no-password control that keeps a classic `xref`). The
+(24 — per entry point, sanitize and lossless compress included: no token in the bytes, pdf.js with the password reads them back, no
+document-information string in plaintext, and a no-password control that keeps a classic `xref`). Compress
+joined the class in WS7 round 12, which found no test setting a password on it: its control asserts no
+`/Encrypt` instead of a classic `xref`, since object streams are its optimisation, and the lossy mode — a
+canvas raster — is a case in `tests/browser/compress.browser.test.ts`. Dropping either mode's
+`_applyExportPassword` call fails exactly that mode's case. The
 metadata case is split by path, because only `downloadPage` writes an `/Info` at all — the other
 paths build with `cleanMetadata` or strip it, so for them the case asserts there was nothing to leak
 rather than passing vacuously. Sabotage: the password branch without object streams → 9 (the 8 string

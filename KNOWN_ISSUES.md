@@ -66,25 +66,29 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From WS7 round 10 (2026-09-13)
 
-- **A damaged object in an incrementally-updated PDF can export its OLDER revision** (P3, a bound of
-  the load guard). Since the 2026-09-13 upgrade, `@cantoo/pdf-lib` silently drops an object it cannot
-  parse when no `endobj` follows; PDFturbo now refuses such a file rather than exporting it without the
-  object. The refusal looks for a reference that resolves to nothing — so when an incremental update
-  rewrote an object and the NEW revision is the one dropped, the old revision with the same number
-  still resolves, nothing dangles, and the export carries the stale content. Not fixed: telling the two
-  revisions apart needs the file's cross-reference sections, which pdf-lib does not keep after load.
-  [Inferred from pdf-lib's object table, which keeps one entry per object number; no such file was
-  built.]
+- ~~**A damaged object in an incrementally-updated PDF can export its OLDER revision**~~ — **CLOSED by
+  WS7 round 12 (2026-09-13).** Since the 2026-09-13 upgrade, `@cantoo/pdf-lib` silently drops an object
+  it cannot parse when no `endobj` follows, and PDFturbo refuses such a file rather than exporting it
+  without the object. The refusal used to look for a reference that resolves to nothing, so when an
+  incremental update rewrote an object and the NEW revision was the one dropped, the old revision stood
+  in and the export carried stale content. The guard now records what each reference resolved to at the
+  moment pdf-lib dropped it, and refuses when that is still what stands after the load; a drop that a
+  later revision replaced still loads. Both are pinned in `tests/utils/pdfLoadGuard.test.ts`, on a file
+  built for it.
 - **A legal dangling reference can be taken over by pdf-lib's metadata stamp** (P3, pre-existing).
   When pdf-lib stamps `/Info` on load it registers the dictionary under the next free object number;
   a reference to that number which pointed at nothing (legal — it reads as null) then resolves to the
   Info dictionary. The load guard closes this for DROPPED objects by checking before the stamp, and
   deliberately leaves header-less dangling references alone, because refusing them would reject
-  ordinary old files. [Inferred from the mechanism measured for the dropped case.] A header counts only
-  where an object could start — at a token boundary, outside every stream body — so a page that merely
-  shows the text `9 0 obj` no longer makes a legal dangling reference look dropped; until WS7 round 11 it
-  did, and the file was refused. What remains errs towards refusing: stream data that itself contains
-  `endstream` before its real end resumes the scan inside the stream.
+  ordinary old files. [Inferred from the mechanism measured for the dropped case.] Since WS7 round 12 the
+  guard does not read the file's text at all: it records each drop inside pdf-lib's parser, so text that
+  merely reads `9 0 obj` cannot make a legal dangling reference look dropped. Rounds 10 and 11 scanned the
+  text for object headers, and that scan could both refuse a legal file and — for a stream with no
+  `endstream`, a glued or commented header, or `>> stream` inside a string — accept one pdf-lib had
+  dropped from. What the recorder cannot see: bytes pdf-lib never parses as an object (skipped as junk,
+  or swallowed by a stream whose end it places too late) are not a drop, so they are not detected; and
+  when an object stream fails before its member list is known, ANY reachable dangling reference in that
+  file refuses it, since the lost members cannot be named.
 - **Sanitize refuses a file that holds an object it cannot parse**, rather than cleaning it. Such an
   object can hide an active script no walk can see, so a clean report would be false; the cost is that
   a merely damaged file cannot be sanitized. An unreferenced damaged object is swept first and does not
