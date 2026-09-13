@@ -80,7 +80,11 @@ work in a private/incognito window when editing sensitive documents on a shared 
   a reference to that number which pointed at nothing (legal — it reads as null) then resolves to the
   Info dictionary. The load guard closes this for DROPPED objects by checking before the stamp, and
   deliberately leaves header-less dangling references alone, because refusing them would reject
-  ordinary old files. [Inferred from the mechanism measured for the dropped case.]
+  ordinary old files. [Inferred from the mechanism measured for the dropped case.] A header counts only
+  where an object could start — at a token boundary, outside every stream body — so a page that merely
+  shows the text `9 0 obj` no longer makes a legal dangling reference look dropped; until WS7 round 11 it
+  did, and the file was refused. What remains errs towards refusing: stream data that itself contains
+  `endstream` before its real end resumes the scan inside the stream.
 - **Sanitize refuses a file that holds an object it cannot parse**, rather than cleaning it. Such an
   object can hide an active script no walk can see, so a clean report would be false; the cost is that
   a merely damaged file cannot be sanitized. An unreferenced damaged object is swept first and does not

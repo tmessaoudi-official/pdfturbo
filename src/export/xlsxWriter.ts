@@ -136,7 +136,8 @@ function sheetXml(grid: TableGrid): string {
 
 /**
  * Build the bytes of a single-sheet .xlsx workbook from an extracted table grid.
- * `zipSync` is dynamically imported by the caller's chunk, so fflate stays out of the initial bundle.
+ * `fflate` is imported dynamically here, but that no longer keeps it out of the entry bundle: since the
+ * 2026-09-13 upgrade `@cantoo/pdf-lib` 2.11.0 imports it statically, so this import saves nothing on first load.
  */
 export async function buildXlsxBytes(grid: TableGrid, sheetName = 'Table'): Promise<Uint8Array> {
   const { zipSync, strToU8 } = await import('fflate');

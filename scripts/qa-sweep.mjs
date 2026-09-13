@@ -106,7 +106,8 @@ const EXPORTERS = ['downloadBtn', 'exportDocxBtn', 'exportMdBtn', 'exportTableBt
 // removes `.open` from its wrap in its own handler. So the app SHUTS the container as soon as one of
 // its children is clicked; every later sibling is then legitimately hidden. Only re-opening the
 // toggle once per child could reach them, and three shapes of that were built and measured on
-// 2026-07-31 — all net-negative against 145 checks / 107 pass / 0 warn / 36 skip:
+// 2026-07-31 — all net-negative against 145 checks / 107 pass / 0 warn / 36 skip (CLAUDE.md records
+// 150 / 112 / 0 / 36 the same day: two runs, neither log kept; each total also counts A11Y/ACCEPT lines):
 //   in-DFS, unwind only when something was revealed .... 143 /  81 / 30 WARN / 30 skip
 //   in-DFS, re-click any parent ........................ 107 /  54 / 38 WARN / 13 skip (+1 FAIL)
 //   in-DFS, re-click flyout/menu toggles only .......... 132 /  78 / 33 WARN / 21 skip
@@ -344,7 +345,8 @@ async function main() {
     // "blocked by" WARN, and it is why ~31 controls are recorded "became hidden before click": a
     // sibling's unwind also shuts the flyout they live in. THAT IS A KNOWN DRIVER LIMIT, listed
     // explicitly at the end of every report. Three fixes were tried and MEASURED, all net losses
-    // against this baseline of 145 checks / 107 pass / 0 warn / 36 skip (--allow-destructive):
+    // against this baseline of 145 checks / 107 pass / 0 warn / 36 skip (--allow-destructive; CLAUDE.md
+    // records 150 / 112 for the same day and flag — two runs, neither log kept):
     //   - Unwind only when this node revealed something: a leaf whose modal's buttons are already
     //     visited never unwinds, so the modal blocks everything after it. #codeModal left open by
     //     addCodeBtn cost 16 controls, twice over — 143 / 81 / 30 WARN / 30 skip.

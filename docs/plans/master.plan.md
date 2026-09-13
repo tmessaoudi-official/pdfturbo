@@ -97,11 +97,11 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS0 — doc drift | **DONE** 2026-09-01 | Ten drifts, not nine — see the Decisions Log. Gate green on the same commit. |
 | WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 9 file runs (3 in-suite — a thin sample) and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
 | WS2 — C22 flow layout | **DONE** 2026-09-02 | Normalised at the `_extractFlowDoc` boundary; C22 CLOSED in `KNOWN_ISSUES.md`. Five sabotages, each red exactly where predicted. Sabotage exposed an UNPINNED frame in the image-channel redaction filter — guarded now. |
-| WS3 — Arabic (×15 + 2 UNRECONCILED sets) | **CLOSED** 2026-09-13 by developer ruling | "Consider the arabic review done" — the 15 pending values (12 at extraction, 2 from #54b, `toolbar.sanitizeTitle` from WS7 round 9) and the two UNRECONCILED sets are accepted as reviewed: a ruling, not a native re-read. `toolbar.sanitizeTitle` was re-worded the same day to en/fr parity by the session, so that new wording is the ONE value pending. |
+| WS3 — Arabic (×15 + 2 UNRECONCILED sets) | **CLOSED** 2026-09-13 by developer ruling | "Consider the arabic review done" — the 15 pending values (12 at extraction, 2 from #54b, `toolbar.sanitizeTitle` from WS7 round 9) and the two UNRECONCILED sets are accepted as reviewed: a ruling, not a native re-read. `toolbar.sanitizeTitle` was re-worded the same day to en/fr parity by the session, so that new wording was pending — and WS7 round 10 added two more session-written values the same day, so **3** are pending (`toolbar.sanitizeTitle`, `docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`). |
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
-| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, nine rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10 → 19 → 22** findings. Five of the nine found defects in the PREVIOUS round's fixes. Round 9 (at `2a19552`, all three lenses) reviewed the post-panel commits `a99ccea`, `3fc0863`, `128219d` and `2a19552` and returned two P1s (pdf.js inherits `/AA` through `/Parent`) — fixed in row 18. Round 10 is next; a clean round there would be the first of the two required. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
+| WS7 — certification | **NOT CERTIFIED** (row 16 blocked) | MAXIMAL panel over `dfe34ae..HEAD`, eleven rounds, counter never above 0 of 2: **18 → 17 → 23 → 19 → 11 → 18 → 10 → 19 → 22 → 18 → 12** findings. Seven of the eleven found defects in the PREVIOUS round's fixes. Rounds 10–14 are authorised by the `[2026-09-13 14:00]` ruling, and nothing is pushed before 2/2 clean. Round 9 (at `2a19552`) returned two P1s (pdf.js inherits `/AA` through `/Parent`) — fixed in row 18; round 10 (at `d377ced`) two more — fixed in row 21; round 11 (at `ac08b61`) found Sanitize & download ignoring Lock PDF and two defects in round 10's own load guard — fixed in row 22. Round 12 is next; a clean round there would be the first of the two required. Round 6 (at `f85d37e`) cleared the three post-round-5 fixes with executed sabotage but returned a P1 sanitizer leak, two defects introduced by this session's own round-6 prep, and nine doc-vs-reality drifts. Open findings and the per-round reports are under `var/claude/ws7/`, which is GITIGNORED — so they do not reach a clone. The durable record is `docs/ws7-certification-record.md`, committed for that reason. No `WS7: 2/2 clean` entry is written — on this evidence it would be a false record. |
 
 ## Step 0 — Consolidation (DONE 2026-09-01 — recorded for provenance, do not re-run)
 
@@ -792,6 +792,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   `test:coverage:export` run died at load ~22 with "iframe did not become ready within 60000ms" and
   no optimize/reload line; it passed alone and again in the cold-cache CI order, so it is recorded as
   the harness's load-dependent start-up failure, not fixed.
+- [2026-09-13 17:46] RECORDED: WS7 round 11 at `ac08b61` = **12 findings** (2 export + 2 safety + 8
+  completeness), counter stays 0 of 2. Code: Sanitize & download never applied Lock PDF (P2,
+  pre-existing), and round 10's own load guard re-scanned the file once per dangling reference (P2) and
+  refused a legal file whose page text reads `9 0 obj` (P3). All fixed with failing tests first and five
+  sabotages. The safety lens's probe of an unparseable object inside an object stream was vacuous (a
+  classic-xref fixture cannot place an object in one) and is recorded as NOT EXECUTED, not clean. Record:
+  `docs/ws7-certification-record.md` § Round 11.
 
 ## Status
 <!-- progress-block v1 -->
@@ -812,12 +819,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 10 rounds run, NOT certified (0/2 clean), round 11 next | L | blocked | - | - |
+| 16 | WS7 — certification: 11 rounds run, NOT certified (0/2 clean), round 12 next | L | blocked | - | - |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 | 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 | 19 | Upgrade every dependency and CI action to latest (ruled 2026-09-13) | M | done | caf4350 | package.json, package-lock.json, .github/workflows/deploy.yml |
 | 20 | Upgrade consequences: pdf-lib 2.11.0 inlined in jsdom, nine broken PNG fixtures replaced | S | done | d00cd26 | vitest.config.ts, tests/** |
 | 21 | WS7 round 10 — 18 findings + a parser drop fixed: tolerant PNG embed, guarded pdf-lib load, sanitizer refuses unparseable objects, Lock PDF encrypts strings | M | done | 9e03376 | src/utils/pdfLoadGuard.ts src/utils/pngEmbed.ts src/utils/pdfSanitizer.ts src/export/exportService.ts |
+| 22 | WS7 round 11 — 12 findings fixed: sanitize honours Lock PDF, load guard single-pass anchored header scan | M | done | 0ee442c | src/utils/pdfLoadGuard.ts src/export/exportService.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

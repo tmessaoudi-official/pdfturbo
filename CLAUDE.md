@@ -413,7 +413,8 @@ struct-tree flow and the table extractor, which is why one bug reached five expo
 
 **The first fix was wrong in the opposite direction, and that is the part worth remembering.** It
 took `max(|width|, |height|)` as the advance, on a reading of those lines that had the branches
-INVERTED: I read 35814-35819 without the `if (!font.vertical)` immediately above them. For horizontal
+INVERTED: I read 35814-35819 (pdfjs-dist 6.2.108 line numbers — the same lines are 35906-35911 in 6.3.289)
+without the `if (!font.vertical)` immediately above them. For horizontal
 text pdf.js sets `width = 0` and `height = hypot(trm[2],trm[3])` — the glyph size — and then
 accumulates the advance into `totalWidth`. **`height` is therefore the font size for horizontal text,
 never 0**, measured: `{str:"1", width:6.672, height:12, transform:[12,0,0,12,100,300]}`. So `max()`
@@ -1309,10 +1310,17 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   free object number, which after a drop IS the dropped number, so `/Contents 5 0 R` resolves to the Info
   dict and nothing dangles. `src/utils/pdfLoadGuard.ts` `loadPdfDocument` loads without the stamp, refuses
   (`PdfObjectDroppedError`) when a reachable reference resolves to nothing AND its `N G obj` header is in
-  the bytes, then applies pdf-lib's own `updateInfoDict()`. **Every pdf-lib load in `src/` goes through
-  it**; `tests/utils/pdfLoadGuard.test.ts` fails by file name on a direct `PDFDocument.load`. Two bounds:
+  the bytes — collected in ONE pass, and only at a token boundary outside every stream body — then
+  applies pdf-lib's own `updateInfoDict()`. WS7 round 11 found both halves of that wrong in the first
+  version: each dangling reference re-scanned the whole file (measured 1267 ms on 20 MB at 300
+  references), and the unanchored match refused a legal file whose page merely SHOWED `9 0 obj`.
+  Sabotage: the per-reference rescan back → 3 (the cost case and both page-text cases); stream bodies
+  scanned → 1; the boundary dropped → 1, and only because a case puts the text in a catalog string — the
+  first run of that sabotage stayed green, since the stream skip hid page text either way. **Every pdf-lib load in `src/` goes through
+  it**; `tests/utils/pdfLoadGuard.test.ts` fails by file name on a direct `PDFDocument.load`. Three bounds:
   if the NEWEST revision of an incrementally-updated object is the one dropped, the older revision stands
-  in unnoticed; and a legal dangling reference with no header is still left for pdf-lib's stamp to reuse.
+  in unnoticed; and a legal dangling reference with no header is still left for pdf-lib's stamp to reuse. A third errs
+  towards refusing: stream data containing `endstream` before its real end resumes the scan inside it.
   Found while preparing the round-10 fixes, not by a lens — the first probe used a WELL-FORMED
   unterminated object, which pdf-lib has always tolerated, and read clean.
 
@@ -1484,7 +1492,10 @@ DOCX/MD/XFDF export buttons are **never clicked** (a `deploy.yml` comment claime
 `closeWhen: 'any-click'`, and each file-menu item removes `.open` from its wrap in its own handler — so
 the app shuts the container as soon as one child is used and every later sibling is legitimately hidden.
 Only re-opening the toggle once per child could reach them. **Four shapes of that were built and
-measured; all lost coverage overall** against the baseline `150 checks / 112 pass / 0 warn / 36 skip`:
+measured; all lost coverage overall** against the 2026-07-31 baseline `150 checks / 112 pass / 0 warn / 36 skip`. `scripts/qa-sweep.mjs` records
+`145 / 107 / 0 / 36` for the same day and the same flag: two runs, both from `5170c27`, neither log kept, and
+which one the attempts below were measured against was not recorded. Each total also counts its A11Y /
+ACCEPT lines, which is why pass + skip falls 2 short in both:
 
 | attempt | checks | pass | warn | skip |
 |---|---|---|---|---|
@@ -2090,16 +2101,20 @@ pdf-lib's writer encrypts `PDFStream` objects only. Every other string — a lin
 export leaked them to a text editor AND pdf.js with the correct password "decrypted" them into `""`.
 `ExportService._saveForExport` now saves a password-protected export WITH object streams, which puts
 ordinary objects inside encrypted streams — one seam for `downloadPDF`, `downloadPageRange`,
-`downloadFlattened` and `downloadPage` (`_compressLossless` already used them). **Password-gated on
+`downloadFlattened` and `downloadPage` (`_compressLossless` already used them) — and, since WS7 round 11,
+`sanitizeAndDownload`, which had never applied the password at all. It re-loads the sanitized bytes with
+`updateMetadata: false` first, because a default load re-injects the `/Info` the sanitizer just removed. **Password-gated on
 purpose:** `assemblePdfBytes` feeds the signer, whose `assertClassicXref` refuses xref streams, so an
 unencrypted save stays classic and byte-identical. What pdf-lib keeps OUT of object streams, and so stays
 plaintext, is bounded in `SECURITY.md` § "Lock PDF". Guard: `tests/export/exportPasswordSave.test.ts`
-(16 — per entry point: no token in the bytes, pdf.js with the password reads them back, no
+(20 — per entry point, sanitize included: no token in the bytes, pdf.js with the password reads them back, no
 document-information string in plaintext, and a no-password control that keeps a classic `xref`). The
-metadata case is split by path, because only `downloadPage` writes an `/Info` at all — the three
-user-facing downloads build with `cleanMetadata`, so for them the case asserts there was nothing to leak
+metadata case is split by path, because only `downloadPage` writes an `/Info` at all — the other
+paths build with `cleanMetadata` or strip it, so for them the case asserts there was nothing to leak
 rather than passing vacuously. Sabotage: the password branch without object streams → 9 (the 8 string
-cases plus `downloadPage`'s metadata case); the no-password branch with them → the 4 controls. `encryption.ts` claimed `/R 5`; since
+cases plus `downloadPage`'s metadata case); the no-password branch with them → the 4 controls; sanitize ignoring the password → 1 (its plaintext
+case — its read-back case passes on an unencrypted file, because pdf.js ignores a password it does not
+need); sanitize re-loading with the stamp → 1 (its metadata case). `encryption.ts` claimed `/R 5`; since
 2.11.0 pdf-lib writes `/R 6`.
 
 ### True text editing engine

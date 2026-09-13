@@ -10,7 +10,7 @@ cross-checked against every ceiling 2026-07-31:
 
 | | |
 |---|---|
-| blocker IDs here | AR-1, CORE-P0-2, MD-1/2/3, TX-1, O1, S2, S3, S6, B-1, B-3 — 12 IDs, 12 `describe` blocks, 18 tests |
+| blocker IDs here | AR-1, CORE-P0-2, MD-1/2/3, TX-1, O1, S2, S3, S6, B-1, B-3 — 12 IDs, 14 `describe` blocks, 25 tests (counted off the runner 2026-09-13 — re-count rather than cite) |
 | of those, mapping to a `KNOWN_ISSUES.md` ceiling | **4**: C17 (S6 + S2), C16 (CORE-P0-2; ceiling closed 2026-09-13), C8 (AR-1, partial), C1 (B-3, partial) |
 | the other 8 | MD-1/2/3, TX-1, B-1, S3 — *fixed defects*, kept as regression guards; O1 — an *infra invariant* (advertised OCR languages ⊆ vendored assets). None is a ceiling |
 

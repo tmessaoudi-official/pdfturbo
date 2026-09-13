@@ -22,10 +22,11 @@ was ever written at all. A certification debt whose only record is machine-local
 | 7 | 10 | Found the round-6 sanitizer fix had closed ONE shape of its class (and left three siblings), and a colour regression from WS4-F. |
 | 8 | 19 | All THREE lenses independently found the same head-of-`/A` defect from round 7. |
 | 9 | 22 | At `2a19552`, all three lenses (4 export, 8 safety, 10 completeness). Two P1s: pdf.js INHERITS `/AA` through `/Parent`, so a script on the `/Pages` root or an unlisted field parent ran after sanitize. Plus a regression from `3fc0863` (the paperclip's own scripts) and one from `2a19552` itself (a "corrected" opcGc count that was wrong). |
+| 11 | 12 | At `ac08b61`, all three lenses on Node 24 (2 export, 2 safety, 8 completeness). Sanitize & download never applied Lock PDF, and two defects were in round 10's own load guard: a per-reference rescan of the whole file, and an unanchored header match that refused a legal file. |
 | 10 | 18 | At `d377ced`, after the dependency upgrade, all three lenses on Node 24 (1 export, 4 safety, 13 completeness). Two P1s: pdf-lib 2.11.0's strict PNG decode silently dropped user images from DOCX→PDF — which `d00cd26` and `d377ced` had recorded as a fixture problem — and an object pdf-lib cannot parse hid a live script from every sanitizer walk. |
 
-Six of the ten rounds found defects in the **previous** round's fixes — rounds 6, 7, 8, 9 and 10 by the
-surviving reports (which exist for rounds 4, 6, 7, 8, 9 and 10; none was written for 1, 2, 3 or 5), and
+Seven of the eleven rounds found defects in the **previous** round's fixes — rounds 6, 7, 8, 9, 10 and 11
+by the surviving reports (which exist for rounds 4 and 6 to 11; none was written for 1, 2, 3 or 5), and
 round 2 by the note in the table above, which was written from memory when this file was created. That
 is the single most important fact in this file: in this range, a fix has been about as likely to
 introduce a finding as to close one, which is why the bar was not lowered.
@@ -121,7 +122,7 @@ open after `2a19552` claimed to clear it):
    Superseded: `3fc0863` made "embedded files" true again, and the round-9 fix re-worded the fallback
    title and the English and French tooltips to the full scope. The Arabic tooltip was left for the
    native review; that review was closed by developer ruling on 2026-09-13 and the Arabic tooltip was
-   re-worded to the same scope the same day (session-authored, the one value still pending).
+   re-worded to the same scope the same day (session-authored; one of the 3 values pending, since round 10 added two more).
 3. ~~`src/export/exportService.ts:351` — same claim on `sanitizeAndDownload`'s docstring.~~ Fixed in
    `2a19552`, widened again by the round-9 fix.
 4. `docs/plans/master.plan.md:489` and `:266` — the Decisions Log rules that the `/BBox` clip covers
@@ -217,3 +218,48 @@ figures live here and in `CLAUDE.md`. The same holds for `master.plan.md`'s date
 
 **The counter remains 0 of 2.** Round 10 found defects, so the next clean round would be the first of
 the two required. Round 11 is the next step.
+
+## Round 11 — what was fixed (2026-09-13)
+
+Round 11 ran at `ac08b61` over `dfe34ae..ac08b61`, focused on the round-10 commits (`9e03376`, `389b4d6`,
+`ac08b61`), all three lenses in isolated worktrees on Node 24. It returned **12 findings**: 2 export,
+2 safety, 8 completeness. The round-10 fixes it re-verified held — the sanitizer's refusal of an
+unparseable object (non-vacuous against a pdf.js `hasJSActions()` control), Lock PDF on the four
+downloads and compress (`/R 6 /V 5`), and 54 byte-identity combinations — but two findings are defects
+in round 10's own load guard.
+
+| Defect | Evidence it was real |
+|---|---|
+| **P2** Sanitize & download never applied the Lock PDF password: the copy opened with no password and its link, note, field and page strings were plaintext | probe: `sanitize:pw → encrypt:false`, opened under a wrong password and under none, while the compress sibling reported `encrypt:true` |
+| **P2** the load guard re-scanned the whole file once per dangling reference | 20 MB: 18 ms → 229 ms at 50 references → 1267 ms at 300 |
+| **P3** the header match was unanchored and read stream bodies, so a page SHOWING `9 0 obj` made a legal dangling `/Info 9 0 R` refuse the file, contradicting `KNOWN_ISSUES.md` | the round-10 `danglingInfo` fixture with `(9 0 obj)Tj` as its content threw `PdfObjectDroppedError` |
+| **P3** `SECURITY.md` § "Lock PDF" presented its plaintext list as complete and omitted stream DICTIONARIES | a form XObject dictionary string and an embedded file's `/Params /ModDate` stayed plaintext with object streams on |
+| **P2** `xlsxWriter.ts` still said fflate stays out of the initial bundle — round-10 F2 fixed one of its two sites | re-read at the site |
+| **P3** `FEATURES.md`'s stamp stale again (round-10 F12 regressed by `ac08b61`); a 6.2.108 line citation unlabelled in `CLAUDE.md`; the plan's WS3 row and this file still said ONE Arabic value pending (3); `tests/blockers/README.md` counted 12 describes and 18 tests (14 and 25); two 2026-07-31 QA baselines disagreeing across `CLAUDE.md`, `deploy.yml` and `scripts/qa-sweep.mjs`; `THIRD-PARTY-NOTICES.md` listing no transitive dependency of docx, fontkit or the other libraries | each re-read, or counted off the runner |
+
+Fixes, each with a failing test first, confirmed red for the stated reason, and a sabotage run after
+(figures in `CLAUDE.md`): sanitize re-loads its output with `updateMetadata: false` and saves through
+`_saveForExport`; the guard collects every header in one pass, at a token boundary and outside stream
+bodies. The cost case compares the guard against pdf-lib's own load of the same bytes, best of three, so
+machine load moves both sides. One sabotage landed on nothing the first tests could see — dropping the
+token boundary stayed green, because the stream skip hid page text either way — and a case with the
+text in a catalog string was added until it went red.
+
+The two QA baselines are reconciled by saying what is known rather than picking one: both come from
+`5170c27`, two runs of the same day and flag whose logs were not kept; each total also counts its
+A11Y/ACCEPT lines, which is why pass + skip falls 2 short in both.
+
+**Not certified by this round, named:** the safety lens's probe of an unparseable object INSIDE an object
+stream was vacuous — its fixture used a classic xref, which cannot express a compressed entry, so
+neither library ever associated the object with the stream. That vector is unexercised, not clean. No
+browser suite or QA sweep ran inside the panel; the fix gate's runs are the evidence for those. That gate
+(Node 24, the working tree over `ac08b61` that became `0ee442c` and the docs commit after it — all of
+it except two later markdown edits: plan row 22 and this paragraph) was green at every step: audit, OCR assets,
+type-check, lint, jsdom 2703 passed / 2 expected fail / 1 skipped, browser 89 files / 336 tests,
+export branch coverage 44.07 %, build (precache 24), and the QA sweep with `--allow-destructive` at
+151 checks / 114 pass / 0 fail. The logs are under the gitignored `var/claude/ws7/round11-fix-gate/`.
+
+Still flagged to the developer, unchanged: `/PieceInfo` stripping (unruled) and the kept-media ruling,
+whose premise round 10 corrected.
+
+**The counter remains 0 of 2.** Round 12 is next.

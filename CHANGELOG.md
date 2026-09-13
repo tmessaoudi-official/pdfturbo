@@ -91,6 +91,13 @@ most of the work went into proving that what the product claims to remove is act
   who HAD the password, showed them blank, because the file claimed they were encrypted. A locked
   export now encrypts them. `SECURITY.md` § "Lock PDF" states what the format still leaves outside the
   encryption.
+- **Sanitize & download ignored Lock PDF.** With a password set, the sanitized copy was written
+  unencrypted and opened without one. It is now encrypted like every other export, without re-adding
+  the document information sanitize removes.
+- **Opening a legal PDF could fail** when a page's text happened to read like a PDF object header
+  (for example `9 0 obj`), and the check behind that refusal slowed sharply on large files with many
+  broken references — about 1.3 s on a 20 MB file with 300. Both came from the load check added the
+  same day; it now reads the file once and ignores stream contents.
 
 ### Fixed — accessibility, correctness, supply chain
 - Three serious and one critical WCAG 2.1 AA rules cleared; 24 controls given explicit
@@ -129,6 +136,9 @@ most of the work went into proving that what the product claims to remove is act
   the claim is corrected.
 - `KNOWN_ISSUES.md` grew ceiling **C22** (flow layout on a non-zero CropBox origin), pinned by a
   confirming blocker test so it cannot rot unnoticed — and **C22 is now CLOSED** (see Fixed).
+- `SECURITY.md` § "Lock PDF" listed what encryption cannot reach as though the list were complete, and
+  missed the dictionaries of stream objects (a form XObject's, an embedded file's parameters). Added,
+  and the list is no longer presented as exhaustive.
 - Ceiling **C16** (Lock PDF limited to encryption revision 5) is **CLOSED**: the pdf-lib 2.11.0
   upgrade writes revision 6, now pinned by a test.
 

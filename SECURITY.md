@@ -247,13 +247,16 @@ content streams: strings such as a link's URL or a note's text were written **in
 readable in a text editor — while the file told readers they were encrypted, so a reader given the
 correct password showed them as blank. A locked export now places ordinary objects inside encrypted
 object streams, which covers page content, annotation text, link URLs, form values and document
-metadata.
+metadata. **Sanitize & download** applies the password too — until 2026-09-13 its copy was written
+unencrypted even when a password was set, and opened without one.
 
 What still cannot be encrypted this way, because the PDF writer keeps these objects outside object
-streams: strings stored **directly** on the document catalog, the page tree or a page dictionary
-(including an annotation written inline in a page's `/Annots` rather than as its own object),
-signature dictionaries, objects with a non-zero generation number, objects PDFturbo could not parse,
-and the trailer's document `/ID`. PDFturbo's own annotations are separate objects and are encrypted;
+streams — the kinds found so far, not a proof that nothing else is: strings stored **directly** on the
+document catalog, the page tree or a page dictionary (including an annotation written inline in a
+page's `/Annots` rather than as its own object); strings in the **dictionary** of any stream object,
+whose data is encrypted but whose dictionary is not — a form XObject's or an image's dictionary, or an
+embedded file's parameters such as its modification date; signature dictionaries; objects with a
+non-zero generation number; objects PDFturbo could not parse; and the trailer's document `/ID`. PDFturbo's own annotations are separate objects and are encrypted;
 an opened file may carry inline ones. If a string must not be readable without the password, do not
 rely on it sitting in one of those places.
 
