@@ -4,7 +4,7 @@
  * open→edit→save→download flow is deterministic; one test uses the REAL
  * mountDocxEditor (it runs in jsdom) to prove the default wiring round-trips.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import { createDocxEditorController } from '../../src/docx/docxEditorController';
 import type { DocxEditorHandle } from '../../src/docx/docxProseMirror';
@@ -17,6 +17,12 @@ async function makeDocx(text: string): Promise<Uint8Array> {
 }
 
 describe('createDocxEditorController', () => {
+  // Warm the lazy PDF exporter once. Under `server.deps.inline` (vitest.config.ts) its first import
+  // transforms all of @cantoo/pdf-lib — measured 13089 ms cold — and the Export PDF case below waits
+  // with `vi.waitFor`'s 1 s default. Left cold, that case timed out, skipped its `c.destroy()`, and
+  // every later case then queried the stale modal. This file tests the wiring, not import latency.
+  beforeAll(async () => { await import('../../src/docx/docxToPdf'); });
+
   it('appends a hidden .docx file input and a hidden modal; open() clicks the input', () => {
     const c = createDocxEditorController();
     const input = document.querySelector<HTMLInputElement>('input[data-docx-editor-input]');

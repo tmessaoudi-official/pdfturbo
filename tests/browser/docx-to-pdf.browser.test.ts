@@ -97,7 +97,7 @@ describe('docModelToPdfBytes (real Chrome, #1d)', () => {
 describe('docModelToPdfBytes fidelity (Feature 5, real Chrome)', () => {
   // 2×2 opaque red PNG (base64).
   const dataB64 =
-    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD8GO2jAAAAD0lEQVR42mP8z8BQz0AEAAUDAQGc8sJEAAAAAElFTkSuQmCC';
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR42mP4z8AARAwQCgAf7gP9Y167WwAAAABJRU5ErkJggg==';
 
   async function page1Ops(bytes: Uint8Array): Promise<number[]> {
     const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;

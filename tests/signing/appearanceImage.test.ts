@@ -12,7 +12,7 @@ import { generateSelfSignedP12 } from '../../src/signing/certGen';
 
 // 1×1 red PNG.
 const PNG_DATA_URL =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4z8DwHwAFAAH/VscvDQAAAABJRU5ErkJggg==';
 
 function bytesToLatin1(b: Uint8Array): string {
   let s = '';
