@@ -1624,9 +1624,14 @@ Arabic value** — the one issue reported turned out not to be one (see the `ص�
 Do not re-add `ar [Unverified]` to an existing key; NEW keys start unverified as before.
 **AMENDED 2026-08-05:** three reviewed values HAVE since been changed — `toolbar.cropTitle`,
 `toast.modeHint.crop` and `toast.redactionPlaced`, because their wording contradicted the hide-vs-remove
-grades (see that § for why). They are single-verb substitutions and are **pending a native pass**. So the
-sign-off is no longer a blanket "nothing changed since"; check the pending count below before assuming a
-key is reviewed.
+grades (see that § for why). They are single-verb substitutions and were pending a native pass until the
+2026-09-13 closure below. So the sign-off is no longer a blanket "nothing changed since"; check the
+pending count before assuming a key is reviewed.
+**AMENDED 2026-09-13 — WS3 CLOSED by developer ruling** ("consider the arabic review done"): the 15
+values that had accumulated since, and the two UNRECONCILED sets, are accepted as reviewed. That is a
+RULING, not a second native read — say so whenever citing it. **Pending count: 1** —
+`toolbar.sanitizeTitle`, re-worded the same day to en/fr parity by the session, so it is a new value and
+starts unverified. The count's home is § "The hide-vs-remove audit".
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
 remain open: C18 (per-glyph select/copy/search precision), C19 (tashkeel/GPOS micro-positioning),
 bracket mirroring in the overlay, and RTL list-marker placement. A reviewed string can still render
@@ -1716,11 +1721,10 @@ exactly like "the file I generated is corrupt" and is not; check whether the too
 file before believing it. Guards: `tests/export/xlsxWriter.test.ts` (18, asserting on the unzipped sheet
 XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (the flyout closes on any
 click) — it is covered by the live drive described above, not by the sweep.
-i18n: one new key `toolbar.exportXlsxTitle` (**ar [Unverified]**; needs a native pass — as do the 7
-`toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day — **15 values pending as of
-2026-09-05**, these 8 plus `badge.signRect`, the 3 re-worded in § The hide-vs-remove audit, the 2
-#54b keys and `toolbar.sanitizeTitle`; that § is the count's home, so
-update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
+i18n: one new key `toolbar.exportXlsxTitle` (ar accepted by the 2026-09-13 WS3 closure ruling, together
+with the 7 `toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day and the rest of that
+15-value set — **1 value pending as of 2026-09-13**, the re-worded `toolbar.sanitizeTitle`; § The
+hide-vs-remove audit is the count's home, so update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
 
@@ -2391,9 +2395,8 @@ sub −0.15×fontSize); (6) the popover super/sub buttons **toggle** — re-clic
 (`formattingBinder` → `app.setAlign`) + 4 popover rows wired in `textOptionsPopover.ts` (outline **width** (no
 color — uses fill), letter-spacing, width%, x²/x₂); `uiController.updateFormattingToolbar` toggles `btn-active-fmt` + reflects values;
 i18n `formatting.{justify,stroke,charSpacing,horizontalScale,baseline,superscript,subscript}` in en/fr/ar (ar
-status UNRECONCILED — see § i18n; these predate the 2026-07-30 sign-off and carried the marker at that
-date, so they were probably in the 31 reviewed and this marker is merely stale, but the repo cannot
-prove it either way). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
+accepted by the 2026-09-13 WS3 closure ruling — see § i18n; the repo could never prove whether the
+2026-07-30 pass covered these, and the developer closed the question by ruling rather than a re-read). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
 (attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path NOW applies stroke/Tc/Tz
 too (Feature 4, 2026-06-24 — see below); the **raster export path** (`exportPipeline.ts`, redaction pages +
 thumbnails) applies these attrs through the same `renderText` and its rasterize round-trip is pixel-guarded
@@ -2756,9 +2759,9 @@ two DISTINCT certs (each sig verifies against its own embedded cert), triple-sig
 append-only prefix preserved), multi-page. `beforeAll` gets 60s (two RSA-2048 keygens; hookTimeout ≠ the 30s
 testTimeout). Classic-xref + ASCII-object only remains the documented input contract. **Approval model B (D1/D2) stays the default**
 for the no-backend tool; D3 is now an opt-in productionisation candidate. Editable free-text caption date = v1b.
-**Arabic `modal.signers.mentionDefault`/labels: status UNRECONCILED** — see § i18n. The key exists with
-an Arabic value (`locales/ar.json:442`) and predates the 2026-07-30 sign-off, so this marker is probably
-just stale; the repo cannot prove it. Note the prose said `mentionDefault` for two years — the actual key
+**Arabic `modal.signers.mentionDefault`/labels: accepted by the 2026-09-13 WS3 closure ruling** — see
+§ i18n. The key has an Arabic value (`locales/ar.json:442`) and predates the 2026-07-30 sign-off; whether
+that pass covered it was never provable, and the ruling closed the question rather than re-reading it. Note the prose said `mentionDefault` for two years — the actual key
 is `modal.signers.mentionDefault`, which is why a grep for the short name finds only `signersPanel.ts`.
 
 ### Per-page crop (#G23)
@@ -2885,8 +2888,10 @@ under the new taxonomy means *recoverable* — the wrong word for the tool that 
 
 The three Arabic edits are single-verb substitutions (`للإبقاء على` → `لإظهار`, `الإبقاء عليها` →
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
-sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified, and the pending count
-is **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
+sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified. **The pending set is
+CLOSED as of 2026-09-13 by developer ruling** ("consider the arabic review done") — accepted by ruling, not
+by a second native read — **and the pending count is 1**: `toolbar.sanitizeTitle`, re-worded that day to
+en/fr parity by the session, which makes it a new value. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
 keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
 `toast.recentFileUnavailable`), and `toolbar.sanitizeTitle` — a word DELETION made by `8ae525c` on
 2026-09-04 that every copy of this list missed until WS7 round 9 found it in the range diff, and which
@@ -3095,9 +3100,9 @@ this class twice over.
    undo consumes it. That is ordinary browser behaviour, not a defect; the undo BUTTON works (verified
    live: overlay present → absent). Worth knowing because it reads exactly like a broken undo.
 
-i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (**ar [Unverified]** — needs a
-native pass, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings and
-the 2 #54b keys and `toolbar.sanitizeTitle` — 15 pending in total, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (ar accepted by the 2026-09-13 WS3
+closure ruling, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings,
+the 2 #54b keys and the old `toolbar.sanitizeTitle` — 1 value pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

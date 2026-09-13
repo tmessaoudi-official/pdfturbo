@@ -97,7 +97,7 @@ Update this table as each stream lands; it is what a resuming session reads firs
 | WS0 — doc drift | **DONE** 2026-09-01 | Ten drifts, not nine — see the Decisions Log. Gate green on the same commit. |
 | WS1 — uncertified dimensions + flake | **DONE** 2026-09-02 | 1a/1b/1c closed with sabotage-proven guards. 1d did NOT reproduce in 9 file runs (3 in-suite — a thin sample) and the timeout hypothesis is refuted by measurement — see the Decisions Log and CLAUDE.md § the orphan-leak flake. |
 | WS2 — C22 flow layout | **DONE** 2026-09-02 | Normalised at the `_extractFlowDoc` boundary; C22 CLOSED in `KNOWN_ISSUES.md`. Five sabotages, each red exactly where predicted. Sabotage exposed an UNPINNED frame in the image-channel redaction filter — guarded now. |
-| WS3 — Arabic (now ×14) | **awaiting the developer** | Review table extracted to `var/claude/arabic-review/pending-12.md` (gitignored) and sent. It covers the 12 keys pending at extraction time; **two more were added on 2026-09-04 by #54b** (`toolbar.recentFiles`, `toast.recentFileUnavailable`), so 14 are pending in total and the table needs those two appended before the review. |
+| WS3 — Arabic (×15 + 2 UNRECONCILED sets) | **CLOSED** 2026-09-13 by developer ruling | "Consider the arabic review done" — the 15 pending values (12 at extraction, 2 from #54b, `toolbar.sanitizeTitle` from WS7 round 9) and the two UNRECONCILED sets are accepted as reviewed: a ruling, not a native re-read. `toolbar.sanitizeTitle` was re-worded the same day to en/fr parity by the session, so that new wording is the ONE value pending. |
 | WS4 — bound PoCs | **DONE** 2026-09-04 | All six attempted. PROMOTED: A (ink clip), B (rotated footprint), F (Form `/BBox` clip), D (orphan `word/media` GC). REFUTED with measurements and pinned as tests: C (a PDF clip hides text without removing it), E (the assembled frame — and the recorded bound was understated). |
 | WS5 — adversarial audit | **DONE** 2026-09-04 | Three lenses, 30 findings (1 P0, 2 P1, 9 P2, 18 P3). P0 = a real redaction leak on rotated text runs. P0/P1 and the trivial P2/P3 fixed; 10 deferred with reasons in `KNOWN_ISSUES.md`. |
 | WS6 — feature backlog | **DONE** 2026-09-04 | Aspect-ratio-aware crop apply-to-all and #54b shipped; C9 measured against 15 real PDFs / 360 pages and STAYS UNWIRED (10 of 15 firings are multi-column layout, and it is not a threshold gap). |
@@ -205,9 +205,9 @@ mixed absolute/crop-relative (probe: a word at y=300 on a 300-high crop).
 - Byte-identical output for zero-origin pages (the entire existing flow/DOCX suite is the guard).
 - Update `KNOWN_ISSUES.md` (close or narrow C22) + `tests/blockers/README.md` row.
 
-## WS3 — Arabic ×14 native review (user-gated; interleave anywhere)
+## WS3 — Arabic ×15 native review — CLOSED 2026-09-13 by developer ruling (see the Decisions Log)
 
-1. Extract a review table from `locales/*.json` for the 12 keys pending at extraction time (14 since #54b) (the enumeration of record
+1. Extract a review table from `locales/*.json` for the 12 keys pending at extraction time (14 after #54b, 15 after WS7 round 9 added `toolbar.sanitizeTitle`) (the enumeration of record
    is `KNOWN_ISSUES.md § "Arabic locale strings"`): `toolbar.exportXlsxTitle`, `badge.signRect`, the six
    `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, and the three re-worded values
    (`toolbar.cropTitle`, `toast.modeHint.crop`, `toast.redactionPlaced`). Columns:
@@ -316,13 +316,14 @@ Scope is "what already exists", UNQUALIFIED — not only where bugs were found b
 3. Lenses: the three `.claude/agents/` reviewers, spawned UNNAMED, each reading diff/code/tests
    itself; sabotage-performing lenses in isolated worktrees.
 4. MAXIMAL tier: **two consecutive fully-clean rounds**; any finding resets the counter; cap 5
-   rounds → ask the developer via `AskUserQuestion` (never silently proceed).
+   rounds → ask the developer via `AskUserQuestion` (never silently proceed). Cap 5 was passed; the
+   `[2026-09-13 14:00]` ruling authorises rounds 10–14 and holds every push until 2/2 clean.
 5. The completion report states per dimension what was certified BY EXECUTION and what was not,
    naming each uncertified dimension — `UNCERTIFIED-BY-EXECUTION` in those words where it applies.
 
 ## Inputs needed from the developer (the only ones)
 
-1. **WS3**: the Arabic review answers for the 12 (+ optional 2 UNRECONCILED sets) values.
+1. ~~**WS3**: the Arabic review answers for the 12 (+ optional 2 UNRECONCILED sets) values.~~ Closed by ruling 2026-09-13.
 2. **WS4**: promote/refute rulings on any PoC whose evidence is ambiguous.
 3. **WS7**: the cap-5 escalation decision, if reached.
 
@@ -761,6 +762,21 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   `:52` among the stale colour-clip passages while the record cited `:70` — both lines are TRUE
   statements about a different mechanism; only `:266` and `:489` carry the stale three-channel rule,
   and they stay as declared history.
+- [2026-09-13 14:00] AGREED (developer, "Consider the arabic review done !"): WS3 is CLOSED. The 15
+  pending Arabic values and the two UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`)
+  are accepted as reviewed — by ruling, not by a second native read, and every count surface says so.
+  `toolbar.sanitizeTitle` under-claimed (en/fr cover scripts, external actions and attached files; ar
+  said metadata and JavaScript only), so the session re-worded it to parity the same day; that new
+  wording was not natively read and is the ONE value pending. The review table under
+  `var/claude/arabic-review/` is left as it is.
+- [2026-09-13 14:00] AGREED (developer, "start the rest ! be thorough ! nothings ships without being
+  tested and certified !!"): this is the answer to the cap-5 escalation — WS7 continues under the same
+  MAXIMAL rules, rounds 10–14 authorised, and reaching round 14 without two consecutive clean rounds
+  goes back to the developer. "Nothing ships" is read as NOTHING IS PUSHED to `master` (a push
+  auto-deploys) until the counter reads 2/2 clean: rounds review LOCAL frozen commits, as round 9
+  already did at the then-unpushed `2a19552`, and every fix still gets TDD, sabotage and the full deploy
+  gate before it is counted. Out of scope by the `[2026-09-05 00:10]` ruling unless a lens finds one
+  live: the KNOWN_ISSUES P2/P3 deferrals. `/PieceInfo` stripping stays flagged, unruled.
 
 ## Status
 <!-- progress-block v1 -->
@@ -770,7 +786,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 2 | WS0 — doc-drift reconciliation (ten drifts) | M | done | 46962b0 | CLAUDE.md, SECURITY.md, VISION.md, src/utils/geometry.ts |
 | 3 | WS1 — close uncertified dimensions + orphan-leak flake | M | done | 94600f2 | tests/browser/**  |
 | 4 | WS2 — C22 flow layout on non-zero CropBox origin | L | done | c03fd5e | src/export/**, src/utils/flowDoc.ts |
-| 5 | WS3 — Arabic x14 native review | S | blocked | - | locales/** |
+| 5 | WS3 — Arabic native review: closed by ruling, sanitizeTitle re-worded to parity (1 pending) | S | doing | - | locales/** |
 | 6 | WS4-A — ink composited above the burn | M | done | 347fa63 | src/export/**, tests/browser/redaction-ink-clip.browser.test.ts |
 | 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
 | 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |

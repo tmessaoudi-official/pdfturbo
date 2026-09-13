@@ -181,20 +181,19 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
 
 
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a
-  native speaker, and that pass changed no value. **That sign-off is no longer blanket.** FIFTEEN
-  values have been added or re-worded since and are pending a native pass: `toolbar.exportXlsxTitle`,
-  `badge.signRect` (added 2026-08-28 — the mode badge had no string for the e-sign rectangle mode),
-  the six `toolbar.cropMargin*` keys, `toast.cropMarginsTooLarge`, the three re-worded on
-  2026-08-05 to match the hide-vs-remove grades (`toolbar.cropTitle`, `toast.modeHint.crop`,
-  `toast.redactionPlaced` — single-verb substitutions, the first changes to a reviewed Arabic value
-  since the sign-off), the two added by #54b on 2026-09-04 (`toolbar.recentFiles`,
-  `toast.recentFileUnavailable`), and `toolbar.sanitizeTitle` — a word DELETION made by `8ae525c` on
-  2026-09-04 that all four copies of this list missed until WS7 round 9, and which now UNDER-claims:
-  the English and French tooltips were re-worded for the 2026-09-05 scope, the Arabic one deliberately
-  was not, so it needs a re-wording as well as a review. **This was the FOURTH copy of that prose
-  list**: CLAUDE.md's three copies were reconciled to 14 the same day and this one still read "Twelve"
-  — the drift the count's own paragraph warns about, one file further out than it was looking [WS5
-  audit, 2026-09-04]; reconciled again at 15 on 2026-09-05. **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
+  native speaker, and that pass changed no value. The fifteen values added or re-worded after it —
+  `toolbar.exportXlsxTitle`, `badge.signRect`, the six `toolbar.cropMargin*` keys,
+  `toast.cropMarginsTooLarge`, the three re-worded on 2026-08-05 to match the hide-vs-remove grades
+  (`toolbar.cropTitle`, `toast.modeHint.crop`, `toast.redactionPlaced`), the two added by #54b
+  (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
+  UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
+  RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
+  read, and it is recorded as one. **One value is pending:** `toolbar.sanitizeTitle` had UNDER-claimed
+  since `8ae525c` deleted a word and the 2026-09-05 scope widening left it behind, so it was re-worded
+  the same day to the English and French scope — by the session, not by a native speaker, so the new
+  wording starts `[Unverified]` like any new value. This list lived in four prose copies and drifted
+  three times (11 / 12 / 14 / 15) before the closure; `CLAUDE.md` § "The hide-vs-remove audit" is the
+  count's home. **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
   plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
 - Crop: numeric per-edge **margins** SHIPPED 2026-08-04 (converted per page); resizable **handles**
   SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). **Aspect-ratio-aware

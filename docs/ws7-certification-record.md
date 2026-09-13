@@ -118,8 +118,9 @@ open after `2a19552` claimed to clear it):
    dict.~~ Fixed in `3fc0863`.
 2. ~~`index.html:145` — the sanitize button's static `title` still said "& embedded files".~~
    Superseded: `3fc0863` made "embedded files" true again, and the round-9 fix re-worded the fallback
-   title and the English and French tooltips to the full scope (the Arabic tooltip is deliberately
-   untouched and is now the 15th value pending native review).
+   title and the English and French tooltips to the full scope. The Arabic tooltip was left for the
+   native review; that review was closed by developer ruling on 2026-09-13 and the Arabic tooltip was
+   re-worded to the same scope the same day (session-authored, the one value still pending).
 3. ~~`src/export/exportService.ts:351` — same claim on `sanitizeAndDownload`'s docstring.~~ Fixed in
    `2a19552`, widened again by the round-9 fix.
 4. `docs/plans/master.plan.md:489` and `:266` — the Decisions Log rules that the `/BBox` clip covers
