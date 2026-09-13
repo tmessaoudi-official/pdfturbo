@@ -801,7 +801,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 2 | WS0 — doc-drift reconciliation (ten drifts) | M | done | 46962b0 | CLAUDE.md, SECURITY.md, VISION.md, src/utils/geometry.ts |
 | 3 | WS1 — close uncertified dimensions + orphan-leak flake | M | done | 94600f2 | tests/browser/**  |
 | 4 | WS2 — C22 flow layout on non-zero CropBox origin | L | done | c03fd5e | src/export/**, src/utils/flowDoc.ts |
-| 5 | WS3 — Arabic native review: closed by ruling, sanitizeTitle re-worded to parity (1 pending) | S | done | 6a39a82 | locales/** |
+| 5 | WS3 — Arabic native review: closed by ruling, sanitizeTitle re-worded to parity (3 pending since WS7 round 10) | S | done | 6a39a82 | locales/** |
 | 6 | WS4-A — ink composited above the burn | M | done | 347fa63 | src/export/**, tests/browser/redaction-ink-clip.browser.test.ts |
 | 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
 | 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |

@@ -35,6 +35,16 @@ describe('Core blocker CORE-P0-2 — "Lock PDF" is AES-256 with usable permissio
     expect(s).not.toMatch(/AESV2/);
   });
 
+  // Ceiling C16 ("pdf-lib hardcodes R:5") closed with the 2026-09-13 upgrade to @cantoo/pdf-lib
+  // 2.11.0, which writes /R 6. The ISO 32000-2 hashing behind that /R is proven by the password
+  // round-trip in tests/export/exportPasswordSave.test.ts: pdf.js checks an /R 6 password with
+  // Algorithm 2.B, so R5-style hashes under an /R 6 label would fail to open there.
+  it('writes revision 6 (ceiling C16 closed by the pdf-lib 2.11.0 upgrade)', async () => {
+    const { s } = await lock();
+    expect(s).toMatch(/\/R 6\b/);
+    expect(s).not.toMatch(/\/R 5\b/);
+  });
+
   it('grants usage permissions (printing/copying/accessibility) — not a crippled lock', async () => {
     const p = permissionInt((await lock()).s);
     expect(p & 0b000000000100).not.toBe(0); // printing

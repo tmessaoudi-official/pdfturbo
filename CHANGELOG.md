@@ -129,6 +129,8 @@ most of the work went into proving that what the product claims to remove is act
   the claim is corrected.
 - `KNOWN_ISSUES.md` grew ceiling **C22** (flow layout on a non-zero CropBox origin), pinned by a
   confirming blocker test so it cannot rot unnoticed — and **C22 is now CLOSED** (see Fixed).
+- Ceiling **C16** (Lock PDF limited to encryption revision 5) is **CLOSED**: the pdf-lib 2.11.0
+  upgrade writes revision 6, now pinned by a test.
 
 ## [1.0.0] — 2026-06-26
 

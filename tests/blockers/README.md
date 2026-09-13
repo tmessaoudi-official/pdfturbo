@@ -11,7 +11,7 @@ cross-checked against every ceiling 2026-07-31:
 | | |
 |---|---|
 | blocker IDs here | AR-1, CORE-P0-2, MD-1/2/3, TX-1, O1, S2, S3, S6, B-1, B-3 — 12 IDs, 12 `describe` blocks, 18 tests |
-| of those, mapping to a `KNOWN_ISSUES.md` ceiling | **4**: C17 (S6 + S2), C16 (CORE-P0-2), C8 (AR-1, partial), C1 (B-3, partial) |
+| of those, mapping to a `KNOWN_ISSUES.md` ceiling | **4**: C17 (S6 + S2), C16 (CORE-P0-2; ceiling closed 2026-09-13), C8 (AR-1, partial), C1 (B-3, partial) |
 | the other 8 | MD-1/2/3, TX-1, B-1, S3 — *fixed defects*, kept as regression guards; O1 — an *infra invariant* (advertised OCR languages ⊆ vendored assets). None is a ceiling |
 
 So a green run here says *"the 2026-06-15 findings are still correctly handled"* — it does **not** say
@@ -43,7 +43,7 @@ Where each structural ceiling is actually pinned.
 |---|---|---|
 | C1 subset/CID new glyph | partial — B-3 refuses non-WinAnsi | `blockers/trueedit.blockers.test.ts`, `browser/trueedit-literal-subset.browser.test.ts` |
 | C8 DOCX char-level bidi | partial — AR-1 pins *word*-level order | `blockers/arabic.blockers.test.ts`, `utils/bidi.test.ts` |
-| C16 encryption R6 | yes — CORE-P0-2 pins AES-256 V5/AESV3 | `blockers/core-security.blockers.test.ts` |
+| ~~C16 encryption R6~~ | closed 2026-09-13 — CORE-P0-2 now pins `/R 6` beside AES-256 V5/AESV3 | `blockers/core-security.blockers.test.ts` |
 | C17 PAdES / TSA / LTV | yes — S2 + S6 as `it.fails` | `blockers/signing.blockers.test.ts` |
 | C2 Arabic in-place true-edit | yes — refuses → overlay | `handlers/textEditHandler.test.ts`, `utils/flowDocArabic.test.ts` |
 | C3 Type3 / Form-XObject | yes — `isType3Font` / `isPath3OnlyTarget` refuse | `utils/contentStreamEditor.test.ts` |

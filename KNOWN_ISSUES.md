@@ -52,7 +52,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 | ~~C13~~ | ~~Borderless table → CSV~~ | **CLOSED 2026-08-04** — EH-E released for the CSV path (`src/utils/borderlessTable.ts`): columns inferred from global whitespace bands, behind a confidence gate that refuses rather than guesses | — |
 | C14 | Arabic searchable-OCR **exact search** | Shaping yields contextual glyphs with incomplete ToUnicode | EH-B + richer ToUnicode. Selectable/screen-reader text already works |
 | C15 | OCR recognition **accuracy** | Bounded by the tesseract LSTM model | Cloud OCR (breaks EH-D) or a larger local model |
-| C16 | Encryption R6 hash-hardening | `@cantoo/pdf-lib` hardcodes R:5 | Fork/patch. AES-256 R5 is already strong |
+| ~~C16~~ | ~~Encryption R6 hash-hardening~~ | **CLOSED 2026-09-13** by the upgrade to `@cantoo/pdf-lib` 2.11.0, which writes `/R 6`. Pinned by CORE-P0-2 in `tests/blockers/core-security.blockers.test.ts`; the R6 password hashing is exercised by the password round-trip in `tests/export/exportPasswordSave.test.ts` (pdf.js opens it with the password) | — |
 | C17 | PAdES / TSA / LTV / CA-trusted signatures | node-forge can't emit ESS signing-cert-v2; TSA/LTV need a backend | Hand-rolled CAdES + EH-D. Valid ISO-32000 `adbe.pkcs7.detached` ships today |
 | C18 | RTL text-layer select/copy/search **precision** | pdf.js builds the layer per-glyph, visual-order; highlight is item-level | EH-B. Logical copy/search reconstruction already works |
 | C19 | Arabic overlay tashkeel/GPOS micro-positioning | Needs a GPOS shaper; legibility is already fine | EH-B |

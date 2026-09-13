@@ -63,7 +63,8 @@ _Last updated: 2026-09-05 · Version 1.0.0_
   annotations (on a page or hidden in a form field), and as associated files on any object. The file's bytes
   leave the copy even when something else still pointed at them.
   It does **not** alter page content
-- **Lock PDF** — AES-256 password encryption on export
+- **Lock PDF** — AES-256 password encryption on export; a few kinds of string cannot be encrypted, listed in
+  [`SECURITY.md`](SECURITY.md#lock-pdf--what-the-password-encrypts-and-what-it-cannot)
 - Which tools actually *delete* content versus only hide it is graded surface-by-surface in
   [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content)
 
