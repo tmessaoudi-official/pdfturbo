@@ -5,19 +5,20 @@ under a permissive license that allows commercial use, distribution, and sale. F
 texts are available in each package's repository (and, for fonts, in the vendored file noted
 below).
 
-_Last generated: 2026-06-26, from `package.json`._
+_Last generated: 2026-06-26, from `package.json`; versions refreshed 2026-09-13 after the upgrade to
+latest (every licence re-read from the installed `package.json` — none changed)._
 
 ---
 
 ## Bundled runtime libraries (shipped in the application)
 
 ### pdfjs-dist (PDF.js)
-- **Version**: ^6.0.0 · **License**: Apache-2.0
+- **Version**: ^6.3.289 · **License**: Apache-2.0
 - **Repository**: https://github.com/mozilla/pdf.js
 - Copyright © Mozilla Foundation and PDF.js contributors
 
 ### @cantoo/pdf-lib
-- **Version**: ^2.7.1 · **License**: MIT
+- **Version**: ^2.11.0 · **License**: MIT
 - **Repository**: https://github.com/cantoo-scribe/pdf-lib
 - Copyright © 2019 Andrew Dillon; maintained by Cantoo Scribe
 
@@ -27,12 +28,12 @@ _Last generated: 2026-06-26, from `package.json`._
 - Copyright © 2014 Devon Govett
 
 ### bidi-js
-- **Version**: 1.0.3 · **License**: MIT
+- **Version**: 1.1.0 · **License**: MIT
 - **Repository**: https://github.com/lojjic/bidi-js
 - Copyright © 2021 Jason Johnston
 
 ### bwip-js
-- **Version**: ^4.11.1 · **License**: MIT
+- **Version**: ^4.11.4 · **License**: MIT
 - **Repository**: https://github.com/metafloor/bwip-js
 - Copyright © 2011-2026 Mark Warren
 
@@ -42,7 +43,7 @@ _Last generated: 2026-06-26, from `package.json`._
 - Copyright © 2016 Dolan Miu
 
 ### i18next
-- **Version**: ^26.3.1 · **License**: MIT
+- **Version**: ^26.4.2 · **License**: MIT
 - **Repository**: https://github.com/i18next/i18next
 - Copyright © 2011-present i18next
 
@@ -57,7 +58,7 @@ _Last generated: 2026-06-26, from `package.json`._
 - Copyright © 2010-2022 Digital Bazaar, Inc.
 
 ### ProseMirror (prosemirror-commands, -history, -keymap, -model, -schema-basic, -schema-list, -state, -tables, -view)
-- **Versions**: commands ^1.7.1 · history ^1.5.0 · keymap ^1.2.3 · model ^1.25.9 · schema-basic ^1.2.4 · schema-list ^1.5.1 · state ^1.4.4 · tables 1.8.5 · view ^1.41.9
+- **Versions**: commands ^1.7.1 · history ^1.5.0 · keymap ^1.2.3 · model ^1.25.9 · schema-basic ^1.2.4 · schema-list ^1.5.1 · state ^1.4.4 · tables 1.8.5 · view ^1.42.3
 - **License**: MIT (all)
 - **Repository**: https://github.com/ProseMirror
 - Copyright © 2015-2017 by Marijn Haverbeke and others

@@ -777,6 +777,21 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   already did at the then-unpushed `2a19552`, and every fix still gets TDD, sabotage and the full deploy
   gate before it is counted. Out of scope by the `[2026-09-05 00:10]` ruling unless a lens finds one
   live: the KNOWN_ISSUES P2/P3 deferrals. `/PieceInfo` stripping stays flagged, unruled.
+- [2026-09-13 14:10] AGREED (developer, "can you make sure to upgrade all deps/versions to the latest
+  ??"): every dependency and CI action moves to its latest release BEFORE round 10 freezes, so a
+  single round reviews the upgrade with everything else. Landed in `caf4350` (versions) and `d00cd26`
+  (the test-harness and fixture consequences). CI stays on Node 24, the Active LTS that `.nvmrc` and
+  `deploy.yml` pin — a runtime-line choice left to the developer rather than read into "latest".
+- [2026-09-13 14:55] RECORDED: the upgrade broke nothing in `src/` and four things around it, each
+  measured before it was changed (`CLAUDE.md` § "The 2026-09-13 upgrade to latest"). (1) The local gate
+  had been run on the shell's Node v27 nightly; Node 25+'s own `localStorage` global shadowed jsdom's
+  under vitest 4 — 3 red on Node 26/27, green on 24, green on 26 after vitest 5. (2) `@cantoo/pdf-lib`
+  2.11.0 imports JSON without an import attribute: 37 suites dead at import; fixed by inlining it in
+  the jsdom config, with pre-bundling measured and refused (`createRequire is not a function` from
+  fflate's Node entry). (3) Ten truncated PNG fixtures, exposed by fflate's strict inflate. (4) One
+  `test:coverage:export` run died at load ~22 with "iframe did not become ready within 60000ms" and
+  no optimize/reload line; it passed alone and again in the cold-cache CI order, so it is recorded as
+  the harness's load-dependent start-up failure, not fixed.
 
 ## Status
 <!-- progress-block v1 -->
@@ -786,7 +801,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 2 | WS0 — doc-drift reconciliation (ten drifts) | M | done | 46962b0 | CLAUDE.md, SECURITY.md, VISION.md, src/utils/geometry.ts |
 | 3 | WS1 — close uncertified dimensions + orphan-leak flake | M | done | 94600f2 | tests/browser/**  |
 | 4 | WS2 — C22 flow layout on non-zero CropBox origin | L | done | c03fd5e | src/export/**, src/utils/flowDoc.ts |
-| 5 | WS3 — Arabic native review: closed by ruling, sanitizeTitle re-worded to parity (1 pending) | S | doing | - | locales/** |
+| 5 | WS3 — Arabic native review: closed by ruling, sanitizeTitle re-worded to parity (1 pending) | S | done | 6a39a82 | locales/** |
 | 6 | WS4-A — ink composited above the burn | M | done | 347fa63 | src/export/**, tests/browser/redaction-ink-clip.browser.test.ts |
 | 7 | WS4-B — rotated element/redaction true footprint | M | done | 4054713 | src/export/**, src/utils/geometry.ts, src/handlers/ocrHandler.ts |
 | 8 | WS4-F — Form /BBox clip in walkPageOps | M | done | c0883b2 | src/export/opStreamWalker.ts, tests/browser/form-bbox-clip.browser.test.ts |
@@ -800,6 +815,8 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 16 | WS7 — certification: 9 rounds run, NOT certified (0/2 clean), round 10 next | L | blocked | - | - |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 | 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
+| 19 | Upgrade every dependency and CI action to latest (ruled 2026-09-13) | M | done | caf4350 | package.json, package-lock.json, .github/workflows/deploy.yml |
+| 20 | Upgrade consequences: pdf-lib 2.11.0 inlined in jsdom, ten truncated PNG fixtures replaced | S | done | d00cd26 | vitest.config.ts, tests/** |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

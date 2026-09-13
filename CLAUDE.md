@@ -1257,6 +1257,40 @@ jsdom picks its own event target, so it assumes what a pointer in the gap hits; 
 can show the gap exists and that no stretched overlay swallows the click first, which is the exact
 shape of the bug this gate already had once.
 
+### The 2026-09-13 upgrade to latest — three traps, each measured before it was fixed
+
+Every dependency went to its latest release on 2026-09-13 (vitest 5.0.0 and its four `@vitest/*`
+packages, `@cantoo/pdf-lib` 2.11.0, pdfjs-dist 6.3.289, vite 8.3.0, oxlint 1.82.0, playwright 1.63.0;
+CI `setup-node@v7`, `upload-artifact@v7`). Three things broke, none of them in `src/`:
+
+- **Run the local gate on the CI Node, never the shell's `node`.** CI pins Node 24 (`deploy.yml`,
+  `.nvmrc`). On Node 25+ Node defines its OWN `localStorage` global, which is `undefined` without
+  `--localstorage-file`, and under vitest 4 it shadowed jsdom's — so the three crop kill-switch cases in
+  `tests/core/pageRenderPipeline.test.ts` failed with `Cannot read properties of undefined (reading
+  'removeItem')` on Node 26 and on the v27 nightly `/stack` put on `PATH`, and passed on Node 24. vitest 5
+  fixes that shadowing (the same files pass on Node 26), but the rule stands: prefix
+  `PATH=/stack/tools/nvm/versions/node/v24.<x>/bin:$PATH` for every gate step, or a red is about the
+  machine, not the product.
+- **`@cantoo/pdf-lib` 2.11.0 is not valid Node ESM.** Its ES build does
+  `import X from './Courier-Bold.compressed.json'` with no `with { type: 'json' }`, so an externalized
+  import dies with `needs an import attribute of "type: json"` — 37 jsdom suites at collection, 11 more
+  as caught dynamic imports returning nothing. The browser bundle is unaffected (Vite handles JSON), so
+  `vitest.config.ts` sets `server.deps.inline: ['@cantoo/pdf-lib']`. **`deps.optimizer.client` looks
+  like the faster fix and is not one**: its pre-bundle resolves fflate's `node` export condition
+  (`esm/index.mjs` opens with `createRequire`) and throws `createRequire is not a function` at import.
+  The cost of inlining is a cold transform per worker — 13089 ms for the DOCX editor's lazy
+  `import('./docxToPdf')` — so a test that waits on a lazy pdf-lib import must warm it in a hook
+  (`tests/docx/docxEditorController.test.ts`); left cold it timed out inside `vi.waitFor`'s 1 s,
+  skipped its `destroy()`, and every later case in the file queried the stale modal. **2.9.2 has no JSON
+  imports**, which is the fallback if inlining ever stops working.
+- **Ten base64 PNG fixtures were truncated, and only a strict decoder noticed.** pdf-lib 2.11.0 swapped
+  pako for fflate, which rejects an unterminated zlib stream (`unexpected EOF`); pako and Chrome decode
+  the same bytes leniently. So `appearanceImage.test.ts` lost its image through the signer's
+  decode-failure fallback (correct product behaviour, wrong fixture), and `docx-to-pdf.browser.test.ts`
+  lost two image cases. Python's `zlib.decompress` rejected all ten; each is now a generated PNG of the
+  same width, height and colour type. **Validate a hand-pasted binary fixture with a strict decoder
+  before trusting it** — a lenient consumer makes a broken fixture look fine until the consumer changes.
+
 ### `@cantoo/pdf-lib` 2.8.1 broke custom-font subsetting — adapt fontkit, don't pin back (2026-08-07)
 
 A lockfile-only bump (`^2.7.1` allowed 2.7.4 → **2.8.1**) turned CI red: **13 tests across 6 files**, every
