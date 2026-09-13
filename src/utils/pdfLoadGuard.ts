@@ -15,6 +15,9 @@
  *  - `PDFObjectStreamParser.parseIntoContext` throwing part-way — every member of the object stream
  *    not yet assigned is lost, while the stream itself is kept as an opaque invalid object.
  * The wrappers return what the originals return and rethrow what they throw, so no parse changes.
+ * "Nothing later replaced it" is read off the ORDER of pdf-lib's own assignments, never off the value:
+ * pdf-lib interns null, booleans and names, so an older revision and its replacement can be the very
+ * same object (WS7 round 13).
  *
  * WS7 rounds 10 and 11 detected the same drops by scanning the file's text for object headers. Round 12
  * found that scan wrong six ways — a stream with no `endstream`, a header glued to a delimiter, `>> stream`
@@ -22,10 +25,22 @@
  * string that merely reads ` 9 0 obj ` — every one a second tokenizer disagreeing with pdf-lib's. Asking
  * the parser leaves nothing to disagree about.
  *
+ * WS7 round 13 found the other half of "pdf-lib's copy is not what the viewer shows". pdf-lib reads the
+ * file in order and keeps the LAST definition of an object and the LAST trailer; pdf.js follows
+ * `startxref` and the cross-reference chain. A file whose table names an EARLIER copy of an object, or
+ * whose startxref trailer names a different /Root, therefore shows one page on screen while every export
+ * and signature is built from another — with nothing dropped. The recorder also keeps where each
+ * definition started and the cross-reference sections pdf-lib parsed (and then discarded), and a
+ * reachable object refuses (`PdfXrefMismatchError`) when the chain from `startxref` lands exactly on a
+ * definition pdf-lib did not keep. Measured with pdf.js before it was written: when a table offset is
+ * wrong, pdf.js rebuilds its table by scanning and keeps the last definition too, so only an offset that
+ * lands on a real header is a disagreement.
+ *
  * Kept deliberately:
  *  - a dangling reference nothing was dropped for loads (a legal null, common in old files);
  *  - a damaged object that IS terminated loads — pdf-lib keeps it as a `PDFInvalidObject`;
- *  - a drop that a LATER revision of the same object replaces loads.
+ *  - a drop that a LATER revision of the same object replaces loads;
+ *  - a duplicate whose copies are the same value, or that nothing uses, loads.
  * Closed by the recorder, where the header scan could not: when the NEWEST revision of an object is the
  * one dropped and an older revision stands in, the file is refused rather than exported stale.
  *
@@ -33,31 +48,49 @@
  * swallowed by a preceding stream whose end it placed too late — are not a drop, leave no record, and
  * are not detected here; that is pdf-lib's reading of the file, the same one 2.8.1 had. When an object
  * stream fails before its member list is known, the lost members cannot be named, so ANY reachable
- * dangling reference in that document refuses it.
+ * dangling reference in that document refuses it. A reachable damaged object's references cannot be read
+ * at all, so while one exists every drop still standing refuses the document, reachable or not. The
+ * cross-reference comparison is skipped whenever the chain cannot be followed through sections pdf-lib
+ * parsed (pdf.js then rebuilds by scanning — except its choice of trailer in that mode, which is not
+ * mirrored), for objects the table places inside an object stream, and for a linearized file whose
+ * first-page table pdf.js reaches from the linearization dictionary rather than from `startxref`.
  *
  * Every load in `src/` goes through here; `tests/utils/pdfLoadGuard.test.ts` fails by file name on
  * a new direct `PDFDocument.load`. A per-site check is how a sibling path keeps the defect.
  */
-import type { LoadOptions, PDFContext, PDFDocument, PDFRef as PDFRefT } from '@cantoo/pdf-lib';
+import type { LoadOptions, PDFContext, PDFDict as PDFDictT, PDFDocument, PDFRef as PDFRefT } from '@cantoo/pdf-lib';
 
 // pdf-lib is imported lazily and DESTRUCTURED, like every caller here: handing the module
 // namespace around as a value would keep all of it in whichever chunk did so.
 type PdfLib = typeof import('@cantoo/pdf-lib');
-type WalkLib = Pick<PdfLib, 'PDFRef' | 'PDFDict' | 'PDFArray' | 'PDFStream'>;
-type RecorderLib = Pick<PdfLib, 'PDFParser' | 'PDFObjectStreamParser' | 'PDFRef'>;
+type InspectLib = Pick<PdfLib, 'PDFRef' | 'PDFDict' | 'PDFArray' | 'PDFStream' | 'PDFInvalidObject' | 'PDFName' | 'PDFNumber'>;
+type RecorderLib = Pick<PdfLib, 'PDFParser' | 'PDFObjectStreamParser' | 'PDFXRefStreamParser' | 'PDFContext' | 'PDFRef'>;
 
 export class PdfObjectDroppedError extends Error {
   readonly refs: string[];
   constructor(refs: string[]) {
-    super(`PDF_OBJECT_DROPPED: pdf-lib could not parse ${refs.join(', ')} and dropped it`);
+    super(`PDF_OBJECT_DROPPED: pdf-lib could not parse ${refs.join(', ')}, and the document uses what it lost`);
     this.name = 'PdfObjectDroppedError';
     this.refs = refs;
   }
 }
 
+export class PdfXrefMismatchError extends Error {
+  readonly refs: string[];
+  constructor(refs: string[]) {
+    super(`PDF_XREF_MISMATCH: the cross-reference table and the file order disagree about ${refs.join(', ')}, `
+      + 'so the page on screen is not the content pdf-lib kept');
+    this.name = 'PdfXrefMismatchError';
+    this.refs = refs;
+  }
+}
+
 export async function loadPdfDocument(bytes: Uint8Array, options: LoadOptions = {}): Promise<PDFDocument> {
-  const { PDFDocument, PDFRef, PDFDict, PDFArray, PDFStream, PDFParser, PDFObjectStreamParser } = await import('@cantoo/pdf-lib');
-  installDropRecorder({ PDFParser, PDFObjectStreamParser, PDFRef });
+  const {
+    PDFDocument, PDFRef, PDFDict, PDFArray, PDFStream, PDFInvalidObject, PDFName, PDFNumber,
+    PDFParser, PDFObjectStreamParser, PDFXRefStreamParser, PDFContext,
+  } = await import('@cantoo/pdf-lib');
+  installDropRecorder({ PDFParser, PDFObjectStreamParser, PDFXRefStreamParser, PDFContext, PDFRef });
   const { updateMetadata = true, ...rest } = options;
   // Load WITHOUT pdf-lib's metadata stamp, check, and only then stamp. The stamp registers a new
   // /Info dictionary under the next free object number — and after a drop that number IS the dropped
@@ -67,61 +100,157 @@ export async function loadPdfDocument(bytes: Uint8Array, options: LoadOptions = 
   // constructor when `updateMetadata` is true, so calling it here is the same stamp in the same order.
   const doc = await PDFDocument.load(bytes, { ...rest, updateMetadata: false });
   // An encrypted file is parsed twice by pdf-lib; `doc.context` is the second, decrypting parse.
-  const dropped = findDroppedObjects({ PDFRef, PDFDict, PDFArray, PDFStream }, doc.context);
+  const { dropped, mismatched } = inspectParse(
+    { PDFRef, PDFDict, PDFArray, PDFStream, PDFInvalidObject, PDFName, PDFNumber }, doc.context, bytes,
+  );
+  records.delete(doc.context); // the record is only needed for this check
   if (dropped.length > 0) throw new PdfObjectDroppedError(dropped);
+  if (mismatched.length > 0) throw new PdfXrefMismatchError(mismatched);
   if (updateMetadata) (doc as unknown as { updateInfoDict(): void }).updateInfoDict();
   return doc;
 }
 
 interface Drop {
   ref: PDFRefT;
-  /** What the reference resolved to when pdf-lib dropped it — `undefined`, or an older revision. */
-  before: unknown;
+  /** The assignment clock when pdf-lib dropped it: any later assignment to the object supersedes it. */
+  clock: number;
+}
+/** A classic `N G obj` definition pdf-lib parsed, at the offset its header starts. */
+interface Definition {
+  offset: number;
+  clock: number;
+  object: unknown;
+}
+interface XrefEntry {
+  num: number;
+  gen: number;
+  offset: number;
+  inUse: boolean;
+  inObjectStream: boolean;
+}
+/** A cross-reference section pdf-lib parsed — a table with its trailer, or a stream with its dict. */
+interface XrefSection {
+  entries: XrefEntry[];
+  dict?: PDFDictT;
+}
+interface ParseRecord {
+  /** True only inside `parseDocument`, so edits made to the document later are not counted. */
+  parsing: boolean;
+  clock: number;
+  lastAssigned: Map<string, number>;
+  /** Some object was assigned more than once: a revision, a duplicate, or a member over a classic copy. */
+  reassigned: boolean;
+  drops: Map<string, Drop>;
+  membersUnknown: boolean;
+  definitions: Map<string, Definition[]>;
+  /** Keyed by the offset the section starts at: `xref`, or the xref stream's object header. */
+  sections: Map<number, XrefSection>;
+  pendingSection: XrefSection | null;
+  /** Header offset of the indirect object being parsed, for an xref stream found inside it. */
+  objectAt: number | undefined;
+  trailerDicts: number;
 }
 
-// Keyed by the parse's own context, so two documents loading at once cannot see each other's drops.
-const drops = new WeakMap<PDFContext, Map<string, Drop>>();
-const membersUnknown = new WeakSet<PDFContext>();
+// Keyed by the parse's own context, so two documents loading at once cannot see each other's records.
+const records = new WeakMap<PDFContext, ParseRecord>();
 // Module-local, not `Symbol.for`: a second copy of this module must install its own recorder rather
 // than find a marker and leave its own record permanently empty.
 const INSTALLED = Symbol('pdfLoadGuard.dropRecorder');
+const TRAILER = Array.from('trailer', c => c.charCodeAt(0));
 
-function recordDrop(ctx: PDFContext, ref: PDFRefT, before: unknown): void {
-  let map = drops.get(ctx);
-  if (!map) drops.set(ctx, (map = new Map()));
-  // A later drop of the same object overwrites: what matters is what stood in after the LAST one.
-  map.set(ref.toString(), { ref, before });
+function recordFor(ctx: PDFContext): ParseRecord {
+  let rec = records.get(ctx);
+  if (!rec) {
+    rec = {
+      parsing: false, clock: 0, lastAssigned: new Map(), reassigned: false, drops: new Map(),
+      membersUnknown: false, definitions: new Map(), sections: new Map(), pendingSection: null,
+      objectAt: undefined, trailerDicts: 0,
+    };
+    records.set(ctx, rec);
+  }
+  return rec;
+}
+
+function recordDrop(rec: ParseRecord, ref: PDFRefT, clock: number): void {
+  // A later drop of the same object overwrites: what matters is whether anything was assigned after the LAST one.
+  rec.drops.set(ref.toString(), { ref, clock });
+}
+
+function define(rec: ParseRecord, ctx: PDFContext, ref: PDFRefT, offset: number): void {
+  const key = ref.toString();
+  const definition = { offset, clock: rec.lastAssigned.get(key) ?? rec.clock, object: ctx.lookup(ref) };
+  const list = rec.definitions.get(key);
+  if (list) list.push(definition);
+  else rec.definitions.set(key, [definition]);
 }
 
 /** The references pdf-lib dropped while parsing into `ctx`, as `"N G R"`. For tests. */
 export function recordedDrops(ctx: PDFContext): string[] {
-  return [...(drops.get(ctx)?.keys() ?? [])];
+  return [...(records.get(ctx)?.drops.keys() ?? [])];
 }
 
+/** Whether a parse into `ctx` gave the cross-reference comparison anything to compare. For tests. */
+export async function describeParse(
+  ctx: PDFContext, bytes: Uint8Array,
+): Promise<{ reassigned: boolean; trailerDicts: number; chainResolved: boolean }> {
+  const { PDFRef, PDFDict, PDFArray, PDFStream, PDFInvalidObject, PDFName, PDFNumber } = await import('@cantoo/pdf-lib');
+  const rec = records.get(ctx);
+  if (!rec) return { reassigned: false, trailerDicts: 0, chainResolved: false };
+  const lib = { PDFRef, PDFDict, PDFArray, PDFStream, PDFInvalidObject, PDFName, PDFNumber };
+  return { reassigned: rec.reassigned, trailerDicts: rec.trailerDicts, chainResolved: readXrefChain(lib, ctx, rec, bytes) !== undefined };
+}
+
+interface CrossRefSectionShape {
+  subsections: Array<Array<{ ref: PDFRefT; offset: number; deleted: boolean }>>;
+}
 interface ParserInternals {
   context: PDFContext;
   bytes: { offset(): number; moveTo(offset: number): void };
+  parseDocument(): Promise<PDFContext>;
   parseIndirectObjectHeader(): PDFRefT;
+  parseIndirectObject(): Promise<PDFRefT>;
   tryToParseInvalidIndirectObject(): PDFRefT | undefined;
+  maybeParseCrossRefSection(): CrossRefSectionShape | undefined;
+  maybeParseTrailerDict(): void;
+  skipWhitespaceAndComments(): void;
+  matchKeyword(keyword: number[]): boolean;
+  parseDict(): PDFDictT;
 }
 interface ObjStmInternals {
   context: PDFContext;
   parseOffsetsAndObjectNumbers(): Array<{ objectNumber: number; offset: number }>;
   parseIntoContext(): Promise<void>;
 }
+interface XRefStreamInternals {
+  context: PDFContext;
+  dict: PDFDictT;
+  parseIntoContext(): Array<{ ref: PDFRefT; offset: number; deleted: boolean; inObjectStream: boolean }>;
+}
+interface ContextInternals {
+  assign(ref: PDFRefT, object: unknown): void;
+}
 type ForStream = (rawStream: { dict: { context: PDFContext } }, ...rest: unknown[]) => unknown;
 
+// Optional chaining, so a pdf-lib that lost a whole class reaches the loud error below instead of a TypeError.
+const protoOf = <T>(cls: unknown): T => ((cls as { prototype?: T } | undefined)?.prototype ?? {}) as T;
+
 /**
- * Wraps pdf-lib's two drop points, once. Throws if any wrapped method is gone: after a pdf-lib release
+ * Wraps the parser methods the checks read, once. Throws if any of them is gone: after a pdf-lib release
  * renames one, a silent no-op would leave every drop unrecorded and every load passing.
  */
 export function installDropRecorder(lib: RecorderLib): void {
-  const parser = lib.PDFParser.prototype as unknown as ParserInternals & { [INSTALLED]?: true };
-  const objStm = lib.PDFObjectStreamParser.prototype as unknown as ObjStmInternals;
-  const objStmClass = lib.PDFObjectStreamParser as unknown as { forStream: ForStream };
+  const parser = protoOf<ParserInternals & { [INSTALLED]?: true }>(lib.PDFParser);
+  const objStm = protoOf<ObjStmInternals>(lib.PDFObjectStreamParser);
+  const objStmClass = (lib.PDFObjectStreamParser ?? {}) as unknown as { forStream: ForStream };
+  const xrefStream = protoOf<XRefStreamInternals>(lib.PDFXRefStreamParser);
+  const context = protoOf<ContextInternals>(lib.PDFContext);
   const required: Array<[object, string]> = [
     [parser, 'tryToParseInvalidIndirectObject'], [parser, 'parseIndirectObjectHeader'],
+    [parser, 'parseIndirectObject'], [parser, 'parseDocument'], [parser, 'maybeParseCrossRefSection'],
+    [parser, 'maybeParseTrailerDict'], [parser, 'skipWhitespaceAndComments'], [parser, 'matchKeyword'],
+    [parser, 'parseDict'],
     [objStm, 'parseIntoContext'], [objStm, 'parseOffsetsAndObjectNumbers'], [objStmClass, 'forStream'],
+    [xrefStream, 'parseIntoContext'], [context, 'assign'],
   ];
   for (const [owner, name] of required) {
     if (typeof (owner as Record<string, unknown>)[name] !== 'function') {
@@ -129,6 +258,43 @@ export function installDropRecorder(lib: RecorderLib): void {
     }
   }
   if (parser[INSTALLED]) return;
+
+  const assign = context.assign;
+  context.assign = function (this: PDFContext, ref: PDFRefT, object: unknown) {
+    const rec = records.get(this);
+    if (rec?.parsing) {
+      const key = ref.toString();
+      if (rec.lastAssigned.has(key)) rec.reassigned = true;
+      rec.lastAssigned.set(key, ++rec.clock);
+    }
+    return assign.call(this, ref, object);
+  };
+
+  const parseDocument = parser.parseDocument;
+  parser.parseDocument = async function (this: ParserInternals) {
+    const rec = recordFor(this.context);
+    rec.parsing = true;
+    try {
+      return await parseDocument.call(this);
+    } finally {
+      rec.parsing = false;
+    }
+  };
+
+  const parseIndirectObject = parser.parseIndirectObject;
+  parser.parseIndirectObject = async function (this: ParserInternals) {
+    const rec = recordFor(this.context);
+    const offset = this.bytes.offset(); // pdf-lib skipped whitespace and comments before calling
+    const outer = rec.objectAt;
+    rec.objectAt = offset;
+    try {
+      const ref = await parseIndirectObject.call(this);
+      define(rec, this.context, ref, offset);
+      return ref;
+    } finally {
+      rec.objectAt = outer;
+    }
+  };
 
   const tryInvalid = parser.tryToParseInvalidIndirectObject;
   parser.tryToParseInvalidIndirectObject = function (this: ParserInternals) {
@@ -143,24 +309,89 @@ export function installDropRecorder(lib: RecorderLib): void {
       ref = undefined;
     }
     this.bytes.moveTo(at);
-    const before = ref ? this.context.lookup(ref) : undefined;
     const result = tryInvalid.call(this);
-    if (result === undefined && ref) recordDrop(this.context, ref, before);
+    const rec = recordFor(this.context);
+    if (result === undefined && ref) recordDrop(rec, ref, rec.clock);
+    else if (result) define(rec, this.context, result, at);
     return result;
   };
 
+  // pdf-lib parses a cross-reference table and throws the result away; keep its entries by start offset.
+  const crossRef = parser.maybeParseCrossRefSection;
+  parser.maybeParseCrossRefSection = function (this: ParserInternals) {
+    this.skipWhitespaceAndComments(); // the original's own first step, so the offset is where `xref` starts
+    const offset = this.bytes.offset();
+    const section = crossRef.call(this);
+    const rec = recordFor(this.context);
+    rec.pendingSection = null;
+    if (section) {
+      const entries: XrefEntry[] = [];
+      for (const sub of section.subsections) {
+        for (const e of sub) {
+          entries.push({
+            num: e.ref.objectNumber, gen: e.ref.generationNumber, offset: e.offset, inUse: !e.deleted, inObjectStream: false,
+          });
+        }
+      }
+      rec.pendingSection = { entries };
+      rec.sections.set(offset, rec.pendingSection);
+    }
+    return section;
+  };
+
+  // pdf-lib merges a trailer into `trailerInfo` and keeps no /Prev or /XRefStm, which the chain needs.
+  // Read the dict first, rewind, and let the original parse the same bytes.
+  const trailerDict = parser.maybeParseTrailerDict;
+  parser.maybeParseTrailerDict = function (this: ParserInternals) {
+    const rec = recordFor(this.context);
+    const section = rec.pendingSection;
+    rec.pendingSection = null;
+    const start = this.bytes.offset();
+    this.skipWhitespaceAndComments();
+    let dict: PDFDictT | undefined;
+    if (this.matchKeyword(TRAILER)) {
+      try {
+        this.skipWhitespaceAndComments();
+        dict = this.parseDict();
+      } catch {
+        dict = undefined; // the original throws on the same bytes
+      }
+    }
+    this.bytes.moveTo(start);
+    const result = trailerDict.call(this);
+    if (dict) {
+      rec.trailerDicts += 1;
+      if (section) section.dict = dict;
+    }
+    return result;
+  };
+
+  const xrefInto = xrefStream.parseIntoContext;
+  xrefStream.parseIntoContext = function (this: XRefStreamInternals) {
+    const entries = xrefInto.call(this);
+    const rec = recordFor(this.context);
+    rec.trailerDicts += 1;
+    if (rec.objectAt !== undefined) {
+      rec.sections.set(rec.objectAt, {
+        dict: this.dict,
+        entries: entries.map(e => ({
+          num: e.ref.objectNumber, gen: e.ref.generationNumber, offset: e.offset, inUse: !e.deleted, inObjectStream: e.inObjectStream,
+        })),
+      });
+    }
+    return entries;
+  };
+
   // The member list is parsed inside `parseIntoContext`, which consumes the stream, so capture it on
-  // the way out of its own method, together with what each member resolved to before this stream.
-  // On a throw EVERY listed member is recorded: one assigned before the throw resolves to something new,
-  // so the end-of-load comparison passes over it exactly as it passes over any superseded drop.
+  // the way out of its own method, stamped with the clock before any member is assigned. On a throw
+  // EVERY listed member is recorded: one assigned before the throw carries a later assignment, so the
+  // end-of-load check passes over it exactly as it passes over any superseded drop.
   const members = new WeakMap<object, Drop[]>();
   const memberTable = objStm.parseOffsetsAndObjectNumbers;
   objStm.parseOffsetsAndObjectNumbers = function (this: ObjStmInternals) {
     const table = memberTable.call(this);
-    members.set(this, table.map(({ objectNumber }) => {
-      const ref = lib.PDFRef.of(objectNumber, 0);
-      return { ref, before: this.context.lookup(ref) };
-    }));
+    const { clock } = recordFor(this.context);
+    members.set(this, table.map(({ objectNumber }) => ({ ref: lib.PDFRef.of(objectNumber, 0), clock })));
     return table;
   };
   const intoContext = objStm.parseIntoContext;
@@ -168,9 +399,10 @@ export function installDropRecorder(lib: RecorderLib): void {
     try {
       return await intoContext.call(this);
     } catch (e) {
+      const rec = recordFor(this.context);
       const listed = members.get(this);
-      if (!listed) membersUnknown.add(this.context); // the member table itself failed to parse
-      else for (const m of listed) recordDrop(this.context, m.ref, m.before);
+      if (!listed) rec.membersUnknown = true; // the member table itself failed to parse
+      else for (const m of listed) recordDrop(rec, m.ref, m.clock);
       throw e;
     }
   };
@@ -180,22 +412,86 @@ export function installDropRecorder(lib: RecorderLib): void {
       return forStream(rawStream, ...rest);
     } catch (e) {
       // Decoding the stream or reading /N and /First failed: no member of it will ever be assigned.
-      membersUnknown.add(rawStream.dict.context);
+      recordFor(rawStream.dict.context).membersUnknown = true;
       throw e;
     }
   };
   parser[INSTALLED] = true;
 }
 
-/** Recorded drops that are reachable from the trailer and still stand, plus — when an object stream's
- *  members could not be listed — every reachable dangling reference. */
-function findDroppedObjects(lib: WalkLib, ctx: PDFContext): string[] {
-  const recorded = drops.get(ctx);
-  const unknown = membersUnknown.has(ctx);
-  if (!recorded && !unknown) return []; // a clean parse pays nothing
-  const { PDFRef, PDFDict, PDFArray, PDFStream } = lib;
-  const seen = new Set<string>();
+/** Where the lexer that reads `offset` would start: past whitespace and `%` comments, as pdf.js reads it. */
+function skipWhitespace(bytes: Uint8Array, offset: number): number {
+  let at = offset;
+  while (at < bytes.length) {
+    const c = bytes[at];
+    if (c === 0x00 || c === 0x09 || c === 0x0a || c === 0x0c || c === 0x0d || c === 0x20) at++;
+    else if (c === 0x25) {
+      while (at < bytes.length && bytes[at] !== 0x0a && bytes[at] !== 0x0d) at++;
+    } else break;
+  }
+  return at;
+}
+
+/** pdf.js counts cross-reference offsets from the first `%PDF-` in the first 1024 bytes, or from 0. */
+function headerOffset(bytes: Uint8Array): number {
+  const sig = [0x25, 0x50, 0x44, 0x46, 0x2d];
+  const end = Math.min(bytes.length, 1024) - sig.length;
+  for (let i = 0; i <= end; i++) {
+    if (sig.every((b, j) => bytes[i + j] === b)) return i;
+  }
+  return 0;
+}
+
+interface XrefChain {
+  entries: Map<number, XrefEntry>;
+  top: PDFDictT;
+  base: number;
+}
+
+/**
+ * The cross-reference chain pdf.js follows — from `startxref`, a table's /XRefStm, then /Prev, the
+ * newest section winning each object — built only from sections pdf-lib itself parsed. `undefined` when
+ * the chain leaves them: pdf.js then reads it differently or rebuilds by scanning, and nothing is guessed.
+ */
+function readXrefChain(lib: InspectLib, ctx: PDFContext, rec: ParseRecord, bytes: Uint8Array): XrefChain | undefined {
+  const start = (ctx as unknown as { pdfFileDetails?: { prevStartXRef?: number } }).pdfFileDetails?.prevStartXRef;
+  if (typeof start !== 'number') return undefined;
+  const base = headerOffset(bytes);
+  const entries = new Map<number, XrefEntry>();
+  let top: PDFDictT | undefined;
+  const queue = [start];
+  const done = new Set<number>();
+  while (queue.length > 0) {
+    const offset = queue.shift() as number;
+    if (done.has(offset)) continue;
+    done.add(offset);
+    const section = rec.sections.get(skipWhitespace(bytes, offset + base));
+    if (!section?.dict) return undefined;
+    top ??= section.dict;
+    for (const e of section.entries) if (!entries.has(e.num)) entries.set(e.num, e);
+    for (const key of ['XRefStm', 'Prev']) {
+      const next = section.dict.get(lib.PDFName.of(key));
+      if (next instanceof lib.PDFNumber) queue.push(next.asNumber());
+    }
+  }
+  return top ? { entries, top, base } : undefined;
+}
+
+/**
+ * Recorded drops that are reachable (or unreadable behind a reachable damaged object) and still stand,
+ * plus — when an object stream's members could not be listed — every reachable dangling reference; and
+ * the reachable objects where pdf.js's cross-reference chain lands on a definition pdf-lib did not keep.
+ */
+function inspectParse(lib: InspectLib, ctx: PDFContext, bytes: Uint8Array): { dropped: string[]; mismatched: string[] } {
+  const rec = records.get(ctx);
+  // A single-revision parse with nothing dropped pays nothing.
+  if (!rec || (rec.drops.size === 0 && !rec.membersUnknown && !rec.reassigned && rec.trailerDicts <= 1)) {
+    return { dropped: [], mismatched: [] };
+  }
+  const { PDFRef, PDFDict, PDFArray, PDFStream, PDFInvalidObject } = lib;
+  const seen = new Map<string, PDFRefT>();
   const dangling: string[] = [];
+  const damaged: string[] = [];
   const queue: unknown[] = [
     ctx.trailerInfo.Root, ctx.trailerInfo.Encrypt, ctx.trailerInfo.Info, ctx.trailerInfo.ID,
   ];
@@ -204,9 +500,10 @@ function findDroppedObjects(lib: WalkLib, ctx: PDFContext): string[] {
     if (value instanceof PDFRef) {
       const key = value.toString();
       if (seen.has(key)) continue;
-      seen.add(key);
+      seen.set(key, value);
       const target = ctx.lookup(value);
       if (target === undefined) dangling.push(key);
+      else if (target instanceof PDFInvalidObject) damaged.push(key); // its references cannot be read
       else queue.push(target);
     } else if (value instanceof PDFStream) {
       queue.push(value.dict);
@@ -216,11 +513,34 @@ function findDroppedObjects(lib: WalkLib, ctx: PDFContext): string[] {
       for (let i = 0; i < value.size(); i++) queue.push(value.get(i));
     }
   }
-  const refused = new Set<string>();
-  for (const [key, { ref, before }] of recorded ?? []) {
-    // Still resolving to what stood when pdf-lib dropped it — nothing, or the older revision.
-    if (seen.has(key) && ctx.lookup(ref) === before) refused.add(key);
+
+  const dropped = new Set<string>();
+  for (const [key, drop] of rec.drops) {
+    if ((rec.lastAssigned.get(key) ?? -1) > drop.clock) continue; // a later assignment replaced it
+    if (seen.has(key) || damaged.length > 0) dropped.add(key);
   }
-  if (unknown) for (const key of dangling) refused.add(key);
-  return [...refused];
+  if (rec.membersUnknown) {
+    for (const key of dangling) dropped.add(key);
+    for (const key of damaged) dropped.add(key);
+  }
+
+  const mismatched: string[] = [];
+  const chain = rec.reassigned || rec.trailerDicts > 1 ? readXrefChain(lib, ctx, rec, bytes) : undefined;
+  if (chain) {
+    for (const [key, ref] of seen) {
+      const definitions = rec.definitions.get(key);
+      const kept = rec.lastAssigned.get(key);
+      if (!definitions || definitions.every(d => d.clock === kept)) continue; // pdf-lib kept its only definition
+      const entry = chain.entries.get(ref.objectNumber);
+      if (!entry?.inUse || entry.inObjectStream || entry.offset === 0 || entry.gen !== ref.generationNumber) continue;
+      const shown = definitions.find(d => d.offset === skipWhitespace(bytes, entry.offset + chain.base));
+      if (shown && shown.clock !== kept && shown.object !== ctx.lookup(ref)) mismatched.push(key);
+    }
+    const root = chain.top.get(lib.PDFName.of('Root'));
+    const keptRoot = ctx.trailerInfo.Root;
+    if (root instanceof PDFRef && keptRoot instanceof PDFRef && root !== keptRoot && ctx.lookup(root) instanceof PDFDict) {
+      mismatched.push(keptRoot.toString());
+    }
+  }
+  return { dropped: [...dropped], mismatched };
 }

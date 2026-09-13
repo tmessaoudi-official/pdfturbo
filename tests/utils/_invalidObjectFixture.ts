@@ -50,11 +50,15 @@ export function editPdfText(bytes: Uint8Array, from: string, to: string): Uint8A
  * the first one that throws, so every member after 9 is never assigned. `noFirst` makes the stream's
  * constructor throw; `n` larger than the member count makes the member table itself fail to parse.
  */
-export function buildObjStmPdf(order: number[], opts: { noFirst?: boolean; n?: number } = {}): Uint8Array {
+export function buildObjStmPdf(
+  order: number[],
+  opts: { noFirst?: boolean; n?: number; members?: Record<number, string> } = {},
+): Uint8Array {
   const members: Record<number, string> = {
     7: '<< /X 1 >>',
     8: '<< /Type /Annot /Subtype /Text /Rect [10 10 40 40] /Contents (KEEPNOTE) >>',
     9: '<< /Y } >>',
+    ...opts.members,
   };
   let data = '';
   const pairs: string[] = [];
@@ -69,6 +73,101 @@ export function buildObjStmPdf(order: number[], opts: { noFirst?: boolean; n?: n
     + `10 0 obj\n<< /Type /ObjStm /N ${opts.n ?? order.length}${first} /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`
     // Decorative, like the other builders: pdf-lib scans objects sequentially.
     + 'xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 11 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n';
+  return latin1Bytes(body);
+}
+
+export type XrefShape =
+  | 'clean' | 'dupFirst' | 'dupFirstLoose' | 'dupLast' | 'dupBadXref' | 'incremental' | 'incrementalStale' | 'dualTrailer'
+  | 'junkRelative' | 'junkAbsolute' | 'xrefStreamDupFirst' | 'unreachableDupFirst' | 'identicalDupFirst';
+
+/**
+ * pdf.js reads a PDF through `startxref` and its cross-reference chain; pdf-lib scans objects in file
+ * order and keeps the LAST definition of each object and the LAST trailer. These shapes make the two
+ * agree or disagree about page 1 on purpose — the text pdf.js reaches first says VIEWED, a later copy
+ * says SIGNED. Unlike the builders above, the xref here is REAL: every offset is measured, because the
+ * cross-reference data is the subject.
+ *  - `dupFirst` / `dupLast`: object 5 twice, the table naming the first / the last copy.
+ *  - `dupFirstLoose`: `dupFirst` with the offset one byte early, on whitespace pdf.js reads past.
+ *  - `dupBadXref`: the same duplicate with every offset wrong, so pdf.js rebuilds its table by scanning.
+ *  - `incremental` / `incrementalStale`: a real appended update whose table names the new / the OLD copy.
+ *  - `dualTrailer`: a second trailer whose /Root is a second page tree.
+ *  - `junkRelative` / `junkAbsolute`: bytes before `%PDF-`, offsets counted from the header / from byte 0.
+ *  - `xrefStreamDupFirst`: `dupFirst` with a cross-reference STREAM.
+ *  - `unreachableDupFirst` / `identicalDupFirst`: the first-copy table on an unused object / on two nulls.
+ */
+export function buildXrefShapePdf(shape: XrefShape): Uint8Array {
+  const content = (t: string): string => {
+    const s = `BT /F1 24 Tf 20 200 Td (${t}) Tj ET`;
+    return `<< /Length ${s.length} >>\nstream\n${s}\nendstream`;
+  };
+  const dup = ['dupFirst', 'dupFirstLoose', 'dupLast', 'dupBadXref', 'junkRelative', 'junkAbsolute', 'xrefStreamDupFirst'].includes(shape);
+  const objs: Array<[number, string]> = [
+    [1, `<< /Type /Catalog /Pages 2 0 R${shape === 'identicalDupFirst' ? ' /Extra 9 0 R' : ''} >>`],
+    [2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    [3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>'],
+    [4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],
+    [5, content('VIEWED')],
+  ];
+  if (dup) objs.push([5, content('SIGNED')]);
+  if (shape === 'unreachableDupFirst') objs.push([9, '<< /A 1 >>'], [9, '<< /A 2 >>']);
+  if (shape === 'identicalDupFirst') objs.push([9, 'null'], [9, 'null']);
+  if (shape === 'dualTrailer') {
+    objs.push(
+      [11, '<< /Type /Catalog /Pages 12 0 R >>'],
+      [12, '<< /Type /Pages /Kids [13 0 R] /Count 1 >>'],
+      [13, '<< /Type /Page /Parent 12 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 15 0 R >>'],
+      [15, content('SIGNED')],
+    );
+  }
+  const junk = shape.startsWith('junk') ? 'JUNK BEFORE THE HEADER\n' : '';
+  // pdf.js counts offsets from `%PDF-`, not from byte 0; `junkAbsolute` deliberately counts from byte 0.
+  const rel = shape === 'junkRelative' ? junk.length : 0;
+  let body = `${junk}%PDF-1.7\n`;
+  const at = new Map<number, number[]>();
+  for (const [n, b] of objs) {
+    at.set(n, [...(at.get(n) ?? []), body.length]);
+    body += `${n} 0 obj\n${b}\nendobj\n`;
+  }
+  const size = Math.max(...objs.map(([n]) => n)) + 1;
+  const offsetOf = (n: number): number | undefined => {
+    const list = at.get(n);
+    if (!list) return undefined;
+    if (shape === 'dupBadXref') return 7;
+    if (shape === 'dupFirstLoose' && n === 5) return list[0] - rel - 1; // on the newline pdf.js's lexer skips
+    return (shape === 'dupLast' ? list[list.length - 1] : list[0]) - rel;
+  };
+  const pad = (v: number, w: number): string => String(v).padStart(w, '0');
+
+  if (shape === 'xrefStreamDupFirst') {
+    const be = (v: number, w: number): string =>
+      Array.from({ length: w }, (_, i) => String.fromCharCode((v >>> (8 * (w - 1 - i))) & 0xff)).join('');
+    const xrefAt = body.length;
+    let data = '';
+    for (let i = 0; i <= size; i++) {
+      const o = i === size ? xrefAt : offsetOf(i);
+      data += o === undefined ? ` ${be(0, 4)}${be(i === 0 ? 0xffff : 0, 2)}` : `${be(o, 4)}${be(0, 2)}`;
+    }
+    body += `${size} 0 obj\n<< /Type /XRef /Size ${size + 1} /W [1 4 2] /Root 1 0 R /Length ${data.length} >>\nstream\n${data}\nendstream\nendobj\n`
+      + `startxref\n${xrefAt}\n%%EOF\n`;
+    return latin1Bytes(body);
+  }
+
+  const xrefAt = body.length;
+  body += `xref\n0 ${size}\n0000000000 65535 f \n`;
+  for (let i = 1; i < size; i++) {
+    const o = offsetOf(i);
+    body += o === undefined ? '0000000000 65535 f \n' : `${pad(o, 10)} 00000 n \n`;
+  }
+  body += `trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xrefAt - rel}\n%%EOF\n`;
+  if (shape === 'incremental' || shape === 'incrementalStale') {
+    const appended = body.length;
+    body += `5 0 obj\n${content('SIGNED')}\nendobj\n`;
+    const section = body.length;
+    const five = shape === 'incremental' ? appended : (at.get(5) ?? [0])[0];
+    body += `xref\n5 1\n${pad(five, 10)} 00000 n \ntrailer\n<< /Size ${size} /Root 1 0 R /Prev ${xrefAt} >>\n`
+      + `startxref\n${section}\n%%EOF\n`;
+  }
+  if (shape === 'dualTrailer') body += `trailer\n<< /Size ${size} /Root 11 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
   return latin1Bytes(body);
 }
 

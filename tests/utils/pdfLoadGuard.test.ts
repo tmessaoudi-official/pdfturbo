@@ -14,7 +14,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import * as pdfLib from '@cantoo/pdf-lib';
 import { installDropRecorder, loadPdfDocument, PdfObjectDroppedError, recordedDrops } from '../../src/utils/pdfLoadGuard';
-import { appendRevision, buildContentStreamPdf as build, buildObjStmPdf, editPdfText } from './_invalidObjectFixture';
+import { appendRevision, buildContentStreamPdf as build, buildObjStmPdf, buildXrefShapePdf, editPdfText } from './_invalidObjectFixture';
 
 describe('loadPdfDocument', () => {
   it('REFUSES a document whose used object pdf-lib silently dropped, naming the object', async () => {
@@ -230,6 +230,147 @@ describe('loadPdfDocument — drops are recorded where pdf-lib makes them (WS7 r
     const lib = { PDFParser: class {}, PDFObjectStreamParser: class {}, PDFRef: pdfLib.PDFRef };
     expect(() => installDropRecorder(lib as unknown as Parameters<typeof installDropRecorder>[0]))
       .toThrow(/tryToParseInvalidIndirectObject/);
+  });
+});
+
+describe('loadPdfDocument — what a kept damaged object points at (WS7 round 13)', () => {
+  const refusal = (bytes: Uint8Array): Promise<unknown> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => e);
+  const raw = async (bytes: Uint8Array): Promise<pdfLib.PDFContext> =>
+    (await pdfLib.PDFDocument.load(bytes, { updateMetadata: false })).context;
+  const refsOf = (e: unknown): string[] => {
+    expect(e).toBeInstanceOf(PdfObjectDroppedError);
+    return (e as PdfObjectDroppedError).refs;
+  };
+
+  it('REFUSES a drop reachable only through a kept damaged object, whose references cannot be read (export F2)', async () => {
+    const bytes = editPdfText(
+      editPdfText(build({ brokenAfterStream: true }), '/Broken 6 0 R', '/Broken 7 0 R'),
+      '6 0 obj\n<< /Type /Foo }', '7 0 obj\n<< /Type /Bar } /Ref 6 0 R >>\nendobj\n6 0 obj\n<< /Type /Foo }',
+    );
+    const ctx = await raw(bytes);
+    // Non-vacuity: 7 is kept opaque and 6 is gone, so nothing the walk can read reaches the drop.
+    expect(ctx.lookup(pdfLib.PDFRef.of(7))).toBeInstanceOf(pdfLib.PDFInvalidObject);
+    expect(ctx.lookup(pdfLib.PDFRef.of(6))).toBeUndefined();
+    expect(recordedDrops(ctx)).toEqual(['6 0 R']);
+    expect(refsOf(await refusal(bytes))).toEqual(['6 0 R']);
+  });
+
+  it('REFUSES when an object stream lost its member list and a kept damaged object may point into it', async () => {
+    const bytes = editPdfText(
+      editPdfText(buildObjStmPdf([7, 8, 9], { noFirst: true }), '/Annots [8 0 R]', '/Annots [11 0 R]'),
+      '10 0 obj', '11 0 obj\n<< /Subtype } /P 8 0 R >>\nendobj\n10 0 obj',
+    );
+    const ctx = await raw(bytes);
+    expect(ctx.lookup(pdfLib.PDFRef.of(11))).toBeInstanceOf(pdfLib.PDFInvalidObject);
+    expect(ctx.lookup(pdfLib.PDFRef.of(8))).toBeUndefined();
+    // No dangling reference is readable, so the damaged object is the one named.
+    expect(refsOf(await refusal(bytes))).toEqual(['11 0 R']);
+  });
+
+  it('loads a reachable damaged object when the only drop was superseded by a later revision (control)', async () => {
+    const content = 'BT /F1 24 Tf 20 200 Td (KEEPME) Tj ET';
+    const withDamaged = editPdfText(
+      editPdfText(build({ brokenLast: true }), '/Pages 2 0 R', '/Pages 2 0 R /Dmg 8 0 R'),
+      'endobj\n5 0 obj', 'endobj\n8 0 obj\n<< /A } >>\nendobj\n5 0 obj',
+    );
+    const bytes = appendRevision(withDamaged, `5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\n`);
+    const ctx = await raw(bytes);
+    expect(ctx.lookup(pdfLib.PDFRef.of(8))).toBeInstanceOf(pdfLib.PDFInvalidObject);
+    expect(recordedDrops(ctx)).toEqual(['5 0 R']);
+    expect(await refusal(bytes)).toBe('loaded');
+  });
+});
+
+describe('loadPdfDocument — a drop is superseded by assignment ORDER, not by identity (WS7 round 13)', () => {
+  const refusal = (bytes: Uint8Array): Promise<unknown> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => e);
+  const raw = async (bytes: Uint8Array): Promise<pdfLib.PDFContext> =>
+    (await pdfLib.PDFDocument.load(bytes, { updateMetadata: false })).context;
+
+  it.each([
+    ['null', pdfLib.PDFNull],
+    ['/X', pdfLib.PDFName.of('X')],
+    ['true', pdfLib.PDFBool.True],
+  ])('loads when the revision after a drop is the same interned value as the one before it: %s (export F1)', async (value, interned) => {
+    // pdf-lib interns null, booleans and names, so "the older revision still stands" and "a later revision
+    // replaced the drop" hold the very same object, and an identity comparison cannot tell them apart.
+    const withSix = editPdfText(
+      editPdfText(build(), '/Pages 2 0 R', '/Pages 2 0 R /Foo 6 0 R'),
+      'xref\n0 ', `6 0 obj\n${value}\nendobj\nxref\n0 `,
+    );
+    const bytes = appendRevision(withSix, `6 0 obj\n<< /Type /Foo }\n6 0 obj\n${value}\n`);
+    const ctx = await raw(bytes);
+    expect(recordedDrops(ctx)).toEqual(['6 0 R']);
+    expect(ctx.lookup(pdfLib.PDFRef.of(6))).toBe(interned);
+    expect(await refusal(bytes)).toBe('loaded');
+  });
+
+  it('loads when an object-stream member re-assigns the same interned value before a later member throws (export F1)', async () => {
+    const bytes = editPdfText(
+      editPdfText(buildObjStmPdf([7, 9], { members: { 7: 'null' } }), '/Pages 2 0 R', '/Pages 2 0 R /Foo 7 0 R'),
+      '10 0 obj', '7 0 obj\nnull\nendobj\n10 0 obj',
+    );
+    const ctx = await raw(bytes);
+    expect(recordedDrops(ctx).sort()).toEqual(['7 0 R', '9 0 R']);
+    expect(ctx.lookup(pdfLib.PDFRef.of(7))).toBe(pdfLib.PDFNull);
+    expect(await refusal(bytes)).toBe('loaded');
+  });
+});
+
+describe('loadPdfDocument — where pdf.js and pdf-lib would read different content (WS7 round 13, safety F1)', () => {
+  const refusal = (bytes: Uint8Array): Promise<unknown> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => e);
+  const pdfjsText = async (bytes: Uint8Array): Promise<string> => {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;
+    const { items } = await (await doc.getPage(1)).getTextContent();
+    return (items as Array<{ str?: string }>).map(i => i.str ?? '').join('');
+  };
+  const pdfLibText = async (bytes: Uint8Array): Promise<string> => {
+    const doc = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    const stream = doc.getPage(0).node.lookup(pdfLib.PDFName.of('Contents')) as pdfLib.PDFRawStream;
+    return new TextDecoder('latin1').decode(stream.getContents());
+  };
+  const mismatchOf = (e: unknown): string[] => {
+    expect((e as Error | undefined)?.name).toBe('PdfXrefMismatchError');
+    return (e as { refs: string[] }).refs;
+  };
+
+  it.each([
+    ['dupFirst', ['5 0 R']],
+    ['dupFirstLoose', ['5 0 R']],
+    ['incrementalStale', ['5 0 R']],
+    ['junkRelative', ['5 0 R']],
+    ['xrefStreamDupFirst', ['5 0 R']],
+    ['dualTrailer', ['11 0 R']],
+  ] as const)('REFUSES %s — pdf.js shows one page, the pdf-lib copy every export and signature uses holds another', async (shape, refs) => {
+    const bytes = buildXrefShapePdf(shape);
+    // Non-vacuity, both halves: the viewer really shows VIEWED, and pdf-lib really kept SIGNED.
+    expect(await pdfjsText(bytes)).toBe('VIEWED');
+    expect(await pdfLibText(bytes)).toContain('SIGNED');
+    expect(mismatchOf(await refusal(bytes))).toEqual(refs);
+  });
+
+  it.each(['clean', 'dupLast', 'dupBadXref', 'incremental', 'junkAbsolute'] as const)(
+    'loads %s — both parsers read the same page (control)', async shape => {
+      const bytes = buildXrefShapePdf(shape);
+      const shown = await pdfjsText(bytes);
+      expect(shown).toMatch(/^(VIEWED|SIGNED)$/);
+      expect(await pdfLibText(bytes)).toContain(shown);
+      expect(await refusal(bytes)).toBe('loaded');
+    },
+  );
+
+  it('loads when the disagreement is about an object nothing uses', async () => {
+    const bytes = buildXrefShapePdf('unreachableDupFirst');
+    const doc = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    expect(String(doc.context.lookup(pdfLib.PDFRef.of(9)))).toContain('/A 2'); // the copy the table does not name
+    expect(await refusal(bytes)).toBe('loaded');
+  });
+
+  it('loads when both copies are the same value — there is nothing to disagree about', async () => {
+    expect(await refusal(buildXrefShapePdf('identicalDupFirst'))).toBe('loaded');
   });
 });
 
