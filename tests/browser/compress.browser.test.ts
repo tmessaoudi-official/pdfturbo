@@ -35,7 +35,7 @@ interface Probe {
   downloaded: { blob: Blob; filename: string }[];
 }
 
-function buildProbe(srcBytes: Uint8Array): Probe {
+function buildProbe(srcBytes: Uint8Array, exportPassword: { user: string; owner: string } | null = null): Probe {
   const infos: string[] = [];
   const errors: string[] = [];
   const downloaded: { blob: Blob; filename: string }[] = [];
@@ -53,7 +53,7 @@ function buildProbe(srcBytes: Uint8Array): Probe {
     elements: [],
     formValues: {},
     currentFilename: 'doc.pdf',
-    exportPassword: null,
+    exportPassword,
     inkLayer: { getStrokes: () => [] },
     reportError: {
       info: (k: string) => infos.push(k),
@@ -113,5 +113,26 @@ describe('compressAndDownload (real Chrome, #60)', () => {
     expect(re.getPageCount()).toBe(2);
     expect((await textOnPage(out, 1)).replace(/\s/g, '')).toBe('');
     expect((await textOnPage(out, 2)).replace(/\s/g, '')).toBe('');
+  });
+
+  // WS7 round 12, completeness F7: the lossy save applies Lock PDF on its own and had no pin. The jsdom
+  // password class test covers lossless; this mode needs a real canvas.
+  it('lossy with an export password: the image-only PDF is encrypted and opens only with the password', async () => {
+    const probe = buildProbe(await makeTextPdfBytes(), { user: 'u-pass', owner: 'o-pass' });
+    await probe.svc.compressAndDownload({ mode: 'lossy', dpi: 72, quality: 0.5 });
+
+    expect(probe.errors).toEqual([]);
+    expect(probe.downloaded).toHaveLength(1);
+    const out = new Uint8Array(await probe.downloaded[0].blob.arrayBuffer());
+    expect(new TextDecoder('latin1').decode(out)).toContain('/Encrypt');
+
+    const locked = await pdfjsLib.getDocument({ data: out.slice() }).promise.then(() => 'opened', (e: { name?: string }) => e.name);
+    expect(locked).toBe('PasswordException');
+    const doc = await pdfjsLib.getDocument({ data: out.slice(), password: 'u-pass' }).promise;
+    try {
+      expect(doc.numPages).toBe(2);
+    } finally {
+      await doc.loadingTask?.destroy?.();
+    }
   });
 });

@@ -65,14 +65,19 @@ function buildService(src: Uint8Array, password: { user: string; owner: string }
 
 // The third field: does this path write pdf-lib's /Info (Producer "…Hopding/pdf-lib")? The three
 // user-facing downloads build with `cleanMetadata` and write none; `downloadPage` keeps the stamp.
-const ENTRY_POINTS: Array<[string, (svc: ExportService) => Promise<void>, boolean]> = [
-  ['downloadPDF', svc => svc.downloadPDF(), false],
-  ['downloadPageRange', svc => svc.downloadPageRange([0]), false],
-  ['downloadFlattened', svc => svc.downloadFlattened(), false],
-  ['downloadPage', svc => svc.downloadPage(0), true],
+// The fourth: does the path keep a classic xref when unlocked? Every path that can feed the signer
+// must; compress never does, because object streams ARE its optimisation.
+const ENTRY_POINTS: Array<[string, (svc: ExportService) => Promise<void>, boolean, boolean]> = [
+  ['downloadPDF', svc => svc.downloadPDF(), false, true],
+  ['downloadPageRange', svc => svc.downloadPageRange([0]), false, true],
+  ['downloadFlattened', svc => svc.downloadFlattened(), false, true],
+  ['downloadPage', svc => svc.downloadPage(0), true, true],
   // WS7 round 11, safety lens P2: sanitize never applied the password, so a locked document's
   // "sanitized" copy opened with no password at all. The sanitizer strips /Info, so it writes none.
-  ['sanitizeAndDownload', svc => svc.sanitizeAndDownload(), false],
+  ['sanitizeAndDownload', svc => svc.sanitizeAndDownload(), false, true],
+  // WS7 round 12, completeness F7: compress applies the password on its own save and had no pin. The
+  // lossy mode rasterises through a canvas, so its case is in tests/browser/compress.browser.test.ts.
+  ['compressAndDownload (lossless)', svc => svc.compressAndDownload({ mode: 'lossless' }), false, false],
 ];
 
 async function exported(run: (svc: ExportService) => Promise<void>, password: { user: string; owner: string } | null): Promise<Uint8Array> {
@@ -118,11 +123,21 @@ describe.each(ENTRY_POINTS)('%s with an export password', (_name, run, stampsInf
   });
 });
 
-describe.each(ENTRY_POINTS)('%s WITHOUT a password (control)', (_name, run) => {
+describe.each(ENTRY_POINTS.filter(([, , , classic]) => classic))('%s WITHOUT a password (control)', (_name, run) => {
   it('keeps the classic xref save the signer needs', async () => {
     const text = latin1(await exported(run, null));
     expect(text).toMatch(/\nxref\s/);
     expect(text).not.toContain('/ObjStm');
     expect(text).toContain(URI_TOKEN); // unencrypted, so plaintext is correct here
+  });
+});
+
+describe('compressAndDownload (lossless) WITHOUT a password (control)', () => {
+  it('writes no /Encrypt — so the locked case\'s /Encrypt is the password\'s doing', async () => {
+    const entry = ENTRY_POINTS.find(([name]) => name.startsWith('compressAndDownload'));
+    expect(entry).toBeDefined();
+    const text = latin1(await exported((entry as (typeof ENTRY_POINTS)[number])[1], null));
+    expect(text).not.toContain('/Encrypt');
+    expect(text).toContain('/ObjStm');
   });
 });

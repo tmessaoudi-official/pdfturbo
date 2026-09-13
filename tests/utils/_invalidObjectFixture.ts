@@ -26,7 +26,56 @@ export function buildInvalidObjectPdf(opts: { reachable: boolean }): Uint8Array 
   const xrefAt = body.length;
   body += `xref\n0 6\n0000000000 65535 f \n${offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')}`
     + `trailer\n<< /Size 6 /Root 1 0 R /Info 4 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
-  return new Uint8Array(Buffer.from(body, 'latin1'));
+  return latin1Bytes(body);
+}
+
+/** One byte per char. No `Buffer`, so the fixtures also run in the browser suite. */
+export function latin1Bytes(s: string): Uint8Array {
+  return Uint8Array.from(s, c => c.charCodeAt(0) & 0xff);
+}
+
+/**
+ * Replaces exactly the first occurrence of `from`, and THROWS when it is absent: a mutation whose anchor
+ * stopped matching would otherwise hand back the unmodified fixture and the case would test nothing.
+ */
+export function editPdfText(bytes: Uint8Array, from: string, to: string): Uint8Array {
+  const text = new TextDecoder('latin1').decode(bytes);
+  if (!text.includes(from)) throw new Error(`fixture edit anchor not found: ${JSON.stringify(from)}`);
+  return latin1Bytes(text.replace(from, to));
+}
+
+/**
+ * A one-page PDF whose page annotation `8 0 R` lives inside an unfiltered object stream (object 10),
+ * beside a harmless member 7 and a MALFORMED member 9. pdf-lib parses members in `order` and stops at
+ * the first one that throws, so every member after 9 is never assigned. `noFirst` makes the stream's
+ * constructor throw; `n` larger than the member count makes the member table itself fail to parse.
+ */
+export function buildObjStmPdf(order: number[], opts: { noFirst?: boolean; n?: number } = {}): Uint8Array {
+  const members: Record<number, string> = {
+    7: '<< /X 1 >>',
+    8: '<< /Type /Annot /Subtype /Text /Rect [10 10 40 40] /Contents (KEEPNOTE) >>',
+    9: '<< /Y } >>',
+  };
+  let data = '';
+  const pairs: string[] = [];
+  for (const n of order) { pairs.push(`${n} ${data.length}`); data += `${members[n]}\n`; }
+  const head = `${pairs.join(' ')}\n`;
+  const stream = head + data;
+  const first = opts.noFirst ? '' : ` /First ${head.length}`;
+  const body = '%PDF-1.7\n'
+    + '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+    + '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+    + '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [8 0 R] >>\nendobj\n'
+    + `10 0 obj\n<< /Type /ObjStm /N ${opts.n ?? order.length}${first} /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`
+    // Decorative, like the other builders: pdf-lib scans objects sequentially.
+    + 'xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 11 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n';
+  return latin1Bytes(body);
+}
+
+/** Appends an incremental-update section — the given objects, then a decorative xref and trailer. */
+export function appendRevision(bytes: Uint8Array, objects: string): Uint8Array {
+  return latin1Bytes(new TextDecoder('latin1').decode(bytes) + objects
+    + 'xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n');
 }
 
 const CONTENT = 'BT /F1 24 Tf 20 200 Td (KEEPME) Tj ET';
@@ -85,5 +134,5 @@ export function buildContentStreamPdf(opts: {
   const size = offs.length + 1;
   body += `xref\n0 ${size}\n0000000000 65535 f \n${offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')}`
     + `trailer\n<< /Size ${size} /Root 1 0 R${info} >>\nstartxref\n${xrefAt}\n%%EOF\n`;
-  return new Uint8Array(Buffer.from(body, 'latin1'));
+  return latin1Bytes(body);
 }

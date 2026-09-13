@@ -6,15 +6,15 @@
  * pdf-lib copy comes out without the dropped object — measured, a page whose content stream was
  * the unterminated object exported as an EMPTY page while pdf.js read "KEEPME" from the source.
  *
- * `loadPdfDocument` restores the loud failure for exactly that shape and nothing wider: a reference
- * the document actually USES, that resolves to nothing, whose `N G obj` header IS in the bytes.
+ * `loadPdfDocument` restores the loud failure for exactly that shape and nothing wider: an object pdf-lib
+ * DROPPED — recorded inside its own parser — that the document actually USES and nothing later replaced.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import * as pdfLib from '@cantoo/pdf-lib';
-import { loadPdfDocument, PdfObjectDroppedError } from '../../src/utils/pdfLoadGuard';
-import { buildContentStreamPdf as build } from './_invalidObjectFixture';
+import { installDropRecorder, loadPdfDocument, PdfObjectDroppedError, recordedDrops } from '../../src/utils/pdfLoadGuard';
+import { appendRevision, buildContentStreamPdf as build, buildObjStmPdf, editPdfText } from './_invalidObjectFixture';
 
 describe('loadPdfDocument', () => {
   it('REFUSES a document whose used object pdf-lib silently dropped, naming the object', async () => {
@@ -62,30 +62,30 @@ describe('loadPdfDocument', () => {
     expect(doc.getPageCount()).toBe(1);
   });
 
-  // WS7 round 11, export lens P3: the header was matched ANYWHERE in the file, so a page that merely
-  // SHOWS the text "9 0 obj" made a harmless dangling /Info 9 0 R look like a dropped object, and a
-  // legal file was refused. A header counts only at a token boundary and outside every stream body.
+  // WS7 round 11, export lens P3: the round-10 guard matched an object header ANYWHERE in the file, so a
+  // page that merely SHOWS the text "9 0 obj" made a harmless dangling /Info 9 0 R look like a dropped
+  // object, and a legal file was refused. Since round 12 nothing reads the text; these stay as pins.
   it('loads a legal dangling reference whose "N G obj" text is only page content (round-11 repro)', async () => {
     const bytes = build({ danglingInfo: true, content: 'BT /F1 24 Tf 20 200 Td (9 0 obj)Tj ET' });
     const doc = await loadPdfDocument(bytes, { updateMetadata: false });
     expect(doc.getPageCount()).toBe(1);
   });
 
-  it('loads it too when the text is whitespace-delimited inside the stream — the body is not scanned', async () => {
+  it('loads it too when the text is whitespace-delimited inside the stream', async () => {
     const bytes = build({ danglingInfo: true, content: 'BT /F1 24 Tf 20 200 Td ( 9 0 obj ) Tj ET' });
     const doc = await loadPdfDocument(bytes, { updateMetadata: false });
     expect(doc.getPageCount()).toBe(1);
   });
 
-  it('loads it when the text sits in a string OUTSIDE any stream — a header needs whitespace before it', async () => {
+  it('loads it when the text sits in a string OUTSIDE any stream', async () => {
     const bytes = build({ danglingInfo: true, catalogString: '9 0 obj' });
     const doc = await loadPdfDocument(bytes, { updateMetadata: false });
     expect(doc.getPageCount()).toBe(1);
   });
 
-  it('still REFUSES a dropped object whose header directly follows another object\'s stream', async () => {
+  it('still REFUSES a dropped object that directly follows another object\'s stream', async () => {
     const bytes = build({ brokenAfterStream: true });
-    // Non-vacuity: pdf-lib really dropped object 6, so this case is about the scan finding its header.
+    // Non-vacuity: pdf-lib really dropped object 6.
     const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
     expect(raw.context.lookup(pdfLib.PDFRef.of(6))).toBeUndefined();
 
@@ -123,6 +123,113 @@ describe('loadPdfDocument', () => {
     const bytes = await src.save({ useObjectStreams: false });
     const doc = await loadPdfDocument(bytes, { updateMetadata: false, ignoreEncryption: true });
     expect(doc.getProducer()).toBe(src.getProducer());
+  });
+});
+
+// WS7 round 12: every defect in the round-10/11 guard came from re-implementing pdf-lib's tokenizer as a
+// text scan — a stream with no `endstream`, a header glued to a delimiter, a `>> stream` inside a string,
+// a comment between header tokens, an object-stream member (which has no header at all), and the newest
+// revision of an object being the one dropped. Each shape below was probed first: pdf-lib really drops the
+// object (the non-vacuity lookup in each case), and the text-scan guard ACCEPTED the file.
+describe('loadPdfDocument — drops are recorded where pdf-lib makes them (WS7 round 12)', () => {
+  const refusal = (bytes: Uint8Array): Promise<unknown> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => e);
+  const rawLookup = async (bytes: Uint8Array, n: number): Promise<unknown> =>
+    (await pdfLib.PDFDocument.load(bytes, { updateMetadata: false })).context.lookup(pdfLib.PDFRef.of(n));
+  const refsOf = (e: unknown): string[] => {
+    expect(e).toBeInstanceOf(PdfObjectDroppedError);
+    return (e as PdfObjectDroppedError).refs;
+  };
+  const broken = (): Uint8Array => build({ brokenLast: true });
+
+  it('REFUSES a drop that follows a stream with no endstream (export F1)', async () => {
+    const bytes = editPdfText(broken(), 'endobj\n5 0 obj', 'endobj\n6 0 obj\n<< /Length 5 >>\nstream\nabcde\n5 0 obj');
+    expect(await rawLookup(bytes, 5)).toBeUndefined();
+    // Object 6 is dropped too, but nothing references it: only the reachable drop is named.
+    expect(refsOf(await refusal(bytes))).toEqual(['5 0 R']);
+  });
+
+  it.each([
+    ['endobj', 'endobj\n5 0 obj', 'endobj5 0 obj'],
+    ['a dictionary', 'BaseFont /Helvetica >>\nendobj\n5 0 obj', 'BaseFont /Helvetica >>5 0 obj'],
+    ['an array', 'endobj\n5 0 obj', 'endobj\n7 0 obj\n[1 2]5 0 obj'],
+    ['a string', 'endobj\n5 0 obj', 'endobj\n7 0 obj\n(x)5 0 obj'],
+  ])('REFUSES a dropped object whose header is glued to %s (export F2)', async (_what, from, to) => {
+    const bytes = editPdfText(broken(), from, to);
+    expect(await rawLookup(bytes, 5)).toBeUndefined();
+    expect(refsOf(await refusal(bytes))).toEqual(['5 0 R']);
+  });
+
+  it('REFUSES a drop after a string that contains ">> stream" (export F3, safety F1, completeness F1)', async () => {
+    const bytes = build({ brokenLast: true, catalogString: '>> stream\n' });
+    expect(await rawLookup(bytes, 5)).toBeUndefined();
+    expect(refsOf(await refusal(bytes))).toEqual(['5 0 R']);
+  });
+
+  it('REFUSES a drop whose header carries a comment between its tokens — legal PDF syntax', async () => {
+    const bytes = editPdfText(broken(), '\n5 0 obj\n', '\n5 %c\n0 obj\n');
+    expect(await rawLookup(bytes, 5)).toBeUndefined();
+    expect(refsOf(await refusal(bytes))).toEqual(['5 0 R']);
+  });
+
+  it('loads a legal dangling reference whose " 9 0 obj " text sits in a string (export F5, completeness F2)', async () => {
+    expect(await refusal(build({ danglingInfo: true, catalogString: ' 9 0 obj ' }))).toBe('loaded');
+  });
+
+  it('REFUSES when the NEWEST revision of an object is the one dropped and an older one stands in', async () => {
+    const bytes = appendRevision(build(), '5 0 obj\n<< /Length 6 } >>\nstream\nBROKEN\nendstream\n');
+    // Non-vacuity: nothing dangles — the stale revision resolves, which is why a dangling-reference check never saw it.
+    expect(await rawLookup(bytes, 5)).toBeInstanceOf(pdfLib.PDFRawStream);
+    expect(refsOf(await refusal(bytes))).toEqual(['5 0 R']);
+  });
+
+  it('loads when a LATER revision replaces the dropped one — the drop was superseded (control)', async () => {
+    const content = 'BT /F1 24 Tf 20 200 Td (KEEPME) Tj ET';
+    // No `endobj` after the replacement: with one, the broken revision would reach it and be kept, not dropped.
+    const bytes = appendRevision(broken(), `5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\n`);
+    const doc = await loadPdfDocument(bytes, { updateMetadata: false });
+    const stream = doc.context.lookup(pdfLib.PDFRef.of(5));
+    expect(stream).toBeInstanceOf(pdfLib.PDFRawStream);
+    expect(new TextDecoder('latin1').decode((stream as pdfLib.PDFRawStream).getContents())).toContain('KEEPME');
+  });
+
+  it('REFUSES an object-stream member lost after a malformed member (export F4)', async () => {
+    const bytes = buildObjStmPdf([7, 9, 8]);
+    expect(await rawLookup(bytes, 8)).toBeUndefined();
+    expect(refsOf(await refusal(bytes))).toEqual(['8 0 R']);
+  });
+
+  it('loads when the malformed member is unreferenced and every used member was parsed (control)', async () => {
+    const bytes = buildObjStmPdf([7, 8, 9]);
+    expect(await refusal(bytes)).toBe('loaded');
+    expect(await rawLookup(bytes, 8)).toBeInstanceOf(pdfLib.PDFDict);
+  });
+
+  it.each([
+    ['its constructor throws (no /First)', { noFirst: true }],
+    ['its member table cannot be parsed (/N too large)', { n: 5 }],
+  ])('REFUSES a reachable dangling reference when an object stream fails before its members are known: %s', async (_what, opts) => {
+    const bytes = buildObjStmPdf([7, 8, 9], opts);
+    expect(await rawLookup(bytes, 8)).toBeUndefined();
+    expect(refsOf(await refusal(bytes))).toEqual(['8 0 R']);
+  });
+
+  it('keeps pdf-lib\'s own error when throwOnInvalidObject is set — the recorder changes no parse result', async () => {
+    const err = await loadPdfDocument(broken(), { updateMetadata: false, throwOnInvalidObject: true }).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(PdfObjectDroppedError);
+    expect(String((err as Error).message)).toContain('Trying to parse invalid object');
+  });
+
+  it('records a drop made by pdf-lib\'s OWN PDFDocument.load — the patched parser is the one pdf-lib uses', async () => {
+    await loadPdfDocument(build()); // installs the recorder
+    const raw = await pdfLib.PDFDocument.load(broken(), { updateMetadata: false });
+    expect(recordedDrops(raw.context)).toEqual(['5 0 R']);
+  });
+
+  it('fails loudly when pdf-lib no longer has a parser method the recorder wraps', () => {
+    const lib = { PDFParser: class {}, PDFObjectStreamParser: class {}, PDFRef: pdfLib.PDFRef };
+    expect(() => installDropRecorder(lib as unknown as Parameters<typeof installDropRecorder>[0]))
+      .toThrow(/tryToParseInvalidIndirectObject/);
   });
 });
 
