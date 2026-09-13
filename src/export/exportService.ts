@@ -363,7 +363,14 @@ export class ExportService {
     try {
       const assembled = await this.assemblePdfBytes();
       const { sanitizePdf, anyRemoved } = await import('../utils/pdfSanitizer');
-      const { bytes, report } = await sanitizePdf(assembled);
+      const sanitized = await sanitizePdf(assembled);
+      const { report } = sanitized;
+      // Lock PDF applies here too (WS7 round 11): without it a locked document's sanitized copy opened
+      // with no password. Re-loaded WITHOUT the metadata stamp, or pdf-lib re-injects the /Info the
+      // sanitizer just removed; `_saveForExport` then encrypts with object streams like every export.
+      const bytes = this._ctx.exportPassword
+        ? await this._saveForExport(await loadPdfDocument(sanitized.bytes, { updateMetadata: false }))
+        : sanitized.bytes;
       await this._saveOrDownload(target, bytes, filename, 'application/pdf');
       if (target !== 'download') {
         reportError.info('toast.pdfSaved', { name: target.name });
@@ -1175,8 +1182,8 @@ export class ExportService {
    *
    * Without a password the save stays classic: `assemblePdfBytes` feeds the signer, whose
    * `assertClassicXref` refuses xref streams, and every unencrypted export keeps its existing bytes.
-   * One seam for the four export paths — four copies of this conditional is how they would drift.
-   * [WS7 round 10]
+   * One seam for the export paths — the four downloads and, since WS7 round 11, sanitize; a copy of this
+   * conditional per path is how they would drift. [WS7 round 10]
    */
   private async _saveForExport(pdfDoc: BuildPageCtx['pdfDoc']): Promise<Uint8Array> {
     if (!this._ctx.exportPassword) return pdfDoc.save({ useObjectStreams: false });

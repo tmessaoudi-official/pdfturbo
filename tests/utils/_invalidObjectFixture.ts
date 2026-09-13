@@ -37,21 +37,43 @@ const CONTENT = 'BT /F1 24 Tf 20 200 Td (KEEPME) Tj ET';
  * which pdf-lib keeps as a PDFInvalidObject; `danglingInfo` adds a reference to an object that exists
  * nowhere. A byte builder is the only way to control what follows the last object.
  */
-export function buildContentStreamPdf(opts: { brokenLast?: boolean; brokenTerminated?: boolean; danglingInfo?: boolean } = {}): Uint8Array {
+export function buildContentStreamPdf(opts: {
+  brokenLast?: boolean; brokenTerminated?: boolean; danglingInfo?: boolean;
+  /** Replaces the page's content-stream text. */
+  content?: string;
+  /** Adds `/Extra [1000 0 R …]` to the catalog: that many REACHABLE references with no header anywhere. */
+  danglingRefs?: number;
+  /** Adds `/Lang (<text>)` to the catalog — a string OUTSIDE every stream body. */
+  catalogString?: string;
+  /** Adds an unreferenced stream object 6 of this many filler bytes before the content stream. */
+  padStreamBytes?: number;
+  /** After the intact content stream, appends an UNTERMINATED broken object 6 the catalog references. */
+  brokenAfterStream?: boolean;
+} = {}): Uint8Array {
+  const content = opts.content ?? CONTENT;
+  const extraRefs = opts.danglingRefs
+    ? ` /Extra [${Array.from({ length: opts.danglingRefs }, (_, i) => `${1000 + i} 0 R`).join(' ')}]`
+    : '';
+  const brokenRef = opts.brokenAfterStream ? ' /Broken 6 0 R' : '';
+  const lang = opts.catalogString !== undefined ? ` /Lang (${opts.catalogString})` : '';
   const objs = [
-    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    `1 0 obj\n<< /Type /Catalog /Pages 2 0 R${extraRefs}${brokenRef}${lang} >>\nendobj\n`,
     '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
     '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n',
     '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
   ];
   if (opts.brokenLast) {
     // A stray `}` makes pdf-lib's dict parser throw; with no `endobj` before EOF, 2.11.0 drops it.
-    objs.push(`5 0 obj\n<< /Length ${CONTENT.length} } >>\nstream\n${CONTENT}\nendstream\n`);
+    objs.push(`5 0 obj\n<< /Length ${content.length} } >>\nstream\n${content}\nendstream\n`);
   } else if (opts.brokenTerminated) {
     // Same damage, but TERMINATED: pdf-lib keeps it as a PDFInvalidObject — not a drop.
-    objs.push(`5 0 obj\n<< /Length ${CONTENT.length} } >>\nstream\n${CONTENT}\nendstream\nendobj\n`);
+    objs.push(`5 0 obj\n<< /Length ${content.length} } >>\nstream\n${content}\nendstream\nendobj\n`);
   } else {
-    objs.push(`5 0 obj\n<< /Length ${CONTENT.length} >>\nstream\n${CONTENT}\nendstream\nendobj\n`);
+    if (opts.padStreamBytes) {
+      objs.push(`6 0 obj\n<< /Length ${opts.padStreamBytes} >>\nstream\n${'x'.repeat(opts.padStreamBytes)}\nendstream\nendobj\n`);
+    }
+    objs.push(`5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`);
+    if (opts.brokenAfterStream) objs.push('6 0 obj\n<< /Type /Foo } >>\n');
   }
   let body = '%PDF-1.7\n';
   const offs: number[] = [];
@@ -59,7 +81,9 @@ export function buildContentStreamPdf(opts: { brokenLast?: boolean; brokenTermin
   const xrefAt = body.length;
   // /Info 9 0 R names an object that exists nowhere — a harmless legacy null, not a drop.
   const info = opts.danglingInfo ? ' /Info 9 0 R' : '';
-  body += `xref\n0 6\n0000000000 65535 f \n${offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')}`
-    + `trailer\n<< /Size 6 /Root 1 0 R${info} >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  // The xref is decorative here — pdf-lib scans objects sequentially — so extra objects only widen /Size.
+  const size = offs.length + 1;
+  body += `xref\n0 ${size}\n0000000000 65535 f \n${offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')}`
+    + `trailer\n<< /Size ${size} /Root 1 0 R${info} >>\nstartxref\n${xrefAt}\n%%EOF\n`;
   return new Uint8Array(Buffer.from(body, 'latin1'));
 }

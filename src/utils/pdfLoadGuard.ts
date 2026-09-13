@@ -83,9 +83,34 @@ function findDroppedObjects(lib: WalkLib, doc: PDFDocument, bytes: Uint8Array): 
   }
   if (dangling.length === 0) return [];
 
-  // Only now pay for a text view of the file — a clean document never gets here.
-  const text = new TextDecoder('latin1').decode(bytes);
+  // Only now pay for a text view of the file — a clean document never gets here. ONE pass collects
+  // every header, so the cost is the file's size, not references × size (WS7 round 11: 18 ms → 1267 ms
+  // on 20 MB at 300 references when each reference re-scanned the file).
+  const headers = objectHeaders(new TextDecoder('latin1').decode(bytes));
   return dangling
-    .filter(ref => new RegExp(`(?:^|[^0-9])${ref.objectNumber}\\s+${ref.generationNumber}\\s+obj\\b`).test(text))
+    .filter(ref => headers.has(`${ref.objectNumber} ${ref.generationNumber}`))
     .map(ref => ref.toString());
+}
+
+/**
+ * Every `N G obj` header in the file, as `"N G"`. A header counts only at a token boundary (file start
+ * or PDF whitespace before it) and never inside a stream body, which is skipped from `>> stream` to its
+ * `endstream`: a page that merely SHOWS the text "9 0 obj" made a legal dangling reference look like a
+ * dropped object and refused the file (WS7 round 11). Residual bound: stream data that itself contains
+ * `endstream` before its real end resumes the scan inside the stream, which can only add headers.
+ */
+function objectHeaders(text: string): Set<string> {
+  const headers = new Set<string>();
+  const token = /(?:^|[\0\t\n\f\r ])(\d+)[\0\t\n\f\r ]+(\d+)[\0\t\n\f\r ]+obj\b|>>[\0\t\n\f\r ]*stream(?:\r\n|\n|\r)/g;
+  let m: RegExpExecArray | null;
+  while ((m = token.exec(text)) !== null) {
+    if (m[1] !== undefined) {
+      headers.add(`${Number(m[1])} ${Number(m[2])}`);
+      continue;
+    }
+    const end = text.indexOf('endstream', token.lastIndex);
+    if (end < 0) break;
+    token.lastIndex = end + 'endstream'.length;
+  }
+  return headers;
 }

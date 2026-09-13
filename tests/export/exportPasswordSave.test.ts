@@ -70,6 +70,9 @@ const ENTRY_POINTS: Array<[string, (svc: ExportService) => Promise<void>, boolea
   ['downloadPageRange', svc => svc.downloadPageRange([0]), false],
   ['downloadFlattened', svc => svc.downloadFlattened(), false],
   ['downloadPage', svc => svc.downloadPage(0), true],
+  // WS7 round 11, safety lens P2: sanitize never applied the password, so a locked document's
+  // "sanitized" copy opened with no password at all. The sanitizer strips /Info, so it writes none.
+  ['sanitizeAndDownload', svc => svc.sanitizeAndDownload(), false],
 ];
 
 async function exported(run: (svc: ExportService) => Promise<void>, password: { user: string; owner: string } | null): Promise<Uint8Array> {
