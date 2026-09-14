@@ -110,7 +110,8 @@ most of the work went into proving that what the product claims to remove is act
   keeps the last copy. A file whose table pointed at an earlier copy, whose table marked the page's content
   as free (the viewer then drew a blank page), or whose trailer the viewer follows named a different document
   from the later one the library keeps, was shown one way and exported — or signed — the other; so was a
-  file whose document root the library quietly swapped for another. Such a file is now refused;
+  file whose document root the library quietly swapped for another. Such a file is now refused, with a
+  message that says why instead of asking you to try again;
   `SECURITY.md` § "One file, two readers" states what is still not checked.
 
 ### Fixed — accessibility, correctness, supply chain

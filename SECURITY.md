@@ -262,13 +262,18 @@ rely on it sitting in one of those places.
 
 ## One file, two readers — what you see is what you export and sign
 
-PDFturbo **shows** a PDF with pdf.js and **builds** every export, edit, signature, OCR layer, sanitized
-copy and compressed copy with a second library, pdf-lib. The two read a file differently where the file
-is damaged or ambiguous, and until 2026-09-13 nothing checked that they agreed — so a file could show one
-page on screen while the exported or signed copy carried another. Since then, exporting, signing, OCR,
-sanitizing and compressing **refuse** such a file, with an error, in the cases below. Editing text in place
-shows no error: it falls back to an editable overlay, and the export or signature built afterwards refuses.
-Opening and viewing the file are unaffected.
+PDFturbo **shows** a PDF with pdf.js and **builds** every PDF export (the whole document, a page range, one
+page, a flattened copy, a page image), edit, signature, searchable OCR layer, sanitized copy and compressed
+copy with a second library, pdf-lib. The two read a file differently where the file is damaged or
+ambiguous, and until 2026-09-13 nothing checked that they agreed — so a file could show one page on screen
+while the exported or signed copy carried another. Since then, those operations **refuse** such a file in
+the cases below, with a message saying the file cannot be used because its structure is damaged or
+ambiguous (since 2026-09-14; before, each showed its own generic failure, and signing and OCR asked for a
+retry that could never succeed). Editing text in place shows no error: it falls back to an editable
+overlay, and the export or signature built afterwards refuses. The Word, Markdown and text exports, the
+table (CSV, XLSX) and XFDF exports, and OCR's text, Word and editable-box modes do not refuse: they read the
+document through pdf.js, the same reader that draws it, so they export what is on screen. Opening and
+viewing the file are unaffected.
 
 - **pdf-lib dropped part of the file.** A damaged object that never closes is skipped by pdf-lib while
   pdf.js still draws it, so the export would lose it. A file is refused when anything it uses was dropped

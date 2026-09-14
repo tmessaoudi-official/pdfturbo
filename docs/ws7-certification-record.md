@@ -1,11 +1,11 @@
 # WS7 — certification record for `dfe34ae..HEAD`
 
-**Status: NOT CERTIFIED.** Thirteen MAXIMAL panel rounds were run against this range and the
+**Status: NOT CERTIFIED.** Fifteen MAXIMAL panel rounds were run against this range and the
 two-consecutive-clean counter never rose above **0 of 2**. No `WS7: 2/2 clean at <sha>` entry exists
 in `docs/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
 
 This file is committed because the per-round reports live under `var/claude/ws7/`, which
-`.gitignore` excludes — so they do not reach a clone, and for four of the thirteen rounds no report file
+`.gitignore` excludes — so they do not reach a clone, and for four of the fifteen rounds no report file
 was ever written at all. A certification debt whose only record is machine-local is not a record.
 [Created WS7 round 7, 2026-09-04, after the completeness lens found the plan citing a gitignored path.]
 
@@ -26,9 +26,13 @@ was ever written at all. A certification debt whose only record is machine-local
 | 11 | 12 | At `ac08b61`, all three lenses on Node 24 (2 export, 2 safety, 8 completeness). Sanitize & download never applied Lock PDF, and two defects were in round 10's own load guard: a per-reference rescan of the whole file, and an unanchored header match that refused a legal file. |
 | 12 | 13 | At `d7eb108`, all three lenses on Node 24 (5 export, 1 safety, 7 completeness). Every code finding was in the load guard's text scan for object headers — a second tokenizer that disagreed with pdf-lib's six ways, five of them ACCEPTING a file pdf-lib had dropped from, three of those caused by round 11's own stream skip and boundary rule. |
 | 13 | 6 | At `94dcc89`, all three lenses on Node 24 (2 export, 1 safety, 3 completeness). A P1 from the safety lens, pre-existing: pdf.js follows the cross-reference table and pdf-lib keeps the last copy in the file, so a crafted file showed one page and exported or signed another with nothing dropped. Both export findings were in round 12's own recorder. |
+| 14 | 9 | At `9849db3`, all three lenses on Node 24 (3 export, 0 safety, 6 completeness). Two P1s in round 13's own comparison: an object the chain marks free or at offset 0 was never compared, nor a `/Root` pdf-lib's recovery swapped. Measuring the fixes found pdf-lib parses cross-reference streams without their predictor, so round 13's real-file figure was vacuous for 10 files. |
+| 15 | 4 | At `b7b5778`, all three lenses on Node 24 (0 export, 0 safety, 4 completeness), none a behaviour defect: round 14's own record header left at thirteen rounds, two overstatements of which exports refuse, a filtered-run denominator, and a refusal shown as "try again". Both clean lenses read the code and ran the existing tests; neither built a crafted file. |
 
-Nine of the thirteen rounds found defects in the **previous** round's fixes — rounds 6, 7, 8, 9, 10, 11, 12 and 13
-by the surviving reports (which exist for rounds 4 and 6 to 13; none was written for 1, 2, 3 or 5), and
+Eleven of the fifteen rounds found defects in the **previous** round's fixes — rounds 6 to 15
+by the surviving reports (which exist for rounds 4 and 6 to 15; none was written for 1, 2, 3 or 5, and for round 15 the export
+report is the parent's transcription of a verdict returned inline and the safety report was copied out of its
+reviewer's worktree), and
 round 2 by the note in the table above, which was written from memory when this file was created. That
 is the single most important fact in this file: in this range, a fix has been about as likely to
 introduce a finding as to close one, which is why the bar was not lowered.
@@ -417,8 +421,9 @@ recorder first.
 
 Failing tests first, each confirmed red for the stated reason: 11 of 88 red on the finding fixes (the
 free/offset-0/absent and root-recovery cases with `expected undefined to be 'PdfXrefMismatchError'`, the
-identical-copy cases because the file was refused, the shifted subsection because nothing was thrown), 3 of 70
-red on the predictor fix (the PNG and TIFF refusals, and the control's `viewerReadsChain`), and both corpus
+identical-copy cases because the file was refused, the shifted subsection because nothing was thrown), and on the
+predictor fix 3 of the 5 predictor cases red in a run filtered to them (the PNG and TIFF refusals, and the
+control's `viewerReadsChain`; cited as "3 of 70" until round 15, counting the 65 cases the filter skipped), and both corpus
 cases red with the named `describeParse` error before their `beforeAll`; every control green. Sabotage, 36 mutations across the guard file, `exportPasswordSave`, `exportSaveRouting`, `pdfSanitizerInvalidObject` and the corpus file (124 cases), each landed and restored with `cmp`: 34 red at least one case, the gated 15-file corpus went red for `S10`, `P1`, `P8` and for no mutation that should keep real files loading, and `P3` and `P9` red nothing, each for a reason stated with the figures in `CLAUDE.md`.
 The 15-file corpus: guard outcome equal to raw pdf-lib on 15 of 15, all 15 read through the chain pdf.js
 follows, 12,059 of 12,059 in-use chain entries landing on a parsed definition. The browser suite gained the
@@ -449,3 +454,42 @@ Still flagged to the developer, unchanged: `/PieceInfo` stripping (unruled) and 
 **The counter remains 0 of 2.** Round 14 was the last round the `[2026-09-13 14:00]` ruling authorised; the
 `[2026-09-13 22:10]` ruling authorised fixing its nine findings and one more round, round 15, after which the
 developer is asked again whatever it returns.
+
+## Round 15 — what was fixed (2026-09-14)
+
+Round 15 ran at `b7b5778` over `dfe34ae..b7b5778`, focused on the round-14 commits (`0122d96`, `b7b5778`), all
+three lenses in isolated worktrees on Node 24. It returned **4 findings**: 0 export, 0 safety, 4 completeness,
+none of them a behaviour defect in what the guard accepts or refuses.
+
+| Defect | Evidence it was real |
+|---|---|
+| **P2** this record's header still said thirteen rounds and "nine of the thirteen", and its table stopped at row 13, while its own Round 14 section and the plan said fourteen | read against the file and `master.plan.md` |
+| **P3** `SECURITY.md` and `KNOWN_ISSUES.md` said every export is built with pdf-lib and that exporting and OCR refuse; the Word, Markdown, text, table and XFDF exports and OCR's text, Word and editable-box modes read through pdf.js and never reach the guard | the 12 `loadPdfDocument` call sites in `src/`, none on those paths |
+| **P3** "3 of 70 red on the predictor fix" cited a run filtered to 5 cases | the run's own line: 3 failed, 2 passed, 65 skipped |
+| **P3** a refusal reached the user as each caller's generic failure; OCR and signing asked for a retry that can never succeed | `toast.ocrFailed` "please try again", `sign.error.SIGN_FAILED` "Please try again." |
+
+**Not a clean round in substance either, and said so:** both lenses that returned no findings verified by
+reading the code and running the existing suites and the real-file corpus; neither built a crafted file
+against the guard. The safety lens named one shape it did not measure — damaged content on a page pdf.js
+loads lazily — which predates round 14. Later rounds are told to build probe files.
+
+The fixes. The record's header and table, and the two scope statements, now match the code; the filtered
+figure is stated as what it is. A refusal now shows its own message, `toast.pdfLoadRefused`, on the seven
+`exportService` save paths, the searchable OCR layer and the sign modal: `isPdfLoadRefusal` recognises either
+refusal by name and follows `cause`, because the signer wraps a load failure in `PDF_PARSE_FAILED`. Any other
+failure keeps its caller's message. The Arabic value is session-written and pending review.
+
+Failing tests first: 17 of 50 red in the four files, each for the stated reason (the helper missing, or the
+generic key where the refusal key was expected), every control green. Sabotage, five mutations on those four
+files, each landed and restored with `cmp`: the export key always the fallback → 8; `cause` not followed → 3;
+the sign-modal branch dropped → 3; the OCR branch dropped → 1; any error counted as a refusal → 6, every one a
+control. Locales key-identical at 615.
+
+The gate (Node 24, the working tree over `b7b5778` that became `0932e80`) was green at every step: audit
+(found 0 vulnerabilities), OCR assets, type-check, lint, jsdom 2787 passed | 2 expected fail | 2 skipped
+(2791), browser 90 passed (90) / 348 passed (348) at load 27.61, export branch coverage 44.07 %, build, and
+the QA sweep with `--allow-destructive` (151 checks | 114 pass | 0 fail | 0 warn | 37 skipped | 0 a11y). Logs
+under the gitignored `var/claude/ws7/round15-fix-gate/`.
+
+**The counter remains 0 of 2.** The `[2026-09-14 11:45]` ruling authorises further rounds without asking until
+two consecutive clean ones, a P0 or P1, or round 20.

@@ -80,11 +80,13 @@ work in a private/incognito window when editing sensitive documents on a shared 
 ### From WS7 round 13 (2026-09-13)
 
 - **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). Since rounds 13
-  and 14, exporting, signing, OCR, sanitizing and compressing refuse a file whose cross-reference table names
+  and 14, the PDF exports, signing, the searchable OCR layer, sanitizing and compressing refuse a file whose cross-reference table names
   a copy of an object pdf-lib did not keep or marks a used object free, whose startxref trailer names a
   different document root from the last trailer pdf-lib keeps, or whose root pdf-lib replaced — the shapes
   that let a crafted file show one page and export or sign another. Editing in place falls back to an
-  editable overlay instead, and the export built afterwards refuses. Not compared: objects the table places
+  editable overlay instead, and the export built afterwards refuses. The Word/Markdown/text, table and XFDF
+  exports and OCR's other modes read through pdf.js, the viewer's own reader, so they cannot disagree with the
+  screen and are not checked. Not compared: objects the table places
   inside an object stream; a chain that leaves the sections pdf-lib parsed (pdf.js then rebuilds by scanning
   and keeps the last definition like pdf-lib, measured, but picks its trailer by its own rule); and a
   linearized file whose first-page table — where pdf.js starts — differs from the table `startxref` names,
