@@ -27,6 +27,7 @@ import { TextLayerManager } from '../utils/textLayer';
 import { TextEditHandler } from '../handlers/textEditHandler';
 import { OcrHandler, type OcrOutputMode } from '../handlers/ocrHandler';
 import { SearchableLayerError } from '../ocr/searchableTextLayer';
+import { isPdfLoadRefusal } from '../utils/pdfLoadGuard';
 import { SigningHandler } from '../handlers/signingHandler';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
@@ -736,7 +737,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         // Carry the CAUSE. 20 of the 22 sibling catches in src/ do; this one discarded `err`, so
         // the console line and the ring buffer recorded only the i18n key — on the path with three
         // documented silent production failures. [WS5 P2, 2026-09-04]
-        this.reportError.error('toast.ocrFailed', err);
+        // A load-guard refusal (the searchable layer is built with pdf-lib) is not a failure to retry.
+        this.reportError.error(isPdfLoadRefusal(err) ? 'toast.pdfLoadRefused' : 'toast.ocrFailed', err);
       }
     } finally {
       this.ui.runOcrModal.disabled = false;

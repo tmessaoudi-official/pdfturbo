@@ -14,8 +14,19 @@
 import { PdfSigner, SignError, type SignOptions } from '../signing';
 import { generateSelfSignedP12 } from '../signing/certGen';
 import { t } from '../utils/i18n';
+import { isPdfLoadRefusal } from '../utils/pdfLoadGuard';
 import type { AppDOMRefs } from '../ui/uiController';
 import type { IErrorReporter } from '../contracts/errorReporter';
+
+/**
+ * The sign modal's message for a failure. A load-guard refusal — thrown raw by the assembly, or wrapped by the
+ * signer in `PDF_PARSE_FAILED` — is deterministic, so it is not shown as "Signing failed. Please try again."
+ * (WS7 round 15).
+ */
+function signErrorKey(err: unknown): string {
+  if (isPdfLoadRefusal(err)) return 'toast.pdfLoadRefused';
+  return `sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`;
+}
 
 /**
  * Role-interface the signing handler requires from the app (M2 #18/#19). Decouples
@@ -144,7 +155,7 @@ export class SigningHandler {
       assembled = await this.app.assemblePdfBytes();
       await new PdfSigner().preflight(assembled, Math.max(0, page1 - 1), rect);
     } catch (err) {
-      this._showSignError(`sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`);
+      this._showSignError(signErrorKey(err));
       return;
     }
 
@@ -170,7 +181,7 @@ export class SigningHandler {
         this._downloadBytes(new TextEncoder().encode(gen.pem), `${base}.pem`, 'application/x-pem-file');
         p12 = gen.p12; passphrase = genPw; genName = cn;
       } catch (err) {
-        this._showSignError(`sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`);
+        this._showSignError(signErrorKey(err));
         ui.runSignModal.disabled = false;
         ui.signProgressRow.style.display = 'none';
         return;
@@ -204,7 +215,7 @@ export class SigningHandler {
       this.app.closeSignModal();
       this.app.reportError.info('toast.signed', { name: signedCn ?? '' });
     } catch (err) {
-      this._showSignError(`sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`);
+      this._showSignError(signErrorKey(err));
     } finally {
       ui.runSignModal.disabled = false;
       ui.signProgressRow.style.display = 'none';

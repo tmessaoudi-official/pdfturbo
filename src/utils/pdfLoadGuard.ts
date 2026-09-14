@@ -112,6 +112,21 @@ export class PdfXrefMismatchError extends Error {
   }
 }
 
+/**
+ * True when `err`, or anything on its `cause` chain, is one of this module's refusals. A refusal is
+ * deterministic — the same bytes refuse every time — so callers show it as its own message instead of their
+ * generic "failed, please try again" (WS7 round 15). Keyed on the NAME, like the sanitizer refusal in
+ * `exportService`, and walking `cause` because the signer wraps a load failure in `SignError('PDF_PARSE_FAILED')`.
+ */
+export function isPdfLoadRefusal(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  for (let e: unknown = err; e instanceof Error && !seen.has(e); e = e.cause) {
+    seen.add(e);
+    if (e.name === 'PdfObjectDroppedError' || e.name === 'PdfXrefMismatchError') return true;
+  }
+  return false;
+}
+
 export async function loadPdfDocument(bytes: Uint8Array, options: LoadOptions = {}): Promise<PDFDocument> {
   const {
     PDFDocument, PDFRef, PDFDict, PDFArray, PDFStream, PDFInvalidObject, PDFNull, PDFName, PDFNumber,

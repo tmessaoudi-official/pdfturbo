@@ -40,6 +40,7 @@ vi.mock('../../src/signing/certGen', () => ({ generateSelfSignedP12: (...a: unkn
 vi.mock('../../src/utils/i18n', () => ({ t: (k: string) => k }));
 
 import { SignError } from '../../src/signing';
+import { PdfObjectDroppedError, PdfXrefMismatchError } from '../../src/utils/pdfLoadGuard';
 import { SigningHandler, type ISigningContext, type SignFormInput } from '../../src/handlers/signingHandler';
 import type { AppDOMRefs } from '../../src/ui/uiController';
 import type { IErrorReporter } from '../../src/contracts/errorReporter';
@@ -196,5 +197,63 @@ describe('SigningHandler.runSignFlow — orchestration moved out of the god-clas
     expect(closeSignModal).toHaveBeenCalled();
     expect(reportError.info).toHaveBeenCalledWith('toast.signed', { name: 'CN=Acme' });
     expect(ui.runSignModal.disabled).toBe(false); // finally re-enables
+  });
+});
+
+// WS7 round 15: a load-guard refusal is deterministic, so "Signing failed. Please try again." was wrong.
+describe('SigningHandler.runSignFlow — a load-guard refusal is shown as a refusal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    preflightMock.mockResolvedValue(undefined);
+    signMock.mockResolvedValue({ bytes: new Uint8Array([9]), signerCommonName: 'CN=Acme' });
+    generateMock.mockResolvedValue({ p12: new Uint8Array([5, 5]), pem: 'PEM' });
+    globalThis.URL.createObjectURL = vi.fn().mockReturnValue('blob:x');
+    globalThis.URL.revokeObjectURL = vi.fn();
+  });
+
+  function generateUi(): SignUi {
+    const ui = makeUi();
+    ui.signSourceGenerate.checked = true;
+    ui.signGenCN.value = 'Acme';
+    ui.signGenPassword.value = 'pw';
+    return ui;
+  }
+  const wrapped = () =>
+    Object.assign(new SignError('PDF_PARSE_FAILED', 'Could not load the PDF for signing.'), {
+      cause: new PdfXrefMismatchError(['5 0 R']),
+    });
+
+  it('a refusal while assembling, before any certificate is generated', async () => {
+    const ui = generateUi();
+    const { ctx, assemblePdfBytes } = makeCtx(ui);
+    assemblePdfBytes.mockRejectedValue(new PdfObjectDroppedError(['5 0 R']));
+    await new SigningHandler(ctx).runSignFlow();
+    expect(ui.signError.textContent).toBe('toast.pdfLoadRefused');
+    expect(generateMock).not.toHaveBeenCalled();
+  });
+
+  it('a refusal the signer wraps in PDF_PARSE_FAILED during the preflight', async () => {
+    preflightMock.mockRejectedValue(wrapped());
+    const ui = generateUi();
+    const { ctx } = makeCtx(ui);
+    await new SigningHandler(ctx).runSignFlow();
+    expect(ui.signError.textContent).toBe('toast.pdfLoadRefused');
+    expect(generateMock).not.toHaveBeenCalled();
+  });
+
+  it('the same wrapped refusal from the final sign', async () => {
+    signMock.mockRejectedValue(wrapped());
+    const ui = generateUi();
+    const { ctx } = makeCtx(ui);
+    await new SigningHandler(ctx).runSignFlow();
+    expect(ui.signError.textContent).toBe('toast.pdfLoadRefused');
+  });
+
+  it('an ordinary PDF_PARSE_FAILED keeps its own message (control)', async () => {
+    preflightMock.mockRejectedValue(new SignError('PDF_PARSE_FAILED', 'truncated file'));
+    const ui = generateUi();
+    const { ctx } = makeCtx(ui);
+    await new SigningHandler(ctx).runSignFlow();
+    expect(ui.signError.textContent).toBe('sign.error.PDF_PARSE_FAILED');
   });
 });

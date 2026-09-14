@@ -11,7 +11,7 @@ import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOut
 import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
-import { loadPdfDocument } from '../utils/pdfLoadGuard';
+import { isPdfLoadRefusal, loadPdfDocument } from '../utils/pdfLoadGuard';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '../utils/tableExtract';
 import { inferBorderlessGrid } from '../utils/borderlessTable';
@@ -230,6 +230,12 @@ const SAVE_DOCX: SaveFileType = {
 
 // ── ExportService ────────────────────────────────────────────────────────────
 
+/** A load-guard refusal gets its own message: it is deterministic, so the caller's "failed" would invite a
+ * retry that can never succeed (WS7 round 15). Any other failure keeps the caller's key. */
+function failureKey(err: unknown, fallback: string): string {
+  return isPdfLoadRefusal(err) ? 'toast.pdfLoadRefused' : fallback;
+}
+
 export class ExportService {
   constructor(private readonly _ctx: IExportContext) {}
 
@@ -261,7 +267,7 @@ export class ExportService {
       else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
-      reportError.error('toast.pdfExportFailed', err);
+      reportError.error(failureKey(err, 'toast.pdfExportFailed'), err);
       _prog.failed();
     } finally {
       await this._ctx.renderCurrentPage();
@@ -298,7 +304,7 @@ export class ExportService {
       else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
-      reportError.error('toast.pdfExportFailed', err);
+      reportError.error(failureKey(err, 'toast.pdfExportFailed'), err);
       _prog.failed();
     } finally {
       await this._ctx.renderCurrentPage();
@@ -335,7 +341,7 @@ export class ExportService {
       else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
-      reportError.error('toast.pdfExportFailed', err);
+      reportError.error(failureKey(err, 'toast.pdfExportFailed'), err);
       _prog.failed();
     } finally {
       await this._ctx.renderCurrentPage();
@@ -384,7 +390,7 @@ export class ExportService {
       // The sanitizer REFUSES a file holding an object it cannot parse — say that, not "failed".
       // Keyed on the name: importing the class here would pull the lazy sanitizer into this chunk.
       const refused = err instanceof Error && err.name === 'SanitizeRefusedError';
-      reportError.error(refused ? 'toast.sanitizeRefusedInvalidObject' : 'toast.sanitizeFailed', err);
+      reportError.error(refused ? 'toast.sanitizeRefusedInvalidObject' : failureKey(err, 'toast.sanitizeFailed'), err);
       _prog.failed();
     }
   }
@@ -427,7 +433,7 @@ export class ExportService {
       }
       _prog.done();
     } catch (err) {
-      reportError.error('toast.compressFailed', err);
+      reportError.error(failureKey(err, 'toast.compressFailed'), err);
       _prog.failed();
     } finally {
       await this._ctx.renderCurrentPage();
@@ -864,7 +870,7 @@ export class ExportService {
       else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
-      reportError.error('toast.pageExportFailed', err);
+      reportError.error(failureKey(err, 'toast.pageExportFailed'), err);
       _prog.failed();
     }
   }
@@ -942,7 +948,7 @@ export class ExportService {
           .catch((err) => { reportError.error('toast.imageExportFailed', err); _prog.failed(); });
       }, type.mime, blobQuality);
     } catch (err) {
-      reportError.error('toast.imageExportFailed', err);
+      reportError.error(failureKey(err, 'toast.imageExportFailed'), err);
       _prog.failed();
     }
   }

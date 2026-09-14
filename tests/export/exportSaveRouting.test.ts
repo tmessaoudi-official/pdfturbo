@@ -13,7 +13,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { ExportService, type IExportContext } from '../../src/export/exportService';
-import { buildInvalidObjectPdf, buildContentStreamPdf } from '../utils/_invalidObjectFixture';
+import { buildInvalidObjectPdf, buildContentStreamPdf, buildXrefShapePdf } from '../utils/_invalidObjectFixture';
 
 type GlobalWithPicker = typeof globalThis & { showSaveFilePicker?: unknown };
 const g = globalThis as GlobalWithPicker;
@@ -212,10 +212,10 @@ describe('export over a source pdf-lib cannot fully parse', () => {
     expect(probe.downloads).toHaveLength(0);
   });
 
-  it('the export FAILS loudly when pdf-lib dropped the page content, instead of writing an empty page', async () => {
+  it('the export REFUSES when pdf-lib dropped the page content, instead of writing an empty page', async () => {
     const probe = buildProbe(buildContentStreamPdf({ brokenLast: true }));
     await probe.svc.downloadPDF();
-    expect(probe.errors).toEqual(['toast.pdfExportFailed']);
+    expect(probe.errors).toEqual(['toast.pdfLoadRefused']);
     expect(probe.downloads).toHaveLength(0);
   });
 
@@ -224,6 +224,40 @@ describe('export over a source pdf-lib cannot fully parse', () => {
     await probe.svc.downloadPDF();
     expect(probe.errors).toEqual([]);
     expect(probe.downloads).toHaveLength(1);
+  });
+});
+
+// ── WS7 round 15: a refusal is its own message on every guarded save path ─────────
+// It used to reach the user as each caller's generic "failed" — which invites a retry that can never work.
+
+describe('a load-guard refusal gets its own message, not the caller\'s "failed"', () => {
+  it.each([
+    ['downloadPageRange', (s: ExportService) => s.downloadPageRange([0])],
+    ['downloadFlattened', (s: ExportService) => s.downloadFlattened()],
+    ['downloadPage', (s: ExportService) => s.downloadPage(0)],
+    ['downloadPageAsImage', (s: ExportService) => s.downloadPageAsImage(0)],
+    ['compressAndDownload', (s: ExportService) => s.compressAndDownload({ mode: 'lossless' } as never)],
+    ['sanitizeAndDownload', (s: ExportService) => s.sanitizeAndDownload()],
+  ])('%s', async (_name, run) => {
+    const probe = buildProbe(buildContentStreamPdf({ brokenLast: true }));
+    await run(probe.svc);
+    expect(probe.errors).toEqual(['toast.pdfLoadRefused']);
+    expect(probe.downloads).toHaveLength(0);
+  });
+
+  it('the parse-differential refusal as well as the drop', async () => {
+    const probe = buildProbe(buildXrefShapePdf('dupFirst'));
+    await probe.svc.downloadPDF();
+    expect(probe.errors).toEqual(['toast.pdfLoadRefused']);
+    expect(probe.downloads).toHaveLength(0);
+  });
+
+  it('any other failure keeps the caller\'s own message (control)', async () => {
+    const probe = buildProbe(await sourceBytes());
+    (probe.svc as unknown as { _assemblePdfDoc(): Promise<never> })._assemblePdfDoc = () =>
+      Promise.reject(new Error('disk full'));
+    await probe.svc.downloadPDF();
+    expect(probe.errors).toEqual(['toast.pdfExportFailed']);
   });
 });
 
