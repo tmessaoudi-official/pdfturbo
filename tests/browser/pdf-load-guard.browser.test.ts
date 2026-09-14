@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadPdfDocument, PdfObjectDroppedError, PdfXrefMismatchError } from '../../src/utils/pdfLoadGuard';
 import {
-  appendRevision, buildContentStreamPdf, buildObjStmPdf, buildXrefShapePdf, editPdfText,
+  appendRevision, buildContentStreamPdf, buildObjStmPdf, buildViewerNullPdf, buildXrefShapePdf, editPdfText,
 } from '../utils/_invalidObjectFixture';
 
 describe('loadPdfDocument in the browser bundle (WS7 round 12)', () => {
@@ -45,6 +45,33 @@ describe('loadPdfDocument in the browser bundle (WS7 round 13)', () => {
       'xref\n0 ', '6 0 obj\nnull\nendobj\nxref\n0 ',
     );
     const doc = await loadPdfDocument(appendRevision(withSix, '6 0 obj\n<< /Type /Foo }\n6 0 obj\nnull\n'));
+    expect(doc.getPageCount()).toBe(1);
+  });
+});
+
+describe('loadPdfDocument in the browser bundle (WS7 round 14)', () => {
+  it('REFUSES page content the cross-reference table marks free — pdf.js finds nothing, pdf-lib holds it', async () => {
+    const err = await loadPdfDocument(buildViewerNullPdf('freeContents')).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PdfXrefMismatchError);
+    expect((err as PdfXrefMismatchError).refs).toEqual(['5 0 R']);
+  });
+
+  it('REFUSES a document root pdf-lib replaced — the root-recovery wrapper patches this bundle\'s parser', async () => {
+    const err = await loadPdfDocument(buildViewerNullPdf('rootRecoveredNoXref')).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PdfXrefMismatchError);
+    expect((err as PdfXrefMismatchError).refs).toEqual(['11 0 R']);
+  });
+
+  it.each(['xrefStreamPngDupFirst', 'xrefStreamTiffDupFirst'] as const)(
+    'REFUSES %s — the cross-reference stream is decoded with its predictor in this bundle too', async shape => {
+      const err = await loadPdfDocument(buildXrefShapePdf(shape)).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(PdfXrefMismatchError);
+      expect((err as PdfXrefMismatchError).refs).toEqual(['5 0 R']);
+    },
+  );
+
+  it('loads a byte-identical duplicate content stream — copies are compared by value in this bundle too', async () => {
+    const doc = await loadPdfDocument(buildXrefShapePdf('identicalStreamDupFirst'));
     expect(doc.getPageCount()).toBe(1);
   });
 });

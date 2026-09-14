@@ -1,3 +1,5 @@
+import { zlibSync } from 'fflate';
+
 /**
  * Hand-written PDF bytes carrying a MALFORMED indirect object. pdf-lib's dict parser throws on the
  * stray `}`, finds the following `endobj`, and keeps the object as an opaque `PDFInvalidObject` —
@@ -76,9 +78,40 @@ export function buildObjStmPdf(
   return latin1Bytes(body);
 }
 
+/** PNG predictor rows (pdf.js `readBlockPng`, one byte per pixel), cycling the five row filters None/Sub/Up/Average/Paeth. */
+function pngPredict(rows: number[][]): number[] {
+  const paeth = (left: number, up: number, upLeft: number): number => {
+    const p = left + up - upLeft;
+    const [pa, pb, pc] = [Math.abs(p - left), Math.abs(p - up), Math.abs(p - upLeft)];
+    if (pa <= pb && pa <= pc) return left;
+    return pb <= pc ? up : upLeft;
+  };
+  const out: number[] = [];
+  rows.forEach((row, r) => {
+    const prev = r > 0 ? rows[r - 1] : row.map(() => 0);
+    const filter = r % 5;
+    out.push(filter);
+    row.forEach((raw, k) => {
+      const left = k > 0 ? row[k - 1] : 0;
+      const upLeft = k > 0 ? prev[k - 1] : 0;
+      const guess = [0, left, prev[k], (left + prev[k]) >> 1, paeth(left, prev[k], upLeft)][filter];
+      out.push((raw - guess) & 0xff);
+    });
+  });
+  return out;
+}
+
+/** TIFF predictor 2 rows, 8 bits per component, one colour: each byte minus the one before it in the row. */
+function tiffPredict(rows: number[][]): number[] {
+  return rows.flatMap(row => row.map((raw, k) => (k > 0 ? (raw - row[k - 1]) & 0xff : raw)));
+}
+
 export type XrefShape =
   | 'clean' | 'dupFirst' | 'dupFirstLoose' | 'dupLast' | 'dupBadXref' | 'incremental' | 'incrementalStale' | 'dualTrailer'
-  | 'junkRelative' | 'junkAbsolute' | 'xrefStreamDupFirst' | 'unreachableDupFirst' | 'identicalDupFirst';
+  | 'junkRelative' | 'junkAbsolute' | 'xrefStreamDupFirst' | 'unreachableDupFirst' | 'identicalDupFirst'
+  | 'identicalStreamDupFirst' | 'identicalFontDupFirst' | 'identicalPagesDupFirst' | 'dupFirstShifted' | 'cleanShifted'
+  | 'xrefStreamPngDupFirst' | 'xrefStreamTiffDupFirst' | 'xrefStreamPngClean' | 'xrefStreamBadPredictorDupFirst'
+  | 'xrefStreamBadTypeDupFirst';
 
 /**
  * pdf.js reads a PDF through `startxref` and its cross-reference chain; pdf-lib scans objects in file
@@ -93,14 +126,27 @@ export type XrefShape =
  *  - `dualTrailer`: a second trailer whose /Root is a second page tree.
  *  - `junkRelative` / `junkAbsolute`: bytes before `%PDF-`, offsets counted from the header / from byte 0.
  *  - `xrefStreamDupFirst`: `dupFirst` with a cross-reference STREAM.
+ *  - `xrefStreamPngDupFirst` / `xrefStreamTiffDupFirst` / `xrefStreamPngClean`: that stream Flate-compressed with a
+ *    PNG (`/Predictor 12`, every row filter used) or TIFF (`/Predictor 2`) predictor — how Acrobat and most producers
+ *    write one. pdf-lib inflates the stream and never applies the predictor.
+ *  - `xrefStreamBadPredictorDupFirst`: unpredicted rows declaring `/Predictor 3`, which pdf.js cannot decode. The rows
+ *    are valid as they stand, so a decoder that passed an unsupported predictor through would build the chain pdf.js
+ *    never reads, and refuse.
+ *  - `xrefStreamBadTypeDupFirst`: the plain stream with entry type 3 for object 5, which pdf.js rejects.
  *  - `unreachableDupFirst` / `identicalDupFirst`: the first-copy table on an unused object / on two nulls.
+ *  - `identicalStreamDupFirst` / `identicalFontDupFirst` / `identicalPagesDupFirst`: the first-copy table on two
+ *    BYTE-IDENTICAL copies of the content stream / the font / the page tree — two distinct pdf-lib objects, which
+ *    two interned nulls are not.
+ *  - `dupFirstShifted` / `cleanShifted`: `dupFirst` / `clean` with a table subsection numbered from 1 whose first
+ *    row is the free object-0 row; pdf.js renumbers such a subsection from 0.
  */
 export function buildXrefShapePdf(shape: XrefShape): Uint8Array {
   const content = (t: string): string => {
     const s = `BT /F1 24 Tf 20 200 Td (${t}) Tj ET`;
     return `<< /Length ${s.length} >>\nstream\n${s}\nendstream`;
   };
-  const dup = ['dupFirst', 'dupFirstLoose', 'dupLast', 'dupBadXref', 'junkRelative', 'junkAbsolute', 'xrefStreamDupFirst'].includes(shape);
+  const dup = ['dupFirst', 'dupFirstLoose', 'dupLast', 'dupBadXref', 'junkRelative', 'junkAbsolute', 'xrefStreamDupFirst', 'dupFirstShifted',
+    'xrefStreamPngDupFirst', 'xrefStreamTiffDupFirst', 'xrefStreamBadPredictorDupFirst', 'xrefStreamBadTypeDupFirst'].includes(shape);
   const objs: Array<[number, string]> = [
     [1, `<< /Type /Catalog /Pages 2 0 R${shape === 'identicalDupFirst' ? ' /Extra 9 0 R' : ''} >>`],
     [2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
@@ -111,6 +157,9 @@ export function buildXrefShapePdf(shape: XrefShape): Uint8Array {
   if (dup) objs.push([5, content('SIGNED')]);
   if (shape === 'unreachableDupFirst') objs.push([9, '<< /A 1 >>'], [9, '<< /A 2 >>']);
   if (shape === 'identicalDupFirst') objs.push([9, 'null'], [9, 'null']);
+  if (shape === 'identicalStreamDupFirst') objs.push([5, content('VIEWED')]);
+  if (shape === 'identicalFontDupFirst') objs.push([4, objs[3][1]]);
+  if (shape === 'identicalPagesDupFirst') objs.push([2, objs[1][1]]);
   if (shape === 'dualTrailer') {
     objs.push(
       [11, '<< /Type /Catalog /Pages 12 0 R >>'],
@@ -138,22 +187,33 @@ export function buildXrefShapePdf(shape: XrefShape): Uint8Array {
   };
   const pad = (v: number, w: number): string => String(v).padStart(w, '0');
 
-  if (shape === 'xrefStreamDupFirst') {
-    const be = (v: number, w: number): string =>
-      Array.from({ length: w }, (_, i) => String.fromCharCode((v >>> (8 * (w - 1 - i))) & 0xff)).join('');
+  if (shape.startsWith('xrefStream')) {
     const xrefAt = body.length;
-    let data = '';
+    // One row per object, laid out as /W [1 4 2] declares: type, offset, generation, big-endian.
+    const rows: number[][] = [];
     for (let i = 0; i <= size; i++) {
       const o = i === size ? xrefAt : offsetOf(i);
-      data += o === undefined ? ` ${be(0, 4)}${be(i === 0 ? 0xffff : 0, 2)}` : `${be(o, 4)}${be(0, 2)}`;
+      const gen = o === undefined && i === 0 ? 0xffff : 0;
+      const v = o ?? 0;
+      rows.push([o === undefined ? 0 : 1, (v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff, gen >>> 8, gen & 0xff]);
     }
-    body += `${size} 0 obj\n<< /Type /XRef /Size ${size + 1} /W [1 4 2] /Root 1 0 R /Length ${data.length} >>\nstream\n${data}\nendstream\nendobj\n`
+    if (shape === 'xrefStreamBadTypeDupFirst') rows[5][0] = 3;
+    const tiff = shape === 'xrefStreamTiffDupFirst';
+    const badPredictor = shape === 'xrefStreamBadPredictorDupFirst';
+    let data = String.fromCharCode(...rows.flat());
+    let params = '';
+    if (shape !== 'xrefStreamDupFirst' && shape !== 'xrefStreamBadTypeDupFirst') {
+      data = String.fromCharCode(...zlibSync(Uint8Array.from(tiff ? tiffPredict(rows) : badPredictor ? rows.flat() : pngPredict(rows))));
+      const predictor = tiff ? 2 : badPredictor ? 3 : 12;
+      params = ` /Filter /FlateDecode /DecodeParms << /Predictor ${predictor} /Columns 7 >>`;
+    }
+    body += `${size} 0 obj\n<< /Type /XRef /Size ${size + 1} /W [1 4 2] /Root 1 0 R${params} /Length ${data.length} >>\nstream\n${data}\nendstream\nendobj\n`
       + `startxref\n${xrefAt}\n%%EOF\n`;
     return latin1Bytes(body);
   }
 
   const xrefAt = body.length;
-  body += `xref\n0 ${size}\n0000000000 65535 f \n`;
+  body += `xref\n${shape.endsWith('Shifted') ? 1 : 0} ${size}\n0000000000 65535 f \n`;
   for (let i = 1; i < size; i++) {
     const o = offsetOf(i);
     body += o === undefined ? '0000000000 65535 f \n' : `${pad(o, 10)} 00000 n \n`;
@@ -168,6 +228,89 @@ export function buildXrefShapePdf(shape: XrefShape): Uint8Array {
       + `startxref\n${section}\n%%EOF\n`;
   }
   if (shape === 'dualTrailer') body += `trailer\n<< /Size ${size} /Root 11 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  return latin1Bytes(body);
+}
+
+export type ViewerNullShape =
+  | 'freeContents' | 'zeroContents' | 'absentContents' | 'freeContentsUpdate' | 'zeroContentsUpdate'
+  | 'freeCatalog' | 'freePages' | 'freeNull' | 'infoDeletedUpdate' | 'rootRecovered' | 'rootRecoveredNoXref';
+
+/**
+ * Shapes where pdf.js resolves an object to NOTHING, or reads a different document root, while pdf-lib holds
+ * content (WS7 round 14). pdf.js's `XRef.getEntry` returns null for an entry that is absent, free or at offset
+ * 0 (pdfjs-dist 6.3.289), and pdf-lib ignores the table and keeps what it parsed. The table is REAL here too.
+ *  - `freeContents` / `zeroContents` / `absentContents`: one revision, the page content marked free / placed at
+ *    offset 0 / not listed at all. pdf.js draws a blank page; pdf-lib holds HIDDEN.
+ *  - `freeContentsUpdate` / `zeroContentsUpdate`: an appended SIGNED copy whose update section marks the
+ *    object free / places it at offset 0.
+ *  - `freeCatalog` / `freePages`: the same for the catalog / the page tree. `XRef.parse` needs both to be
+ *    dictionaries, so pdf.js rebuilds its table by scanning and both parsers read HIDDEN.
+ *  - `freeNull`: the catalog reaches an object written as `null` that the table marks free. pdf.js finds nothing,
+ *    pdf-lib holds `null`: the same value, so nothing differs.
+ *  - `infoDeletedUpdate`: a legal update that deletes /Info; pdf-lib merges trailers field by field and keeps
+ *    the older trailer's /Info.
+ *  - `rootRecovered` / `rootRecoveredNoXref`: the trailer's /Root lacks /Type /Catalog, so pdf-lib's
+ *    `maybeRecoverRoot` replaces it with another catalog in the file, while pdf.js uses the trailer's — with a
+ *    real table / with `startxref 0`, which puts pdf.js in recovery mode.
+ */
+export function buildViewerNullPdf(shape: ViewerNullShape): Uint8Array {
+  const content = (t: string): string => {
+    const s = `BT /F1 24 Tf 20 200 Td (${t}) Tj ET`;
+    return `<< /Length ${s.length} >>\nstream\n${s}\nendstream`;
+  };
+  const recovered = shape.startsWith('rootRecovered');
+  const page = (parent: number, contents: number): string =>
+    `<< /Type /Page /Parent ${parent} 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> >> /Contents ${contents} 0 R >>`;
+  const objs: Array<[number, string]> = [
+    [1, recovered ? '<< /Pages 2 0 R >>' : `<< /Type /Catalog /Pages 2 0 R${shape === 'freeNull' ? ' /Extra 6 0 R' : ''} >>`],
+    [2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    [3, page(2, 5)],
+    [4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],
+    [5, content(recovered ? 'VIEWED' : 'HIDDEN')],
+  ];
+  if (shape === 'infoDeletedUpdate') objs.push([6, '<< /Producer (older revision) >>']);
+  if (shape === 'freeNull') objs.push([6, 'null']);
+  if (recovered) {
+    objs.push(
+      [11, '<< /Type /Catalog /Pages 12 0 R >>'],
+      [12, '<< /Type /Pages /Kids [13 0 R] /Count 1 >>'],
+      [13, page(12, 15)],
+      [15, content('SIGNED')],
+    );
+  }
+  let body = '%PDF-1.7\n';
+  const at = new Map<number, number>();
+  for (const [n, b] of objs) {
+    at.set(n, body.length);
+    body += `${n} 0 obj\n${b}\nendobj\n`;
+  }
+  const pad = (v: number): string => String(v).padStart(10, '0');
+  const size = Math.max(...objs.map(([n]) => n)) + 1;
+  const freed = ({ freeContents: 5, freeCatalog: 1, freePages: 2, freeNull: 6 } as Partial<Record<ViewerNullShape, number>>)[shape];
+  const row = (n: number): string => {
+    const o = at.get(n);
+    if (o === undefined) return '0000000000 65535 f \n';
+    if (n === freed) return `${pad(o)} 00000 f \n`;
+    if (shape === 'zeroContents' && n === 5) return '0000000000 00000 n \n';
+    return `${pad(o)} 00000 n \n`;
+  };
+  const listed = shape === 'absentContents' ? 5 : size;
+  const xrefAt = body.length;
+  body += `xref\n0 ${listed}\n0000000000 65535 f \n`;
+  for (let n = 1; n < listed; n++) body += row(n);
+  const info = shape === 'infoDeletedUpdate' ? ' /Info 6 0 R' : '';
+  body += `trailer\n<< /Size ${size} /Root 1 0 R${info} >>\nstartxref\n${shape === 'rootRecoveredNoXref' ? 0 : xrefAt}\n%%EOF\n`;
+  if (shape === 'freeContentsUpdate' || shape === 'zeroContentsUpdate') {
+    const appended = body.length;
+    body += `5 0 obj\n${content('SIGNED')}\nendobj\n`;
+    const section = body.length;
+    const five = shape === 'freeContentsUpdate' ? `${pad(appended)} 00001 f \n` : '0000000000 00000 n \n';
+    body += `xref\n5 1\n${five}trailer\n<< /Size ${size} /Root 1 0 R /Prev ${xrefAt} >>\nstartxref\n${section}\n%%EOF\n`;
+  }
+  if (shape === 'infoDeletedUpdate') {
+    const section = body.length;
+    body += `xref\n6 1\n0000000000 00001 f \ntrailer\n<< /Size ${size} /Root 1 0 R /Prev ${xrefAt} >>\nstartxref\n${section}\n%%EOF\n`;
+  }
   return latin1Bytes(body);
 }
 

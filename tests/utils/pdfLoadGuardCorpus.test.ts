@@ -13,11 +13,17 @@
  *    `LOAD_GUARD_CORPUS=1 npx vitest run tests/utils/pdfLoadGuardCorpus.test.ts`; the per-file report lands in
  *    `var/claude/ws7/load-guard-corpus.json`.
  *
- * Non-vacuity: a file only reaches the cross-reference comparison when pdf-lib assigned some object twice or
- * met more than one trailer, AND the chain from `startxref` resolved. The gated half asserts that happened on
- * at least one real file, so "nothing refused" is not merely "nothing was compared".
+ * Non-vacuity: a file only reaches the cross-reference comparison when pdf.js would read it through the chain
+ * from `startxref` (`viewerReadsChain`: the chain resolves through sections pdf-lib parsed, and its root is one
+ * pdf.js keeps). Since WS7 round 14 every such file is checked for objects pdf.js finds nothing for; the
+ * per-copy comparison additionally needs an object assigned twice or more than one trailer. The gated half
+ * asserts both happened on real files, so "nothing refused" is not merely "nothing was compared".
+ *
+ * A chain can resolve and still be noise: until the guard applied a cross-reference stream's /Predictor, pdf-lib's
+ * own entries for such a stream pointed nowhere, and 11 of these 15 files silently never reached the comparison.
+ * So both halves also assert that every in-use chain entry at a file offset lands on an object pdf-lib parsed there.
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PDFDocument } from '@cantoo/pdf-lib';
@@ -36,17 +42,25 @@ interface Row {
   reassigned: boolean;
   trailerDicts: number;
   chainResolved: boolean;
+  viewerReadsChain: boolean;
+  directEntries: number;
+  directOnDefinition: number;
 }
 
 async function measure(dir: string, file: string): Promise<Row> {
   const bytes = new Uint8Array(readFileSync(resolve(dir, file)));
-  let parse = { reassigned: false, trailerDicts: 0, chainResolved: false };
+  let parse = {
+    reassigned: false, trailerDicts: 0, chainResolved: false, viewerReadsChain: false, directEntries: 0, directOnDefinition: 0,
+  };
   let rawMs = 0;
+  let rawDoc: PDFDocument | undefined;
   const r0 = performance.now();
-  const raw = await outcome(PDFDocument.load(bytes, { updateMetadata: false }).then(async doc => {
+  const raw = await outcome(PDFDocument.load(bytes, { updateMetadata: false }).then(doc => {
     rawMs = Math.round(performance.now() - r0);
-    parse = await describeParse(doc.context, bytes);
+    rawDoc = doc;
   }));
+  // Outside `outcome`: a describeParse failure is a broken measurement, never a file pdf-lib refused.
+  if (rawDoc) parse = await describeParse(rawDoc.context, bytes);
   const t0 = performance.now();
   const guard = await outcome(loadPdfDocument(bytes, { updateMetadata: false }));
   return { file, raw, guard, rawMs, ms: Math.round(performance.now() - t0), ...parse };
@@ -55,13 +69,25 @@ async function measure(dir: string, file: string): Promise<Row> {
 describe('the load guard on real files', () => {
   const PUBLIC = resolve(__dirname, '../fixtures/corpus-public');
 
+  // `measure` parses with raw pdf-lib BEFORE the guard, and the first `loadPdfDocument` is what installs the
+  // recorder. Without this, whichever file a run measures first — `-t` changes which — had nothing recorded.
+  beforeAll(async () => {
+    const empty = await PDFDocument.create();
+    empty.addPage();
+    await loadPdfDocument(await empty.save());
+  });
+
   it('loads every tracked public fixture exactly as pdf-lib does', async () => {
     const files = pdfsIn(PUBLIC);
     expect(files.length).toBeGreaterThanOrEqual(5); // a moved directory must not pass on nothing
+    const rows: Row[] = [];
     for (const file of files) {
       const row = await measure(PUBLIC, file);
+      rows.push(row);
       expect({ file, guard: row.guard }).toEqual({ file, guard: row.raw });
     }
+    expect(rows.filter(r => r.viewerReadsChain && r.directOnDefinition !== r.directEntries).map(r => r.file)).toEqual([]);
+    expect(rows.some(r => r.viewerReadsChain && r.directEntries > 0)).toBe(true);
   }, 120_000);
 
   const CORPUS = resolve(__dirname, '../../var/corpus');
@@ -74,6 +100,10 @@ describe('the load guard on real files', () => {
     mkdirSync(out, { recursive: true });
     writeFileSync(resolve(out, 'load-guard-corpus.json'), JSON.stringify(rows, null, 2));
     expect(rows.filter(r => r.guard !== r.raw)).toEqual([]);
-    expect(rows.some(r => (r.reassigned || r.trailerDicts > 1) && r.chainResolved)).toBe(true);
+    // Measured 15 of 15 once cross-reference streams were decoded with their predictor (4 of 15 before). A new file
+    // pdf.js does not read through its chain belongs in this list by name, not under a lower count.
+    expect(rows.filter(r => !r.viewerReadsChain || r.directOnDefinition !== r.directEntries).map(r => r.file)).toEqual([]);
+    expect(rows.some(r => r.viewerReadsChain)).toBe(true);
+    expect(rows.some(r => (r.reassigned || r.trailerDicts > 1) && r.viewerReadsChain)).toBe(true);
   }, 600_000);
 });

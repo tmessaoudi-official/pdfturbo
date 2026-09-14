@@ -313,6 +313,26 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect((app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat()).toContain('toast.trueEditOverlay');
   });
 
+  // WS7 round 14, completeness A: SECURITY.md and KNOWN_ISSUES.md said editing REFUSES a file the load guard
+  // rejects. It does not — the true-edit load sits in a catch that falls back to an editable overlay, and it
+  // is the export or signature built afterwards that refuses. Pinned so the documented behaviour is tested.
+  it('falls back to an editable overlay when the load guard refuses the source PDF', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(new Error('PDF_XREF_MISMATCH: 5 0 R'), { name: 'PdfXrefMismatchError' }),
+    );
+    mockFindTextOpAt.mockClear();
+
+    const item = makeItem('hello', 100, 400);
+    const app = makeApp(makeCanvas(), makeFakePage([item]));
+    await handler.handleCanvasClick(click(115, 441), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    expect(mockFindTextOpAt).not.toHaveBeenCalled(); // no in-place edit was attempted on the refused document
+    expect(document.body.querySelector('.true-edit-input')).toBeNull();
+    expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+    expect((app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat()).toContain('toast.trueEditOverlay');
+  });
+
   // BUG A1 (commit-time): the editor opens for a non-XObject target, but the
   // true edit fails at commit time (replaceTextAt returns false — e.g. a Type3 /
   // invisible / vertical font that only A5 detects at commit). The handler used

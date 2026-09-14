@@ -13,8 +13,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import * as pdfLib from '@cantoo/pdf-lib';
-import { installDropRecorder, loadPdfDocument, PdfObjectDroppedError, recordedDrops } from '../../src/utils/pdfLoadGuard';
-import { appendRevision, buildContentStreamPdf as build, buildObjStmPdf, buildXrefShapePdf, editPdfText } from './_invalidObjectFixture';
+import { describeParse, installDropRecorder, loadPdfDocument, PdfObjectDroppedError, recordedDrops } from '../../src/utils/pdfLoadGuard';
+import {
+  appendRevision, buildContentStreamPdf as build, buildObjStmPdf, buildViewerNullPdf, buildXrefShapePdf, editPdfText,
+} from './_invalidObjectFixture';
 
 describe('loadPdfDocument', () => {
   it('REFUSES a document whose used object pdf-lib silently dropped, naming the object', async () => {
@@ -318,24 +320,27 @@ describe('loadPdfDocument — a drop is superseded by assignment ORDER, not by i
   });
 });
 
+/** The text pdf.js reads from page 1 — what the user sees on screen. */
+async function pdfjsText(bytes: Uint8Array): Promise<string> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;
+  const { items } = await (await doc.getPage(1)).getTextContent();
+  return (items as Array<{ str?: string }>).map(i => i.str ?? '').join('');
+}
+/** The content stream pdf-lib holds for page 1 — what every export and signature is built from. */
+async function pdfLibText(bytes: Uint8Array): Promise<string> {
+  const doc = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+  const stream = doc.getPage(0).node.lookup(pdfLib.PDFName.of('Contents')) as pdfLib.PDFRawStream;
+  return new TextDecoder('latin1').decode(stream.getContents());
+}
+function mismatchOf(e: unknown): string[] {
+  expect((e as Error | undefined)?.name).toBe('PdfXrefMismatchError');
+  return (e as { refs: string[] }).refs;
+}
+
 describe('loadPdfDocument — where pdf.js and pdf-lib would read different content (WS7 round 13, safety F1)', () => {
   const refusal = (bytes: Uint8Array): Promise<unknown> =>
     loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => e);
-  const pdfjsText = async (bytes: Uint8Array): Promise<string> => {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    const doc = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;
-    const { items } = await (await doc.getPage(1)).getTextContent();
-    return (items as Array<{ str?: string }>).map(i => i.str ?? '').join('');
-  };
-  const pdfLibText = async (bytes: Uint8Array): Promise<string> => {
-    const doc = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
-    const stream = doc.getPage(0).node.lookup(pdfLib.PDFName.of('Contents')) as pdfLib.PDFRawStream;
-    return new TextDecoder('latin1').decode(stream.getContents());
-  };
-  const mismatchOf = (e: unknown): string[] => {
-    expect((e as Error | undefined)?.name).toBe('PdfXrefMismatchError');
-    return (e as { refs: string[] }).refs;
-  };
 
   it.each([
     ['dupFirst', ['5 0 R']],
@@ -371,6 +376,139 @@ describe('loadPdfDocument — where pdf.js and pdf-lib would read different cont
 
   it('loads when both copies are the same value — there is nothing to disagree about', async () => {
     expect(await refusal(buildXrefShapePdf('identicalDupFirst'))).toBe('loaded');
+  });
+});
+
+// WS7 round 14 (export F1, F2, F3). Every shape was read through pdf.js 6.3.289 and pdf-lib 2.11.0 before the
+// guard changed; where they disagree, the non-vacuity lines show both halves.
+describe('loadPdfDocument — what pdf.js finds nothing for, a root pdf-lib replaced, copies equal by value (WS7 round 14)', () => {
+  const refusal = (bytes: Uint8Array): Promise<unknown> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => e);
+
+  it.each(['freeContents', 'zeroContents', 'absentContents', 'freeContentsUpdate', 'zeroContentsUpdate'] as const)(
+    'REFUSES %s — pdf.js finds nothing for the page content, so the viewer shows a blank page pdf-lib would export or sign (export F1)',
+    async shape => {
+      const bytes = buildViewerNullPdf(shape);
+      expect(await pdfjsText(bytes)).toBe('');
+      expect(await pdfLibText(bytes)).toMatch(/\((HIDDEN|SIGNED)\)/);
+      expect(mismatchOf(await refusal(bytes))).toEqual(['5 0 R']);
+    },
+  );
+
+  it.each(['freeCatalog', 'freePages'] as const)(
+    'loads %s — pdf.js rebuilds its table by scanning when the catalog or page tree resolves to nothing, so both read the same page (control)',
+    async shape => {
+      const bytes = buildViewerNullPdf(shape);
+      expect(await pdfjsText(bytes)).toBe('HIDDEN');
+      expect(await pdfLibText(bytes)).toContain('(HIDDEN)');
+      expect(await refusal(bytes)).toBe('loaded');
+    },
+  );
+
+  it('loads freeNull — pdf.js finds nothing for an object pdf-lib holds as null, which is the same value (control)', async () => {
+    const bytes = buildViewerNullPdf('freeNull');
+    expect(await pdfjsText(bytes)).toBe('HIDDEN');
+    // First, so the recorder is installed before the raw parse below even when `-t` runs this case alone.
+    expect(await refusal(bytes)).toBe('loaded');
+    const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    // Non-vacuity: pdf-lib holds null for the freed object, and the comparison runs through the chain pdf.js reads.
+    expect(raw.context.lookup(pdfLib.PDFRef.of(6))).toBe(pdfLib.PDFNull);
+    expect((await describeParse(raw.context, bytes)).viewerReadsChain).toBe(true);
+  });
+
+  it('loads an update that deletes /Info — pdf-lib still holds the older trailer\'s /Info, which no page shows (control)', async () => {
+    const bytes = buildViewerNullPdf('infoDeletedUpdate');
+    const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    // Non-vacuity: pdf-lib merges trailers field by field, so the deleted /Info is still reachable from its trailer.
+    expect(raw.context.lookup(raw.context.trailerInfo.Info as pdfLib.PDFRef)).toBeInstanceOf(pdfLib.PDFDict);
+    expect(await pdfjsText(bytes)).toBe('HIDDEN');
+    expect(await refusal(bytes)).toBe('loaded');
+  });
+
+  it.each(['rootRecovered', 'rootRecoveredNoXref'] as const)(
+    'REFUSES %s — pdf-lib replaced the document root pdf.js uses with another catalog in the file (export F2)',
+    async shape => {
+      const bytes = buildViewerNullPdf(shape);
+      expect(await pdfjsText(bytes)).toBe('VIEWED');
+      expect(await pdfLibText(bytes)).toContain('(SIGNED)');
+      expect(mismatchOf(await refusal(bytes))).toEqual(['11 0 R']);
+    },
+  );
+
+  it.each(['identicalStreamDupFirst', 'identicalFontDupFirst', 'identicalPagesDupFirst'] as const)(
+    'loads %s — byte-identical copies are the same value even when pdf-lib parsed them as two objects (export F3)',
+    async shape => {
+      const bytes = buildXrefShapePdf(shape);
+      const shown = await pdfjsText(bytes);
+      expect(shown).toBe('VIEWED');
+      expect(await pdfLibText(bytes)).toContain(shown);
+      expect(await refusal(bytes)).toBe('loaded');
+    },
+  );
+
+  it('REFUSES dupFirstShifted — a table subsection numbered from 1 over the free object-0 row, which pdf.js renumbers from 0', async () => {
+    const bytes = buildXrefShapePdf('dupFirstShifted');
+    expect(await pdfjsText(bytes)).toBe('VIEWED');
+    expect(await pdfLibText(bytes)).toContain('SIGNED');
+    expect(mismatchOf(await refusal(bytes))).toEqual(['5 0 R']);
+  });
+
+  it('loads cleanShifted — the renumbered table on a file with nothing to disagree about (control)', async () => {
+    const bytes = buildXrefShapePdf('cleanShifted');
+    expect(await pdfjsText(bytes)).toBe('VIEWED');
+    expect(await refusal(bytes)).toBe('loaded');
+  });
+});
+
+// Found while measuring round 14 on real files: pdf-lib inflates a cross-reference stream but never applies its
+// /DecodeParms /Predictor, so the entries it parses from an Acrobat-style stream are noise. pdf.js applies it.
+describe('loadPdfDocument — cross-reference streams written with a predictor', () => {
+  const refusal = (bytes: Uint8Array): Promise<unknown> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => e);
+
+  it.each(['xrefStreamPngDupFirst', 'xrefStreamTiffDupFirst'] as const)(
+    'REFUSES %s — the chain pdf.js decodes names the copy pdf-lib did not keep', async shape => {
+      const bytes = buildXrefShapePdf(shape);
+      expect(await pdfjsText(bytes)).toBe('VIEWED');
+      expect(await pdfLibText(bytes)).toContain('SIGNED');
+      expect(mismatchOf(await refusal(bytes))).toEqual(['5 0 R']);
+      await expectChainLands(bytes);
+    },
+  );
+
+  it('loads xrefStreamPngClean, and reaches the comparison through the chain pdf.js decodes (control)', async () => {
+    const bytes = buildXrefShapePdf('xrefStreamPngClean');
+    expect(await pdfjsText(bytes)).toBe('VIEWED');
+    expect(await refusal(bytes)).toBe('loaded');
+    await expectChainLands(bytes);
+  });
+
+  // A chain decoded wrongly still resolves, and lands on nothing: every in-use entry at a file offset must land on
+  // an object pdf-lib parsed there. The fixture cycles all five PNG row filters, so a wrong filter misplaces a row.
+  async function expectChainLands(bytes: Uint8Array): Promise<void> {
+    const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    const parse = await describeParse(raw.context, bytes);
+    expect(parse.viewerReadsChain).toBe(true);
+    expect(parse.directEntries).toBeGreaterThan(4);
+    expect(parse.directOnDefinition).toBe(parse.directEntries);
+  }
+
+  it('loads xrefStreamBadPredictorDupFirst — pdf.js cannot decode the stream and rebuilds by scanning, keeping the copy pdf-lib keeps', async () => {
+    const bytes = buildXrefShapePdf('xrefStreamBadPredictorDupFirst');
+    expect(await pdfjsText(bytes)).toBe('SIGNED');
+    expect(await refusal(bytes)).toBe('loaded');
+    // Loaded because no chain was built through a stream pdf.js rejects, not because a garbage chain happened to pass.
+    const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    expect((await describeParse(raw.context, bytes)).chainResolved).toBe(false);
+  });
+
+  it('loads xrefStreamBadTypeDupFirst — an entry type pdf.js rejects makes it rebuild by scanning, keeping the copy pdf-lib keeps', async () => {
+    const bytes = buildXrefShapePdf('xrefStreamBadTypeDupFirst');
+    expect(await pdfjsText(bytes)).toBe('SIGNED');
+    expect(await refusal(bytes)).toBe('loaded');
+    // Loaded because no chain was built through a stream pdf.js rejects, not because a garbage chain happened to pass.
+    const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    expect((await describeParse(raw.context, bytes)).chainResolved).toBe(false);
   });
 });
 
