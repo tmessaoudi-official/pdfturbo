@@ -32,9 +32,9 @@
  * and signature is built from another — with nothing dropped. The recorder also keeps where each
  * definition started and the cross-reference sections pdf-lib parsed (and then discarded), and a
  * reachable object refuses (`PdfXrefMismatchError`) when the chain from `startxref` lands exactly on a
- * definition pdf-lib did not keep and the two differ. Measured with pdf.js before it was written: when a
- * table offset is wrong, pdf.js rebuilds its table by scanning and keeps the last definition too, so only
- * an offset that lands on a real header is a disagreement.
+ * definition pdf-lib did not keep and the two differ. Round 13 took pdf.js to rebuild its table by scanning
+ * whenever a table offset is wrong; round 16 measured that true only on its load-time walk to the first or
+ * last page (below).
  *
  * WS7 round 14 found three more, each measured in pdf.js 6.3.289 before the code changed:
  *  - pdf.js finds NOTHING for an entry that is absent, free or at offset 0 (`XRef.getEntry`) — a page whose
@@ -53,6 +53,16 @@
  * resolved and landed on nothing. The recorder now decodes those entries itself, the way pdf.js's
  * `PredictorStream` and `XRef.readXRefStream` do.
  *
+ * WS7 round 16 found the comparison stopping where pdf.js keeps reading, and skipping what pdf.js cannot read, each
+ * measured in pdf.js 6.3.289:
+ *  - pdf.js reads each queued cross-reference section inside a try/catch (`XRef.readXRef`), so a /Prev or /XRefStm
+ *    offset it cannot read costs that section alone and the startxref table still names the page on screen. The
+ *    chain used to be abandoned at the first such offset, leaving the round-13 shape uncompared behind one bad pointer.
+ *  - An entry that does not land on its object makes pdf.js throw where it reads it (`XRef.fetchUncompressed`). It
+ *    rebuilds by scanning only when that happens on its load-time walk to the first or last page (`checkFirstPage` /
+ *    `checkLastPage`, mirrored); anywhere else the page draws blank or fails while pdf-lib exports it, so such an
+ *    object refuses when the document root reaches it, exactly as one pdf.js finds nothing for.
+ *
  * Kept deliberately:
  *  - a dangling reference nothing was dropped for loads (a legal null, common in old files);
  *  - a damaged object that IS terminated loads — pdf-lib keeps it as a `PDFInvalidObject`;
@@ -69,16 +79,18 @@
  * stream fails before its member list is known, the lost members cannot be named, so ANY reachable
  * dangling or damaged reference in that document refuses it. A reachable damaged object's references
  * cannot be read at all, so while one exists every drop still standing refuses the document, reachable or
- * not. The cross-reference comparison is skipped whenever the chain cannot be followed through sections
- * pdf-lib parsed (pdf.js then rebuilds by scanning — except its choice of trailer in that mode, which is
- * not mirrored), and for objects the table places inside an object stream. A cross-reference stream keeps no
- * section, so no chain runs through it, when pdf.js rejects it (a predictor it does not support, an entry type
- * other than 0, 1 or 2) or when its filters are not modelled (abbreviated /F or /DP keys, a predictor under a
- * later filter, a TIFF predictor at other than 8 bits). A linearized file IS compared,
+ * not. The cross-reference comparison is skipped when no section of the chain yields a trailer or its root is
+ * one pdf.js rejects, and when pdf.js meets an entry it cannot read on its walk to the first or last page (pdf.js
+ * then rebuilds by scanning — except its choice of trailer in that mode, which is not mirrored); when the chain
+ * reaches a cross-reference stream whose decoding is not modelled (abbreviated /F or /DP keys, a predictor under a
+ * later filter, a TIFF predictor at other than 8 bits, PNG predictor parameters that do not size a row), which
+ * pdf.js reads; and for objects the table places inside an object stream. A stream pdf.js rejects part-way (a
+ * predictor it does not support, an entry type other than 0, 1 or 2) keeps the rows pdf.js reads before failing.
+ * A linearized file IS compared,
  * through the chain from `startxref`; pdf.js enters one at the cross-reference section after its first
  * object, which a well-formed file also names at `startxref`, and a file where the two differ is not
- * mirrored. Nor is pdf.js's rebuild when an entry on the path to the first or last page lands on the wrong
- * object (`checkFirstPage` / `checkLastPage`), so such a damaged file can be refused where the two agree.
+ * mirrored; its load-time page walks are mirrored through the page tree, where pdf.js takes a linearized
+ * file's first page and page count from the linearization dictionary.
  *
  * Every load in `src/` goes through here; `tests/utils/pdfLoadGuard.test.ts` fails by file name on
  * a new direct `PDFDocument.load`. A per-site check is how a sibling path keeps the defect.
@@ -172,8 +184,11 @@ interface XrefEntry {
 }
 /** A cross-reference section pdf-lib parsed — a table with its trailer, or a stream with its dict. */
 interface XrefSection {
+  kind: 'table' | 'stream';
   entries: XrefEntry[];
   dict?: PDFDictT;
+  /** pdf.js throws part-way through this stream: it keeps the rows it read before failing and skips the rest. */
+  rejected?: boolean;
 }
 interface ParseRecord {
   /** True only inside `parseDocument`, so edits made to the document later are not counted. */
@@ -187,6 +202,8 @@ interface ParseRecord {
   definitions: Map<string, Definition[]>;
   /** Keyed by the offset the section starts at: `xref`, or the xref stream's object header. */
   sections: Map<number, XrefSection>;
+  /** Where a cross-reference stream starts that pdf.js reads and the recorder cannot decode the way it does. */
+  unmodelledSections: Set<number>;
   pendingSection: XrefSection | null;
   /** Header offset of the indirect object being parsed, for an xref stream found inside it. */
   objectAt: number | undefined;
@@ -208,7 +225,7 @@ function recordFor(ctx: PDFContext): ParseRecord {
   if (!rec) {
     rec = {
       parsing: false, clock: 0, lastAssigned: new Map(), reassigned: false, drops: new Map(),
-      membersUnknown: false, definitions: new Map(), sections: new Map(), pendingSection: null,
+      membersUnknown: false, definitions: new Map(), sections: new Map(), unmodelledSections: new Set(), pendingSection: null,
       objectAt: undefined, trailerDicts: 0, recoveredFrom: undefined,
     };
     records.set(ctx, rec);
@@ -307,25 +324,27 @@ interface ContextInternals {
 }
 type ForStream = (rawStream: { dict: { context: PDFContext } }, ...rest: unknown[]) => unknown;
 
+/** A decode parameter as pdf.js reads it (`params.get(key) || fallback`), or `undefined` when it is not a number. */
+function decodeParam(lib: RecorderLib, params: PDFDictT, keys: string[], fallback: number): number | undefined {
+  const value = keys.map(k => params.lookup(lib.PDFName.of(k))).find(v => v !== undefined);
+  if (value === undefined) return fallback;
+  return value instanceof lib.PDFNumber ? value.asNumber() || fallback : undefined;
+}
+
 /**
- * Undoes a /Predictor the way pdf.js's `PredictorStream` does, or `undefined` where pdf.js would not decode the
- * stream: an unsupported predictor makes its `makeFilter` fall back to an empty stream, and an unknown PNG row
- * filter throws. The row loops are pdf.js's own, down to a short last row padding with zeros.
+ * Undoes a /Predictor the way pdf.js's `PredictorStream` does: a predictor pdf.js does not support makes its
+ * `makeFilter` read the stream as EMPTY, and an unknown PNG row filter ends the data at that row, where pdf.js throws
+ * after serving the rows before it. `undefined` where the parameters are not modelled. The row loops are pdf.js's own,
+ * down to a short last row padding with zeros.
  */
 function unpredict(lib: RecorderLib, data: Uint8Array, params: PDFDictT): Uint8Array | undefined {
-  const { PDFName, PDFNumber } = lib;
-  const num = (keys: string[], fallback: number): number | undefined => {
-    const value = keys.map(k => params.lookup(PDFName.of(k))).find(v => v !== undefined);
-    if (value === undefined) return fallback;
-    return value instanceof PDFNumber ? value.asNumber() || fallback : undefined;
-  };
-  const predictor = num(['Predictor'], 1);
-  const colors = num(['Colors'], 1);
-  const bits = num(['BPC', 'BitsPerComponent'], 8);
-  const columns = num(['Columns'], 1);
+  const predictor = decodeParam(lib, params, ['Predictor'], 1);
+  const colors = decodeParam(lib, params, ['Colors'], 1);
+  const bits = decodeParam(lib, params, ['BPC', 'BitsPerComponent'], 8);
+  const columns = decodeParam(lib, params, ['Columns'], 1);
   if (predictor === undefined || colors === undefined || bits === undefined || columns === undefined) return undefined;
   if (predictor <= 1) return data;
-  if (predictor !== 2 && (predictor < 10 || predictor > 15)) return undefined;
+  if (predictor !== 2 && (predictor < 10 || predictor > 15)) return NO_BYTES;
   const pixBytes = (colors * bits + 7) >> 3;
   const rowBytes = (columns * colors * bits + 7) >> 3;
   if (pixBytes < 1 || rowBytes < pixBytes || rowBytes < colors) return undefined;
@@ -377,19 +396,22 @@ function unpredict(lib: RecorderLib, data: Uint8Array, params: PDFDictT): Uint8A
         }
         break;
       default:
-        return undefined;
+        return out.subarray(0, start);
     }
   }
   return out.subarray(0, j);
 }
 
 /**
- * The entries pdf.js's `XRef.readXRefStream` reads from a cross-reference stream, or `undefined` where it reads
- * none and rebuilds by scanning. pdf-lib parses its own entries from the stream WITHOUT applying /Predictor, which
- * Acrobat and most producers set, so those entries are noise for such a file; these are decoded from the same
- * filtered bytes with the predictor applied.
+ * The entries pdf.js's `XRef.readXRefStream` reads from a cross-reference stream, and whether it throws part-way — it
+ * then keeps the rows it read and skips the rest of the section. `undefined` where how pdf.js decodes the stream is not
+ * modelled. pdf-lib parses its own entries from the stream WITHOUT applying /Predictor, which Acrobat and most producers
+ * set, so those entries are noise for such a file; these are decoded from the same filtered bytes with the predictor
+ * applied.
  */
-function viewerXrefStreamEntries(lib: RecorderLib, parser: XRefStreamInternals): XrefEntry[] | undefined {
+function viewerXrefStreamEntries(
+  lib: RecorderLib, parser: XRefStreamInternals,
+): { entries: XrefEntry[]; rejected: boolean } | undefined {
   const { PDFName, PDFDict, PDFArray } = lib;
   const { dict } = parser;
   // pdf.js reads the abbreviated /F and /DP before the full names; pdf-lib reads only the full names.
@@ -406,17 +428,20 @@ function viewerXrefStreamEntries(lib: RecorderLib, parser: XRefStreamInternals):
       const p = parms instanceof PDFArray && i < parms.size() ? parms.lookup(i) : undefined;
       if (!predictable(filter.lookup(i)) || !(p instanceof PDFDict)) continue;
       if (i === last) params = p;
-      // A predictor applied BEFORE a later filter cannot be undone on pdf-lib's fully filtered bytes: `unpredict`
-      // hands back its own input only when there is no predictor to apply.
-      else if (unpredict(lib, NO_BYTES, p) !== NO_BYTES) return undefined;
+      // A predictor applied BEFORE a later filter cannot be undone on pdf-lib's fully filtered bytes.
+      else if ((decodeParam(lib, p, ['Predictor'], 1) ?? 2) > 1) return undefined;
     }
   }
   const data = params instanceof PDFDict ? unpredict(lib, parser.bytes.bytes, params) : parser.bytes.bytes;
   if (!data) return undefined;
 
   const [typeWidth, offsetWidth, genWidth] = parser.byteWidths;
-  if (![typeWidth, offsetWidth, genWidth].every(w => Number.isInteger(w) && w >= 0)) return undefined;
+  const widths = [typeWidth, offsetWidth, genWidth];
   const entries: XrefEntry[] = [];
+  // pdf.js throws at the first range, width or row it cannot read, and the rows it read before stay in its table.
+  const rejected = { entries, rejected: true };
+  if (!widths.every(w => Number.isInteger(w))) return rejected;
+  if (!widths.every(w => w >= 0)) return undefined;
   let pos = 0;
   const field = (width: number): number | undefined => {
     if (pos + width > data.length) return undefined;
@@ -425,18 +450,18 @@ function viewerXrefStreamEntries(lib: RecorderLib, parser: XRefStreamInternals):
     return value;
   };
   for (const { firstObjectNumber, length } of parser.subsections) {
-    if (!Number.isInteger(firstObjectNumber) || !Number.isInteger(length)) return undefined;
+    if (!Number.isInteger(firstObjectNumber) || !Number.isInteger(length)) return rejected;
     for (let i = 0; i < length; i++) {
       const rawType = field(typeWidth);
       const offset = field(offsetWidth);
       const gen = field(genWidth);
-      if (rawType === undefined || offset === undefined || gen === undefined) return undefined;
+      if (rawType === undefined || offset === undefined || gen === undefined) return rejected;
       const type = typeWidth === 0 ? 1 : rawType;
-      if (type > 2) return undefined; // pdf.js throws `Invalid XRef entry type`
+      if (type > 2) return rejected; // pdf.js throws `Invalid XRef entry type`
       entries.push({ num: firstObjectNumber + i, gen, offset, inUse: type !== 0, inObjectStream: type === 2 });
     }
   }
-  return entries;
+  return { entries, rejected: false };
 }
 
 // Optional chaining, so a pdf-lib that lost a whole class reaches the loud error below instead of a TypeError.
@@ -549,7 +574,7 @@ export function installDropRecorder(lib: RecorderLib): void {
           });
         });
       });
-      rec.pendingSection = { entries };
+      rec.pendingSection = { kind: 'table', entries };
       rec.sections.set(offset, rec.pendingSection);
     }
     return section;
@@ -593,14 +618,18 @@ export function installDropRecorder(lib: RecorderLib): void {
   };
 
   // pdf-lib's own entries are what it returns; the section keeps the entries pdf.js decodes, which differ whenever
-  // the stream has a /Predictor. A stream pdf.js would not read keeps no section, so no chain runs through it.
+  // the stream has a /Predictor. A stream the recorder cannot decode the way pdf.js does is marked, so no chain is
+  // guessed through it.
   const xrefInto = xrefStream.parseIntoContext;
   xrefStream.parseIntoContext = function (this: XRefStreamInternals) {
     const entries = xrefInto.call(this);
     const rec = recordFor(this.context);
     rec.trailerDicts += 1;
-    const viewed = rec.objectAt === undefined ? undefined : viewerXrefStreamEntries(lib, this);
-    if (rec.objectAt !== undefined && viewed) rec.sections.set(rec.objectAt, { dict: this.dict, entries: viewed });
+    if (rec.objectAt !== undefined) {
+      const viewed = viewerXrefStreamEntries(lib, this);
+      if (viewed) rec.sections.set(rec.objectAt, { kind: 'stream', dict: this.dict, ...viewed });
+      else rec.unmodelledSections.add(rec.objectAt);
+    }
     return entries;
   };
 
@@ -671,9 +700,13 @@ interface XrefChain {
 }
 
 /**
- * The cross-reference chain pdf.js follows — from `startxref`, a table's /XRefStm, then /Prev, the
- * newest section winning each object — built only from sections pdf-lib itself parsed. `undefined` when
- * the chain leaves them: pdf.js then reads it differently or rebuilds by scanning, and nothing is guessed.
+ * The cross-reference chain pdf.js follows — from `startxref`, a table's /XRefStm, then /Prev, the newest section
+ * winning each object — built from the sections pdf-lib itself parsed. pdf.js reads each queued section inside a
+ * try/catch (`XRef.readXRef`): one it cannot read — nothing pdf-lib parsed as a section starts there, a table has no
+ * trailer, a stream is rejected part-way — keeps the rows read before it failed, is otherwise skipped, and the queue
+ * goes on. WS7 round 16: stopping at such a section instead left a file whose startxref table names an earlier copy
+ * uncompared. `undefined` when no section yields a trailer (pdf.js then rebuilds by scanning), or when the chain
+ * reaches a cross-reference stream whose decoding is not modelled: pdf.js reads that one, and nothing is guessed.
  */
 function readXrefChain(lib: InspectLib, ctx: PDFContext, rec: ParseRecord, bytes: Uint8Array): XrefChain | undefined {
   const start = (ctx as unknown as { pdfFileDetails?: { prevStartXRef?: number } }).pdfFileDetails?.prevStartXRef;
@@ -687,11 +720,15 @@ function readXrefChain(lib: InspectLib, ctx: PDFContext, rec: ParseRecord, bytes
     const offset = queue.shift() as number;
     if (done.has(offset)) continue;
     done.add(offset);
-    const section = rec.sections.get(skipWhitespace(bytes, offset + base));
-    if (!section?.dict) return undefined;
-    top ??= section.dict;
+    const at = skipWhitespace(bytes, offset + base);
+    if (rec.unmodelledSections.has(at)) return undefined;
+    const section = rec.sections.get(at);
+    if (!section) continue;
     for (const e of section.entries) if (!entries.has(e.num)) entries.set(e.num, e);
-    for (const key of ['XRefStm', 'Prev']) {
+    if (!section.dict || section.rejected) continue;
+    top ??= section.dict;
+    // Only a table's /XRefStm is followed; pdf.js never reads one from a stream's dictionary.
+    for (const key of section.kind === 'table' ? ['XRefStm', 'Prev'] : ['Prev']) {
       const next = section.dict.get(lib.PDFName.of(key));
       if (next instanceof lib.PDFNumber) queue.push(next.asNumber());
     }
@@ -722,10 +759,134 @@ function acceptsAsRoot(lib: InspectLib, value: unknown, resolve: (v: unknown) =>
   return value instanceof lib.PDFDict && resolve(value.get(lib.PDFName.of('Pages'))) instanceof lib.PDFDict;
 }
 
+/** Thrown by the page-walk mirror wherever pdf.js's fetch throws `XRefEntryException`. */
+const UNREADABLE = Symbol('pdfLoadGuard.unreadable');
+
 /**
- * The chain pdf.js reads this file through, or `undefined` when it would not: the chain leaves the sections
- * pdf-lib parsed, or the root it leads to is one pdf.js rejects — pdf.js then rebuilds by scanning, keeping
- * the last definition of every object as pdf-lib does, so there is nothing to compare.
+ * Whether pdf.js, loading the document, meets an entry it cannot read — which makes it rebuild its table by scanning:
+ * `checkFirstPage` and `checkLastPage` turn the `XRefEntryException` of their walks to the first and the last page into
+ * an `XRefParseException`, and so does the whole-tree walk `checkLastPage` falls back to (`getAllPageDicts`). Mirrors
+ * `Catalog.getPageDict` step for step, its /Count cache shared by both walks as pdf.js shares it. An entry under a node
+ * whose /Count lets the last-page walk skip it is never fetched, so it is NOT recovered (WS7 round 16, measured); sharing
+ * the cache changes no answer — a node is cached only after it was read — and is kept to stay line for line. A linearized
+ * file is walked through its page tree too, where pdf.js takes its first page and page count from the linearization
+ * dictionary.
+ */
+function loadMeetsUnreadable(lib: InspectLib, pages: PDFDictT, pagesRef: unknown, lookup: (ref: PDFRefT) => Shown): boolean {
+  const { PDFRef, PDFDict, PDFArray, PDFName, PDFNumber } = lib;
+  const [TYPE, KIDS, COUNT, PAGE] = ['Type', 'Kids', 'Count', 'Page'].map(k => PDFName.of(k));
+  const fetch = (value: unknown): unknown => {
+    if (!(value instanceof PDFRef)) return value;
+    const shown = lookup(value);
+    if (shown === 'unreadable') throw UNREADABLE;
+    return shown === 'nothing' ? undefined : shown.object;
+  };
+  const integer = (value: unknown): number | undefined =>
+    (value instanceof PDFNumber && Number.isInteger(value.asNumber()) ? value.asNumber() : undefined);
+  const isPage = (node: PDFDictT): boolean => fetch(node.get(TYPE)) === PAGE || !node.has(KIDS);
+  const pagesKey = pagesRef instanceof PDFRef ? pagesRef.toString() : undefined;
+  const counts = new Map<string, number>(); // `pageKidsCountCache`
+  const ids = new Map<unknown, string>(pagesKey === undefined ? [] : [[pages, pagesKey]]); // a fetched dict's `objId`
+
+  // `getPageDict`: true when it returns the page, false when it throws anything but a fetch error.
+  const getPageDict = (pageIndex: number): boolean => {
+    const nodes: unknown[] = [pages];
+    const visited = new Set<string>(pagesKey === undefined ? [] : [pagesKey]);
+    let current = 0;
+    while (nodes.length > 0) {
+      const node = nodes.pop();
+      if (node instanceof PDFRef) {
+        const key = node.toString();
+        const count = counts.get(key);
+        if (count !== undefined && count >= 0 && current + count <= pageIndex) {
+          current += count;
+          continue;
+        }
+        if (visited.has(key)) return false;
+        visited.add(key);
+        const obj = fetch(node);
+        if (obj instanceof PDFDict) {
+          ids.set(obj, key);
+          if (isPage(obj)) {
+            if (!counts.has(key)) counts.set(key, 1);
+            if (current === pageIndex) return true;
+            current++;
+            continue;
+          }
+        }
+        nodes.push(obj);
+        continue;
+      }
+      if (!(node instanceof PDFDict)) return false;
+      const count = integer(fetch(node.get(COUNT)));
+      if (count !== undefined && count >= 0) {
+        const id = ids.get(node);
+        if (id !== undefined && !counts.has(id)) counts.set(id, count);
+        if (current + count <= pageIndex) {
+          current += count;
+          continue;
+        }
+      }
+      const kids = fetch(node.get(KIDS));
+      if (!(kids instanceof PDFArray)) {
+        if (!isPage(node)) return false;
+        if (current === pageIndex) return true;
+        current++;
+        continue;
+      }
+      for (let i = kids.size() - 1; i >= 0; i--) nodes.push(kids.get(i));
+    }
+    return false;
+  };
+
+  // `getAllPageDicts` outside recovery mode: a fetch error is rethrown, any other failure ends the walk.
+  const getAllPageDicts = (): void => {
+    const queue = [{ node: pages, pos: 0 }];
+    const visited = new Set<string>(pagesKey === undefined ? [] : [pagesKey]);
+    while (queue.length > 0) {
+      const item = queue[queue.length - 1];
+      const kids = fetch(item.node.get(KIDS));
+      if (!(kids instanceof PDFArray)) {
+        fetch(item.node.get(TYPE));
+        return;
+      }
+      if (item.pos >= kids.size()) {
+        queue.pop();
+        continue;
+      }
+      let obj: unknown = kids.get(item.pos);
+      if (obj instanceof PDFRef) {
+        if (visited.has(obj.toString())) return;
+        visited.add(obj.toString());
+        obj = fetch(obj);
+      }
+      if (!(obj instanceof PDFDict)) return;
+      if (!isPage(obj)) queue.push({ node: obj, pos: 0 });
+      item.pos++;
+    }
+  };
+
+  const meets = (walk: () => void): boolean => {
+    try {
+      walk();
+      return false;
+    } catch (e) {
+      if (e === UNREADABLE) return true;
+      throw e;
+    }
+  };
+  return meets(() => getPageDict(0)) || meets(() => {
+    const numPages = integer(fetch(pages.get(COUNT))); // `Catalog._pagesCount`
+    if (numPages !== undefined && (numPages <= 1 || getPageDict(numPages - 1))) return;
+    getAllPageDicts();
+  });
+}
+
+/**
+ * The chain pdf.js reads this file through, or `undefined` when it would not: no section of the chain yields a
+ * trailer, the root it leads to is one pdf.js rejects, or pdf.js meets an entry it cannot read while it loads — it
+ * then rebuilds by scanning, keeping the last definition of every object as pdf-lib does, so there is nothing to
+ * compare. Also `undefined` when the chain reaches a cross-reference stream whose decoding is not modelled.
  */
 function viewerChain(
   lib: InspectLib, ctx: PDFContext, rec: ParseRecord, bytes: Uint8Array,
@@ -738,7 +899,10 @@ function viewerChain(
     const shown = lookup(v);
     return typeof shown === 'object' ? shown.object : undefined;
   };
-  return acceptsAsRoot(lib, resolve(chain.top.get(lib.PDFName.of('Root'))), resolve) ? { chain, lookup } : undefined;
+  const root = resolve(chain.top.get(lib.PDFName.of('Root')));
+  if (!acceptsAsRoot(lib, root, resolve)) return undefined;
+  const pagesRef = (root as PDFDictT).get(lib.PDFName.of('Pages'));
+  return loadMeetsUnreadable(lib, resolve(pagesRef) as PDFDictT, pagesRef, lookup) ? undefined : { chain, lookup };
 }
 
 /**
@@ -780,13 +944,13 @@ function inspectParse(lib: InspectLib, ctx: PDFContext, bytes: Uint8Array): { dr
   }
 
   const viewer = viewerChain(lib, ctx, rec, bytes);
-  // Does pdf.js find nothing where pdf-lib holds an object? The only way a single-revision file can disagree,
-  // and cheap to ask, so a file where it cannot happen still pays for no walk.
-  const heldAsNothing = viewer !== undefined && [...rec.lastAssigned.keys()].some(key => {
-    const entry = viewer.chain.entries.get(Number.parseInt(key, 10));
-    return !entry || !entry.inUse || entry.offset === 0;
+  // Does pdf.js find nothing, or fail to read, where pdf-lib holds an object? The only ways a single-revision file
+  // can disagree, and cheap to ask, so a file where they cannot happen still pays for no walk.
+  const heldDifferently = viewer !== undefined && [...rec.lastAssigned.keys()].some(key => {
+    const [num, gen] = key.split(' ').map(Number);
+    return typeof viewer.lookup(PDFRef.of(num, gen)) !== 'object';
   });
-  const compare = viewer !== undefined && (rec.reassigned || rec.trailerDicts > 1 || heldAsNothing);
+  const compare = viewer !== undefined && (rec.reassigned || rec.trailerDicts > 1 || heldDifferently);
   if (rec.drops.size === 0 && !rec.membersUnknown && !compare) return { dropped: [], mismatched: [...mismatched] };
 
   const seen = new Map<string, PDFRefT>();
@@ -833,9 +997,10 @@ function inspectParse(lib: InspectLib, ctx: PDFContext, bytes: Uint8Array): { dr
     for (const [key, ref] of seen) {
       const shown = viewer.lookup(ref);
       const held = ctx.lookup(ref);
-      if (shown === 'nothing') {
+      if (typeof shown !== 'object') {
+        // pdf.js finds nothing there, or throws reading it and shows the page without it (WS7 rounds 14 and 16).
         if (fromRoot.has(key) && held !== undefined && held !== PDFNull) mismatched.add(key);
-      } else if (shown !== 'unreadable' && !sameValue(shown.object, held)) {
+      } else if (!sameValue(shown.object, held)) {
         mismatched.add(key);
       }
     }

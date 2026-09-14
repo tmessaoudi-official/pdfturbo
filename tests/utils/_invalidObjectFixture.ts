@@ -314,6 +314,181 @@ export function buildViewerNullPdf(shape: ViewerNullShape): Uint8Array {
   return latin1Bytes(body);
 }
 
+const HELVETICA = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+const contentStream = (text: string): string => {
+  const s = `BT /F1 24 Tf 20 200 Td (${text}) Tj ET`;
+  return `<< /Length ${s.length} >>\nstream\n${s}\nendstream`;
+};
+const pageDict = (parent: number, contents: number): string =>
+  `<< /Type /Page /Parent ${parent} 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> >> /Contents ${contents} 0 R >>`;
+/** One cross-reference stream row as `/W [1 4 2]` lays it out: type, offset, generation, big-endian. */
+const xrefRow = (type: number, offset: number): number[] =>
+  [type, (offset >>> 24) & 0xff, (offset >>> 16) & 0xff, (offset >>> 8) & 0xff, offset & 0xff, 0, 0];
+
+/** Writes objects in order and REAL cross-reference tables over the offsets it measured. */
+class ObjectWriter {
+  body = '%PDF-1.7\n';
+  private readonly at = new Map<number, number[]>();
+  add(num: number, value: string): void {
+    this.at.set(num, [...(this.at.get(num) ?? []), this.body.length]);
+    this.body += `${num} 0 obj\n${value}\nendobj\n`;
+  }
+  has(num: number): boolean { return this.at.has(num); }
+  first(num: number): number { return (this.at.get(num) as number[])[0]; }
+  last(num: number): number { return (this.at.get(num) as number[]).at(-1) as number; }
+  /** Appends `xref` with one row per object in each [first, count] subsection; `offset` undefined writes a free row. */
+  table(size: number, offset: (num: number) => number | undefined, subsections: Array<[number, number]> = [[0, size]]): number {
+    const start = this.body.length;
+    this.body += 'xref\n';
+    for (const [from, count] of subsections) {
+      this.body += `${from} ${count}\n`;
+      for (let n = from; n < from + count; n++) {
+        const o = n === 0 ? undefined : offset(n);
+        this.body += o === undefined ? '0000000000 65535 f \n' : `${String(o).padStart(10, '0')} 00000 n \n`;
+      }
+    }
+    return start;
+  }
+}
+
+export type XrefPointerShape =
+  | 'prevMid' | 'prevBeyondEof' | 'prevToContentStream' | 'prevToBadPredictorStream' | 'prevToBadTypeStream'
+  | 'prevToTableNoTrailer' | 'prevValid' | 'prevMidPartial' | 'prevAsRefPartial' | 'hybridBadXRefStm' | 'hybridAbbreviatedStream'
+  | 'prevToBadTypeStreamKeepsRow' | 'streamXRefStmIgnored';
+
+/**
+ * Cross-reference chains with a pointer pdf.js cannot follow (WS7 round 16). `XRef.readXRef` reads each queued section
+ * inside a try/catch: a section it cannot read is skipped, keeping the rows it read before failing, and the rest of the
+ * queue is still read — so the startxref table goes on naming the page pdf.js shows. Measured in pdfjs-dist 6.3.289.
+ *  - `prevMid` / `prevBeyondEof` / `prevToContentStream`: an appended update whose table names the EARLIER copy of the page
+ *    content, with /Prev pointing into the middle of an object / past the end of the file / at a content stream. pdf.js
+ *    shows VIEWED; pdf-lib keeps the later SIGNED copy.
+ *  - `prevToBadPredictorStream` / `prevToBadTypeStream`: /Prev at a cross-reference stream pdf.js rejects — an unsupported
+ *    /Predictor 3, or a row of type 3 after a valid one.
+ *  - `prevToTableNoTrailer`: /Prev at a table with no trailer, which pdf-lib accepts.
+ *  - `prevValid`: the same update with a correct /Prev, refused with no bad pointer at all (non-vacuity of the shape).
+ *  - `prevMidPartial` / `prevAsRefPartial`: the update lists only object 5 and its /Prev is bad / written as a reference,
+ *    so the section pdf.js can read has no usable root: it rebuilds by scanning and reads SIGNED, like pdf-lib.
+ *  - `hybridBadXRefStm`: one revision holding both copies, the table naming VIEWED and its /XRefStm pointing mid-object.
+ *  - `hybridAbbreviatedStream`: the table omits object 5 and its /XRefStm stream names the SIGNED copy, written with the
+ *    abbreviated /F and /DP keys pdf.js reads and the recorder does not model. Both parsers read SIGNED.
+ *  - `prevToBadTypeStreamKeepsRow`: the update's table omits object 5 and its /Prev stream names the SIGNED copy in row 1
+ *    before a type-3 row: pdf.js keeps the row it read before rejecting the stream and shows SIGNED, like pdf-lib.
+ *  - `streamXRefStmIgnored`: the newest section is a cross-reference STREAM carrying /XRefStm (at a stream naming VIEWED)
+ *    and /Prev (at a table naming SIGNED). pdf.js reads /XRefStm only from a table, so it shows SIGNED, like pdf-lib.
+ */
+export function buildXrefPointerPdf(shape: XrefPointerShape): Uint8Array {
+  const w = new ObjectWriter();
+  w.add(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  w.add(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  w.add(3, pageDict(2, 5));
+  w.add(4, HELVETICA);
+  w.add(5, contentStream('VIEWED'));
+  const latin1 = (data: Uint8Array): string => String.fromCharCode(...data);
+
+  if (shape === 'hybridBadXRefStm' || shape === 'hybridAbbreviatedStream') {
+    w.add(5, contentStream('SIGNED'));
+    if (shape === 'hybridBadXRefStm') {
+      const x = w.table(6, n => w.first(n));
+      w.body += `trailer\n<< /Size 6 /Root 1 0 R /XRefStm ${w.first(3) + 9} >>\nstartxref\n${x}\n%%EOF\n`;
+    } else {
+      const data = zlibSync(Uint8Array.from([0, ...xrefRow(1, w.last(5))])); // one PNG row, filter None
+      w.add(6, `<< /Type /XRef /Size 7 /W [1 4 2] /Index [5 1] /F /FlateDecode /DP << /Predictor 12 /Columns 7 >> /Length ${data.length} >>`
+        + `\nstream\n${latin1(data)}\nendstream`);
+      const x = w.table(7, n => (n === 5 ? undefined : w.first(n)), [[0, 5], [6, 1]]);
+      w.body += `trailer\n<< /Size 7 /Root 1 0 R /XRefStm ${w.first(6)} >>\nstartxref\n${x}\n%%EOF\n`;
+    }
+    return latin1Bytes(w.body);
+  }
+
+  if (shape === 'streamXRefStmIgnored') {
+    w.add(5, contentStream('SIGNED'));
+    const skipped = Uint8Array.from(xrefRow(1, w.first(5)));
+    w.add(7, `<< /Type /XRef /Size 8 /W [1 4 2] /Index [5 1] /Length ${skipped.length} >>\nstream\n${latin1(skipped)}\nendstream`);
+    const table = w.table(6, n => w.last(n));
+    w.body += `trailer\n<< /Size 9 /Root 1 0 R >>\nstartxref\n${table}\n%%EOF\n`;
+    const rows = Uint8Array.from([0, 0, 0, 0, 0, 0xff, 0xff, ...[1, 2, 3, 4].flatMap(n => xrefRow(1, w.first(n)))]);
+    w.add(8, `<< /Type /XRef /Size 9 /W [1 4 2] /Index [0 5] /Root 1 0 R /XRefStm ${w.first(7)} /Prev ${table} /Length ${rows.length} >>`
+      + `\nstream\n${latin1(rows)}\nendstream`);
+    w.body += `startxref\n${w.first(8)}\n%%EOF\n`;
+    return latin1Bytes(w.body);
+  }
+
+  const x1 = w.table(6, n => w.first(n));
+  w.body += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${x1}\n%%EOF\n`;
+  w.add(5, contentStream('SIGNED'));
+  let prev = String(w.first(3) + 9);
+  if (shape === 'prevBeyondEof') prev = '99999999';
+  if (shape === 'prevValid') prev = String(x1);
+  if (shape === 'prevAsRefPartial') prev = `${x1} 0 R`;
+  if (shape === 'prevToContentStream') prev = String(w.first(5));
+  if (shape === 'prevToBadPredictorStream') {
+    const data = zlibSync(Uint8Array.from(xrefRow(1, w.first(1))));
+    w.add(8, `<< /Type /XRef /Size 9 /W [1 4 2] /Index [1 1] /Filter /FlateDecode /DecodeParms << /Predictor 3 >> /Length ${data.length} >>`
+      + `\nstream\n${latin1(data)}\nendstream`);
+    prev = String(w.first(8));
+  }
+  if (shape === 'prevToBadTypeStream' || shape === 'prevToBadTypeStreamKeepsRow') {
+    const keepsRow = shape === 'prevToBadTypeStreamKeepsRow';
+    const data = Uint8Array.from([...xrefRow(1, keepsRow ? w.last(5) : w.first(1)), ...xrefRow(3, 0)]);
+    w.add(8, `<< /Type /XRef /Size 9 /W [1 4 2] /Index [${keepsRow ? 5 : 1} 2] /Length ${data.length} >>\nstream\n${latin1(data)}\nendstream`);
+    prev = String(w.first(8));
+  }
+  if (shape === 'prevToTableNoTrailer') prev = String(w.table(2, n => w.first(n), [[1, 1]]));
+  const subsections: Array<[number, number]> | undefined = shape === 'prevMidPartial' || shape === 'prevAsRefPartial'
+    ? [[5, 1]]
+    : shape === 'prevToBadTypeStreamKeepsRow' ? [[0, 5]] : undefined;
+  const x2 = w.table(6, n => w.first(n), subsections);
+  w.body += `trailer\n<< /Size 9 /Root 1 0 R /Prev ${prev} >>\nstartxref\n${x2}\n%%EOF\n`;
+  return latin1Bytes(w.body);
+}
+
+export type PageTreeShape =
+  | 'onlyPageContentMid' | 'firstPageContentMid' | 'middlePageContentMid' | 'lastPageContentMid' | 'middlePageContentOtherHeader'
+  | 'nestedMiddlePageDictMid' | 'middlePageDictMid' | 'lastPageDictMid' | 'nestedFirstPageDictMid'
+  | 'nestedMiddlePageDictMidCountOverstated';
+
+/**
+ * A page tree with ONE cross-reference entry that does not land on its object (WS7 round 16). pdf.js throws where it reads
+ * such an entry (`XRef.fetchUncompressed`), and what follows depends on when. Met while `checkFirstPage` / `checkLastPage`
+ * walk to the first or last page (`Catalog.getPageDict`), it makes pdf.js rebuild its table by scanning, which agrees with
+ * pdf-lib; met later, nothing recovers it. Measured in pdfjs-dist 6.3.289, pages reading PAGE1, PAGE2, PAGE3:
+ *  - `*ContentMid` / `middlePageContentOtherHeader`: a page's content entry lands inside another object / on another
+ *    object's header. That page draws blank and `getTextContent` fails, while pdf-lib exports its text.
+ *  - `nestedMiddlePageDictMid`: page 2's dictionary sits under an intermediate node whose /Count lets the last-page walk
+ *    skip it, so no rebuild: page 2 fails on screen and pdf-lib exports it.
+ *  - `middlePageDictMid` / `lastPageDictMid`: a page DICTIONARY in a flat tree — the last-page walk reads every kid, so pdf.js
+ *    rebuilds and shows all three pages.
+ *  - `nestedFirstPageDictMid`: the first page's dictionary under the intermediate node, met by the first-page walk: rebuilt.
+ *  - `nestedMiddlePageDictMidCountOverstated`: `nestedMiddlePageDictMid` with the root /Count saying 4. The last-page walk
+ *    finds no fourth page, `checkLastPage` falls back to walking the whole tree (`getAllPageDicts`), meets page 2: rebuilt.
+ */
+export function buildPageTreePdf(shape: PageTreeShape): Uint8Array {
+  const count = shape.startsWith('only') ? 1 : 3;
+  const nested = shape.startsWith('nested');
+  const w = new ObjectWriter();
+  w.add(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  const kids = Array.from({ length: count }, (_, i) => `${20 + i} 0 R`).join(' ');
+  const declared = shape === 'nestedMiddlePageDictMidCountOverstated' ? count + 1 : count;
+  w.add(2, `<< /Type /Pages /Kids [${nested ? '30 0 R 22 0 R' : kids}] /Count ${declared} >>`);
+  if (nested) w.add(30, '<< /Type /Pages /Parent 2 0 R /Kids [20 0 R 21 0 R] /Count 2 >>');
+  w.add(4, HELVETICA);
+  for (let i = 0; i < count; i++) {
+    w.add(20 + i, pageDict(nested && i < 2 ? 30 : 2, 10 + i));
+    w.add(10 + i, contentStream(`PAGE${i + 1}`));
+  }
+  const bad = ({
+    onlyPageContentMid: 10, firstPageContentMid: 10, middlePageContentMid: 11, lastPageContentMid: 12,
+    middlePageContentOtherHeader: 11, nestedMiddlePageDictMid: 21, middlePageDictMid: 21, lastPageDictMid: 22,
+    nestedFirstPageDictMid: 20, nestedMiddlePageDictMidCountOverstated: 21,
+  } as Record<PageTreeShape, number>)[shape];
+  const wrong = shape === 'middlePageContentOtherHeader' ? w.first(4) : w.first(4) + 9;
+  const size = nested ? 31 : 23;
+  const x = w.table(size, n => (!w.has(n) ? undefined : n === bad ? wrong : w.first(n)));
+  w.body += `trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`;
+  return latin1Bytes(w.body);
+}
+
 /** Appends an incremental-update section — the given objects, then a decorative xref and trailer. */
 export function appendRevision(bytes: Uint8Array, objects: string): Uint8Array {
   return latin1Bytes(new TextDecoder('latin1').decode(bytes) + objects
@@ -372,9 +547,13 @@ export function buildContentStreamPdf(opts: {
   const xrefAt = body.length;
   // /Info 9 0 R names an object that exists nowhere — a harmless legacy null, not a drop.
   const info = opts.danglingInfo ? ' /Info 9 0 R' : '';
-  // The xref is decorative here — pdf-lib scans objects sequentially — so extra objects only widen /Size.
-  const size = offs.length + 1;
-  body += `xref\n0 ${size}\n0000000000 65535 f \n${offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')}`
+  // Rows are keyed by object NUMBER, not file order: `padStreamBytes` writes object 6 before object 5, and a
+  // row-per-position table then points 5 0 R at object 6 — the bad-pointer shape the guard refuses since
+  // WS7 round 16, where pdf.js draws the page blank.
+  const byNum = new Map(objs.map((o, i) => [Number(/^(\d+) 0 obj/.exec(o)?.[1]), offs[i]]));
+  const size = Math.max(...byNum.keys()) + 1;
+  const rows = Array.from({ length: size - 1 }, (_, i) => byNum.get(i + 1));
+  body += `xref\n0 ${size}\n0000000000 65535 f \n${rows.map(o => (o === undefined ? '0000000000 65535 f \n' : String(o).padStart(10, '0') + ' 00000 n \n')).join('')}`
     + `trailer\n<< /Size ${size} /Root 1 0 R${info} >>\nstartxref\n${xrefAt}\n%%EOF\n`;
   return latin1Bytes(body);
 }

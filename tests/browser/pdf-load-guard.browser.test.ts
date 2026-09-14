@@ -8,7 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import { loadPdfDocument, PdfObjectDroppedError, PdfXrefMismatchError } from '../../src/utils/pdfLoadGuard';
 import {
-  appendRevision, buildContentStreamPdf, buildObjStmPdf, buildViewerNullPdf, buildXrefShapePdf, editPdfText,
+  appendRevision, buildContentStreamPdf, buildObjStmPdf, buildPageTreePdf, buildViewerNullPdf, buildXrefPointerPdf,
+  buildXrefShapePdf, editPdfText,
 } from '../utils/_invalidObjectFixture';
 
 describe('loadPdfDocument in the browser bundle (WS7 round 12)', () => {
@@ -73,5 +74,24 @@ describe('loadPdfDocument in the browser bundle (WS7 round 14)', () => {
   it('loads a byte-identical duplicate content stream — copies are compared by value in this bundle too', async () => {
     const doc = await loadPdfDocument(buildXrefShapePdf('identicalStreamDupFirst'));
     expect(doc.getPageCount()).toBe(1);
+  });
+});
+
+describe('loadPdfDocument in the browser bundle (WS7 round 16)', () => {
+  it('REFUSES a table naming an earlier copy behind a /Prev pdf.js cannot read — the chain skips that section in this bundle too', async () => {
+    const err = await loadPdfDocument(buildXrefPointerPdf('prevMid')).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PdfXrefMismatchError);
+    expect((err as PdfXrefMismatchError).refs).toEqual(['5 0 R']);
+  });
+
+  it('REFUSES page content whose entry lands on other bytes — pdf.js cannot read it and nothing rebuilds its table', async () => {
+    const err = await loadPdfDocument(buildPageTreePdf('onlyPageContentMid')).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PdfXrefMismatchError);
+    expect((err as PdfXrefMismatchError).refs).toEqual(['10 0 R']);
+  });
+
+  it('loads a bad last-page entry pdf.js meets while opening and rebuilds — the opening walks are mirrored in this bundle too', async () => {
+    const doc = await loadPdfDocument(buildPageTreePdf('lastPageDictMid'));
+    expect(doc.getPageCount()).toBe(3);
   });
 });
