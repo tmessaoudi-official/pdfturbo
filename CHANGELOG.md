@@ -3,7 +3,7 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-13)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-14)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
@@ -108,7 +108,8 @@ most of the work went into proving that what the product claims to remove is act
 - **A crafted PDF could show one page and export or sign another.** The viewer finds objects through the
   file's cross-reference table; the library that builds exports and signatures reads objects in order and
   keeps the last copy. A file whose table pointed at an earlier copy, whose table marked the page's content
-  as free (the viewer then drew a blank page), or whose trailer the viewer follows named a different document
+  as free or pointed it at the wrong bytes (the viewer then drew a blank page) — also when an update pointed
+  at an older section the viewer could not read and skipped — or whose trailer the viewer follows named a different document
   from the later one the library keeps, was shown one way and exported — or signed — the other; so was a
   file whose document root the library quietly swapped for another. Such a file is now refused, with a
   message that says why instead of asking you to try again;

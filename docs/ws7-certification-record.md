@@ -1,11 +1,11 @@
 # WS7 — certification record for `dfe34ae..HEAD`
 
-**Status: NOT CERTIFIED.** Fifteen MAXIMAL panel rounds were run against this range and the
+**Status: NOT CERTIFIED.** Sixteen MAXIMAL panel rounds were run against this range and the
 two-consecutive-clean counter never rose above **0 of 2**. No `WS7: 2/2 clean at <sha>` entry exists
 in `docs/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
 
 This file is committed because the per-round reports live under `var/claude/ws7/`, which
-`.gitignore` excludes — so they do not reach a clone, and for four of the fifteen rounds no report file
+`.gitignore` excludes — so they do not reach a clone, and for four of the sixteen rounds no report file
 was ever written at all. A certification debt whose only record is machine-local is not a record.
 [Created WS7 round 7, 2026-09-04, after the completeness lens found the plan citing a gitignored path.]
 
@@ -28,11 +28,13 @@ was ever written at all. A certification debt whose only record is machine-local
 | 13 | 6 | At `94dcc89`, all three lenses on Node 24 (2 export, 1 safety, 3 completeness). A P1 from the safety lens, pre-existing: pdf.js follows the cross-reference table and pdf-lib keeps the last copy in the file, so a crafted file showed one page and exported or signed another with nothing dropped. Both export findings were in round 12's own recorder. |
 | 14 | 9 | At `9849db3`, all three lenses on Node 24 (3 export, 0 safety, 6 completeness). Two P1s in round 13's own comparison: an object the chain marks free or at offset 0 was never compared, nor a `/Root` pdf-lib's recovery swapped. Measuring the fixes found pdf-lib parses cross-reference streams without their predictor, so round 13's real-file figure was vacuous for 10 files. |
 | 15 | 4 | At `b7b5778`, all three lenses on Node 24 (0 export, 0 safety, 4 completeness), none a behaviour defect: round 14's own record header left at thirteen rounds, two overstatements of which exports refuse, a filtered-run denominator, and a refusal shown as "try again". Both clean lenses read the code and ran the existing tests; neither built a crafted file. |
+| 16 | 4 | At `8fcacdd`, all three lenses on Node 24, each building crafted files (2 export, 1 safety, 1 completeness). Two P1s, both pre-existing and both a false premise about when pdf.js rebuilds its table: the comparison was abandoned at the first cross-reference section pdf.js skips, and an entry landing on the wrong bytes was never compared, so a page pdf.js draws blank exported and signed its content. The P3 was in round 15's own scope correction. |
 
-Eleven of the fifteen rounds found defects in the **previous** round's fixes — rounds 6 to 15
-by the surviving reports (which exist for rounds 4 and 6 to 15; none was written for 1, 2, 3 or 5, and for round 15 the export
+Twelve of the sixteen rounds found defects in the **previous** round's fixes — rounds 6 to 16
+by the surviving reports (which exist for rounds 4 and 6 to 16; none was written for 1, 2, 3 or 5, and for round 15 the export
 report is the parent's transcription of a verdict returned inline and the safety report was copied out of its
-reviewer's worktree), and
+reviewer's worktree; for round 16 the safety report is the parent's transcription of an inline report, and the
+export lens read the main checkout read-only because its worktree refused the checkout), and
 round 2 by the note in the table above, which was written from memory when this file was created. That
 is the single most important fact in this file: in this range, a fix has been about as likely to
 introduce a finding as to close one, which is why the bar was not lowered.
@@ -345,7 +347,8 @@ what counts, and the safety finding predates every round of this guard.
 through pdf.js 6.3.289 and pdf-lib 2.11.0. Five diverged (an earlier duplicate the table points at, a stale
 incremental update, a second trailer, junk before `%PDF-` with relative offsets, and a duplicate font);
 five agreed — among them a table whose offsets are all wrong, because pdf.js then rebuilds by scanning and
-keeps the last definition, as pdf-lib does. So the guard refuses (`PdfXrefMismatchError`) only when the chain
+keeps the last definition, as pdf-lib does (round 16 measured that rebuild to happen only when pdf.js's opening
+walk to the first or last page meets a wrong entry — which a table with every offset wrong guarantees). So the guard refuses (`PdfXrefMismatchError`) only when the chain
 from `startxref`, read the way pdf.js reads it (first-wins per section, `/XRefStm` before `/Prev`, offsets
 from the first `%PDF-`, whitespace and comments skipped), lands exactly on a definition pdf-lib did not keep
 and the two values differ, or when the startxref trailer's `/Root` is a different dictionary. An identical
@@ -434,7 +437,8 @@ object stream, for a chain that leaves the sections pdf-lib parsed, for a cross-
 abbreviated `/F` or `/DP` keys (pdf.js reads them, pdf-lib does not, so no fixture was built), or for pdf.js's
 choice of trailer in recovery mode; a linearized file is compared through `startxref` while pdf.js enters at
 its first-page table; and pdf.js's `checkFirstPage` / `checkLastPage` rebuild is not mirrored, so a damaged
-file it repairs on opening can be refused. The PNG Paeth tie-break is pdf.js's line for line but no
+file it repairs on opening can be refused. (Round 16 closed two of these: the chain now continues past a section
+pdf.js skips, and the opening walks are mirrored.) The PNG Paeth tie-break is pdf.js's line for line but no
 cross-reference row can reach the branch where the order matters. No encrypted file with a drop or a duplicate
 was built. Load time was measured in one run on a loaded machine, not as a spread.
 
@@ -493,3 +497,65 @@ under the gitignored `var/claude/ws7/round15-fix-gate/`.
 
 **The counter remains 0 of 2.** The `[2026-09-14 11:45]` ruling authorises further rounds without asking until
 two consecutive clean ones, a P0 or P1, or round 20.
+
+## Round 16 — what was fixed (2026-09-14)
+
+Round 16 ran at `8fcacdd` over `dfe34ae..8fcacdd`, focused on the round-15 commits (`0932e80`, `8fcacdd`), all
+three lenses on Node 24, each told to build crafted files. It returned **4 findings**: 2 export, 1 safety, 1
+completeness. Both P1s were pre-existing — in round 13's `readXrefChain` and round 14's comparison — and each
+rested on a false premise about when pdf.js rebuilds its table. The P3 was in round 15's own scope correction.
+The two P1s came under the `[2026-09-14 12:53]` ruling (fix, then continue on the same stop rules).
+
+| Defect | Evidence it was real |
+|---|---|
+| **P1** (export) `readXrefChain` abandoned the whole comparison at the first `/Prev` or `/XRefStm` offset pdf-lib had not parsed, while pdf.js skips only that section and keeps its startxref table; behind one bad pointer, the round-13 shape (a table naming an earlier copy) showed VIEWED and exported SIGNED | probe through `loadPdfDocument` and `ExportService.downloadPDF`: `prevMid`, `prevBeyondEof`, `hybridBadXRefStm` loaded, viewer VIEWED, export SIGNED; pdf.js at verbosity 5 logged `(while reading XRef)` and no rebuild |
+| **P1** (safety) an entry landing inside or on another object — not free, not offset 0 — was skipped by the comparison, so a page pdf.js draws blank exported and signed its content; four documents said pdf.js rebuilds its table there | probe: page 2 `ops=0` and `Bad (uncompressed) XRef entry` in pdf.js, guard accepted, `PdfSigner.sign` output carrying `HIDDENP2`, `downloadPDF` exporting page 2 |
+| **P2** (export) `KNOWN_ISSUES.md` called a chain that leaves pdf-lib's sections harmless because pdf.js rebuilds — true only when what pdf.js can read leaves no usable root | `prevMidPartial` agreed, `prevMid` diverged; the only difference is whether the newest table lists objects 1–4 |
+| **P3** (completeness) `KNOWN_ISSUES.md`'s scope list, rewritten in round 15, omitted the page-image export, which refuses and which `SECURITY.md` lists | `downloadPageAsImage` loads through the guard, and its refusal case is pinned |
+
+**Report provenance, stated.** The safety reviewer's writes were refused by the worktree-isolation hook, so its
+report is the parent's transcription of what it returned inline. The export lens could not move its worktree to
+`8fcacdd` and read the main checkout instead, verified at `8fcacdd` and clean, read-only. The completeness lens
+corrected its own worktree before reading anything.
+
+**Measured before the fix** (pdf.js 6.3.289, each shape in its own process, a rebuild detected by its
+`Indexing all PDF objects` line): a flat tree's middle or last page dictionary at a wrong offset rebuilds and every
+page reads; the first page's dictionary under an intermediate node rebuilds; page 2's dictionary under a node whose
+`/Count` lets the last-page walk skip it does not rebuild, and page 2 fails; a page's content at a wrong offset never
+rebuilds — the page draws blank and its text throws; a `/Prev` at a content stream or at a stream pdf.js rejects is
+skipped and the startxref table still wins; a hybrid file's abbreviated `/F /DP` stream is read by pdf.js.
+
+The fix mirrors what was measured. The chain skips a section it cannot read, keeping the rows a rejected stream
+read first and following `/XRefStm` only from a table; it still stops at a stream whose decoding is not modelled.
+An entry pdf.js cannot read now counts like one it finds nothing for, and nothing is compared when pdf.js's opening
+walks — `getPageDict` to the first and last page with its `/Count` skip, and the `getAllPageDicts` fallback — meet
+one, because pdf.js then rebuilds. One existing fixture was that shape (`buildContentStreamPdf({ padStreamBytes })`
+wrote its table in file order, pointing `5 0 R` at object 6, which pdf.js draws blank, measured) and now writes
+rows by object number.
+
+Failing tests first: 13 of the 20 new cases red, each at the refusal assertion (`expected undefined to be
+'PdfXrefMismatchError'`), every control green. Sabotage, eleven mutations on the five guard files (155 cases), each
+landed and restored with `cmp`: a section pdf-lib did not parse abandons the chain → 4; an unmodelled stream
+skipped → 1; an unreadable entry skipped → 6; the load-walk mirror removed → 4; a rejected stream's rows dropped →
+1; `/XRefStm` followed from a stream → 1; the compare trigger back to nothing-only → 6; a rejected section still
+yielding a trailer → 2; the `getAllPageDicts` fallback removed → 1; the first-page walk removed → 1. Three of those
+were green on the first pass; a shape was measured in pdf.js and pinned for each, and each pin reds under its
+mutation. The eleventh — the `/Count` cache not shared between the walks — stays green and is equivalent: a node is
+cached only after it was read. The 15-file corpus is unchanged: 15 of 15, 12,059 of 12,059 entries landing.
+
+The gate (Node 24, the working tree over `8fcacdd` that became the fix commit `c3221ed`) was green at every step: audit
+(found 0 vulnerabilities), OCR assets, type-check, lint, jsdom 2810 passed | 2 expected fail | 2 skipped
+(2814), browser 90 passed (90) / 348 passed (348) at load 35.96, export branch coverage 44.07 %, build, and
+the QA sweep with `--allow-destructive` (151 checks | 114 pass | 0 fail | 0 warn | 37 skipped | 0 a11y). Logs
+under the gitignored `var/claude/ws7/round16-fix-gate/`. After it, the browser suite's load-guard file gained
+the two round-16 refusal shapes and a last-page rebuild control, so the Vite bundle is pinned for them as for
+rounds 12 to 14, and the `prevValid` baseline moved out of the "skips the section" case list into its own
+case; type-check, lint, `tests/utils/pdfLoadGuard.test.ts` and `tests/browser/pdf-load-guard.browser.test.ts`
+were re-run on that change (`var/claude/ws7/round16-fix-gate/post/`).
+
+**Not certified by this round, named:** a linearized file's opening walks, where pdf.js takes the first page and
+page count from the linearization dictionary; pdf.js's trailer choice in recovery mode; entries inside object
+streams; streams whose decoding is not modelled. The new shapes were read through pdf.js in Node, not rendered in a
+browser.
+
+**The counter remains 0 of 2.** Round 17 next, on the same stop rules.

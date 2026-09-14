@@ -279,13 +279,19 @@ viewing the file are unaffected.
   pdf.js still draws it, so the export would lose it. A file is refused when anything it uses was dropped
   and nothing later in the file replaced it — including when the drop sits behind a second damaged object
   whose contents cannot be read at all.
-- **The viewer and the export library would read different objects** (fixed in WS7 rounds 13 and 14).
+- **The viewer and the export library would read different objects** (fixed in WS7 rounds 13, 14 and 16).
   pdf.js finds objects through the cross-reference table the end of the file points to; pdf-lib reads
   objects in order and keeps the last copy of each, and the last trailer. Each of these showed one page and
   exported or signed another — a valid signature over content the signer never saw:
   - a table that points at an *earlier* copy of an object;
   - a table that marks an object a page uses as free, or places it at offset 0, so the viewer draws nothing
     where the export has content;
+  - a table that places an object a page uses at bytes that are not that object: the viewer fails to read it
+    and draws the page blank or not at all — unless it meets the entry while opening the first or last page,
+    when it repairs its table by scanning and agrees with pdf-lib;
+  - any of these in a file whose update points at an older section the viewer cannot read (the middle of an
+    object, past the end of the file, a damaged cross-reference stream): the viewer skips only that section
+    and keeps reading the rest, and so does the check;
   - a trailer the viewer follows that names a different document root from the later trailer pdf-lib keeps;
   - a document root pdf-lib silently replaces with another one in the file, because the declared root does
     not say it is a catalog.
@@ -295,9 +301,10 @@ viewing the file are unaffected.
   refused, and each of the 15 was read through the same cross-reference chain the viewer follows.
 
 What is still not checked, stated rather than hidden: bytes pdf-lib never reads as an object at all; an
-object the table places inside a compressed object stream; a table pdf.js cannot follow, which makes it
-rebuild its table by scanning (it then keeps the last copy of each object, like pdf-lib — measured — but
-chooses its trailer by a rule PDFturbo does not reproduce); a compressed cross-reference stream written in a
+object the table places inside a compressed object stream; a file pdf.js repairs by scanning — no section it
+can read yields a trailer, its document root is unusable, or opening the first or last page meets an entry it
+cannot read — where it keeps the last copy of each object, like pdf-lib (measured), but chooses its trailer by a
+rule PDFturbo does not reproduce; a compressed cross-reference stream written in a
 form PDFturbo does not decode the way pdf.js does; and a linearized ("fast web view") file whose first-page
 table disagrees with the table the end of the file points to — pdf.js starts from the first, PDFturbo
 compares against the second.

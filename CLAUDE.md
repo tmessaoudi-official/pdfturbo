@@ -1334,8 +1334,8 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   **The second half is `PdfXrefMismatchError`** (round 13): pdf-lib keeps the LAST definition of an object
   and the LAST trailer; pdf.js follows `startxref` and the xref chain. Measured in pdf.js 6.3.289 before
   writing it: first-wins per section, a table's `/XRefStm` queued before `/Prev`, offsets relative to the
-  first `%PDF-` in the first 1024 bytes, and — when a table offset is WRONG — a rebuild by scanning that
-  keeps the last definition, exactly like pdf-lib. So a file whose table points at an EARLIER copy showed
+  first `%PDF-` in the first 1024 bytes, and a rebuild by scanning that keeps the last definition, exactly
+  like pdf-lib (when it happens — round 16, below). So a file whose table points at an EARLIER copy showed
   one page and exported or SIGNED another with nothing dropped (probe: pdf.js read VIEWED, pdf-lib SIGNED).
   The recorder also keeps each definition's offset and the xref sections pdf-lib parses and then discards;
   a reachable object refuses when the chain lands on a definition pdf-lib did not keep and the VALUES differ
@@ -1349,7 +1349,19 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   which refuses whenever pdf.js would accept the declared root, one trailer or many. A table subsection
   numbered from 1 over the free object-0 row is renumbered from 0, as pdf.js does. Nothing is compared when
   the chain's root is one pdf.js rejects (not a dictionary whose /Pages is a dictionary): pdf.js then
-  rebuilds by scanning and agrees with pdf-lib. **A resolved chain is not a compared chain.** Round 13
+  rebuilds by scanning and agrees with pdf-lib. **Round 16 found two more, each measured first.** pdf.js reads
+  each queued section inside a try/catch (`XRef.readXRef`), so a `/Prev` or `/XRefStm` it cannot read — into an
+  object, past EOF, at a content stream, at a table with no trailer, at a stream it rejects part-way (keeping the
+  rows read before the failure) — costs that section only; the chain was abandoned there instead, leaving the
+  round-13 shape uncompared behind one bad pointer. And an entry that does not land on its object makes pdf.js
+  THROW, and it rebuilds only when that happens on its opening walk to the first or last page (`checkFirstPage` /
+  `checkLastPage`, now mirrored with the `/Count` skip and the `getAllPageDicts` fallback): anywhere else the page
+  draws blank or fails while pdf-lib exports and signs it, so such an object refuses like one pdf.js finds nothing
+  for. Round 13's "a wrong table offset rebuilds" had been measured on a file whose offsets were ALL wrong, where
+  the first-page walk meets one — **measure the shape you generalise to, not the one you had.** One existing
+  fixture was that shape: `buildContentStreamPdf({ padStreamBytes })` wrote its table in file order, pointing
+  `5 0 R` at object 6, which pdf.js draws blank (measured); it now writes rows by object number.
+  **A resolved chain is not a compared chain.** Round 13
   recorded "14 of 15 real files reached the comparison". Measuring round 14's fixes showed pdf-lib inflates a
   cross-reference STREAM but never applies its `/DecodeParms /Predictor`, which Acrobat and most producers
   set: 11 of the 15 files use one, 10 of them were among the 14 counted, and their recorded entries were
@@ -1358,14 +1370,17 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   entries itself with `PredictorStream` / `readXRefStream` semantics (PNG predictors 10–15 with all five row
   filters, TIFF 2 at 8 bits, entry types 0–2), and both corpus halves assert that every in-use chain entry at
   a file offset lands on a definition pdf-lib parsed there. Bounds, all in `KNOWN_ISSUES.md` / `SECURITY.md`:
-  no comparison through an xref stream pdf.js rejects or whose filters are not modelled, for entries inside
+  no comparison through an xref stream whose filters are not modelled (one pdf.js rejects part-way is skipped
+  with the rows it read, as pdf.js does), for entries inside
   an object stream, or for pdf.js's trailer choice in recovery mode; a linearized file IS compared, through
-  `startxref`, while pdf.js enters at its first-page table; and pdf.js's `checkFirstPage` / `checkLastPage`
-  rebuild is not mirrored, so such a damaged file can be refused where the two agree. **Measured on 15 real
+  `startxref`, while pdf.js enters at its first-page table; and its opening page walks are mirrored through the
+  page tree, where pdf.js reads a linearized file's first page and count from the linearization dictionary.
+  **Measured on 15 real
   files** (`LOAD_GUARD_CORPUS=1 npx vitest run tests/utils/pdfLoadGuardCorpus.test.ts`, report in
   `var/claude/ws7/load-guard-corpus.json`): guard outcome equals raw pdf-lib on 15 of 15, all 15 read through
   the chain pdf.js follows, and 12,059 of 12,059 in-use chain entries landing on a parsed
-  definition — so zero false refusals is a measurement, not an absence of input.
+  definition — so zero false refusals is a measurement, not an absence of input. Re-run after round 16's fix:
+  unchanged, 15 of 15 and 12,059 of 12,059.
   Found while re-running it: the recorder installs on the first `loadPdfDocument`, so a run filtered with `-t`
   measured its first file before anything was recorded and reported it unread by pdf.js; `describeParse` now
   throws on a parse with no record, and the corpus file installs the recorder first. Load time in ONE run at load
@@ -1396,7 +1411,16 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   type, offset and generation bytes of a cross-reference row never produce here; the branch is pdf.js's line
   for line); `P9` abbreviated /F /DP guard dropped (no fixture carries the abbreviated /F or /DP keys, and
   with them pdf-lib hands over still-compressed bytes that the entry-type check already rejects, so the skip
-  is a documented bound rather than a tested one). **Scope a sabotage figure by the files it ran against.**
+  is a documented bound rather than a tested one). (`T8`'s `heldAsNothing` is `heldDifferently` since round 16.)
+  Round 16's eleven, on the same five files (155 cases), each landed and restored with `cmp`: `S1` a section
+  pdf-lib did not parse abandons the chain → 4; `S2` an unmodelled stream skipped like a missing one → 1; `S3` an
+  unreadable entry skipped in the comparison → 6; `S4` the load-walk mirror removed → 4; `S5` a rejected stream's
+  rows dropped → 1; `S6` `/XRefStm` followed from a stream → 1; `S7` the compare trigger back to nothing-only → 6;
+  `S9` a rejected section still yielding a trailer and `/Prev` → 2; `S10` the `getAllPageDicts` fallback removed
+  → 1; `S11` the first-page walk removed → 1. `S5`, `S6` and `S10` stayed green until a shape was measured in
+  pdf.js and pinned for each. `S8`, the `/Count` cache not shared between the walks, stays green and is
+  equivalent: a node is cached only after it was read, so no answer changes.
+  **Scope a sabotage figure by the files it ran against.**
   `tests/browser/pdf-load-guard.browser.test.ts` runs the refusals — drops, the parse differential and a
   predictor-compressed cross-reference stream — in the Vite bundle, where a second copy of
   pdf-lib would leave the jsdom suite green and every browser load unguarded. **Every pdf-lib load in `src/`
