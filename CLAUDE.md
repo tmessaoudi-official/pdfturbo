@@ -1338,28 +1338,67 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   keeps the last definition, exactly like pdf-lib. So a file whose table points at an EARLIER copy showed
   one page and exported or SIGNED another with nothing dropped (probe: pdf.js read VIEWED, pdf-lib SIGNED).
   The recorder also keeps each definition's offset and the xref sections pdf-lib parses and then discards;
-  a reachable object refuses when the chain lands exactly on a definition pdf-lib did not keep and the
-  values differ, and a `/Root` the startxref trailer names differently refuses too. Kept on purpose: an
-  identical duplicate, an unreachable one, and a wrong offset (the recovery case). Bounds, all in
-  `KNOWN_ISSUES.md`: no comparison when the chain cannot be followed through parsed sections, for entries
-  inside an object stream, for a linearized file's first-page table, or for pdf.js's trailer choice in
-  recovery mode. **Measured on 15 real files** (`LOAD_GUARD_CORPUS=1 npx vitest run
-  tests/utils/pdfLoadGuardCorpus.test.ts`, report in `var/claude/ws7/load-guard-corpus.json`): guard outcome
-  equals raw pdf-lib on 15 of 15, and 14 reached the comparison — so zero false refusals is a measurement,
-  not an absence of input. Load time tracked raw within run-to-run spread (the slowest, Publication 17, 1853
-  ms raw vs 2173 ms guarded in one run); the tracked 5-file public corpus runs on every jsdom pass.
-  Sabotage on `tests/utils/pdfLoadGuard.test.ts` (51 cases), each landed and restored byte-identical:
-  damaged object walked as readable → 2; standing drop behind a damaged object ignored → 1; member list
-  unknown ignoring damaged objects → 1; object-stream drop clock taken at the throw → 2; supersede ignored →
-  7; per-object comparison never refusing → 5; `/Root` check off → 1; header offset ignored → 2; oldest
-  section winning → 1; identical copies refusing → 1; unreachable duplicates compared → 1; exact (not
-  whitespace-skipping) offset → 1; early return ignoring revisions and trailers → 6; trailer dict not
-  attached → 5; assignments not counted while parsing → 11. Across the guard, `exportPasswordSave`,
-  `exportSaveRouting`, `pdfSanitizerInvalidObject` and the corpus file (103 cases, the gated corpus case skipped): classic drops never
-  recorded → 18 (17 guard + 1 `exportSaveRouting`); an object-stream throw recording nothing → 3; its
-  constructor failure not flagged → 2; reachability skipped → 4. Round 12 cited 12/2/1/3 for those four
-  without saying which files ran — **scope a sabotage figure by the files it ran against.**
-  `tests/browser/pdf-load-guard.browser.test.ts` runs both refusals in the Vite bundle, where a second copy of
+  a reachable object refuses when the chain lands on a definition pdf-lib did not keep and the VALUES differ
+  — serialized bytes, because round 14 found identity refusing two byte-identical copies of a stream — and a
+  `/Root` the startxref trailer names differently from the kept one refuses too. **Round 14 added two
+  shapes**, each measured in pdf.js first. An entry that is absent, free or at offset 0 makes `XRef.getEntry`
+  return null, so a page whose content is marked free draws BLANK while pdf-lib exports the content: that
+  refuses when the document ROOT reaches the object (not only /Info, which pdf-lib merges across trailers)
+  and pdf-lib holds a non-null value, on every file whose chain pdf.js reads, not only revised ones. And
+  pdf-lib's `maybeRecoverRoot` swaps a /Root lacking `/Type /Catalog` for another catalog pdf.js never shows,
+  which refuses whenever pdf.js would accept the declared root, one trailer or many. A table subsection
+  numbered from 1 over the free object-0 row is renumbered from 0, as pdf.js does. Nothing is compared when
+  the chain's root is one pdf.js rejects (not a dictionary whose /Pages is a dictionary): pdf.js then
+  rebuilds by scanning and agrees with pdf-lib. **A resolved chain is not a compared chain.** Round 13
+  recorded "14 of 15 real files reached the comparison". Measuring round 14's fixes showed pdf-lib inflates a
+  cross-reference STREAM but never applies its `/DecodeParms /Predictor`, which Acrobat and most producers
+  set: 11 of the 15 files use one, 10 of them were among the 14 counted, and their recorded entries were
+  noise that landed on nothing. The claim was vacuous for those 10, and under round 14's nothing-for rule
+  the noise was one garbage `/Root` entry away from refusing real files. The recorder now decodes xref-stream
+  entries itself with `PredictorStream` / `readXRefStream` semantics (PNG predictors 10–15 with all five row
+  filters, TIFF 2 at 8 bits, entry types 0–2), and both corpus halves assert that every in-use chain entry at
+  a file offset lands on a definition pdf-lib parsed there. Bounds, all in `KNOWN_ISSUES.md` / `SECURITY.md`:
+  no comparison through an xref stream pdf.js rejects or whose filters are not modelled, for entries inside
+  an object stream, or for pdf.js's trailer choice in recovery mode; a linearized file IS compared, through
+  `startxref`, while pdf.js enters at its first-page table; and pdf.js's `checkFirstPage` / `checkLastPage`
+  rebuild is not mirrored, so such a damaged file can be refused where the two agree. **Measured on 15 real
+  files** (`LOAD_GUARD_CORPUS=1 npx vitest run tests/utils/pdfLoadGuardCorpus.test.ts`, report in
+  `var/claude/ws7/load-guard-corpus.json`): guard outcome equals raw pdf-lib on 15 of 15, all 15 read through
+  the chain pdf.js follows, and 12,059 of 12,059 in-use chain entries landing on a parsed
+  definition — so zero false refusals is a measurement, not an absence of input.
+  Found while re-running it: the recorder installs on the first `loadPdfDocument`, so a run filtered with `-t`
+  measured its first file before anything was recorded and reported it unread by pdf.js; `describeParse` now
+  throws on a parse with no record, and the corpus file installs the recorder first. Load time in ONE run at load
+  19.1: Publication 17 11433 ms raw vs 19272 ms guarded, the census report 5291 vs
+  12016, and no other file more than 505 ms slower. Round 14's
+  completeness lens measured guarded/raw ratios from 1.0x to 3.5x between two runs on a loaded machine, so
+  this is one observation, not a spread claim. The tracked 5-file public corpus, with the same landing
+  assertion, runs on every jsdom pass.
+  Sabotage, re-measured after round 14 on `tests/utils/pdfLoadGuard.test.ts`, `exportPasswordSave`,
+  `exportSaveRouting`, `pdfSanitizerInvalidObject` and the corpus file together (124 cases, the gated corpus
+  case skipped), each mutation landed and restored byte-identical: `S1` damaged object walked as readable → 2;
+  `S2` standing drop behind damaged object ignored → 1; `S3` membersUnknown ignores damaged objects → 1; `S4`
+  objstm drop clock taken at the throw → 2; `S5` supersede ignored → 7; `S6` per-object comparison never
+  refuses → 8; `S7` startxref Root comparison never refuses → 1; `S8` header offset ignored → 2; `S9` oldest
+  xref section wins → 2 (1 guard, 1 corpus); `S10` identical copies refuse → 24 (23 guard, 1 corpus); `S11`
+  unreachable duplicates compared → 1; `S12` entry offset compared exactly → 1; `S13` comparison needs
+  something pdf.js finds nothing for → 9; `S14` trailer dict not attached to its table → 12; `S15` assignments
+  not counted while parsing → 17; `R1` classic drop never recorded → 18 (17 guard, 1 exportSaveRouting); `R2`
+  object-stream throw records nothing → 3; `R3` constructor failure not flagged → 2; `R4` reachability skipped
+  → 4; `T1` nothing-for rule off → 5; `T2` fromRoot scope dropped → 1; `T3` PDFNull exemption dropped → 1;
+  `T4` acceptsAsRoot always true → 2; `T5` recoveredFrom never recorded → 2; `T6` sameValue by identity → 3;
+  `T7` table shift not mirrored → 1; `T8` heldAsNothing never true → 3; `P1` predictor never applied → 4; `P2`
+  PNG Sub and Up swapped → 2; `P4` PNG Average ignores left → 2; `P5` TIFF predictor not applied → 1; `P6`
+  entry type 3 accepted → 1; `P7` unsupported predictor passed through → 1; `P8` pdf-lib entries recorded
+  (pre-fix wrapper) → 5. The gated 15-file corpus also ran for `S10`, `S11`, `S12`, `T2`, `T3`, `T4`, `T6`,
+  `T7`, `P1`, `P8`, and went red for `S10`, `P1`, `P8`. Not pinned, each for a stated reason: `P3` Paeth
+  tie-break reordered (its tie-break differs from pdf.js only when pa ≤ pb ≤ pc and left ≠ up, a shape the
+  type, offset and generation bytes of a cross-reference row never produce here; the branch is pdf.js's line
+  for line); `P9` abbreviated /F /DP guard dropped (no fixture carries the abbreviated /F or /DP keys, and
+  with them pdf-lib hands over still-compressed bytes that the entry-type check already rejects, so the skip
+  is a documented bound rather than a tested one). **Scope a sabotage figure by the files it ran against.**
+  `tests/browser/pdf-load-guard.browser.test.ts` runs the refusals — drops, the parse differential and a
+  predictor-compressed cross-reference stream — in the Vite bundle, where a second copy of
   pdf-lib would leave the jsdom suite green and every browser load unguarded. **Every pdf-lib load in `src/`
   goes through it**; `tests/utils/pdfLoadGuard.test.ts` fails by file name on a direct `PDFDocument.load`.
   Bounds: bytes pdf-lib never parses as an object (skipped as junk, or swallowed by a stream whose end it

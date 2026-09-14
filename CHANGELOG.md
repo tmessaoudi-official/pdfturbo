@@ -107,8 +107,10 @@ most of the work went into proving that what the product claims to remove is act
   second damaged object, and no longer refuses one whose later revision simply restates the same value.
 - **A crafted PDF could show one page and export or sign another.** The viewer finds objects through the
   file's cross-reference table; the library that builds exports and signatures reads objects in order and
-  keeps the last copy. A file whose table pointed at an earlier copy, or whose last trailer named a
-  different document, was shown one way and exported — or signed — the other. Such a file is now refused;
+  keeps the last copy. A file whose table pointed at an earlier copy, whose table marked the page's content
+  as free (the viewer then drew a blank page), or whose trailer the viewer follows named a different document
+  from the later one the library keeps, was shown one way and exported — or signed — the other; so was a
+  file whose document root the library quietly swapped for another. Such a file is now refused;
   `SECURITY.md` § "One file, two readers" states what is still not checked.
 
 ### Fixed — accessibility, correctness, supply chain

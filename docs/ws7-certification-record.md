@@ -360,12 +360,14 @@ red because nothing was thrown, and every control green. Sabotage, fifteen mutat
 four re-measured across five jsdom files, each landed and restored with `cmp`; the figures are in
 `CLAUDE.md`, now scoped by the files they ran against. A new corpus test loads 15 real files (arXiv papers,
 IRS/GSA/USPTO forms, government reports) and 5 tracked public ones through both raw pdf-lib and the guard:
-the outcome matched on all 20, and 14 of the 15 reached the comparison, so the absence of false refusals is
-a measurement. The browser suite gained the refusal and an interned-value control in the Vite bundle.
+the outcome matched on all 20, and 14 of the 15 reached the comparison, so the absence of false refusals was
+recorded as a measurement. **Round 14 refuted that for 10 of the 14:** their chains were cross-reference
+streams pdf-lib had parsed without the stream's predictor, whose entries landed on nothing (§ Round 14). The browser suite gained the refusal and an interned-value control in the Vite bundle.
 
 **Not certified by this round, named:** the comparison is not made when the chain cannot be followed through
 sections pdf-lib parsed, for entries the table places inside an object stream, for a linearized file's
-first-page table, or for pdf.js's choice of trailer in recovery mode — each disclosed in `KNOWN_ISSUES.md`,
+first-page table (corrected in round 14: a linearized file IS compared, through `startxref`, while pdf.js
+enters it at the first-page table), or for pdf.js's choice of trailer in recovery mode — each disclosed in `KNOWN_ISSUES.md`,
 none tested. No encrypted file with a drop or a duplicate was built. The swallow bound from round 12 stands.
 
 No browser suite or QA sweep ran inside the panel; the fix gate's runs are the evidence for those. That gate
@@ -379,3 +381,71 @@ Still flagged to the developer, unchanged: `/PieceInfo` stripping (unruled) and 
 
 **The counter remains 0 of 2.** Round 14 is next, and it is the last round the ruling authorises: a clean
 round 14 leaves the counter at 1 of 2, so the developer is asked again after it whatever it returns.
+
+## Round 14 — what was fixed (2026-09-13)
+
+Round 14 ran at `9849db3` over `dfe34ae..9849db3`, focused on the round-13 commits (`42756ed`, `9849db3`),
+all three lenses in isolated worktrees on Node 24. It returned **9 findings**: 3 export, 0 safety,
+6 completeness. The safety lens tried to build a file pdf.js and pdf-lib read differently that the guard
+accepts, and came back CLEAN. The export lens found two such files, both outside the shapes round 13 compared.
+
+| Defect | Evidence it was real |
+|---|---|
+| **P1** (export) a reachable object that the chain pdf.js follows marks free, places at offset 0 or omits was never compared: pdf.js resolves it to nothing and draws a blank page, pdf-lib keeps a definition and exports or signs it. A single-revision file never read the chain at all | probe: pdf.js read `""`, the guard loaded, and the export of that source read `HIDDEN` / `SIGNED` in pdf.js |
+| **P1** (export) on a single-trailer file whose `/Root` lacks `/Type /Catalog`, pdf-lib's root recovery swaps in another catalog in the file; the guard returned before any root comparison | probe: pdf.js read VIEWED from the source, the export read SIGNED |
+| **P2** (export) duplicates were compared by object identity, so byte-identical copies of a stream, a font or the page tree refused — round 13's "an identical duplicate loads" held only for interned values | probe: three legal files refused with `PdfXrefMismatchError` |
+| **P3 ×6** (completeness) editing does not refuse (it falls back to an overlay); a damaged reference refuses like a dangling one when the member list is unknown; "all 20 real-world PDFs keep both in step" overstated; the linearized skip the docs described does not exist; the refused trailer shape was stated backwards; "load time within run-to-run spread" unproven | read against the code and re-measured |
+
+The fixes. pdf.js finding nothing for a reachable object now refuses whenever pdf-lib holds something other
+than `null` for it. The chain is now read for every file pdf.js would read it for (its root must be one pdf.js
+accepts), and compared when pdf-lib reassigned an object, saw a second trailer, or holds something for an
+object pdf.js finds nothing for — the last is what reaches a single-revision file.
+pdf-lib's root recovery is recorded where it happens (`maybeRecoverRoot`), and a recovered root refuses. Two
+copies are the same value when pdf-lib serialises them to the same bytes. And a table subsection numbered from
+1 over the free object-0 row is renumbered the way pdf.js renumbers it, a shape the new free-entry rule
+exposed.
+
+**Found in passing while measuring the fixes on real files, twice.** First: pdf-lib parses a cross-reference
+stream without applying its `/Predictor`, so the chain round 13 built from pdf-lib's entries was noise for
+every file written that way — 10 of the 14 files round 13 counted as reaching the comparison, a vacuous
+measurement. The recorder now decodes those entries itself, the way pdf.js's `PredictorStream` does (PNG
+filters 0–4 per row, TIFF predictor 2), and the corpus test asserts that every in-use chain entry at a file
+offset lands on a definition pdf-lib parsed there. Second: that corpus run, filtered with `-t`, reported its
+first file unread by pdf.js, because the recorder installs on the first `loadPdfDocument` and the test parsed
+with raw pdf-lib before it; `describeParse` now throws on a parse with no record, and the test installs the
+recorder first.
+
+Failing tests first, each confirmed red for the stated reason: 11 of 88 red on the finding fixes (the
+free/offset-0/absent and root-recovery cases with `expected undefined to be 'PdfXrefMismatchError'`, the
+identical-copy cases because the file was refused, the shifted subsection because nothing was thrown), 3 of 70
+red on the predictor fix (the PNG and TIFF refusals, and the control's `viewerReadsChain`), and both corpus
+cases red with the named `describeParse` error before their `beforeAll`; every control green. Sabotage, 36 mutations across the guard file, `exportPasswordSave`, `exportSaveRouting`, `pdfSanitizerInvalidObject` and the corpus file (124 cases), each landed and restored with `cmp`: 34 red at least one case, the gated 15-file corpus went red for `S10`, `P1`, `P8` and for no mutation that should keep real files loading, and `P3` and `P9` red nothing, each for a reason stated with the figures in `CLAUDE.md`.
+The 15-file corpus: guard outcome equal to raw pdf-lib on 15 of 15, all 15 read through the chain pdf.js
+follows, 12,059 of 12,059 in-use chain entries landing on a parsed definition. The browser suite gained the
+predictor refusals, and `textEditHandler` a case pinning the overlay fallback on a refused source.
+
+**Not certified by this round, named:** the comparison is not made for entries the chain places inside an
+object stream, for a chain that leaves the sections pdf-lib parsed, for a cross-reference stream using the
+abbreviated `/F` or `/DP` keys (pdf.js reads them, pdf-lib does not, so no fixture was built), or for pdf.js's
+choice of trailer in recovery mode; a linearized file is compared through `startxref` while pdf.js enters at
+its first-page table; and pdf.js's `checkFirstPage` / `checkLastPage` rebuild is not mirrored, so a damaged
+file it repairs on opening can be refused. The PNG Paeth tie-break is pdf.js's line for line but no
+cross-reference row can reach the branch where the order matters. No encrypted file with a drop or a duplicate
+was built. Load time was measured in one run on a loaded machine, not as a spread.
+
+That gate (Node 24, the working tree over `9849db3` that became the fix commit `0122d96`) was green at every
+step on its final run: audit (found 0 vulnerabilities), OCR assets, type-check, lint, jsdom 2767 passed | 2
+expected fail | 2 skipped (2771), browser 90 passed (90) / 348 passed (348) at load 0.49, export branch
+coverage 44.07 %, build, and the QA sweep with `--allow-destructive` (151 checks | 114 pass | 0 fail | 0 warn
+| 37 skipped | 0 a11y). That run was the fourth of the browser step: the first was killed for low memory and
+the next two went red at load 18 and 24 with swap full, 16 and 9 of 90 files running, a different file failing
+each time with an iframe never becoming ready or a dynamic-import fetch dropped, and the first three affected
+files passing 18 of 18 in isolation. The fourth ran on the same unchanged tree at load 0.49, with no retry,
+timeout or other change to the harness. The logs, the three earlier ones in `killed/`, are under the
+gitignored `var/claude/ws7/round14-fix-gate/`.
+
+Still flagged to the developer, unchanged: `/PieceInfo` stripping (unruled) and the kept-media ruling.
+
+**The counter remains 0 of 2.** Round 14 was the last round the `[2026-09-13 14:00]` ruling authorised; the
+`[2026-09-13 22:10]` ruling authorised fixing its nine findings and one more round, round 15, after which the
+developer is asked again whatever it returns.

@@ -64,17 +64,35 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From WS7 round 14 (2026-09-13)
+
+- **A damaged file pdf.js repairs while opening can be refused** (P3, bound of a fix). pdf.js checks the
+  first and last page as it opens a file and, when an entry on the way to one lands on the wrong object,
+  rebuilds its table by scanning (`checkFirstPage` / `checkLastPage`). PDFturbo does not mirror that rebuild,
+  so for such a file it compares against the table pdf.js abandoned and can refuse a file both libraries end
+  up reading the same. The direction is a refusal; nothing is exported wrongly.
+- **A cross-reference stream PDFturbo does not decode the way pdf.js does is not compared** (P3). pdf-lib
+  never applies a cross-reference stream's predictor, so PDFturbo decodes those entries itself; a stream with
+  abbreviated filter keys, a predictor under a second filter, or a TIFF predictor at other than 8 bits is not
+  modelled, and nothing is compared through it — nor through one pdf.js rejects. None of the 15 real files
+  uses such a stream.
+
 ### From WS7 round 13 (2026-09-13)
 
-- **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). Since round 13,
-  export, edit, sign, OCR, sanitize and compress refuse a file whose cross-reference table names a copy of
-  an object pdf-lib did not keep, or whose final trailer names a different document root than the one
-  pdf-lib kept — the shapes that let a crafted file show one page and export or sign another. Not compared:
-  objects the table places inside an object stream; a chain that leaves the sections pdf-lib parsed (pdf.js
-  then rebuilds by scanning and keeps the last definition like pdf-lib, measured, but picks its trailer by
-  its own rule); and a linearized file whose first-page table pdf.js reaches from the linearization
-  dictionary. Zero refusals over the 15 files of `var/corpus` and the 5 of `tests/fixtures/corpus-public`,
-  14 of the 15 reaching the comparison (`tests/utils/pdfLoadGuardCorpus.test.ts`).
+- **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). Since rounds 13
+  and 14, exporting, signing, OCR, sanitizing and compressing refuse a file whose cross-reference table names
+  a copy of an object pdf-lib did not keep or marks a used object free, whose startxref trailer names a
+  different document root from the last trailer pdf-lib keeps, or whose root pdf-lib replaced — the shapes
+  that let a crafted file show one page and export or sign another. Editing in place falls back to an
+  editable overlay instead, and the export built afterwards refuses. Not compared: objects the table places
+  inside an object stream; a chain that leaves the sections pdf-lib parsed (pdf.js then rebuilds by scanning
+  and keeps the last definition like pdf-lib, measured, but picks its trailer by its own rule); and a
+  linearized file whose first-page table — where pdf.js starts — differs from the table `startxref` names,
+  which is the one compared. Zero refusals over the 15 files of `var/corpus` and the 5 of
+  `tests/fixtures/corpus-public`; all 15 are read through the chain pdf.js follows, with every in-use entry
+  landing on an object pdf-lib parsed (`tests/utils/pdfLoadGuardCorpus.test.ts`). Round 13 recorded "14 of
+  the 15 reaching the comparison": for 10 of those 14, the chain was a cross-reference stream pdf-lib had
+  parsed without its predictor, whose entries pointed nowhere, so nothing was really compared on them.
 - **A reachable damaged object makes any dropped object refuse the file** (P3, deliberate). Its contents
   cannot be read, so whether it points at a dropped object cannot be decided; the guard refuses rather than
   guess. A file with one reachable damaged object and one unrelated, unused dropped object is refused.
@@ -103,8 +121,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
   `endstream`, a glued or commented header, or `>> stream` inside a string — accept one pdf-lib had
   dropped from. What the recorder cannot see: bytes pdf-lib never parses as an object (skipped as junk,
   or swallowed by a stream whose end it places too late) are not a drop, so they are not detected; and
-  when an object stream fails before its member list is known, ANY reachable dangling reference in that
-  file refuses it, since the lost members cannot be named.
+  when an object stream fails before its member list is known, ANY reachable dangling or damaged reference
+  in that file refuses it, since the lost members cannot be named.
 - **Sanitize refuses a file that holds an object it cannot parse**, rather than cleaning it. Such an
   object can hide an active script no walk can see, so a clean report would be false; the cost is that
   a merely damaged file cannot be sanitized. An unreferenced damaged object is swept first and does not

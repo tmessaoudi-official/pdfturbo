@@ -265,26 +265,37 @@ rely on it sitting in one of those places.
 PDFturbo **shows** a PDF with pdf.js and **builds** every export, edit, signature, OCR layer, sanitized
 copy and compressed copy with a second library, pdf-lib. The two read a file differently where the file
 is damaged or ambiguous, and until 2026-09-13 nothing checked that they agreed — so a file could show one
-page on screen while the exported or signed copy carried another. Since then, those operations **refuse**
-a file, with an error, in the cases below; opening and viewing it are unaffected.
+page on screen while the exported or signed copy carried another. Since then, exporting, signing, OCR,
+sanitizing and compressing **refuse** such a file, with an error, in the cases below. Editing text in place
+shows no error: it falls back to an editable overlay, and the export or signature built afterwards refuses.
+Opening and viewing the file are unaffected.
 
 - **pdf-lib dropped part of the file.** A damaged object that never closes is skipped by pdf-lib while
   pdf.js still draws it, so the export would lose it. A file is refused when anything it uses was dropped
   and nothing later in the file replaced it — including when the drop sits behind a second damaged object
   whose contents cannot be read at all.
-- **The file's cross-reference table and its object order disagree** (fixed in WS7 round 13). pdf.js
-  finds objects through the table at the end of the file; pdf-lib reads objects in order and keeps the
-  last copy of each, and the last trailer. A file whose table points at an *earlier* copy of an object, or
-  whose final trailer names a different document root, showed one page and exported or signed another —
-  a valid signature over content the signer never saw. A legitimately updated file keeps both in step,
-  and so do all 20 real-world PDFs this was measured against (forms, papers and reports, several of them
-  updated or linearized).
+- **The viewer and the export library would read different objects** (fixed in WS7 rounds 13 and 14).
+  pdf.js finds objects through the cross-reference table the end of the file points to; pdf-lib reads
+  objects in order and keeps the last copy of each, and the last trailer. Each of these showed one page and
+  exported or signed another — a valid signature over content the signer never saw:
+  - a table that points at an *earlier* copy of an object;
+  - a table that marks an object a page uses as free, or places it at offset 0, so the viewer draws nothing
+    where the export has content;
+  - a trailer the viewer follows that names a different document root from the later trailer pdf-lib keeps;
+  - a document root pdf-lib silently replaces with another one in the file, because the declared root does
+    not say it is a catalog.
+
+  A legitimately updated file keeps both readers in step. Measured on 15 real-world PDFs — forms, papers
+  and reports, most of them updated or linearized — and on 5 test files kept in the repository: none was
+  refused, and each of the 15 was read through the same cross-reference chain the viewer follows.
 
 What is still not checked, stated rather than hidden: bytes pdf-lib never reads as an object at all; an
 object the table places inside a compressed object stream; a table pdf.js cannot follow, which makes it
 rebuild its table by scanning (it then keeps the last copy of each object, like pdf-lib — measured — but
-chooses its trailer by a rule PDFturbo does not reproduce); and a linearized ("fast web view") file whose
-first-page table pdf.js reaches from the linearization dictionary rather than the end of the file.
+chooses its trailer by a rule PDFturbo does not reproduce); a compressed cross-reference stream written in a
+form PDFturbo does not decode the way pdf.js does; and a linearized ("fast web view") file whose first-page
+table disagrees with the table the end of the file points to — pdf.js starts from the first, PDFturbo
+compares against the second.
 
 ## Data at rest (session persistence)
 
