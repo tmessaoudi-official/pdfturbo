@@ -15,8 +15,8 @@ import { join } from 'node:path';
 import * as pdfLib from '@cantoo/pdf-lib';
 import { describeParse, installDropRecorder, loadPdfDocument, PdfObjectDroppedError, recordedDrops } from '../../src/utils/pdfLoadGuard';
 import {
-  appendRevision, buildContentStreamPdf as build, buildObjStmPdf, buildPageTreePdf, buildViewerNullPdf, buildXrefPointerPdf,
-  buildXrefShapePdf, editPdfText,
+  appendRevision, buildContentStreamPdf as build, buildLinearizedPdf, buildObjStmPdf, buildPageOrderPdf, buildPageTreePdf,
+  buildViewerNullPdf, buildXrefPointerPdf, buildXrefQueuePdf, buildXrefShapePdf, editPdfText,
 } from './_invalidObjectFixture';
 
 describe('loadPdfDocument', () => {
@@ -535,7 +535,8 @@ describe('loadPdfDocument — cross-reference streams written with a predictor',
   });
 });
 
-// WS7 round 16. pdf.js skips a cross-reference section it cannot read and keeps reading the rest of the chain (export P1);
+// WS7 round 16. pdf.js skips a cross-reference section it cannot read and reads on (export P1) — though after a table it
+// cannot finish it reads no later table, which round 17 pins in `buildXrefQueuePdf`;
 // an entry it cannot read is recovered only when its load-time walk to the first or last page meets it (safety P1). Each
 // shape was read through pdf.js 6.3.289 before the guard changed, and the first lines of every case read it again.
 describe('loadPdfDocument — a pointer pdf.js skips, an entry it cannot read (WS7 round 16)', () => {
@@ -622,6 +623,122 @@ describe('loadPdfDocument — a pointer pdf.js skips, an entry it cannot read (W
     },
   );
 });
+
+describe('loadPdfDocument — the queue pdf.js reads and the pages it shows (WS7 round 17)', () => {
+  const outcome = (bytes: Uint8Array): Promise<string> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => (e as Error).name);
+  const refsOf = (bytes: Uint8Array): Promise<string[]> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => [], (e: unknown) => (e as { refs: string[] }).refs);
+
+  it.each([
+    ['staleTableBeforePrev', ['5 0 R']],
+    ['objectZeroInUseBeforeTable', ['5 0 R']],
+    ['prevIndirectUnreadable', ['5 0 R']],
+  ] as const)('REFUSES %s — pdf.js never reads the section naming the content, and draws the page blank', async (shape, refs) => {
+    const bytes = buildXrefQueuePdf(shape);
+    expect(await pdfjsText(bytes)).toBe('');
+    expect(await pdfLibText(bytes)).toContain('(SIGNED)');
+    expect(await outcome(bytes)).toBe('PdfXrefMismatchError');
+    expect(await refsOf(bytes)).toEqual(refs);
+  });
+
+  it('REFUSES staleStreamBeforeStream — pdf.js reads a stream after one it rejected with the rejected one\'s state, which is not modelled', async () => {
+    const bytes = buildXrefQueuePdf('staleStreamBeforeStream');
+    expect(await pdfjsText(bytes)).toBe('');
+    expect(await pdfLibText(bytes)).toContain('(SIGNED)');
+    expect(await outcome(bytes)).toBe('PdfXrefMismatchError');
+    expect((await refsOf(bytes))[0]).toMatch(/^cross-reference stream at \d+$/);
+  });
+
+  it.each(['staleTableWithTrailer', 'staleTableAfterPrev', 'staleTableBeforeStream', 'prevIndirect', 'xrefStmIndirect'] as const)(
+    'loads %s — pdf.js reads the section naming the copy pdf-lib kept, and it IS compared (control)', async shape => {
+      const bytes = buildXrefQueuePdf(shape);
+      expect(await pdfjsText(bytes)).toBe('SIGNED');
+      expect(await outcome(bytes)).toBe('loaded');
+      const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+      expect((await describeParse(raw.context, bytes)).viewerReadsChain).toBe(true);
+    },
+  );
+
+  it.each([
+    ['countHidesFirst', ['PAGE2'], 'PdfPageMismatchError'],
+    ['countShiftsPages', ['PAGE2', 'PAGE3'], 'PdfPageMismatchError'],
+    ['countHidesSecond', ['PAGE1', 'PAGE3'], 'PdfPageMismatchError'],
+    ['pageWithoutType', ['PAGE1', 'PAGE2'], 'PdfPageMismatchError'],
+    ['countHonest', ['PAGE1', 'PAGE2'], 'loaded'],
+    ['countRootOverstated', ['PAGE1', 'PAGE2', 'PAGE3'], 'loaded'],
+    ['countRootUnderstated', ['PAGE1', 'PAGE2'], 'loaded'],
+    ['countIntermediateOverstated', ['PAGE1', 'PAGE2', 'PAGE3'], 'loaded'],
+  ] as const)('%s — pdf.js shows %j; refused exactly when a page on screen is not the page pdf-lib holds there', async (shape, shown, expected) => {
+    const bytes = buildPageOrderPdf(shape);
+    expect(await pdfjsPages(bytes)).toEqual(shown);
+    const held = await pdfLibPages(bytes);
+    expect(shown.every((text, i) => held[i] === text)).toBe(expected === 'loaded');
+    expect(await outcome(bytes)).toBe(expected);
+  });
+
+  it('duplicateKid — a page listed twice: the guard agrees with the pages pdf.js actually shows', async () => {
+    const bytes = buildPageOrderPdf('duplicateKid');
+    const shown = await pdfjsPages(bytes);
+    const held = await pdfLibPages(bytes);
+    const agree = shown.every((text, i) => held[i] === text);
+    expect(await outcome(bytes)).toBe(agree ? 'loaded' : 'PdfPageMismatchError');
+  });
+
+  it.each([
+    ['countHidesFirst', ['PAGE2'], 'PdfPageMismatchError'],
+    ['countHonest', ['PAGE1', 'PAGE2'], 'loaded'],
+  ] as const)('%s read through a REBUILT table — pdf.js shows %j, and the pages are compared all the same', async (shape, shown, expected) => {
+    const bytes = buildPageOrderPdf(shape, { rebuild: true });
+    expect(await pdfjsPages(bytes)).toEqual(shown);
+    const raw = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+    expect((await describeParse(raw.context, bytes)).viewerReadsChain).toBe(false);
+    expect(await outcome(bytes)).toBe(expected);
+  });
+
+  it('names the first page that differs', async () => {
+    expect(await refsOf(buildPageOrderPdf('countShiftsPages'))).toEqual(['page 1']);
+  });
+
+  it('REFUSES linearizedFirstPageElsewhere — pdf.js takes a linearized file\'s first page from /O', async () => {
+    const bytes = buildLinearizedPdf('linearizedFirstPageElsewhere');
+    expect(await pdfjsPages(bytes)).toEqual(['PAGE2', 'PAGE2']);
+    expect(await pdfLibPages(bytes)).toEqual(['PAGE1', 'PAGE2']);
+    expect(await outcome(bytes)).toBe('PdfPageMismatchError');
+  });
+
+  it('REFUSES linearizedEntryTable — pdf.js enters a linearized file at the table after its first object', async () => {
+    const bytes = buildLinearizedPdf('linearizedEntryTable');
+    expect(await pdfjsText(bytes)).toBe('VIEWED');
+    expect(await pdfLibText(bytes)).toContain('(SIGNED)');
+    expect(await outcome(bytes)).toBe('PdfXrefMismatchError');
+    expect(await refsOf(bytes)).toEqual(['10 0 R']);
+  });
+
+  it('loads linearizedCountFromN — pdf.js counts a linearized file\'s pages by /N, so a /Count lie past page /N is never shown', async () => {
+    const bytes = buildLinearizedPdf('linearizedCountFromN');
+    expect(await pdfjsPages(bytes)).toEqual(['PAGE1']);
+    expect(await pdfLibPages(bytes)).toEqual(['PAGE1', 'PAGE2', 'PAGE3']);
+    expect(await outcome(bytes)).toBe('loaded');
+  });
+
+  it.each([['linearizedClean', 'PAGE1'], ['linearizedLengthWrong', 'SIGNED']] as const)(
+    'loads %s — the same chain and pages pdf.js shows (control; a wrong /L is not linearized)', async (shape, first) => {
+      const bytes = buildLinearizedPdf(shape);
+      expect(await pdfjsText(bytes)).toBe(first);
+      expect(await outcome(bytes)).toBe('loaded');
+    },
+  );
+});
+
+/** The text of every page pdf-lib holds, in the order `getPages` returns them — the order every export copies. */
+async function pdfLibPages(bytes: Uint8Array): Promise<string[]> {
+  const doc = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
+  return doc.getPages().map(page => {
+    const stream = page.node.lookup(pdfLib.PDFName.of('Contents')) as pdfLib.PDFRawStream;
+    return /\((\w+)\)/.exec(new TextDecoder('latin1').decode(stream.getContents()))?.[1] ?? '';
+  });
+}
 
 describe('every pdf-lib load in src/ goes through the guard', () => {
   // A per-site check is how a sibling path keeps the defect the others fixed. Only the guard itself

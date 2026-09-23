@@ -5,12 +5,13 @@
  * what it recognises, and what it must NOT, because a false positive would relabel an ordinary failure.
  */
 import { describe, it, expect } from 'vitest';
-import { isPdfLoadRefusal, PdfObjectDroppedError, PdfXrefMismatchError } from '../../src/utils/pdfLoadGuard';
+import { isPdfLoadRefusal, PdfObjectDroppedError, PdfPageMismatchError, PdfXrefMismatchError } from '../../src/utils/pdfLoadGuard';
 
 describe('isPdfLoadRefusal', () => {
-  it('recognises both refusals', () => {
+  it('recognises all three refusals', () => {
     expect(isPdfLoadRefusal(new PdfObjectDroppedError(['5 0 R']))).toBe(true);
     expect(isPdfLoadRefusal(new PdfXrefMismatchError(['5 0 R']))).toBe(true);
+    expect(isPdfLoadRefusal(new PdfPageMismatchError(['page 1']))).toBe(true);
   });
 
   it('sees through a cause chain, which is how the signer reports a load failure', () => {

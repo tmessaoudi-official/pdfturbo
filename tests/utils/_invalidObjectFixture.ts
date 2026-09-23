@@ -358,8 +358,9 @@ export type XrefPointerShape =
 
 /**
  * Cross-reference chains with a pointer pdf.js cannot follow (WS7 round 16). `XRef.readXRef` reads each queued section
- * inside a try/catch: a section it cannot read is skipped, keeping the rows it read before failing, and the rest of the
- * queue is still read — so the startxref table goes on naming the page pdf.js shows. Measured in pdfjs-dist 6.3.289.
+ * inside a try/catch: a section it cannot read is skipped, keeping the rows it read before failing, and the queue goes
+ * on — so the startxref table goes on naming the page pdf.js shows. After a TABLE it cannot finish no later table is
+ * read at all (WS7 round 17, `buildXrefQueuePdf`); none of these shapes queues one. Measured in pdfjs-dist 6.3.289.
  *  - `prevMid` / `prevBeyondEof` / `prevToContentStream`: an appended update whose table names the EARLIER copy of the page
  *    content, with /Prev pointing into the middle of an object / past the end of the file / at a content stream. pdf.js
  *    shows VIEWED; pdf-lib keeps the later SIGNED copy.
@@ -367,8 +368,9 @@ export type XrefPointerShape =
  *    /Predictor 3, or a row of type 3 after a valid one.
  *  - `prevToTableNoTrailer`: /Prev at a table with no trailer, which pdf-lib accepts.
  *  - `prevValid`: the same update with a correct /Prev, refused with no bad pointer at all (non-vacuity of the shape).
- *  - `prevMidPartial` / `prevAsRefPartial`: the update lists only object 5 and its /Prev is bad / written as a reference,
- *    so the section pdf.js can read has no usable root: it rebuilds by scanning and reads SIGNED, like pdf-lib.
+ *  - `prevMidPartial` / `prevAsRefPartial`: the update lists only object 5 and its /Prev is bad / a reference to an
+ *    object that does not exist (one to an integer IS followed: `buildXrefQueuePdf('prevIndirect')`), so the section
+ *    pdf.js can read has no usable root: it rebuilds by scanning and reads SIGNED, like pdf-lib.
  *  - `hybridBadXRefStm`: one revision holding both copies, the table naming VIEWED and its /XRefStm pointing mid-object.
  *  - `hybridAbbreviatedStream`: the table omits object 5 and its /XRefStm stream names the SIGNED copy, written with the
  *    abbreviated /F and /DP keys pdf.js reads and the recorder does not model. Both parsers read SIGNED.
@@ -487,6 +489,191 @@ export function buildPageTreePdf(shape: PageTreeShape): Uint8Array {
   const x = w.table(size, n => (!w.has(n) ? undefined : n === bad ? wrong : w.first(n)));
   w.body += `trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`;
   return latin1Bytes(w.body);
+}
+
+export type XrefQueueShape =
+  | 'staleTableBeforePrev' | 'objectZeroInUseBeforeTable' | 'staleStreamBeforeStream' | 'prevIndirectUnreadable'
+  | 'staleTableWithTrailer' | 'staleTableAfterPrev' | 'staleTableBeforeStream' | 'prevIndirect' | 'xrefStmIndirect';
+
+/**
+ * The cross-reference QUEUE as pdf.js reads it (WS7 round 17). Every shape holds object 5, the page content, twice:
+ * VIEWED first, SIGNED last, which pdf-lib keeps. Measured in pdfjs-dist 6.3.289:
+ *  - `staleTableBeforePrev`: the newest table omits object 5; its /XRefStm is a table with no trailer and its /Prev a
+ *    table naming SIGNED. pdf.js keeps the failed table's `_tableState`, so the /Prev table re-reads the failed bytes and
+ *    fails too: object 5 is never read and the page draws blank.
+ *  - `objectZeroInUseBeforeTable`: the newest section is a stream marking object 0 in use; its /Prev table omits object 5
+ *    and names, through its own /Prev, a table with SIGNED. pdf.js throws "unexpected first object" at that table, so its
+ *    /Prev is never queued: blank.
+ *  - `staleStreamBeforeStream`: /XRefStm is a stream pdf.js rejects at its second row, /Prev a stream naming SIGNED. pdf.js
+ *    keeps the rejected stream's `streamState` and reads the second stream at the first one's position: blank.
+ *  - `prevIndirectUnreadable`: /Prev is a reference whose entry lands inside another object; the fetch throws, so the
+ *    table naming SIGNED is never queued: blank.
+ *  - `staleTableWithTrailer`, `staleTableAfterPrev`, `staleTableBeforeStream` (controls): the failed table has a trailer,
+ *    is queued after the table naming SIGNED, or is followed by a STREAM, which `_tableState` does not touch: SIGNED.
+ *  - `prevIndirect` / `xrefStmIndirect` (controls): /Prev or /XRefStm written as a reference to an integer object, which
+ *    pdf.js resolves and follows: SIGNED.
+ */
+export function buildXrefQueuePdf(shape: XrefQueueShape): Uint8Array {
+  const w = new ObjectWriter();
+  w.add(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  w.add(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  w.add(3, pageDict(2, 5));
+  w.add(4, HELVETICA);
+  w.add(5, contentStream('VIEWED'));
+  w.add(5, contentStream('SIGNED'));
+  const latin1 = (data: Uint8Array): string => String.fromCharCode(...data);
+  const stream = (num: number, index: [number, number], rows: number[][], extra = ''): void => {
+    const data = Uint8Array.from(rows.flat());
+    w.add(num, `<< /Type /XRef /Size ${num + 1} /W [1 4 2] /Index [${index[0]} ${index[1]}]${extra} /Length ${data.length} >>`
+      + `\nstream\n${latin1(data)}\nendstream`);
+  };
+  const end = (at: number, trailer: string): Uint8Array => {
+    w.body += `trailer\n<< ${trailer} >>\nstartxref\n${at}\n%%EOF\n`;
+    return latin1Bytes(w.body);
+  };
+
+  if (shape === 'staleStreamBeforeStream') {
+    stream(7, [1, 2], [xrefRow(1, w.first(1)), xrefRow(3, 0)]);
+    stream(8, [5, 1], [xrefRow(1, w.last(5))]);
+    const top = w.table(6, n => w.first(n), [[0, 5]]);
+    return end(top, `/Size 9 /Root 1 0 R /XRefStm ${w.first(7)} /Prev ${w.first(8)}`);
+  }
+  if (shape === 'staleTableBeforeStream') {
+    stream(7, [5, 1], [xrefRow(1, w.last(5))]);
+    const bad = w.table(2, n => w.first(n), [[1, 1]]);
+    const top = w.table(6, n => w.first(n), [[0, 5]]);
+    return end(top, `/Size 8 /Root 1 0 R /XRefStm ${bad} /Prev ${w.first(7)}`);
+  }
+  const older = w.table(6, n => w.last(n));
+  w.body += 'trailer\n<< /Size 6 /Root 1 0 R >>\n';
+  if (shape === 'objectZeroInUseBeforeTable') {
+    const mid = w.table(6, n => w.first(n), [[0, 5]]);
+    w.body += `trailer\n<< /Size 6 /Root 1 0 R /Prev ${older} >>\n`;
+    stream(7, [0, 5], [0, 1, 2, 3, 4].map(n => xrefRow(1, w.first(n === 0 ? 1 : n))), ` /Root 1 0 R /Prev ${mid}`);
+    w.body += `startxref\n${w.first(7)}\n%%EOF\n`;
+    return latin1Bytes(w.body);
+  }
+  if (shape === 'prevIndirect' || shape === 'xrefStmIndirect' || shape === 'prevIndirectUnreadable') {
+    w.add(9, String(older));
+    const lands = (n: number): number => (n === 9 && shape === 'prevIndirectUnreadable' ? w.first(4) + 9 : w.first(n));
+    const top = w.table(10, lands, [[0, 5], [9, 1]]);
+    return end(top, `/Size 10 /Root 1 0 R /${shape === 'xrefStmIndirect' ? 'XRefStm' : 'Prev'} 9 0 R`);
+  }
+  const bad = w.table(2, n => w.first(n), [[1, 1]]);
+  if (shape === 'staleTableWithTrailer') w.body += 'trailer\n<< /Size 6 >>\n';
+  const top = w.table(6, n => w.first(n), [[0, 5]]);
+  const [xrefStm, prev] = shape === 'staleTableAfterPrev' ? [older, bad] : [bad, older];
+  return end(top, `/Size 6 /Root 1 0 R /XRefStm ${xrefStm} /Prev ${prev}`);
+}
+
+export type PageOrderShape =
+  | 'countHidesFirst' | 'countShiftsPages' | 'countHidesSecond' | 'pageWithoutType'
+  | 'countHonest' | 'countRootOverstated' | 'countRootUnderstated' | 'countIntermediateOverstated' | 'duplicateKid';
+
+/**
+ * A well-formed page tree whose /Count values or page dictionaries the two readers take differently (WS7 round 17, safety
+ * P1). pdf.js's `Catalog.getPageDict` skips a subtree by its /Count and counts any dictionary without /Kids as a page;
+ * pdf-lib's `PDFPageTree.traverse` ignores /Count and keeps only `/Type /Page` leaves. Pages read PAGE1..PAGE3:
+ *  - `countHidesFirst`: root /Count 1, Kids [an intermediate /Count 0 holding PAGE1, PAGE2]. pdf.js shows PAGE2 alone;
+ *    pdf-lib's first page is PAGE1.
+ *  - `countShiftsPages`: the same with PAGE3 after PAGE2 and root /Count 2: pdf.js shows PAGE2, PAGE3.
+ *  - `countHidesSecond`: root /Count 2, Kids [PAGE1, an intermediate /Count 0 holding PAGE2, PAGE3]. pdf.js shows
+ *    PAGE1, PAGE3 — the lie acts only past the first page, where the guard's one-walk shortcut must not be taken.
+ *  - `pageWithoutType`: PAGE1's dictionary has no /Type. pdf.js shows it; pdf-lib skips it.
+ *  - `countHonest`, `countRootOverstated` (pdf.js walks the whole tree), `countRootUnderstated` (pdf.js shows fewer
+ *    pages, every one the page pdf-lib holds there), `countIntermediateOverstated` (a lie no page lookup can act on) and
+ *    `duplicateKid` (controls).
+ * `rebuild` points `startxref` at object 1, which is no cross-reference section, so pdf.js rebuilds its table by scanning.
+ */
+export function buildPageOrderPdf(shape: PageOrderShape, opts: { rebuild?: boolean } = {}): Uint8Array {
+  const trees: Record<PageOrderShape, [string, number, string?]> = {
+    countHidesFirst: ['30 0 R 21 0 R', 1, '[20 0 R] /Count 0'],
+    countShiftsPages: ['30 0 R 21 0 R 22 0 R', 2, '[20 0 R] /Count 0'],
+    countHidesSecond: ['20 0 R 30 0 R 22 0 R', 2, '[21 0 R] /Count 0'],
+    pageWithoutType: ['20 0 R 21 0 R', 2],
+    countHonest: ['30 0 R 21 0 R', 2, '[20 0 R] /Count 1'],
+    countRootOverstated: ['20 0 R 21 0 R 22 0 R', 5],
+    countRootUnderstated: ['20 0 R 21 0 R 22 0 R', 2],
+    countIntermediateOverstated: ['20 0 R 30 0 R', 3, '[21 0 R 22 0 R] /Count 7'],
+    duplicateKid: ['20 0 R 20 0 R 21 0 R', 3],
+  };
+  const [kids, count, intermediate] = trees[shape];
+  const w = new ObjectWriter();
+  w.add(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  w.add(2, `<< /Type /Pages /Kids [${kids}] /Count ${count} >>`);
+  if (intermediate) w.add(30, `<< /Type /Pages /Parent 2 0 R /Kids ${intermediate} >>`);
+  w.add(4, HELVETICA);
+  for (let i = 0; i < 3; i++) {
+    const page = pageDict(2, 10 + i);
+    w.add(20 + i, shape === 'pageWithoutType' && i === 0 ? page.replace('/Type /Page ', '') : page);
+    w.add(10 + i, contentStream(`PAGE${i + 1}`));
+  }
+  const x = w.table(31, n => (w.has(n) ? w.first(n) : undefined));
+  w.body += `trailer\n<< /Size 31 /Root 1 0 R >>\nstartxref\n${opts.rebuild ? w.first(1) : x}\n%%EOF\n`;
+  return latin1Bytes(w.body);
+}
+
+export type LinearizedShape =
+  | 'linearizedFirstPageElsewhere' | 'linearizedEntryTable' | 'linearizedClean' | 'linearizedLengthWrong' | 'linearizedCountFromN';
+
+/**
+ * A linearized file: a first object with /Linearized whose /L is the file length, then the first-page cross-reference
+ * table (WS7 round 17). pdf.js enters such a file at the section after that first object (`PDFDocument.startXRef`), takes
+ * its page count from /N and its first page from /O. Measured in pdfjs-dist 6.3.289:
+ *  - `linearizedFirstPageElsewhere`: /O names the second page. pdf.js shows PAGE2 twice; pdf-lib holds PAGE1, PAGE2.
+ *  - `linearizedEntryTable`: the first-page table names the EARLIER copy of page 1's content (VIEWED) and `startxref` a
+ *    later table naming the copy pdf-lib keeps (SIGNED). pdf.js shows VIEWED.
+ *  - `linearizedClean`, and `linearizedLengthWrong` — the entry-table file with /L one byte off, which pdf.js does not
+ *    treat as linearized and reads through `startxref`: SIGNED (controls).
+ *  - `linearizedCountFromN`: /N 1 over the `countHidesSecond` tree. pdf.js counts one page, PAGE1, so the /Count lie
+ *    past it is never shown (control; counted by the catalog's /Count it would show PAGE1, PAGE3).
+ */
+export function buildLinearizedPdf(shape: LinearizedShape): Uint8Array {
+  const countFromN = shape === 'linearizedCountFromN';
+  const size = countFromN ? 31 : 22;
+  const dup = shape === 'linearizedEntryTable' || shape === 'linearizedLengthWrong';
+  const linearization = (length: number): string =>
+    `1 0 obj\n<< /Linearized 1 /L ${String(length).padStart(10, '0')} /H [1 1] `
+    + `/O ${shape === 'linearizedFirstPageElsewhere' ? 21 : 20} /E 1 /N ${countFromN ? 1 : 2} /T 1 >>\nendobj\n`;
+  const w = new ObjectWriter();
+  const linAt = w.body.length;
+  const firstTable = (offset: (num: number) => number | undefined): string => {
+    let s = `xref\n0 ${size}\n`;
+    for (let n = 0; n < size; n++) {
+      const o = n === 0 ? undefined : offset(n);
+      s += o === undefined ? '0000000000 65535 f \n' : `${String(o).padStart(10, '0')} 00000 n \n`;
+    }
+    return `${s}trailer\n<< /Size ${size} /Root 2 0 R >>\n`;
+  };
+  w.body += linearization(0);
+  const tableAt = w.body.length;
+  const placeholder = firstTable(() => 0);
+  w.body += placeholder;
+  w.add(2, '<< /Type /Catalog /Pages 3 0 R >>');
+  w.add(3, `<< /Type /Pages /Kids [${countFromN ? '20 0 R 30 0 R 22 0 R' : '20 0 R 21 0 R'}] /Count 2 >>`);
+  if (countFromN) {
+    w.add(30, '<< /Type /Pages /Parent 3 0 R /Kids [21 0 R] /Count 0 >>');
+    w.add(22, pageDict(3, 12));
+    w.add(12, contentStream('PAGE3'));
+  }
+  w.add(4, HELVETICA);
+  w.add(20, pageDict(3, 10));
+  w.add(21, pageDict(3, 11));
+  w.add(10, contentStream(dup ? 'VIEWED' : 'PAGE1'));
+  if (dup) w.add(10, contentStream('SIGNED'));
+  w.add(11, contentStream('PAGE2'));
+  const at = (pick: 'first' | 'last') => (n: number): number | undefined =>
+    (n === 1 ? linAt : w.has(n) ? w[pick](n) : undefined);
+  let startxref = tableAt;
+  if (dup) {
+    startxref = w.table(size, at('last'));
+    w.body += `trailer\n<< /Size ${size} /Root 2 0 R >>\n`;
+  }
+  w.body += `startxref\n${startxref}\n%%EOF\n`;
+  const table = firstTable(at('first'));
+  const length = w.body.length + (shape === 'linearizedLengthWrong' ? 1 : 0);
+  const body = w.body.slice(0, linAt) + linearization(length) + table + w.body.slice(tableAt + placeholder.length);
+  return latin1Bytes(body);
 }
 
 /** Appends an incremental-update section — the given objects, then a decorative xref and trailer. */

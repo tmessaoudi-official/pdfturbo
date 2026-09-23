@@ -6,10 +6,10 @@
  * every browser load accepted a dropped object. These cases go red on exactly that split.
  */
 import { describe, it, expect } from 'vitest';
-import { loadPdfDocument, PdfObjectDroppedError, PdfXrefMismatchError } from '../../src/utils/pdfLoadGuard';
+import { loadPdfDocument, PdfObjectDroppedError, PdfPageMismatchError, PdfXrefMismatchError } from '../../src/utils/pdfLoadGuard';
 import {
-  appendRevision, buildContentStreamPdf, buildObjStmPdf, buildPageTreePdf, buildViewerNullPdf, buildXrefPointerPdf,
-  buildXrefShapePdf, editPdfText,
+  appendRevision, buildContentStreamPdf, buildLinearizedPdf, buildObjStmPdf, buildPageOrderPdf, buildPageTreePdf,
+  buildViewerNullPdf, buildXrefPointerPdf, buildXrefQueuePdf, buildXrefShapePdf, editPdfText,
 } from '../utils/_invalidObjectFixture';
 
 describe('loadPdfDocument in the browser bundle (WS7 round 12)', () => {
@@ -93,5 +93,25 @@ describe('loadPdfDocument in the browser bundle (WS7 round 16)', () => {
   it('loads a bad last-page entry pdf.js meets while opening and rebuilds — the opening walks are mirrored in this bundle too', async () => {
     const doc = await loadPdfDocument(buildPageTreePdf('lastPageDictMid'));
     expect(doc.getPageCount()).toBe(3);
+  });
+});
+
+describe('loadPdfDocument in the browser bundle (WS7 round 17)', () => {
+  it('REFUSES content named only behind a table pdf.js cannot finish — the stale table state is mirrored in this bundle too', async () => {
+    const err = await loadPdfDocument(buildXrefQueuePdf('staleTableBeforePrev')).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PdfXrefMismatchError);
+    expect((err as PdfXrefMismatchError).refs).toEqual(['5 0 R']);
+  });
+
+  it('REFUSES a page tree whose /Count hides the page pdf-lib holds first — the page order is compared in this bundle too', async () => {
+    const err = await loadPdfDocument(buildPageOrderPdf('countHidesFirst')).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PdfPageMismatchError);
+    expect((err as PdfPageMismatchError).refs).toEqual(['page 1']);
+  });
+
+  it('REFUSES a linearized file whose first-page table names an earlier copy — pdf.js\'s entry point is mirrored in this bundle too', async () => {
+    const err = await loadPdfDocument(buildLinearizedPdf('linearizedEntryTable')).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PdfXrefMismatchError);
+    expect((err as PdfXrefMismatchError).refs).toEqual(['10 0 R']);
   });
 });
