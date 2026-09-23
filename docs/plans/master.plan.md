@@ -884,6 +884,10 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   said to ask about first. Output: a branch-by-branch table in `docs/ws7-certification-record.md`; fixes only
   for branches it proves divergent, each test-first with sabotage. Not taken on the developer's behalf: the
   three **Needs input** items, which stay open with a recommendation attached.
+- [2026-09-24 00:40] RECORDED (session): the audit was STOPPED before any result — its two subagents raised
+  permission prompts while the developer was asleep ("You are prompting for permissions!"). Nothing from it was
+  kept or acted on. Resume it in an attended session; the two prompts (xref half, page-walk half) are in this
+  session's transcript. CI for `3e98c7c` was not watched to completion — check the Actions run first.
 
 ## Status
 <!-- progress-block v1 -->
