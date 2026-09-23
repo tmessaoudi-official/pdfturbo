@@ -1352,7 +1352,7 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   rebuilds by scanning and agrees with pdf-lib. **Round 16 found two more, each measured first.** pdf.js reads
   each queued section inside a try/catch (`XRef.readXRef`), so a `/Prev` or `/XRefStm` it cannot read — into an
   object, past EOF, at a content stream, at a table with no trailer, at a stream it rejects part-way (keeping the
-  rows read before the failure) — costs that section only; the chain was abandoned there instead, leaving the
+  rows read before the failure) — is skipped and the queue goes on; the chain was abandoned there instead, leaving the
   round-13 shape uncompared behind one bad pointer. And an entry that does not land on its object makes pdf.js
   THROW, and it rebuilds only when that happens on its opening walk to the first or last page (`checkFirstPage` /
   `checkLastPage`, now mirrored with the `/Count` skip and the `getAllPageDicts` fallback): anywhere else the page
@@ -1361,6 +1361,21 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   the first-page walk meets one — **measure the shape you generalise to, not the one you had.** One existing
   fixture was that shape: `buildContentStreamPdf({ padStreamBytes })` wrote its table in file order, pointing
   `5 0 R` at object 6, which pdf.js draws blank (measured); it now writes rows by object number.
+  **Round 17 found that "the queue goes on" was not true either, and a gap no cross-reference table shows**, each
+  measured in pdf.js first. A table pdf.js cannot finish — no trailer, a trailer that is not a dictionary, or object 0
+  in use once its rows are in — leaves `XRef._tableState` behind, so every LATER table in the queue restores it,
+  fails the same way and reads no rows. The guard read them, so content named only behind such a table compared as
+  shown while pdf.js drew the page blank. A stream ignores that state, but `streamState` does the same between
+  streams, and a stream read after a rejected one refuses rather than being modelled. `/Prev` and `/XRefStm` written
+  as references are resolved through the rows read so far, as `Dict.get` does (the guard used to refuse a file both
+  readers agree on). A linearized file is read from the section after its first object (`PDFDocument.startXRef`),
+  with its first page and count from the linearization dictionary. And a third refusal, `PdfPageMismatchError`:
+  `Catalog.getPageDict` skips a subtree by its `/Count` and counts any dictionary without `/Kids` as a page, while
+  pdf-lib's `PDFPageTree.traverse` ignores `/Count` and keeps only `/Type /Page` leaves, so a `/Count` lie in an
+  ordinary tree showed one page and exported or signed another. Each index pdf.js shows is compared with the page
+  pdf-lib holds there; fewer pages loads, a different or extra one refuses. **"Costs that section only" had been
+  stated as measured on nine surfaces; it held only when no table followed the unfinished one** — a rule measured on
+  the last section of a queue says nothing about the sections after it.
   **A resolved chain is not a compared chain.** Round 13
   recorded "14 of 15 real files reached the comparison". Measuring round 14's fixes showed pdf-lib inflates a
   cross-reference STREAM but never applies its `/DecodeParms /Predictor`, which Acrobat and most producers
@@ -1372,15 +1387,14 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   a file offset lands on a definition pdf-lib parsed there. Bounds, all in `KNOWN_ISSUES.md` / `SECURITY.md`:
   no comparison through an xref stream whose filters are not modelled (one pdf.js rejects part-way is skipped
   with the rows it read, as pdf.js does), for entries inside
-  an object stream, or for pdf.js's trailer choice in recovery mode; a linearized file IS compared, through
-  `startxref`, while pdf.js enters at its first-page table; and its opening page walks are mirrored through the
-  page tree, where pdf.js reads a linearized file's first page and count from the linearization dictionary.
+  an object stream, or for pdf.js's trailer choice in recovery mode; pages are not compared when pdf-lib cannot
+  list them, and pages written directly in `/Kids` only by position.
   **Measured on 15 real
   files** (`LOAD_GUARD_CORPUS=1 npx vitest run tests/utils/pdfLoadGuardCorpus.test.ts`, report in
   `var/claude/ws7/load-guard-corpus.json`): guard outcome equals raw pdf-lib on 15 of 15, all 15 read through
   the chain pdf.js follows, and 12,059 of 12,059 in-use chain entries landing on a parsed
   definition — so zero false refusals is a measurement, not an absence of input. Re-run after round 16's fix:
-  unchanged, 15 of 15 and 12,059 of 12,059.
+  unchanged, 15 of 15 and 12,059 of 12,059. Re-run after round 17's: unchanged again.
   Found while re-running it: the recorder installs on the first `loadPdfDocument`, so a run filtered with `-t`
   measured its first file before anything was recorded and reported it unread by pdf.js; `describeParse` now
   throws on a parse with no record, and the corpus file installs the recorder first. Load time in ONE run at load

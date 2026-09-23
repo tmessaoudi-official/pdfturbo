@@ -64,14 +64,27 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From WS7 round 17 (2026-09-14)
+
+- **A second cross-reference stream after one pdf.js rejects refuses the file** (P3, deliberate). pdf.js reads
+  the second stream with the first one's position, widths and ranges, which PDFturbo does not model, so it
+  refuses rather than guess. No real file measured has this shape.
+- **What the page-order check does not compare** (P3, bounds of a fix). The PDF exports and signing refuse a
+  file where a page pdf.js shows is not the page pdf-lib holds at that position — a wrong `/Count`, a page
+  dictionary without `/Type`, a linearized file's first-page object. Not compared: a file whose page tree
+  pdf-lib cannot list, where every export fails anyway. Loads: pdf.js showing fewer pages than pdf-lib holds
+  while every page it shows is the one pdf-lib holds there. Pages written directly inside `/Kids` rather than as
+  references are compared by position only. When pdf.js rebuilds its table by scanning, the pages are walked
+  over pdf-lib's objects and root.
+
 ### From WS7 round 14 (2026-09-13)
 
 - ~~**A damaged file pdf.js repairs while opening can be refused**~~ — **CLOSED by WS7 round 16 (2026-09-14).**
   pdf.js checks the first and last page as it opens a file and, when an entry on the way to one lands on the
   wrong object, rebuilds its table by scanning (`checkFirstPage` / `checkLastPage`, including the whole-tree walk
   the last-page check falls back to). PDFturbo now mirrors those walks and compares nothing for such a file.
-  Bound, not mirrored: pdf.js takes a linearized file's first page and page count from its linearization
-  dictionary, where PDFturbo walks the page tree.
+  The bound this left — pdf.js takes a linearized file's first page and page count from its linearization
+  dictionary — is closed by WS7 round 17, which mirrors both.
 - **A cross-reference stream PDFturbo does not decode the way pdf.js does is not compared** (P3). pdf-lib
   never applies a cross-reference stream's predictor, so PDFturbo decodes those entries itself; a stream with
   abbreviated filter keys, a predictor under a second filter, or a TIFF predictor at other than 8 bits is not
@@ -83,7 +96,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). Since rounds 13
   and 14, the PDF exports, a page image, signing, the searchable OCR layer, sanitizing and compressing refuse a file whose cross-reference table names
   a copy of an object pdf-lib did not keep, marks a used object free, or (round 16) places it at bytes that are
-  not that object — also behind an older section pdf.js cannot read and skips — whose startxref trailer names a
+  not that object — also behind an older section pdf.js cannot read and skips, and (round 17) behind a table it
+  cannot finish, after which it reads no later table — whose startxref trailer names a
   different document root from the last trailer pdf-lib keeps, or whose root pdf-lib replaced — the shapes
   that let a crafted file show one page and export or sign another. Editing in place falls back to an
   editable overlay instead, and the export built afterwards refuses. The Word/Markdown/text, table and XFDF
@@ -91,9 +105,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
   screen and are not checked. Not compared: objects the table places
   inside an object stream; a file pdf.js rebuilds by scanning — no section of its chain yields a trailer, the
   root is unusable, or its opening walk to the first or last page meets an entry it cannot read — where it keeps
-  the last definition like pdf-lib, measured, but picks its trailer by its own rule; and a
-  linearized file whose first-page table — where pdf.js starts — differs from the table `startxref` names,
-  which is the one compared. Zero refusals over the 15 files of `var/corpus` and the 5 of
+  the last definition like pdf-lib, measured, but picks its trailer by its own rule. Since round 17 a
+  linearized file is read from its first-page table, where pdf.js starts. Zero refusals over the 15 files of `var/corpus` and the 5 of
   `tests/fixtures/corpus-public`; all 15 are read through the chain pdf.js follows, with every in-use entry
   landing on an object pdf-lib parsed (`tests/utils/pdfLoadGuardCorpus.test.ts`). Round 13 recorded "14 of
   the 15 reaching the comparison": for 10 of those 14, the chain was a cross-reference stream pdf-lib had

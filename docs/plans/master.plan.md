@@ -866,6 +866,17 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   red first; sabotage 10 of 11 red (S8 equivalent); corpus unchanged at 15 of 15 and 12,059 of 12,059; Node-24 gate
   ALL GREEN; the browser file pins the two new refusal shapes. Docs corrected for both P1s, the P2 and the P3.
   Counter stays 0 of 2; round 17 next on the same stop rules.
+- [2026-09-14 15:31] AGREED: WS7 round 17 at `63d877e` (reviewed as `29c2d8d`, amended to an identical tree) = **4 findings** (safety P1: a `/Count` lie in an ordinary
+  page tree shows one page and exports/signs another; export + completeness P1: pdf.js keeps `_tableState` after a
+  table it cannot finish, so every later TABLE in the queue fails while `readXrefChain` adds its rows; completeness
+  P2: nine surfaces state "skips only that section" as fact; completeness P3: an indirect `/Prev` is not followed).
+  The developer ends the open-ended round loop ("that's enough rounds"): fix all four, then ONE finite
+  branch-by-branch audit of pdf.js's cross-reference and page-walk code against the guard, fix what it lists, run
+  the full Node-24 gate with sabotage, and push. No further rounds. This replaces the two-consecutive-clean-rounds
+  criterion for WS7.
+- [2026-09-14 16:15] RECORDED: the developer, mid-fix: "Let's stop at a clean correct version!" Read as: land the
+  four round-17 fixes tested, gated and pushed, then ask before starting the one audit. Correction to the 12:53 entry
+  above: "costs that section only" held only when no table followed one pdf.js could not finish (round 17).
 
 ## Status
 <!-- progress-block v1 -->
@@ -886,7 +897,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 16 rounds run, NOT certified (0/2 clean), round 17 next | L | blocked | - | - |
+| 16 | WS7 — certification: 17 rounds run; round loop ended by ruling 2026-09-14; ONE finite pdf.js xref/page-walk audit next (ask first) | L | todo | - | - |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 | 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 | 19 | Upgrade every dependency and CI action to latest (ruled 2026-09-13) | M | done | caf4350 | package.json, package-lock.json, .github/workflows/deploy.yml |
@@ -898,6 +909,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 25 | WS7 round 14 — 9 findings fixed: free/offset-0 entries and a recovered root refuse, copies compared by bytes, cross-reference stream predictors decoded as pdf.js does | M | done | 0122d96 | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/utils/pdfLoadGuardCorpus.test.ts tests/browser/pdf-load-guard.browser.test.ts tests/handlers/textEditHandler.test.ts |
 | 26 | WS7 round 15 — 4 findings fixed: a load-guard refusal shows its own message, export scope and round count corrected in the docs | S | done | 0932e80 | src/utils/pdfLoadGuard.ts src/export/exportService.ts src/core/pdfTurboApp.ts src/handlers/signingHandler.ts locales/en.json locales/fr.json locales/ar.json tests/utils/pdfLoadRefusal.test.ts tests/export/exportSaveRouting.test.ts tests/handlers/signingContext.test.ts tests/core/ocrRefusalToast.test.ts |
 | 27 | WS7 round 16 — 4 findings fixed: comparison continues past a section pdf.js skips, an entry it cannot read refuses, opening walks mirrored | M | done | c3221ed | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/browser/pdf-load-guard.browser.test.ts |
+| 28 | WS7 round 17 — 4 findings fixed: /Count page-order mismatch refuses, tables after one pdf.js cannot finish read no rows, indirect /Prev followed, linearized start | M | done | e19880b | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

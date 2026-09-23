@@ -279,7 +279,8 @@ viewing the file are unaffected.
   pdf.js still draws it, so the export would lose it. A file is refused when anything it uses was dropped
   and nothing later in the file replaced it — including when the drop sits behind a second damaged object
   whose contents cannot be read at all.
-- **The viewer and the export library would read different objects** (fixed in WS7 rounds 13, 14 and 16).
+- **The viewer and the export library would read different objects or pages** (fixed in WS7 rounds 13, 14, 16
+  and 17).
   pdf.js finds objects through the cross-reference table the end of the file points to; pdf-lib reads
   objects in order and keeps the last copy of each, and the last trailer. Each of these showed one page and
   exported or signed another — a valid signature over content the signer never saw:
@@ -290,24 +291,32 @@ viewing the file are unaffected.
     and draws the page blank or not at all — unless it meets the entry while opening the first or last page,
     when it repairs its table by scanning and agrees with pdf-lib;
   - any of these in a file whose update points at an older section the viewer cannot read (the middle of an
-    object, past the end of the file, a damaged cross-reference stream): the viewer skips only that section
-    and keeps reading the rest, and so does the check;
+    object, past the end of the file, a damaged cross-reference stream): the viewer skips that section and
+    reads on — except that after a cross-reference table it cannot finish it reads no later table at all, and
+    after a stream it rejects it misreads any later stream. The check follows the same rules, and refuses a
+    file in the second case;
+  - an update pointer written as a reference to an object holding the offset, which the viewer follows;
   - a trailer the viewer follows that names a different document root from the later trailer pdf-lib keeps;
   - a document root pdf-lib silently replaces with another one in the file, because the declared root does
-    not say it is a catalog.
+    not say it is a catalog;
+  - a page tree whose page counts are wrong, or a page without its type: the viewer skips pages by those
+    counts and shows pages the export library does not list, so the page on screen at a position is not the
+    page exported or signed there;
+  - a linearized ("fast web view") file: the viewer starts reading at its first-page table rather than the
+    table the end of the file points to, and shows the page its linearization dictionary names first.
 
   A legitimately updated file keeps both readers in step. Measured on 15 real-world PDFs — forms, papers
   and reports, most of them updated or linearized — and on 5 test files kept in the repository: none was
-  refused, and each of the 15 was read through the same cross-reference chain the viewer follows.
+  refused, and each of the 15 was read through the same cross-reference chain the viewer follows (re-measured
+  after round 17).
 
 What is still not checked, stated rather than hidden: bytes pdf-lib never reads as an object at all; an
 object the table places inside a compressed object stream; a file pdf.js repairs by scanning — no section it
 can read yields a trailer, its document root is unusable, or opening the first or last page meets an entry it
 cannot read — where it keeps the last copy of each object, like pdf-lib (measured), but chooses its trailer by a
 rule PDFturbo does not reproduce; a compressed cross-reference stream written in a
-form PDFturbo does not decode the way pdf.js does; and a linearized ("fast web view") file whose first-page
-table disagrees with the table the end of the file points to — pdf.js starts from the first, PDFturbo
-compares against the second.
+form PDFturbo does not decode the way pdf.js does; and the pages of a file whose page tree the export library
+cannot list at all, where every export fails anyway.
 
 ## Data at rest (session persistence)
 

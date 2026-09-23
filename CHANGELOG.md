@@ -109,9 +109,12 @@ most of the work went into proving that what the product claims to remove is act
   file's cross-reference table; the library that builds exports and signatures reads objects in order and
   keeps the last copy. A file whose table pointed at an earlier copy, whose table marked the page's content
   as free or pointed it at the wrong bytes (the viewer then drew a blank page) — also when an update pointed
-  at an older section the viewer could not read and skipped — or whose trailer the viewer follows named a different document
+  at an older section the viewer could not read and skipped, or sat behind a cross-reference table the viewer
+  could not finish, after which it reads no later table — or whose trailer the viewer follows named a different document
   from the later one the library keeps, was shown one way and exported — or signed — the other; so was a
-  file whose document root the library quietly swapped for another. Such a file is now refused, with a
+  file whose document root the library quietly swapped for another, a page tree whose page counts made the
+  viewer skip the page the library lists first, and a linearized ("fast web view") file whose first-page
+  table the viewer starts from. Such a file is now refused, with a
   message that says why instead of asking you to try again;
   `SECURITY.md` § "One file, two readers" states what is still not checked.
 
