@@ -877,6 +877,13 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-14 16:15] RECORDED: the developer, mid-fix: "Let's stop at a clean correct version!" Read as: land the
   four round-17 fixes tested, gated and pushed, then ask before starting the one audit. Correction to the 12:53 entry
   above: "costs that section only" held only when no table followed one pdf.js could not finish (round 17).
+- [2026-09-24 00:30] RECORDED (session-decided, developer asleep — NOT a ruling; review on waking): round-17
+  fixes landed as `e19880b` + `3e98c7c` after the full Node-24 gate at settled load (jsdom 2836, browser 354,
+  coverage 44.07%, build, QA sweep 151/114/0). The developer said "do what you can… take the best recommended
+  one and note it". Taken: START the one finite pdf.js cross-reference/page-walk audit that the 15:31 entry
+  said to ask about first. Output: a branch-by-branch table in `docs/ws7-certification-record.md`; fixes only
+  for branches it proves divergent, each test-first with sabotage. Not taken on the developer's behalf: the
+  three **Needs input** items, which stay open with a recommendation attached.
 
 ## Status
 <!-- progress-block v1 -->
@@ -913,9 +920,9 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- **Kept in-document media actions** (`/Rendition` without script, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`): the `[2026-09-05 00:10]` ruling kept them on the premise that no browser reader runs them. WS7 round 10 measured that false — pdf.js plays a clip on a click. They stay kept and the docs are corrected; whether to keep them is the developer's to re-rule.
-- **`/PieceInfo` stripping**: flagged since round 9, unruled.
-- **CI Node line**: CI stays on Node 24 (`.nvmrc`, `deploy.yml`); moving to 26 is the developer's call.
+- **Kept in-document media actions** (`/Rendition` without script, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`): the `[2026-09-05 00:10]` ruling kept them on the premise that no browser reader runs them. WS7 round 10 measured that false — pdf.js plays a clip on a click. They stay kept and the docs are corrected; whether to keep them is the developer's to re-rule. Recommendation (2026-09-24, session): keep them — they play only on a user click and stay inside the document; nothing leaves the device.
+- **`/PieceInfo` stripping**: flagged since round 9, unruled. The code has stripped it since round 9. Recommendation (2026-09-24, session): keep stripping it — Illustrator/InDesign put the source document there, with author paths.
+- **CI Node line**: CI stays on Node 24 (`.nvmrc`, `deploy.yml`); moving to 26 is the developer's call. Recommendation (2026-09-24, session): stay on 24 until 26 reaches LTS (October 2026 [Unverified: release schedule not checked]), then move .nvmrc and deploy.yml together.
 ### Needs research
 ### Fragile
 ### Known issues
