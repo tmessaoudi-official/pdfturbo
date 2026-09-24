@@ -942,7 +942,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 27 | WS7 round 16 — 4 findings fixed: comparison continues past a section pdf.js skips, an entry it cannot read refuses, opening walks mirrored | M | done | c3221ed | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/browser/pdf-load-guard.browser.test.ts |
 | 28 | WS7 round 17 — 4 findings fixed: /Count page-order mismatch refuses, tables after one pdf.js cannot finish read no rows, indirect /Prev followed, linearized start | M | done | e19880b | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts |
 | 29 | CI and local gate move to Node 26 (ruled 2026-09-24) | S | done | a2bc53e | .nvmrc package.json package-lock.json .github/workflows/deploy.yml tests/infra/prePushHook.test.ts |
-| 30 | WS8 — replace the load-guard mirror: run pdf.js and compare per page with pdf-lib's copy (built; rows in docs/plans/ws8-viewer-check.plan.md) | L | doing | cc7a4c2 | src/utils/pdfLoadGuard.ts, tests/tools/ws8Cost.test.ts |
+| 30 | WS8 — replace the load-guard mirror: run pdf.js and compare per page with pdf-lib's copy (built; rows in docs/plans/ws8-viewer-check.plan.md) | L | doing | 17d31d4 | src/utils/pdfLoadGuard.ts, tests/tools/ws8Cost.test.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input

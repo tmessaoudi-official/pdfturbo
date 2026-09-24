@@ -88,13 +88,13 @@ persisted-state change — the registry is in-memory only).
 |---|------|------|-------|----------|-------|
 | 1 | Browser cost gate (go/no-go) — GO: new main-thread long tasks ≤ 115 ms (2 runs, load 5.9); pdf.js pass 8.3–13.1 s wall-clock in the worker, so the open-time background start (step 3) is REQUIRED | S | done | c2e3d88 | tests/browser/ws8-cost.browser.test.ts |
 | 2 | viewerCheck module — 8 cases; sabotage: ops dropped→1, text dropped→3, save() for fresh copy→1, layers unreported→1 | M | done | cc7a4c2 | src/utils/viewerCheck.ts |
-| 3 | Verdict cache keyed by bytes identity + prewarm on every source entry + inheritance on a true edit / OCR layer | M | doing | - | src/utils/viewerVerdict.ts, src/ui/documentLoader.ts, src/core/pageService.ts, src/core/pdfTurboApp.ts |
-| 4 | loadPdfDocument rewired (`viewerCheck: 'source' | false`, required), mirror removed; the call-site choice is pinned by name | L | doing | - | src/utils/pdfLoadGuard.ts, src/export/**, src/handlers/textEditHandler.ts, src/ocr/searchableTextLayer.ts, src/signing/**, src/utils/pdfSanitizer.ts |
-| 5 | Optional-content carried with the pages at all 5 copy sites; two layered sources with an OFF layer refuse | M | doing | - | src/export/copySourcePages.ts, src/export/exportService.ts, src/export/exportPipeline.ts |
-| 6 | Test migration + tracked shape fixtures (tests/fixtures/ws8-audit, 20 cases) | L | doing | - | tests/utils/**, tests/browser/** |
-| 7 | Sabotage round, on the 5 jsdom guard files (151 cases), each restored and cmp'd — S1 viewer check never runs→43; S2 conflict ignores hidden layers→1; S3 carryLayers no-op→5; S4 second copier for /OCProperties→1; S5 a source site skips the check→1; S6 edit does not inherit→1; S7 hiddenLayers always false→2; S8 open skips prewarm→1; S9 text fingerprint dropped→31; S10 ops fingerprint dropped→1; S11 operand hash dropped→1 (the operands case); S12 (browser) rasterizer carryLayers dropped→exactly the redacted-page case. Script: var/claude/ws8/sabotage.py | S | doing | - | - |
-| 8 | Docs | M | doing | - | CLAUDE.md, SECURITY.md, KNOWN_ISSUES.md, CHANGELOG.md |
-| 9 | Full gate + milestone panel | S | todo | - | - |
+| 3 | Verdict cache keyed by bytes identity + prewarm on every source entry + inheritance on a true edit / OCR layer | M | done | 17d31d4 | src/utils/viewerVerdict.ts, src/ui/documentLoader.ts, src/core/pageService.ts, src/core/pdfTurboApp.ts |
+| 4 | loadPdfDocument rewired (`viewerCheck: 'source' | false`, required), mirror removed; the call-site choice is pinned by name | L | done | 17d31d4 | src/utils/pdfLoadGuard.ts, src/export/**, src/handlers/textEditHandler.ts, src/ocr/searchableTextLayer.ts, src/signing/**, src/utils/pdfSanitizer.ts |
+| 5 | Optional-content carried with the pages at all 5 copy sites; two layered sources with an OFF layer refuse | M | done | 17d31d4 | src/export/copySourcePages.ts, src/export/exportService.ts, src/export/exportPipeline.ts |
+| 6 | Test migration + tracked shape fixtures (tests/fixtures/ws8-audit, 20 cases) | L | done | 17d31d4 | tests/utils/**, tests/browser/** |
+| 7 | Sabotage round, on the 5 jsdom guard files (151 cases), each restored and cmp'd — S1 viewer check never runs→43; S2 conflict ignores hidden layers→1; S3 carryLayers no-op→5; S4 second copier for /OCProperties→1; S5 a source site skips the check→1; S6 edit does not inherit→1; S7 hiddenLayers always false→2; S8 open skips prewarm→1; S9 text fingerprint dropped→31; S10 ops fingerprint dropped→1; S11 operand hash dropped→1 (the operands case); S12 (browser) rasterizer carryLayers dropped→exactly the redacted-page case. Script: var/claude/ws8/sabotage.py | S | done | 17d31d4 | - |
+| 8 | Docs | M | done | 17d31d4 | CLAUDE.md, SECURITY.md, KNOWN_ISSUES.md, CHANGELOG.md |
+| 9 | Full gate + milestone panel — gate green on Node 26 at load 25–37 (jsdom 2883, browser 356/356, coverage, build, qa:sweep 151/114/0); panel pending | S | doing | 17d31d4 | - |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
