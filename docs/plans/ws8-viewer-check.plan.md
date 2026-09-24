@@ -38,6 +38,8 @@ per-export repeat cost, and keep every caller's refusal handling unchanged.
 1. **Browser cost gate (go/no-go).** `tests/browser/ws8-cost.browser.test.ts` (opt-in, not in CI) on Publication 17
    and one form, real worker: total time and main-thread time (long tasks via `PerformanceObserver`). Threshold
    proposed: no main-thread task over 200 ms; total reported. If it fails, stop and report — do not build on it.
+   The budget applies to the NEW work (copy+save and the pdf.js pass); pdf-lib's own parse runs on today's export
+   path already and is reported separately. A first run at load 7.5–10 without phase tags saw one 210 ms task.
 2. **`src/utils/viewerCheck.ts`** (new, pure orchestration): `viewerMismatch(libDoc, original: PDFDocumentProxy,
    pdfjs)` → `{ pages: number[], hiddenLayers: boolean }`. Builds the fresh copy, opens it with the SAME pdfjs module,
    fingerprints text (`getTextContent` str + origin) and operators (`getOperatorList`, annotations DISABLED) for
@@ -82,7 +84,7 @@ persisted-state change — the registry is in-memory only).
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
-| 1 | Browser cost gate (go/no-go) | S | todo | - | tests/browser/ws8-cost.browser.test.ts |
+| 1 | Browser cost gate (go/no-go) — GO: new main-thread long tasks ≤ 115 ms (2 runs, load 5.9); pdf.js pass 8.3–13.1 s wall-clock in the worker, so the open-time background start (step 3) is REQUIRED | S | done | 2c0b513 | tests/browser/ws8-cost.browser.test.ts |
 | 2 | viewerCheck module | M | todo | - | src/utils/viewerCheck.ts |
 | 3 | Source registry + background check | M | todo | - | src/core/documentModel.ts, src/core/pdfTurboApp.ts |
 | 4 | loadPdfDocument rewired, mirror removed | L | todo | - | src/utils/pdfLoadGuard.ts |
