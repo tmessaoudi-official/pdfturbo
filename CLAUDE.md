@@ -1405,6 +1405,9 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   switches OFF came out visible — every page copy now goes through `src/export/copySourcePages.ts`, which copies the
   pages and the layer settings with ONE `PDFObjectCopier` (a second copier duplicates the groups and viewers match
   them by reference). See `SECURITY.md` / `KNOWN_ISSUES.md` for what the check does not compare.
+  **A test that `vi.mock`s `pdfjs-dist` and reaches a `'source'` load must also mock `../../src/utils/viewerVerdict`
+  with a clean verdict** — otherwise the check runs on the stub and the export reports a failure that is not a
+  product bug (`No "GlobalWorkerOptions" export`); `tests/export/imageExportOptions.test.ts` is the shape.
   **A resolved chain is not a compared chain.** Round 13
   recorded "14 of 15 real files reached the comparison". Measuring round 14's fixes showed pdf-lib inflates a
   cross-reference STREAM but never applies its `/DecodeParms /Predictor`, which Acrobat and most producers
