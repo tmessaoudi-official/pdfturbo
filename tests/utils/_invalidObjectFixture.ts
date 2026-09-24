@@ -566,6 +566,30 @@ export function buildXrefQueuePdf(shape: XrefQueueShape): Uint8Array {
   return end(top, `/Size 6 /Root 1 0 R /XRefStm ${xrefStm} /Prev ${prev}`);
 }
 
+export type XrefCountShape = 'countHonest' | 'countShort' | 'countLong';
+
+/**
+ * One cross-reference table naming the EARLIER of two copies of the content stream (VIEWED first, SIGNED last),
+ * whose subsection header declares the true row count, one row more, or one row fewer (closing audit, 2026-09-24,
+ * P3a). pdf-lib ignores the declared count; pdf.js's `readXRefTable` reads exactly that many rows and throws when
+ * the rows and the count disagree — so it finds no trailer, rebuilds by scanning, keeps the last copy like pdf-lib,
+ * and shows SIGNED. Only `countHonest` is read as written: pdf.js shows VIEWED while pdf-lib holds SIGNED.
+ */
+export function buildXrefCountPdf(shape: XrefCountShape): Uint8Array {
+  const w = new ObjectWriter();
+  w.add(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  w.add(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  w.add(3, pageDict(2, 5));
+  w.add(4, HELVETICA);
+  w.add(5, contentStream('VIEWED'));
+  w.add(5, contentStream('SIGNED'));
+  const at = w.table(6, n => w.first(n));
+  const declared = { countHonest: 6, countShort: 7, countLong: 5 }[shape];
+  w.body = w.body.slice(0, at) + w.body.slice(at).replace('xref\n0 6\n', `xref\n0 ${declared}\n`);
+  w.body += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`;
+  return latin1Bytes(w.body);
+}
+
 export type PageOrderShape =
   | 'countHidesFirst' | 'countShiftsPages' | 'countHidesSecond' | 'pageWithoutType'
   | 'countHonest' | 'countRootOverstated' | 'countRootUnderstated' | 'countIntermediateOverstated' | 'duplicateKid';

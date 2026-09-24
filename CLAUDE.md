@@ -1337,7 +1337,8 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   and the LAST trailer; pdf.js follows `startxref` and the xref chain. Measured in pdf.js 6.3.289 before
   writing it: first-wins per section, a table's `/XRefStm` queued before `/Prev`, offsets relative to the
   first `%PDF-` in the first 1024 bytes, and a rebuild by scanning that keeps the last definition, exactly
-  like pdf-lib (when it happens — round 16, below). So a file whose table points at an EARLIER copy showed
+  like pdf-lib (when it happens — round 16, below) — EXCEPT when two copies differ in generation, where it
+  keeps the first (closing audit, 2026-09-24). So a file whose table points at an EARLIER copy showed
   one page and exported or SIGNED another with nothing dropped (probe: pdf.js read VIEWED, pdf-lib SIGNED).
   The recorder also keeps each definition's offset and the xref sections pdf-lib parses and then discards;
   a reachable object refuses when the chain lands on a definition pdf-lib did not keep and the VALUES differ
@@ -1378,6 +1379,13 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   pdf-lib holds there; fewer pages loads, a different or extra one refuses. **"Costs that section only" had been
   stated as measured on nine surfaces; it held only when no table followed the unfinished one** — a rule measured on
   the last section of a queue says nothing about the sections after it.
+  **The closing audit (2026-09-24) ENDED the mirror's review rounds** (developer ruling "disclose and close"): a
+  branch-by-branch comparison with pdf.js 6.3.289 measured ten more crafted shapes that get past the guard — one
+  cause, the mirror re-reads cross-reference bytes on pdf-lib's parse, so any bytes the two tokenize differently
+  slip through — and they are ONE disclosed bound in `SECURITY.md` / `KNOWN_ISSUES.md`, not ten fixes. **Do not
+  start a round 18 on the mirror**; closing the class means running pdf.js and comparing what it shows per page.
+  Its one false refusal (a table whose declared row count is wrong, which pdf.js rebuilds past) is fixed by
+  `viewerTableRows`.
   **A resolved chain is not a compared chain.** Round 13
   recorded "14 of 15 real files reached the comparison". Measuring round 14's fixes showed pdf-lib inflates a
   cross-reference STREAM but never applies its `/DecodeParms /Predictor`, which Acrobat and most producers

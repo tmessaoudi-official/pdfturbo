@@ -559,3 +559,59 @@ streams; streams whose decoding is not modelled. The new shapes were read throug
 browser.
 
 **The counter remains 0 of 2.** Round 17 next, on the same stop rules.
+
+## Closing audit — pdf.js cross-reference and page walk vs the load guard (2026-09-24)
+
+Ruled 2026-09-14 15:31 (replaces the two-consecutive-clean-rounds criterion) and started attended on 2026-09-24
+after the overnight attempt was stopped unrun. FINITE by construction: the rows below were enumerated from
+`pdfjs-dist` 6.3.289 (`build/pdf.worker.mjs`) BEFORE any was checked, and the audit is exactly these rows.
+Verdicts: **mirrored** (the guard function that mirrors it), **bound** (already disclosed — the line),
+**divergent** (only with a crafted file measured through real `getDocument`; each becomes a failing test, a fix
+and a sabotage). Divergent is the only verdict that changes code.
+
+| # | pdf.js branch | Verdict | Evidence |
+|---|---|---|---|
+| X1 | `PDFDocument.startXRef` — startxref search, linearized entry point | **divergent** (P1) | A trailing `%startxref <older offset>` comment after `%%EOF`: pdf.js's backwards search takes the comment and reads the older table (shows SHOWN); the guard starts from pdf-lib's `startxref` (exports EXPORTED) and loads. Linearized entry: mirrored (`linearizedStart`). |
+| X2 | `XRef.parse` — the recovery decision and trailer/root selection | mirrored | `acceptsAsRoot`, the `'rebuild'` path. Where `/Encrypt` is read from: bound (guard header, "Kept deliberately"). |
+| X3 | `XRef.readXRef` — the queue, the try/catch skip, `/Prev` and `/XRefStm` order | **divergent** (P2, P7) | P2: `startxref` at an xref stream with no `/Type /XRef` — pdf.js reads it, pdf-lib parses an ordinary stream, the guard falls to `'rebuild'` and compares nothing (control with `/Type /XRef` refuses). P7: `startxref` at a table hidden inside another object's stream data — same fallback. |
+| X4 | `XRef.processXRefTable` / `readXRefTable` — rows, subsections, `_tableState` residue | **divergent** (P3a false refusal, P3b, P8, P9) | P3a: the ONLY table declares one row more than it has — pdf.js rebuilds and agrees with pdf-lib, the guard REFUSES a file both read the same. P3b: a middle table short of rows — pdf.js stops there (blank on screen), the guard follows its `/Prev` (content exported). P8: a non-first subsection `1 N` with a free first row — pdf.js renumbers from 0, the guard does not. P9: a row offset written `100.0` or `+100` — pdf.js reads the number, pdf-lib yields an empty section. |
+| X5 | `XRef.processXRefStream` / `readXRefStream` — `/W`, `/Index`, entry types, `streamState` | **divergent** (P5) | A table's `/XRefStm` at a `/Type /XRef` stream with no `/W`, then `/Prev` at a good stream: pdf.js keeps `streamState` and reads no rows from the good one (blank); pdf-lib cannot build the bad stream, so the guard never learns it was rejected — and loads, where KNOWN_ISSUES says this shape refuses. Otherwise mirrored (`viewerXrefStreamEntries`, `unpredict`). |
+| X6 | `XRef.indexObjects` — the rebuild: last definition, which trailer wins | bound — **disclosure wrong** | When a later copy has a different GENERATION, pdf.js's rebuild keeps the FIRST definition, not the last. Measured: open error or page error on screen, content in the export. The guard header and `SECURITY.md` say rebuild keeps "the last copy, like pdf-lib (measured)" — false for this shape. The open-error variant never loads in the app (`documentLoader.ts:388`), so only the page-error variant can reach an export. |
+| X7 | `XRef.getEntry` — absent / free / offset-0 entries | mirrored | `viewerLookup` (`pdfLoadGuard.ts:892`). |
+| X8 | `XRef.fetchUncompressed` — object number and generation checks | **divergent** (P4); gen check mirrored | The generation check is mirrored (pdf.js's fallback exists only in recovery mode, so no false refusal). P4: the entry for 4 lands on the `4 0 obj` text INSIDE `14 0 obj`, with no real `4 0 obj` — pdf.js draws object 14's content as object 4, pdf-lib holds nothing, the legal-dangling exemption in `inspectParse` loads it (export blank). |
+| X9 | `XRef.fetchCompressed` — object-stream member lookup | bound | Entries inside object streams — KNOWN_ISSUES § round 13, "Not compared: objects the table places inside an object stream". |
+| P1 | `Catalog.toplevelPagesDict` — `/Pages` resolution | mirrored | `acceptsAsRoot` and the `'rebuild'` path; the rebuild's trailer choice is bound (SECURITY.md). |
+| P2 | `Catalog.numPages` / `PDFDocument.numPages` — the `/Count` read, linearized count | mirrored; **divergent** via C2 | `/Count`, `/N`, non-integer and huge counts mirrored; an understated `/Count` is bound (KNOWN_ISSUES § round 17). C2: see P6. |
+| P3 | `Catalog.getPageDict` — `/Count` skip, no-`/Kids` leaf rule, visited-ref cycle guard | mirrored; **divergent** via C1 | Count skip, cycle guard, inline kids mirrored (`viewerPageOrder`). C1: `/Kids [5 0 R 5 1 R]` with both `5 0 obj` and `5 1 obj` defined — pdf.js's `XRef.fetch` caches by object NUMBER, so the second kid returns the cached gen-0 page (shows [A, A]); pdf-lib exports [A, B]; the guard reads the gen mismatch as `'unreadable'`, reports a rebuild and loads. C1b: the same kids under the root — pdf.js rebuilds and still shows [A, A]. |
+| P4 | `Catalog.getAllPageDicts` — recovery mode, "skipping invalid first page" | mirrored | Recovery-mode blank first page is marked an error and refuses; root `/Kids null` (pdf-lib cannot list) is bound. |
+| P5 | `PDFDocument.checkFirstPage` / `checkLastPage` — the rebuild triggers | mirrored | Including `/Count` read for linearized files, the ≤ 1 early return, and the fallback repopulating page 0. |
+| P6 | `PDFDocument.getPage` / `_getLinearizationPage` | **divergent** (C2) | A linearization dict with `/P null`: pdf.js's `Dict.has` counts a null value as present, `getInt` throws, and the file is treated as NOT linearized (shows PAGEB); pdf-lib's `has` is false for null, so the guard reads it as linearized with first page 0 and loads (exports PAGEA). The same null-vs-present mismatch sits at five more `.has` sites (lines 440, 937, 999, 1037, 1063) — measured only in the refuse direction. |
+
+**Result: 11 measured divergences — 10 missed refusals (P1, P2, P3b, P4, P5, P7, P8, P9, C1 with its root-level
+variant C1b, C2) and 1 false refusal (P3a) — plus one bound whose disclosure gives the wrong reason (X6/P6, rebuild
+keeps the first generation, not the last).** Each was built as a file and run
+through real pdfjs-dist 6.3.289, `@cantoo/pdf-lib` and `loadPdfDocument`, beside a control that behaves as expected,
+and re-run by the session before being recorded. Scripts and fixtures: `var/claude/ws7/audit-2026-09-24/` (gitignored).
+
+**One cause behind all of them.** The guard models pdf.js's reader on top of pdf-lib's parse. Wherever the two
+tokenize the same bytes differently — a comment before `startxref`, `100.0` in a row, a stream without `/Type /XRef`,
+a null dictionary value, an object cache keyed by number — the guard either sees a success pdf.js did not have or
+falls back to a path that compares nothing. This is round 12's "second tokenizer" lesson one layer up: the header
+scan was replaced by asking pdf-lib, but pdf-lib cannot be asked what pdf.js does. Closing the CLASS means running
+pdf.js itself (the app already holds a pdf.js document for every loaded file) and comparing what it resolves per
+page against pdf-lib's copy — an architectural change outside WS7.
+
+**Ruled 2026-09-24: disclose and close.** The ten missed refusals are ONE named bound (`SECURITY.md` § "The check
+models the viewer", `KNOWN_ISSUES.md` § closing audit); the rebuild disclosure is corrected (it keeps the FIRST
+copy when generations differ) in `SECURITY.md`, `KNOWN_ISSUES.md`, `CLAUDE.md` and the guard; and the false refusal
+P3a is fixed. `viewerTableRows` re-reads a table's bytes the way `XRef.readXRefTable` does — exactly the declared
+number of rows per subsection — and a table pdf.js cannot finish is treated as pdf.js treats it: rows read so far
+kept, no trailer, every later table stale. Failing test first: `countShort` and `countLong` red at the outcome
+(`expected 'PdfXrefMismatchError' to be 'loaded'`) with pdf.js showing SIGNED, the `countHonest` control green.
+Sabotage, each landed and restored with `cmp`: the unfinished branch disabled → 2 red; a short row read as the end
+of the table → 1 red (`countShort`). The 15-file corpus is unchanged (15 of 15, 12,059 of 12,059 entries landing)
+and the auditor's P3a probe now loads with both readers showing EXPORTED.
+
+**WS7 is closed as certified with named bounds.** No `2/2 clean` entry is written: the panel never reached it, and
+the round loop was ended by ruling on 2026-09-14. What stands is seventeen rounds, this audit, and the bounds
+above — each stated in the user-facing docs.

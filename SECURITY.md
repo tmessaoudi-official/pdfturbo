@@ -313,10 +313,24 @@ viewing the file are unaffected.
 What is still not checked, stated rather than hidden: bytes pdf-lib never reads as an object at all; an
 object the table places inside a compressed object stream; a file pdf.js repairs by scanning — no section it
 can read yields a trailer, its document root is unusable, or opening the first or last page meets an entry it
-cannot read — where it keeps the last copy of each object, like pdf-lib (measured), but chooses its trailer by a
+cannot read — where it keeps the last copy of each object like pdf-lib — measured, except that when two copies carry different
+generation numbers it keeps the FIRST (closing audit, 2026-09-24) — and chooses its trailer by a
 rule PDFturbo does not reproduce; a compressed cross-reference stream written in a
 form PDFturbo does not decode the way pdf.js does; and the pages of a file whose page tree the export library
 cannot list at all, where every export fails anyway.
+
+**The check models the viewer; it does not run it — and the closing audit measured where that model fails
+(2026-09-24).** PDFturbo works out what pdf.js shows by re-reading the file's cross-reference structure on top
+of pdf-lib's own parse. Where the two libraries read the same bytes differently, a deliberately crafted file
+can still show one page and export or sign another. Ten such shapes were built and measured, none found in any
+real file: a `startxref` hidden in a comment after the end marker, a cross-reference stream without its type,
+a table hidden inside another object's data, a table short of rows in the middle of a chain, a second
+subsection numbered from 1, a row offset written as a decimal, a table entry landing inside another object, a
+rejected stream that leaves pdf.js unable to read the next one, one object number listed twice in a page tree
+with two generations, and a linearization dictionary with a null first page. They share one cause and are
+recorded as one bound rather than fixed one by one: closing the class means running pdf.js itself and comparing
+what it actually shows — which is not done. Until then, **do not treat a signature PDFturbo made over a PDF from
+someone you do not trust as proof of what that person's viewer displayed.**
 
 ## Data at rest (session persistence)
 

@@ -16,7 +16,7 @@ import * as pdfLib from '@cantoo/pdf-lib';
 import { describeParse, installDropRecorder, loadPdfDocument, PdfObjectDroppedError, recordedDrops } from '../../src/utils/pdfLoadGuard';
 import {
   appendRevision, buildContentStreamPdf as build, buildLinearizedPdf, buildObjStmPdf, buildPageOrderPdf, buildPageTreePdf,
-  buildViewerNullPdf, buildXrefPointerPdf, buildXrefQueuePdf, buildXrefShapePdf, editPdfText,
+  buildViewerNullPdf, buildXrefCountPdf, buildXrefPointerPdf, buildXrefQueuePdf, buildXrefShapePdf, editPdfText,
 } from './_invalidObjectFixture';
 
 describe('loadPdfDocument', () => {
@@ -732,6 +732,27 @@ describe('loadPdfDocument — the queue pdf.js reads and the pages it shows (WS7
 });
 
 /** The text of every page pdf-lib holds, in the order `getPages` returns them — the order every export copies. */
+describe('loadPdfDocument — a table whose declared row count is wrong (closing audit 2026-09-24, P3a)', () => {
+  const outcome = (bytes: Uint8Array): Promise<string> =>
+    loadPdfDocument(bytes, { updateMetadata: false }).then(() => 'loaded', (e: unknown) => (e as Error).name);
+
+  it('REFUSES countHonest — pdf.js reads the table and shows the earlier copy pdf-lib did not keep (control)', async () => {
+    const bytes = buildXrefCountPdf('countHonest');
+    expect(await pdfjsText(bytes)).toBe('VIEWED');
+    expect(await pdfLibText(bytes)).toContain('(SIGNED)');
+    expect(await outcome(bytes)).toBe('PdfXrefMismatchError');
+  });
+
+  it.each(['countShort', 'countLong'] as const)(
+    'loads %s — pdf.js cannot finish the table, rebuilds, and shows the copy pdf-lib kept (was a false refusal)', async shape => {
+      const bytes = buildXrefCountPdf(shape);
+      expect(await pdfjsText(bytes)).toBe('SIGNED');
+      expect(await pdfLibText(bytes)).toContain('(SIGNED)');
+      expect(await outcome(bytes)).toBe('loaded');
+    },
+  );
+});
+
 async function pdfLibPages(bytes: Uint8Array): Promise<string[]> {
   const doc = await pdfLib.PDFDocument.load(bytes, { updateMetadata: false });
   return doc.getPages().map(page => {

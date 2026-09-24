@@ -101,6 +101,13 @@
  * stream's state, which is not modelled. Pages are not compared when pdf-lib cannot list them, as every export
  * then fails too; pages written directly in /Kids are compared by position only.
  *
+ * The closing audit (2026-09-24) compared this mirror branch by branch with pdf.js 6.3.289 and measured ten crafted
+ * shapes that still get past it — all one cause: the mirror re-reads the cross-reference structure on pdf-lib's
+ * parse, so bytes the two libraries tokenize differently (a `%startxref` comment, a `100.0` row, a stream without
+ * /Type /XRef, a null dictionary value, pdf.js's object cache keyed by number) either succeed where pdf.js failed
+ * or fall back to comparing nothing. They are one disclosed bound (`SECURITY.md`, `KNOWN_ISSUES.md`), not fixed
+ * shape by shape: another closer mirror is round 18. Its one false refusal is fixed (`viewerTableRows`).
+ *
  * Every load in `src/` goes through here; `tests/utils/pdfLoadGuard.test.ts` fails by file name on
  * a new direct `PDFDocument.load`. A per-site check is how a sibling path keeps the defect.
  */
@@ -211,6 +218,8 @@ interface XrefSection {
   dict?: PDFDictT;
   /** pdf.js throws part-way through this stream: it keeps the rows it read before failing and skips the rest. */
   rejected?: boolean;
+  /** A table's bytes run from its section offset to here: pdf.js re-reads them with the declared row counts. */
+  end?: number;
 }
 interface ParseRecord {
   /** True only inside `parseDocument`, so edits made to the document later are not counted. */
@@ -596,7 +605,7 @@ export function installDropRecorder(lib: RecorderLib): void {
           });
         });
       });
-      rec.pendingSection = { kind: 'table', entries };
+      rec.pendingSection = { kind: 'table', entries, end: this.bytes.offset() };
       rec.sections.set(offset, rec.pendingSection);
     }
     return section;
@@ -841,7 +850,17 @@ function readXrefQueue(
       return read;
     }
     if (!section || (section.kind === 'table' && staleTable)) continue;
-    for (const e of section.entries) if (!read.entries.has(e.num)) read.entries.set(e.num, e);
+    const rows = section.kind === 'table' && section.end !== undefined ? viewerTableRows(bytes, at, section.end) : undefined;
+    for (const e of section.entries) {
+      if (rows && !rows.finished && !rows.nums.has(e.num)) continue;
+      if (!read.entries.has(e.num)) read.entries.set(e.num, e);
+    }
+    if (rows && !rows.finished) {
+      // pdf.js threw inside `readXRefTable`: it keeps the rows read so far, finds no trailer here, and its leftover
+      // `_tableState` makes every later table fail the same way.
+      staleTable = true;
+      continue;
+    }
     if (section.kind === 'stream' && section.rejected) {
       staleStream = true;
       continue;
@@ -868,6 +887,52 @@ function readXrefQueue(
     }
   }
   return read;
+}
+
+/**
+ * pdf.js's `XRef.readXRefTable` over the bytes pdf-lib parsed as one table (`xref` up to `trailer`). pdf-lib ignores
+ * each subsection's declared row count; pdf.js reads exactly that many rows and throws when a row is not
+ * `offset gen n|f` — so a count one too high meets `trailer`, and one too low reads the next row as a subsection
+ * header. `finished` false is that throw, with the object numbers read before it (closing audit 2026-09-24, P3a: the
+ * guard read such a table as pdf.js never does and refused a file both parsers read the same). Undefined when the
+ * bytes hold a token pdf-lib's table grammar would not, so nothing is changed on a guess.
+ */
+function viewerTableRows(bytes: Uint8Array, start: number, end: number): { finished: boolean; nums: Set<number> } | undefined {
+  const tokens: Array<number | 'n' | 'f'> = [];
+  let i = start + 4; // past `xref`
+  while (i < end) {
+    const c = bytes[i];
+    if (c === 0x00 || c === 0x09 || c === 0x0a || c === 0x0c || c === 0x0d || c === 0x20) { i++; continue; }
+    if (c === 0x25) { // a comment runs to the end of the line
+      while (i < end && bytes[i] !== 0x0a && bytes[i] !== 0x0d) i++;
+      continue;
+    }
+    let j = i;
+    while (j < end && ![0x00, 0x09, 0x0a, 0x0c, 0x0d, 0x20, 0x25].includes(bytes[j])) j++;
+    const word = String.fromCharCode(...bytes.subarray(i, j));
+    if (/^\d+$/.test(word)) tokens.push(Number(word));
+    else if (word === 'n' || word === 'f') tokens.push(word);
+    else return undefined;
+    i = j;
+  }
+  const nums = new Set<number>();
+  let k = 0;
+  const next = (): number | 'n' | 'f' | 'trailer' => (k < tokens.length ? tokens[k++] : 'trailer');
+  for (;;) {
+    const firstEntry = next();
+    if (firstEntry === 'trailer') return { finished: true, nums };
+    const count = next();
+    if (typeof firstEntry !== 'number' || typeof count !== 'number') return { finished: false, nums };
+    let first = firstEntry;
+    for (let r = 0; r < count; r++) {
+      const offset = next();
+      const gen = next();
+      const type = next();
+      if (typeof offset !== 'number' || typeof gen !== 'number' || (type !== 'n' && type !== 'f')) return { finished: false, nums };
+      if (r === 0 && type === 'f' && first === 1) first = 0;
+      nums.add(first + r);
+    }
+  }
 }
 
 /** The chain pdf.js reads, when it reads one: a trailer was found and no stream the queue reached is left unmodelled. */
@@ -1191,7 +1256,8 @@ type Viewer =
 
 /**
  * How pdf.js reads this file: through the chain, with the pages it then shows as far as `limit` (`'chain'`); by
- * rebuilding its table from a scan, which keeps the last definition of every object as pdf-lib does, because no
+ * rebuilding its table from a scan, which keeps the last definition of every object as pdf-lib does (the FIRST when
+ * two copies differ in generation — a disclosed bound), because no
  * section yields a trailer, the root is one it rejects, or its opening walks meet an entry they cannot read
  * (`'rebuild'`); through a cross-reference stream whose decoding is not modelled (`'unmodelled'`); or through a stream
  * read with the state of one it rejected (`'staleStream'`), which is refused rather than guessed.
@@ -1222,7 +1288,8 @@ function viewerOf(
  * /Count that lets `getPageDict` skip a subtree, a page dictionary without /Type, or a linearized file's /O. pdf.js
  * showing FEWER pages than pdf-lib holds is not a mismatch while every page it does show is the one pdf-lib holds
  * there; showing more is. When pdf.js rebuilds, or reads through an unmodelled stream, the walk runs over pdf-lib's
- * objects — a rebuild keeps the last definition of each, as pdf-lib does — from pdf-lib's root. Nothing is compared
+ * objects — a rebuild keeps the last definition of each, as pdf-lib does (the first when generations differ) — from
+ * pdf-lib's root. Nothing is compared
  * when pdf-lib cannot list its pages, since every export then fails too.
  */
 function pageMismatch(

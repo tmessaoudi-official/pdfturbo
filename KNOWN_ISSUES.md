@@ -64,6 +64,21 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From the WS7 closing audit (2026-09-24)
+
+- **The viewer/export agreement check models pdf.js on pdf-lib's parse, and a crafted file can get past it** (P2,
+  named bound, developer ruling 2026-09-24). A branch-by-branch audit of pdf.js 6.3.289's cross-reference reader
+  and page walk against `src/utils/pdfLoadGuard.ts` measured ten shapes that show one page and export or sign
+  another while the guard loads the file: a `%startxref` comment after `%%EOF` (pdf.js takes it), a
+  cross-reference stream without `/Type /XRef`, a table hidden inside stream data, a middle table short of rows,
+  a non-first subsection `1 N` with a free first row, a row offset written `100.0` or `+100`, an entry landing on
+  `4 0 obj` text inside another object, a `/Type /XRef` stream without `/W` before a good one, a page tree listing
+  `5 0 R` and `5 1 R` (pdf.js caches objects by number), and a linearization dictionary with `/P null`. One cause:
+  wherever the two libraries tokenize the same bytes differently, the mirror sees a success pdf.js did not have or
+  compares nothing. The 15 real files are unaffected. Closing the class needs pdf.js itself run and compared per
+  page, not a closer mirror — see `docs/ws7-certification-record.md` § Closing audit. The audit's one false
+  refusal (a table declaring more or fewer rows than it has) is FIXED.
+
 ### From WS7 round 17 (2026-09-14)
 
 - **A second cross-reference stream after one pdf.js rejects refuses the file** (P3, deliberate). pdf.js reads
@@ -105,7 +120,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
   screen and are not checked. Not compared: objects the table places
   inside an object stream; a file pdf.js rebuilds by scanning — no section of its chain yields a trailer, the
   root is unusable, or its opening walk to the first or last page meets an entry it cannot read — where it keeps
-  the last definition like pdf-lib, measured, but picks its trailer by its own rule. Since round 17 a
+  the last definition like pdf-lib, measured — except that when two copies differ in generation it keeps the
+  FIRST (closing audit, 2026-09-24) — but picks its trailer by its own rule. Since round 17 a
   linearized file is read from its first-page table, where pdf.js starts. Zero refusals over the 15 files of `var/corpus` and the 5 of
   `tests/fixtures/corpus-public`; all 15 are read through the chain pdf.js follows, with every in-use entry
   landing on an object pdf-lib parsed (`tests/utils/pdfLoadGuardCorpus.test.ts`). Round 13 recorded "14 of
