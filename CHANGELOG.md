@@ -123,7 +123,8 @@ most of the work went into proving that what the product claims to remove is act
   from one cause: the check re-read the file the way it believed the viewer does.
 - **The viewer check now runs the viewer.** Instead of modelling pdf.js, PDFturbo opens each document a second
   time in pdf.js in the background, builds the copy an export builds, and compares every page the viewer shows —
-  its text and its drawing operations. All ten audit shapes are now refused; no real file measured is. The check
+  its text and its drawing operations. None of the ten audit shapes loads any more (nine refused as a page mismatch; the tenth is a file pdf.js cannot
+  open); no real file measured is refused. The check
   starts when the file opens, so an export usually finds it done. `SECURITY.md` § "One file, two readers" lists
   what it does not compare.
 - **A layer the source switches off no longer appears in the export.** The PDF downloads, a page as an image,

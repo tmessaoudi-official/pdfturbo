@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * WS8: the viewer check compares, page by page, what pdf.js shows for a document with what pdf.js shows for the
- * copy pdf-lib will export (its pages copied into a fresh document). docs/plans/ws8-viewer-check.plan.md step 2.
+ * copy pdf-lib will export (its pages copied into a fresh document). docs/archive/plans/ws8-viewer-check.plan.md step 2.
  */
 import { describe, it, expect } from 'vitest';
 import { PDFDocument } from '@cantoo/pdf-lib';

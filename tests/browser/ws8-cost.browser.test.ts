@@ -1,6 +1,6 @@
 /**
  * WS8 step 1 — the go/no-go cost of the viewer check in a REAL browser, with pdf.js's real worker
- * (docs/plans/ws8-viewer-check.plan.md). The Node probe (`tests/tools/ws8Cost.test.ts`) runs pdf.js in-process,
+ * (docs/archive/plans/ws8-viewer-check.plan.md). The Node probe (`tests/tools/ws8Cost.test.ts`) runs pdf.js in-process,
  * so it measures CPU, not what the user feels; this measures main-thread long tasks during one WS8 pass.
  *
  * Opt-in: needs `VITE_WS8_COST=1` and the gitignored corpus (`var/corpus`, `scripts/c9-corpus-fetch.sh`), so it

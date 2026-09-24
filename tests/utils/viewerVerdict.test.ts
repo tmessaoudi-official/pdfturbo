@@ -1,12 +1,14 @@
 // @vitest-environment node
 /**
- * WS8 step 3 — one viewer-check verdict per source, shared by every load of it (docs/plans/ws8-viewer-check.plan.md).
+ * WS8 step 3 — one viewer-check verdict per source, shared by every load of it (docs/archive/plans/ws8-viewer-check.plan.md).
  */
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { hasViewerVerdict, inheritViewerVerdict, prewarmViewerVerdict, viewerVerdict } from '../../src/utils/viewerVerdict';
 import { buildXrefShapePdf } from './_invalidObjectFixture';
+import { DocumentModel } from '../../src/core/documentModel';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 describe('viewerVerdict', () => {
   it('computes once per bytes object and hands every caller the same promise', async () => {
@@ -53,6 +55,16 @@ describe('viewerVerdict', () => {
 // A source that enters the model without a prewarm is still checked — on its first export, which then waits seconds
 // for pdf.js. So every place a source enters is pinned; `git grep` finds them, so a new one cannot be missed silently.
 describe('every source entering the document model starts its verdict', () => {
+  // The cache is keyed by identity, so the prewarm is only worth anything if the model keeps THAT array — a copy on
+  // the way in would miss the key and every export would run the 8–13 s pass again, silently.
+  it('keeps the prewarmed array as the source bytes an export later reads', () => {
+    const model = new DocumentModel();
+    const bytes = buildXrefShapePdf('clean');
+    const src = model.addSourcePdf({ numPages: 1 } as unknown as PDFDocumentProxy, bytes, 'a.pdf');
+    prewarmViewerVerdict(bytes);
+    expect(hasViewerVerdict(model.sourcePdfs.get(src.id)?.bytes ?? new Uint8Array())).toBe(true);
+  });
+
   it('follows each addSourcePdf(doc, bytes, …) with prewarmViewerVerdict(bytes)', () => {
     const files = execFileSync('git', ['grep', '-l', 'addSourcePdf(', '--', 'src/'], { encoding: 'utf8' })
       .split('\n').filter(f => f && !f.endsWith('documentModel.ts'));

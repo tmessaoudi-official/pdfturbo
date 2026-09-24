@@ -1391,13 +1391,15 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   as history. `loadPdfDocument` now takes a REQUIRED `viewerCheck: 'source' | false`; `'source'` runs
   `src/utils/viewerCheck.ts` — pdf.js on the original and on pdf-lib's pages copied into a FRESH document (a plain
   `save()` keeps the quirks, so pdf.js re-reads it identically and a mismatch compares equal), per-page text
-  (str + origin) plus operator fingerprint taken with annotations DISABLED (drawn, 7 of 8 real forms mismatched on
+  (str + origin), operator fingerprint and a hash of numeric operands and `#rrggbb` colours (other strings are
+  per-document ids and are skipped) taken with annotations DISABLED (drawn, 7 of 8 real forms mismatched on
   widgets) — and refuses with `PdfPageMismatchError(['page N', …])`. pdf.js showing FEWER pages is allowed. The
   verdict is cached by BYTES IDENTITY (`viewerVerdict.ts`), prewarmed wherever `addSourcePdf` runs and inherited by a
   true edit's bytes, because the pass costs 8–13 s wall-clock on a 67–142-page report (measured in Chrome; main-thread
   long tasks ≤ 115 ms). A copy of a source's bytes (`.slice(0)`) misses the cache and re-runs it. `false` is for bytes
   pdf-lib wrote in the same operation; which sites pass which is pinned by name in `pdfLoadGuard.test.ts`. The ten
-  audit shapes are tracked in `tests/fixtures/ws8-audit/` and all refuse. `viewerVerdict` sets the pdf.js worker
+  audit shapes are tracked in `tests/fixtures/ws8-audit/`: nine refuse with `PdfPageMismatchError`, and P6 does not
+  load at all — pdf.js itself throws `InvalidPDFException` on it, so the check rejects. `viewerVerdict` sets the pdf.js worker
   itself in a real browser: relying on `infra/pdfRenderer.ts` having been imported first failed every guarded load
   in the browser suite. The same step found that `copyPages` never copies `/OCProperties`, so a layer the source
   switches OFF came out visible — every page copy now goes through `src/export/copySourcePages.ts`, which copies the

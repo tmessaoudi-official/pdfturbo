@@ -307,7 +307,8 @@ viewing the file are unaffected.
   the same bytes differently. The model is gone. When a document is opened, PDFturbo now opens it in pdf.js a
   second time, builds the copy an export builds, opens that in pdf.js as well, and compares every page the viewer
   shows — its text, with each string's position, and its drawing operations with their numbers and colours. Any page that differs
-  refuses the export, signing and in-place editing for that document. All ten audit shapes now refuse. The check
+  refuses the export, signing and in-place editing for that document. None of the ten audit shapes loads any more: nine are refused as a page mismatch, and the tenth is a file pdf.js
+  itself cannot open. The check
   runs in the background from the moment the file opens, so an export usually finds it finished; on a large file
   it takes seconds.
 

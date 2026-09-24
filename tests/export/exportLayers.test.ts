@@ -1,5 +1,5 @@
 /**
- * WS8 step 5 — a layer the source switches OFF stays OFF in the export (docs/plans/ws8-viewer-check.plan.md).
+ * WS8 step 5 — a layer the source switches OFF stays OFF in the export (docs/archive/plans/ws8-viewer-check.plan.md).
  *
  * `copyPages` copies the groups a page references but not the catalog's `/OCProperties`, so every viewer showed every
  * layer. `copySourcePages` carries it with the same object copier. Read back with pdf.js, which is what renders the

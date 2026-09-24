@@ -75,7 +75,9 @@ work in a private/incognito window when editing sensitive documents on a shared 
   One bound: an export combining two or more sources that EACH carry layer settings, where at least one switches a
   layer off, is refused (`toast.exportLayersConflict`) rather than merged — a PDF has one `/OCProperties`, and
   reconciling two means their order, radio groups and base states. Two layered sources whose layers are all ON
-  export without either, which hides nothing. Guards: `tests/export/exportLayers.test.ts`,
+  export without either, which hides nothing — their groups stay referenced from the pages with no catalog listing,
+  which pdf.js draws as visible; how Acrobat treats that, and the carried settings in general, is unmeasured (only
+  pdf.js has been run on these exports). Guards: `tests/export/exportLayers.test.ts`,
   `tests/browser/export-layers.browser.test.ts`.
 - **What the viewer check does not compare** (P3, bounds of a fix — WS8, 2026-09-24). The check runs pdf.js on a
   source and on the copy the export builds and compares each page's text (strings and origins) and drawing operators
@@ -89,8 +91,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
 ### From the WS7 closing audit (2026-09-24)
 
 - ~~**The viewer/export agreement check models pdf.js on pdf-lib's parse, and a crafted file can get past it**~~
-  — **CLOSED by WS8 (2026-09-24)**: the mirror is gone and the check runs pdf.js itself; all ten shapes below now
-  refuse, pinned by `tests/utils/ws8AuditShapes.test.ts`. Kept for the record: A branch-by-branch audit of pdf.js 6.3.289's cross-reference reader
+  — **CLOSED by WS8 (2026-09-24)**: the mirror is gone and the check runs pdf.js itself; none of the ten shapes below loads any
+  more — nine refuse with a page mismatch, and P6, which pdf.js cannot open, fails with pdf.js's own error — pinned by `tests/utils/ws8AuditShapes.test.ts`. Kept for the record: A branch-by-branch audit of pdf.js 6.3.289's cross-reference reader
   and page walk against `src/utils/pdfLoadGuard.ts` measured ten shapes that show one page and export or sign
   another while the guard loads the file: a `%startxref` comment after `%%EOF` (pdf.js takes it), a
   cross-reference stream without `/Type /XRef`, a table hidden inside stream data, a middle table short of rows,
