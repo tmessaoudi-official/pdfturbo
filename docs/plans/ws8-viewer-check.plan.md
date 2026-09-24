@@ -84,8 +84,8 @@ persisted-state change — the registry is in-memory only).
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
-| 1 | Browser cost gate (go/no-go) — GO: new main-thread long tasks ≤ 115 ms (2 runs, load 5.9); pdf.js pass 8.3–13.1 s wall-clock in the worker, so the open-time background start (step 3) is REQUIRED | S | done | 2c0b513 | tests/browser/ws8-cost.browser.test.ts |
-| 2 | viewerCheck module | M | todo | - | src/utils/viewerCheck.ts |
+| 1 | Browser cost gate (go/no-go) — GO: new main-thread long tasks ≤ 115 ms (2 runs, load 5.9); pdf.js pass 8.3–13.1 s wall-clock in the worker, so the open-time background start (step 3) is REQUIRED | S | done | c2e3d88 | tests/browser/ws8-cost.browser.test.ts |
+| 2 | viewerCheck module — 8 cases; sabotage: ops dropped→1, text dropped→3, save() for fresh copy→1, layers unreported→1 | M | done | STEP2 | src/utils/viewerCheck.ts |
 | 3 | Source registry + background check | M | todo | - | src/core/documentModel.ts, src/core/pdfTurboApp.ts |
 | 4 | loadPdfDocument rewired, mirror removed | L | todo | - | src/utils/pdfLoadGuard.ts |
 | 5 | Optional-content handling (per ruling) | M | todo | - | src/export/exportService.ts |
