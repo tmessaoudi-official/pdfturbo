@@ -899,6 +899,10 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   CLOSE: fix the one false refusal (P3a) and the wrong rebuild disclosure (X6), record the 10 missed refusals as ONE
   named bound in `SECURITY.md` / `KNOWN_ISSUES.md`, full gate on Node 26, push. WS7 closes certified with named
   bounds. Replacing the mirror by running pdf.js itself is the recorded path forward, not scheduled.
+- [2026-09-24 11:05] RECORDED: pushed as `3e98c7c..f0846c1` (Node 26 move `a2bc53e`, P3a fix + disclosures `fed1f15`, docs
+  `f0846c1`) after the full deploy gate on Node 26 at load 11-32 (audit 0, type-check, lint, jsdom 2839, browser 354/354,
+  export coverage 44.07%, build, QA sweep 151/114/0). CI run 35978224281 — the first on Node 26 (setup-node 26.10.0) —
+  watched to completion: build and deploy green. WS7 is closed, certified with named bounds.
 
 ## Status
 <!-- progress-block v1 -->
