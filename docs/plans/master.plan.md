@@ -946,30 +946,6 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- **WS8 go / no-go (row 30).** The cost measurement is done (2026-09-24, `tests/tools/ws8Cost.test.ts`, opt-in:
-  `WS8_COST=1 npx vitest run tests/tools/ws8Cost.test.ts`; reports `var/claude/ws8/{cost,shapes}.json`). Design it
-  measured: pages copied into a FRESH document (export-shaped, as `_assemblePdfDoc` does), re-opened in pdf.js, and
-  compared per page with pdf.js on the original — text fingerprint (`getTextContent`) + page-content operator sequence
-  (`getOperatorList`, annotations DISABLED). Findings, Node 26, no worker, 3 runs, min, load 4.3→3.5:
-  - **Catches**: every disclosed shape the audit built as a file. 26 of 27 synthetic cases right: the audit's P1, P2, P3b, P4,
-    P5, P7, P8, P9, P9b (dumped from its probe scripts into gitignored `var/claude/ws8/pshapes/`), C1, C1b, C2, plus
-    xref dupFirst, countHonest and pages countHidesFirst flagged; P3a (countShort/countLong and the audit's own file),
-    clean and pages countHonest NOT flagged; each guard control flagged exactly when today's guard refuses it. The 27th,
-    P6, is the open-error variant pdf.js cannot open at all, so the app never loads it; P6's PAGE-error variant, which
-    the audit says can reach an export, was never built as a file and is NOT tested. Sabotage (fingerprint
-    comparison disabled) → 15 wrong; the page-count half alone still flags countHidesFirst, C2 and C2ctl.
-  - **False alarms**: 0 of 360 corpus pages on either tier. Two design traps found by measuring: a plain
-    `libDoc.save()` keeps the original's quirks, so pdf.js re-reads the copy identically and C1/C1b/C2/countHidesFirst
-    compared EQUAL; and with annotations drawn, 7 of 8 forms mismatched on widget pages (the copy has no `/AcroForm`).
-  - **Cost** (sum over 15 files, 360 pages): today's guard 5.0 s; text tier 10.1 s (save + open copy + both sides);
-    operator tier +9.0 s more. Worst file Publication 17 (142 pages): guard 2.2 s, text 4.3 s, +ops 3.2 s. The app's own
-    pdf.js open of the original is ~0.03 s and already paid. In the browser this runs in pdf.js's worker, off the main
-    thread — the Node figure is CPU, not UI blocking.
-  - **Replace vs keep beside**: the mirror itself is cheap — `pdfLoadGuardCorpus` at load 2.2 gives pdf-lib's raw parse
-    5.29 s vs the full guard 5.61 s over the 15 files (Publication 17: 2.61 vs 2.56 s, within noise). So replacing the
-    mirror saves ~0.3 s; WS8 costs ~+10 s on this corpus either way (text tier; ~+19 s with the operator tier). Note
-    the guard runs at 12 `loadPdfDocument` call sites (export, sign, sanitize, compress, OCR layer, true-edit), while a
-    per-document WS8 verdict could be computed once per source and cached.
 ### Needs research
 ### Fragile
 ### Known issues
