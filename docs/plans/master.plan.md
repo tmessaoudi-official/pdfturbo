@@ -903,6 +903,9 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   `f0846c1`) after the full deploy gate on Node 26 at load 11-32 (audit 0, type-check, lint, jsdom 2839, browser 354/354,
   export coverage 44.07%, build, QA sweep 151/114/0). CI run 35978224281 — the first on Node 26 (setup-node 26.10.0) —
   watched to completion: build and deploy green. WS7 is closed, certified with named bounds.
+- [2026-09-24 11:25] AGREED: the master plan stays LIVE with a WS8 `todo` row — replace the load guard's pdf.js mirror by
+  running pdf.js itself and comparing what it resolves per page with pdf-lib's copy, which closes the class the closing
+  audit disclosed. Unscheduled until the developer says go; needs a perf measurement on the 15-file corpus first.
 
 ## Status
 <!-- progress-block v1 -->
@@ -937,6 +940,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 27 | WS7 round 16 — 4 findings fixed: comparison continues past a section pdf.js skips, an entry it cannot read refuses, opening walks mirrored | M | done | c3221ed | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/browser/pdf-load-guard.browser.test.ts |
 | 28 | WS7 round 17 — 4 findings fixed: /Count page-order mismatch refuses, tables after one pdf.js cannot finish read no rows, indirect /Prev followed, linearized start | M | done | e19880b | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts |
 | 29 | CI and local gate move to Node 26 (ruled 2026-09-24) | S | done | a2bc53e | .nvmrc package.json package-lock.json .github/workflows/deploy.yml tests/infra/prePushHook.test.ts |
+| 30 | WS8 — replace the load-guard mirror: run pdf.js and compare per page with pdf-lib's copy (unscheduled) | L | todo | - | src/utils/pdfLoadGuard.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
