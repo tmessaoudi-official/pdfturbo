@@ -888,6 +888,12 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   permission prompts while the developer was asleep ("You are prompting for permissions!"). Nothing from it was
   kept or acted on. Resume it in an attended session; the two prompts (xref half, page-walk half) are in this
   session's transcript. CI for `3e98c7c` was not watched to completion — check the Actions run first.
+- [2026-09-24 09:58] AGREED: the developer ruled the three **Needs input** items and the next action. (1) Keep the
+  in-document media actions (`/Rendition` without script, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`):
+  they play only on a user click and stay inside the document. (2) Keep stripping `/PieceInfo` (source document and
+  author paths). (3) Move CI to Node 26 NOW (against the session's stay-on-24 recommendation): `.nvmrc`, `engines` and
+  `deploy.yml` together, and the local gate runs on 26 from here on. (4) Run the one finite pdf.js cross-reference /
+  page-walk audit attended, fix only proven divergences test-first with sabotage, full gate, push.
 
 ## Status
 <!-- progress-block v1 -->
@@ -908,7 +914,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 17 rounds run; round loop ended by ruling 2026-09-14; ONE finite pdf.js xref/page-walk audit next (ask first) | L | todo | - | - |
+| 16 | WS7 — certification: 17 rounds run; round loop ended by ruling 2026-09-14; ONE finite pdf.js xref/page-walk audit (ruled go 2026-09-24) | L | doing | - | src/utils/pdfLoadGuard.ts |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 | 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 | 19 | Upgrade every dependency and CI action to latest (ruled 2026-09-13) | M | done | caf4350 | package.json, package-lock.json, .github/workflows/deploy.yml |
@@ -921,12 +927,10 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 26 | WS7 round 15 — 4 findings fixed: a load-guard refusal shows its own message, export scope and round count corrected in the docs | S | done | 0932e80 | src/utils/pdfLoadGuard.ts src/export/exportService.ts src/core/pdfTurboApp.ts src/handlers/signingHandler.ts locales/en.json locales/fr.json locales/ar.json tests/utils/pdfLoadRefusal.test.ts tests/export/exportSaveRouting.test.ts tests/handlers/signingContext.test.ts tests/core/ocrRefusalToast.test.ts |
 | 27 | WS7 round 16 — 4 findings fixed: comparison continues past a section pdf.js skips, an entry it cannot read refuses, opening walks mirrored | M | done | c3221ed | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/browser/pdf-load-guard.browser.test.ts |
 | 28 | WS7 round 17 — 4 findings fixed: /Count page-order mismatch refuses, tables after one pdf.js cannot finish read no rows, indirect /Prev followed, linearized start | M | done | e19880b | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts |
+| 29 | CI and local gate move to Node 26 (ruled 2026-09-24) | S | doing | - | .nvmrc package.json package-lock.json .github/workflows/deploy.yml tests/infra/prePushHook.test.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- **Kept in-document media actions** (`/Rendition` without script, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`): the `[2026-09-05 00:10]` ruling kept them on the premise that no browser reader runs them. WS7 round 10 measured that false — pdf.js plays a clip on a click. They stay kept and the docs are corrected; whether to keep them is the developer's to re-rule. Recommendation (2026-09-24, session): keep them — they play only on a user click and stay inside the document; nothing leaves the device.
-- **`/PieceInfo` stripping**: flagged since round 9, unruled. The code has stripped it since round 9. Recommendation (2026-09-24, session): keep stripping it — Illustrator/InDesign put the source document there, with author paths.
-- **CI Node line**: CI stays on Node 24 (`.nvmrc`, `deploy.yml`); moving to 26 is the developer's call. Recommendation (2026-09-24, session): stay on 24 until 26 reaches LTS (October 2026 [Unverified: release schedule not checked]), then move .nvmrc and deploy.yml together.
 ### Needs research
 ### Fragile
 ### Known issues

@@ -5,7 +5,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "description": "PDFturbo — edit, annotate, sign and fill PDFs entirely in your browser",
   "scripts": {

@@ -39,9 +39,16 @@ describe('M4 #40 — pre-push gate', () => {
     expect(pkg.scripts.prepare).toMatch(/core\.hooksPath\s+\.githooks/);
   });
 
-  it('pins Node >=24 (matches CI) in engines and .nvmrc', () => {
+  // Node 26 by developer ruling 2026-09-24 (was 24). CI, .nvmrc and engines move TOGETHER: the local
+  // gate runs on the .nvmrc line, so a deploy.yml that drifts from it makes a green local run say
+  // nothing about CI — the 2026-09-13 localStorage red was exactly a Node-line mismatch.
+  it('pins Node 26 in engines and .nvmrc, and deploy.yml uses the same line', () => {
     const pkg = JSON.parse(read('package.json'));
-    expect(pkg.engines?.node).toMatch(/24/);
-    expect(read('.nvmrc').trim()).toBe('24');
+    expect(pkg.engines?.node).toBe('>=26');
+    const nvmrc = read('.nvmrc').trim();
+    expect(nvmrc).toBe('26');
+    const versions = [...read('.github/workflows/deploy.yml').matchAll(/node-version:\s*['"]?([^\s'"]+)/g)].map((m) => m[1]);
+    expect(versions.length).toBeGreaterThan(0);
+    for (const v of versions) expect(v).toBe(nvmrc);
   });
 });

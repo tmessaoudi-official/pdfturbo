@@ -1267,13 +1267,15 @@ packages, `@cantoo/pdf-lib` 2.11.0, pdfjs-dist 6.3.289, vite 8.3.0, oxlint 1.82.
 CI `setup-node@v7`, `upload-artifact@v7`). Three things broke in the harness, none of them in `src/` — and
 WS7 round 10 then found two that DID reach users (the last two bullets):
 
-- **Run the local gate on the CI Node, never the shell's `node`.** CI pins Node 24 (`deploy.yml`,
-  `.nvmrc`). On Node 25+ Node defines its OWN `localStorage` global, which is `undefined` without
+- **Run the local gate on the CI Node, never the shell's `node`.** CI pins **Node 26** since the
+  2026-09-24 developer ruling (`deploy.yml`, `.nvmrc`, `engines` — Node 24 before that, and every WS7
+  round record through round 17 was gated on 24). `tests/infra/prePushHook.test.ts` fails if
+  `deploy.yml` drifts from `.nvmrc`. On Node 25+ Node defines its OWN `localStorage` global, which is `undefined` without
   `--localstorage-file`, and under vitest 4 it shadowed jsdom's — so the three crop kill-switch cases in
   `tests/core/pageRenderPipeline.test.ts` failed with `Cannot read properties of undefined (reading
   'removeItem')` on Node 26 and on the v27 nightly `/stack` put on `PATH`, and passed on Node 24. vitest 5
   fixes that shadowing (the same files pass on Node 26), but the rule stands: prefix
-  `PATH=/stack/tools/nvm/versions/node/v24.<x>/bin:$PATH` for every gate step, or a red is about the
+  `PATH=/stack/tools/nvm/versions/node/v26.<x>/bin:$PATH` for every gate step (the `.nvmrc` line), or a red is about the
   machine, not the product.
 - **`@cantoo/pdf-lib` 2.11.0 is not valid Node ESM.** Its ES build does
   `import X from './Courier-Bold.compressed.json'` with no `with { type: 'json' }`, so an externalized
@@ -2184,7 +2186,7 @@ that guard it now are "Filespec never severed" and "backstop `/AF` dropped". The
 shapes: `/AF` and XMP on a form or image XObject (PDF 32000 §14.3.2 and PDF 2.0 §14.13 allow both,
 Photoshop images carry XMP routinely), `/PieceInfo` (stripped as metadata — Illustrator/InDesign embed
 the source document with author paths there; a disclosure candidate in the lens's grading, cut here
-because it is one line inside the same pass), a 3D annotation's `/3DD` `/OnInstantiate`, a paperclip
+because it is one line inside the same pass — ratified by developer ruling 2026-09-24), a 3D annotation's `/3DD` `/OnInstantiate`, a paperclip
 reachable only through `/Fields → /Kids` (listed on no page, flag false), a paperclip's OWN `/A` and
 `/AA` scripts (a regression from `3fc0863`, which pulled the dict out of `/Annots` before the strip loop),
 `report.associatedFiles` assigned before the walks that set it, and a diamond through a shared script
@@ -2220,7 +2222,8 @@ the widget listed in `/AcroForm /Fields`, is the probe that can answer both ways
 rationale was also wrong:** this section and `SECURITY.md` said pdf.js runs none of `/Rendition`,
 `/Sound`, `/Movie`, …; pdf.js's `MediaAnnotationElement` loads and plays a clip on a click. Keeping them
 may still be right (in-document, user-initiated), but the 2026-09-05 ruling rested on the false premise,
-so it is flagged back to the developer rather than silently re-justified. Guards:
+so it was flagged back to the developer rather than silently re-justified — and RE-RULED on 2026-09-24:
+keep them, on the corrected premise (they play only on a user click and stay inside the document). Guards:
 `tests/utils/pdfSanitizerInvalidObject.test.ts` (3) + the real-assembly case in
 `tests/export/exportSaveRouting.test.ts`, which also proves the object survives `copyPages`. Sabotage: the
 refusal removed → exactly those two cases, with the P1 reproduced on the output.
