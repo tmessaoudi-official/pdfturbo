@@ -907,6 +907,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   running pdf.js itself and comparing what it resolves per page with pdf-lib's copy, which closes the class the closing
   audit disclosed. Unscheduled until the developer says go; needs a perf measurement on the 15-file corpus first.
 - [2026-09-24 18:45] RECORDED: the WS8 cost probe landed (f21485c) — findings and the go / no-go question are under Status § Needs input.
+- [2026-09-24 18:55] AGREED: build WS8 and REPLACE the load guard's pdf.js mirror with the per-page pdf.js comparison the probe measured (fresh-document copy, text fingerprint, annotations excluded); Large — a full plan and an explicit go come before any code.
 
 ## Status
 <!-- progress-block v1 -->
