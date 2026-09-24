@@ -3,7 +3,7 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-14)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-24)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
@@ -117,6 +117,11 @@ most of the work went into proving that what the product claims to remove is act
   table the viewer starts from. Such a file is now refused, with a
   message that says why instead of asking you to try again;
   `SECURITY.md` § "One file, two readers" states what is still not checked.
+- **A damaged PDF whose cross-reference table lists the wrong number of rows no longer refuses to export.**
+  The viewer repairs such a file and reads the same content as the export library, so it now loads. A final
+  audit of the viewer's reader against this check also found ten crafted shapes that still get past it, all
+  from one cause; they are stated in `SECURITY.md` § "The check models the viewer" rather than fixed one by one,
+  and none occurs in any real file measured.
 
 ### Fixed — accessibility, correctness, supply chain
 - Three serious and one critical WCAG 2.1 AA rules cleared; 24 controls given explicit
@@ -137,6 +142,7 @@ most of the work went into proving that what the product claims to remove is act
   they are now re-encoded through the browser, and an image that still cannot be decoded is reported),
   and it began silently DROPPING a PDF object it cannot parse (a file affected that way is now refused
   with an error rather than exported without the object).
+- **CI and the local gate moved to Node 26** (2026-09-24; `.nvmrc`, `engines` and the workflow together).
 
 ### Fixed — cropped-page export
 - **Word/Markdown/text export on a cropped page** (closing ceiling **C22**) — on a PDF whose
