@@ -906,6 +906,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 - [2026-09-24 11:25] AGREED: the master plan stays LIVE with a WS8 `todo` row — replace the load guard's pdf.js mirror by
   running pdf.js itself and comparing what it resolves per page with pdf-lib's copy, which closes the class the closing
   audit disclosed. Unscheduled until the developer says go; needs a perf measurement on the 15-file corpus first.
+- [2026-09-24 18:45] RECORDED: the WS8 cost probe landed (f21485c) — findings and the go / no-go question are under Status § Needs input.
 
 ## Status
 <!-- progress-block v1 -->
@@ -940,7 +941,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 27 | WS7 round 16 — 4 findings fixed: comparison continues past a section pdf.js skips, an entry it cannot read refuses, opening walks mirrored | M | done | c3221ed | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts tests/utils/_invalidObjectFixture.ts tests/browser/pdf-load-guard.browser.test.ts |
 | 28 | WS7 round 17 — 4 findings fixed: /Count page-order mismatch refuses, tables after one pdf.js cannot finish read no rows, indirect /Prev followed, linearized start | M | done | e19880b | src/utils/pdfLoadGuard.ts tests/utils/pdfLoadGuard.test.ts |
 | 29 | CI and local gate move to Node 26 (ruled 2026-09-24) | S | done | a2bc53e | .nvmrc package.json package-lock.json .github/workflows/deploy.yml tests/infra/prePushHook.test.ts |
-| 30 | WS8 — replace the load-guard mirror: run pdf.js and compare per page with pdf-lib's copy (unscheduled) | L | todo | - | src/utils/pdfLoadGuard.ts |
+| 30 | WS8 — replace the load-guard mirror: run pdf.js and compare per page with pdf-lib's copy (unscheduled; cost measured, see Needs input) | L | todo | f21485c | src/utils/pdfLoadGuard.ts, tests/tools/ws8Cost.test.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
@@ -949,11 +950,12 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
   measured: pages copied into a FRESH document (export-shaped, as `_assemblePdfDoc` does), re-opened in pdf.js, and
   compared per page with pdf.js on the original — text fingerprint (`getTextContent`) + page-content operator sequence
   (`getOperatorList`, annotations DISABLED). Findings, Node 26, no worker, 3 runs, min, load 4.3→3.5:
-  - **Catches**: every disclosed shape the app can load. 26 of 27 synthetic cases right: the audit's P1, P2, P3b, P4,
+  - **Catches**: every disclosed shape the audit built as a file. 26 of 27 synthetic cases right: the audit's P1, P2, P3b, P4,
     P5, P7, P8, P9, P9b (dumped from its probe scripts into gitignored `var/claude/ws8/pshapes/`), C1, C1b, C2, plus
     xref dupFirst, countHonest and pages countHidesFirst flagged; P3a (countShort/countLong and the audit's own file),
     clean and pages countHonest NOT flagged; each guard control flagged exactly when today's guard refuses it. The 27th,
-    P6, is the open-error variant pdf.js cannot open at all, so the app never loads it. Sabotage (fingerprint
+    P6, is the open-error variant pdf.js cannot open at all, so the app never loads it; P6's PAGE-error variant, which
+    the audit says can reach an export, was never built as a file and is NOT tested. Sabotage (fingerprint
     comparison disabled) → 15 wrong; the page-count half alone still flags countHidesFirst, C2 and C2ctl.
   - **False alarms**: 0 of 360 corpus pages on either tier. Two design traps found by measuring: a plain
     `libDoc.save()` keeps the original's quirks, so pdf.js re-reads the copy identically and C1/C1b/C2/countHidesFirst

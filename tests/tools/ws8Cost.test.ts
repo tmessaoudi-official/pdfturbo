@@ -4,8 +4,8 @@
  *
  * WS8 replaces the mirror (`src/utils/pdfLoadGuard.ts`) by comparing, page by page, what pdf.js shows for the
  * original file with what pdf.js shows for pdf-lib's copy of it (pages copied into a fresh document, re-opened in
- * pdf.js). Most of the closing audit's shapes differ in the bytes behind a page rather than in which page is shown
- * (page.ref was not measured here), so the probe compares per-page CONTENT fingerprints, in two tiers:
+ * pdf.js). Of the shapes run here, C2, C2ctl and countHidesFirst differ in page count; every other one differs only
+ * in what a page draws, so the probe compares per-page CONTENT fingerprints, in two tiers:
  *  - text: `getTextContent` strings + origins,
  *  - ops:  `getOperatorList` operator sequence (fnArray only — args carry per-document font/image ids).
  *
