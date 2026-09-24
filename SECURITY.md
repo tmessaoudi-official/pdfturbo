@@ -240,6 +240,17 @@ the value stops being an editable field and becomes permanent page text that any
 That is the point of the feature — it is just worth knowing that flattening a form containing a national
 insurance number does not protect it.
 
+### A layer switched off in the source comes out visible in the export (found 2026-09-24, not yet fixed)
+
+A PDF can carry **optional-content layers** (a draft stamp, an alternate language, a print-only layer) that
+the file itself switches off, so the viewer does not draw them. PDFturbo shows them hidden, as the file says.
+But the PDF export builds a fresh document and copies the pages into it, and the setting that says which layers
+are off lives on the document, not on the pages — it is not copied. The export therefore has no layer settings,
+and every viewer draws every layer: content you never saw on screen is visible to whoever receives the file.
+Measured on a synthetic file: the hidden layer's text drew 0 dark pixels on the original and 307 in the
+export-shaped copy, while a layer switched ON drew the same on both. No real file with layers has been tried.
+Until this is fixed, do not export a file whose hidden layers must stay hidden.
+
 ### Lock PDF — what the password encrypts, and what it cannot
 
 **Lock PDF** encrypts the export with AES-256 (`/R 6`). Until 2026-09-13 the encryption covered only

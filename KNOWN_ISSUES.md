@@ -64,6 +64,17 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From the WS8 design probe (2026-09-24)
+
+- **A layer the source switches OFF is visible in every PDF export** (open, needs a ruling). `/OCProperties`
+  lives on the catalog; `_assemblePdfDoc` creates a fresh document and `copyPages`, which never copies it, so the
+  export has no optional-content configuration and every viewer draws every layer. Measured with pdf.js 6.3.289 on
+  a synthetic file (`var/claude/ws8/lossy.mjs`, gitignored): the OFF layer's band 0 dark pixels on the original, 307
+  on the copy; an ON layer 164 on both. `getTextContent` and `getOperatorList` return hidden-layer content on both
+  sides, so a text or operator fingerprint cannot see this — WS8's comparison needs the document's OC configuration
+  as its own input. Disclosed in `SECURITY.md`. Resources inherited from `/Pages` were checked the same way and ARE
+  preserved by `copyPages`.
+
 ### From the WS7 closing audit (2026-09-24)
 
 - **The viewer/export agreement check models pdf.js on pdf-lib's parse, and a crafted file can get past it** (P2,
