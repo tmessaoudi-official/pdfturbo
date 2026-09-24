@@ -12,6 +12,8 @@ import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect }
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { encryptPdf } from './encryption';
 import { isPdfLoadRefusal, loadPdfDocument } from '../utils/pdfLoadGuard';
+import { viewerVerdict } from '../utils/viewerVerdict';
+import { carryLayers, copySourcePages, ExportLayersConflictError } from './copySourcePages';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '../utils/tableExtract';
 import { inferBorderlessGrid } from '../utils/borderlessTable';
@@ -233,6 +235,7 @@ const SAVE_DOCX: SaveFileType = {
 /** A load-guard refusal gets its own message: it is deterministic, so the caller's "failed" would invite a
  * retry that can never succeed (WS7 round 15). Any other failure keeps the caller's key. */
 function failureKey(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.name === 'ExportLayersConflictError') return 'toast.exportLayersConflict';
   return isPdfLoadRefusal(err) ? 'toast.pdfLoadRefused' : fallback;
 }
 
@@ -375,7 +378,7 @@ export class ExportService {
       // with no password. Re-loaded WITHOUT the metadata stamp, or pdf-lib re-injects the /Info the
       // sanitizer just removed; `_saveForExport` then encrypts with object streams like every export.
       const bytes = this._ctx.exportPassword
-        ? await this._saveForExport(await loadPdfDocument(sanitized.bytes, { updateMetadata: false }))
+        ? await this._saveForExport(await loadPdfDocument(sanitized.bytes, { updateMetadata: false, viewerCheck: false }))
         : sanitized.bytes;
       await this._saveOrDownload(target, bytes, filename, 'application/pdf');
       if (target !== 'download') {
@@ -448,7 +451,7 @@ export class ExportService {
    * Producer/ModDate re-stamp (which would re-inject the metadata we strip).
    */
   private async _compressLossless(assembled: Uint8Array): Promise<Uint8Array> {
-    const doc = await loadPdfDocument(assembled, { updateMetadata: false });
+    const doc = await loadPdfDocument(assembled, { updateMetadata: false, viewerCheck: false });
     await stripDocMetadata(doc);
     await this._applyExportPassword(doc);
     return doc.save({ useObjectStreams: true });
@@ -714,7 +717,7 @@ export class ExportService {
       // Load each source PDF once
       const srcDocs = new Map<string, import('@cantoo/pdf-lib').PDFDocument>();
       for (const [id, src] of documentModel.sourcePdfs) {
-        srcDocs.set(id, await loadPdfDocument(src.bytes));
+        srcDocs.set(id, await loadPdfDocument(src.bytes, { viewerCheck: 'source' }));
       }
 
       // Fill and flatten form fields. By default this only touches sources the
@@ -768,6 +771,8 @@ export class ExportService {
       const pageHasRedaction = (p: typeof docPages[number]): boolean =>
         elements.some(el => el.pageId === p.id && el.type === 'redaction');
       const copiedPages = new Map<string, import('@cantoo/pdf-lib').PDFPage>();
+      // WS8 step 5: each source's layer settings travel with its pages (see `copySourcePages`).
+      const layered: Array<{ id: string; ocProperties: import('@cantoo/pdf-lib').PDFDict }> = [];
       for (const [id, srcDoc] of srcDocs) {
         const indices = [...new Set(
           docPages
@@ -775,8 +780,18 @@ export class ExportService {
             .map(p => p.sourcePageNum - 1)
         )].sort((a, b) => a - b);
         if (indices.length === 0) continue;
-        const pages = await pdfDoc.copyPages(srcDoc, indices);
+        const { pages, ocProperties } = await copySourcePages(pdfDoc, srcDoc, indices);
         indices.forEach((idx: number, i: number) => copiedPages.set(`${id}:${idx}`, pages[i]));
+        if (ocProperties) layered.push({ id, ocProperties });
+      }
+      if (layered.length === 1) {
+        await carryLayers(pdfDoc, layered[0].ocProperties);
+      } else if (layered.length > 1) {
+        // The verdicts are cached: every source was just loaded with the viewer check.
+        for (const { id } of layered) {
+          const bytes = documentModel.sourcePdfs.get(id)?.bytes;
+          if (bytes && (await viewerVerdict(bytes)).hiddenLayers) throw new ExportLayersConflictError();
+        }
       }
 
       // Add pages in document order and draw overlays
@@ -851,7 +866,7 @@ export class ExportService {
     try {
       const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
       if (!srcEntry) { _prog.failed(); return; }
-      const srcDocLib = await loadPdfDocument(srcEntry.bytes);
+      const srcDocLib = await loadPdfDocument(srcEntry.bytes, { viewerCheck: 'source' });
       const pdfDoc    = await PDFDocument.create();
       const pageElements = elements.filter(el => el.pageId === docPage.id);
       const hasRedaction = pageElements.some(el => el.type === 'redaction');
@@ -859,8 +874,9 @@ export class ExportService {
       if (hasRedaction) {
         await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageIdx + 1, documentModel.pageCount);
       } else {
-        const [page] = await pdfDoc.copyPages(srcDocLib, [docPage.sourcePageNum - 1]);
+        const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDocLib, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
+        if (ocProperties) await carryLayers(pdfDoc, ocProperties);
         await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageIdx + 1, documentModel.pageCount);
       }
 
@@ -910,10 +926,11 @@ export class ExportService {
         _prog.failed();
         return;
       }
-      const srcDoc = await loadPdfDocument(srcEntry.bytes);
+      const srcDoc = await loadPdfDocument(srcEntry.bytes, { viewerCheck: 'source' });
       const pdfDoc = await PDFDocument.create();
-      const [page] = await pdfDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
+      const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDoc, [docPage.sourcePageNum - 1]);
       pdfDoc.addPage(page);
+      if (ocProperties) await carryLayers(pdfDoc, ocProperties);
 
       const pageElements = elements.filter(el => el.pageId === docPage.id);
       await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, idx + 1, documentModel.pageCount);
@@ -997,9 +1014,10 @@ export class ExportService {
       } else {
         const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
         if (!srcEntry) return null;
-        const srcDoc = await loadPdfDocument(srcEntry.bytes);
-        const [page] = await pdfDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
+        const srcDoc = await loadPdfDocument(srcEntry.bytes, { viewerCheck: 'source' });
+        const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDoc, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
+        if (ocProperties) await carryLayers(pdfDoc, ocProperties);
         await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, libs, pageNumber, documentModel.pageCount);
       }
 

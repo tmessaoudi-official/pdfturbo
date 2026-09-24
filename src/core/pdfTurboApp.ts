@@ -73,6 +73,7 @@ import { SignatureManager } from './signatureManager';
 import { ExportPreviewPanel } from '../ui/exportPreviewPanel';
 import { CanvasClickRouter } from './canvasClickRouter';
 import type { ToolMode } from '../types/tools';
+import { inheritViewerVerdict } from '../utils/viewerVerdict';
 
 export type { ToolMode } from '../types/tools';
 
@@ -566,6 +567,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       return false;
     }
     const after = { bytes: newBytes, doc: newDoc };
+    // The edit was computed from a parse of `before.bytes` that passed the viewer check (WS8).
+    inheritViewerVerdict(before.bytes, newBytes);
     const onUpdate = () => {
       this._thumbnailPanel?.invalidateThumb(pageId);
       void this._thumbnailPanel?.render();

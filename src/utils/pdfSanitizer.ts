@@ -160,7 +160,7 @@ export async function sanitizePdf(input: Uint8Array): Promise<SanitizeResult> {
   const { PDFName, PDFDict, PDFArray, PDFRef, PDFStream, PDFInvalidObject } = await import('@cantoo/pdf-lib');
   // updateMetadata:false — otherwise pdf-lib re-stamps Producer + ModDate into
   // /Info at load time, re-injecting the very identifying metadata we strip.
-  const doc = await loadPdfDocument(input, { updateMetadata: false });
+  const doc = await loadPdfDocument(input, { updateMetadata: false, viewerCheck: false });
   const ctx = doc.context;
   const cat = doc.catalog;
 

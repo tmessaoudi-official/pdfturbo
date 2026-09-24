@@ -10,6 +10,7 @@ import {
 import type { InkLayer } from '../infra/inkLayer';
 import { DocumentModel, PAGE_SIZES, type DocumentPage, type PageCrop } from './documentModel';
 import type { IErrorReporter } from './errorReporter';
+import { prewarmViewerVerdict } from '../utils/viewerVerdict';
 import type { IProgressManager } from '../ui/progressManager';
 import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToRect, scaleCropToPageBox } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
@@ -333,6 +334,7 @@ export class PageService {
           const bytesToStore = typedBytes.slice(0);
           const doc = await pdfjsLib.getDocument({ data: typedBytes }).promise;
           const src = ctx.documentModel.addSourcePdf(doc, bytesToStore, fileName);
+          prewarmViewerVerdict(bytesToStore);
           const cmd = new AddPagesCmd(ctx.documentModel, src.id, undefined, () => ctx.onPageStructureChange());
           ctx.historyManager.execute(cmd);
           addedCount++;

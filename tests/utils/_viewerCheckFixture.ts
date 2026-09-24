@@ -35,7 +35,19 @@ const CAPTION = 'BT /F1 12 Tf 20 250 Td (CAPTION) Tj ET';
  * differ only in what they paint below it — the "scan with a caption" shape a text fingerprint cannot see. `same`:
  * two identical copies (the control). `text`: the copies differ in their text.
  */
-export function buildDupContentPdf(shape: 'graphicsOnly' | 'same' | 'text'): Uint8Array {
+export function buildDupContentPdf(shape: 'graphicsOnly' | 'same' | 'text' | 'colourOnly' | 'moved'): Uint8Array {
+  if (shape === 'colourOnly' || shape === 'moved') {
+    // Same operators in the same order; only an operand differs — a colour, or where the square is drawn.
+    const kept = shape === 'colourOnly' ? `${CAPTION} 1 0 0 rg 20 20 100 100 re f` : `${CAPTION} 0 0 1 rg 150 20 100 100 re f`;
+    return assemble([
+      [1, '<< /Type /Catalog /Pages 2 0 R >>'],
+      [2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+      [3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>'],
+      [4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],
+      [5, stream(`${CAPTION} 0 0 1 rg 20 20 100 100 re f`)],
+      [5, stream(kept)],
+    ]);
+  }
   const shown = shape === 'text' ? 'BT /F1 12 Tf 20 250 Td (VIEWED) Tj ET' : `${CAPTION} 0 0 1 rg 20 20 100 100 re f`;
   const kept = shape === 'text' ? 'BT /F1 12 Tf 20 250 Td (SIGNED) Tj ET'
     : shape === 'same' ? shown
@@ -60,5 +72,20 @@ export function buildLayerPdf(state: 'OFF' | 'ON'): Uint8Array {
     [4, stream('BT /F1 12 Tf 20 150 Td (ALWAYS VISIBLE) Tj ET /OC /L1 BDC BT /F1 12 Tf 20 100 Td (LAYER TEXT) Tj ET EMC')],
     [5, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],
     [6, '<< /Type /OCG /Name (Layer) >>'],
+  ]);
+}
+
+/**
+ * One page, 300×300: a GREEN square always drawn, and a RED square inside an optional-content layer the catalog
+ * switches OFF or ON. The red square is the only red thing on the page, so a rendered export can be checked for the
+ * hidden layer without any coordinate arithmetic.
+ */
+export function buildColourLayerPdf(state: 'OFF' | 'ON'): Uint8Array {
+  return assemble([
+    [1, `<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [5 0 R] /D << /${state} [5 0 R] >> >> >>`],
+    [2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    [3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Properties << /L1 5 0 R >> >> >>'],
+    [4, stream('0 1 0 rg 20 20 100 100 re f /OC /L1 BDC 1 0 0 rg 160 160 100 100 re f EMC')],
+    [5, '<< /Type /OCG /Name (Layer) >>'],
   ]);
 }

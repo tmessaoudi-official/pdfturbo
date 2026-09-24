@@ -156,7 +156,7 @@ export class PdfSigner {
     pdfBytes: Uint8Array,
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     try {
-      return await loadPdfDocument(pdfBytes, { ignoreEncryption: true });
+      return await loadPdfDocument(pdfBytes, { ignoreEncryption: true, viewerCheck: false });
     } catch (cause) {
       throw new SignError('PDF_PARSE_FAILED', 'Could not load the PDF for signing.', { cause });
     }

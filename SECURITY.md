@@ -240,16 +240,19 @@ the value stops being an editable field and becomes permanent page text that any
 That is the point of the feature — it is just worth knowing that flattening a form containing a national
 insurance number does not protect it.
 
-### A layer switched off in the source comes out visible in the export (found 2026-09-24, not yet fixed)
+### A layer switched off in the source stays off in the export (found and fixed 2026-09-24)
 
 A PDF can carry **optional-content layers** (a draft stamp, an alternate language, a print-only layer) that
 the file itself switches off, so the viewer does not draw them. PDFturbo shows them hidden, as the file says.
-But the PDF export builds a fresh document and copies the pages into it, and the setting that says which layers
-are off lives on the document, not on the pages — it is not copied. The export therefore has no layer settings,
-and every viewer draws every layer: content you never saw on screen is visible to whoever receives the file.
-Measured on a synthetic file: the hidden layer's text drew 0 dark pixels on the original and 307 in the
-export-shaped copy, while a layer switched ON drew the same on both. No real file with layers has been tried.
-Until this is fixed, do not export a file whose hidden layers must stay hidden.
+Until 2026-09-24 the PDF export did not keep that setting: it builds a fresh document and copies the pages into
+it, and the setting lives on the document, not on the pages. Every viewer then drew every layer, so content never
+seen on screen was visible to whoever received the file (measured on a synthetic file: 0 dark pixels in the hidden
+layer's band on the original, 307 in the export). Every export that copies pages — the PDF downloads, a page as an
+image, the thumbnails and a redacted page — now carries the source's layer settings with its pages.
+
+One case is refused instead: an export that combines two or more documents which each carry layer settings, when
+one of them switches a layer off. A PDF has a single set of layer settings, and merging two is not done here, so
+PDFturbo says so rather than publish the hidden layer. Export those documents separately.
 
 ### Lock PDF — what the password encrypts, and what it cannot
 
@@ -290,58 +293,33 @@ viewing the file are unaffected.
   pdf.js still draws it, so the export would lose it. A file is refused when anything it uses was dropped
   and nothing later in the file replaced it — including when the drop sits behind a second damaged object
   whose contents cannot be read at all.
-- **The viewer and the export library would read different objects or pages** (fixed in WS7 rounds 13, 14, 16
-  and 17).
-  pdf.js finds objects through the cross-reference table the end of the file points to; pdf-lib reads
-  objects in order and keeps the last copy of each, and the last trailer. Each of these showed one page and
-  exported or signed another — a valid signature over content the signer never saw:
-  - a table that points at an *earlier* copy of an object;
-  - a table that marks an object a page uses as free, or places it at offset 0, so the viewer draws nothing
-    where the export has content;
-  - a table that places an object a page uses at bytes that are not that object: the viewer fails to read it
-    and draws the page blank or not at all — unless it meets the entry while opening the first or last page,
-    when it repairs its table by scanning and agrees with pdf-lib;
-  - any of these in a file whose update points at an older section the viewer cannot read (the middle of an
-    object, past the end of the file, a damaged cross-reference stream): the viewer skips that section and
-    reads on — except that after a cross-reference table it cannot finish it reads no later table at all, and
-    after a stream it rejects it misreads any later stream. The check follows the same rules, and refuses a
-    file in the second case;
-  - an update pointer written as a reference to an object holding the offset, which the viewer follows;
-  - a trailer the viewer follows that names a different document root from the later trailer pdf-lib keeps;
-  - a document root pdf-lib silently replaces with another one in the file, because the declared root does
-    not say it is a catalog;
-  - a page tree whose page counts are wrong, or a page without its type: the viewer skips pages by those
-    counts and shows pages the export library does not list, so the page on screen at a position is not the
-    page exported or signed there;
-  - a linearized ("fast web view") file: the viewer starts reading at its first-page table rather than the
-    table the end of the file points to, and shows the page its linearization dictionary names first.
+- **The viewer and the export library would show different pages** (WS7 rounds 13–17; since WS8, 2026-09-24,
+  checked by running the viewer itself). pdf.js finds objects through the cross-reference table the end of the
+  file points to; pdf-lib reads objects in order and keeps the last copy of each. A crafted file can use that to
+  show one page and export or sign another — a valid signature over content the signer never saw. Examples
+  measured and refused: a table pointing at an earlier copy of an object; a table marking an object a page uses
+  as free, or placing it at bytes that are not that object; an update pointing at a section the viewer skips; a
+  trailer or document root the two libraries choose differently; a page tree whose page counts are wrong; a
+  linearized ("fast web view") file whose first-page table names another copy.
 
-  A legitimately updated file keeps both readers in step. Measured on 15 real-world PDFs — forms, papers
-  and reports, most of them updated or linearized — and on 5 test files kept in the repository: none was
-  refused, and each of the 15 was read through the same cross-reference chain the viewer follows (re-measured
-  after round 17).
+  Until WS8 PDFturbo decided this by re-reading the file's cross-reference structure the way it believed pdf.js
+  does, and a closing audit measured ten crafted shapes that got past that model wherever the two libraries read
+  the same bytes differently. The model is gone. When a document is opened, PDFturbo now opens it in pdf.js a
+  second time, builds the copy an export builds, opens that in pdf.js as well, and compares every page the viewer
+  shows — its text, with each string's position, and its drawing operations with their numbers and colours. Any page that differs
+  refuses the export, signing and in-place editing for that document. All ten audit shapes now refuse. The check
+  runs in the background from the moment the file opens, so an export usually finds it finished; on a large file
+  it takes seconds.
 
-What is still not checked, stated rather than hidden: bytes pdf-lib never reads as an object at all; an
-object the table places inside a compressed object stream; a file pdf.js repairs by scanning — no section it
-can read yields a trailer, its document root is unusable, or opening the first or last page meets an entry it
-cannot read — where it keeps the last copy of each object like pdf-lib — measured, except that when two copies carry different
-generation numbers it keeps the FIRST (closing audit, 2026-09-24) — and chooses its trailer by a
-rule PDFturbo does not reproduce; a compressed cross-reference stream written in a
-form PDFturbo does not decode the way pdf.js does; and the pages of a file whose page tree the export library
-cannot list at all, where every export fails anyway.
+  Measured on 15 real-world PDFs — forms, papers and reports, most of them updated or linearized — and on the 5
+  test files kept in the repository: none is refused.
 
-**The check models the viewer; it does not run it — and the closing audit measured where that model fails
-(2026-09-24).** PDFturbo works out what pdf.js shows by re-reading the file's cross-reference structure on top
-of pdf-lib's own parse. Where the two libraries read the same bytes differently, a deliberately crafted file
-can still show one page and export or sign another. Ten such shapes were built and measured, none found in any
-real file: a `startxref` hidden in a comment after the end marker, a cross-reference stream without its type,
-a table hidden inside another object's data, a table short of rows in the middle of a chain, a second
-subsection numbered from 1, a row offset written as a decimal, a table entry landing inside another object, a
-rejected stream that leaves pdf.js unable to read the next one, one object number listed twice in a page tree
-with two generations, and a linearization dictionary with a null first page. They share one cause and are
-recorded as one bound rather than fixed one by one: closing the class means running pdf.js itself and comparing
-what it actually shows — which is not done. Until then, **do not treat a signature PDFturbo made over a PDF from
-someone you do not trust as proof of what that person's viewer displayed.**
+What the check does not compare, stated rather than hidden: pages the export library holds beyond the ones the
+viewer shows (they are never exported); annotation appearances (compared with annotations switched off, because
+the export's copy draws form widgets differently); and which picture an image operation paints when two candidates
+have the same size and position. Bytes pdf-lib never reads as an object at all are covered only as far as they
+change what a page draws. Encrypted files are unchanged: without the password they are refused before the check,
+as before.
 
 ## Data at rest (session persistence)
 

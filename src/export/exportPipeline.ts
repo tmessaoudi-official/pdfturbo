@@ -18,6 +18,7 @@ import type { IErrorReporter } from '../core/errorReporter';
 import type { PdfLibOps, PdfLibDrawOps } from '../utils/pdfLibTypes';
 import { batesStampText, batesPosition, type BatesSettings } from './batesStamp';
 import { isEnabled } from '../config/features';
+import { carryLayers, copySourcePages } from './copySourcePages';
 
 // ── Shared context for page overlay assembly ─────────────────────────────────
 
@@ -451,8 +452,10 @@ export async function rasterizePageWithRedactions(
   void rgb; void StandardFonts;
 
   const tempDoc = await PDFDocument.create();
-  const [tempPage] = await tempDoc.copyPages(srcDoc, [docPage.sourcePageNum - 1]);
+  // The layer settings travel too, or pdf.js rasterises a layer the source switches OFF (WS8 step 5).
+  const { pages: [tempPage], ocProperties } = await copySourcePages(tempDoc, srcDoc, [docPage.sourcePageNum - 1]);
   tempDoc.addPage(tempPage);
+  if (ocProperties) await carryLayers(tempDoc, ocProperties);
 
   const userRot  = docPage.rotation ?? 0;
   const srcRot   = tempPage.getRotation().angle as number;

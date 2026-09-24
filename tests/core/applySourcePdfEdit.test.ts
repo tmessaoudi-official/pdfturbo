@@ -4,11 +4,13 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { PDFTurboApp } from '../../src/core/pdfTurboApp';
 import { HistoryManager } from '../../src/core/historyManager';
 import type { SourcePdf } from '../../src/core/documentModel';
+import { inheritViewerVerdict } from '../../src/utils/viewerVerdict';
 
 vi.mock('pdfjs-dist', () => ({
   getDocument: vi.fn(),
   GlobalWorkerOptions: {},
 }));
+vi.mock('../../src/utils/viewerVerdict', () => ({ inheritViewerVerdict: vi.fn(), prewarmViewerVerdict: vi.fn() }));
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -109,5 +111,29 @@ describe('_applySourcePdfEdit — TOCTOU / identity guard (M0 #5)', () => {
     expect(src.bytes).toBe(beforeBytes);              // reverted by auto-undo
     expect(app.historyManager.canUndo()).toBe(false); // command undone off the stack
     expect(app.reportError.error).toHaveBeenCalled();
+  });
+});
+
+describe('_applySourcePdfEdit — the edited bytes inherit the viewer verdict (WS8 step 3)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('hands the source\'s verdict to the bytes it commits', async () => {
+    const { app, src } = makeApp();
+    const beforeBytes = src.bytes;
+    (pdfjsLib.getDocument as unknown as Mock).mockReturnValue({ promise: Promise.resolve({ loadingTask: { destroy: vi.fn() } }) });
+    const newBytes = new Uint8Array([9, 9]);
+    await run(app, src, newBytes);
+    expect(inheritViewerVerdict).toHaveBeenCalledWith(beforeBytes, newBytes);
+  });
+
+  it('does not when the edit is discarded mid-parse', async () => {
+    const { app, src } = makeApp();
+    const d = deferred<unknown>();
+    (pdfjsLib.getDocument as unknown as Mock).mockReturnValue({ promise: d.promise });
+    const p = run(app, src, new Uint8Array([9, 9]));
+    app.documentModel.sourcePdfs.delete('s1');
+    d.resolve({ loadingTask: { destroy: vi.fn().mockResolvedValue(undefined) } });
+    await p;
+    expect(inheritViewerVerdict).not.toHaveBeenCalled();
   });
 });

@@ -587,6 +587,7 @@
     "sanitizeFailed": "Échec du nettoyage",
     "sanitizeRefusedInvalidObject": "Nettoyage refusé — ce PDF contient un objet endommagé impossible à inspecter, qui pourrait masquer du contenu actif",
     "pdfLoadRefused": "Ce PDF ne peut pas être utilisé pour cette opération : sa structure interne est endommagée ou ambiguë, et la copie enregistrée pourrait différer de ce qui s'affiche. Réenregistrez-le d'abord depuis une autre application PDF",
+    "exportLayersConflict": "Ces documents ne peuvent pas être enregistrés ensemble : l’un d’eux masque un calque, et leurs réglages de calques ne peuvent pas être réunis dans un seul fichier. Exportez-les séparément",
     "pageDownloaded": "Page {{page}} téléchargée !",
     "pageExportFailed": "Échec de l'export de page",
     "exportSourceNotFound": "Export échoué — PDF source introuvable",

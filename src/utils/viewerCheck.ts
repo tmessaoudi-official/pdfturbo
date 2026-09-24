@@ -13,8 +13,8 @@
  *  - Operators are taken with annotations DISABLED. The fresh copy has no /AcroForm, so pdf.js draws its widgets
  *    differently; with annotations drawn, 7 of 8 real forms mismatched on every widget page.
  *
- * Each page is fingerprinted twice: its text (strings and origins, `getTextContent`) and its operator sequence
- * (`getOperatorList`). Text alone misses a page whose caption matches and whose picture was swapped; operators alone
+ * Each page is fingerprinted twice: its text (strings and origins, `getTextContent`) and its operator list
+ * (`getOperatorList`) — the operators in order plus a hash of their numeric operands and colours. Text alone misses a page whose caption matches and whose picture was swapped; operators alone
  * miss a page whose strings differ inside the same drawing calls. A page pdf.js cannot produce fingerprints as
  * `ERR:<name>`, so a page that errors or draws blank on screen and not in the copy is a mismatch.
  *
@@ -27,6 +27,7 @@
  */
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { PDFDocument } from '@cantoo/pdf-lib';
+import { carryLayers, copySourcePages } from '../export/copySourcePages';
 
 /** The slice of the pdf.js module this check uses — the app's `pdfjs-dist`, or the legacy build under Node. */
 export interface ViewerPdfJs {
@@ -41,6 +42,31 @@ export interface ViewerCheckResult {
   hiddenLayers: boolean;
 }
 
+/**
+ * A hash of an operator list's OPERANDS: every number (rounded to 1/100 pt) and every colour, in order. Other
+ * strings are skipped because they are per-document ids (`g_d0_f1`, `img_p1_1`) that differ between the original
+ * and the copy for the same content. Without this a page whose operators match and whose operands differ — a colour,
+ * where a shape or image is placed — compared equal (measured: `buildDupContentPdf('colourOnly' | 'moved')`).
+ */
+function operandHash(argsArray: unknown[]): string {
+  let h = 0x811c9dc5;
+  const mix = (s: string): void => {
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+    h = Math.imul(h ^ 0x7c, 0x01000193); // separator, so [1, 23] and [12, 3] differ
+  };
+  const walk = (v: unknown, depth: number): void => {
+    if (typeof v === 'number') mix(v.toFixed(2));
+    else if (typeof v === 'string') { if (/^#[0-9a-f]{6}$/i.test(v)) mix(v.toLowerCase()); }
+    else if (typeof v === 'boolean') mix(v ? 't' : 'f');
+    else if (depth > 6 || v === null || typeof v !== 'object') return;
+    else if (ArrayBuffer.isView(v)) { for (const n of Array.from(v as unknown as ArrayLike<number>)) mix((+n).toFixed(2)); }
+    else if (Array.isArray(v)) { for (const x of v) walk(x, depth + 1); }
+    else { for (const x of Object.values(v)) walk(x, depth + 1); }
+  };
+  for (const args of argsArray) { walk(args, 0); mix('|'); }
+  return (h >>> 0).toString(16);
+}
+
 async function fingerprints(doc: PDFDocumentProxy, count: number, pdfjs: ViewerPdfJs): Promise<string[]> {
   const out: string[] = [];
   for (let p = 1; p <= count; p++) {
@@ -52,7 +78,7 @@ async function fingerprints(doc: PDFDocumentProxy, count: number, pdfjs: ViewerP
         .map(i => `${i.str}@${(i.transform as number[])[4].toFixed(2)},${(i.transform as number[])[5].toFixed(2)}`)
         .join('|');
       const ol = await page.getOperatorList({ annotationMode: pdfjs.AnnotationMode.DISABLE });
-      out.push(`${text}#${Array.from(ol.fnArray).join(',')}`);
+      out.push(`${text}#${Array.from(ol.fnArray).join(',')}#${operandHash(ol.argsArray)}`);
       page.cleanup();
     } catch (e) {
       out.push(`ERR:${(e as Error).name}`);
@@ -75,7 +101,11 @@ export async function viewerMismatch(
 ): Promise<ViewerCheckResult> {
   const { PDFDocument: Doc } = await import('@cantoo/pdf-lib');
   const fresh = await Doc.create({ updateMetadata: false });
-  for (const page of await fresh.copyPages(libDoc, libDoc.getPageIndices())) fresh.addPage(page);
+  // Built exactly as the export builds its pages, layer settings included (WS8 step 5): the operand hash sees a
+  // layer's state, so a copy without them would mismatch every page that uses one.
+  const { pages: copied, ocProperties } = await copySourcePages(fresh, libDoc, libDoc.getPageIndices());
+  for (const page of copied) fresh.addPage(page);
+  if (ocProperties) await carryLayers(fresh, ocProperties);
   const copyBytes = await fresh.save();
 
   const task = pdfjs.getDocument({ data: copyBytes, verbosity: 0 });

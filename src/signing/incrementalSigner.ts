@@ -200,7 +200,7 @@ export async function addIncrementalSignature(
 
   let doc: import('@cantoo/pdf-lib').PDFDocument;
   try {
-    doc = await loadPdfDocument(signedBytes, { ignoreEncryption: true, updateMetadata: false });
+    doc = await loadPdfDocument(signedBytes, { ignoreEncryption: true, updateMetadata: false, viewerCheck: false });
   } catch (cause) {
     throw new SignError('PDF_PARSE_FAILED', 'Could not load the signed PDF for incremental signing.', { cause });
   }

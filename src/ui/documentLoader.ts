@@ -13,6 +13,7 @@ import type { IProgressManager } from './progressManager';
 import { ElementFactory } from '../utils/elementFactory';
 import { loadState, clearState } from '../infra/storage';
 import { trapFocus } from '../utils/focusTrap';
+import { prewarmViewerVerdict } from '../utils/viewerVerdict';
 import { embedPngTolerant, rasterToPngBytes } from '../utils/pngEmbed';
 
 // Untrusted-PDF input caps — defence-in-depth against OOM/DoS from a malicious
@@ -116,6 +117,7 @@ export class DocumentLoader {
         const bytesToStore = spBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
         const doc = await pdfjsLib.getDocument({ data: spBytes }).promise;
         const src = this._ctx.documentModel.addSourcePdf(doc, bytesToStore, sp.name);
+        prewarmViewerVerdict(bytesToStore);
         // Override auto-generated id with the saved one
         this._ctx.documentModel.sourcePdfs.delete(src.id);
         src.id = sp.id;
@@ -367,6 +369,8 @@ export class DocumentLoader {
       this._ctx.reinitThumbnailPanel();
 
       const src = this._ctx.documentModel.addSourcePdf(doc, bytesToStore, file.name);
+      // Start the WS8 viewer check now, so the first export awaits a finished verdict.
+      prewarmViewerVerdict(bytesToStore);
       this._ctx.documentModel.addPagesFrom(src.id);
       this._ctx.renderer.pdfDoc = doc;
 

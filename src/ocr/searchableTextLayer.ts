@@ -297,7 +297,7 @@ export async function applySearchableLayerToPdf(
   // unlike the other loads in this repo THIS one's `.save()` replaces the in-memory source bytes via
   // `ReplaceSourcePdfBytesCmd` — so the re-stamp lands on the user's document and would defeat a
   // later sanitize-then-verify on it. [WS5 audit, 2026-09-04]
-  const doc = await loadPdfDocument(srcBytes, { updateMetadata: false });
+  const doc = await loadPdfDocument(srcBytes, { updateMetadata: false, viewerCheck: 'source' });
   const page = doc.getPage(sourcePageNum - 1);
 
   const rotation = asCardinalAngle(page.getRotation().angle);

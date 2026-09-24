@@ -1386,6 +1386,23 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   start a round 18 on the mirror**; closing the class means running pdf.js and comparing what it shows per page.
   Its one false refusal (a table whose declared row count is wrong, which pdf.js rebuilds past) is fixed by
   `viewerTableRows`.
+  **WS8 (2026-09-24) DID exactly that, and the mirror is DELETED** — everything in this bullet about xref chains,
+  page walks, `describeParse`, predictors and `PdfXrefMismatchError` describes code that no longer exists and is kept
+  as history. `loadPdfDocument` now takes a REQUIRED `viewerCheck: 'source' | false`; `'source'` runs
+  `src/utils/viewerCheck.ts` — pdf.js on the original and on pdf-lib's pages copied into a FRESH document (a plain
+  `save()` keeps the quirks, so pdf.js re-reads it identically and a mismatch compares equal), per-page text
+  (str + origin) plus operator fingerprint taken with annotations DISABLED (drawn, 7 of 8 real forms mismatched on
+  widgets) — and refuses with `PdfPageMismatchError(['page N', …])`. pdf.js showing FEWER pages is allowed. The
+  verdict is cached by BYTES IDENTITY (`viewerVerdict.ts`), prewarmed wherever `addSourcePdf` runs and inherited by a
+  true edit's bytes, because the pass costs 8–13 s wall-clock on a 67–142-page report (measured in Chrome; main-thread
+  long tasks ≤ 115 ms). A copy of a source's bytes (`.slice(0)`) misses the cache and re-runs it. `false` is for bytes
+  pdf-lib wrote in the same operation; which sites pass which is pinned by name in `pdfLoadGuard.test.ts`. The ten
+  audit shapes are tracked in `tests/fixtures/ws8-audit/` and all refuse. `viewerVerdict` sets the pdf.js worker
+  itself in a real browser: relying on `infra/pdfRenderer.ts` having been imported first failed every guarded load
+  in the browser suite. The same step found that `copyPages` never copies `/OCProperties`, so a layer the source
+  switches OFF came out visible — every page copy now goes through `src/export/copySourcePages.ts`, which copies the
+  pages and the layer settings with ONE `PDFObjectCopier` (a second copier duplicates the groups and viewers match
+  them by reference). See `SECURITY.md` / `KNOWN_ISSUES.md` for what the check does not compare.
   **A resolved chain is not a compared chain.** Round 13
   recorded "14 of 15 real files reached the comparison". Measuring round 14's fixes showed pdf-lib inflates a
   cross-reference STREAM but never applies its `/DecodeParms /Predictor`, which Acrobat and most producers
@@ -1840,8 +1857,8 @@ grades (see that § for why). They are single-verb substitutions and were pendin
 pending count before assuming a key is reviewed.
 **AMENDED 2026-09-13 — WS3 CLOSED by developer ruling** ("consider the arabic review done"): the 15
 values that had accumulated since, and the two UNRECONCILED sets, are accepted as reviewed. That is a
-RULING, not a second native read — say so whenever citing it. **Pending count: 4** —
-`toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, and `toolbar.sanitizeTitle`, re-worded on the closure day to en/fr parity by the session, so it is a new value and
+RULING, not a second native read — say so whenever citing it. **Pending count: 5** —
+`toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, and `toolbar.sanitizeTitle`, re-worded on the closure day to en/fr parity by the session, so it is a new value and
 starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), also
 session-written. The count's home is § "The hide-vs-remove audit".
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
@@ -1937,7 +1954,7 @@ XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (th
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (ar accepted by the 2026-09-13 WS3 closure ruling, together
 with the 7 `toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day and the rest of that
-15-value set — **4 values pending as of 2026-09-14**, the re-worded `toolbar.sanitizeTitle`, WS7 round 10's two new keys and round 15's `toast.pdfLoadRefused`; § The
+15-value set — **5 values pending as of 2026-09-24**, the re-worded `toolbar.sanitizeTitle`, WS7 round 10's two new keys, round 15's `toast.pdfLoadRefused` and WS8's `toast.exportLayersConflict`; § The
 hide-vs-remove audit is the count's home, so update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
@@ -3152,7 +3169,7 @@ The three Arabic edits are single-verb substitutions (`للإبقاء على` �
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified. **The pending set is
 CLOSED as of 2026-09-13 by developer ruling** ("consider the arabic review done") — accepted by ruling, not
-by a second native read — **and the pending count is 4**: `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
+by a second native read — **and the pending count is 5**: `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
 en/fr parity by the session, which makes it a new value, and the two keys WS7 round 10 added the same day
 (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), both session-written. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
 keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
@@ -3365,7 +3382,7 @@ this class twice over.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (ar accepted by the 2026-09-13 WS3
 closure ruling, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings,
-the 2 #54b keys and the old `toolbar.sanitizeTitle` — 4 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+the 2 #54b keys and the old `toolbar.sanitizeTitle` — 5 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

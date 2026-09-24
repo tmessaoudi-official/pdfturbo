@@ -66,19 +66,31 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From the WS8 design probe (2026-09-24)
 
-- **A layer the source switches OFF is visible in every PDF export** (open, needs a ruling). `/OCProperties`
-  lives on the catalog; `_assemblePdfDoc` creates a fresh document and `copyPages`, which never copies it, so the
-  export has no optional-content configuration and every viewer draws every layer. Measured with pdf.js 6.3.289 on
-  a synthetic file (`var/claude/ws8/lossy.mjs`, gitignored): the OFF layer's band 0 dark pixels on the original, 307
-  on the copy; an ON layer 164 on both. `getTextContent` and `getOperatorList` return hidden-layer content on both
-  sides, so a text or operator fingerprint cannot see this — WS8's comparison needs the document's OC configuration
-  as its own input. Disclosed in `SECURITY.md`. Resources inherited from `/Pages` were checked the same way and ARE
-  preserved by `copyPages`.
+- ~~**A layer the source switches OFF is visible in every PDF export**~~ — **FIXED by WS8 step 5 (2026-09-24).**
+  `/OCProperties` lives on the catalog and `copyPages` never copied it, so the export had no optional-content
+  configuration and every viewer drew every layer (measured: the OFF layer's band 0 dark pixels on the original, 307
+  on the copy). Every export that copies source pages now carries the source's layer settings, copied with the same
+  object copier as the pages so the groups the page references and the groups the settings list stay one object
+  (`src/export/copySourcePages.ts`) — the PDF exports, the page as image, the thumbnail and the redaction rasteriser.
+  One bound: an export combining two or more sources that EACH carry layer settings, where at least one switches a
+  layer off, is refused (`toast.exportLayersConflict`) rather than merged — a PDF has one `/OCProperties`, and
+  reconciling two means their order, radio groups and base states. Two layered sources whose layers are all ON
+  export without either, which hides nothing. Guards: `tests/export/exportLayers.test.ts`,
+  `tests/browser/export-layers.browser.test.ts`.
+- **What the viewer check does not compare** (P3, bounds of a fix — WS8, 2026-09-24). The check runs pdf.js on a
+  source and on the copy the export builds and compares each page's text (strings and origins) and drawing operators
+  with a hash of their numeric operands and colours (per-document ids excluded).
+  Not compared: pages pdf.js does not show when pdf-lib holds more — they are never exported; annotation appearances
+  (operators are taken with annotations disabled, because the export copy drops the form dictionary and pdf.js
+  draws widgets differently without it); which image an image-painting operator paints when two candidates have the
+  same size and placement; and encrypted sources, which pdf-lib refuses without a password before the check, as
+  before. A file pdf.js cannot open at all is refused, as the app cannot open it either.
 
 ### From the WS7 closing audit (2026-09-24)
 
-- **The viewer/export agreement check models pdf.js on pdf-lib's parse, and a crafted file can get past it** (P2,
-  named bound, developer ruling 2026-09-24). A branch-by-branch audit of pdf.js 6.3.289's cross-reference reader
+- ~~**The viewer/export agreement check models pdf.js on pdf-lib's parse, and a crafted file can get past it**~~
+  — **CLOSED by WS8 (2026-09-24)**: the mirror is gone and the check runs pdf.js itself; all ten shapes below now
+  refuse, pinned by `tests/utils/ws8AuditShapes.test.ts`. Kept for the record: A branch-by-branch audit of pdf.js 6.3.289's cross-reference reader
   and page walk against `src/utils/pdfLoadGuard.ts` measured ten shapes that show one page and export or sign
   another while the guard loads the file: a `%startxref` comment after `%%EOF` (pdf.js takes it), a
   cross-reference stream without `/Type /XRef`, a table hidden inside stream data, a middle table short of rows,
@@ -92,12 +104,12 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From WS7 round 17 (2026-09-14)
 
-- **A second cross-reference stream after one pdf.js rejects refuses the file** (P3, deliberate) — when pdf-lib
+- **A second cross-reference stream after one pdf.js rejects refuses the file** (P3, deliberate) **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. — when pdf-lib
   parses the rejected stream. pdf.js reads the second stream with the first one's position, widths and ranges,
   which PDFturbo does not model, so it refuses rather than guess. When pdf-lib cannot build the rejected stream at
   all (a `/Type /XRef` stream without `/W`), the guard never learns it was rejected and LOADS — one of the ten
   shapes of the closing-audit bound above. No real file measured has this shape.
-- **What the page-order check does not compare** (P3, bounds of a fix). The PDF exports and signing refuse a
+- **What the page-order check does not compare** (P3, bounds of a fix). **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. The PDF exports and signing refuse a
   file where a page pdf.js shows is not the page pdf-lib holds at that position — a wrong `/Count`, a page
   dictionary without `/Type`, a linearized file's first-page object. Not compared: a file whose page tree
   pdf-lib cannot list, where every export fails anyway. Loads: pdf.js showing fewer pages than pdf-lib holds
@@ -113,7 +125,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
   the last-page check falls back to). PDFturbo now mirrors those walks and compares nothing for such a file.
   The bound this left — pdf.js takes a linearized file's first page and page count from its linearization
   dictionary — is closed by WS7 round 17, which mirrors both.
-- **A cross-reference stream PDFturbo does not decode the way pdf.js does is not compared** (P3). pdf-lib
+- **A cross-reference stream PDFturbo does not decode the way pdf.js does is not compared** (P3). **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. pdf-lib
   never applies a cross-reference stream's predictor, so PDFturbo decodes those entries itself; a stream with
   abbreviated filter keys, a predictor under a second filter, or a TIFF predictor at other than 8 bits is not
   modelled, and nothing is compared through it — nor through one pdf.js rejects. None of the 15 real files
@@ -121,7 +133,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From WS7 round 13 (2026-09-13)
 
-- **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). Since rounds 13
+- **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. Since rounds 13
   and 14, the PDF exports, a page image, signing, the searchable OCR layer, sanitizing and compressing refuse a file whose cross-reference table names
   a copy of an object pdf-lib did not keep, marks a used object free, or (round 16) places it at bytes that are
   not that object — also behind an older section pdf.js cannot read and skips, and (round 17) behind a table it

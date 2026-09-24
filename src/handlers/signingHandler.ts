@@ -25,6 +25,7 @@ import type { IErrorReporter } from '../contracts/errorReporter';
  */
 function signErrorKey(err: unknown): string {
   if (isPdfLoadRefusal(err)) return 'toast.pdfLoadRefused';
+  if (err instanceof Error && err.name === 'ExportLayersConflictError') return 'toast.exportLayersConflict';
   return `sign.error.${err instanceof SignError ? err.code : 'SIGN_FAILED'}`;
 }
 

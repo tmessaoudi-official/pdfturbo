@@ -98,9 +98,14 @@ const mismatches = (a: string[], b: string[]): number[] => {
   return out;
 };
 
-/** One full WS8 pass: today's guard as the baseline, then save → re-open → fingerprint both sides. */
+/**
+ * One full WS8 pass: the shipped guard, then save → re-open → fingerprint both sides. Until WS8 step 4 the guard was
+ * the mirror, and this was the baseline the design was measured against; since then it runs the viewer check
+ * itself, so `guard` is the SHIPPED verdict and the shapes test below checks the probe's standalone fingerprinting
+ * agrees with it on the controls.
+ */
 async function pass(bytes: Uint8Array): Promise<Pass> {
-  const [guard, guardMs] = await time(() => loadPdfDocument(bytes, { updateMetadata: false })
+  const [guard, guardMs] = await time(() => loadPdfDocument(bytes, { updateMetadata: false, viewerCheck: 'source' })
     .then(() => 'loaded', (e: unknown) => (e as Error).name));
   // WS8 fingerprints what pdf-lib HOLDS, whether or not today's guard refuses it — so load raw pdf-lib.
   const libDoc = await PDFDocument.load(bytes, { updateMetadata: false });
@@ -139,7 +144,7 @@ describe.skipIf(files.length === 0 || !process.env.WS8_COST)('WS8 cost probe', (
     // The first loadPdfDocument installs the drop recorder; do it outside any timed pass.
     const d = await PDFDocument.create();
     d.addPage();
-    await loadPdfDocument(await d.save());
+    await loadPdfDocument(await d.save(), { viewerCheck: false });
   });
 
   it('catches the audited shapes and stays silent on their controls', async () => {
@@ -157,9 +162,8 @@ describe.skipIf(files.length === 0 || !process.env.WS8_COST)('WS8 cost probe', (
       if (existsSync(resolve(AUDIT, f))) cases.push({ name: `audit ${f}`, bytes: new Uint8Array(readFileSync(resolve(AUDIT, f))), expectFlag: flag });
     }
     // The audit's xref shapes (P1–P9), dumped from its probe scripts by `DUMP=var/claude/ws8/pshapes` (gitignored).
-    // Divergent shapes must flag; P3a (both readers agree since `viewerTableRows`) must not; the guard's controls are
-    // controls for the GUARD, so WS8 must flag exactly the controls the guard refuses (the readers genuinely differ
-    // there) and none it loads.
+    // Divergent shapes must flag; P3a (both readers repair the table the same way) must not. The P-shape controls were
+    // written as controls for the mirror: the probe must flag exactly the ones the shipped guard refuses.
     const PSHAPES = resolve(OUT, 'pshapes');
     const controls: string[] = [];
     for (const f of existsSync(PSHAPES) ? readdirSync(PSHAPES).sort() : []) {

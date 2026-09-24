@@ -4,17 +4,15 @@
  * copy pdf-lib will export (its pages copied into a fresh document). docs/plans/ws8-viewer-check.plan.md step 2.
  */
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { viewerMismatch } from '../../src/utils/viewerCheck';
 import { buildPageOrderPdf, buildXrefCountPdf, buildXrefShapePdf } from './_invalidObjectFixture';
 import { buildDupContentPdf, buildLayerPdf } from './_viewerCheckFixture';
 
-const open = (bytes: Uint8Array) => pdfjs.getDocument({
-  data: bytes.slice(0), verbosity: 0,
-  standardFontDataUrl: resolve(__dirname, '../../node_modules/pdfjs-dist/standard_fonts') + '/',
-} as never).promise;
+// Opened with the SAME options the check uses for its copy (as `viewerVerdict` does): the operand hash sees glyph
+// widths, which change with `standardFontDataUrl`, so opening the two sides differently mismatches every text page.
+const open = (bytes: Uint8Array) => pdfjs.getDocument({ data: bytes.slice(0), verbosity: 0 }).promise;
 
 async function check(bytes: Uint8Array) {
   const original = await open(bytes);
@@ -38,6 +36,11 @@ describe('viewerMismatch — WS8 step 2', () => {
 
   it('flags a page whose text matches and whose GRAPHICS differ (a caption over a swapped image)', async () => {
     expect((await check(buildDupContentPdf('graphicsOnly'))).pages).toEqual([1]);
+  });
+
+  it('flags a page whose operators match and whose OPERANDS differ — a colour, a position', async () => {
+    expect((await check(buildDupContentPdf('colourOnly'))).pages).toEqual([1]);
+    expect((await check(buildDupContentPdf('moved'))).pages).toEqual([1]);
   });
 
   it('does not flag two identical copies (control for the graphics case)', async () => {

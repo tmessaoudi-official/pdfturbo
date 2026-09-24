@@ -119,9 +119,17 @@ most of the work went into proving that what the product claims to remove is act
   `SECURITY.md` § "One file, two readers" states what is still not checked.
 - **A damaged PDF whose cross-reference table lists the wrong number of rows no longer refuses to export.**
   The viewer repairs such a file and reads the same content as the export library, so it now loads. A final
-  audit of the viewer's reader against this check also found ten crafted shapes that still get past it, all
-  from one cause; they are stated in `SECURITY.md` § "The check models the viewer" rather than fixed one by one,
-  and none occurs in any real file measured.
+  audit of the viewer's reader against this check also found ten crafted shapes that still got past it, all
+  from one cause: the check re-read the file the way it believed the viewer does.
+- **The viewer check now runs the viewer.** Instead of modelling pdf.js, PDFturbo opens each document a second
+  time in pdf.js in the background, builds the copy an export builds, and compares every page the viewer shows —
+  its text and its drawing operations. All ten audit shapes are now refused; no real file measured is. The check
+  starts when the file opens, so an export usually finds it done. `SECURITY.md` § "One file, two readers" lists
+  what it does not compare.
+- **A layer the source switches off no longer appears in the export.** The PDF downloads, a page as an image,
+  the thumbnails and a redacted page used to lose the file's layer settings, so every viewer drew every layer.
+  They now keep them. Combining two documents that both carry layers, where one hides a layer, is refused with a
+  message saying why, rather than publishing the hidden layer.
 
 ### Fixed — accessibility, correctness, supply chain
 - Three serious and one critical WCAG 2.1 AA rules cleared; 24 controls given explicit

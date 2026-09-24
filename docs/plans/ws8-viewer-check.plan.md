@@ -9,6 +9,8 @@ for a source with what pdf.js shows for pdf-lib's export-shaped copy of it. Mast
   `tests/tools/ws8Cost.test.ts`, f21485c).
 - [2026-09-24 19:20] AGREED: go on this plan, steps 1–9 in order; step 1 is a go/no-go (no main-thread task over 200 ms).
 - [2026-09-24 19:20] AGREED: optional content — FIX the export: copy the source's `/OCProperties` into single-source exports so OFF layers stay hidden; refuse only a multi-source export that carries an OFF layer.
+- [2026-09-24 21:40] RECORDED: (implementation of the 19:20 "fix the export" ruling) the export carries the layer settings of the ONE source that has them; when two or more contributing sources each carry settings and any switches a layer OFF, the export refuses (`ExportLayersConflictError`, `toast.exportLayersConflict`) rather than carry one set and drop the other — the stricter reading, chosen because a merge was not built and Acrobat's handling of groups missing from `/OCProperties` is unmeasured. Two layered sources whose layers are all ON export without either.
+- [2026-09-24 21:40] RECORDED: (implementation choice, within the 18:55 ruling) the edited bytes of a true edit or searchable-OCR layer inherit their source's verdict instead of re-running pdf.js, since pdf-lib wrote them from a parse that passed the check.
 
 ## Evidence this plan rests on (2026-09-24)
 - Catch rate: every closing-audit shape built as a file (P1, P2, P3b, P4, P5, P7, P8, P9, P9b, C1, C1b, C2) flags; P3a
@@ -85,13 +87,13 @@ persisted-state change — the registry is in-memory only).
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
 | 1 | Browser cost gate (go/no-go) — GO: new main-thread long tasks ≤ 115 ms (2 runs, load 5.9); pdf.js pass 8.3–13.1 s wall-clock in the worker, so the open-time background start (step 3) is REQUIRED | S | done | c2e3d88 | tests/browser/ws8-cost.browser.test.ts |
-| 2 | viewerCheck module — 8 cases; sabotage: ops dropped→1, text dropped→3, save() for fresh copy→1, layers unreported→1 | M | done | STEP2 | src/utils/viewerCheck.ts |
-| 3 | Source registry + background check | M | todo | - | src/core/documentModel.ts, src/core/pdfTurboApp.ts |
-| 4 | loadPdfDocument rewired, mirror removed | L | todo | - | src/utils/pdfLoadGuard.ts |
-| 5 | Optional-content handling (per ruling) | M | todo | - | src/export/exportService.ts |
-| 6 | Test migration + tracked shape fixtures | L | todo | - | tests/utils/**, tests/browser/** |
-| 7 | Sabotage round | S | todo | - | - |
-| 8 | Docs | M | todo | - | CLAUDE.md, SECURITY.md, KNOWN_ISSUES.md, CHANGELOG.md |
+| 2 | viewerCheck module — 8 cases; sabotage: ops dropped→1, text dropped→3, save() for fresh copy→1, layers unreported→1 | M | done | cc7a4c2 | src/utils/viewerCheck.ts |
+| 3 | Verdict cache keyed by bytes identity + prewarm on every source entry + inheritance on a true edit / OCR layer | M | doing | - | src/utils/viewerVerdict.ts, src/ui/documentLoader.ts, src/core/pageService.ts, src/core/pdfTurboApp.ts |
+| 4 | loadPdfDocument rewired (`viewerCheck: 'source' | false`, required), mirror removed; the call-site choice is pinned by name | L | doing | - | src/utils/pdfLoadGuard.ts, src/export/**, src/handlers/textEditHandler.ts, src/ocr/searchableTextLayer.ts, src/signing/**, src/utils/pdfSanitizer.ts |
+| 5 | Optional-content carried with the pages at all 5 copy sites; two layered sources with an OFF layer refuse | M | doing | - | src/export/copySourcePages.ts, src/export/exportService.ts, src/export/exportPipeline.ts |
+| 6 | Test migration + tracked shape fixtures (tests/fixtures/ws8-audit, 20 cases) | L | doing | - | tests/utils/**, tests/browser/** |
+| 7 | Sabotage round, on the 5 jsdom guard files (151 cases), each restored and cmp'd — S1 viewer check never runs→43; S2 conflict ignores hidden layers→1; S3 carryLayers no-op→5; S4 second copier for /OCProperties→1; S5 a source site skips the check→1; S6 edit does not inherit→1; S7 hiddenLayers always false→2; S8 open skips prewarm→1; S9 text fingerprint dropped→31; S10 ops fingerprint dropped→1; S11 operand hash dropped→1 (the operands case); S12 (browser) rasterizer carryLayers dropped→exactly the redacted-page case. Script: var/claude/ws8/sabotage.py | S | doing | - | - |
+| 8 | Docs | M | doing | - | CLAUDE.md, SECURITY.md, KNOWN_ISSUES.md, CHANGELOG.md |
 | 9 | Full gate + milestone panel | S | todo | - | - |
 <!-- /progress-block -->
 ### Blocked

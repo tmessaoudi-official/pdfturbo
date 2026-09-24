@@ -22,6 +22,10 @@ import { ExportService, type IExportContext } from '../../src/export/exportServi
 // pdfjs-dist is an ESM namespace (non-configurable exports) — it must be replaced
 // via vi.mock, not vi.spyOn. The hoisted capture box lets the factory record the
 // scale each getViewport call receives.
+// The source load runs the WS8 viewer check, which is pdf.js — here the stub above, which cannot answer it. What this
+// file pins is the option wiring, so the check reports a clean verdict; the check itself is pinned in its own suites.
+vi.mock('../../src/utils/viewerVerdict', () => ({ viewerVerdict: () => Promise.resolve({ pages: [] }) }));
+
 const cap = vi.hoisted(() => ({ lastScale: undefined as number | undefined }));
 
 vi.mock('pdfjs-dist', () => {

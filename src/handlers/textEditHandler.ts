@@ -235,7 +235,7 @@ export class TextEditHandler {
 
     // ── True edit first: content-stream surgery on the source PDF ──
     try {
-      const libDoc = await loadPdfDocument(src.bytes.slice(0));
+      const libDoc = await loadPdfDocument(src.bytes, { viewerCheck: 'source' });
 
       // pdfjs splits a single Tj string at word boundaries, so the clicked item
       // may be a sub-word whose transform[4,5] doesn't match the Tm origin in the

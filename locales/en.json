@@ -587,6 +587,7 @@
     "sanitizeFailed": "Sanitize failed",
     "sanitizeRefusedInvalidObject": "Sanitize refused — this PDF contains a damaged object that can’t be inspected and could hide active content",
     "pdfLoadRefused": "This PDF can’t be used for that: its internal structure is damaged or ambiguous, so the saved copy could differ from what’s on screen. Re-save it from another PDF app first",
+    "exportLayersConflict": "These documents can’t be saved together: one of them hides a layer, and their layer settings can’t be combined into one file. Export them separately",
     "pageDownloaded": "Page {{page}} downloaded!",
     "pageExportFailed": "Page export failed",
     "exportSourceNotFound": "Export failed — source PDF not found",
