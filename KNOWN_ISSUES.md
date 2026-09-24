@@ -81,9 +81,11 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From WS7 round 17 (2026-09-14)
 
-- **A second cross-reference stream after one pdf.js rejects refuses the file** (P3, deliberate). pdf.js reads
-  the second stream with the first one's position, widths and ranges, which PDFturbo does not model, so it
-  refuses rather than guess. No real file measured has this shape.
+- **A second cross-reference stream after one pdf.js rejects refuses the file** (P3, deliberate) — when pdf-lib
+  parses the rejected stream. pdf.js reads the second stream with the first one's position, widths and ranges,
+  which PDFturbo does not model, so it refuses rather than guess. When pdf-lib cannot build the rejected stream at
+  all (a `/Type /XRef` stream without `/W`), the guard never learns it was rejected and LOADS — one of the ten
+  shapes of the closing-audit bound above. No real file measured has this shape.
 - **What the page-order check does not compare** (P3, bounds of a fix). The PDF exports and signing refuse a
   file where a page pdf.js shows is not the page pdf-lib holds at that position — a wrong `/Count`, a page
   dictionary without `/Type`, a linearized file's first-page object. Not compared: a file whose page tree

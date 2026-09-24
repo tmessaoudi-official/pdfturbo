@@ -919,7 +919,7 @@ Everything else is executor-autonomous under this repo's git-autonomy and no-int
 | 13 | WS6 — #54b open-via-picker + recent files | M | done | cee4ad0 | src/utils/fileSystemAccess.ts, src/infra/recentFiles.ts, src/ui/recentFilesMenu.ts |
 | 14 | WS6 — C9 measured against a real corpus; stays unwired | L | done | 574a9f5 | tests/tools/c9Corpus.test.ts, scripts/c9-corpus-fetch.sh |
 | 15 | WS5 — adversarial audit: 30 findings, P0/P1 fixed | L | done | 9894939 | src/utils/flowDoc.ts, src/utils/pdfSanitizer.ts, KNOWN_ISSUES.md |
-| 16 | WS7 — certification: 17 rounds + closing audit (11 divergences: P3a fixed, 10 disclosed as one bound, ruled 2026-09-24) | L | doing | - | src/utils/pdfLoadGuard.ts SECURITY.md KNOWN_ISSUES.md |
+| 16 | WS7 — certification: 17 rounds + closing audit (11 divergences: P3a fixed, 10 disclosed as one bound, ruled 2026-09-24) | L | done | fed1f15 | src/utils/pdfLoadGuard.ts SECURITY.md KNOWN_ISSUES.md |
 | 17 | Sanitize — non-JS egress class + paperclip attachments (ruled 2026-09-05) | M | done | 128219d | src/utils/pdfSanitizer.ts, tests/utils/pdfSanitizer.test.ts, SECURITY.md |
 | 18 | WS7 round 9 — 22 findings fixed: inherited /AA backstop, Filespec severed, XMP+/AF on any object, opcGc .RELS | M | done | 6f08fc7 | src/utils/pdfSanitizer.ts, src/docx/opcGc.ts, tests/utils/pdfSanitizer.test.ts, tests/docx/opcGc.test.ts, docs/ws7-certification-record.md |
 | 19 | Upgrade every dependency and CI action to latest (ruled 2026-09-13) | M | done | caf4350 | package.json, package-lock.json, .github/workflows/deploy.yml |
