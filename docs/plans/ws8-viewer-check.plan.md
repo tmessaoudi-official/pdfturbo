@@ -7,6 +7,8 @@ for a source with what pdf.js shows for pdf-lib's export-shaped copy of it. Mast
 ## Decisions Log
 - [2026-09-24 18:55] AGREED: build WS8 and REPLACE the mirror (master plan Decisions Log; measured by
   `tests/tools/ws8Cost.test.ts`, f21485c).
+- [2026-09-24 19:20] AGREED: go on this plan, steps 1–9 in order; step 1 is a go/no-go (no main-thread task over 200 ms).
+- [2026-09-24 19:20] AGREED: optional content — FIX the export: copy the source's `/OCProperties` into single-source exports so OFF layers stay hidden; refuse only a multi-source export that carries an OFF layer.
 
 ## Evidence this plan rests on (2026-09-24)
 - Catch rate: every closing-audit shape built as a file (P1, P2, P3b, P4, P5, P7, P8, P9, P9b, C1, C1b, C2) flags; P3a
@@ -92,7 +94,6 @@ persisted-state change — the registry is in-memory only).
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- Go on this plan; the optional-content choice (step 5).
 ### Needs research
 ### Fragile
 ### Known issues
