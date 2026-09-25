@@ -63,7 +63,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
-| 1 | A1 vertical-text redaction measured + fixed | M | todo | - | src/utils/flowDoc.ts, tests/** |
+| 1 | A1 vertical-text redaction measured + fixed | M | done | 2a40782 | src/utils/flowDoc.ts, tests/** |
 | 2 | A2 Form /BBox hidden text: attribution investigation | M | todo | - | src/export/**, src/utils/** |
 | 3 | A3 OCR visible mode on user-rotated pages | S | todo | - | src/handlers/ocrHandler.ts, tests/** |
 | 4 | A4 re-add safe links on the raster export path | M | todo | - | src/export/**, tests/** |
