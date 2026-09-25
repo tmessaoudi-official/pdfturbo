@@ -214,6 +214,11 @@ describe('isItemRedacted — vertical writing (dir ttb), measured shapes (A1, 20
     expect(isItemRedacted(real, red(214, 222.75, 256, 298), TOP)).toBe(false);       // the 日本語 column's ink
   });
 
+  it('a zero-advance vertical run (only zero-width marks) still covers one em below its origin', () => {
+    const marks = { ...real, str: '\u3099', height: 0 } as RawTextItem;
+    expect(isItemRedacted(marks, red(231, 236, 291, 294), TOP)).toBe(true);   // 5..8pt below the origin
+  });
+
   it('keeps a horizontal item with the same numbers on the horizontal footprint', () => {
     const horiz = { ...real, dir: 'ltr' } as RawTextItem;
     // Horizontal reading: x 233.86.., y from 0.25em below the baseline UP — so the lower half of the

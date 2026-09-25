@@ -61,6 +61,8 @@ introduce a finding as to close one, which is why the bar was not lowered.
 1. **Vertical-writing redaction** (`flowDoc.ts` `isItemRedacted`) — TWO-directional: a redaction over
    a vertical run may leak, and one above it may silently REMOVE the run. No vertical font exists in
    this repo to measure the advance's sign against. Disclosed in `SECURITY.md` and `KNOWN_ISSUES.md`.
+   **CLOSED 2026-09-25** by the limits walkthrough (A1, `2a40782`): measured against rendered ink on
+   pdf.js's own `vertical.pdf` and a synthetic `Identity-V` run — see `CLAUDE.md` § the pdf.js item box.
 2. **Text outside a Form XObject's `/BBox`** is invisible on screen and in every raster export, yet
    exports verbatim into DOCX/MD/TXT — `getTextContent` does not apply the clip. A flow-vs-raster
    divergence, undisclosed until now and untested.

@@ -413,7 +413,10 @@ function verticalItemRedacted(
   const [a, b, c, d, e, f] = item.transform;
   const across = 0.6 * (Math.abs(item.width) || col1);
   const pad = 0.1 * col2;
-  const along = Math.abs(item.height);
+  // A run of only zero-width diacritics has advance 0 (`if (category.isZeroWidthDiacritic) scaledDim = 0`
+  // in the glyph loop), so `height` can be 0; fall back to one em along the column, the same fallback the
+  // horizontal branch gives `extent2`, rather than collapse the footprint to the padding alone.
+  const along = Math.abs(item.height) || col2;
   const ux = a / col1, uy = b / col1;
   const vx = c / col2, vy = d / col2;
   const xs: number[] = [];
