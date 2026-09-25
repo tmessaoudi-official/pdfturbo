@@ -258,12 +258,15 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   scripts — closed by a backstop over every dictionary in the file and by cutting the embedded stream on
   the Filespec itself. Guards: three blocks in `tests/utils/pdfSanitizer.test.ts` — 15 (the ruling), 5
   (the `/AF` review), 11 (round 9; the twelfth code finding, opcGc, is pinned in `tests/docx/opcGc.test.ts`) — sabotage-verified with the figures in CLAUDE.md § PDF sanitizer.
-- **An overlay text link is lost on the RASTER export path** (`exportPipeline.ts:552-559`, P2).
-  `renderText` adds a `/Link` to the temp page, but the rasteriser embeds only the PNG into a fresh
-  page — so on a redaction-bearing page the link exports as flat pixels, refuting the "survives BOTH
-  export paths" claim. Deferred because re-adding annotations after rasterisation means re-deriving
-  their rects in the clipped canvas frame, which is the coordinate work that has produced this
-  repo's worst bugs; the CLAIM is corrected in CLAUDE.md rather than left standing.
+- ~~**An overlay text link is lost on the RASTER export path**~~ — **CLOSED 2026-09-25** (limits
+  walkthrough A4). The rasteriser now reads the temp page's links after the overlays are baked —
+  source links that survived the annotation strip AND overlay links — keeps each `/S /URI` link whose
+  URL passes `sanitizeLinkUrl` and whose rect meets no redaction, and re-creates it FRESH on the image
+  page, mapped through the same viewport and clip offset as the crop. Not carried: links that meet a
+  redaction (including an overlay link stacked under one), `GoTo` links (their destination page is
+  gone), and any non-web scheme. Guards: `tests/export/rasterLinks.test.ts` (19) +
+  `tests/browser/redaction-raster-links.browser.test.ts` (10 — four rotations, source `/Rotate`,
+  source CropBox origin, two crops, a pixel under every re-added rect).
 - **A text element's lines below its stored box escape the blank-page drop** (P3).
   `dropElementsUnderRedactions` tests the stored box while `renderText` draws each line at
   `te.y + i*lineHeight` with no clip and no auto-grow. On a blank page — the one path where the drop

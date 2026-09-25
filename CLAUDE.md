@@ -273,6 +273,36 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
+
+A redaction-bearing page is exported as ONE image, so every `/Link` on it used to vanish.
+`rasterizePageWithRedactions` now re-creates the safe ones. Three decisions, each pinned:
+
+- **Collect ONCE, after `buildPageOverlays`, from the temp page's `/Annots`.** By then the page holds
+  both the source links that survived `stripRedactedAnnotations` and the overlay links `renderText`
+  just added. The redaction test is RE-RUN on every link: an overlay text box stacked under a
+  redaction still renders on this path and still carries its link, so trusting the strip would
+  bring a covered link back.
+- **Rebuild, never copy.** `collectSafeUriLinks` returns only a rect and a URL — `/S /URI` only,
+  through `sanitizeLinkUrl` — and `addUriLinkAnnotation` makes a fresh dict. Copying the source dict
+  would carry `/AA`, `/PA` or a `/Next` chain into an output that until now had none. `GoTo` links
+  are skipped: their destination page does not exist in the image page. Unreadable → not re-added.
+- **One frame.** `mapLinkRectToRaster` maps all four corners through the render viewport's own
+  `convertToViewportPoint`, minus the SAME `clipX/clipY` the crop clip uses (hoisted out of the crop
+  branch for exactly this), then clips to the image page. A second mapping is the frame bug this
+  repo keeps finding.
+
+Guards: `tests/export/rasterLinks.test.ts` (19) and `tests/browser/redaction-raster-links.browser.test.ts`
+(10), which samples the rendered pixel under every re-added `/Rect` — each link sits on its own colour
+on a non-square page, far from both centre lines. Sabotage, each landing where predicted: filter
+dropped → 2 unit + 9 browser (every survivor case, since covered links come back); sanitiser skipped
+→ 1 unit + 8 browser (the `javascript:` link comes back); clip offset omitted → exactly the 3 crop
+cases; raw user coordinates instead of the viewport → exactly the 5 rotated cases; re-add removed →
+9 browser. One run printed `Tests no tests` at load 20 and was re-run — harness noise, not a result.
+One more, found by review: `/Subtype` and `/S` are read with `lookupMaybe(…, PDFName)`, not `get` — a
+legal indirect name reads as `12 0 R` through `get` and the link was silently skipped (the case that
+pins it was red before the change). The sanitizer had the same defect once; see § PDF sanitizer.
+
 ### Open via the native picker + recent files (#54b, 2026-09-04)
 
 The save side has used `showSaveFilePicker` since #54; the open side now mirrors it.
@@ -2732,8 +2762,9 @@ text box becomes a clickable hyperlink. **Security:** `src/utils/linkUrl.ts` `sa
 (defence-in-depth vs a crafted saved blob). EXPORT: `pdfElementRenderer.renderText` appends a borderless `/Link`
 annotation (`/A << /S /URI /URI (url) >>`, the `incrementalSigner.ts` `/Annots` idiom via a static
 `@cantoo/pdf-lib` `PDFName`/`PDFArray`/`PDFNumber`/`PDFString` import + `addUriLinkAnnotation`) over the box rect
-(same rotation-safe `rectAnchor`+swap-dims AABB as the background fill). Survives BOTH export paths (raster path
-runs the same `renderText` on the same page object); byte-identical when unset/invalid; `pdfSanitizer` preserves
+(same rotation-safe `rectAnchor`+swap-dims AABB as the background fill). Survives BOTH export paths — on the raster path
+only since 2026-09-25 (A4): the image page has no annotations, so `rasterizePageWithRedactions` re-creates the
+safe links itself (`collectSafeUriLinks` + `mapLinkRectToRaster`, see § "Links on the redaction raster"); byte-identical when unset/invalid; `pdfSanitizer` preserves
 `/URI` so a link survives sanitize-and-download. Editor: a 🔗 badge (`.text-link-badge`) + dotted-underline
 (`.text-element--linked` in `editor.css`) + the URL as the box `title`; text is NOT auto-restyled (user controls
 colour/underline). `setLinkUrl` is a `MoveResizeCmd` (undoable); it is **NOT** in the format painter or

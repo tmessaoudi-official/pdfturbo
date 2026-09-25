@@ -7,7 +7,9 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
-import { renderElementToPdfLib, type PdfRenderCtx } from './pdfElementRenderer';
+import { PDFArray, PDFDict, PDFName, PDFNumber, PDFString, PDFHexString } from '@cantoo/pdf-lib';
+import { renderElementToPdfLib, addUriLinkAnnotation, type PdfRenderCtx } from './pdfElementRenderer';
+import { sanitizeLinkUrl } from '../utils/linkUrl';
 import { transformPoint, hexToRgbValues, contentCropToPdfCropBox, redactionRectToPageSpace, rotatedElementFootprint } from '../utils/geometry';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { densitySpacingFactor } from '../utils/watermarkDensity';
@@ -94,6 +96,83 @@ export function annotationRectRedacted(
   const yTop = pageTopY - Math.max(y1, y2), yBot = pageTopY - Math.min(y1, y2);
   return redactions.some(r =>
     xL < r.x + r.width && xR > r.x && yTop < r.y + r.height && yBot > r.y);
+}
+
+/**
+ * The `/Link` annotations on a page that may be carried onto its redaction raster (A4).
+ *
+ * `rasterizePageWithRedactions` replaces the page with one image, which drops every annotation. The
+ * links worth keeping are re-created on the image page, and this decides which: only a `/Link`
+ * whose action is `/S /URI`, whose URL passes {@link sanitizeLinkUrl}, and whose `/Rect` meets no
+ * redaction. A link that fails any test, or that cannot be read, is simply not re-added — the
+ * image page never had it, so skipping is the fail-closed direction. A `GoTo` link points into a
+ * page structure that no longer exists and is skipped too.
+ *
+ * Only the rect and the URL are returned: the caller builds a FRESH annotation, so nothing else
+ * the source dict carried (`/AA`, `/PA`, a `/Next` chain) rides into the output.
+ *
+ * `redactions` and `pageTopY` are in the convention of {@link annotationRectRedacted}.
+ */
+export function collectSafeUriLinks(
+  page: import('@cantoo/pdf-lib').PDFPage,
+  redactions: ReadonlyArray<{ x: number; y: number; width: number; height: number }>,
+  pageTopY: number,
+): Array<{ rect: [number, number, number, number]; url: string }> {
+  const out: Array<{ rect: [number, number, number, number]; url: string }> = [];
+  let annots: PDFArray | undefined;
+  try { annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray); } catch { return out; }
+  if (!annots) return out;
+  for (let i = 0; i < annots.size(); i++) {
+    try {
+      const dict = annots.lookupMaybe(i, PDFDict);
+      // lookupMaybe, not get: a legal indirect /Subtype or /S would otherwise read as "12 0 R".
+      if (!dict || dict.lookupMaybe(PDFName.of('Subtype'), PDFName)?.asString() !== '/Link') continue;
+      const action = dict.lookupMaybe(PDFName.of('A'), PDFDict);
+      if (!action || action.lookupMaybe(PDFName.of('S'), PDFName)?.asString() !== '/URI') continue;
+      const uri = action.lookupMaybe(PDFName.of('URI'), PDFString, PDFHexString);
+      const url = uri ? sanitizeLinkUrl(uri.decodeText()) : null;
+      if (!url) continue;
+      const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray);
+      if (!rectArr || rectArr.size() !== 4) continue;
+      const [x1, y1, x2, y2] = [0, 1, 2, 3].map(k => rectArr.lookupMaybe(k, PDFNumber)?.asNumber() ?? NaN);
+      if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+      const rect: [number, number, number, number] = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
+      if (annotationRectRedacted(rect, redactions, pageTopY)) continue;
+      out.push({ rect, url });
+    } catch {
+      continue; // unreadable → not re-added
+    }
+  }
+  return out;
+}
+
+/**
+ * Map a link `/Rect` (absolute user space of the rendered page) onto the redaction raster's image
+ * page (A4), through the SAME steps the rasterizer uses for the crop clip: the pdf.js viewport's own
+ * `convertToViewportPoint` (which carries rotation, scale and the CropBox origin), minus the clip
+ * offset, divided by the scale, with y flipped. All four corners are mapped, so a rotated viewport
+ * yields the right box. The result is clipped to the image page; `null` when nothing is left.
+ */
+export function mapLinkRectToRaster(
+  rect: readonly number[],
+  toCanvas: (x: number, y: number) => ArrayLike<number>,
+  clipX: number,
+  clipY: number,
+  scale: number,
+  outW: number,
+  outH: number,
+): { x: number; y: number; w: number; h: number } | null {
+  const [x1, y1, x2, y2] = rect;
+  const xs: number[] = [], ys: number[] = [];
+  for (const [ux, uy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) {
+    const p = toCanvas(ux, uy);
+    xs.push((p[0] - clipX) / scale);
+    ys.push(outH - (p[1] - clipY) / scale);
+  }
+  const x0 = Math.max(0, Math.min(...xs)), xE = Math.min(outW, Math.max(...xs));
+  const y0 = Math.max(0, Math.min(...ys)), yE = Math.min(outH, Math.max(...ys));
+  if (!(xE > x0 && yE > y0)) return null;
+  return { x: x0, y: y0, w: xE - x0, h: yE - y0 };
 }
 
 // ── Ink layer helper ─────────────────────────────────────────────────────────
@@ -370,6 +449,7 @@ export async function buildPageOverlays(ctx: BuildPageCtx): Promise<void> {
  * second one live. Fail-CLOSED on an unreadable `/Rect`: this page carries a redaction, so an
  * annotation we cannot place is one we cannot prove is safe.
  */
+// oxlint-disable-next-line require-await -- kept async: both callers await it, and the pdf-lib classes it once imported lazily are now static imports
 export async function stripRedactedAnnotations(
   page: import('@cantoo/pdf-lib').PDFPage,
   elements: PDFElement[],
@@ -377,8 +457,6 @@ export async function stripRedactedAnnotations(
   cropBox: { x: number; y: number; width: number; height: number },
   totalRot: number,
 ): Promise<void> {
-  const { PDFArray, PDFNumber, PDFName, PDFDict } = await import('@cantoo/pdf-lib');
-
   const viewBox = [cropBox.x, cropBox.y, cropBox.x + cropBox.width, cropBox.y + cropBox.height];
   const redactions = elements
     .filter(el => el.pageId === pageId && el.type === 'redaction')
@@ -529,6 +607,8 @@ export async function rasterizePageWithRedactions(
   // canvas (byte-identical to the pre-fix uncropped path).
   let outCanvas: HTMLCanvasElement = offscreen;
   let outW = w_eff, outH = h_eff;
+  // The clip offset is shared with the link re-add below (A4): one frame, never a second mapping.
+  let clipX = 0, clipY = 0;
   // Same #28 gate as the vector path above — the raster path clips the CANVAS instead of setting
   // a CropBox, so it needs its own check or a disabled crop would still apply here.
   if (docPage.crop && isEnabled('crop')) {
@@ -537,8 +617,8 @@ export async function rasterizePageWithRedactions(
     // applies the viewport's rotation + scale, so this is correct for /Rotate'd pages too.
     const [ax, ay] = vp.convertToViewportPoint(effBox.x, effBox.y);
     const [bx, by] = vp.convertToViewportPoint(effBox.x + effBox.width, effBox.y + effBox.height);
-    const clipX = Math.round(Math.min(ax, bx));
-    const clipY = Math.round(Math.min(ay, by));
+    clipX = Math.round(Math.min(ax, bx));
+    clipY = Math.round(Math.min(ay, by));
     const clipW = Math.max(1, Math.round(Math.abs(bx - ax)));
     const clipH = Math.max(1, Math.round(Math.abs(by - ay)));
     const clip = document.createElement('canvas');
@@ -561,6 +641,20 @@ export async function rasterizePageWithRedactions(
   const pngImg  = await targetPdfDoc.embedPng(pngBytes);
   const newPage = targetPdfDoc.addPage([outW, outH]);
   newPage.drawImage(pngImg, { x: 0, y: 0, width: outW, height: outH });
+
+  // A4 — the image page has no annotations, so every link would be lost. Re-create the SAFE ones:
+  // read AFTER buildPageOverlays, so the page holds both the source links that survived the strip
+  // above and the overlay links renderText just added. The redaction test is re-run on every link,
+  // because an overlay text box stacked under a redaction still renders here and still carries its
+  // link. Same redaction inputs as the strip (pristine CropBox — skipCropBox kept it so).
+  const linkViewBox = [cropBoxR.x, cropBoxR.y, cropBoxR.x + cropBoxR.width, cropBoxR.y + cropBoxR.height];
+  const linkRedactions = elements
+    .filter(el => el.pageId === docPage.id && el.type === 'redaction')
+    .map(el => redactionRectToPageSpace(el, linkViewBox, totalRot));
+  for (const { rect, url } of collectSafeUriLinks(tempPage, linkRedactions, linkViewBox[3])) {
+    const r = mapLinkRectToRaster(rect, (x, y) => vp.convertToViewportPoint(x, y), clipX, clipY, SCALE, outW, outH);
+    if (r) addUriLinkAnnotation(newPage, targetPdfDoc.context, r, url);
+  }
 
   // #QA-2026-06-23 P2: release the pdf.js worker doc (doc.destroy() is a v6 no-op — the
   // loadingTask owns the worker). Matches the _compressLossy cleanup in exportService.

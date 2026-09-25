@@ -28,7 +28,7 @@ export function clampCommentText(text: string, cap = COMMENT_TEXT_CAP): string {
  * The URL is assumed already sanitised by the caller (see `sanitizeLinkUrl`).
  */
 // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFPage/PDFContext internals are untyped here
-function addUriLinkAnnotation(page: any, ctx: any, rect: { x: number; y: number; w: number; h: number }, url: string): void {
+export function addUriLinkAnnotation(page: any, ctx: any, rect: { x: number; y: number; w: number; h: number }, url: string): void {
   const action = ctx.obj({ S: PDFName.of('URI'), URI: PDFString.of(url) });
   const rectArr = PDFArray.withContext(ctx);
   for (const n of [rect.x, rect.y, rect.x + rect.w, rect.y + rect.h]) rectArr.push(PDFNumber.of(n));
