@@ -18,6 +18,7 @@
 import { StandardFontEmbedder, StandardFonts } from '@cantoo/pdf-lib';
 import type { TextElement } from '../elements/textElement';
 import { rotatedElementFootprint } from '../utils/geometry';
+import { visualRuns } from '../utils/bidi';
 import { hasAdvancedText } from './styledText';
 import { getStandardFont } from './pdfElementRenderer';
 import { layoutTextLines } from './textLayout';
@@ -35,8 +36,9 @@ type TextLike = Pick<TextElement,
 // yMin −0.61, xMin −0.249) rounded outward. Latin lines use the drawn face's OWN FontBBox instead.
 // Checked on rendered pixels (20 strings — ligatures, tashkeel, kashida, presentation forms, mixed
 // digits and Latin — 30pt, 2026-09-26): worst ink past the measured line was right 0.011, left 0.056,
-// top 0.889, bottom 0.433 em. There is no kerning twin here: the measure and the drawn W array both
-// sum fontkit's raw glyph advanceWidth (CustomFontEmbedder widthOfTextAtSize / computeWidths).
+// top 0.889, bottom 0.433 em. The Arabic FONT has no kerning twin: the measure and the drawn W array
+// both sum fontkit's raw glyph advanceWidth (CustomFontEmbedder widthOfTextAtSize / computeWidths).
+// The Latin runs of a MIXED line do — see mixedLatinKernExcess.
 const ARABIC = { top: 1.1, bottom: 0.65, left: 0.25, right: 0.25 };
 // The base-14 metrics pdf-lib ships carry advances but no per-glyph ink box, so how far a glyph's ink
 // runs past its advance on the RIGHT is not in the data. Measured on rendered pixels instead: past the
@@ -44,6 +46,26 @@ const ARABIC = { top: 1.1, bottom: 0.65, left: 0.25, right: 0.25 };
 // 2026-09-26) was 0.014 em upright (Helvetica "_____") and 0.117 em slanted (Times-Italic "Vf"). The
 // constants keep 7× and 2× headroom; text-extent-ink.browser.test.ts pins them against the real bake.
 const LATIN_RIGHT_OVERHANG = { upright: 0.1, slanted: 0.25 };
+
+/**
+ * How much WIDER a mixed Arabic line's Latin runs are drawn than measured. `measureBidiRuns` measures
+ * each Latin run with Helvetica's kerned `widthOfTextAtSize` and `drawBidiLine` draws it with
+ * `drawText`, which does not kern — the same mismatch as on Latin lines, where the rightmost run's
+ * excess inks past the measured line. Summed over EVERY Latin run (only the rightmost can reach past
+ * the line; the rest overlap the next run), which over-counts in the safe direction. Same run split as
+ * the bake (`visualRuns`), and 0 for a line the bake draws as pure Arabic.
+ */
+function mixedLatinKernExcess(line: string, size: number): number {
+  if (!/[A-Za-z0-9]/.test(line)) return 0;
+  const helv = StandardFontEmbedder.for(StandardFonts.Helvetica as unknown as Parameters<typeof StandardFontEmbedder.for>[0]);
+  let excess = 0;
+  for (const r of visualRuns(line)) {
+    if (r.rtl) continue;
+    const unkerned = Array.from(r.text).reduce((sum, g) => sum + helv.widthOfTextAtSize(g, size), 0);
+    excess += Math.max(0, unkerned - helv.widthOfTextAtSize(r.text, size));
+  }
+  return excess;
+}
 
 /**
  * The base-14 face the bake draws `te` with. It measures exactly as the bake does, including a
@@ -91,7 +113,7 @@ export async function textDrawnFootprint(te: TextLike, measureArabic: ArabicMeas
       const startX = Math.max(te.x, te.x + (te.width || 0) - w);
       pivotX = te.x;
       left = startX - ARABIC.left * fs - stroke;
-      right = startX + w + ARABIC.right * fs + stroke;
+      right = startX + w + mixedLatinKernExcess(laid.line, fs) + ARABIC.right * fs + stroke;
       top = laid.baseY - ARABIC.top * fs - stroke;
       bottom = laid.baseY + ARABIC.bottom * fs + stroke;
     } else {

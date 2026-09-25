@@ -114,6 +114,11 @@ const CONFIGS: Array<[string, TextElement, number?]> = [
   // the upright constant, which the kerning term otherwise absorbs in every other config. The box is
   // narrow so the line's end is not already inside the stored footprint.
   ['upright right overhang (Helvetica underscores, 40pt)', mk(40, 40, '_____', { fontSize: 40, width: 10 })],
+  // A MIXED Arabic + Latin line is measured by measureBidiRuns, whose Latin runs are measured WITH
+  // kerning and drawn (drawText) without — so a long kerned run at the visual right end inks past the
+  // measured line by far more than the Arabic band (the excess grows with the number of pairs). Kept
+  // short on purpose: a line running off the 500pt page is clipped there and the case cannot fail.
+  ['mixed line, kerned Latin run at the right end', mk(40, 40, 'Tى AVAVAVAVA', { fontSize: 40, width: 10 })],
   ['kerning pairs, right-aligned into a narrow box', mk(40, 40, 'WAVY AVAVA', { fontSize: 30, align: 'right', width: 60 })],
 ];
 

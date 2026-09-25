@@ -317,13 +317,20 @@ extracted out of `renderText`, which now draws from it, so the drop and the bake
 where a line is. The glyph band around a line is NOT shared — it comes from the drawn face's own
 FontBBox (Latin) and Noto Naskh's measured bbox (Arabic), plus one measured right-overhang constant.
 `text-extent-ink.browser.test.ts` is the pin on those numbers: every non-white pixel of the real bake
-must lie inside the footprint, across 25 configs. **Rotated lines turn about their OWN start point**
+must lie inside the footprint, across 26 configs. **Rotated lines turn about their OWN start point**
 (the bake's anchor), not the box centre, so they are bounded by a square around that point.
 
 **Kerning, found by the ink probe and invisible otherwise.** pdf-lib's `widthOfTextAtSize` applies the
 AFM kerning pairs; `drawText` and the raw `Tj` path draw with none. So a kerned line inks WIDER than
 its measured `lineW` — Times-Bold "AVAVAVAVA" at 40pt ran over 1 em past it. The footprint adds the
 un-kerned advance (a lone glyph has no pair, so `widthOfTextAtSize` per character is un-kerned). The
+**The mixed Arabic + Latin path has the SAME mismatch**, found only because the review asked:
+`measureBidiRuns` measures each Latin run with Helvetica's kerned width and `drawBidiLine` draws it with
+`drawText`, so a kerned run at the visual right end inked past the line by more than the 0.25 em Arabic
+band ("Tى AVAVAVAVA" at 40pt: 14pt past the footprint). `mixedLatinKernExcess` adds every Latin run's
+excess. A probe of the Arabic FONT alone had found nothing, correctly — which is exactly why "no kerning
+twin" needed its scope stated. **Trap in writing that case:** the first version ran off the 500pt test
+page, the ink was clipped at the page edge, and the case passed against the unfixed code. The
 same mismatch exists in the layout itself (alignment offsets and justify use the kerned width) and is
 cosmetic there; it is only a leak when a leak filter trusts the kerned number.
 
@@ -335,7 +342,7 @@ CJK included — in measuring AND drawing, so CJK is measured as it is drawn and
 Stated over-drop bounds (`SECURITY.md` § "Dropping is blunt by design"): FontBBox left/top headroom,
 one union box per element (an empty line in the middle counts as covered), and an Arabic line whose
 font cannot load counts as reaching the page edge. Guards: `redaction-text-overflow.browser.test.ts`
-(5, reproduction + far-away control), `text-extent-ink.browser.test.ts` (32),
+(5, reproduction + far-away control), `text-extent-ink.browser.test.ts` (33),
 `tests/export/textExtent.test.ts` (6). **Sabotage, RE-MEASURED after the last cases were added** (the
 996fd7f commit message predates the four kerning/left-overhang cases and the upright pin, and its S2
 and S5 figures are stale): drop tests the stored box → 8 browser; no bottom band → 1 unit + 8 ink;
@@ -343,7 +350,7 @@ Arabic never measured → KEPT(b) + 1 unit; rotated square removed → 3; right 
 italic, and the Helvetica "_____" upright pin — without that pin the kerning term absorbed the upright
 constant in every other config and S5 left it unguarded); kerning term removed → exactly the 3 kerning
 cases; `advanced` forced off → 1 (Tc/Tz); FontBBox left bound removed → exactly the Times-italic "jfjf"
-case. Two of those margins are THIN by nature — the upright pin fails its sabotage by 0.3pt at scale 4 —
+case; the mixed-line excess term removed → exactly the mixed-line case. Two of those margins are THIN by nature — the upright pin fails its sabotage by 0.3pt at scale 4 —
 so a re-measure that finds it green is a tolerance question before it is a regression. The Arabic
 bands were swept too (20 strings, see the constant's comment in `textExtent.ts`).
 
