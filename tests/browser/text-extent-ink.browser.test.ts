@@ -110,6 +110,10 @@ const CONFIGS: Array<[string, TextElement, number?]> = [
   // A first glyph whose ink starts LEFT of its origin (italic j's descender curl): the only config
   // where the ink crosses the box's left edge, so it is what pins the FontBBox left bound.
   ['left-overhanging first glyph (Times italic j)', mk(40, 40, 'jfjf', { fontFamily: 'Times New Roman', italic: true, fontSize: 40 })],
+  // The worst UPRIGHT right overhang of a 240-case sweep (0.014 em, 0.56pt here): the case that pins
+  // the upright constant, which the kerning term otherwise absorbs in every other config. The box is
+  // narrow so the line's end is not already inside the stored footprint.
+  ['upright right overhang (Helvetica underscores, 40pt)', mk(40, 40, '_____', { fontSize: 40, width: 10 })],
   ['kerning pairs, right-aligned into a narrow box', mk(40, 40, 'WAVY AVAVA', { fontSize: 30, align: 'right', width: 60 })],
 ];
 

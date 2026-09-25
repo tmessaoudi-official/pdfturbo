@@ -33,6 +33,10 @@ type TextLike = Pick<TextElement,
 
 // Glyph band for Arabic lines, in ems — Noto Naskh Arabic's measured FontBBox (yMax 1.056,
 // yMin −0.61, xMin −0.249) rounded outward. Latin lines use the drawn face's OWN FontBBox instead.
+// Checked on rendered pixels (20 strings — ligatures, tashkeel, kashida, presentation forms, mixed
+// digits and Latin — 30pt, 2026-09-26): worst ink past the measured line was right 0.011, left 0.056,
+// top 0.889, bottom 0.433 em. There is no kerning twin here: the measure and the drawn W array both
+// sum fontkit's raw glyph advanceWidth (CustomFontEmbedder widthOfTextAtSize / computeWidths).
 const ARABIC = { top: 1.1, bottom: 0.65, left: 0.25, right: 0.25 };
 // The base-14 metrics pdf-lib ships carry advances but no per-glyph ink box, so how far a glyph's ink
 // runs past its advance on the RIGHT is not in the data. Measured on rendered pixels instead: past the

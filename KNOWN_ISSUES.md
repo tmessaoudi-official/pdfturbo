@@ -278,8 +278,8 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   bake draws un-kerned `Tj`, so a kerned line inks past its measured width (by over 1 em for Times-Bold
   "AVAVAVAVA" at 40pt); the
   footprint uses the un-kerned advance. Guards: `tests/browser/redaction-text-overflow.browser.test.ts`
-  (5), `tests/browser/text-extent-ink.browser.test.ts` (31 — every inked pixel inside the footprint
-  across 24 configs, and the drop's decisions both ways) and `tests/export/textExtent.test.ts` (6).
+  (5), `tests/browser/text-extent-ink.browser.test.ts` (32 — every inked pixel inside the footprint
+  across 25 configs, and the drop's decisions both ways) and `tests/export/textExtent.test.ts` (6).
   Stated over-drop bounds are in `SECURITY.md` § "Dropping is blunt by design".
 - **A failed redaction render degrades to an un-redacted THUMBNAIL** (P3).
   `renderThumbnailWithOverlays` catches everything and returns null, and the panel then falls back to
