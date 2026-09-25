@@ -126,23 +126,23 @@ describe('WS4-B — a rotated redaction filters what it actually covers', () => 
 describe('WS4-B — the same rule on the blank-page element drop', () => {
   const at = (x: number, y: number) => ({ id: 1, pageId: 'p1', type: 'text', x, y, width: 10, height: 10 });
 
-  it('an element under the rotated part of a redaction is dropped', () => {
+  it('an element under the rotated part of a redaction is dropped', async () => {
     const els = [{ id: 9, pageId: 'p1', type: 'redaction', ...RED }, at(155, 80)] as never[];
     // Only the redaction survives.
-    expect(dropElementsUnderRedactions(els)).toHaveLength(1);
+    expect(await dropElementsUnderRedactions(els)).toHaveLength(1);
   });
 
-  it('a ROTATED element protruding into an upright redaction is dropped', () => {
+  it('a ROTATED element protruding into an upright redaction is dropped', async () => {
     // The plan's original B: the element's own stored box misses the redaction, but rotated about
     // its centre (60,130) it reaches x 55..65, y 80..180 and meets the box at y 120..140.
     const el = { id: 8, pageId: 'p1', type: 'text', x: 10, y: 125, width: 100, height: 10, rotation: 90 };
     const els = [{ id: 9, pageId: 'p1', type: 'redaction', x: 55, y: 80, width: 20, height: 20 }, el] as never[];
-    expect(dropElementsUnderRedactions(els)).toHaveLength(1);
+    expect(await dropElementsUnderRedactions(els)).toHaveLength(1);
   });
 
-  it('an unrotated element clear of the box is kept (regression control)', () => {
+  it('an unrotated element clear of the box is kept (regression control)', async () => {
     const els = [{ id: 9, pageId: 'p1', type: 'redaction', x: 0, y: 0, width: 20, height: 20 }, at(200, 200)] as never[];
-    expect(dropElementsUnderRedactions(els)).toHaveLength(2);
+    expect(await dropElementsUnderRedactions(els)).toHaveLength(2);
   });
 });
 

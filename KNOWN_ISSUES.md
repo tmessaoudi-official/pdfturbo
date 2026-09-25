@@ -267,12 +267,20 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   gone), and any non-web scheme. Guards: `tests/export/rasterLinks.test.ts` (19) +
   `tests/browser/redaction-raster-links.browser.test.ts` (10 — four rotations, source `/Rotate`,
   source CropBox origin, two crops, a pixel under every re-added rect).
-- **A text element's lines below its stored box escape the blank-page drop** (P3).
-  `dropElementsUnderRedactions` tests the stored box while `renderText` draws each line at
-  `te.y + i*lineHeight` with no clip and no auto-grow. On a blank page — the one path where the drop
-  IS the removal — an overflowing line is baked under the burn. Reachability UNVERIFIED: the editor
-  textarea hides the overflow, so a user is unlikely to place text there. Deferred pending a
-  reproduction; fixing it means either clipping the bake to the box or growing the box.
+- ~~**A text element's lines below its stored box escape the blank-page drop** (P3).~~ **CLOSED
+  2026-09-26** (limits walkthrough A5). Reachability was VERIFIED, not unlikely: the default 200×30 box
+  at 14pt draws its SECOND line at baseline y+29.4, i.e. below the box, and a long line runs past the
+  right edge because the bake never wraps. Reproduced first — a redaction clear of the stored box but
+  across the overflow left the line as live text in the PDF and in the Markdown export — then fixed by
+  testing the DRAWN extent: `textDrawnFootprint` (`src/export/textExtent.ts`) is the union of the stored
+  footprint and every line's drawn box, with line positions from `layoutTextLines`, the same function
+  the bake draws with. One finding on the way: pdf-lib's `widthOfTextAtSize` applies kerning while the
+  bake draws un-kerned `Tj`, so a kerned line inks past its measured width (by over 1 em for Times-Bold
+  "AVAVAVAVA" at 40pt); the
+  footprint uses the un-kerned advance. Guards: `tests/browser/redaction-text-overflow.browser.test.ts`
+  (5), `tests/browser/text-extent-ink.browser.test.ts` (31 — every inked pixel inside the footprint
+  across 24 configs, and the drop's decisions both ways) and `tests/export/textExtent.test.ts` (6).
+  Stated over-drop bounds are in `SECURITY.md` § "Dropping is blunt by design".
 - **A failed redaction render degrades to an un-redacted THUMBNAIL** (P3).
   `renderThumbnailWithOverlays` catches everything and returns null, and the panel then falls back to
   the plain source raster. On-screen only — never written to a file — but it is the wrong direction

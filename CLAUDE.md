@@ -303,6 +303,41 @@ One more, found by review: `/Subtype` and `/S` are read with `lookupMaybe(…, P
 legal indirect name reads as `12 0 R` through `get` and the link was silently skipped (the case that
 pins it was red before the change). The sanitizer had the same defect once; see § PDF sanitizer.
 
+### Typed text overflows its box, and the redaction drop now tests where it is DRAWN (A5, 2026-09-26)
+
+A `TextElement` has a fixed height (nothing grows it; the editor textarea scrolls) and `renderText`
+never wraps or clips, so the default 200×30 box at 14pt already draws its second line below the box
+and a long line runs past the right edge. `dropElementsUnderRedactions` tested the STORED box, so a
+redaction that missed the box but covered the overflow left that text in the blank-page PDF, the
+DOCX/MD/TXT flow and XFDF. The drop now tests `textDrawnFootprint` (`src/export/textExtent.ts`), the
+UNION of the stored footprint and each line's drawn box — it may only grow.
+
+**The line layout is SHARED, not copied.** `layoutTextLines` (`src/export/textLayout.ts`) was
+extracted out of `renderText`, which now draws from it, so the drop and the bake cannot disagree on
+where a line is. The glyph band around a line is NOT shared — it comes from the drawn face's own
+FontBBox (Latin) and Noto Naskh's measured bbox (Arabic), plus one measured right-overhang constant.
+`text-extent-ink.browser.test.ts` is the pin on those numbers: every non-white pixel of the real bake
+must lie inside the footprint, across 24 configs. **Rotated lines turn about their OWN start point**
+(the bake's anchor), not the box centre, so they are bounded by a square around that point.
+
+**Kerning, found by the ink probe and invisible otherwise.** pdf-lib's `widthOfTextAtSize` applies the
+AFM kerning pairs; `drawText` and the raw `Tj` path draw with none. So a kerned line inks WIDER than
+its measured `lineW` — Times-Bold "AVAVAVAVA" at 40pt ran over 1 em past it. The footprint adds the
+un-kerned advance (a lone glyph has no pair, so `widthOfTextAtSize` per character is un-kerned). The
+same mismatch exists in the layout itself (alignment offsets and justify use the kerned width) and is
+cosmetic there; it is only a leak when a leak filter trusts the kerned number.
+
+**Also found by the ink probe: `'Times New Roman'` bold/italic mapped to the wrong StandardFonts
+keys**, so a bold or italic Times text box failed to export at all (fixed separately, e76a996, with
+an exhaustive family × variant test). The fork substitutes `?` for anything WinAnsi cannot encode —
+CJK included — in measuring AND drawing, so CJK is measured as it is drawn and nothing throws.
+
+Stated over-drop bounds (`SECURITY.md` § "Dropping is blunt by design"): FontBBox left/top headroom,
+one union box per element (an empty line in the middle counts as covered), and an Arabic line whose
+font cannot load counts as reaching the page edge. Guards: `redaction-text-overflow.browser.test.ts`
+(5, reproduction + far-away control), `text-extent-ink.browser.test.ts` (31),
+`tests/export/textExtent.test.ts` (6). Sabotage figures are in the commit message.
+
 ### Open via the native picker + recent files (#54b, 2026-09-04)
 
 The save side has used `showSaveFilePicker` since #54; the open side now mirrors it.
@@ -514,9 +549,11 @@ implementation of that agreeing with the first is this repo's most-repeated defe
 errs by under-dropping.
 
 **And the filter is model-level on purpose:** `dropElementsUnderRedactions` feeds THREE channels —
-XFDF (`exportService.ts:502`), the blank-page PDF assembly (:793) and the DOCX/MD/TXT flow (:1233).
+XFDF (`exportService.ts:538`), the blank-page PDF assembly (:841) and the DOCX/MD/TXT flow (:1304).
 Whole-drop satisfies "never emit covered content in any channel" once; a partial render would have
-to re-establish it in each, and express partiality in the persisted element model.
+to re-establish it in each, and express partiality in the persisted element model. **What it tests a
+TEXT element against is its drawn extent, not its box** — see § "Typed text overflows its box".
+(Line numbers re-read 2026-09-26; they drift.)
 
 Images are unaffected by any of this and stay blunt regardless — there is no way to remove part of
 an embedded image without re-encoding it, which `SECURITY.md` already disclosed.

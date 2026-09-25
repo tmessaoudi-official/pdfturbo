@@ -146,6 +146,14 @@ worth stating rather than leaving you to discover them:
   freehand ink, which is stored as pixels and really can have the covered ones erased (see above), and
   it does not work for anything stored as text or shapes. Removing the whole element is what actually
   removes it.
+- **Typed text is judged by where it is DRAWN, not by its box (since 2026-09-26).** A text box does not
+  grow as you type and the export never wraps, so a second line can be drawn below the box and a long
+  line past its right edge. Before this date a redaction that missed the box but covered that overflow
+  left the overflowing text in these exports and, on a blank page, in the PDF too. Now the test uses
+  every line's drawn position. It errs towards removing: a glyph's ink is bounded by the font's own
+  outer box, so text a fraction of a letter-width left of its line or just above its box can count as
+  covered; all the lines of one text box count as one block, so an empty line between them counts too;
+  and an Arabic line whose font cannot be loaded counts as reaching the page edge.
 - **Rotation is now accounted for (since 2026-09-02).** A redaction — like any element — can be rotated,
   and the box burned into the export is the rotated one. Until this date every filter tested the upright
   box instead, so content under the parts that stick out was painted over yet left fully extractable.

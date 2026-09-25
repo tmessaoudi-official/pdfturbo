@@ -49,7 +49,7 @@ export function hasAdvancedText(te: Pick<TextElement,
 }
 
 /** On-page width of a line accounting for char spacing (Tc) and horizontal scale (Tz). */
-export function effectiveLineWidth(font: PDFFont, line: string, size: number, charSpacing = 0, horizontalScale = 100): number {
+export function effectiveLineWidth(font: Pick<PDFFont, 'widthOfTextAtSize'>, line: string, size: number, charSpacing = 0, horizontalScale = 100): number {
   const base = font.widthOfTextAtSize(line, size) + charSpacing * Math.max(0, line.length - 1);
   return base * (horizontalScale / 100);
 }

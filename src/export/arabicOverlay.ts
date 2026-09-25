@@ -199,6 +199,51 @@ export function effectiveArabicWidth(baseWidth: number, glyphCount: number, char
 }
 
 /**
+ * Split a mixed line into visual runs and measure each one exactly as {@link drawBidiLine} draws it.
+ * Shared with {@link measureArabicLine} so the redaction drop tests the width that is drawn.
+ */
+function measureBidiRuns(arFont: PDFFont, latFont: PDFFont, text: string, size: number, cs: number, hs: number):
+  Array<{ text: string; useLatin: boolean; hex: string; width: number }> {
+  return visualRuns(text).map((r) => {
+    if (!r.rtl) {
+      try {
+        return { text: r.text, useLatin: true, hex: '', width: latFont.widthOfTextAtSize(r.text, size) };
+      } catch {
+        // non-WinAnsi neutral → render via Noto instead of throwing the whole line.
+        const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
+        return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, size), hex.length / 4, cs, hs) };
+      }
+    }
+    const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
+    return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, size), hex.length / 4, cs, hs) };
+  });
+}
+
+/**
+ * The width {@link drawArabicLine} gives a line — pure Arabic or mixed — measured through the same
+ * font and the same arithmetic. `pdfDoc` only hosts the font embed (a throwaway document is fine).
+ * Rejects when the Arabic font cannot be loaded; the caller decides what that means.
+ */
+export async function measureArabicLine(
+  pdfDoc: PDFDocument,
+  opts: { text: string; size: number; charSpacing?: number; horizontalScale?: number },
+): Promise<number> {
+  const arFont = await getArabicFont(pdfDoc);
+  const cs = opts.charSpacing ?? 0, hs = opts.horizontalScale ?? 100;
+  if (/[A-Za-z0-9]/.test(opts.text)) {
+    const latFont = await getLatinFont(pdfDoc);
+    return measureBidiRuns(arFont, latFont, opts.text, opts.size, cs, hs).reduce((s, r) => s + r.width, 0);
+  }
+  const hex = arFont.encodeText(opts.text).toString().replace(/^<|>$/g, '');
+  return pureArabicWidth(arFont, opts.text, hex, opts.size, cs, hs);
+}
+
+/** Width of a pure-Arabic line whose CIDs are `hex` — the one formula both drawing and measuring use. */
+function pureArabicWidth(font: PDFFont, text: string, hex: string, size: number, cs: number, hs: number): number {
+  return effectiveArabicWidth(font.widthOfTextAtSize(text, size), hex.length / 4, cs, hs);
+}
+
+/**
  * Draw one Arabic line onto a pdf-lib page in correct shaped, right-to-left order.
  * Must run in a browser (font asset is fetched). Call only for isArabicText lines.
  */
@@ -224,8 +269,7 @@ export async function drawArabicLine(
   const style: ArabicRunStyle = {
     charSpacing: opts.charSpacing, horizontalScale: opts.horizontalScale, strokeWidth: opts.strokeWidth,
   };
-  const baseWidth = font.widthOfTextAtSize(opts.text, opts.size);
-  const textWidth = effectiveArabicWidth(baseWidth, cidHex.length / 4, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
+  const textWidth = pureArabicWidth(font, opts.text, cidHex, opts.size, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
   // Right-align within the element box (RTL convention); never overflow left.
   const startX = Math.max(opts.x, opts.right - textWidth);
 
@@ -254,21 +298,7 @@ async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLine
   const style: ArabicRunStyle = {
     charSpacing: opts.charSpacing, horizontalScale: opts.horizontalScale, strokeWidth: opts.strokeWidth,
   };
-  const cs = opts.charSpacing ?? 0;
-  const hs = opts.horizontalScale ?? 100;
-  const measured = visualRuns(opts.text).map((r) => {
-    if (!r.rtl) {
-      try {
-        return { text: r.text, useLatin: true, hex: '', width: latFont.widthOfTextAtSize(r.text, opts.size) };
-      } catch {
-        // non-WinAnsi neutral → render via Noto instead of throwing the whole line.
-        const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
-        return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, opts.size), hex.length / 4, cs, hs) };
-      }
-    }
-    const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
-    return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, opts.size), hex.length / 4, cs, hs) };
-  });
+  const measured = measureBidiRuns(arFont, latFont, opts.text, opts.size, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
   const total = measured.reduce((s, r) => s + r.width, 0);
   let cx = Math.max(opts.x, opts.right - total);
   const arKey = page.node.newFontDictionary(arFont.name, arFont.ref);

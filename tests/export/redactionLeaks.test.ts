@@ -377,7 +377,7 @@ describe('dropElementsUnderRedactions', () => {
     const covered = mkText(20, 30, 200, 20);
     const clear = mkText(20, 200, 200, 20);
     const red = new RedactionElement(15, 25, 220, 30, 'p1', '#000000');
-    const kept = dropElementsUnderRedactions([covered, clear, red]);
+    const kept = await dropElementsUnderRedactions([covered, clear, red]);
     expect(kept).toContain(red);
     expect(kept).toContain(clear);
     expect(kept).not.toContain(covered);
@@ -386,21 +386,24 @@ describe('dropElementsUnderRedactions', () => {
   it('returns the same array when the page carries no redaction', async () => {
     const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
     const input = [mkText(10, 10, 10, 10), mkText(50, 50, 10, 10)];
-    expect(dropElementsUnderRedactions(input)).toBe(input);
+    expect(await dropElementsUnderRedactions(input)).toBe(input);
   });
 
   it('drops an element only PARTLY under the box', async () => {
     const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
     const straddling = mkText(0, 0, 100, 100);
     const red = new RedactionElement(90, 90, 50, 50, 'p1', '#000000');
-    expect(dropElementsUnderRedactions([straddling, red])).not.toContain(straddling);
+    expect(await dropElementsUnderRedactions([straddling, red])).not.toContain(straddling);
   });
 
   it('keeps an element that merely TOUCHES an edge (no overlap is not a cover)', async () => {
     const { dropElementsUnderRedactions } = await import('../../src/export/exportService');
-    const touching = mkText(150, 120, 10, 10);        // starts exactly at the redaction's right edge
+    // EMPTY text: this case pins that the comparison is strict, on the stored box. Since A5 a text box
+    // with text is tested where its glyphs are drawn, and a glyph's ink may reach ~0.2 em left of its
+    // line start (the face's FontBBox), so 'x' here would now overlap for a real reason.
+    const touching = Object.assign(mkText(150, 120, 10, 10), { text: '' }); // starts exactly at the redaction's right edge
     const red = new RedactionElement(100, 100, 50, 50, 'p1', '#000000');
-    expect(dropElementsUnderRedactions([touching, red])).toContain(touching);
+    expect(await dropElementsUnderRedactions([touching, red])).toContain(touching);
   });
 
   it('drops an element whose box is expressed with NEGATIVE dimensions', async () => {
@@ -409,6 +412,6 @@ describe('dropElementsUnderRedactions', () => {
     // OPEN and this element — which genuinely overlaps — would be kept and drawn as live text.
     const negative = Object.assign(mkText(160, 120, -30, 10), {});
     const red = new RedactionElement(100, 100, 50, 50, 'p1', '#000000');
-    expect(dropElementsUnderRedactions([negative, red])).not.toContain(negative);
+    expect(await dropElementsUnderRedactions([negative, red])).not.toContain(negative);
   });
 });

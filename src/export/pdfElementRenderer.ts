@@ -8,10 +8,9 @@ import type { ShapeElement } from '../elements/shapeElement';
 import type { CommentElement } from '../elements/commentElement';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
 import { transformPoint, hexToRgbValues } from '../utils/geometry';
-import { isArabicText } from '../utils/flowDoc';
 import { drawArabicLine } from './arabicOverlay';
-import { drawStyledTextLine, hasAdvancedText, effectiveLineWidth, justifyWordSpacing } from './styledText';
-import { applyListMarkers } from '../utils/listMarkers';
+import { drawStyledTextLine, hasAdvancedText } from './styledText';
+import { layoutTextLines } from './textLayout';
 import { sanitizeLinkUrl } from '../utils/linkUrl';
 import { PDFName, PDFArray, PDFNumber, PDFString } from '@cantoo/pdf-lib';
 
@@ -161,9 +160,6 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
   const alpha = te.opacity ?? 1;
   const fontName = getStandardFont(te.fontFamily, te.bold, te.italic);
   const font = await pdfDoc.embedFont(StandardFonts[fontName as keyof typeof StandardFonts]);
-  // 0.9 = measured Arial fontBoundingBoxAscent/fontSize ratio (avg across 8–72px);
-  // aligns PDF baseline with the browser's CSS text baseline. Max residual error < 0.6pt.
-  const lineHeight = te.fontSize * (te.lineHeight ?? 1.2);
 
   // Background fill behind the whole text box (skip when rotated — documented ceiling,
   // same guard as underline/strikethrough). Anchor matches renderHighlight / renderRedaction:
@@ -194,15 +190,11 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
   const drawSize = subSup ? te.fontSize * 0.65 : te.fontSize;
   const rise = subSup === 'super' ? te.fontSize * 0.33 : subSup === 'sub' ? -(te.fontSize * 0.15) : 0;
 
-  // List markers (Feature 2): prefix each non-empty line with its bullet/number. Markers
-  // become part of the drawn line, so alignment, decoration, and the advanced-operator path
-  // all account for them. Byte-identical when `te.list` is unset.
-  const lines = te.list ? applyListMarkers(te.text, te.list) : te.text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-    const baseY = te.y + te.fontSize * 0.9 + i * lineHeight;
-    if (isArabicText(line)) {
+  // List markers, line positions, alignment and justify come from the ONE layout the redaction
+  // drop also uses (`textLayout.ts`), so what is tested is what is drawn.
+  for (const laid of layoutTextLines(te, font, advanced)) {
+    const { line, baseY } = laid;
+    if (laid.arabic) {
       // Arabic: render shaped, right-to-left via the embedded Noto Naskh font
       // (drawText can't place shaped glyphs RTL). Right-align to the box edge.
       const rawAnchor = tp(te.x, baseY);
@@ -215,24 +207,7 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
         charSpacing: te.charSpacing, horizontalScale: te.horizontalScale, strokeWidth: te.strokeWidth,
       });
     } else {
-      // Measure width using the effective size (drawSize accounts for sub/superscript shrink).
-      const measureSize = advanced ? drawSize : te.fontSize;
-      const lineW = advanced
-        ? effectiveLineWidth(font, line, measureSize, te.charSpacing ?? 0, te.horizontalScale ?? 100)
-        : font.widthOfTextAtSize(line, te.fontSize);
-      const boxW = te.width || lineW;
-      const isLast = i === lines.length - 1;
-      let wordSpacing = 0;
-      let off = 0;
-      if (advanced && te.align === 'justify' && !isLast) {
-        const spaces = (line.match(/ /g) ?? []).length;
-        // PDF spec §9.4.4: the Tw word-spacing displacement is scaled by Tz/100 at render
-        // time, so to fill the on-page gap we must divide by the horizontal-scale factor.
-        wordSpacing = justifyWordSpacing(boxW, lineW, spaces, te.horizontalScale ?? 100);
-      } else {
-        off = te.align === 'center' ? Math.max(0, (boxW - lineW) / 2)
-          : te.align === 'right' ? Math.max(0, boxW - lineW) : 0;
-      }
+      const { off, lineW, wordSpacing } = laid;
       const rawAnchor = tp(te.x + off, baseY);
       const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
       if (advanced) {

@@ -24,6 +24,8 @@ import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import { PDFCheckBox, PDFRadioGroup, PDFDropdown, PDFOptionList, PDFTextField, type PDFForm } from '@cantoo/pdf-lib';
 import type { PDFElement } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
+import { textDrawnFootprint, type ArabicMeasurer } from './textExtent';
+import { measureArabicLine } from './arabicOverlay';
 import type { DocumentModel, DocumentPage } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
@@ -177,7 +179,7 @@ export function imagePlacementRedacted(
  * nothing — TypeScript attached it to no symbol and a reader at that line was reading the contract
  * of a different function. A casualty of the WS4-B edit.)
  */
-export function dropElementsUnderRedactions(pageElements: PDFElement[]): PDFElement[] {
+export async function dropElementsUnderRedactions(pageElements: PDFElement[]): Promise<PDFElement[]> {
   const reds = pageElements.filter(el => el.type === 'redaction');
   if (reds.length === 0) return pageElements;
   // NORMALISE before testing. A negative width/height is reachable (`interactionHandler.resize` can
@@ -193,11 +195,26 @@ export function dropElementsUnderRedactions(pageElements: PDFElement[]): PDFElem
     return { x0: f.x, x1: f.x + f.width, y0: f.y, y1: f.y + f.height };
   };
   const redBoxes = reds.map(box);
-  return pageElements.filter((el) => {
-    if (el.type === 'redaction') return true;
-    const e = box(el);
-    return !redBoxes.some(r => e.x0 < r.x1 && e.x1 > r.x0 && e.y0 < r.y1 && e.y1 > r.y0);
-  });
+  // A5 — a TEXT element is tested where its lines are DRAWN, not by its stored box: the box has a
+  // fixed height and the bake never wraps or clips, so a second typed line already lands below it.
+  // See `textExtent.ts`. Arabic lines are measured with the bake's own font; the font is embedded
+  // into a throwaway document, created only when an Arabic line is actually met.
+  let scratch: Promise<import('@cantoo/pdf-lib').PDFDocument> | null = null;
+  const measureArabic: ArabicMeasurer = async (text, size, charSpacing, horizontalScale) => {
+    scratch ??= import('@cantoo/pdf-lib').then(m => m.PDFDocument.create());
+    return measureArabicLine(await scratch, { text, size, charSpacing, horizontalScale });
+  };
+  const kept: PDFElement[] = [];
+  for (const el of pageElements) {
+    if (el.type === 'redaction') { kept.push(el); continue; }
+    let e = box(el);
+    if (el.type === 'text') {
+      const f = await textDrawnFootprint(el as TextElement, measureArabic);
+      e = { x0: f.x, x1: f.x + f.width, y0: f.y, y1: f.y + f.height };
+    }
+    if (!redBoxes.some(r => e.x0 < r.x1 && e.x1 > r.x0 && e.y0 < r.y1 && e.y1 > r.y0)) kept.push(el);
+  }
+  return kept;
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -518,7 +535,7 @@ export class ExportService {
         const docPage = documentModel.pages[i];
         // Redacted overlays are dropped here too: an XFDF carries the annotation's TEXT, so exporting a
         // comment or text box the user had covered would hand it back in a plain-text sidecar file.
-        const pageEls = dropElementsUnderRedactions(elements.filter(el => el.pageId === docPage.id));
+        const pageEls = await dropElementsUnderRedactions(elements.filter(el => el.pageId === docPage.id));
         if (!pageEls.length) continue;
         const h = await pageHeightPt(docPage, documentModel.sourcePdfs);
         const left = await pageLeftPt(docPage, documentModel.sourcePdfs);
@@ -821,7 +838,7 @@ export class ExportService {
           // raster path draws that one above the burn, so the two paths differ by design). Nothing
           // surfaces either at export time — the earlier claim that the loss is "visible to the user" was
           // wrong, they have to open the file.
-          const blankElements = dropElementsUnderRedactions(pageElements);
+          const blankElements = await dropElementsUnderRedactions(pageElements);
           await buildPageOverlays({
             pdfDoc, page: blankPage, docPage,
             elements: blankElements,
@@ -1284,9 +1301,9 @@ export class ExportService {
       // this path must agree. Without it, redacting a typed note removed it from the exported PDF while
       // "Export to Word" on the same page handed it back — promoted to a heading if it was styled as one.
       // Both this and the redaction live in editor display space, so no conversion is involved.
-      const overlayEls: OverlayTextLike[] = dropElementsUnderRedactions(
+      const overlayEls: OverlayTextLike[] = (await dropElementsUnderRedactions(
         elements.filter(el => el.pageId === docPage.id),
-      )
+      ))
         .filter((el): el is TextElement => el.type === 'text')
         .map((el) => ({
           text: el.text, x: el.x, y: el.y, fontSize: el.fontSize,
