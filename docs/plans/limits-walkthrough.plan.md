@@ -67,7 +67,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 2 | A2 Form /BBox hidden text: attribution investigation | M | todo | - | src/export/**, src/utils/** |
 | 3 | A3 OCR visible mode on user-rotated pages | S | todo | - | src/handlers/ocrHandler.ts, tests/** |
 | 4 | A4 re-add safe links on the raster export path | M | done | 5bc6dfe | src/export/**, tests/** |
-| 5 | A5 overflowing text vs blank-page redaction drop | S | todo | - | src/export/exportService.ts, tests/** |
+| 5 | A5 overflowing text vs blank-page redaction drop | M | done | 996fd7f | src/export/**, tests/** |
 | 6 | A6 redacted thumbnail fails closed | S | todo | - | src/ui/pageThumbnailPanel.ts, src/export/exportService.ts, locales/** |
 | 7 | B1 remove getPageCropBox fallback | S | todo | - | src/export/exportPipeline.ts |
 | 8 | B2 MODE_HINT_KEYS exhaustive by type | S | todo | - | src/core/toolModeService.ts |
