@@ -89,7 +89,7 @@ export function getStandardFont(fontFamily: string, bold: boolean, italic: boole
   const map: Record<string, Record<string, string>> = {
     'Arial':           { '': 'Helvetica',  'b': 'HelveticaBold', 'i': 'HelveticaOblique',  'bi': 'HelveticaBoldOblique' },
     'Helvetica':       { '': 'Helvetica',  'b': 'HelveticaBold', 'i': 'HelveticaOblique',  'bi': 'HelveticaBoldOblique' },
-    'Times New Roman': { '': 'TimesRoman', 'b': 'TimesBold',     'i': 'TimesItalic',       'bi': 'TimesBoldItalic' },
+    'Times New Roman': { '': 'TimesRoman', 'b': 'TimesRomanBold', 'i': 'TimesRomanItalic', 'bi': 'TimesRomanBoldItalic' },
     'Courier New':     { '': 'Courier',    'b': 'CourierBold',   'i': 'CourierOblique',    'bi': 'CourierBoldOblique' },
     'Courier':         { '': 'Courier',    'b': 'CourierBold',   'i': 'CourierOblique',    'bi': 'CourierBoldOblique' },
   };
