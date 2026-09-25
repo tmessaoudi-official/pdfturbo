@@ -343,6 +343,7 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   // [WS7 round 1, 2026-09-04]
   const col1 = Math.hypot(a, b) || 1;
   const col2 = Math.hypot(c, d) || 1;
+  if (item.dir === 'ttb') return verticalItemRedacted(item, red, pageTopY, col1, col2);
   const extent1 = Math.abs(item.width);
   const extent2 = Math.abs(item.height) || Math.hypot(c, d) || size;
   const ux = (a / col1) * extent1, uy = (b / col1) * extent1;
@@ -377,6 +378,56 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   const overlapX = x0 < redRight && x1 > redLeft;
   const overlapY = topY < redBottom && botY > redTop;
   return overlapX && overlapY;
+}
+
+/**
+ * The footprint of a VERTICAL-writing run (pdf.js marks one with `dir: 'ttb'`,
+ * `pdf.worker.mjs:32549`, only when `font.vertical`). Measured in real pdf.js 6.3.289 before
+ * writing this, on dvipdfmx's `vertical.pdf` (the pdf.js test file, `Identity-V`) and on a
+ * synthetic `Identity-V` run with default vertical metrics — in units of the glyph size, the ink
+ * spans −0.42…+0.42, −0.46…+0.49 and −0.48…+0.05 ACROSS the column, and from −0.06…−0.15 below the
+ * origin DOWN to the full advance (−4.89 of 5 glyphs, −2.96 of 3, −6.89 of 7). So a vertical run is
+ * CENTRED on its origin across the column and extends DOWNWARD by its advance.
+ *
+ * pdf.js swaps the item's size fields for a vertical font — `width` is the glyph size and `height`
+ * the advance (`pdf.worker.mjs:35909-35912`) — and the advance moves the text matrix by a NEGATIVE
+ * amount along the second column (`translateTextMatrix(0, scaledDim)` with `scaledDim` from
+ * `vmetric[0]` or `-glyphWidth`), which `runBidiTransform` then reports as `Math.abs(totalHeight)`
+ * (`:35958`). The sign lives only in `dir`. The horizontal branch above placed this box to the RIGHT
+ * of the origin and ABOVE it — the wrong side on both axes — so a redaction over the column missed
+ * the text (a leak) and one drawn above the column's start removed it (data loss).
+ *
+ * The padding is an over-approximation, the only direction a leak filter may move: across, ±0.6 of
+ * the glyph size covers a centred glyph up to 1.2 em wide and a default-metrics glyph (placed from
+ * −DW/2, pdf.js's `vx`) up to 1.1 em wide; along, 0.1 em above the first origin and past the last
+ * advance. A font whose per-glyph vertical metrics (`/W2`) place ink further out is not covered —
+ * `getTextContent` does not expose those metrics.
+ */
+function verticalItemRedacted(
+  item: RawTextItem,
+  red: RedactionRect,
+  pageTopY: number,
+  col1: number,
+  col2: number,
+): boolean {
+  const [a, b, c, d, e, f] = item.transform;
+  const across = 0.6 * (Math.abs(item.width) || col1);
+  const pad = 0.1 * col2;
+  const along = Math.abs(item.height);
+  const ux = a / col1, uy = b / col1;
+  const vx = c / col2, vy = d / col2;
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const s of [-across, across]) {
+    for (const t of [pad, -(along + pad)]) {
+      xs.push(e + ux * s + vx * t);
+      ys.push(f + uy * s + vy * t);
+    }
+  }
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const topY = pageTopY - Math.max(...ys);
+  const botY = pageTopY - Math.min(...ys);
+  return x0 < red.x + red.width && x1 > red.x && topY < red.y + red.height && botY > red.y;
 }
 
 // ── Internal working shapes ─────────────────────────────────────────────

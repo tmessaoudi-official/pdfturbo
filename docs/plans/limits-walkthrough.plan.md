@@ -52,6 +52,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-25 21:06] AGREED: D19 — keep raster ink as designed.
 - [2026-09-25 21:06] AGREED: D20 — a third compress mode that downsamples embedded JPEGs in place, keeping text.
 - [2026-09-25 21:06] AGREED: D21 — XFDF gains square/circle/line/ink, multi-line highlights and form <fields>; stamps stay skipped.
+- [2026-09-25 22:40] FOUND (A1): `src/` never passes `cMapUrl` to pdf.js, so pdf.js's own `vertical.pdf` extracts NO text in the app; recorded as row 32, not yet ruled.
 - [2026-09-25 21:06] AGREED: D22 — Bates: reload integration test, restored-value validation, oversized start-number cap.
 
 ## Formal Plan
@@ -93,10 +94,12 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 29 | Acrobat/Reader checklist pack (C2, C10, D15, D18) | S | todo | - | var/claude/** |
 | 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | todo | - | KNOWN_ISSUES.md, SECURITY.md, CLAUDE.md |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
+| 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | todo | - | src/infra/**, src/export/** |
 <!-- /progress-block -->
 
 ### Blocked
 ### Needs input
+- Row 32 (found during A1): whether to ship pdf.js's CMap files so CJK PDFs relying on them show and export text — measure first.
 - C2, C10, D15, D18 results need the developer's Acrobat/Reader check (row 29).
 - C12 needs a native Arabic reader (row 31).
 ### Needs research

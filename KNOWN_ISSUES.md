@@ -221,17 +221,15 @@ work in a private/incognito window when editing sensitive documents on a shared 
   switched-off cases and not the ON control, and moving the gate ABOVE the removal fails exactly the
   leftover-frame case.
 
-- **Redaction over VERTICAL-writing text is UNCERTIFIED** (`flowDoc.ts` `isItemRedacted`). The run
-  footprint is read from the text transform, and pdf.js swaps the roles of its two size fields for a
-  vertical font AND advances downward — so the sign along the second axis is unverified and a
-  redaction over vertical CJK text may leave it extractable in the DOCX / MD / TXT / CSV / XLSX
-  exports — and the mis-framing is TWO-DIRECTIONAL: the tested box is placed a full run-length on the
-  wrong side of the origin, so a redaction drawn ABOVE a vertical run silently REMOVES it from those
-  exports, which is data loss rather than a leak. **No vertical font exists anywhere in this repo to
-  measure it against**, which is why the
-  claim is withdrawn rather than guessed; an earlier guard "covering" it used a rotated Tm with
-  `width: 0`, which is not a vertical-writing item and passed for an unrelated reason. Horizontal
-  text, at any angle, IS covered. Disclosed to users in `SECURITY.md`.
+- ~~**Redaction over VERTICAL-writing text is UNCERTIFIED**~~ — **CLOSED 2026-09-25** (limits walkthrough A1).
+  Measured in real pdf.js on pdf.js's own `vertical.pdf` (dvipdfmx, `Identity-V`) and a synthetic `Identity-V`
+  run: a vertical run's ink is centred across its origin and runs DOWN by its advance, while the old footprint
+  sat right of the origin and ABOVE it — so it leaked (12 of 14 guard cases red on the old code) and dropped
+  text a redaction above the column never touched. `isItemRedacted` now branches on pdf.js's `dir: 'ttb'`.
+  Remaining bound: ±0.6 em across and 0.1 em past each end covers every measured shape; a font whose `/W2`
+  vertical metrics place ink further out is not covered (`getTextContent` does not expose them). Guards:
+  `tests/browser/redaction-vertical.browser.test.ts` (14) and the vertical block in
+  `tests/utils/flowDocRedaction.test.ts`.
 
 
 Thirty findings across three lenses. The P0 and both P1s were fixed in that stream under TDD, as

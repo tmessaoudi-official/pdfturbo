@@ -191,10 +191,33 @@ describe('isItemRedacted — run footprint from the transform (WS5 P0 / WS7)', (
     expect(isItemRedacted(horiz, { x: 90, y: PAGE_TOP - 150, width: 80, height: 20 }, PAGE_TOP)).toBe(false);  // below the baseline
   });
 
-  // VERTICAL-WRITING runs are UNCERTIFIED-BY-EXECUTION and deliberately not asserted here. pdf.js
-  // swaps the two roles for a vertical font (`width` becomes the glyph size, `height` the advance)
-  // AND advances downward, so the sign along the second column is the open question — and no
-  // vertical font exists anywhere in this repo to measure it with. An earlier version of this file
-  // claimed to cover it using a rotated Tm with `width: 0`, which is not a vertical-writing item at
-  // all: it passed for an unrelated reason. Recorded as a bound in CLAUDE.md rather than guessed.
+  // VERTICAL-WRITING runs: see the next block. An earlier version of this file claimed to cover them
+  // with a rotated Tm and `width: 0`, which is not a vertical-writing item at all — it passed for an
+  // unrelated reason. The shapes below are the MEASURED ones.
+});
+
+describe('isItemRedacted — vertical writing (dir ttb), measured shapes (A1, 2026-09-25)', () => {
+  // Real pdf.js 6.3.289 output for pdf.js's own `test/pdfs/vertical.pdf` (dvipdfmx, Identity-V),
+  // copied from the probe: width = glyph size, height = advance, origin at the TOP of the column.
+  // Rendered ink: x 230..237.75, y 254.02..298.52 — centred across the origin, running DOWN.
+  const TOP = 321.02;
+  const real = { str: 'あいうえお', dir: 'ttb', transform: [9.212, 0, 0, 9.212, 233.86, 299.05], width: 9.212, height: 46.06, fontName: 'g_d0_f1', hasEOL: false } as RawTextItem;
+  const red = (x0: number, x1: number, yLo: number, yHi: number) => ({ x: x0, y: TOP - yHi, width: x1 - x0, height: yHi - yLo });
+
+  it('covers the ink below the origin — the leak the horizontal reading missed', () => {
+    expect(isItemRedacted(real, red(230, 237, 256, 275), TOP)).toBe(true);
+    expect(isItemRedacted(real, red(230, 230.3, 254.02, 298.52), TOP)).toBe(true);   // the ink's LEFT edge
+  });
+
+  it('does not reach above the first glyph or a column away — the data-loss mirror', () => {
+    expect(isItemRedacted(real, red(230, 237, 302, 318), TOP)).toBe(false);          // where the old box sat
+    expect(isItemRedacted(real, red(214, 222.75, 256, 298), TOP)).toBe(false);       // the 日本語 column's ink
+  });
+
+  it('keeps a horizontal item with the same numbers on the horizontal footprint', () => {
+    const horiz = { ...real, dir: 'ltr' } as RawTextItem;
+    // Horizontal reading: x 233.86.., y from 0.25em below the baseline UP — so the lower half of the
+    // vertical column's ink is outside it, exactly as before this change.
+    expect(isItemRedacted(horiz, red(230, 237, 256, 275), TOP)).toBe(false);
+  });
 });

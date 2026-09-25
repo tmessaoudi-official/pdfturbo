@@ -440,13 +440,24 @@ that band, NOT byte-identical, and this sentence said otherwise for one commit. 
 re-introducing `max()` fails only the short-run case; extending `+x` again fails only the two
 sideways cases.
 
-**UNCERTIFIED-BY-EXECUTION: vertical-writing runs.** pdf.js swaps the two roles for a vertical font
-(`width` becomes the glyph size, `height` the advance) AND advances downward, so the sign along the
-second column is an open question — and **no vertical font exists anywhere in this repo to measure
-it with**. An earlier version of the guard claimed to cover this using a rotated Tm with `width: 0`,
-which is not a vertical-writing item at all and passed for an unrelated reason. The claim is
-withdrawn rather than re-stated: a redaction over vertical CJK text may still leak into the flow
-exports, and that is a bound, not a guarantee.
+**Vertical-writing runs — CERTIFIED 2026-09-25 (limits walkthrough A1), and the reading was half right.**
+pdf.js marks a vertical run `dir: 'ttb'` (`pdf.worker.mjs:32549`) and reports `width` = glyph size,
+`height` = `Math.abs(totalHeight)` (`:35958`) — so the downward sign survives ONLY in `dir`. Measured
+against rendered ink on two genuinely vertical fixtures (pdf.js's own `test/pdfs/vertical.pdf`, now
+`tests/fixtures/vertical/`, and a synthetic `Identity-V` run): the ink is CENTRED across the origin and
+runs DOWN by the advance; the horizontal footprint sat right of it and ABOVE it, wrong on both axes, so
+it leaked AND dropped text a redaction above the column never touched. `verticalItemRedacted` tests
+±0.6 em across and 0.1 em past each end — margin, not measurement: pdf.js places a default-metrics
+glyph from −DW/2 rather than centring it on its own width (a narrow digit's ink measured −0.48…+0.05),
+so "centred" is not a safe assumption for every font, and custom `/W2` metrics stay unmeasured. **Three
+traps found on the way:** LibreOffice's vertical Japanese is NOT a vertical font (one horizontal glyph per
+position, `dir: 'ltr'`), so a vertical fixture must be checked vertical to pdf.js before it counts; pdf.js's
+`vertical.pdf` renders NO text without `cMapUrl`, and **`src/` never passes `cMapUrl`** (a separate open
+finding); and an item's `dir` survives `translateItemsToCropOrigin` only because it spreads the item.
+Guards: `tests/browser/redaction-vertical.browser.test.ts` (14: ink containment both ways, flow and table
+at every user rotation, `/Rotate 90`, a crop origin, the data-loss mirror, both real files). Sabotage:
+branch disabled → 12 of 14; sign flipped along the column → 12; centring dropped → 11 — non-vacuity and
+LibreOffice stay green every time. The 0.1 em end padding is NOT pinned by any measurement, by design.
 
 ### Clipping is not removing, for anything vector — WS4-C refuted (2026-09-04)
 

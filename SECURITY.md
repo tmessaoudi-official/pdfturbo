@@ -159,22 +159,17 @@ worth stating rather than leaving you to discover them:
   / CSV / Excel exports. Removing slightly more than you drew is the safe direction for a redaction;
   the PDF export is unaffected.
 
-- **Vertical (top-to-bottom) text is NOT covered — a known gap, disclosed rather than assumed away.**
-  A redaction over text set in a vertical writing mode, as some Japanese and Chinese documents use,
-  may leave that text extractable in the Word / Markdown / text / CSV / Excel exports. The filter
-  reads the run's direction from the PDF, and for vertical text the two size fields swap roles and
-  the text advances downward; we have no vertical-font document to measure the exact behaviour
-  against, so rather than claim it works we are telling you it is unverified. **Horizontal text,
-  including text set at an angle, IS covered** — that was fixed on 2026-09-04. If you are redacting a
-  vertically-set document, use the PDF export, which rasterises the page and removes the content in
-  every case.
-
-  **It can also go the other way, and that is the more surprising half.** Because the tested area for
-  a vertical run is placed on the wrong side of where the text starts, a redaction drawn *above* such
-  a run can REMOVE it from the Word / Markdown / text / CSV / Excel exports even though the box is
-  nowhere near it. So on a vertically-set document a redaction may leave text you meant to remove,
-  and may remove text you did not touch. Neither is what you asked for; the PDF export is the one to
-  use until this is fixed.
+- **Vertical (top-to-bottom) text IS covered (since 2026-09-25).** Until then it was not: for text set
+  in a vertical writing mode, as some Japanese and Chinese documents use, the filter placed the area
+  it tested on the wrong side of the text, so a redaction over a vertical column could leave it in the
+  Word / Markdown / text / CSV / Excel exports, and a redaction drawn just *above* a column could
+  remove it although the box was nowhere near it. The tested area is now measured against where
+  pdf.js actually draws vertical text — on pdf.js's own vertical test document and on a synthetic
+  one, at every page rotation and with a non-zero crop origin. **One bound:** the area reaches 0.6 of
+  a character's size either side of the column's centre and a tenth of a character past its ends,
+  which covers every shape measured; a font whose own vertical metrics place characters further out
+  is not covered, because the text extraction does not report those metrics. The PDF export
+  rasterises the page and removes the content in every case.
 
 - **Freehand ink IS covered (since 2026-09-02).** It previously was not: the ink layer is stamped after
   the burn, so handwriting under a box was composited on top of it and baked into the exported pixels.
