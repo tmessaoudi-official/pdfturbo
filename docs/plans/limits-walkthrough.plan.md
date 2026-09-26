@@ -82,6 +82,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 23:35] SESSION-CHOSEN (run rules): C9 follow-up (advisor) — the prefill assembles only the picked page (`ExportService.assembledPageBox`), not `assemblePdfBytes()`: same box, no whole-document raster/save, no `cleanEmptyTextElements`; `pageIsRasterised` becomes the one predicate for the raster decision. Landed 1effcc1.
 - [2026-09-27 00:40] SESSION-CHOSEN (run rules): D2 verdict — HarfBuzz not adopted: fontkit (already a dep) matches it exactly on Noto Naskh (69 glyphs, 0.00 pt); C19 tashkeel is fixed from fontkit's positions in row 25; D16/C18 is not a shaping problem and stays a ceiling.
 - [2026-09-27 00:40] SESSION-CHOSEN (run rules): D2 verdict — PDFium not adopted (2.1 MB gzip; 474/729 runs clean, TJ spacing lost on spaced runs); its measured gain, keeping embedded simple fonts in place, becomes rows 38 (Path 2 for literal operands) and 39 (encoding-based in-place path, glyphs verified with fontkit), run after row 31.
+- [2026-09-27 01:05] SESSION-CHOSEN (run rules): row 17 shipped on the pre-push hook (tsc/lint/jsdom) plus the two harness files `6439bca` changed, run green in Chrome — no `src/` changed since the full gate at `1effcc1`; a deviation from full-gate-per-row, recorded. Advisor 6C follow-ups (the mechanism measured on all 630 runs, the PDFium cause graded, C2 scoped to Noto Naskh) land with row 18.
+- [2026-09-27 01:35] SESSION-CHOSEN (run rules): row 18 — unknown real families pass through split at word boundaries into every rFonts slot and fontTable.xml, generated names keep the generic; the fontTable family/pitch hint comes from the name when it states a class, because pdf.js's guess called NotoSerifCJKjp monospace (measured). The clone/equivalent list (NimbusRomNo9L → Times New Roman …) is [Speculative] — metric-compatible clones, not Word's own faces; the split is right for 24 of 32 corpus names.
 - [2026-09-26 22:25] SESSION-CHOSEN (run rules): C3's 30 s per-image timeout is kept and stated as a false-refusal bound (a one-sided timeout refuses until the file is reopened), not engineered around.
 
 ## Formal Plan
@@ -109,8 +111,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 14 | C5 dangling reference vs /Info stamp measured | S | done | 7f57b72 | src/utils/pdfLoadGuard.ts, tests/** |
 | 15 | C8 hoist inline annotations before a locked save | M | done | f71054e | src/export/**, tests/export/exportPasswordSave.test.ts |
 | 16 | C9 signature rect mapped onto the assembled page | M | done | 8c175ac | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
-| 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | done | - | var/claude/**, KNOWN_ISSUES.md, CLAUDE.md |
-| 18 | D6+D7 real font names incl. eastAsia in DOCX | M | todo | - | src/utils/flowDocWriters.ts, tests/** |
+| 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | done | 62ff3eb | var/claude/**, KNOWN_ISSUES.md, CLAUDE.md |
+| 18 | D6+D7 real font names incl. eastAsia in DOCX | M | done | - | src/utils/flowDocWriters.ts, tests/** |
 | 19 | D8 mixed-bidi DOCX lines measured | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 20 | D9 borderless-table discriminator research | M | todo | - | src/utils/borderlessTable.ts, tests/** |
 | 21 | D10 4+ column split with corpus proof | M | todo | - | src/utils/flowDoc.ts, tests/** |

@@ -2337,11 +2337,13 @@ at 24 pt) is pdf-lib drawing fontkit's glyphs with their plain advances and drop
 fixed from fontkit's own `layout().positions` (row 25, with the brackets and list markers). C18 is not a shaping
 problem: the glyphs and their positions come from the PDF, and what is missing is per-character advances inside a
 pdf.js text item. **The same row measured PDFium and did not adopt it** — 2.1 MB gzip of wasm, and on 729 corpus
-runs replaced by themselves reversed it kept font, ink, text and width on 474 (65%), losing the TJ spacing on runs
-with spaces. What it would have bought is keeping an embedded SIMPLE font in place, which our engine cannot do today:
-Path 2 rewrites hex operands only, so a literal-string run falls to the Path-3 standard-font redraw even when every
-glyph is in the subset (171 of the 630 runs our engine located), and an embedded simple font with no ToUnicode is
-never edited in place at all (459 of 630). Rows 38–39 close both in our own engine. Report and scripts:
+runs replaced by themselves reversed it kept font, ink, text and width on 474 (65%); on 222 runs containing spaces the
+space read back as `ÿ` and the width changed [Inferred cause: the subset has no space glyph]. What it would have
+bought is keeping an embedded SIMPLE font in place, which our engine never does today — measured by running
+`replaceTextAt` on each of the 630 runs it located, alone on a fresh document: 608 substituted, 22 refused, 0 in
+place. Of those, 171 carry a ToUnicode that encodes the edit, and all 171 are literal-string operands, which Path 2
+cannot rewrite (`replaceShowOpHex` takes hex only): 170 substituted, 1 refused. The other 459 have no ToUnicode.
+Rows 38–39 close both in our own engine. Report and scripts:
 `var/claude/d2/` (gitignored); the probes are not committed.
 
 **`صف` (table row) vs `سطر` (text line) — do not "fix" one into the other.** The reviewer flagged
@@ -2873,7 +2875,18 @@ there is text OR images (image-only PDFs export their images instead of a silent
 in `exportService.ts`, eliminating the triplicated 10-param `buildPageOverlays` block.
 **Sprint 2 fidelity (2026-06-14):** (B-1) real font faces via 28-entry `WORD_FONT_ALLOWLIST` +
 `resolveWordFont` (strips subset/style/foundry suffix; unknown → serif/sans/mono fallback) instead of
-collapsing every face to 3 generics. (B-2) page margins from per-page text bbox (Q1/Q3, outlier-robust,
+collapsing every face to 3 generics. **Superseded by limits row 18 (2026-09-27):** `wordFontFor` returns
+`{name, passThrough}` — a known family maps to Word's name (spaceless lookup, plus vendor editions and clones), a
+REAL unknown family passes through split at word boundaries (`MyriadPro` → `Myriad Pro`, `NotoSansCJKjp` →
+`Noto Sans CJK JP`) into all four `w:rFonts` slots, eastAsia included, and a generated name (TeX CMR10, TT…o00,
+bare ids, hashes; the charset rule catches pdf.js's `g_d0_f1`) keeps the generic. Passed-through names are listed in
+`word/fontTable.xml` via `Packer.toBase64String`'s third argument (the `docx` package otherwise writes an empty
+table), with `w:family`/`w:pitch` from the NAME when it states a class (`wordFamilyHint`) — pdf.js's own guess reads
+FixedPitch and called NotoSerifCJKjp `monospace`. Guards: `tests/utils/flowDocFidelity.test.ts` row-18 blocks and
+`tests/browser/docx-font-names.browser.test.ts` (real extraction on `tests/fixtures/vertical/`). Sabotage, each
+restored with `cmp`: allowlist keys keep spaces → 3; vendor-edition fallback dropped → 5; generated-name rule
+dropped → 6 (predicted 7 — the `g_d` pattern was unreachable and was removed); fontTable override dropped → 2
+jsdom + 2 browser; word split removed → 10 + 2; name hint ignored → exactly 1 + 1. (B-2) page margins from per-page text bbox (Q1/Q3, outlier-robust,
 clamped to ≤40% page dim) → `w:pgMar`. (B-3) paragraph/line spacing from baseline gaps → `w:spacing`.
 (B-4) images are **floating-anchored** at PDF coords (`wp:anchor`/`wp:posOffset`, Y-flipped EMU), no
 longer centered-trailing — still via `word/media/` (ISSUE-3/4 guard). (B-5) justified detection
@@ -3379,8 +3392,8 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
 - **Multi-language DOCX (#2 `9cfc38a`)**: Cyrillic + CJK source text is preserved verbatim through
   PDF→DOCX/MD/TXT — they're LTR like Latin, so they take the same reconstructPage + writer path and the only
   script branch (`isArabicText` RTL reorder) must not fire. CONTENT is intact (verified, no prod change).
-  CJK font-FACE (a `w:eastAsia` font) is a documented ceiling: no universal CJK font name (forcing one risks
-  Han-unification mis-render), and Word's fallback renders the codepoints. Guards:
+  CJK font-FACE: no CJK face is FORCED (Han unification), but since limits row 18 the PDF's own family is written
+  as the `w:eastAsia` font when it is a real name — see § Sprint 2 fidelity's row-18 note. Guards:
   `tests/utils/flowDocCjkCyrillic.test.ts` (jsdom writer/reconstruct), `tests/browser/cyrillic-docx.browser.test.ts`
   (real pdf.js extract embedded-font Cyrillic → DOCX).
 - **Test-infra**: jsdom `testTimeout` 5s→30s (`a214076`) — node-forge RSA-2048 keygen tests flaked under

@@ -61,25 +61,106 @@ const WORD_FONT_ALLOWLIST: Record<string, string> = {
 };
 
 /**
- * Strip subset prefixes and style suffixes from a PostScript/base font name to
- * recover the bare family, then map to a Word font.
- *
- * Examples: 'ABCDEF+Verdana' → 'Verdana'; 'Garamond-Bold' → 'Garamond';
- * 'Tahoma,Bold' → 'Tahoma'; 'Arial-BoldMT' → 'Arial'.
- *
- * Unknown faces fall back to the serif/sans/mono generic (the safety net) so the
- * output is always a font Word can render.
+ * Limits row 18 (D6): metric-compatible stand-ins for faces the 104-file corpus actually used and Word does not
+ * ship — design choices, not measurements [Speculative], so keep this to families the census hit. Keyed like
+ * `ALLOWLIST_SPACELESS`.
  */
-function resolveWordFont(run: FlowRun): string {
-  const raw = run.psName ?? '';
+const WORD_EQUIVALENTS: Record<string, string> = {
+  nimbusromno9l: 'Times New Roman',
+  nimbussanl: 'Arial',
+  nimbusmonl: 'Courier New',
+  helveticaneue: 'Arial',
+  helveticaworld: 'Arial',
+  newcenturyschlbk: 'Century Schoolbook',
+};
+
+/**
+ * The allowlist compared WITHOUT spaces, so a PostScript name ('TimesNewRoman') finds its family ('times new
+ * roman'). Before row 18, 9 corpus files carried TimesNewRomanPSMT and every one fell to the generic.
+ */
+const ALLOWLIST_SPACELESS = new Map<string, string>([
+  ...Object.entries(WORD_FONT_ALLOWLIST).map(([k, v]) => [k.replace(/\s+/g, ''), v] as [string, string]),
+  ...Object.entries(WORD_EQUIVALENTS),
+]);
+
+/**
+ * Names no user has installed and no user chose: a pass-through would put them in Word's font box for nothing.
+ * Each pattern is one the corpus measured (row 18), so these keep today's serif/sans/mono generic.
+ */
+const GENERATED_FONT_NAME: readonly RegExp[] = [
+  /^TT[0-9A-F]+o\d+$/,       // Acrobat's generated TrueType names (TT93o00)
+  /^[A-Za-z]{1,7}\d{1,4}$/,  // TeX-internal (CMR10, CMMI7, SFTT1000, MSBM10, Cmb10) and bare ids (F1, R17)
+  /^LM[A-Z][A-Za-z]*\d+$/,    // Latin Modern's sized TeX names (LMMathItalic10) — installed as 'Latin Modern Math'
+  /^[0-9A-Fa-f]{8,}$/,        // hashes
+  /^(Font|CIDFont|Identity)/i,
+];
+
+/**
+ * Strip subset prefixes and style suffixes from a PostScript/base font name to recover the bare family, then map
+ * it to the name Word should use.
+ *
+ * Examples: 'ABCDEF+Verdana' → Verdana; 'Garamond-Bold' → Garamond; 'Tahoma,Bold' → Tahoma; 'Arial-BoldMT' → Arial;
+ * 'HelveticaLTStd-Blk' → Arial (vendor suffix); 'MyriadPro-Regular' → 'Myriad Pro' (passed through, row 18).
+ *
+ * Limits row 18 (D6): a real family the allowlist does not know is KEPT, split at its word boundaries, instead of
+ * being flattened to a generic — `passThrough: true`, so the writer can list it in fontTable.xml with a fallback
+ * hint. The split is a heuristic: it inserts a space before a capital that starts a word of 3+ letters, after a
+ * lowercase letter or before a capitalised word that follows an acronym. It recovers 'DejaVu Sans', 'Roboto Mono' and
+ * 'CMU Serif', and Noto's CJK region suffix ('Noto Sans CJK JP'), but not 'OCR A Std' ('OCRAStd'), 'Adobe Pi Std'
+ * ('AdobePi Std'), 'Arial Unicode MS' ('Arial UnicodeMS') or 'Wingdings 2' ('Wingdings2'). Measured on the corpus's
+ * 32 passed-through families: 24 right, 6 wrong, 2 unverifiable. Generated names (`GENERATED_FONT_NAME`) keep the serif/sans/mono generic.
+ */
+export function wordFontFor(psName: string | undefined, family: FlowRun['fontFamily']): { name: string; passThrough: boolean } {
+  const generic = { name: FAMILY_TO_WORD[family], passThrough: false };
   // Drop a 6-uppercase-letter subset tag: 'ABCDEF+Verdana' → 'Verdana'.
-  let name = raw.replace(/^[A-Z]{6}\+/, '');
+  let name = (psName ?? '').replace(/^[A-Z]{6}\+/, '');
   // Drop everything from the first style separator: '-Bold', ',Italic', '-BoldMT'.
   name = name.replace(/[-,].*$/, '');
   // Drop a trailing 'MT'/'PS'/'PSMT' foundry suffix on the bare name (e.g. 'ArialMT').
-  name = name.replace(/(MT|PS|PSMT)$/, '');
-  const key = name.trim().toLowerCase();
-  return WORD_FONT_ALLOWLIST[key] ?? FAMILY_TO_WORD[run.fontFamily];
+  name = name.replace(/(MT|PS|PSMT)$/, '').trim();
+  const key = name.toLowerCase().replace(/\s+/g, '');
+  const known = ALLOWLIST_SPACELESS.get(key)
+    // A vendor's edition of a family Word has: 'HelveticaLTStd', 'ITCFranklinGothicStd', 'TimesLTStd'.
+    ?? ALLOWLIST_SPACELESS.get(key.replace(/^itc/, '').replace(/(ltstd|ltpro|std|lt)$/, ''));
+  if (known) return { name: known, passThrough: false };
+  // The charset rule alone refuses pdf.js's internal id (`g_d0_f1`, what `_extractFlowDoc` keeps when the operator
+  // list failed) and an unresolved ref ('247 0 R'); a pattern for the id was never reached (row-18 sabotage S3).
+  if (!/^[A-Za-z][A-Za-z0-9 ]*$/.test(name) || GENERATED_FONT_NAME.some(re => re.test(name))) return generic;
+  const spaced = name
+    .replace(/([a-z])(?=[A-Z](?:[a-z]{2}|[A-Z]{2}))/g, '$1 ') // MyriadPro → Myriad Pro, DejaVuSans → DejaVu Sans
+    .replace(/([A-Z])(?=[A-Z][a-z]{3})/g, '$1 ')              // CMUSerif → CMU Serif (4+ letters: not CJKjp)
+    // Noto's CJK families end in a region code: NotoSansCJKjp is installed as 'Noto Sans CJK JP' (12 corpus files).
+    .replace(/CJK(jp|kr|sc|tc|hk)$/, (_m, r: string) => `CJK ${r.toUpperCase()}`);
+  return { name: spaced, passThrough: true };
+}
+
+/** The class a font's own name states, if it states one. Mono is tested first ("Noto Sans Mono"), then sans
+ * ("Sans Serif" is sans), then serif. Gothic is the Japanese name for sans, Mincho for serif. */
+export function wordFamilyHint(name: string): FlowRun['fontFamily'] | null {
+  if (/mono|courier|code\b|typewriter/i.test(name)) return 'monospace';
+  if (/sans|gothic|grotesk|helvetica|arial/i.test(name)) return 'sans-serif';
+  if (/serif|mincho|roman|times|garamond|song|ming\b/i.test(name)) return 'serif';
+  return null;
+}
+
+/**
+ * fontTable.xml for the names `wordFontFor` passed through (row 18). The `docx` package writes an empty table, so
+ * Word gets no hint for a face it lacks; `w:family` and `w:pitch` are what it substitutes by (ECMA-376 §17.8.3.9,
+ * §17.8.3.14). A name that SAYS its class decides it (`wordFamilyHint`); otherwise pdf.js's serif/sans/mono guess
+ * (`familyOf`) does. The name comes first because the guess reads the FixedPitch flag, and CJK fonts set it: pdf.js
+ * reported `monospace` for NotoSerifCJKjp-Regular (tests/fixtures/vertical, measured 2026-09-27), which would have
+ * hinted Word to substitute a fixed-pitch face for a serif one.
+ */
+function fontTableXml(passed: ReadonlyMap<string, FlowRun['fontFamily']>): string {
+  const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const fonts = [...passed].map(([name, family]) => {
+    const cls = wordFamilyHint(name) ?? family;
+    const wFamily = cls === 'serif' ? 'roman' : cls === 'monospace' ? 'modern' : 'swiss';
+    const pitch = cls === 'monospace' ? 'fixed' : 'variable';
+    return `<w:font w:name="${esc(name)}"><w:family w:val="${wFamily}"/><w:pitch w:val="${pitch}"/></w:font>`;
+  }).join('');
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + `<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${fonts}</w:fonts>`;
 }
 
 function paragraphText(p: FlowParagraph): string {
@@ -365,12 +446,16 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     }
   }
 
+  // Row 18: names `wordFontFor` passed through, first family seen wins — listed in fontTable.xml.
+  const passedFonts = new Map<string, FlowRun['fontFamily']>();
   const sections = doc.pages.map(page => {
     const bodyParas = page.paragraphs.filter(p => paragraphText(p).trim().length > 0);
     const textChildren = bodyParas
       .map(p => {
         const mkTextRun = (r: FlowRun) => {
-          const ascii = resolveWordFont(r);
+          const resolved = wordFontFor(r.psName, r.fontFamily);
+          const ascii = resolved.name;
+          if (resolved.passThrough && !passedFonts.has(ascii)) passedFonts.set(ascii, r.fontFamily);
           // A3: RTL/Arabic runs need complex-script properties so Word applies the
           // correct face + bold/italic/size to the cs glyph run. The cs font must
           // be a concrete Arabic-capable face (generics don't carry Arabic glyphs);
@@ -571,7 +656,10 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     : sections;
 
   const document = new Document({ sections: sectionsWithToc, numbering: numberingConfig });
-  return Packer.toBase64String(document);
+  // Row 18: replace the package's empty font table only when a name was passed through, so every other DOCX is
+  // unchanged (measured: the override replaces the part, it does not add a second one).
+  const overrides = passedFonts.size ? [{ path: 'word/fontTable.xml', data: fontTableXml(passedFonts) }] : undefined;
+  return Packer.toBase64String(document, false, overrides);
 }
 
 /** Browser entry point: DOCX as a downloadable Blob. */

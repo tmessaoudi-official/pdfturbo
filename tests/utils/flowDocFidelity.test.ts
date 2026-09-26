@@ -4,7 +4,7 @@
  * and the extraction-side detection (B-2 margins, B-5 alignment/indent) of flowDoc/flowDocWriters.
  */
 import { describe, it, expect } from 'vitest';
-import { flowDocToDocxBase64 } from '../../src/utils/flowDocWriters';
+import { flowDocToDocxBase64, wordFontFor, wordFamilyHint } from '../../src/utils/flowDocWriters';
 import type { FlowDoc, FlowParagraph, FlowRun } from '../../src/utils/flowDoc';
 
 function run(text: string, opts: Partial<FlowRun> = {}): FlowRun {
@@ -30,7 +30,7 @@ const TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
 // ── B-1: broaden font family allow-list ────────────────────────────────────────
 
 describe('B-1 — font allow-list (psName → real Word font)', () => {
-  it('maps Calibri / Garamond-Bold / subset Verdana to their real Word names; unknown falls back to generic', async () => {
+  it('maps Calibri / Garamond-Bold / subset Verdana to their real Word names; an unknown REAL name passes through (row 18)', async () => {
     const doc: FlowDoc = {
       pages: [{
         width: 612, height: 792,
@@ -47,9 +47,10 @@ describe('B-1 — font allow-list (psName → real Word font)', () => {
     expect(xml).toContain('w:ascii="Calibri"');
     expect(xml).toContain('w:ascii="Garamond"');
     expect(xml).toContain('w:ascii="Verdana"');
-    // Unknown face must fall back to the serif generic, never appear literally.
-    expect(xml).not.toContain('WeirdUnknownFace');
-    expect(xml).toContain('w:ascii="Times New Roman"');
+    // Row 18 (D6): a real family the allowlist does not know is kept — split at its word boundaries — rather than
+    // flattened to the generic (it read "must fall back to the serif generic" until the D6 ruling).
+    expect(xml).toContain('w:ascii="Weird Unknown Face"');
+    expect(xml).not.toContain('w:ascii="Times New Roman"');
   });
 
   it('strips style suffixes like -BoldMT and ,Bold from the carried name', async () => {
@@ -82,6 +83,105 @@ describe('B-1 — font allow-list (psName → real Word font)', () => {
     expect(xml).toContain('w:ascii="Arial"');
     expect(xml).toContain('w:ascii="Times New Roman"');
     expect(xml).toContain('w:ascii="Courier New"');
+  });
+});
+
+// ── Row 18 (D6 + D7): real font names, measured against a 104-file corpus ─────────────────────────────
+
+describe('row 18 — wordFontFor: allowlist, pass-through, and generated names', () => {
+  // Every psName below is one pdf.js reported (or pdf-lib read as /BaseFont) in var/corpus + var/corpus-wide.
+  it.each([
+    ['TimesNewRomanPSMT', 'serif', 'Times New Roman'],          // spaceless: missed the 'times new roman' key before
+    ['RBNGDK+TimesNewRomanPS-BoldMT', 'serif', 'Times New Roman'],
+    ['WHERZU+HelveticaLTStd-Blk', 'sans-serif', 'Arial'],       // vendor suffix LTStd
+    ['EXDRKK+ITCFranklinGothicStd-Demi', 'sans-serif', 'Franklin Gothic'], // ITC prefix + Std
+    ['YOGHEW+TimesLTStd-Roman', 'serif', 'Times New Roman'],
+    ['FYYHYI+HelveticaNeueLTStd-Bd', 'sans-serif', 'Arial'],    // clone list
+    ['XORMUP+NimbusRomNo9L-Medi', 'serif', 'Times New Roman'],
+    ['JQUDPS+NimbusMonL-Regu', 'monospace', 'Courier New'],
+    ['QBHSCI+NewCenturySchlbkLTStd-Roman', 'serif', 'Century Schoolbook'],
+  ] as const)('%s → allowlist %s', (ps, fam, want) => {
+    expect(wordFontFor(ps, fam)).toEqual({ name: want, passThrough: false });
+  });
+
+  it.each([
+    ['MMWSMN+MyriadPro-Regular', 'sans-serif', 'Myriad Pro'],
+    ['CVYTLL+DejaVuSans', 'sans-serif', 'DejaVu Sans'],
+    ['MUFUZY+RobotoMono-Regular', 'monospace', 'Roboto Mono'],
+    ['AAAACL+CambriaMath', 'serif', 'Cambria Math'],
+    ['CVMOMI+NotoSansCJKjp-Regular', 'sans-serif', 'Noto Sans CJK JP'], // D7's real case: 12 corpus files
+    ['XIORHK+CMUSerif-Roman', 'serif', 'CMU Serif'],
+  ] as const)('%s → passes through as %s', (ps, fam, want) => {
+    expect(wordFontFor(ps, fam)).toEqual({ name: want, passThrough: true });
+  });
+
+  it.each([
+    ['KGMNOB+TT93o00', 'serif'],        // Acrobat's generated TrueType names
+    ['LICAEO+CMMI10', 'serif'],         // TeX-internal: no Word install has Computer Modern
+    ['XEXHSJ+SFTT1000', 'monospace'],
+    ['Cmb10', 'serif'],
+    ['QDTWCG+MSBM10', 'serif'],
+    ['g_d0_f3', 'sans-serif'],          // pdf.js's internal id, reached when the operator list failed
+    ['247 0 R', 'serif'],               // a broken /BaseFont
+    ['F1', 'sans-serif'],
+    ['', 'serif'],
+  ] as const)('%s → generated, falls back to the %s generic', (ps, fam) => {
+    const generic = { serif: 'Times New Roman', 'sans-serif': 'Arial', monospace: 'Courier New' }[fam];
+    expect(wordFontFor(ps, fam)).toEqual({ name: generic, passThrough: false });
+  });
+});
+
+describe('row 18 — the DOCX carries the real name, a fallback hint, and the East Asian slot (D7)', () => {
+  const doc: FlowDoc = {
+    pages: [{
+      width: 612, height: 792,
+      paragraphs: [para([
+        run('Myriad', { psName: 'MMWSMN+MyriadPro-Regular', fontFamily: 'sans-serif' }),
+        run('日本語のテキスト', { psName: 'CVMOMI+NotoSansCJKjp-Regular', fontFamily: 'sans-serif' }),
+        run('Mono', { psName: 'MUFUZY+RobotoMono-Regular', fontFamily: 'monospace' }),
+        run('Serif', { psName: 'AAAACL+CambriaMath', fontFamily: 'serif' }),
+        run('Arial', { psName: 'ArialMT', fontFamily: 'sans-serif' }),
+      ])],
+    }],
+  };
+
+  it('writes the passed-through name in every rFonts slot, eastAsia included', async () => {
+    const xml = (await unpackDocx(await flowDocToDocxBase64(doc)))['word/document.xml'];
+    expect(xml).toContain('<w:rFonts w:ascii="Noto Sans CJK JP" w:cs="Noto Sans CJK JP" w:eastAsia="Noto Sans CJK JP" w:hAnsi="Noto Sans CJK JP"/>');
+    expect(xml).toContain('w:eastAsia="Myriad Pro"');
+  });
+
+  it('lists each passed-through name in fontTable.xml with a family and pitch Word can substitute by', async () => {
+    const table = (await unpackDocx(await flowDocToDocxBase64(doc)))['word/fontTable.xml'];
+    expect(table).toContain('<w:font w:name="Myriad Pro"><w:family w:val="swiss"/><w:pitch w:val="variable"/></w:font>');
+    expect(table).toContain('<w:font w:name="Roboto Mono"><w:family w:val="modern"/><w:pitch w:val="fixed"/></w:font>');
+    expect(table).toContain('<w:font w:name="Cambria Math"><w:family w:val="roman"/><w:pitch w:val="variable"/></w:font>');
+    // Word's own faces need no hint.
+    expect(table).not.toContain('w:name="Arial"');
+  });
+
+  it("lets a name that states its class override pdf.js's guess (a CJK serif face flagged FixedPitch)", async () => {
+    // pdf.js reports `monospace` for NotoSerifCJKjp-Regular (measured on tests/fixtures/vertical, 2026-09-27).
+    const cjk: FlowDoc = { pages: [{ width: 612, height: 792, paragraphs: [para([
+      run('本文', { psName: 'BAAAAA+NotoSerifCJKjp-Regular', fontFamily: 'monospace' }),
+    ])] }] };
+    const table = (await unpackDocx(await flowDocToDocxBase64(cjk)))['word/fontTable.xml'];
+    expect(table).toContain('<w:font w:name="Noto Serif CJK JP"><w:family w:val="roman"/><w:pitch w:val="variable"/></w:font>');
+  });
+
+  it.each([
+    ['Noto Sans Mono', 'monospace'], ['Courier Prime', 'monospace'], ['Source Code Pro', 'monospace'],
+    ['Noto Sans CJK JP', 'sans-serif'], ['MS Gothic', 'sans-serif'], ['Microsoft Sans Serif', 'sans-serif'],
+    ['Noto Serif CJK JP', 'serif'], ['Aokin Mincho', 'serif'], ['DejaVu Serif', 'serif'],
+    ['Myriad Pro', null], ['Cambria Math', null], ['Wingdings2', null],
+  ] as const)('wordFamilyHint(%s) → %s', (name, want) => {
+    expect(wordFamilyHint(name)).toBe(want);
+  });
+
+  it('writes an empty font table, as before, when nothing passes through', async () => {
+    const plain: FlowDoc = { pages: [{ width: 612, height: 792, paragraphs: [para([run('x', { psName: 'ArialMT' })])] }] };
+    const table = (await unpackDocx(await flowDocToDocxBase64(plain)))['word/fontTable.xml'];
+    expect(table).not.toContain('<w:font ');
   });
 });
 
