@@ -68,7 +68,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 3 | A3 OCR visible mode on user-rotated pages | S | todo | - | src/handlers/ocrHandler.ts, tests/** |
 | 4 | A4 re-add safe links on the raster export path | M | done | 5bc6dfe | src/export/**, tests/** |
 | 5 | A5 overflowing text vs blank-page redaction drop | M | done | 4533a88 | src/export/**, tests/** |
-| 6 | A6 redacted thumbnail fails closed | S | todo | - | src/ui/pageThumbnailPanel.ts, src/export/exportService.ts, locales/** |
+| 6 | A6 redacted thumbnail fails closed | S | done | c2ba354 | src/ui/pageThumbnailPanel.ts, src/export/exportService.ts, locales/** |
 | 7 | B1 remove getPageCropBox fallback | S | todo | - | src/export/exportPipeline.ts |
 | 8 | B2 MODE_HINT_KEYS exhaustive by type | S | todo | - | src/core/toolModeService.ts |
 | 9 | B3 PWA rule-order guard | S | todo | - | tests/infra/pwaOcrCaching.test.ts |
