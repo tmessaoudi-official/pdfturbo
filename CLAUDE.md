@@ -344,11 +344,17 @@ but not the real one, or a `maxWidth` from the wrong axis is invisible. And pdf.
 item at the page edge, so a turned box near an edge reads as a wrong STRING — the text boxes sit half a
 diagonal from every edge.
 
-Guards: `tests/browser/rotated-oriented-overlays.browser.test.ts` (38 — the oracle check, a reference
-non-vacuity check, and 6 page orientations × element 0/90/30° for pictures and text: source `/Rotate`
-0/90/180/270, user 90, and source 90 + user 180), plus three rotated-overflow configs in
-`text-extent-ink.browser.test.ts`. On the pre-fix source the new file fails 32 of 38 (the six that pass
-are the oracle, the reference, text at 0/0 and pictures on an unrotated page, which were already right).
+Guards: `tests/browser/rotated-oriented-overlays.browser.test.ts` (42 = 38 asserting cases — the oracle
+check, a reference non-vacuity check, and 6 page orientations × element 0/90/30° for pictures and text:
+source `/Rotate` 0/90/180/270, user 90, and source 90 + user 180 — plus 4 NON-asserting visual-record
+shots written to `var/claude/qa-shots/a3pre/`), plus three rotated-overflow configs in
+`text-extent-ink.browser.test.ts`. On the pre-fix source the new file fails 32 of 42 (measured before
+the record shots existed as 32 of 38; the shots pass on any code by design; the six asserting cases that
+pass are the oracle, the reference, text at 0/0 and pictures on an unrotated page, which were already
+right). The 94add82 commit message says "38; fails 32" — it predates counting the record shots.
+**Not measured:** a comment or caption that WRAPS under rotation — the fixtures are one line each by
+design (the wrap check needed exactly one); pdf-lib's `T*` moves in text space, so the next line should
+follow the turned matrix [Inferred].
 Sabotage, each restored and checked with `cmp`: page rotation dropped from the angle → exactly the 30
 rotated-page cases; no centre pivot → 18 (12 text at element ≠ 0, 6 captioned-signature pictures at
 90° — the 11pt band offset at 30° stays inside the grid's margin, a stated bound); styled text matrix
