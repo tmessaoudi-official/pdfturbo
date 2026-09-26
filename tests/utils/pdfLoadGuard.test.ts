@@ -780,6 +780,7 @@ describe('every pdf-lib load in src/ goes through the guard', () => {
       'src/export/exportService.ts source',
       'src/export/exportService.ts source',
       'src/export/exportService.ts source',
+      'src/export/formHiddenText.ts source',
       'src/handlers/textEditHandler.ts source',
       'src/ocr/searchableTextLayer.ts source',
     ]);

@@ -728,9 +728,42 @@ DELETES the prose inside it. **Clip what invents geometry; never clip an attribu
 exports regardless.** The guard case now asserts the opposite of what it asserted when it landed.
 
 **And that exposed a pre-existing bound nobody had written down:** a run drawn past its form's
-`/BBox` is invisible on screen and in every raster export, yet exports verbatim into DOCX/MD/TXT
-(0 red pixels rendered, control 565). Now disclosed in `KNOWN_ISSUES.md`; not fixed, because
-suppressing it needs a text-item-to-form attribution `getTextContent` does not provide.
+`/BBox` is invisible on screen and in every raster export, yet exported verbatim into DOCX/MD/TXT and
+the CSV/XLSX tables (0 red pixels rendered, control 565). **Fixed by A2 (2026-09-26)**, and the reason
+it once read "cannot be fixed" is worth keeping: `getTextContent` recurses into a form with only its
+`/Matrix` — no `/BBox`, no marker (`pdf.worker.mjs:36468-36495`) — so its items carry no form identity,
+and matching them by POSITION (the colour-map way) is inexact. But pdf.js DOES emit a marker for every
+marked-content sequence and flushes the current item at each one (`:36548-36580`). So
+`src/export/formHiddenText.ts` copies the page into a throwaway document, wraps every reachable form's
+stream in a unique `/PDFTurboFormN BMC … EMC`, and reads the copy's text content: every item arrives
+bracketed by its exact form chain. The copy's operator list carries the same tags right after each
+`paintFormXObjectBegin`, so the k-th occurrence pairs with that placement's clip (`walkPageOps`'
+`markedClips`). An item leaves only when its footprint — advance along its direction, height plus a
+quarter-em descender, as an AABB — is wholly outside that clip.
+
+Three things make it safe, and each is a sabotage case. **Trigger first:** the walk that already runs
+sets `formTextOutsideClip` when a show op's origin is outside its form's clip; only then is the copy
+paid for. Measured on the 15-file corpus: 3 pages trigger (all in one paper), 5 items drop — exactly the
+5 render-confirmed invisible labels — and the other 357 pages pay nothing. **Pairing by occurrence:** a
+shared inner form placed once inside a narrow outer form (hidden) and once on the page (visible) must
+keep exactly one copy; pairing every placement to the first occurrence over-drops the visible one.
+**Fail-open everywhere:** a different item count, string or origin between the copy and the page, a tag
+counted differently in the text and the operator list, an undecodable form, a vertical-writing run, a
+thrown error — each keeps every item. Markers inside annotation appearances are not counted, because
+`getTextContent` never reads annotations. `/Subtype` is read with `lookup`: `get` returns a PDFRef for an
+indirect one, and that form's hidden text would silently stay. The copy is loaded through
+`loadPdfDocument(…, 'source')`, a pinned site; the verdict is a cache hit because every source prewarms.
+Cost on the triggered file: 9.6 s for the first page (parsing a 2.1 MB file with 2,565 forms), then
+about 4 s a page, at load 28. Bounds: a run crossing the box edge is one item and exports whole (pdf.js
+gives no per-glyph advances); a run that starts after a `TJ` gap or an unpositioned second show op may
+not trip the trigger; and the editor's own text layer still exposes such text. Guards:
+`tests/browser/form-hidden-text.browser.test.ts` (8) and `tests/export/formHiddenText.test.ts` (18).
+Sabotage, each landing where predicted: trigger off → the 4 export cases + indirect + fail-open + the
+walker case; first-occurrence pairing → 3 pure + the 4 export cases; clip ignored → the 4 export cases
++ indirect + the walker case, control green; straddlers dropped → 4 pure + 4 export; `get` for
+`/Subtype` → exactly the indirect case; annotation markers counted → exactly that case; each of the
+three parity checks and the descender removed → exactly its own pure case. The parity checks are pinned
+only at the pure level: no real corpus page diverged, so nothing honest drives them end to end.
 
 **UNCERTIFIED-BY-EXECUTION, named rather than omitted:** the clip reset inside an annotation's
 appearance stream. Both clipped channels (rules and vRules) gate on `annotationDepth === 0`, so no assertion can

@@ -6,6 +6,8 @@
  *   - rules:    thin horizontal filled/stroked rects (underline/strike candidates)
  *   - vRules:   thin vertical rects (table-grid candidates, #56)
  *   - images:   image-XObject paint placements (name + draw CTM)
+ * plus two A2 signals that feed no flow channel: `formTextOutsideClip` (a form's text starts outside
+ * its `/BBox` — the cheap trigger for `formHiddenText.ts`) and, on request, the clip at each marker tag.
  *
  * The count matters: `ctm` feeds all four, so a placement fix for one is a behaviour change for
  * every one of them — which is exactly how the `beginAnnotation` fix introduced a regression in
@@ -34,6 +36,22 @@ export interface PageOpsResult {
   vRules: RuleRect[];
   /** Image-XObject paint placements in document order. */
   images: ImagePlacement[];
+  /**
+   * A2 trigger: some text show op inside a Form XObject has its origin OUTSIDE the form's `/BBox` clip,
+   * so the page may carry text the reader never sees but `getTextContent` still reports. Cheap and
+   * computed on every walk; only when it is set does the exporter pay for exact attribution
+   * (`formHiddenText.ts`). An origin is the start of a run, so a run lying wholly outside the clip
+   * always sets it — except a run that begins after a `TJ` gap or a second show op with no positioning
+   * in between, whose origin this walker does not advance to. Missing it keeps that text (fail-open).
+   */
+  formTextOutsideClip: boolean;
+  /**
+   * With `opts.markPrefix`: for every `beginMarkedContent` whose tag starts with the prefix, the clip
+   * in force at that point, keyed by tag, one entry per OCCURRENCE in operator order. Annotation
+   * appearance streams are skipped — `getTextContent` never reads them, so counting their markers
+   * would break the occurrence pairing. `null` = unclipped.
+   */
+  markedClips?: Map<string, Array<ClipBox | null>>;
 }
 
 /** Minimal shape of a pdf.js operator list (only what the walk reads). */
@@ -43,7 +61,7 @@ export interface OpListLike {
 }
 
 /** An axis-aligned box in the walk's own frame — crop-relative when `walkPageOps` is given an origin. */
-interface ClipBox { x0: number; y0: number; x1: number; y1: number }
+export interface ClipBox { x0: number; y0: number; x1: number; y1: number }
 
 /**
  * The AABB of a `/BBox`'s four corners under `m`, or null when the argument is not four finite
@@ -102,8 +120,12 @@ export function walkPageOps(
    * what pdf.js itself reports and what the CSV/XLSX caller wants.
    */
   origin?: { x: number; y: number },
+  opts?: { markPrefix?: string },
 ): PageOpsResult {
   const colorMap = new Map<string, string>();
+  let formTextOutsideClip = false;
+  const markPrefix = opts?.markPrefix;
+  const markedClips = markPrefix ? new Map<string, Array<ClipBox | null>>() : undefined;
   const rules: RuleRect[] = [];
   const vRules: RuleRect[] = [];
   const images: ImagePlacement[] = [];
@@ -398,8 +420,21 @@ export function walkPageOps(
       if (fillHex !== '000000' && annotationDepth === 0) {
         colorMap.set(`${px},${py}`, fillHex);
       }
+      if (clip && annotationDepth === 0 &&
+        (rawX < clip.x0 || rawX > clip.x1 || rawY < clip.y0 || rawY > clip.y1)) {
+        formTextOutsideClip = true;
+      }
+    } else if (fn === OPS['beginMarkedContent'] && markedClips && annotationDepth === 0) {
+      // pdf.js hands the tag over as a structured-clone of its `Name`, i.e. `{ name }`.
+      const a0 = (args as unknown[])[0] as { name?: unknown } | string | undefined;
+      const tag = typeof a0 === 'string' ? a0 : typeof a0?.name === 'string' ? a0.name : null;
+      if (tag !== null && markPrefix && tag.startsWith(markPrefix)) {
+        const list = markedClips.get(tag) ?? [];
+        list.push(clip ? { ...clip } : null);
+        markedClips.set(tag, list);
+      }
     }
   }
 
-  return { colorMap, rules, vRules, images };
+  return { colorMap, rules, vRules, images, formTextOutsideClip, ...(markedClips ? { markedClips } : {}) };
 }

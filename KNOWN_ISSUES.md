@@ -191,16 +191,18 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From the WS5 adversarial audit (2026-09-04)
 
-- **Text drawn outside its Form XObject's `/BBox` exports to Word/Markdown/text although it is
-  invisible everywhere else** (P2, pre-existing, found by WS7 round 7). pdf.js clips a form to its
-  `/BBox` when rendering, so such a run shows up in no page render and in no rasterised export — but
-  `getTextContent`, which the DOCX/MD/TXT reconstruction reads, applies no clip and returns it
-  verbatim. Measured: 0 red pixels rendered against a control of 565, and the run present in the flow
-  model. So a document can export text a reader can never see. Not fixed: suppressing it means
-  attributing every text item to the form that drew it, which `getTextContent` does not tell us, and
-  guessing would delete visible words — the direction that loses data. Related and now closed: the
-  same clip was briefly applied to the colour channel alone, which turned such a run BLACK in the
-  export rather than hiding it (see `CLAUDE.md` § the Form `/BBox` clip).
+- ~~**Text drawn outside its Form XObject's `/BBox` exports to Word/Markdown/text although it is
+  invisible everywhere else**~~ — **FIXED 2026-09-26 (A2).** Each text item is now attributed to the
+  form that drew it: marker injection on a throwaway copy of the page, paired with the clip of each form
+  placement. An item wholly outside its clip leaves the Word/Markdown/text and CSV/XLSX exports. Real
+  files: 5 such runs in 1 of 15 (figure labels in an arXiv paper), each render-confirmed invisible; the
+  other 14 files pay nothing, because the attribution runs only on a page where the operator walk sees
+  form text outside its box. Bounds: a run that crosses the box edge is one item and exports whole;
+  a run that starts after a `TJ` gap or an unpositioned second show op may not trip the trigger and is
+  kept; on any disagreement between the copy and the page, or any failure, the page exports as before.
+  The editor's own text layer (select, copy, search) still exposes such text; this fix covers the
+  exports only. Guards: `tests/browser/form-hidden-text.browser.test.ts` and
+  `tests/export/formHiddenText.test.ts`.
 
 - ~~**A disabled crop flag leaves the editor drawing a frame the export ignores**~~ — **CLOSED
   2026-09-04.** It was INTRODUCED in this range (an earlier note called it pre-existing and that was

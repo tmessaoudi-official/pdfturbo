@@ -10,6 +10,7 @@ import { buildPageOverlays, rasterizePageWithRedactions, stripRedactedAnnotation
 import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
+import { FormHiddenTextFinder, type FormTextItem } from './formHiddenText';
 import { encryptPdf } from './encryption';
 import { isPdfLoadRefusal, loadPdfDocument } from '../utils/pdfLoadGuard';
 import { viewerVerdict } from '../utils/viewerVerdict';
@@ -680,11 +681,37 @@ export class ExportService {
         el, vp.viewBox, totalRot,
       ));
 
+    const hidden = ops.formTextOutsideClip
+      ? await this._formHiddenItems(new FormHiddenTextFinder(), src.bytes, docPage.sourcePageNum - 1, content.items as RawTextItem[])
+      : null;
     const items: TableTextItem[] = (content.items as RawTextItem[])
+      .filter((_, i) => !hidden?.has(i))
       .filter(it => typeof it.str === 'string' && it.str.trim().length > 0 && Array.isArray(it.transform))
       .filter(it => !contentRedactions.some(r => isItemRedacted(it, r, vp.viewBox[3])))
       .map(it => ({ x: it.transform[4], y: it.transform[5], text: it.str, width: it.width }));
     return { hRules: ops.rules, vRules: ops.vRules, items };
+  }
+
+  /**
+   * A2: indices into `items` (a page's `getTextContent` stream, markers included) of the text items a
+   * Form XObject's `/BBox` hides. Called only when the walk saw form text outside its clip. Any failure
+   * keeps every item — the behaviour before this filter existed — and is reported silently.
+   */
+  private async _formHiddenItems(
+    finder: FormHiddenTextFinder, srcBytes: Uint8Array, pageIndex: number,
+    items: ReadonlyArray<RawTextItem | MarkedContentMarker>,
+  ): Promise<Set<number> | null> {
+    const textAt: number[] = [];
+    items.forEach((it, i) => { if (!('type' in it)) textAt.push(i); });
+    try {
+      const hidden = await finder.hiddenItemIndices(
+        srcBytes, pageIndex, textAt.map(i => items[i] as unknown as FormTextItem),
+      );
+      return new Set([...hidden].map(k => textAt[k]));
+    } catch (err) {
+      this._ctx.reportError.silent(err, 'ExportService: hidden form text not identified; exporting it as before');
+      return null;
+    }
   }
 
   /**
@@ -1296,6 +1323,7 @@ export class ExportService {
   private async _extractFlowDoc(): Promise<FlowDoc> {
     const { documentModel, elements } = this._ctx;
     const flowDoc: FlowDoc = { pages: [] };
+    const formHidden = new FormHiddenTextFinder();
     for (const docPage of documentModel.pages) {
       // Text the user TYPED on this page (overlay TextElements). `el.text` is logical
       // Unicode, so this exports correctly in DOCX/MD — including Arabic (#4).
@@ -1402,10 +1430,21 @@ export class ExportService {
       // C22: translated HERE, before anything downstream reads a position — the struct-tree path
       // consumes `markedItems` directly, so normalising only the filtered `items` would leave a
       // tagged PDF on the old frame.
-      const markedItems = translateItemsToCropOrigin(
-        content.items as unknown as Array<RawTextItem | MarkedContentMarker>,
-        cropOriginX, cropOriginY,
-      );
+      // Pure operator-list walk → text colors, rules, image placements (M2 #22). Hoisted above the
+      // items because of A2: text a Form XObject draws past its own /BBox is invisible, yet
+      // `getTextContent` reports it, and the walk is what says whether this page has any. Only then is
+      // the exact attribution paid for; the hidden items leave BEFORE anything reads a position.
+      // C22: the origin argument carries `rules`, `vRules`, the image CTMs AND the `colorMap`
+      // keys into the crop frame together — they all derive from the walker's ctm, so this one
+      // argument is what makes a partial normalisation of those four unexpressible.
+      const OPS = pdfjsLib.OPS as unknown as Record<string, number>;
+      const ops = opList ? walkPageOps(opList, OPS, { x: cropOriginX, y: cropOriginY }) : null;
+      let sourceItems = content.items as unknown as Array<RawTextItem | MarkedContentMarker>;
+      if (ops?.formTextOutsideClip) {
+        const hidden = await this._formHiddenItems(formHidden, src.bytes, docPage.sourcePageNum - 1, sourceItems);
+        if (hidden?.size) sourceItems = sourceItems.filter((_, i) => !hidden.has(i));
+      }
+      const markedItems = translateItemsToCropOrigin(sourceItems, cropOriginX, cropOriginY);
       const items = (useStruct ? markedItems.filter(it => !('type' in it)) : markedItems) as RawTextItem[];
       const styles = content.styles as Record<string, { fontFamily?: string }>;
 
@@ -1442,13 +1481,7 @@ export class ExportService {
       let pageVRules: RuleRect[] = [];
       const pageImages: FlowImage[] = [];
 
-      if (opList) {
-        // Pure operator-list walk → text colors, rules, image placements (M2 #22).
-        const OPS = pdfjsLib.OPS as unknown as Record<string, number>;
-        // C22: the origin argument carries `rules`, `vRules`, the image CTMs AND the `colorMap`
-        // keys into the crop frame together — they all derive from the walker's ctm, so this one
-        // argument is what makes a partial normalisation of those four unexpressible.
-        const ops = walkPageOps(opList, OPS, { x: cropOriginX, y: cropOriginY });
+      if (ops) {
         colorMap = ops.colorMap;
         pageRules = ops.rules;
         pageVRules = ops.vRules;
