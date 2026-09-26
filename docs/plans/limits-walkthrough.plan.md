@@ -111,7 +111,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | todo | - | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
-| 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | doing | - | src/export/**, tests/browser/** |
+| 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | done | c6550bc | src/export/**, tests/browser/** |
 <!-- /progress-block -->
 
 ### Blocked
