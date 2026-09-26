@@ -70,11 +70,14 @@ async function prefillAndSample(opts: { srcRot: number; userRot?: number; crop?:
   };
 
   // The real export path — the same one `PdfSigner` is handed bytes from.
+  let oracle = false;
   const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
   const svc = new ExportService({
     documentModel, elements, formValues: {}, currentFilename: 'doc.pdf', exportPassword: null,
     inkLayer: new InkLayer(), reportError: loud, progress: { begin: () => handle },
-    cleanEmptyTextElements() {}, renderCurrentPage: () => Promise.resolve(), rebuildElementLayer() {},
+    // A sign pick must not mutate the model: only `assemblePdfBytes` runs this cleanup, and the prefill never calls it
+    // (armed after the prefill, below, so the oracle's own `assemblePdfBytes` may).
+    cleanEmptyTextElements() { if (!oracle) throw new Error('the sign prefill ran cleanEmptyTextElements'); }, renderCurrentPage: () => Promise.resolve(), rebuildElementLayer() {},
   } as unknown as IExportContext);
 
   const app = Object.create(PDFTurboApp.prototype) as PDFTurboApp;
@@ -93,6 +96,7 @@ async function prefillAndSample(opts: { srcRot: number; userRot?: number; crop?:
   expect(r.w, 'prefilled').toBeGreaterThan(0);
 
   // Render the page the signer signs and sample inside the prefilled /Rect.
+  oracle = true;
   const signed = await pdfjsLib.getDocument({ data: (await svc.assemblePdfBytes()).slice(0) }).promise;
   const page = await signed.getPage(1);
   const vp = page.getViewport({ scale: 2 });

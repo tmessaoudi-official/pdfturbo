@@ -1422,14 +1422,18 @@ keeps the exact absolute mapping. An assembly failure leaves the fields and reop
 same assembly and reports it. **One page, not `assemblePdfBytes()`**: the first version read the whole assembled
 document, which rasterises every redaction-bearing page and saves — measured at load 31, 0.5–1.8 s per raster page
 warm (13 s cold) plus 7 s to save ten of them — and runs `cleanEmptyTextElements`, a model mutation a sign pick has
-no business making. A page's frame depends only on that page, so the one-page assembly is the same box. Guards: 6
-cases in `tests/core/signRectPrefill.test.ts` (which also pin that `assemblePdfBytes` is never called) and
+no business making. A page's frame depends only on that page, so the one-page assembly is the same box. The one side
+effect left is the one any assembly has: a form value that cannot be applied still raises `toast.formValueDropped`.
+Guards: 6 cases in `tests/core/signRectPrefill.test.ts` (whose harness rejects any `assemblePdfBytes` call) and
 `tests/browser/sign-assembled-prefill.browser.test.ts` (7), whose oracle assumes no frame — a green square drawn
 over, the REAL `assemblePdfBytes()` rendered through a real `ExportService`, green sampled at five points inside the
 prefilled `/Rect` — at /Rotate 0/90/180/270 with an inset CropBox, user rotation 90, and a #G23 crop, plus a
-copied-page control. Sabotage: the old mapping forced → the 6 raster cases in Chrome and 5 in jsdom; the crop window
-ignored → exactly the crop case in each; `assembledPageBox` returning the SOURCE page's box → the 6 raster cases,
-control green. Cost: one single-page assembly per pick, on redaction-bearing pages only.
+copied-page control; its `cleanEmptyTextElements` throws until the oracle's own assembly runs. Sabotage, re-measured
+on the reworked harness: the old mapping forced → the 6 raster cases in Chrome and 5 in jsdom; the crop window ignored
+→ exactly the crop case in each; `assembledPageBox` returning the SOURCE page's box → the 6 raster cases, control
+green; the prefill calling `assemblePdfBytes()` first → the 6 raster cases in Chrome and 4 in jsdom (the failure case
+stays green — its fields are untouched either way). Cost: one single-page assembly per pick, on redaction-bearing
+pages only.
 
 **Do not cite a count here** — it has been wrong at three surfaces simultaneously. Enumerate the instances from this section instead (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
 filter, this, and the flow-export LAYOUT closed as C22 on 2026-09-02) — so when touching anything that

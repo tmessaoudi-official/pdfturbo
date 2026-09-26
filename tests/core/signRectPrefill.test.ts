@@ -73,6 +73,8 @@ function makeApp(opts: {
   a.setMode = vi.fn();
   a._reopenSignModal = vi.fn();
   a.elements = opts.elements ?? [];
+  // The whole-document assembly rasterises every redacted page and saves; the prefill must never reach it.
+  a.assemblePdfBytes = vi.fn(() => Promise.reject(new Error('assemblePdfBytes must not be called')));
   a.assembledPageBox = vi.fn(opts.assembled ?? (() => Promise.reject(new Error('assembledPageBox must not be called'))));
 
   return {
