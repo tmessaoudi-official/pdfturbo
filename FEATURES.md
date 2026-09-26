@@ -15,7 +15,7 @@ _Last updated: 2026-09-13 · Version 1.0.0_
 - Zoom in/out, fit-to-width (auto re-fit on resize), pinch-to-zoom (mobile), Ctrl+Wheel (desktop)
 - Text search with highlighted matches (RTL/Arabic-aware), and "add highlight" on a match
 - Session persistence (IndexedDB) with restore-or-start-fresh on reload
-- Installable PWA; app shell works offline
+- Installable PWA; app shell works offline (fonts, OCR and pdf.js data files after their first online use)
 
 ## Annotation & markup
 - **Text boxes** — font family/size, bold/italic, underline/strikethrough, colour, alignment,

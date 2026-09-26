@@ -68,6 +68,17 @@ export default defineConfig({
             },
           },
           {
+            // Limits row 10 — the vendored Arabic font (Noto Naskh, 172 KB, hashed name under assets/). Fetched only
+            // when an export or the searchable-OCR layer shapes Arabic, so it stays out of the precache (as the OCR
+            // assets do, #48) and is cached on first use. Order against the .js rule does not matter: .ttf never matches it.
+            urlPattern: ({ url }) => url.pathname.endsWith('.ttf') && url.origin === self.location.origin,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'app-fonts',
+              expiration: { maxEntries: 4, maxAgeSeconds: 90 * 24 * 60 * 60 },
+            },
+          },
+          {
             // Cache large JS chunks (pdf.js worker, pdf-lib) at runtime
             urlPattern: ({ url }) => (url.pathname.endsWith('.js') || url.pathname.endsWith('.mjs')) && url.origin === self.location.origin,
             handler: 'CacheFirst',

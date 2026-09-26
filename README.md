@@ -78,7 +78,9 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Export preview** — see annotation positions before downloading
 - Pinch-to-zoom on mobile; Ctrl+Wheel on desktop
 - Keyboard shortcuts for all major tools
-- PWA: installable, works offline for the app shell
+- PWA: installable, works offline for the app shell. Files only some documents need — the Arabic font,
+  the OCR engine and languages, pdf.js's CJK CMaps, image decoders and colour profile — are cached the
+  first time they are used, so each needs one online use before it works offline
 - Full EN / FR / AR (RTL) localisation
 
 ## License

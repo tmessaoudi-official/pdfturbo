@@ -78,3 +78,22 @@ describe('PWA decoder caching (row 36)', () => {
     expect(cfg).toMatch(/globIgnores:\s*\[[^\]]*'\*\*\/pdfjs\/\*\*'[^\]]*\]/);
   });
 });
+
+// Limits row 10 (B4) — the vendored Arabic font (Noto Naskh, 172 KB) is fetched only when a document needs
+// Arabic shaping (the overlay bake and the searchable-OCR Arabic layer). It stays OUT of the precache, like
+// the OCR assets (#48), and is cached the first time it is fetched so later Arabic exports work offline.
+describe('PWA Arabic font caching (limits row 10, B4)', () => {
+  it('caches the app fonts in a dedicated same-origin runtime cache on first use', () => {
+    const rule = cfg.slice(cfg.lastIndexOf('urlPattern', cfg.indexOf("cacheName: 'app-fonts'")), cfg.indexOf("cacheName: 'app-fonts'"));
+    expect(cfg.indexOf("cacheName: 'app-fonts'")).toBeGreaterThan(-1);
+    expect(rule).toMatch(/\.ttf/);
+    expect(rule).toMatch(/url\.origin === self\.location\.origin/);
+    expect(rule).toMatch(/handler: 'CacheFirst'/);
+  });
+
+  it('does not precache fonts (the install payload stays as small as #48 left it)', () => {
+    const glob = cfg.match(/globPatterns:\s*\[([^\]]*)\]/);
+    expect(glob).not.toBeNull();
+    expect(glob?.[1]).not.toMatch(/ttf|woff|otf/);
+  });
+});

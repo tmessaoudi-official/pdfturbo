@@ -345,14 +345,18 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose
   MediaBox origin is not (0,0), the searchable text is offset from the words it transcribes. Placement
   only, not a leak. 0 of 360 corpus pages have a CropBox that differs from the MediaBox.
-- **`MODE_HINT_KEYS` is not exhaustive by type or test** (P3). All 16 modes are present today, so
+- ~~**`MODE_HINT_KEYS` is not exhaustive by type or test** (P3).~~ **FIXED 2026-09-26 (limits row 8, `d0f218c`):**
+  typed `Record<Exclude<ToolMode, 'select'>, string>` and pinned per locale by `tests/ui/modeHintCoverage.test.ts`. Was: all 16 modes are present today, so
   this is a guard gap, not a defect — the sibling `badgeKeys` was made exhaustive AND pinned after
   the signRect drift. Deferred as a one-line follow-up rather than mixed into an audit commit.
-- **The vendored Arabic `.ttf` is not precached and no runtime rule matches it** (P3), so the Arabic
+- ~~**The vendored Arabic `.ttf` is not precached and no runtime rule matches it** (P3),~~ **FIXED 2026-09-26
+  (limits row 10):** a same-origin `.ttf` runtime rule (`app-fonts`, CacheFirst) caches it on first use, still out
+  of the precache; measured on the built app, fetched once and then served offline. README says so. Was: so the Arabic
   overlay and searchable-OCR need network after install, which README's "app shell offline" does not
   say. Deferred: adding it to `globPatterns` grows the install payload, the opposite of the #48
   decision that moved the OCR assets OUT of precache.
-- **The PWA guard pins the tesseract caching rule's presence, not its ORDER** (P3), though the
+- ~~**The PWA guard pins the tesseract caching rule's presence, not its ORDER** (P3),~~ **FIXED 2026-09-26 (limits
+  row 9, `babd6c9`):** a case pins the OCR rule above the `.js` catch-all. Was: though the
   comment says the order is load-bearing — reordering keeps the test green while the cores fall into
   the wrong cache. Deferred with the same one-line-follow-up reasoning as `MODE_HINT_KEYS`.
 - **Two exports have no production caller** (#54 / #54b): `canUseFsSave`
