@@ -23,6 +23,17 @@ describe('PWA OCR caching (#48)', () => {
     // the OCR runtime route must key off the tesseract path
     expect(cfg).toMatch(/tesseract\//);
   });
+
+  it('places the OCR rule before the generic .js rule (limits row 9, B3)', () => {
+    // Workbox takes the FIRST matching route. The OCR worker and the tesseract `*.wasm.js` cores end in .js,
+    // so below the catch-all they would land in `pdf-chunks` (20 entries) and could be evicted by ordinary
+    // app chunks — silently re-downloading megabytes on the next OCR.
+    const ocr = cfg.indexOf("cacheName: 'ocr-assets'");
+    const catchAll = cfg.indexOf("cacheName: 'pdf-chunks'");
+    expect(ocr).toBeGreaterThan(-1);
+    expect(catchAll).toBeGreaterThan(-1);
+    expect(ocr).toBeLessThan(catchAll);
+  });
 });
 
 // Row 32 (2026-09-26) — pdf.js's CMap files are served from public/pdfjs/cmaps/ and cached on first
