@@ -2330,7 +2330,19 @@ carries a fifth copy (found stale at three on 2026-09-26) — update it with the
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
 remain open: C18 (per-glyph select/copy/search precision), C19 (tashkeel/GPOS micro-positioning),
 bracket mirroring in the overlay, and RTL list-marker placement. A reviewed string can still render
-imperfectly — those are separate, and they need EH-B (HarfBuzz-WASM), not a translation pass.
+imperfectly — those are separate, and none of them is a translation pass. **Nor do they need HarfBuzz
+(limits row 17, measured 2026-09-27):** fontkit — already the shaper behind pdf-lib's embed — produced HarfBuzz's
+glyphs and positions exactly on Noto Naskh (5 strings, 69 glyphs, 0.00 pt apart). The tashkeel error (up to 12.25 pt
+at 24 pt) is pdf-lib drawing fontkit's glyphs with their plain advances and dropping the GPOS offsets, so C19 is
+fixed from fontkit's own `layout().positions` (row 25, with the brackets and list markers). C18 is not a shaping
+problem: the glyphs and their positions come from the PDF, and what is missing is per-character advances inside a
+pdf.js text item. **The same row measured PDFium and did not adopt it** — 2.1 MB gzip of wasm, and on 729 corpus
+runs replaced by themselves reversed it kept font, ink, text and width on 474 (65%), losing the TJ spacing on runs
+with spaces. What it would have bought is keeping an embedded SIMPLE font in place, which our engine cannot do today:
+Path 2 rewrites hex operands only, so a literal-string run falls to the Path-3 standard-font redraw even when every
+glyph is in the subset (171 of the 630 runs our engine located), and an embedded simple font with no ToUnicode is
+never edited in place at all (459 of 630). Rows 38–39 close both in our own engine. Report and scripts:
+`var/claude/d2/` (gitignored); the probes are not committed.
 
 **`صف` (table row) vs `سطر` (text line) — do not "fix" one into the other.** The reviewer flagged
 `docxToolbar.addRow`/`deleteRow` as needing `سطر`, reading the French gloss *"Ajouter une ligne"*

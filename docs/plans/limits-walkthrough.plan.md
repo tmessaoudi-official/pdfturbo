@@ -80,6 +80,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 22:25] SESSION-CHOSEN (run rules, not a developer ruling): C5 measured as a real export change (a dangling page font became the stamped Info dict and its text left the export), so it is fixed rather than kept — `loadPdfDocument` reserves every referenced object number before anything registers.
 - [2026-09-26 23:10] SESSION-CHOSEN (run rules): C9 reads the assembled box at PICK time (one assembly per pick, redaction-bearing pages only) and maps proportionally from the displayed window, so the prefilled numbers the user sees are the ones signed; an assembly failure leaves the fields and defers to the sign flow's own error.
 - [2026-09-26 23:35] SESSION-CHOSEN (run rules): C9 follow-up (advisor) — the prefill assembles only the picked page (`ExportService.assembledPageBox`), not `assemblePdfBytes()`: same box, no whole-document raster/save, no `cleanEmptyTextElements`; `pageIsRasterised` becomes the one predicate for the raster decision. Landed 1effcc1.
+- [2026-09-27 00:40] SESSION-CHOSEN (run rules): D2 verdict — HarfBuzz not adopted: fontkit (already a dep) matches it exactly on Noto Naskh (69 glyphs, 0.00 pt); C19 tashkeel is fixed from fontkit's positions in row 25; D16/C18 is not a shaping problem and stays a ceiling.
+- [2026-09-27 00:40] SESSION-CHOSEN (run rules): D2 verdict — PDFium not adopted (2.1 MB gzip; 474/729 runs clean, TJ spacing lost on spaced runs); its measured gain, keeping embedded simple fonts in place, becomes rows 38 (Path 2 for literal operands) and 39 (encoding-based in-place path, glyphs verified with fontkit), run after row 31.
 - [2026-09-26 22:25] SESSION-CHOSEN (run rules): C3's 30 s per-image timeout is kept and stated as a false-refusal bound (a one-sided timeout refuses until the file is reopened), not engineered around.
 
 ## Formal Plan
@@ -107,7 +109,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 14 | C5 dangling reference vs /Info stamp measured | S | done | 7f57b72 | src/utils/pdfLoadGuard.ts, tests/** |
 | 15 | C8 hoist inline annotations before a locked save | M | done | f71054e | src/export/**, tests/export/exportPasswordSave.test.ts |
 | 16 | C9 signature rect mapped onto the assembled page | M | done | 8c175ac | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
-| 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | todo | - | var/claude/** |
+| 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | done | - | var/claude/**, KNOWN_ISSUES.md, CLAUDE.md |
 | 18 | D6+D7 real font names incl. eastAsia in DOCX | M | todo | - | src/utils/flowDocWriters.ts, tests/** |
 | 19 | D8 mixed-bidi DOCX lines measured | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 20 | D9 borderless-table discriminator research | M | todo | - | src/utils/borderlessTable.ts, tests/** |
@@ -127,6 +129,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | done | c6550bc | src/export/**, tests/browser/** |
 | 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images draw nothing (measured; wasmUrl served, useWorkerFetch pinned false) | M | done | c3670a0 | src/utils/pdfjsParams.ts, scripts/**, tests/** |
 | 37 | NEW: pdf.js ICC colour management is off — DeviceCMYK drawn with an approximate formula (measured: Pub 17 black slate-blue; ruled on 18:00) | M | done | b868be8 | src/utils/pdfjsParams.ts, scripts/**, vite.config.ts, tests/** |
+| 38 | NEW (row 17): Path 2 for literal-string operands — keep an embedded font with a ToUnicode in place (171/630 corpus runs substituted today) | M | todo | - | src/utils/contentStreamEditor.ts, tests/** |
+| 39 | NEW (row 17): in-place edit of an embedded simple font without ToUnicode via its /Encoding, glyph presence checked with fontkit (459/630 runs) | L | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked
@@ -134,7 +138,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - C2, C10, D15, D18 results need the developer's Acrobat/Reader check (row 29).
 - C12 needs a native Arabic reader (row 31).
 ### Needs research
-- A2, D2, D9 are investigations whose outcome decides whether code ships.
+- D9 is an investigation whose outcome decides whether code ships (A2 and D2 are done).
 ### Fragile
 - A4, C9, D12, D18 convert coordinates between frames — the defect shape behind this repo's worst redaction bugs; test every rotation and a crop.
 ### Known issues
