@@ -691,6 +691,7 @@
     }
   },
   "progress": {
+    "ocrLoadingModel": "جارٍ تحميل نموذج التعرّف الضوئي…",
     "ocrRecognizing": "جارٍ التعرّف على النص…",
     "signing": "جارٍ التوقيع…",
     "loadingDocument": "جارٍ تحميل المستند…",

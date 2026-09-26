@@ -359,7 +359,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   row 9, `babd6c9`):** a case pins the OCR rule above the `.js` catch-all. Was: though the
   comment says the order is load-bearing — reordering keeps the test green while the cores fall into
   the wrong cache. Deferred with the same one-line-follow-up reasoning as `MODE_HINT_KEYS`.
-- ~~**Two exports have no production caller** (#54 / #54b):~~ **FIXED 2026-09-26 (limits row 11):** the File
+- ~~**Two exports have no production caller** (#54 / #54b):~~ **FIXED 2026-09-26 (limits row 11, `4f3c5fd`):** the File
   menu now has a "Clear recent files" control calling `clearRecentFiles`, and `canUseFsSave` was deleted. Was: `canUseFsSave`
   (`src/utils/fileSystemAccess.ts`) and `clearRecentFiles` (`src/infra/recentFiles.ts`). The first is
   a capability probe nothing branches on — `pickSaveTarget` degrades internally instead, which is the
@@ -369,7 +369,9 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   deleted, and recorded TOGETHER: the audit found `clearRecentFiles` first and the sibling only on
   the next round, which is the pattern this list exists to break.
 
-- **The live OCR `status` string is dropped** (P3): `ocrHandler` emits `{progress, status}` while the
+- ~~**The live OCR `status` string is dropped** (P3):~~ **FIXED 2026-09-26 (limits row 12):** the label now
+  reads "Loading the OCR model…" until recognition starts, then "Recognizing text…"; an engine status it does
+  not know keeps the current label (`src/ocr/ocrStatus.ts`). Was: `ocrHandler` emits `{progress, status}` while the
   callback is typed `{progress}`, so the modal shows a static "Recognizing text…" through model
   download and recognition alike. Deferred as a UX improvement, not a defect.
 

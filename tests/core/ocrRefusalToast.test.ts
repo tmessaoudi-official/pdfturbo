@@ -16,6 +16,7 @@ function makeApp(failure: unknown) {
     ocrLangSelect: { value: 'eng' },
     ocrModeSelect: { value: 'searchable' },
     ocrProgress: { value: 0 },
+    ocrProgressLabel: document.createElement('div'),
     ocrProgressRow: document.createElement('div'),
     runOcrModal: document.createElement('button'),
     ocrBtn: document.createElement('button'),

@@ -300,7 +300,7 @@ Scope is "what already exists", UNQUALIFIED — not only where bugs were found b
   `PageService._commitCrops`/apply-to-all so a drawn crop maps to other page sizes preserving the
   RATIO and relative position instead of clamping one absolute rect. Undo stays one `MacroCmd`.
 - **#54b — open-via-picker + recent files** (`src/utils/fileSystemAccess.ts`).
-  `showOpenFilePicker` where available (progressive enhancement, mirror `canUseFsSave`), recent
+  `showOpenFilePicker` where available (progressive enhancement, mirroring the save side — its `canUseFsSave` probe was deleted by limits row 11), recent
   handles in IndexedDB with permission re-request on use; plain `<input type=file>` fallback
   untouched. No new deps.
 

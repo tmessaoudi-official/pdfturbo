@@ -25,7 +25,9 @@ import { PageThumbnailPanel } from '../ui/pageThumbnailPanel';
 import { FormFieldOverlay } from '../utils/formFieldOverlay';
 import { TextLayerManager } from '../utils/textLayer';
 import { TextEditHandler } from '../handlers/textEditHandler';
-import { OcrHandler, type OcrOutputMode } from '../handlers/ocrHandler';
+import { OcrHandler, type OcrOutputMode, type OcrRunProgress } from '../handlers/ocrHandler';
+import { ocrStatusLabelKey, OCR_LABEL_LOADING } from '../ocr/ocrStatus';
+import { t } from '../utils/i18n';
 import { SearchableLayerError } from '../ocr/searchableTextLayer';
 import { isPdfLoadRefusal } from '../utils/pdfLoadGuard';
 import { SigningHandler } from '../handlers/signingHandler';
@@ -709,8 +711,13 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   async runOcr(): Promise<void> {
     const lang = this.ui.ocrLangSelect.value;
     const sel = this.ui.ocrModeSelect.value;
-    const progressCb = (p: { progress: number }): void => {
+    // Limits row 12: the label names the phase — the model download and start-up come first, then
+    // recognition. An unrecognised engine status keeps the current label (see ocrStatus.ts).
+    this.ui.ocrProgressLabel.textContent = t(OCR_LABEL_LOADING);
+    const progressCb = (p: OcrRunProgress): void => {
       this.ui.ocrProgress.value = Math.round(p.progress * 100);
+      const key = ocrStatusLabelKey(p.status);
+      if (key) this.ui.ocrProgressLabel.textContent = t(key);
     };
     this.ui.ocrProgressRow.style.display = '';
     this.ui.runOcrModal.disabled = true;

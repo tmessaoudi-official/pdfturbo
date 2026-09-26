@@ -691,6 +691,7 @@
     }
   },
   "progress": {
+    "ocrLoadingModel": "Loading the OCR model…",
     "ocrRecognizing": "Recognizing text…",
     "signing": "Signing…",
     "loadingDocument": "Loading document…",
