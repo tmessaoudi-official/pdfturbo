@@ -346,7 +346,7 @@ SPA-fallback trap; each of the four images draws; the JS fallback draws a JBIG2 
 `useWasm: false`; the viewer check accepts all four; page-as-image carries the scan; a Flate CONTROL), two
 cases in `tests/infra/pdfjsParams.test.ts` and three in `pwaOcrCaching.test.ts`. Sabotage, predicted first,
 each landed and restored byte-identical: no `wasmUrl` → 1 jsdom + 8 browser (the viewer checks and the
-control stay green, correctly); `useWorkerFetch: true` → exactly the pin; one open site unwrapped → exactly
+control stay green, correctly); `useWorkerFetch: true` → exactly the pin (row 36's figure; row 37 inverted that pin); one open site unwrapped → exactly
 the static guard; the precache ignore dropped → exactly that case; `openjpeg_nowasm_fallback.js` dropped
 from the list → exactly the served-file case and the JPX fallback case. A harness note from the first try
 of that last one: with ALL four files missing (vitest called directly, so the script never ran) every case
@@ -402,6 +402,9 @@ copied → served case and the two DeviceCMYK patches; the cache rule without `/
 Driven once by hand on the built artifact (`vite preview`, Playwright `setInputFiles`): the fixture's patches
 read the same values as in the harness, the worker fetched `qcms_bg.wasm` and the profile, and `pdfjs-vertical.pdf`
 still read `あいうえお日本語` with its CMap now fetched by the worker; no console error.
+With the service worker in control, one use of each leaves `qcms_bg.wasm` and the profile in the `pdfjs-wasm`
+cache and the worker-fetched CMap in `pdfjs-cmaps` — measured, although pdf.js loads the colour files with a
+synchronous request from its worker.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

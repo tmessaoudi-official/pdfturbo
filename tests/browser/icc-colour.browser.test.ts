@@ -24,9 +24,14 @@ import patchesUrl from '../fixtures/icc/cmyk-patches.pdf?url';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 
-/** Patch centre (canvas px at scale 1) and Ghostscript 10.06 colour (-r72; CGATS profile for DeviceCMYK). */
-const PATCHES: Array<[string, number, [number, number, number]]> = [
-  ['DeviceCMYK rich black', 50, [9, 15, 16]],
+/**
+ * Patch centre (canvas px at scale 1), Ghostscript 10.06 colour (-r72; CGATS profile for DeviceCMYK) and the
+ * allowed per-channel difference. Measured 2026-09-26: 1 level on every patch but rich black, which is 4 off both
+ * with and without colour management (qcms and Ghostscript's lcms disagree near black) — it discriminates
+ * nothing, so it keeps a wider bound rather than sit exactly on the edge of the others'.
+ */
+const PATCHES: Array<[string, number, [number, number, number], number?]> = [
+  ['DeviceCMYK rich black', 50, [9, 15, 16], 8],
   ['DeviceCMYK cyan', 125, [0, 174, 239]],
   ['DeviceCMYK mid tone', 200, [181, 114, 165]],
   ['ICCBased mid tone (profile embedded)', 275, [181, 114, 165]],
@@ -69,14 +74,14 @@ describe('row 37 — pdf.js colour management', () => {
 
   it('every patch is drawn in the colour Ghostscript draws it', async () => {
     const ctx = await renderPatches();
-    const got = PATCHES.map(([label, x, want]) => {
+    const got = PATCHES.map(([label, x, want, bound = TOLERANCE]) => {
       const [r, g, b] = ctx.getImageData(x, 60, 1, 1).data;
       const off = Math.max(Math.abs(r - want[0]), Math.abs(g - want[1]), Math.abs(b - want[2]));
-      return `${label}: (${r},${g},${b}) vs (${want.join(',')}) off ${off}`;
+      return { line: `${label}: (${r},${g},${b}) vs (${want.join(',')}) off ${off}, bound ${bound}`, over: off > bound };
     });
     // One assertion over all five so a red names every patch at once.
-    const bad = got.filter(line => Number(line.split('off ')[1]) > TOLERANCE);
-    expect(bad, got.join('\n')).toEqual([]);
+    const bad = got.filter(g => g.over).map(g => g.line);
+    expect(bad, got.map(g => g.line).join('\n')).toEqual([]);
   });
 
   it('the viewer check every export runs accepts the colour-managed document', async () => {
