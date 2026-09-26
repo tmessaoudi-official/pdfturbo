@@ -118,7 +118,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
 | 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | done | c6550bc | src/export/**, tests/browser/** |
 | 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images draw nothing (measured; wasmUrl served, useWorkerFetch pinned false) | M | done | c3670a0 | src/utils/pdfjsParams.ts, scripts/**, tests/** |
-| 37 | NEW: pdf.js ICC colour management is off — DeviceCMYK drawn with an approximate formula (measured: Pub 17 black slate-blue; ruled on 18:00) | M | doing | - | src/utils/pdfjsParams.ts, scripts/**, vite.config.ts, tests/** |
+| 37 | NEW: pdf.js ICC colour management is off — DeviceCMYK drawn with an approximate formula (measured: Pub 17 black slate-blue; ruled on 18:00) | M | done | b868be8 | src/utils/pdfjsParams.ts, scripts/**, vite.config.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked
