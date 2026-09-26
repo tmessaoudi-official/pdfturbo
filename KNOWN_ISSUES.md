@@ -84,8 +84,9 @@ work in a private/incognito window when editing sensitive documents on a shared 
   with a hash of their numeric operands and colours (per-document ids excluded).
   Not compared: pages pdf.js does not show when pdf-lib holds more — they are never exported; annotation appearances
   (operators are taken with annotations disabled, because the export copy drops the form dictionary and pdf.js
-  draws widgets differently without it); which image an image-painting operator paints when two candidates have the
-  same size and placement; and encrypted sources, which pdf-lib refuses without a password before the check, as
+  draws widgets differently without it); a difference confined to a few pixels of a large image — since limits row 13
+  (2026-09-26) each painted image XObject's DECODED pixels are hashed too, reduced to 64×64 in a browser (sampled to
+  ~16k values without one), so a change that does not survive the reduction is not seen; and encrypted sources, which pdf-lib refuses without a password before the check, as
   before. A file pdf.js cannot open at all is refused, as the app cannot open it either.
 
 ### From the WS7 closing audit (2026-09-24)
@@ -369,11 +370,21 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   deleted, and recorded TOGETHER: the audit found `clearRecentFiles` first and the sibling only on
   the next round, which is the pattern this list exists to break.
 
-- ~~**The live OCR `status` string is dropped** (P3):~~ **FIXED 2026-09-26 (limits row 12):** the label now
+- ~~**The live OCR `status` string is dropped** (P3):~~ **FIXED 2026-09-26 (limits row 12, `0b25e8b`):** the label now
   reads "Loading the OCR model…" until recognition starts, then "Recognizing text…"; an engine status it does
   not know keeps the current label (`src/ocr/ocrStatus.ts`). Was: `ocrHandler` emits `{progress, status}` while the
   callback is typed `{progress}`, so the modal shows a static "Recognizing text…" through model
   download and recognition alike. Deferred as a UX improvement, not a defect.
+- ~~**The viewer check cannot tell two same-size images apart** (P3):~~ **FIXED 2026-09-26 (limits row 13):** each
+  page's fingerprint now carries a hash of the decoded pixels of every image XObject it paints (see "What the viewer
+  check does not compare" for the 64×64 bound). Was: an image reaches pdf.js's operator list only as an id, a width
+  and a height, so a file whose image object is defined twice with different pixels showed one picture and exported
+  the other (`buildDupImagePdf`, pinned in Node and in Chrome). Cost, measured on the heaviest corpus paper (75
+  pages, 83 images, the largest 19 megapixels): +3.4 s per fingerprint pass, almost all of it waiting for pdf.js to
+  hand over the decoded images; the reduction itself 149 ms, the longest main-thread step 36 ms. The pass runs when
+  a file opens and is cached, so it does not lengthen an export. Wrong refusals: none on 89 more public PDFs
+  (`scripts/viewer-corpus-fetch.sh` — 44 IRS forms, 15 publications and instructions, 30 arXiv papers) in Node, and
+  none on the same files plus the 15-file corpus in Chrome.
 
 
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a
@@ -384,7 +395,10 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **Three values are pending.** `toolbar.sanitizeTitle` had UNDER-claimed
+  read, and it is recorded as one. **Eight values are pending** (this line said three from WS7 round 10 on and
+  missed five later keys: `toast.pdfLoadRefused` (WS7 round 15), `toast.exportLayersConflict` (WS8),
+  `thumbnail.previewUnavailable` (A6), `toolbar.clearRecentFiles` and `progress.ocrLoadingModel` (limits rows
+  11 and 12), all session-written). `toolbar.sanitizeTitle` had UNDER-claimed
   since `8ae525c` deleted a word and the 2026-09-05 scope widening left it behind, so it was re-worded
   the same day to the English and French scope — by the session, not by a native speaker, so the new
   wording starts `[Unverified]` like any new value. WS7 round 10 added two more the same day,

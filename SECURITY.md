@@ -341,19 +341,23 @@ viewing the file are unaffected.
   does, and a closing audit measured ten crafted shapes that got past that model wherever the two libraries read
   the same bytes differently. The model is gone. When a document is opened, PDFturbo now opens it in pdf.js a
   second time, builds the copy an export builds, opens that in pdf.js as well, and compares every page the viewer
-  shows — its text, with each string's position, and its drawing operations with their numbers and colours. Any page that differs
+  shows — its text, with each string's position, its drawing operations with their numbers and colours, and the
+  decoded pixels of every picture it paints. Any page that differs
   refuses the export, signing and in-place editing for that document. None of the ten audit shapes loads any more: nine are refused as a page mismatch, and the tenth is a file pdf.js
   itself cannot open. The check
   runs in the background from the moment the file opens, so an export usually finds it finished; on a large file
   it takes seconds.
 
   Measured on 15 real-world PDFs — forms, papers and reports, most of them updated or linearized — and on the 5
-  test files kept in the repository: none is refused.
+  test files kept in the repository: none is refused. On 2026-09-26, with the picture comparison added, 89 more
+  public PDFs (44 tax forms, 15 tax publications and instructions, 30 research papers) were measured in Node and
+  in Chrome: none is refused.
 
 What the check does not compare, stated rather than hidden: pages the export library holds beyond the ones the
 viewer shows (they are never exported); annotation appearances (compared with annotations switched off, because
-the export's copy draws form widgets differently); and which picture an image operation paints when two candidates
-have the same size and position. Bytes pdf-lib never reads as an object at all are covered only as far as they
+the export's copy draws form widgets differently); and a difference confined to a few pixels of a large picture —
+since 2026-09-26 the decoded pixels of every picture a page paints are compared too, but reduced to 64×64 first,
+so a change that does not survive that reduction is not seen. Bytes pdf-lib never reads as an object at all are covered only as far as they
 change what a page draws. Encrypted files are unchanged: without the password they are refused before the check,
 as before.
 

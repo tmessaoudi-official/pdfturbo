@@ -63,17 +63,20 @@ describe('the load guard on real files', () => {
     expect(rows.filter(r => r.raw === 'loaded' && !r.checked).map(r => r.file)).toEqual([]);
   }, 120_000);
 
-  const CORPUS = resolve(__dirname, '../../var/corpus');
+  // `LOAD_GUARD_CORPUS_DIR` points the gated half at another gitignored corpus, e.g. `var/corpus-wide`
+  // (scripts/viewer-corpus-fetch.sh, 89 files — limits row 13). The report is named after the directory.
+  const CORPUS = resolve(__dirname, '../..', process.env.LOAD_GUARD_CORPUS_DIR ?? 'var/corpus');
   const gated = process.env.LOAD_GUARD_CORPUS === '1' && pdfsIn(CORPUS).length > 0;
 
-  it.skipIf(!gated)('loads every file in var/corpus exactly as pdf-lib does, and compared some of them', async () => {
+  it.skipIf(!gated)('loads every file in the gated corpus exactly as pdf-lib does, and compared some of them', async () => {
     const rows: Row[] = [];
     for (const file of pdfsIn(CORPUS)) rows.push(await measure(CORPUS, file));
     const out = resolve(__dirname, '../../var/claude/ws7');
     mkdirSync(out, { recursive: true });
-    writeFileSync(resolve(out, 'load-guard-corpus.json'), JSON.stringify(rows, null, 2));
+    const tag = CORPUS.endsWith('/var/corpus') ? '' : `-${CORPUS.split('/').pop()}`;
+    writeFileSync(resolve(out, `load-guard-corpus${tag}.json`), JSON.stringify(rows, null, 2));
     expect(rows.filter(r => r.guard !== r.raw)).toEqual([]);
     expect(rows.filter(r => r.raw === 'loaded' && !r.checked).map(r => r.file)).toEqual([]);
     expect(rows.some(r => r.checked)).toBe(true);
-  }, 600_000);
+  }, 3_600_000);
 });

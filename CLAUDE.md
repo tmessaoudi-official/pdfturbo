@@ -1818,7 +1818,12 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   `save()` keeps the quirks, so pdf.js re-reads it identically and a mismatch compares equal), per-page text
   (str + origin), operator fingerprint and a hash of numeric operands and `#rrggbb` colours (other strings are
   per-document ids and are skipped) taken with annotations DISABLED (drawn, 7 of 8 real forms mismatched on
-  widgets) — and refuses with `PdfPageMismatchError(['page N', …])`. pdf.js showing FEWER pages is allowed. The
+  widgets), plus — since limits row 13 — a hash of each painted image XObject's DECODED pixels (an image reaches the
+  operator list only as id + size, so a same-size swap compared equal; `buildDupImagePdf`). In a browser the
+  hash reduces pdf.js's `ImageBitmap` to 64×64 with `createImageBitmap` (async — 36 ms worst main-thread step on
+  gpt3's 19 MP scans); without a bitmap (Node/jsdom) it samples the raw `data`, so the two branches are pinned
+  separately (sabotaging the bitmap branch reds only the Chrome case). Hashed BEFORE `page.cleanup()`, which frees
+  the images. Cost: +3.4 s per pass on gpt3, mostly waiting on pdf.js's image transfer — and refuses with `PdfPageMismatchError(['page N', …])`. pdf.js showing FEWER pages is allowed. The
   verdict is cached by BYTES IDENTITY (`viewerVerdict.ts`), prewarmed wherever `addSourcePdf` runs and inherited by a
   true edit's bytes, because the pass costs 8–13 s wall-clock on a 67–142-page report (measured in Chrome; main-thread
   long tasks ≤ 115 ms). A copy of a source's bytes (`.slice(0)`) misses the cache and re-runs it. `false` is for bytes
@@ -2290,7 +2295,8 @@ values that had accumulated since, and the two UNRECONCILED sets, are accepted a
 RULING, not a second native read — say so whenever citing it. **Pending count: 8** —
 `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, and `toolbar.sanitizeTitle`, re-worded on the closure day to en/fr parity by the session, so it is a new value and
 starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), also
-session-written. The count's home is § "The hide-vs-remove audit".
+session-written. The count's home is § "The hide-vs-remove audit"; `KNOWN_ISSUES.md` § "Arabic locale strings"
+carries a fifth copy (found stale at three on 2026-09-26) — update it with the others.
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
 remain open: C18 (per-glyph select/copy/search precision), C19 (tashkeel/GPOS micro-positioning),
 bracket mirroring in the overlay, and RTL list-marker placement. A reviewed string can still render

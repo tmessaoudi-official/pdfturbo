@@ -98,8 +98,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 9 | B3 PWA rule-order guard | S | done | babd6c9 | tests/infra/pwaOcrCaching.test.ts |
 | 10 | B4 Arabic font runtime cache | S | done | 50cf966 | vite.config.ts, README.md, tests/** |
 | 11 | B5 clear recent files + delete canUseFsSave | S | done | 4f3c5fd | src/ui/recentFilesMenu.ts, src/utils/fileSystemAccess.ts, locales/** |
-| 12 | B6 OCR progress labels | S | todo | - | src/core/pdfTurboApp.ts, locales/** |
-| 13 | C3 image pixel hash in the viewer check + wider corpus | M | todo | - | src/utils/viewerCheck.ts, tests/** |
+| 12 | B6 OCR progress labels | S | done | 0b25e8b | src/core/pdfTurboApp.ts, locales/** |
+| 13 | C3 image pixel hash in the viewer check + wider corpus | M | done | - | src/utils/viewerCheck.ts, scripts/**, tests/** |
 | 14 | C5 dangling reference vs /Info stamp measured | S | todo | - | tests/** |
 | 15 | C8 hoist inline annotations before a locked save | M | todo | - | src/export/**, tests/export/exportPasswordSave.test.ts |
 | 16 | C9 signature rect mapped onto the assembled page | M | todo | - | src/core/pdfTurboApp.ts, src/signing/**, tests/** |

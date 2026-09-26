@@ -13,7 +13,7 @@ import {
   appendRevision, buildContentStreamPdf, buildLinearizedPdf, buildObjStmPdf, buildPageOrderPdf, buildPageTreePdf,
   buildViewerNullPdf, buildXrefPointerPdf, buildXrefQueuePdf, buildXrefShapePdf, editPdfText,
 } from '../utils/_invalidObjectFixture';
-import { buildDupContentPdf } from '../utils/_viewerCheckFixture';
+import { buildDupContentPdf, buildDupImagePdf } from '../utils/_viewerCheckFixture';
 
 describe('loadPdfDocument in the browser bundle — the drop check', () => {
   it('REFUSES a classic object pdf-lib dropped', async () => {
@@ -55,10 +55,17 @@ describe('loadPdfDocument in the browser bundle — the viewer check (WS8)', () 
     ['countHidesFirst', () => buildPageOrderPdf('countHidesFirst')],
     ['linearizedEntryTable', () => buildLinearizedPdf('linearizedEntryTable')],
     ['graphicsOnly', () => buildDupContentPdf('graphicsOnly')],
+    // Limits row 13: same drawing, same image size, different pixels — only the image hash sees it.
+    ['imageSwapped', () => buildDupImagePdf('swapped')],
   ] as const)('REFUSES %s — the page on screen is not the page the export holds', async (_shape, build) => {
     const err = await loadPdfDocument(build(), { viewerCheck: 'source' }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PdfPageMismatchError);
     expect((err as PdfPageMismatchError).refs).toEqual(['page 1']);
+  });
+
+  it('loads a duplicate image XObject whose two definitions are identical (control, limits row 13)', async () => {
+    const doc = await loadPdfDocument(buildDupImagePdf('same'), { viewerCheck: 'source' });
+    expect(doc.getPageCount()).toBe(1);
   });
 
   it('loads a byte-identical duplicate content stream (control)', async () => {

@@ -8,7 +8,7 @@ import { PDFDocument } from '@cantoo/pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { viewerMismatch } from '../../src/utils/viewerCheck';
 import { buildPageOrderPdf, buildXrefCountPdf, buildXrefShapePdf } from './_invalidObjectFixture';
-import { buildDupContentPdf, buildLayerPdf } from './_viewerCheckFixture';
+import { buildDupContentPdf, buildDupImagePdf, buildLayerPdf } from './_viewerCheckFixture';
 
 // Opened with the SAME options the check uses for its copy (as `viewerVerdict` does): the operand hash sees glyph
 // widths, which change with `standardFontDataUrl`, so opening the two sides differently mismatches every text page.
@@ -41,6 +41,16 @@ describe('viewerMismatch — WS8 step 2', () => {
   it('flags a page whose operators match and whose OPERANDS differ — a colour, a position', async () => {
     expect((await check(buildDupContentPdf('colourOnly'))).pages).toEqual([1]);
     expect((await check(buildDupContentPdf('moved'))).pages).toEqual([1]);
+  });
+
+  it('flags a page whose drawing matches and whose IMAGE PIXELS differ (limits row 13)', async () => {
+    // Text, operators and every numeric operand are identical: the image's id, 32x32 size and placement. Only a
+    // hash of the decoded pixels tells them apart.
+    expect((await check(buildDupImagePdf('swapped'))).pages).toEqual([1]);
+  });
+
+  it('does not flag an image defined twice with the SAME pixels (control for the image case)', async () => {
+    expect((await check(buildDupImagePdf('same'))).pages).toEqual([]);
   });
 
   it('does not flag two identical copies (control for the graphics case)', async () => {

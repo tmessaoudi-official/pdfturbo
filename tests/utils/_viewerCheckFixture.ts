@@ -89,3 +89,25 @@ export function buildColourLayerPdf(state: 'OFF' | 'ON'): Uint8Array {
     [5, '<< /Type /OCG /Name (Layer) >>'],
   ]);
 }
+
+/**
+ * Limits row 13 (C3): one page drawing one 32×32 image XObject (object 6) that is defined TWICE with the same size and
+ * different pixels — pdf.js reads the first definition, pdf-lib keeps the last. The page's text, operators and every
+ * numeric operand (the image's id, width and height, its placement) are identical on both sides, so only a hash of
+ * the DECODED PIXELS can tell the page on screen from the page exported. `same`: two identical definitions (control).
+ */
+export function buildDupImagePdf(shape: 'swapped' | 'same'): Uint8Array {
+  const px = (r: number, g: number, b: number): string => String.fromCharCode(r, g, b).repeat(32 * 32);
+  const image = (pixels: string): string =>
+    `<< /Type /XObject /Subtype /Image /Width 32 /Height 32 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n${pixels}\nendstream`;
+  const shown = px(220, 30, 30);
+  return assemble([
+    [1, '<< /Type /Catalog /Pages 2 0 R >>'],
+    [2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    [3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R >> /XObject << /Im1 6 0 R >> >> /Contents 5 0 R >>'],
+    [4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],
+    [5, stream(`${CAPTION} q 100 0 0 100 20 20 cm /Im1 Do Q`)],
+    [6, image(shown)],
+    [6, image(shape === 'same' ? shown : px(30, 30, 220))],
+  ]);
+}
