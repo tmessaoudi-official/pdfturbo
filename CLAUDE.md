@@ -744,7 +744,11 @@ quarter-em descender, as an AABB — is wholly outside that clip.
 Three things make it safe, and each is a sabotage case. **Trigger first:** the walk that already runs
 sets `formTextOutsideClip` when a show op's origin is outside its form's clip; only then is the copy
 paid for. Measured on the 15-file corpus: 3 pages trigger (all in one paper), 5 items drop — exactly the
-5 render-confirmed invisible labels — and the other 357 pages pay nothing. **Pairing by occurrence:** a
+5 render-confirmed invisible labels — and the other 357 pages pay nothing. The same paper driven
+through the real `_extractFlowDoc` and `_extractPageTableData` (throwaway probe, not committed): the label
+appears 5 times in each with the finder stubbed to return nothing, and 0 times with it live, with the
+page's other text present. Those pages are untagged, so the struct-tree path is wired but no real file
+drives it. **Pairing by occurrence:** a
 shared inner form placed once inside a narrow outer form (hidden) and once on the page (visible) must
 keep exactly one copy; pairing every placement to the first occurrence over-drops the visible one.
 **Fail-open everywhere:** a different item count, string or origin between the copy and the page, a tag
