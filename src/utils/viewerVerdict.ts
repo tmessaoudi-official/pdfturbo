@@ -16,6 +16,7 @@
  */
 import type { PDFDocument } from '@cantoo/pdf-lib';
 import { viewerMismatch, type ViewerCheckResult, type ViewerPdfJs } from './viewerCheck';
+import { withCMaps } from './pdfjsParams';
 
 const verdicts = new WeakMap<Uint8Array, Promise<ViewerCheckResult>>();
 
@@ -35,7 +36,7 @@ async function compute(bytes: Uint8Array, libDoc?: PDFDocument): Promise<ViewerC
     doc = await Doc.load(bytes, { updateMetadata: false });
   }
   // `getDocument` transfers its buffer; the source's own bytes must survive.
-  const task = pdfjs.getDocument({ data: bytes.slice(0), verbosity: 0 });
+  const task = pdfjs.getDocument(withCMaps({ data: bytes.slice(0), verbosity: 0 }));
   const original = await task.promise;
   try {
     return await viewerMismatch(doc, original, pdfjs);

@@ -28,6 +28,7 @@ import type { PDFDocument, PDFPage } from '@cantoo/pdf-lib';
 import { walkPageOps, type ClipBox } from './opStreamWalker';
 import { copySourcePages } from './copySourcePages';
 import { loadPdfDocument } from '../utils/pdfLoadGuard';
+import { withCMaps } from '../utils/pdfjsParams';
 
 /** The marker tag prefix. Distinctive so a document's own marked content can never be mistaken for it. */
 export const FORM_MARK_PREFIX = 'PDFTurboForm';
@@ -190,7 +191,7 @@ export class FormHiddenTextFinder {
     copy.addPage(pages[0]);
     if (await injectFormMarkers(copy, pages[0]) === 0) return new Set();
     const bytes = await copy.save({ useObjectStreams: false });
-    const task = pdfjsLib.getDocument({ data: bytes, verbosity: 0 });
+    const task = pdfjsLib.getDocument(withCMaps({ data: bytes, verbosity: 0 }));
     const pdf = await task.promise;
     try {
       const page = await pdf.getPage(1);

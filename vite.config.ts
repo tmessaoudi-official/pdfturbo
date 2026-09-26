@@ -42,6 +42,18 @@ export default defineConfig({
             },
           },
           {
+            // Row 32 — pdf.js's packed CMap files (169, ~1.7 MB), vendored into public/pdfjs/cmaps/.
+            // Fetched only by CJK documents that need one, so they stay OUT of the precache (.bcmap
+            // matches no globPattern) and are cached on first use; maxEntries covers every file so a
+            // CMap's usecmap chain is never evicted mid-document.
+            urlPattern: ({ url }) => url.pathname.includes('/pdfjs/cmaps/') && url.origin === self.location.origin,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pdfjs-cmaps',
+              expiration: { maxEntries: 200, maxAgeSeconds: 90 * 24 * 60 * 60 },
+            },
+          },
+          {
             // Cache large JS chunks (pdf.js worker, pdf-lib) at runtime
             urlPattern: ({ url }) => (url.pathname.endsWith('.js') || url.pathname.endsWith('.mjs')) && url.origin === self.location.origin,
             handler: 'CacheFirst',

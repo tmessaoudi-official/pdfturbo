@@ -75,6 +75,7 @@ import { CanvasClickRouter } from './canvasClickRouter';
 import type { ToolMode } from '../types/tools';
 import { inheritViewerVerdict } from '../utils/viewerVerdict';
 import { pointViewport } from '../utils/pointViewport';
+import { withCMaps } from '../utils/pdfjsParams';
 
 export type { ToolMode } from '../types/tools';
 
@@ -554,7 +555,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     let newDoc: PDFDocumentProxy;
     try {
       // pdf.js transfers the ArrayBuffer — give it a copy, keep newBytes intact
-      newDoc = await pdfjsLib.getDocument({ data: newBytes.slice(0) }).promise;
+      newDoc = await pdfjsLib.getDocument(withCMaps({ data: newBytes.slice(0) })).promise;
     } catch (err) {
       this.reportError.error('toast.trueEditFailed', err);
       return false;

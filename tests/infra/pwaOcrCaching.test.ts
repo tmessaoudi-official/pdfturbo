@@ -6,7 +6,7 @@
  * manifest is verified by building + grepping dist/sw.js (see the verdict/docs).
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -22,5 +22,26 @@ describe('PWA OCR caching (#48)', () => {
     expect(cfg).toContain("cacheName: 'ocr-assets'");
     // the OCR runtime route must key off the tesseract path
     expect(cfg).toMatch(/tesseract\//);
+  });
+});
+
+// Row 32 (2026-09-26) — pdf.js's CMap files are served from public/pdfjs/cmaps/ and cached on first
+// use, never precached: only CJK documents that need a CMap fetch one.
+describe('PWA CMap caching (row 32)', () => {
+  it('serves CMap files through a dedicated runtime cache keyed on /pdfjs/cmaps/', () => {
+    expect(cfg).toContain("cacheName: 'pdfjs-cmaps'");
+    expect(cfg).toMatch(/url\.pathname\.includes\('\/pdfjs\/cmaps\/'\)/);
+  });
+
+  it('holds every vendored CMap file, so a usecmap chain is never evicted', () => {
+    const block = cfg.slice(cfg.indexOf("cacheName: 'pdfjs-cmaps'"));
+    const max = Number(/maxEntries:\s*(\d+)/.exec(block)?.[1]);
+    const files = readdirSync(resolve(ROOT, 'node_modules/pdfjs-dist/cmaps')).length;
+    expect(files).toBeGreaterThan(100);
+    expect(max).toBeGreaterThanOrEqual(files);
+  });
+
+  it('keeps .bcmap out of the precache globs', () => {
+    expect(/globPatterns:\s*\[([^\]]*)\]/.exec(cfg)?.[1]).not.toMatch(/bcmap/);
   });
 });

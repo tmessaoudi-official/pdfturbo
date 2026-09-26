@@ -322,6 +322,17 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   360 corpus pages carry `/UserUnit`). The three rasters (redaction page, lossy compress, page-as-image) multiply their raster scale
   by the UserUnit, so the chosen DPI stays physical. Guards: `tests/infra/pointViewport.test.ts` (5) and
   `tests/browser/userunit-frame.browser.test.ts` (16).
+- ~~**CJK text encoded with a predefined Adobe CMap did not show, select, search or export**~~ **FIXED
+  2026-09-26 (row 32).** `src/` never gave pdf.js its CMap files, so pdf.js's own `vertical.pdf` showed a
+  blank page and extracted nothing. The files are now vendored into `public/pdfjs/cmaps/` and every
+  `getDocument` passes them (`withCMaps`, guarded by `tests/infra/pdfjsParams.test.ts`; behaviour by
+  `tests/browser/cjk-cmaps.browser.test.ts`). Bound, like the OCR assets: the CMap files are cached on first
+  use, not precached, so a CMap-encoded document opened OFFLINE before any such document was ever opened
+  online still shows no text for that font.
+- **pdf.js's image decoders and ICC module are never given `wasmUrl`** (found 2026-09-26, not measured, not
+  ruled). pdf.js loads its JBIG2 and JPEG 2000 decoders — wasm and JS fallback alike — and its ICC colour
+  support from that URL, so a scan whose images are JBIG2 or JPX may render without them. Read from
+  `pdf.worker.mjs`, no fixture yet; row 36 of the limits plan.
 - **The searchable-OCR layer ignores the CropBox** (P2, found 2026-09-26, not yet ruled).
   `searchableTextLayer.ts` positions its invisible text with the MediaBox size at origin (0,0) while
   the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose

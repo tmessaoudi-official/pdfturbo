@@ -15,6 +15,7 @@ import { loadState, clearState } from '../infra/storage';
 import { trapFocus } from '../utils/focusTrap';
 import { prewarmViewerVerdict } from '../utils/viewerVerdict';
 import { embedPngTolerant, rasterToPngBytes } from '../utils/pngEmbed';
+import { withCMaps } from '../utils/pdfjsParams';
 
 // Untrusted-PDF input caps — defence-in-depth against OOM/DoS from a malicious
 // or pathological file. Deliberately generous: a real document never approaches
@@ -115,7 +116,7 @@ export class DocumentLoader {
       for (const sp of state.sourcePdfs) {
         const spBytes = sp.bytes instanceof Uint8Array ? sp.bytes : new Uint8Array(sp.bytes);
         const bytesToStore = spBytes.slice(0); // pdf.js transfers the ArrayBuffer; copy first
-        const doc = await pdfjsLib.getDocument({ data: spBytes }).promise;
+        const doc = await pdfjsLib.getDocument(withCMaps({ data: spBytes })).promise;
         const src = this._ctx.documentModel.addSourcePdf(doc, bytesToStore, sp.name);
         prewarmViewerVerdict(bytesToStore);
         // Override auto-generated id with the saved one
@@ -326,7 +327,7 @@ export class DocumentLoader {
           // 'unsafe-eval' regardless. So no eval flag is set here by design.
           const loadOpts: Record<string, unknown> = { data: rawBytes.slice(0) };
           if (openPassword) loadOpts['password'] = openPassword;
-          doc = await pdfjsLib.getDocument(loadOpts).promise;
+          doc = await pdfjsLib.getDocument(withCMaps(loadOpts)).promise;
           break;
         } catch (err) {
           // pdfjs throws PasswordException (name: 'PasswordException') for encrypted PDFs

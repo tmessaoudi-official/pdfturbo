@@ -273,6 +273,50 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 > mid-sentence and grammatically broken. They are gone; this note replaces all of them. **Do not
 > reintroduce a per-entry pointer** — if a fact from a removed doc still matters, write the fact here.
 
+### pdf.js's CMap files are served by the app — row 32 (2026-09-26)
+
+A CID font whose encoding is a predefined Adobe CMap (common in Japanese, Chinese and Korean PDFs) decodes
+only when `getDocument` is given `cMapUrl`, and `src/` never passed it: pdf.js's own `vertical.pdf` showed a
+BLANK page (only its border rules drew) and extracted `""`, where with CMaps it reads `あいうえお日本語`
+[measured 2026-09-26, `var/claude/qa-shots/row32/`]. So such a page was unreadable, unselectable,
+unsearchable and absent from every export. Ruled fix: `scripts/prepare-pdfjs-assets.mjs` copies
+`pdfjs-dist/cmaps/` (169 files, ~1.7 MB) into gitignored `public/pdfjs/cmaps/` — hooked on `predev`,
+`prebuild` and `pretest:browser`, so CI needs no workflow step — and every `getDocument` in `src/` goes
+through `withCMaps` (`src/utils/pdfjsParams.ts`), which adds an ABSOLUTE same-origin `cMapUrl` and
+`cMapPacked: true`. Absolute because pdf.js fetches CMaps from its worker when it can. The PWA caches them
+at runtime (`pdfjs-cmaps`, `maxEntries` above the file count so a `usecmap` chain is never evicted) and never
+precaches them; the offline bound is stated in `KNOWN_ISSUES.md`. **Use `withCMaps` for any new
+`getDocument`** — `tests/infra/pdfjsParams.test.ts` bans a call that bypasses it.
+
+Three traps, each found by a sabotage or a screenshot rather than by the first draft:
+
+- **The dev server answers a missing file with `index.html` and a 200.** The first URL case checked status
+  and size and stayed GREEN with `public/pdfjs/` deleted. It now checks the body's packed-CMap signature (a
+  type byte, then `e0 52 43` — all 169 files).
+- **A whole-page ink count cannot see the missing text.** The page's border rules alone are 498 dark pixels,
+  so "ink > 200" passed without CMaps. The case counts only the text area, which reads 0 without them and 78
+  with them at scale 1.
+- **`cMapPacked: false` does NOT blank the page** — the glyphs still draw, but the text extracts as garbage
+  (`͍͋͏…`). So the guarantee to pin is the EXTRACTED STRING, not the ink.
+
+Guards: `tests/browser/cjk-cmaps.browser.test.ts` (6: the URL serves a real CMap; `vertical.pdf`'s exact text,
+its ink in the text area, the Word/Markdown/text export, and the WS8 viewer check accepting it; a LibreOffice
+CONTROL with embedded glyphs), `tests/infra/pdfjsParams.test.ts` (4) and three cases in
+`tests/infra/pwaOcrCaching.test.ts`. The browser file drives the helper; the static guard certifies that
+the 12 open sites use it — no committed test boots `documentLoader.loadFiles`. The main open path WAS driven
+once by hand on the built artifact (`vite preview`, Playwright `setInputFiles` on `#fileInput`): the text
+layer read `あいうえお日本語`, `Adobe-Japan1-UCS2.bcmap` was fetched from `/pdfjs/cmaps/`, no console error,
+precache unchanged at 24 entries with no `.bcmap`.
+Sabotage, predicted first: no `cMapUrl` → 1 jsdom + 4 browser (text-area ink 0); `cMapPacked: false` →
+1 + 3 (predicted 4 — the ink case stays green, see above); one open site unwrapped → exactly the static
+guard; a wrong path segment → 1 + 4; the vendored folder removed → 4 browser (3 before the body check);
+the cache's `maxEntries` below the file count → exactly that case.
+
+**Found, not fixed:** pdf.js also loads its JBIG2 and JPEG 2000 decoders — the wasm AND the JS fallback —
+and its ICC colour module from `wasmUrl`, which `src/` does not pass either (`pdf.worker.mjs` `WasmImage`).
+Scanner output is often JBIG2, so such images may not decode. Read from the code, not measured: no fixture.
+Row 36 of the limits plan; `withCMaps` is where the parameter would go.
+
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 
 A redaction-bearing page is exported as ONE image, so every `/Link` on it used to vanish.
@@ -694,8 +738,8 @@ glyph from −DW/2 rather than centring it on its own width (a narrow digit's in
 so "centred" is not a safe assumption for every font, and custom `/W2` metrics stay unmeasured. **Three
 traps found on the way:** LibreOffice's vertical Japanese is NOT a vertical font (one horizontal glyph per
 position, `dir: 'ltr'`), so a vertical fixture must be checked vertical to pdf.js before it counts; pdf.js's
-`vertical.pdf` renders NO text without `cMapUrl`, and **`src/` never passes `cMapUrl`** (a separate open
-finding); and an item's `dir` survives `translateItemsToCropOrigin` only because it spreads the item.
+`vertical.pdf` renders NO text without `cMapUrl`, which `src/` did not pass until row 32 (see § "pdf.js's
+CMap files are served by the app"); and an item's `dir` survives `translateItemsToCropOrigin` only because it spreads the item.
 Guards: `tests/browser/redaction-vertical.browser.test.ts` (14: ink containment both ways, flow and table
 at every user rotation, `/Rotate 90`, a crop origin, the data-loss mirror, both real files). Sabotage:
 branch disabled → 12 of 14; sign flipped along the column → 12; centring dropped → 11 — non-vacuity and

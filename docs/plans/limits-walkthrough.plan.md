@@ -67,6 +67,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 14:55] FOUND (row 34, crash-recovery review): the redaction raster and lossy compress BUILD a page sized from the points viewport and dropped /UserUnit, so on a /UserUnit 2 document those pages exported at half physical size; both now copy the source's /UserUnit (within the 13:38 ruling, no new decision).
 - [2026-09-26 15:20] FOUND (row 34 6C): on a /UserUnit page every raster (redaction page, lossy compress, page-as-image) now renders at 1/u of the physical DPI, because dpiToScale is dpi/72 over a points viewport; disclosed in KNOWN_ISSUES/SECURITY, then ruled and fixed (15:35, row 35).
 - [2026-09-26 15:35] AGREED: /UserUnit raster DPI — the three raster outputs (redaction page, lossy compress, page-as-image) multiply only their RASTER scale by the page's UserUnit, so the chosen DPI is physical again; page size stays points + /UserUnit.
+- [2026-09-26 15:55] AGREED: row 32 — ship pdf.js's CMap files from the app origin (vendored into gitignored public/pdfjs/cmaps/, runtime-cached by the PWA, never precached); one helper adds cMapUrl + cMapPacked to every getDocument in src/, and a test bans a call that bypasses it.
+- [2026-09-26 16:20] FOUND (row 32): pdf.js also loads its JBIG2 / JPEG 2000 decoders (wasm and JS fallback) and ICC module from `wasmUrl`, which src/ never passes, so JBIG2/JPX scan images may not decode — read from pdf.worker.mjs WasmImage, not measured (no fixture); row 36, not ruled.
 - [2026-09-26 08:33] FOUND (A3 probe): on a rotated page (source /Rotate or user rotation) every overlay with content orientation — text, image, signature, code, comment — exports turned by the page rotation, because the glyph/image rotation is degrees(-elemRot) and ignores totalRot; not yet ruled.
 
 ## Formal Plan
@@ -109,14 +111,14 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 29 | Acrobat/Reader checklist pack (C2, C10, D15, D18) | S | todo | - | var/claude/** |
 | 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | todo | - | KNOWN_ISSUES.md, SECURITY.md, CLAUDE.md |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
-| 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | todo | - | src/infra/**, src/export/** |
+| 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | doing | - | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
 | 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | done | c6550bc | src/export/**, tests/browser/** |
+| 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images and ICC colour may not decode (measure with a fixture first) | M | todo | - | src/utils/pdfjsParams.ts, scripts/**, tests/** |
 <!-- /progress-block -->
 
 ### Blocked
 ### Needs input
-- Row 32 (found during A1): whether to ship pdf.js's CMap files so CJK PDFs relying on them show and export text — measure first.
 - C2, C10, D15, D18 results need the developer's Acrobat/Reader check (row 29).
 - C12 needs a native Arabic reader (row 31).
 ### Needs research
