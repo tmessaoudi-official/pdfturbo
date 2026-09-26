@@ -306,6 +306,11 @@ describe('PageThumbnailPanel — overlay compositor (G17)', () => {
     expect(img?.classList.contains('thumb-img-unavailable')).toBe(true);
     const note = container.querySelector('.thumb-unavailable');
     expect(note?.textContent).toBe('thumbnail.previewUnavailable'); // i18n is mocked to echo keys
+    // The page button's aria-label replaces its content name, so screen readers would hear only "Go
+    // to page 1": the placeholder is attached as its description.
+    const nav = container.querySelector('.thumb-nav');
+    expect(note?.id).toBeTruthy();
+    expect(nav?.getAttribute('aria-describedby')).toBe(note?.id);
 
     // The failure is not cached: the next render tries again, and a success replaces the placeholder.
     compositor.mockResolvedValue('data:image/jpeg;base64,OVERLAY');

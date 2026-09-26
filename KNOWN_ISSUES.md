@@ -288,8 +288,12 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   source raster. An unredacted page keeps the old fallback (its plain raster hides nothing). The failure
   is not cached, so the next re-render tries again. Guards: `tests/export/thumbnailFailClosed.test.ts`
   (5, each rejection case with an unredacted control), the A6 case in
-  `tests/ui/pageThumbnailPanel.test.ts`, and `tests/browser/thumbnail-unavailable.browser.test.ts` (3 —
-  the tile is visible, the page image is hidden, the text fits in en/fr/ar).
+  `tests/ui/pageThumbnailPanel.test.ts` (which also pins the page button's `aria-describedby`, since its
+  `aria-label` would otherwise hide the placeholder from a screen reader), and
+  `tests/browser/thumbnail-unavailable.browser.test.ts` (5 — the tile is visible, the page image is
+  hidden, the text fits in en/fr/ar, and a REAL failure: with the Arabic font unreachable, as offline on
+  first use, the live ExportService + panel show the placeholder for a redacted page and still fall
+  back to the plain raster for an unredacted one).
 - **`getPageCropBox` falls back to a MediaBox-derived box with a hardcoded (0,0) origin** (P3).
   An undiagnosed-failure fallback on a safety path; pdf-lib's own `getCropBox` falls back
   internally so it essentially never throws. Deferred under the anti-bandaid gate: there is no

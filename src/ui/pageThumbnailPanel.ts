@@ -259,7 +259,7 @@ export class PageThumbnailPanel {
         // ExportService.renderThumbnailWithOverlays). Falling through to the plain source raster
         // would show on screen exactly what the redaction hides, so show a visible placeholder
         // instead. Not cached: the next render (any edit re-renders the strip) tries again.
-        this._showUnavailable(img);
+        this._showUnavailable(img, pageId);
         return;
       }
       if (composited) { this._thumbCache.set(pageId, composited); img.src = composited; return; }
@@ -269,15 +269,19 @@ export class PageThumbnailPanel {
   }
 
   /** A6 — the "preview unavailable" tile for a redacted page whose composite failed. */
-  private _showUnavailable(img: HTMLImageElement): void {
+  private _showUnavailable(img: HTMLImageElement, pageId: string): void {
     const msg = t('thumbnail.previewUnavailable');
     img.src = BLANK_GIF;
     img.classList.add('thumb-img-unavailable');
     img.alt = msg;
     const note = document.createElement('span');
     note.className = 'thumb-unavailable';
+    note.id = `thumb-unavailable-${pageId}`;
     note.textContent = msg;
     img.insertAdjacentElement('afterend', note);
+    // The page button's aria-label REPLACES its content name, so without this a screen reader hears
+    // only "Go to page N" and never learns the preview is missing.
+    img.parentElement?.setAttribute('aria-describedby', note.id);
   }
 
   // oxlint-disable-next-line eslint/require-await -- Promise contract: callers (renderThumbnails, tests) await the returned Promise<void>
