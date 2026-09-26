@@ -111,7 +111,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 29 | Acrobat/Reader checklist pack (C2, C10, D15, D18) | S | todo | - | var/claude/** |
 | 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | todo | - | KNOWN_ISSUES.md, SECURITY.md, CLAUDE.md |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
-| 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | doing | - | src/infra/**, src/export/** |
+| 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | done | a16768e | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
 | 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | done | c6550bc | src/export/**, tests/browser/** |
 | 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images and ICC colour may not decode (measure with a fixture first) | M | todo | - | src/utils/pdfjsParams.ts, scripts/**, tests/** |
