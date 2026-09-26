@@ -74,6 +74,7 @@ import { ExportPreviewPanel } from '../ui/exportPreviewPanel';
 import { CanvasClickRouter } from './canvasClickRouter';
 import type { ToolMode } from '../types/tools';
 import { inheritViewerVerdict } from '../utils/viewerVerdict';
+import { pointViewport } from '../utils/pointViewport';
 
 export type { ToolMode } from '../types/tools';
 
@@ -869,7 +870,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     const pg = await src.doc.getPage(p.sourcePageNum);
     // `rotation: 0` is deliberate: viewBox is reported in UNROTATED page space, and the caller
     // applies totalRot itself. Leaving the default would apply the page's own /Rotate twice.
-    const vp = pg.getViewport({ scale: 1, rotation: 0 });
+    const vp = pointViewport(pg, { scale: 1, rotation: 0 });
     return { viewBox: Array.from(vp.viewBox as ArrayLike<number>), srcRot: (pg.rotate as number) ?? 0 };
   }
 

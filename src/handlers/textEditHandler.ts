@@ -9,6 +9,7 @@ import { t } from '../utils/i18n';
 import { isEnabled } from '../config/features';
 import type { IAppContext } from '../core/appContext';
 import type { SourcePdf } from '../core/documentModel';
+import { pointViewport } from '../utils/pointViewport';
 
 /** Max distance (PDF pts) between a pdf.js item origin and a content-stream show op. */
 const TRUE_EDIT_TOLERANCE = 3;
@@ -156,7 +157,7 @@ export class TextEditHandler {
 
     const userRot = docPage.rotation ?? 0;
     const page = await src.doc.getPage(docPage.sourcePageNum);
-    const viewport = page.getViewport({ scale: 1, rotation: (page.rotate + userRot) % 360 });
+    const viewport = pointViewport(page, { scale: 1, rotation: (page.rotate + userRot) % 360 });
     const pageH = viewport.height;
 
     // Map the click from displayed (viewport, top-left) space to PDF content

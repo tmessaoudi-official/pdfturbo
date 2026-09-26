@@ -4,6 +4,7 @@ import type { DocumentModel } from '../core/documentModel';
 // ?worker&url tells Vite to bundle this entry (polyfills + pdfjs worker) into a hashed
 // worker chunk and return its URL — needed to polyfill Math.sumPrecise in the worker scope.
 import pdfjsWorkerShimUrl from '../utils/pdf-worker-shim?worker&url';
+import { pointViewport } from '../utils/pointViewport';
 
 // Worker shim polyfills Math.sumPrecise before pdfjs worker code, ensuring correct font
 // rendering in browsers without native support (Chrome/Edge <137).
@@ -54,7 +55,7 @@ export class PDFRenderer {
       if (src) {
         return src.doc.getPage(docPage.sourcePageNum).then((page: PDFPageProxy) => {
           const effectiveRotation = (page.rotate + (docPage.rotation ?? 0)) % 360;
-          const vp = page.getViewport({ scale: 1, rotation: effectiveRotation });
+          const vp = pointViewport(page, { scale: 1, rotation: effectiveRotation });
           return Math.max(0.25, (containerWidth - 40) / vp.width);
         });
       }
@@ -63,7 +64,7 @@ export class PDFRenderer {
     const doc = this.pdfDoc;
     if (!doc) return Promise.resolve(1.0);
     return doc.getPage(1).then((page: PDFPageProxy) => {
-      const vp = page.getViewport({ scale: 1 });
+      const vp = pointViewport(page, { scale: 1 });
       return Math.max(0.25, (containerWidth - 40) / vp.width);
     });
   }
@@ -121,7 +122,7 @@ export class PDFRenderer {
     try {
       const page = await doc.getPage(pageNum);
       const effectiveRotation = (page.rotate + userRotation) % 360;
-      const viewport = page.getViewport({ scale: this.scale, rotation: effectiveRotation });
+      const viewport = pointViewport(page, { scale: this.scale, rotation: effectiveRotation });
       this.canvas.height = viewport.height;
       this.canvas.width = viewport.width;
       await page.render({ canvas: this.canvas, viewport }).promise;
@@ -167,7 +168,7 @@ export class PDFRenderer {
 
     const page = await src.doc.getPage(docPage.sourcePageNum);
     const effectiveRotation = (page.rotate + (docPage.rotation ?? 0)) % 360;
-    const vp = page.getViewport({ scale: thumbScale, rotation: effectiveRotation });
+    const vp = pointViewport(page, { scale: thumbScale, rotation: effectiveRotation });
     const canvas = document.createElement('canvas');
     canvas.width = vp.width;
     canvas.height = vp.height;

@@ -14,6 +14,7 @@ import { prewarmViewerVerdict } from '../utils/viewerVerdict';
 import type { IProgressManager } from '../ui/progressManager';
 import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToRect, scaleCropToPageBox } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
+import { pointViewport } from '../utils/pointViewport';
 
 /**
  * NaN-safe parse for the custom blank-page mm inputs (#QA-2026-06-23 P3 #4). Empty / non-numeric
@@ -90,7 +91,7 @@ export class PageService {
 
     const pdfPage = await src.doc.getPage(docPage.sourcePageNum);
     const srcRot = (pdfPage.rotate as number) ?? 0;
-    const vp0 = pdfPage.getViewport({ scale: 1, rotation: 0 });
+    const vp0 = pointViewport(pdfPage, { scale: 1, rotation: 0 });
     const W = vp0.width, H = vp0.height;
 
     const oldUserRot = docPage.rotation ?? 0;
@@ -278,7 +279,7 @@ export class PageService {
     const src = this._ctx.documentModel.sourcePdfs.get(p.sourcePdfId);
     if (!src) return null;
     const pg = await src.doc.getPage(p.sourcePageNum);
-    const vp = pg.getViewport({ scale: 1, rotation: 0 });
+    const vp = pointViewport(pg, { scale: 1, rotation: 0 });
     return { W: vp.width, H: vp.height, srcRot: (pg.rotate as number) ?? 0 };
   }
 

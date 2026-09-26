@@ -3,6 +3,7 @@ import type { PDFElement } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
 import type { CommentElement } from '../elements/commentElement';
 import type { TextSearchHandler, MatchResult } from '../handlers/textSearchHandler';
+import { pointViewport } from '../utils/pointViewport';
 
 export type { MatchResult };
 
@@ -75,7 +76,7 @@ export class SearchManager {
 
       // Each page uses its OWN rotation (source rotate + user rotation).
       const effectiveRotation = ((page.rotate + (docPage.rotation ?? 0)) % 360 + 360) % 360;
-      const viewport = page.getViewport({ scale: ctx.zoomScale, rotation: effectiveRotation });
+      const viewport = pointViewport(page, { scale: ctx.zoomScale, rotation: effectiveRotation });
       const pageMatches = ctx.textSearchHandler.search(query, docPage.id, viewport, ctx.zoomScale, {
         caseSensitive: this.caseSensitive,
         useRegex: this.regex,

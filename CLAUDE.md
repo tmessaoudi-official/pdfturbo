@@ -447,10 +447,9 @@ weak guard. And `page.setCropBox(effBox)` now writes the intersection onto a pag
 extended past its MediaBox: a byte change on exactly the divergent pages, visually identical in any
 conforming viewer, zero corpus pages affected.
 
-Two relatives found by the same probe, both NOT ruled and both in `KNOWN_ISSUES.md`: **`/UserUnit`**
-(pdf.js scales the viewport by it, `pdf.mjs:826`; the export maps editor coordinates as plain points, so a
-redaction on a `/UserUnit 2` page bakes at half its position — a leak, disclosed in `SECURITY.md`), and
-the **searchable-OCR layer**, which positions text with `getSize()` at origin (0,0) instead of the view.
+Two relatives found by the same probe: **`/UserUnit`**, a leak, fixed the same day (next section), and the
+**searchable-OCR layer**, which positions text with `getSize()` at origin (0,0) instead of the view — not
+ruled, in `KNOWN_ISSUES.md`.
 
 Guards: `tests/browser/cropbox-view-parity.browser.test.ts` (18 — 12 parity shapes against pdf.js, 6
 burn-on-the-secret cases through `rasterizePageWithRedactions` including a `/Rotate 90` page and a
@@ -461,6 +460,52 @@ fallback without its origin → 3 jsdom + 4 browser; the raw CropBox whenever va
 CropBox only where it overlaps → 1 + 3 (a narrower mutation than first predicted — disjoint and touching
 boxes still fell to the MediaBox); no Letter fallback → 1 + 1; no non-empty check → exactly the
 empty-MediaBox case; box entries not resolved through `lookup` → exactly the indirect-number case.
+
+### Every viewport is a POINTS viewport — `/UserUnit` (2026-09-26)
+
+pdf.js multiplies every viewport by the page's `/UserUnit` (`pdf.mjs:826`), so the editor canvas of a
+`/UserUnit 2` page was twice the page's size in points and every coordinate the user drew was doubled,
+while pdf-lib — the export — works in plain points. A redaction drawn over a secret was therefore burned
+at twice its position and the secret stayed VISIBLE, in the PDF and the Word/Markdown/text export alike
+(measured). Ruled fix: **the editor measures in points.** `src/utils/pointViewport.ts` divides the
+requested scale by the UserUnit, all 23 viewport requests in `src/` go through it, and
+`tests/infra/pointViewport.test.ts` bans a direct `.getViewport(` anywhere else (comment lines stripped;
+`xfdfMapping`'s interface signatures carry no dot and stay legal) with a floor of 20 helper calls and
+exactly one call inside the helper. **Use `pointViewport` for any new viewport** — the guard will say so.
+
+**The text layer was already wrong on such pages, independently.** `textLayer.ts` set
+`--total-scale-factor` to `viewport.scale`, but pdf.js draws at `scale × userUnit` and sizes the layer as
+that factor × `rawDims` (points, `pdf.mjs:1533`), so the selectable/searchable layer was 1/u the canvas.
+It is now `scale × userUnit`, which is exactly pdf.js's own viewer convention — pdf.js keeps the two apart
+on the viewport on purpose.
+
+**A path that BUILDS a page from a render must copy the `/UserUnit` onto it.** The redaction rasterizer
+and lossy compress size their new page from a (now points) viewport; without the key, a `/UserUnit 2` page
+exports at half its physical size beside copied neighbours that keep it. Both set it from
+`pageUserUnit(renderPage)`. Found at the crash-recovery review, not by the first draft: before the fix the
+uncropped raster page was already points-without-key while the cropped one and compress were u× — three
+different answers for one document.
+
+Consequences of the ruling, stated in `KNOWN_ISSUES.md` rather than hidden: at 100% zoom such a page shows
+at its size in points, not its physical size; and elements saved in a session before the fix were
+measured at u× and restore scaled by 1/u. No `SCHEMA_VERSION` bump — they exported to the wrong place
+anyway, and 0 of 360 corpus pages carry `/UserUnit`.
+
+The test is honest about frames because it assumes none: the redaction is placed where the secret's INK
+is on the canvas the real `PDFRenderer` draws — where a user would drag — so it reds whenever editor and
+export disagree, in either direction. Guards: `tests/browser/userunit-frame.browser.test.ts` (12 — canvas
+size and ink position, burn on the secret, Word export, the raster and lossy-compress pages keeping size
+and `/UserUnit`, text layer on the ink at 150%, each against a `/UserUnit 1` control) and `tests/infra/pointViewport.test.ts` (5). The text-layer case builds its
+viewport through the helper, so it certifies `TextLayerManager` and the CSS factor, while the static
+guard certifies that `pageRenderPipeline` wires the helper — a division of labour, not a gap. The test
+must import `src/styles/pdf-layers.css`: without it pdf.js's spans are not positioned and even the
+control is 61px off. Sabotage, predicted first and re-measured after the recovery: the helper ignoring UserUnit → the unit
+case + 4 browser cases (canvas, burn, Word, compress — the raster page's size comes from the CropBox, so
+it stays green) — the text-layer case stays GREEN, because canvas and layer are then both at
+u× and aligned, which is correct: that case checks alignment, not frame; the editor renderer reverted to
+a direct call → the static guard + all 4 UserUnit-2 browser cases (every case takes its cover from that
+canvas, so the Word export reds too, which was predicted green); the text-layer factor reverted → exactly
+the UserUnit-2 text-layer case; either `/UserUnit` copy removed → exactly its own page case.
 
 ### Open via the native picker + recent files (#54b, 2026-09-04)
 

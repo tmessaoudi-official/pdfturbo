@@ -24,6 +24,7 @@ import type { IErrorReporter } from '../contracts/errorReporter';
 import type { PDFElement } from '../elements/annotationElement';
 import { RedactionElement } from '../elements/redactionElement';
 import { redactionRectToContent, inverseTransformPoint } from '../utils/geometry';
+import { pointViewport } from '../utils/pointViewport';
 
 /**
  * Narrow role-interface the OCR handler requires from the app (M2 #18). Decouples
@@ -238,7 +239,7 @@ export class OcrHandler {
   ): Promise<{ result: OcrResult; scale: number; userRot: number; toDisplay: OcrCanvasToDisplay } | null> {
     const scale = OcrHandler.RENDER_SCALE;
     const pdfPage = await src.doc.getPage(page.sourcePageNum);
-    const viewport = pdfPage.getViewport({ scale });
+    const viewport = pointViewport(pdfPage, { scale });
     const canvas = document.createElement('canvas');
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
@@ -261,7 +262,7 @@ export class OcrHandler {
     // which handles the user rotation), then content → canvas via the rendering viewport's own
     // `convertToViewportPoint` (which handles `/Rotate` and the scale) — the pattern `exportPipeline`
     // uses for the crop clip. `convertToViewportPoint` takes y-UP user space, hence the `Hu -` flips.
-    const unrot = pdfPage.getViewport({ scale: 1, rotation: 0 });
+    const unrot = pointViewport(pdfPage, { scale: 1, rotation: 0 });
     const Hu = unrot.height;
     // The CropBox origin must be ADDED back: element coords are relative to the rendered page box, while
     // `convertToViewportPoint` consumes ABSOLUTE user space (its transform bakes in the viewBox centre).

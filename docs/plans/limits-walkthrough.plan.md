@@ -63,6 +63,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 12:19] AGREED: B1 (supersedes the 21:06 B1 line) — getPageCropBox returns exactly pdf.js's page view (a valid, non-empty CropBox intersected with the MediaBox, else the MediaBox, else Letter), closing all four shapes.
 - [2026-09-26 12:31] FOUND (B1 probe): /UserUnit is a SECOND redaction leak, not ruled. pdf.js scales the viewport by it (`pdf.mjs:826`, a /UserUnit 2 page renders 800x600 at scale 1), so editor coordinates are scaled too, while the bake maps them as raw points: a redaction drawn over the secret in editor space lands at twice the position and the secret stays visible (render var/claude/qa-shots/b1/userunit-2-redacted.png). Passes the source loader; 0 of 360 corpus pages carry /UserUnit.
 - [2026-09-26 12:31] FOUND (B1 probe): the searchable-OCR layer (`searchableTextLayer.ts:314`) positions its invisible text with pdf-lib `getSize()` — MediaBox size at origin (0,0) — while the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose MediaBox origin is not (0,0), the searchable text is offset from the words. Placement only, not a leak; 0 of 360 corpus pages have a CropBox that differs from the MediaBox. Not ruled.
+- [2026-09-26 13:38] AGREED: /UserUnit — the editor measures in points: one helper divides the viewport scale by the page's UserUnit, every getViewport call in src/ goes through it, and a test bans direct calls.
+- [2026-09-26 14:55] FOUND (row 34, crash-recovery review): the redaction raster and lossy compress BUILD a page sized from the points viewport and dropped /UserUnit, so on a /UserUnit 2 document those pages exported at half physical size; both now copy the source's /UserUnit (within the 13:38 ruling, no new decision).
 - [2026-09-26 08:33] FOUND (A3 probe): on a rotated page (source /Rotate or user rotation) every overlay with content orientation — text, image, signature, code, comment — exports turned by the page rotation, because the glyph/image rotation is degrees(-elemRot) and ignores totalRot; not yet ruled.
 
 ## Formal Plan
@@ -106,6 +108,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | todo | - | KNOWN_ISSUES.md, SECURITY.md, CLAUDE.md |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | todo | - | src/infra/**, src/export/** |
+| 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | doing | - | src/**, tests/** |
 <!-- /progress-block -->
 
 ### Blocked

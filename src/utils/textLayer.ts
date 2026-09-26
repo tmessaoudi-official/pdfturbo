@@ -31,8 +31,10 @@ export class TextLayerManager {
       height: `${Math.round(viewport.height)}px`,
     });
     // pdfjs-dist v6 sizes the text layer via CSS round() functions that depend on
-    // --total-scale-factor. Without this variable the computed width/height is 0.
-    textDiv.style.setProperty('--total-scale-factor', `${viewport.scale}`);
+    // --total-scale-factor. Without this variable the computed width/height is 0. It is the scale pdf.js
+    // DRAWS at: `viewport.scale × viewport.userUnit`, as pdf.js's own viewer sets it. `viewport.scale`
+    // alone left the layer 1/u the size of the canvas on a /UserUnit page.
+    textDiv.style.setProperty('--total-scale-factor', `${viewport.scale * (viewport.userUnit || 1)}`);
     textDiv.style.setProperty('--scale-round-x', '1px');
     textDiv.style.setProperty('--scale-round-y', '1px');
     this._container.appendChild(textDiv);

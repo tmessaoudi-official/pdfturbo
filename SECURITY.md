@@ -111,10 +111,14 @@ None of the 360 pages of the real-file test corpus has any of these shapes, and 
 normally, so nothing warned you. The export now uses the same visible area the editor shows, and each
 shape is tested end to end on real pdf.js pixels, including a rotated page.
 
-**Known and not yet fixed: pages with a `UserUnit`.** A PDF can declare that one of its units is larger
-than a point. pdf.js, and therefore the editor, draws such a page larger, but the export still places
-elements in plain points, so a redaction drawn on a `UserUnit` page can land away from what it covers.
-No page of the test corpus uses it. Check the exported file before sharing it if your document does.
+**The same day: pages with a `UserUnit` (fixed 2026-09-26).** A PDF can declare that one of its units is
+larger than a point, typically for very large engineering drawings. pdf.js drew such a page larger in the
+editor while the export placed everything in plain points, so on a page with `UserUnit 2` a redaction
+drawn over a secret was burned at twice its position, and the secret stayed visible — in the exported
+PDF and in the Word / Markdown / text export. The editor now works in points on every page, so what you
+cover is what is removed; this is tested end to end on the real editor canvas. Two visible consequences:
+at 100% zoom such a page now shows at its size in points rather than its physical size, and anything you
+had placed on such a page in an unsaved session from before this fix reopens scaled down by that factor.
 
 ### Redaction reaches the other exports too (fixed 2026-08-05)
 

@@ -21,6 +21,7 @@ import type { PdfLibOps, PdfLibDrawOps } from '../utils/pdfLibTypes';
 import { batesStampText, batesPosition, type BatesSettings } from './batesStamp';
 import { isEnabled } from '../config/features';
 import { carryLayers, copySourcePages } from './copySourcePages';
+import { pointViewport, pageUserUnit } from '../utils/pointViewport';
 
 // ── Shared context for page overlay assembly ─────────────────────────────────
 
@@ -631,7 +632,7 @@ export async function rasterizePageWithRedactions(
   const renderDoc  = await pdfjsLib.getDocument({ data: tempBytes }).promise;
   const renderPage = await renderDoc.getPage(1);
   const SCALE = 2;
-  const vp = renderPage.getViewport({ scale: SCALE });
+  const vp = pointViewport(renderPage, { scale: SCALE });
 
   const offscreen = document.createElement('canvas');
   offscreen.width  = Math.round(vp.width);
@@ -682,6 +683,10 @@ export async function rasterizePageWithRedactions(
   const pngImg  = await targetPdfDoc.embedPng(pngBytes);
   const newPage = targetPdfDoc.addPage([outW, outH]);
   newPage.drawImage(pngImg, { x: 0, y: 0, width: outW, height: outH });
+  // The page is sized in points (the viewport is a points viewport); keep the source's /UserUnit so
+  // it exports at the same physical size as its copied neighbours.
+  const userUnit = pageUserUnit(renderPage);
+  if (userUnit !== 1) newPage.node.set(PDFName.of('UserUnit'), PDFNumber.of(userUnit));
 
   // A4 — the image page has no annotations, so every link would be lost. Re-create the SAFE ones:
   // read AFTER buildPageOverlays, so the page holds both the source links that survived the strip

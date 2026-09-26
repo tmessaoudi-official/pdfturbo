@@ -16,6 +16,7 @@ import { CommentElement } from '../elements/commentElement';
 import { TextElement } from '../elements/textElement';
 import { ShapeElement, type ShapeType } from '../elements/shapeElement';
 import type { DocumentPage } from '../core/documentModel';
+import { pointViewport } from '../utils/pointViewport';
 
 /** App `shape` subtype ↔ XFDF annotation tag (G21). */
 const SHAPE_TO_XFDF: Record<ShapeType, 'square' | 'circle' | 'line' | 'ink'> = {
@@ -153,7 +154,7 @@ export async function pageLeftPt(
   const src = sourcePdfs.get(docPage.sourcePdfId);
   if (!src) return 0;
   const page = await src.doc.getPage(docPage.sourcePageNum);
-  return page.getViewport({ scale: 1, rotation: 0 }).viewBox[0];
+  return pointViewport(page, { scale: 1, rotation: 0 }).viewBox[0];
 }
 
 /**
@@ -213,5 +214,5 @@ export async function pageHeightPt(
   const page = await src.doc.getPage(docPage.sourcePageNum);
   // `rotation: 0` is load-bearing, not tidiness: the default is the page's own `/Rotate`, which
   // swaps the reported dimensions at 90/270. `viewBox` itself is rotation-invariant.
-  return page.getViewport({ scale: 1, rotation: 0 }).viewBox[3];
+  return pointViewport(page, { scale: 1, rotation: 0 }).viewBox[3];
 }

@@ -8,6 +8,7 @@ import type { IErrorReporter } from '../contracts/errorReporter';
 import { CROP_HANDLES, handleCursor, handlePositions, resizeDisplayRect } from '../utils/cropResize';
 import { contentRectToDisplay } from '../utils/geometry';
 import { isEnabled } from '../config/features';
+import { pointViewport } from '../utils/pointViewport';
 
 export interface IPageRenderContext {
   readonly documentModel: DocumentModel;
@@ -131,7 +132,7 @@ export class PageRenderPipeline {
       if (!src) return;
       const page = await src.doc.getPage(docPage.sourcePageNum);
       if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
-      const vp0 = page.getViewport({ scale: 1, rotation: 0 });
+      const vp0 = pointViewport(page, { scale: 1, rotation: 0 });
       W = vp0.width; H = vp0.height; srcRot = (page.rotate as number) ?? 0;
     }
 
@@ -270,7 +271,7 @@ export class PageRenderPipeline {
     const page = await src.doc.getPage(docPage.sourcePageNum);
     if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
     const effectiveRotation = ((page.rotate + (docPage.rotation ?? 0)) % 360 + 360) % 360;
-    const viewport = page.getViewport({ scale: this._ctx.zoomScale, rotation: effectiveRotation });
+    const viewport = pointViewport(page, { scale: this._ctx.zoomScale, rotation: effectiveRotation });
     const canvasOffset = { left: this._ctx.ui.canvas.offsetLeft, top: this._ctx.ui.canvas.offsetTop };
     await this._ctx.textLayerManager.render(page, viewport, canvasOffset);
     if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
@@ -286,7 +287,7 @@ export class PageRenderPipeline {
     const page = await src.doc.getPage(docPage.sourcePageNum);
     if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
     const effectiveRotation = ((page.rotate + (docPage.rotation ?? 0)) % 360 + 360) % 360;
-    const viewport = page.getViewport({ scale: this._ctx.zoomScale, rotation: effectiveRotation });
+    const viewport = pointViewport(page, { scale: this._ctx.zoomScale, rotation: effectiveRotation });
     const canvasOffset = { left: this._ctx.ui.canvas.offsetLeft, top: this._ctx.ui.canvas.offsetTop };
     const values = this._ctx.getFormValues(docPage.sourcePdfId);
     const { unsupportedCount } = await this._ctx.formFieldOverlay.render(

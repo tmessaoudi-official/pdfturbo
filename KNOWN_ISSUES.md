@@ -309,11 +309,18 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   `viewBox` on all 360 corpus pages (none of which has any of the four shapes). Guards:
   `tests/browser/cropbox-view-parity.browser.test.ts` (18 — parity against pdf.js itself, and the burn
   on the secret for each shape including a rotated one) and `tests/core/exportCoords.test.ts` (11).
-- **A page with `/UserUnit` misplaces every overlay, redactions included** (P1, found 2026-09-26, not
-  yet ruled). pdf.js scales the viewport by it (`pdf.mjs:826`), so editor coordinates are scaled too,
-  while the export maps them as plain points: on a `/UserUnit 2` page a redaction drawn over the secret
-  bakes at half its position and the secret stays visible. Disclosed in `SECURITY.md`. 0 of 360 corpus
-  pages carry `/UserUnit`.
+- ~~**A page with `/UserUnit` misplaces every overlay, redactions included** (P1).~~ **FIXED
+  2026-09-26.** pdf.js scales every viewport by `/UserUnit` (`pdf.mjs:826`) and the export works in
+  plain points, so on a `/UserUnit 2` page a redaction drawn over the secret baked at twice its position
+  and the secret stayed visible, in the PDF and the Word/Markdown/text exports. Every viewport in `src/`
+  now comes from `pointViewport` (scale ÷ UserUnit), direct `.getViewport(` calls are banned by a test,
+  and the text layer's CSS factor is `scale × userUnit` — it was already 1/u the canvas size on such
+  pages. The redaction raster and lossy compress, which build a new page from a render, copy the
+  source's `/UserUnit` onto it so the page keeps its physical size. Bounds, both consequences of the ruling: at 100% zoom such a page shows at its size in points,
+  not its physical size; elements saved in a session before the fix were measured at u times and
+  restore scaled by 1/u (no `SCHEMA_VERSION` bump — they exported to the wrong place anyway, and 0 of
+  360 corpus pages carry `/UserUnit`). Guards: `tests/infra/pointViewport.test.ts` (5) and
+  `tests/browser/userunit-frame.browser.test.ts` (12).
 - **The searchable-OCR layer ignores the CropBox** (P2, found 2026-09-26, not yet ruled).
   `searchableTextLayer.ts` positions its invisible text with the MediaBox size at origin (0,0) while
   the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose

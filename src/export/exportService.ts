@@ -31,6 +31,7 @@ import type { DocumentModel, DocumentPage } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
+import { pointViewport, pageUserUnit } from '../utils/pointViewport';
 
 // ── Context interface ────────────────────────────────────────────────────────
 
@@ -487,7 +488,7 @@ export class ExportService {
     opts: CompressOptions,
     onPage: (done: number, total: number) => void,
   ): Promise<Uint8Array> {
-    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const { PDFDocument, PDFName, PDFNumber } = await import('@cantoo/pdf-lib');
     const scale = dpiToScale(opts.dpi ?? COMPRESS_DPI_DEFAULT);
     const quality = clampQuality(opts.quality ?? COMPRESS_QUALITY_DEFAULT);
     let renderDoc: pdfjsLib.PDFDocumentProxy | undefined;
@@ -497,8 +498,8 @@ export class ExportService {
       const total = renderDoc.numPages;
       for (let i = 1; i <= total; i++) {
         const page = await renderDoc.getPage(i);
-        const ptVp = page.getViewport({ scale: 1 });        // page size in points
-        const vp = page.getViewport({ scale });             // raster resolution
+        const ptVp = pointViewport(page, { scale: 1 });        // page size in points
+        const vp = pointViewport(page, { scale });             // raster resolution
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(vp.width));
         canvas.height = Math.max(1, Math.round(vp.height));
@@ -509,6 +510,9 @@ export class ExportService {
         const img = await out.embedJpg(jpeg);
         const p = out.addPage([ptVp.width, ptVp.height]);
         p.drawImage(img, { x: 0, y: 0, width: ptVp.width, height: ptVp.height });
+        // Sized in points; keep the source's /UserUnit so the page keeps its physical size.
+        const userUnit = pageUserUnit(page);
+        if (userUnit !== 1) p.node.set(PDFName.of('UserUnit'), PDFNumber.of(userUnit));
         onPage(i, total);
       }
       await this._applyExportPassword(out);
@@ -673,7 +677,7 @@ export class ExportService {
     // are compared in different frames, nothing matches, and the secret exports into the CSV /
     // XLSX. Measured on `/CropBox [50 50 350 350]`: `SECRETWORD|PUBLICWORD`. Same class as the
     // `/Rotate` bug above — see `redactionRectToPageSpace`, which handles both together.
-    const vp = page.getViewport({ scale: 1, rotation: 0 });
+    const vp = pointViewport(page, { scale: 1, rotation: 0 });
     const totalRot = (((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360 + 360) % 360;
     const contentRedactions = this._ctx.elements
       .filter(el => el.pageId === docPage.id && el.type === 'redaction')
@@ -982,7 +986,7 @@ export class ExportService {
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
       const renderDoc  = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
       const renderPage = await renderDoc.getPage(1);
-      const vp = renderPage.getViewport({ scale });
+      const vp = pointViewport(renderPage, { scale });
       const offscreen = document.createElement('canvas');
       offscreen.width  = Math.round(vp.width);
       offscreen.height = Math.round(vp.height);
@@ -1072,7 +1076,7 @@ export class ExportService {
       const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
       renderDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
       const renderPage = await renderDoc.getPage(1);
-      const vp = renderPage.getViewport({ scale: thumbScale });
+      const vp = pointViewport(renderPage, { scale: thumbScale });
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(vp.width));
       canvas.height = Math.max(1, Math.round(vp.height));
@@ -1389,7 +1393,7 @@ export class ExportService {
       // the default (`page.rotate`) the dims are swapped on a `/Rotate 90|270` page, so the redaction
       // filter mis-maps and redacted source text leaked into DOCX/MD/TXT. CORE-P0-1's comment claimed
       // rotated pages were covered; it had only fixed 0/180, where the error cancels.
-      const vp = page.getViewport({ scale: 1, rotation: 0 });
+      const vp = pointViewport(page, { scale: 1, rotation: 0 });
 
       // ── C22 — ONE FRAME, established once, here ────────────────────────────────────────
       // pdf.js reports every CONTENT channel in ABSOLUTE user space: text items, operator-list
