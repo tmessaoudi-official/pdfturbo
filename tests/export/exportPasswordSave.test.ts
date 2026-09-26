@@ -151,3 +151,30 @@ describe('compressAndDownload (lossless) WITHOUT a password (control)', () => {
     expect(text).toContain('/ObjStm');
   });
 });
+
+describe('a page whose /Annots is not an array (malformed; pdf.js ignores it) — limits row 15', () => {
+  const TOKEN = 'C8MALFORMEDTOKEN';
+  async function malformedSource(): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([300, 300]);
+    page.node.set(PDFName.of('Annots'), doc.context.obj({ Type: 'Annot', Subtype: 'Text', Rect: [10, 10, 40, 40], Contents: PDFString.of(TOKEN) }));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  it('a locked export still succeeds, and the stray dictionary\'s string is not written in plaintext', async () => {
+    const { svc, downloads, errors } = buildService(await malformedSource(), { user: 'u-pass', owner: 'o-pass' });
+    await svc.downloadPDF();
+    expect(errors).toEqual([]);
+    expect(downloads).toHaveLength(1);
+    const text = latin1(new Uint8Array(await downloads[0].arrayBuffer()));
+    expect(text).toContain('/Encrypt');
+    expect(text).not.toContain(TOKEN);
+  });
+
+  it('unlocked, the same file exports with the dictionary untouched (control)', async () => {
+    const { svc, downloads, errors } = buildService(await malformedSource(), null);
+    await svc.downloadPDF();
+    expect(errors).toEqual([]);
+    expect(latin1(new Uint8Array(await downloads[0].arrayBuffer()))).toMatch(/\/Annots <<[^>]*C8MALFORMEDTOKEN/);
+  });
+});

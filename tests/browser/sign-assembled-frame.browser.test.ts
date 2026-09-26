@@ -13,8 +13,9 @@
  * size it actually is: at 90/270 the width and height SWAP as well, so the displacement is a
  * rotation, not a translation.
  *
- * These tests PIN a bound rather than a fix — WS4-E is refuted, see the Decisions Log. They exist
- * so that a future attempt starts from the measured frame instead of from the prose.
+ * These tests PIN the frame. WS4-E refused a fix that REPRODUCED the rasteriser's rounding; limits row 16 (C9)
+ * then fixed the prefill by READING this frame from the assembled bytes instead — see
+ * `sign-assembled-prefill.browser.test.ts`. The frame measurement below still holds and is what that fix reads.
  */
 import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';

@@ -401,6 +401,11 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   own object, so it lands in an encrypted object stream. Was: pdf-lib writes page dictionaries outside object
   streams, so such a note's text or a link's URL was readable in a text editor, and pdf.js with the password read it
   as garbage. Pinned on all six locked entry points in `tests/export/exportPasswordSave.test.ts`.
+- ~~**A signature drawn on a redacted page landed displaced** (P3, recorded in CLAUDE.md only):~~ **FIXED 2026-09-26
+  (limits row 16):** the signer signs the assembled document, where a redaction-bearing page is rebuilt as an image
+  at origin (0,0) with its rotation baked in, so the prefilled position was off by the crop origin, and rotated at
+  90/270. The prefill now reads that page's box from the assembled bytes and maps onto it. Measured in Chrome at
+  every rotation, with a crop and with a page crop.
 
 
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a

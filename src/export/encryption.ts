@@ -93,9 +93,18 @@ export function randomOwnerPassword(): string {
  */
 export async function hoistInlineAnnotations(pdfDoc: PDFDocument): Promise<void> {
   const { PDFArray, PDFDict, PDFName } = await import('@cantoo/pdf-lib');
+  const key = PDFName.of('Annots');
   for (const page of pdfDoc.getPages()) {
-    const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
-    if (!annots) continue;
+    // Read without a type check: a malformed page whose /Annots is not an array must not fail a locked export
+    // that succeeds unlocked (the other /Annots readers tolerate it too). pdf.js ignores such a value, but an inline
+    // dictionary there still holds strings, so it is hoisted like an annotation.
+    const direct = page.node.get(key);
+    if (direct instanceof PDFDict) {
+      page.node.set(key, pdfDoc.context.register(direct));
+      continue;
+    }
+    const annots = page.node.lookup(key);
+    if (!(annots instanceof PDFArray)) continue;
     for (let i = 0; i < annots.size(); i++) {
       const entry = annots.get(i);
       if (entry instanceof PDFDict) annots.set(i, pdfDoc.context.register(entry));

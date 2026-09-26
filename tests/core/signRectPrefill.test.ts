@@ -25,6 +25,7 @@
  * assertion is kept alongside it, labelled for what it is: intent documentation.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { PDFDocument, degrees } from '@cantoo/pdf-lib';
 import { PDFTurboApp } from '../../src/core/pdfTurboApp';
 
 /** An inset CropBox: 300×400 of content whose origin is (50,70) — the frame the bug ignored. */
@@ -33,7 +34,14 @@ const VIEW_BOX = [50, 70, 350, 470];
 type Loose = Record<string, unknown>;
 interface Geom { viewBox: number[]; srcRot: number }
 
-function makeApp(opts: { srcRot?: number; pageRotation?: number; blank?: boolean } = {}) {
+function makeApp(opts: {
+  srcRot?: number; pageRotation?: number; blank?: boolean;
+  /** Limits row 16: elements on the page (a redaction makes the assembly rasterise it). */
+  elements?: Array<{ type: string; pageId: string }>;
+  /** Limits row 16: what `assemblePdfBytes` returns. Unset → it must not be called. */
+  assembled?: () => Promise<Uint8Array>;
+  crop?: { x: number; y: number; width: number; height: number };
+} = {}) {
   const srcRot = opts.srcRot ?? 0;
   const app = Object.create(PDFTurboApp.prototype) as PDFTurboApp;
   const a = app as unknown as Loose;
@@ -53,7 +61,7 @@ function makeApp(opts: { srcRot?: number; pageRotation?: number; blank?: boolean
 
   const currentPage = opts.blank
     ? { id: 'p1', sourcePdfId: 'blank', blankWidth: 200, blankHeight: 300, rotation: opts.pageRotation ?? 0 }
-    : { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: opts.pageRotation ?? 0 };
+    : { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: opts.pageRotation ?? 0, crop: opts.crop };
 
   a.documentModel = {
     currentPage, currentPageIndex: 0,
@@ -65,9 +73,11 @@ function makeApp(opts: { srcRot?: number; pageRotation?: number; blank?: boolean
   Object.defineProperty(a, 'ui', { value: ui, configurable: true });
   a.setMode = vi.fn();
   a._reopenSignModal = vi.fn();
+  a.elements = opts.elements ?? [];
+  a.assemblePdfBytes = vi.fn(opts.assembled ?? (() => Promise.reject(new Error('assemblePdfBytes must not be called'))));
 
   return {
-    app, ui, getViewport,
+    app, ui, getViewport, assemble: a.assemblePdfBytes as ReturnType<typeof vi.fn>,
     setMode: a.setMode as ReturnType<typeof vi.fn>,
     reopen: a._reopenSignModal as ReturnType<typeof vi.fn>,
     pageGeom: () => (a._pageGeomForSign as (p: unknown) => Promise<Geom | null>).call(app, currentPage),
@@ -143,5 +153,62 @@ describe('_pageGeomForSign — the frame the prefill is built on (WS1-1c)', () =
   it('falls back to the blank page dimensions at the origin', async () => {
     const { pageGeom } = makeApp({ blank: true });
     expect(await pageGeom()).toEqual({ viewBox: [0, 0, 200, 300], srcRot: 0 });
+  });
+});
+
+/** An assembled document whose page 1 is the raster page the redaction path adds: origin (0,0), no /Rotate. */
+async function rasterAssembly(w: number, h: number, rotate = 0): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([w, h]);
+  if (rotate) page.setRotation(degrees(rotate));
+  return doc.save();
+}
+const REDACTED = [{ type: 'redaction', pageId: 'p1' }];
+
+describe('onSignRectPicked on a page the assembly RASTERISES (limits row 16, C9)', () => {
+  it('maps onto the assembled page box, not the source page: origin dropped', async () => {
+    // The raster page is the displayed 300×400 view at (0,0). Drawn 100×50 at display (10,20):
+    // x = 10, y = 400 - (20 + 50) = 330 — where the source mapping would add the (50,70) origin.
+    const { app, ui, assemble } = makeApp({ elements: REDACTED, assembled: () => rasterAssembly(300, 400) });
+    await app.onSignRectPicked({ x: 10, y: 20, width: 100, height: 50 });
+    expect(assemble).toHaveBeenCalledTimes(1);
+    expect(values(ui)).toEqual({ x: '10', y: '330', w: '100', h: '50', page: '1' });
+  });
+
+  it('at /Rotate 90 maps onto the SWAPPED box with no rotation — the shape the source mapping gets wrong', async () => {
+    // Displayed view is 400×300 (swapped); the raster page is 400×300 upright. Display (10,20,100,50) →
+    // x 10, y 300 - 70 = 230. The source mapping would rotate it instead.
+    const { app, ui } = makeApp({ srcRot: 90, elements: REDACTED, assembled: () => rasterAssembly(400, 300) });
+    await app.onSignRectPicked({ x: 10, y: 20, width: 100, height: 50 });
+    expect(values(ui)).toEqual({ x: '10', y: '230', w: '100', h: '50', page: '1' });
+  });
+
+  it('scales proportionally when the raster page is not exactly the displayed size (the rasteriser rounds)', async () => {
+    const { app, ui } = makeApp({ elements: REDACTED, assembled: () => rasterAssembly(600, 800) });
+    await app.onSignRectPicked({ x: 10, y: 20, width: 100, height: 50 });
+    expect(values(ui)).toEqual({ x: '20', y: '660', w: '200', h: '100', page: '1' });
+  });
+
+  it('on a cropped page maps from the crop window, which is all the raster page holds', async () => {
+    // Crop (content space, y-down) 100×200 at (40,60) of the 300×400 view; the raster page is that window.
+    // Display (50,70,60,40) sits (10,10) into the window: x 10, y 200 - (10 + 40) = 150.
+    const crop = { x: 40, y: 60, width: 100, height: 200 };
+    const { app, ui } = makeApp({ elements: REDACTED, crop, assembled: () => rasterAssembly(100, 200) });
+    await app.onSignRectPicked({ x: 50, y: 70, width: 60, height: 40 });
+    expect(values(ui)).toEqual({ x: '10', y: '150', w: '60', h: '40', page: '1' });
+  });
+
+  it('a redaction on ANOTHER page does not assemble, and keeps the absolute source mapping (control)', async () => {
+    const { app, ui, assemble } = makeApp({ elements: [{ type: 'redaction', pageId: 'p2' }] });
+    await app.onSignRectPicked({ x: 10, y: 20, width: 100, height: 50 });
+    expect(assemble).not.toHaveBeenCalled();
+    expect(values(ui)).toEqual({ x: '60', y: '400', w: '100', h: '50', page: '1' });
+  });
+
+  it('an assembly that fails leaves the fields untouched and still reopens the modal (signing reports it)', async () => {
+    const { app, ui, reopen } = makeApp({ elements: REDACTED, assembled: () => Promise.reject(new Error('refused')) });
+    await app.onSignRectPicked({ x: 10, y: 20, width: 100, height: 50 });
+    expect(values(ui)).toEqual({ x: '', y: '', w: '', h: '', page: '' });
+    expect(reopen).toHaveBeenCalledTimes(1);
   });
 });

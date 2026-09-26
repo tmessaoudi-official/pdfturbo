@@ -1410,6 +1410,20 @@ combination-dependent failure, strictly worse than one uniform bound. Guard:
 `tests/browser/sign-assembled-frame.browser.test.ts` (2), which pins the assembled FRAME rather than
 a fix, so a future attempt starts from the measurement instead of from this prose.
 
+**CLOSED by limits row 16 (2026-09-26, C9) — by reading the box, not reproducing the rounding.** The objection
+above was to REPRODUCING the rasteriser's rounding in the UI. The ruling was to read the page box from the
+assembled bytes the signer signs instead: on a redaction-bearing page `onSignRectPicked` calls
+`assemblePdfBytes()`, reads page N's box, and maps the drawn rect onto it PROPORTIONALLY from the window that page
+shows (`displayRectOntoBox` — the crop window via `contentRectToDisplay` when cropped, gated like the export, else
+the whole rotated view). Proportional absorbs the rounding, so cropped and uncropped get the same treatment. Every
+other page keeps the exact absolute mapping. An assembly failure leaves the fields and reopens the modal; pressing
+Sign runs the same assembly and reports it. Guards: 6 cases in `tests/core/signRectPrefill.test.ts` and
+`tests/browser/sign-assembled-prefill.browser.test.ts` (7), whose oracle assumes no frame — a green square drawn
+over, the REAL raster assembly rendered, green sampled at five points inside the prefilled `/Rect` — at /Rotate
+0/90/180/270 with an inset CropBox, user rotation 90, and a #G23 crop, plus a copied-page control. Sabotage: the old
+mapping forced → the 6 raster cases in Chrome and 5 in jsdom; the crop window ignored → exactly the crop case in each.
+Cost: one assembly per pick, on redaction-bearing pages only.
+
 **Do not cite a count here** — it has been wrong at three surfaces simultaneously. Enumerate the instances from this section instead (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
 filter, this, and the flow-export LAYOUT closed as C22 on 2026-09-02) — so when touching anything that
 converts between what is DRAWN and what is STORED, `grep -rn "cropOrigin\|viewBox\[0\]\|cropOriginX" src/`
@@ -2729,7 +2743,11 @@ garbage. `encryptPdf` now calls `hoistInlineAnnotations` first, registering each
 object; `encryptPdf` has one caller, the export seam, so every locked save gets it and no unlocked one does. The
 fixture's third note is inline, so all six entry points pin it. Sabotage: hoist removed → the 12 locked cases (6
 plaintext + 6 read-back); hoist on unlocked saves too → 4 classic controls, not 5 — an unlocked sanitize writes the
-sanitizer's bytes directly and never reaches `_saveForExport`.
+sanitizer's bytes directly and never reaches `_saveForExport`. **A non-array `/Annots` is read without a type check**:
+the first version used `lookupMaybe(…, PDFArray)`, which THROWS on a malformed page pdf.js simply ignores, so a
+locked export failed where the unlocked one succeeded (the other `/Annots` readers tolerate it); an inline dict there
+is hoisted too, since it still holds strings. Pinned by the malformed-`/Annots` pair; dropping that branch reds
+exactly the locked case.
 
 ### True text editing engine
 

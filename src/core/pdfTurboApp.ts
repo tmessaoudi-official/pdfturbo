@@ -29,7 +29,7 @@ import { OcrHandler, type OcrOutputMode, type OcrRunProgress } from '../handlers
 import { ocrStatusLabelKey, OCR_LABEL_LOADING } from '../ocr/ocrStatus';
 import { t } from '../utils/i18n';
 import { SearchableLayerError } from '../ocr/searchableTextLayer';
-import { isPdfLoadRefusal } from '../utils/pdfLoadGuard';
+import { isPdfLoadRefusal, loadPdfDocument } from '../utils/pdfLoadGuard';
 import { SigningHandler } from '../handlers/signingHandler';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
@@ -54,7 +54,7 @@ import { PageNavigationController } from './pageNavigationController';
 import { CleanupService } from './cleanupService';
 import { PanelFocusTrapService } from './panelFocusTrapService';
 import { trapFocus } from '../utils/focusTrap';
-import { displayRectToPageUserSpaceRect } from '../utils/geometry';
+import { contentRectToDisplay, displayRectOntoBox, displayRectToPageUserSpaceRect } from '../utils/geometry';
 import { CodeModalManager, type ICodeModalContext } from '../ui/codeModalManager';
 import { WatermarkPanel, type IWatermarkContext } from '../ui/watermarkPanel';
 import { BatesPanel } from '../ui/batesPanel';
@@ -838,8 +838,11 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         // crop dimensions alone displaced the visible signature by exactly the CropBox origin —
         // the same frame mismatch as the redaction CropBox-origin leak, and invisible for the
         // same reason: almost every page has a (0,0) origin.
-        const us = displayRectToPageUserSpaceRect(displayRect, geom.viewBox, totalRot);
-        if (us.width >= 1 && us.height >= 1) {
+        const rasterised = page.sourcePdfId !== 'blank' && this.elements.some(el => el.pageId === page.id && el.type === 'redaction');
+        const us = rasterised
+          ? await this._rectOnAssembledPage(displayRect, page, geom, totalRot)
+          : displayRectToPageUserSpaceRect(displayRect, geom.viewBox, totalRot);
+        if (us && us.width >= 1 && us.height >= 1) {
           this.ui.signX.value = String(Math.round(us.x));
           this.ui.signY.value = String(Math.round(us.y));
           this.ui.signW.value = String(Math.round(us.width));
@@ -849,6 +852,36 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       }
     }
     this._reopenSignModal();
+  }
+
+  /**
+   * Limits row 16 (C9). The signer signs `assemblePdfBytes()`, and for a page carrying a redaction that assembly
+   * does not copy the source page: it rasterises it onto a FRESH page at origin (0,0), sized to the displayed view
+   * (the crop window when cropped, width and height swapped at 90/270), with no /Rotate — so the source mapping
+   * above lands the signature displaced, or rotated. This maps the drawn rect onto the box of the page the signer
+   * will actually see, read from those same assembled bytes, proportionally from the window that page shows.
+   * Returns null when the assembly fails: the fields stay as they were, and pressing Sign runs the same assembly
+   * and reports the failure in the modal (`signingHandler` → `_showSignError`).
+   */
+  private async _rectOnAssembledPage(
+    rect: { x: number; y: number; width: number; height: number },
+    page: DocumentPage, geom: { viewBox: number[] }, totalRot: number,
+  ): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    const [x0, y0, x1, y1] = geom.viewBox;
+    const W = x1 - x0, H = y1 - y0;
+    const swap = totalRot === 90 || totalRot === 270;
+    // The same gate the export applies to the crop, so the window matches what the raster page holds.
+    const window = page.crop && isEnabled('crop')
+      ? contentRectToDisplay(page.crop, W, H, totalRot)
+      : { x: 0, y: 0, width: swap ? H : W, height: swap ? W : H };
+    let box: { x: number; y: number; width: number; height: number };
+    try {
+      const assembled = await loadPdfDocument(await this.assemblePdfBytes(), { updateMetadata: false, viewerCheck: false });
+      box = assembled.getPage(this.documentModel.currentPageIndex).getCropBox();
+    } catch {
+      return null;
+    }
+    return displayRectOntoBox(rect, window, box);
   }
 
   /** Re-show the sign modal after a pick without resetting fields (unlike openSignModal). */

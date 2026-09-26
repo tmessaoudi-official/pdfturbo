@@ -363,3 +363,25 @@ export function cosSinDeg(deg: number): { c: number; s: number } {
   const t = (deg * Math.PI) / 180;
   return { c: Math.cos(t), s: Math.sin(t) };
 }
+
+/**
+ * Limits row 16 (C9). Map a rect drawn in editor DISPLAY space onto a page box, proportionally from the display
+ * `window` the box shows. Used for a page the export RASTERISES (a redaction-bearing one): that page is rebuilt at
+ * origin (0,0) from the displayed view — the crop window when the page is cropped — with any rotation baked into
+ * the pixels, so the drawn rect keeps its fraction of the window rather than its absolute user-space position.
+ * Proportional, so the rasteriser's pixel rounding of the page size is absorbed rather than reproduced.
+ * `box` is in PDF user space (y up); the result is too.
+ */
+export function displayRectOntoBox(
+  rect: { x: number; y: number; width: number; height: number },
+  window: { x: number; y: number; width: number; height: number },
+  box: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  const sx = box.width / window.width, sy = box.height / window.height;
+  return {
+    x: box.x + (rect.x - window.x) * sx,
+    y: box.y + box.height - (rect.y - window.y + rect.height) * sy,
+    width: rect.width * sx,
+    height: rect.height * sy,
+  };
+}

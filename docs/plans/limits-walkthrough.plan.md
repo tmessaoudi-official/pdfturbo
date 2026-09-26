@@ -78,6 +78,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 18:40] AGREED (run rules): certification is one advisor() call per gate, no reviewer panel during this run.
 - [2026-09-26 18:40] AGREED (run rules): full deploy gate + push per row; a browser red that looks like load noise → run the failing files alone and re-run the suite once, and if still red, set that row aside and continue.
 - [2026-09-26 22:25] SESSION-CHOSEN (run rules, not a developer ruling): C5 measured as a real export change (a dangling page font became the stamped Info dict and its text left the export), so it is fixed rather than kept — `loadPdfDocument` reserves every referenced object number before anything registers.
+- [2026-09-26 23:10] SESSION-CHOSEN (run rules): C9 reads the assembled box at PICK time (one assembly per pick, redaction-bearing pages only) and maps proportionally from the displayed window, so the prefilled numbers the user sees are the ones signed; an assembly failure leaves the fields and defers to the sign flow's own error.
 - [2026-09-26 22:25] SESSION-CHOSEN (run rules): C3's 30 s per-image timeout is kept and stated as a false-refusal bound (a one-sided timeout refuses until the file is reopened), not engineered around.
 
 ## Formal Plan
@@ -103,8 +104,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 12 | B6 OCR progress labels | S | done | 0b25e8b | src/core/pdfTurboApp.ts, locales/** |
 | 13 | C3 image pixel hash in the viewer check + wider corpus | M | done | 2101ea9 | src/utils/viewerCheck.ts, scripts/**, tests/** |
 | 14 | C5 dangling reference vs /Info stamp measured | S | done | 7f57b72 | src/utils/pdfLoadGuard.ts, tests/** |
-| 15 | C8 hoist inline annotations before a locked save | M | done | - | src/export/**, tests/export/exportPasswordSave.test.ts |
-| 16 | C9 signature rect mapped onto the assembled page | M | todo | - | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
+| 15 | C8 hoist inline annotations before a locked save | M | done | f71054e | src/export/**, tests/export/exportPasswordSave.test.ts |
+| 16 | C9 signature rect mapped onto the assembled page | M | done | - | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
 | 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | todo | - | var/claude/** |
 | 18 | D6+D7 real font names incl. eastAsia in DOCX | M | todo | - | src/utils/flowDocWriters.ts, tests/** |
 | 19 | D8 mixed-bidi DOCX lines measured | S | todo | - | src/utils/flowDoc.ts, tests/** |
