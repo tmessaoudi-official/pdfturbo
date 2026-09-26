@@ -301,12 +301,12 @@ unencrypted even when a password was set, and opened without one.
 
 What still cannot be encrypted this way, because the PDF writer keeps these objects outside object
 streams — the kinds found so far, not a proof that nothing else is: strings stored **directly** on the
-document catalog, the page tree or a page dictionary (including an annotation written inline in a
-page's `/Annots` rather than as its own object); strings in the **dictionary** of any stream object,
+document catalog, the page tree or a page dictionary; strings in the **dictionary** of any stream object,
 whose data is encrypted but whose dictionary is not — a form XObject's or an image's dictionary, or an
 embedded file's parameters such as its modification date; signature dictionaries; objects with a
-non-zero generation number; objects PDFturbo could not parse; and the trailer's document `/ID`. PDFturbo's own annotations are separate objects and are encrypted;
-an opened file may carry inline ones. If a string must not be readable without the password, do not
+non-zero generation number; objects PDFturbo could not parse; and the trailer's document `/ID`. Annotations are
+encrypted whether they were written as their own objects or inline in the page: since 2026-09-26 a locked export
+first moves every inline annotation into an object of its own. If a string must not be readable without the password, do not
 rely on it sitting in one of those places.
 
 ## One file, two readers — what you see is what you export and sign

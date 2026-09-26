@@ -177,7 +177,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
   save while the viewer showed it; a later registration (a true edit's font) could take a higher dangling number the
   same way. `loadPdfDocument` now reserves every referenced number (`reserveReferencedNumbers`), so new objects are
   numbered above all of them; a file whose references all lie at or below its largest defined number is untouched —
-  0 of 104 corpus files are changed (3 have dangling references, all below it). Pinned in
+  0 of 104 corpus files are changed (3 have dangling references, all below it). The walk reads every indirect
+  object's dictionary on every guarded load: 22–71 ms on Publication 17 (71,413 objects, first run slowest), about
+  5 ms on a 75-page paper — against a pdf-lib parse of seconds. Bound: a reference inside an object pdf-lib keeps as
+  unparseable (`PDFInvalidObject`) cannot be read, so its number is not reserved. Pinned in
   `tests/utils/pdfLoadGuard.test.ts` and the browser bundle. The rest of this entry is the original record. When pdf-lib stamps `/Info` on load it registers the dictionary under the next free object number;
   a reference to that number which pointed at nothing (legal — it reads as null) then resolves to the
   Info dictionary. The load guard closes this for DROPPED objects by checking before the stamp, and
@@ -393,6 +396,11 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   none on the same files plus the 15-file corpus in Chrome. Bound: an image pdf.js does not hand over within 30 s
   fingerprints as missing on that side, so a slow decode (a very large scan on a slow device — not measured, the
   corpus ran on a desktop) refuses the file, and `viewerVerdict` keeps that verdict until the file is opened again.
+- ~~**Lock PDF left an inline annotation in plaintext** (P3, a stated bound in `SECURITY.md`):~~ **FIXED 2026-09-26
+  (limits row 15):** a locked export first registers every annotation written inline in a page's `/Annots` as its
+  own object, so it lands in an encrypted object stream. Was: pdf-lib writes page dictionaries outside object
+  streams, so such a note's text or a link's URL was readable in a text editor, and pdf.js with the password read it
+  as garbage. Pinned on all six locked entry points in `tests/export/exportPasswordSave.test.ts`.
 
 
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a

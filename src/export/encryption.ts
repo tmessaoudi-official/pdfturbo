@@ -47,6 +47,7 @@ export const FULL_PERMISSIONS = {
  */
 export async function encryptPdf(pdfDoc: PDFDocument, pw: EncryptionPasswords): Promise<void> {
   const { PDFHeader } = await import('@cantoo/pdf-lib');
+  await hoistInlineAnnotations(pdfDoc);
   // forVersion stringifies its args, so minor '7ext3' yields getVersionString()
   // === '1.7ext3' → V5/AESV3. The signature types minor as number; the runtime
   // accepts the string, hence the cast.
@@ -80,4 +81,24 @@ export function randomOwnerPassword(): string {
   let s = '';
   for (const b of bytes) s += b.toString(16).padStart(2, '0');
   return s;
+}
+
+/**
+ * Limits row 15 (C8). pdf-lib writes every page dictionary OUTSIDE object streams, and encrypts only streams, so an
+ * annotation written inline in a page's `/Annots` array rode along with the page in plaintext — its note text, a
+ * link's URL — while `/Encrypt` told the reader it was encrypted (pdf.js with the password then read it as garbage).
+ * Registering each inline annotation as its own object moves it, and everything nested in it, into an encrypted
+ * object stream. Called only on a locked save: an unlocked export keeps its bytes. Only the reference in `/Annots`
+ * changes; an inline dictionary has no other referrer to update.
+ */
+export async function hoistInlineAnnotations(pdfDoc: PDFDocument): Promise<void> {
+  const { PDFArray, PDFDict, PDFName } = await import('@cantoo/pdf-lib');
+  for (const page of pdfDoc.getPages()) {
+    const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annots) continue;
+    for (let i = 0; i < annots.size(); i++) {
+      const entry = annots.get(i);
+      if (entry instanceof PDFDict) annots.set(i, pdfDoc.context.register(entry));
+    }
+  }
 }

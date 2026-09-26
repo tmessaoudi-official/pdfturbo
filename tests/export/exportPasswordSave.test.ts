@@ -18,6 +18,9 @@ import { ExportService, type IExportContext } from '../../src/export/exportServi
 
 const URI_TOKEN = 'R10URITOKEN';
 const NOTE_TOKEN = 'R10NOTETOKEN';
+// Limits row 15 (C8): a note written INLINE in the page's /Annots array rather than as its own object. The page
+// dictionary is always written outside object streams, so an inline annotation rode along with it in plaintext.
+const INLINE_TOKEN = 'C8INLINETOKEN';
 
 async function sourceBytes(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -30,7 +33,10 @@ async function sourceBytes(): Promise<Uint8Array> {
   const note = ctx.register(ctx.obj({
     Type: 'Annot', Subtype: 'Text', Rect: [100, 10, 130, 40], Contents: PDFString.of(NOTE_TOKEN),
   }));
-  page.node.set(PDFName.of('Annots'), ctx.obj([link, note]));
+  const inline = ctx.obj({
+    Type: 'Annot', Subtype: 'Text', Rect: [160, 10, 190, 40], Contents: PDFString.of(INLINE_TOKEN),
+  });
+  page.node.set(PDFName.of('Annots'), ctx.obj([link, note, inline]));
   return doc.save({ useObjectStreams: false });
 }
 
@@ -96,6 +102,7 @@ describe.each(ENTRY_POINTS)('%s with an export password', (_name, run, stampsInf
     expect(text).toContain('/Encrypt');
     expect(text).not.toContain(URI_TOKEN);
     expect(text).not.toContain(NOTE_TOKEN);
+    expect(text).not.toContain(INLINE_TOKEN);
   });
 
   it('and a reader with the password reads the strings back intact', async () => {
@@ -105,6 +112,7 @@ describe.each(ENTRY_POINTS)('%s with an export password', (_name, run, stampsInf
     const annots = await (await doc.getPage(1)).getAnnotations() as Array<{ url?: string; contentsObj?: { str: string } }>;
     expect(annots.some(a => a.url === `https://leak.example/${URI_TOKEN}`)).toBe(true);
     expect(annots.some(a => a.contentsObj?.str === NOTE_TOKEN)).toBe(true);
+    expect(annots.some(a => a.contentsObj?.str === INLINE_TOKEN)).toBe(true);
   });
 
   it('leaves no document-information string in plaintext (SECURITY.md § "Lock PDF")', async () => {
@@ -129,6 +137,8 @@ describe.each(ENTRY_POINTS.filter(([, , , classic]) => classic))('%s WITHOUT a p
     expect(text).toMatch(/\nxref\s/);
     expect(text).not.toContain('/ObjStm');
     expect(text).toContain(URI_TOKEN); // unencrypted, so plaintext is correct here
+    // The hoist runs only under a password: unlocked, the inline note stays inline in the page dictionary.
+    expect(text).toMatch(/\/Annots \[[^\]]*<<[^>]*C8INLINETOKEN/);
   });
 });
 

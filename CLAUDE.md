@@ -2722,6 +2722,14 @@ re-run whenever cases join the file); the no-password branch with them → the 4
 case — its read-back case passes on an unencrypted file, because pdf.js ignores a password it does not
 need); sanitize re-loading with the stamp → 1 (its metadata case). `encryption.ts` claimed `/R 5`; since
 2.11.0 pdf-lib writes `/R 6`.
+**Inline annotations are hoisted before a locked save (limits row 15, C8).** pdf-lib writes the catalog, the page
+tree and every page leaf OUTSIDE object streams (`PDFStreamWriter`'s `shouldNotCompress`), so an annotation written
+inline in a page's `/Annots` array went out in plaintext with the page — and pdf.js with the password read it as
+garbage. `encryptPdf` now calls `hoistInlineAnnotations` first, registering each inline `/Annots` entry as its own
+object; `encryptPdf` has one caller, the export seam, so every locked save gets it and no unlocked one does. The
+fixture's third note is inline, so all six entry points pin it. Sabotage: hoist removed → the 12 locked cases (6
+plaintext + 6 read-back); hoist on unlocked saves too → 4 classic controls, not 5 — an unlocked sanitize writes the
+sanitizer's bytes directly and never reaches `_saveForExport`.
 
 ### True text editing engine
 

@@ -102,8 +102,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 11 | B5 clear recent files + delete canUseFsSave | S | done | 4f3c5fd | src/ui/recentFilesMenu.ts, src/utils/fileSystemAccess.ts, locales/** |
 | 12 | B6 OCR progress labels | S | done | 0b25e8b | src/core/pdfTurboApp.ts, locales/** |
 | 13 | C3 image pixel hash in the viewer check + wider corpus | M | done | 2101ea9 | src/utils/viewerCheck.ts, scripts/**, tests/** |
-| 14 | C5 dangling reference vs /Info stamp measured | S | done | - | src/utils/pdfLoadGuard.ts, tests/** |
-| 15 | C8 hoist inline annotations before a locked save | M | todo | - | src/export/**, tests/export/exportPasswordSave.test.ts |
+| 14 | C5 dangling reference vs /Info stamp measured | S | done | 7f57b72 | src/utils/pdfLoadGuard.ts, tests/** |
+| 15 | C8 hoist inline annotations before a locked save | M | done | - | src/export/**, tests/export/exportPasswordSave.test.ts |
 | 16 | C9 signature rect mapped onto the assembled page | M | todo | - | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
 | 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | todo | - | var/claude/** |
 | 18 | D6+D7 real font names incl. eastAsia in DOCX | M | todo | - | src/utils/flowDocWriters.ts, tests/** |
