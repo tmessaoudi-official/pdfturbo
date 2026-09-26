@@ -236,13 +236,15 @@ Thirty findings across three lenses. The P0 and both P1s were fixed in that stre
 were the trivial P2/P3s; what follows is everything left open, each with the reason it was NOT
 landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignored).
 
-- **OCR "visible" mode places words with no user-rotation term** (`ocrHandler.ts:110-114`, P2). The
-  redaction burn 140 lines below composes `redactionRectToContent` + `convertToViewportPoint`
-  precisely because that canvas is rendered at the page's INTRINSIC `/Rotate` with no user rotation;
-  the burn was fixed for the asymmetry, the word placement never was. On a page the user rotated,
-  every inserted `TextElement` lands off-target. Deferred because the fix needs the same composed
-  mapping plus a real-browser guard at all four rotations, and "visible" mode is the non-default,
-  explicitly-relabelled OCR output.
+- ~~**OCR "visible" mode places words with no user-rotation term** (P2).~~ **FIXED 2026-09-26 (A3).**
+  Each word keeps its reading size from the bbox. Its centre is mapped from the OCR canvas to the
+  display by the exact inverse of the redaction burn's mapping, and it carries `rotation = userRot`, so
+  on a page the user rotated it lands on, and reads along, the text it came from (measured up to 110pt
+  off before). User rotation 0 is the original formula. Remaining bound: the engine still READS the
+  canvas at the intrinsic `/Rotate`, so on a page rotated upright by the user it sees the glyphs
+  sideways, as before. A word also keeps its rotation if the page is rotated again later, like every
+  element. Guards: `tests/browser/ocr-visible-rotation.browser.test.ts` (10 + 2 visual) and the A3
+  cases in `tests/handlers/ocrHandler.test.ts`.
 - ~~**FileAttachment annotations survive `sanitizePdf`** (P2).~~ **CLOSED 2026-09-05** by developer
   ruling: the whole paperclip annotation goes, with its `/Popup` (from whichever page lists it), and
   BOTH `/FS` and `/AF` are deleted on the dict itself so the file leaves the bytes even when a reply

@@ -3091,6 +3091,20 @@ which left a bare specifier the browser couldn't resolve → "Failed to resolve 
 returns words ONLY nested under `data.blocks[].paragraphs[].lines[].words[]`; `flattenBlockWords`
 (tesseractMapper) flattens them. Without this OCR completed but added 0 elements (silent "no text").
 OCR targets SCANNED/image pages — clear large text recognizes well; tiny/thin vector text may yield 0.
+**"Visible" words on a user-rotated page (A3, 2026-09-26):** the OCR canvas is rendered at the page's
+INTRINSIC `/Rotate` only, while elements live in display space at `/Rotate + docPage.rotation`. A plain
+`bbox / scale` is therefore right only at user rotation 0 (kept exactly there). Otherwise
+`ocrWordToTextElement` takes the reading size from the bbox, maps the bbox CENTRE through `_recognize`'s
+`toDisplay` — the exact inverse of the redaction burn (`viewport.convertToPdfPoint` → subtract the
+CropBox origin → `inverseTransformPoint`) — and sets `rotation = userRot`. Two test traps: the oracle
+must be the TRUE turned box, because `rotatedElementFootprint` is the grow-only leak-filter union and
+cannot equal it at 90/270; and on a `/Rotate 90` source the fixture's target must be drawn TALL in user
+space so it is a horizontal word on the canvas the engine reads (a vertical "word" at 64pt overruns the
+page and pdf.js truncates it). Guards: `tests/browser/ocr-visible-rotation.browser.test.ts` (10 + 2
+visual; intrinsic 0/90 × user 0/90/180/270 + two CropBox-origin cases). Sabotage: user-rotation term
+dropped → 8 (the two user-0 controls stay green); rotation negated → exactly the six 90/270 cases (180
+is sign-blind); CropBox origin dropped → exactly the two crop cases. **Bound:** the engine still reads the
+canvas at the intrinsic `/Rotate`, so a page the user turned upright is recognised sideways.
 **Searchable-OCR layer (SHIPPED 2026-06-16)** — `src/ocr/searchableTextLayer.ts`:
 `wordToTextPlacement` (OCR-px top-left → PDF-pt bottom-left: `x0/scale`, `pageHeight−y1/scale`
 baseline, `(y1−y0)/scale` size) + `buildInvisibleTextLayerOps` (`BT·Tr(3)·Tf·Tm·Tj·ET` per word,

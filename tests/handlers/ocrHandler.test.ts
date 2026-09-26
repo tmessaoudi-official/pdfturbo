@@ -5,7 +5,7 @@
  * browser (canvas + WASM worker) and is covered by the browser harness; here we
  * unit-test the deterministic bbox→TextElement mapping in jsdom.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ocrWordToTextElement, ocrAssetPaths } from '../../src/handlers/ocrHandler';
 
 describe('ocrWordToTextElement', () => {
@@ -43,6 +43,29 @@ describe('ocrWordToTextElement', () => {
     expect(el.width).toBe(8);
     expect(el.height).toBe(8);
     expect(el.fontSize).toBeGreaterThanOrEqual(6);
+  });
+
+  // A3 — on a page the user rotated, the word's centre goes through the canvas→display mapper and the
+  // word carries the user rotation; with no user rotation the mapper is never consulted.
+  const W = { text: 'Hi', bbox: { x0: 100, y0: 200, x1: 260, y1: 240 } };
+
+  it('user rotation 0: the original formula exactly, the mapper untouched', () => {
+    const toDisplay = vi.fn(() => ({ x: 999, y: 999 }));
+    const el = ocrWordToTextElement(W, 2, 'p', 0, toDisplay);
+    expect([el.x, el.y, el.width, el.height, el.rotation]).toEqual([50, 100, 80, 20, 0]);
+    expect(toDisplay).not.toHaveBeenCalled();
+  });
+
+  it('user rotation 90: reading size from the bbox, centred on the mapped centre, turned by 90', () => {
+    const toDisplay = vi.fn(() => ({ x: 70, y: 130 }));
+    const el = ocrWordToTextElement(W, 2, 'p', 90, toDisplay);
+    expect(toDisplay).toHaveBeenCalledWith(180, 220);
+    expect([el.x, el.y, el.width, el.height, el.rotation, el.fontSize]).toEqual([30, 120, 80, 20, 90, 16]);
+  });
+
+  it('normalises a negative user rotation', () => {
+    const el = ocrWordToTextElement(W, 2, 'p', -90, () => ({ x: 70, y: 130 }));
+    expect(el.rotation).toBe(270);
   });
 });
 

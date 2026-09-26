@@ -23,7 +23,7 @@ import { applySearchableLayerToPdf, partitionWordsByFont } from '../ocr/searchab
 import type { IErrorReporter } from '../contracts/errorReporter';
 import type { PDFElement } from '../elements/annotationElement';
 import { RedactionElement } from '../elements/redactionElement';
-import { redactionRectToContent } from '../utils/geometry';
+import { redactionRectToContent, inverseTransformPoint } from '../utils/geometry';
 
 /**
  * Narrow role-interface the OCR handler requires from the app (M2 #18). Decouples
@@ -94,30 +94,43 @@ export function ocrAssetPaths(base: string): OcrAssetPaths {
 }
 
 /**
- * Map one OCR word (image-pixel bbox, top-left origin) to a TextElement in
- * element space (PDF points, top-left origin). Both spaces are top-left, so
- * only the render scale divides out — no Y-flip. Pure → jsdom-unit-testable.
- *
- * Rotation note: the visible path renders the OCR canvas at the page's intrinsic
- * `/Rotate` (no user rotation), and the element layer is composed in that SAME
- * displayed/rotated viewport space, so a plain scale-divide already lands visible
- * elements correctly when user rotation is 0 (the common case). The
- * UNROTATED-PDF-space remap is only needed by the searchable-layer path (which
- * writes into unrotated user space) — see `rotateBBoxToUnrotated` in
- * `searchableTextLayer.ts`. Aligning the visible path with a non-zero USER
- * rotation is a follow-up (G15b).
+ * Maps a point on the OCR canvas (pixels) to the editor's display space (points, top-left origin).
+ * The OCR canvas is rendered at the page's INTRINSIC `/Rotate` only; the editor shows the page at
+ * `/Rotate + docPage.rotation`.
  */
-export function ocrWordToTextElement(w: OcrWordLike, scale: number, pageId: string): TextElement {
-  const x = w.bbox.x0 / scale;
-  const y = w.bbox.y0 / scale;
+export type OcrCanvasToDisplay = (cx: number, cy: number) => { x: number; y: number };
+
+/**
+ * Map one OCR word (image-pixel bbox, top-left origin) to a TextElement in element space (PDF points,
+ * top-left origin). Pure → jsdom-unit-testable.
+ *
+ * With no user rotation the canvas and the display share one frame, so only the render scale divides
+ * out — the original formula, kept exactly. With a user rotation (A3, 2026-09-26) the display is the
+ * canvas turned by `userRot`, so a plain divide put every word off the text it came from (measured up to
+ * 110pt). Then the word keeps its reading size from the bbox, its centre goes through `toDisplay`, and
+ * it carries `rotation = userRot` — so it reads along the same axis as the glyphs it was read from.
+ * The engine's input is unchanged: it still reads the canvas at the intrinsic `/Rotate`.
+ */
+export function ocrWordToTextElement(
+  w: OcrWordLike, scale: number, pageId: string, userRot = 0, toDisplay?: OcrCanvasToDisplay,
+): TextElement {
   const width = Math.max(8, (w.bbox.x1 - w.bbox.x0) / scale);
   const height = Math.max(8, (w.bbox.y1 - w.bbox.y0) / scale);
+  const rot = ((userRot % 360) + 360) % 360;
+  let x = w.bbox.x0 / scale;
+  let y = w.bbox.y0 / scale;
+  if (rot && toDisplay) {
+    const c = toDisplay((w.bbox.x0 + w.bbox.x1) / 2, (w.bbox.y0 + w.bbox.y1) / 2);
+    x = c.x - width / 2;
+    y = c.y - height / 2;
+  }
   const el = new TextElement(x, y, pageId, {
     width,
     height,
     fontSize: Math.max(6, Math.round(height * 0.8)),
     multiline: false,
   });
+  if (rot && toDisplay) el.rotation = rot;
   el.text = w.text;
   return el;
 }
@@ -178,7 +191,7 @@ export class OcrHandler {
   ): Promise<number> {
     const recd = await this._recognize(page, src, language, onProgress);
     if (!recd) return 0;
-    const { result, scale } = recd;
+    const { result, scale, userRot, toDisplay } = recd;
 
     if (mode === 'searchable') {
       // Count what will actually be placed (Arabic + WinAnsi-safe Latin); non-Latin
@@ -201,7 +214,7 @@ export class OcrHandler {
 
     const cmds = result.words
       .filter((w) => w.text.trim().length > 0)
-      .map((w) => new AddElementCmd(app.elements, ocrWordToTextElement(w, scale, page.id)));
+      .map((w) => new AddElementCmd(app.elements, ocrWordToTextElement(w, scale, page.id, userRot, toDisplay)));
 
     if (cmds.length === 0) return 0;
     app.historyManager.execute(new MacroCmd(cmds));
@@ -222,7 +235,7 @@ export class OcrHandler {
     src: SourcePdf,
     language: string,
     onProgress?: (p: OcrRunProgress) => void,
-  ): Promise<{ result: OcrResult; scale: number } | null> {
+  ): Promise<{ result: OcrResult; scale: number; userRot: number; toDisplay: OcrCanvasToDisplay } | null> {
     const scale = OcrHandler.RENDER_SCALE;
     const pdfPage = await src.doc.getPage(page.sourcePageNum);
     const viewport = pdfPage.getViewport({ scale });
@@ -239,7 +252,7 @@ export class OcrHandler {
     // Painting rather than filtering recognised words is deliberate: the engine then cannot see the
     // glyphs at all, so there is no partial-overlap word to reason about.
     // A plain `el.x * scale` is WRONG here, which is not obvious: this canvas is rendered at the page's
-    // INTRINSIC `/Rotate` with no user rotation (see the rotation note on `ocrWordToTextElement`), while
+    // INTRINSIC `/Rotate` with no user rotation (see `ocrWordToTextElement`), while
     // element rects live in display space at `page.rotate + docPage.rotation`. Measured on the naive
     // version: with a user rotation applied the fill lands off-target and, for some combinations,
     // ENTIRELY off-canvas — no burn at all. Rotating a sideways scan upright before OCR-ing it is the
@@ -257,6 +270,14 @@ export class OcrHandler {
     // `cropOriginX/Y`), which is the precedent this follows.
     const [ox, oy] = [unrot.viewBox[0] as number, unrot.viewBox[1] as number];
     const totalRot = ((((pdfPage.rotate as number) ?? 0) + (page.rotation ?? 0)) % 360 + 360) % 360;
+    const userRot = (((page.rotation ?? 0) % 360) + 360) % 360;
+    // The exact inverse of the burn mapping below: canvas → absolute user space (the viewport's own
+    // `convertToPdfPoint`, which undoes `/Rotate` and the scale) → crop-relative content → display.
+    // Called only when there is a user rotation, so the user-0 path never touches it.
+    const toDisplay: OcrCanvasToDisplay = (cx, cy) => {
+      const [ux, uy] = viewport.convertToPdfPoint(cx, cy) as [number, number];
+      return inverseTransformPoint(ux - ox, uy - oy, unrot.width, Hu, totalRot);
+    };
     for (const el of this.app.elements) {
       // `el.type`, NOT `instanceof`: identity checks fail OPEN across duplicated module instances (this
       // build already warns about a statically+dynamically imported module), and a silently skipped burn
@@ -280,7 +301,7 @@ export class OcrHandler {
       workerPath: paths.workerPath,
       langPath: paths.langPath,
     });
-    return { result, scale };
+    return { result, scale, userRot, toDisplay };
   }
 
   /**
