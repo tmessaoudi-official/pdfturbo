@@ -20,7 +20,9 @@ export interface IToolModeContext {
   setCanvasTouchAction(value: 'none' | 'pan-x pan-y'): void;
 }
 
-const MODE_HINT_KEYS: Partial<Record<ToolMode, string>> = {
+// Exhaustive by type (limits row 8): a new mode that forgets its hint is a compile error, not a silently
+// missing toast. `select` is the one mode with no hint — it clears the toast instead.
+const MODE_HINT_KEYS: Record<Exclude<ToolMode, 'select'>, string> = {
   addText:       'toast.modeHint.addText',
   addSignature:  'toast.modeHint.addSignature',
   addImage:      'toast.modeHint.addImage',
@@ -78,7 +80,7 @@ export class ToolModeService {
     ctx.setCanvasTouchAction(canvasCapturesGesture(mode) ? 'none' : 'pan-x pan-y');
     if (mode === 'addSignature' && !opts?.suppressSignatureModal) ctx.openSignatureModal();
     if (!PLACEMENT_MODES.includes(mode)) ctx.hidePlacementGhost();
-    const hintKey = MODE_HINT_KEYS[mode];
+    const hintKey = mode === 'select' ? undefined : MODE_HINT_KEYS[mode];
     if (hintKey) ctx.reportError.info(hintKey);
     else ctx.clearToast();
   }
