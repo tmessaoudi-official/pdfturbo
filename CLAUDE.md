@@ -489,15 +489,18 @@ different answers for one document.
 Consequences of the ruling, stated in `KNOWN_ISSUES.md` rather than hidden: at 100% zoom such a page shows
 at its size in points, not its physical size; and elements saved in a session before the fix were
 measured at u× and restore scaled by 1/u. No `SCHEMA_VERSION` bump — they exported to the wrong place
-anyway, and 0 of 360 corpus pages carry `/UserUnit`. Third, found at the recovery review and NOT ruled: every raster
-(redaction page, lossy compress, page-as-image) now renders over a points viewport, so its resolution is
-1/u of the physical DPI — before the fix those had resolution right and position wrong.
+anyway, and 0 of 360 corpus pages carry `/UserUnit`. A third, found at the recovery review, is FIXED (ruled 15:35): the
+three rasters (redaction page, lossy compress, page-as-image) multiply only their RASTER scale by
+`pageUserUnit`, so the chosen DPI is physical again while the page stays points + `/UserUnit`. In the
+redaction rasterizer that factor lives in `SCALE` itself, because the crop clip and the link re-add both
+divide pixels by `SCALE` — one number, one frame.
 
 The test is honest about frames because it assumes none: the redaction is placed where the secret's INK
 is on the canvas the real `PDFRenderer` draws — where a user would drag — so it reds whenever editor and
-export disagree, in either direction. Guards: `tests/browser/userunit-frame.browser.test.ts` (12 — canvas
-size and ink position, burn on the secret, Word export, the raster and lossy-compress pages keeping size
-and `/UserUnit`, text layer on the ink at 150%, each against a `/UserUnit 1` control) and `tests/infra/pointViewport.test.ts` (5). The text-layer case builds its
+export disagree, in either direction. Guards: `tests/browser/userunit-frame.browser.test.ts` (16 — canvas
+size and ink position, burn on the secret, Word export, the raster (plain and cropped), lossy-compress and
+page-as-image outputs keeping size, `/UserUnit` and physical resolution, text layer on the ink at 150%,
+each against a `/UserUnit 1` control) and `tests/infra/pointViewport.test.ts` (5). The text-layer case builds its
 viewport through the helper, so it certifies `TextLayerManager` and the CSS factor, while the static
 guard certifies that `pageRenderPipeline` wires the helper — a division of labour, not a gap. The test
 must import `src/styles/pdf-layers.css`: without it pdf.js's spans are not positioned and even the
@@ -507,7 +510,9 @@ it stays green) — the text-layer case stays GREEN, because canvas and layer ar
 u× and aligned, which is correct: that case checks alignment, not frame; the editor renderer reverted to
 a direct call → the static guard + all 4 UserUnit-2 browser cases (every case takes its cover from that
 canvas, so the Word export reds too, which was predicted green); the text-layer factor reverted → exactly
-the UserUnit-2 text-layer case; either `/UserUnit` copy removed → exactly its own page case.
+the UserUnit-2 text-layer case; either `/UserUnit` copy removed → exactly its own page case; raster
+`SCALE` without u → the plain and cropped raster cases; the crop clip divided by 2 instead of `SCALE` →
+exactly the cropped case; compress or page-as-image without u → exactly its own case.
 
 ### Open via the native picker + recent files (#54b, 2026-09-04)
 

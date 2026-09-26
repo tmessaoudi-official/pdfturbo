@@ -498,8 +498,10 @@ export class ExportService {
       const total = renderDoc.numPages;
       for (let i = 1; i <= total; i++) {
         const page = await renderDoc.getPage(i);
+        const userUnit = pageUserUnit(page);
         const ptVp = pointViewport(page, { scale: 1 });        // page size in points
-        const vp = pointViewport(page, { scale });             // raster resolution
+        // Raster resolution: the DPI is per PHYSICAL inch, so a /UserUnit page scales by its unit.
+        const vp = pointViewport(page, { scale: scale * userUnit });
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(vp.width));
         canvas.height = Math.max(1, Math.round(vp.height));
@@ -511,7 +513,6 @@ export class ExportService {
         const p = out.addPage([ptVp.width, ptVp.height]);
         p.drawImage(img, { x: 0, y: 0, width: ptVp.width, height: ptVp.height });
         // Sized in points; keep the source's /UserUnit so the page keeps its physical size.
-        const userUnit = pageUserUnit(page);
         if (userUnit !== 1) p.node.set(PDFName.of('UserUnit'), PDFNumber.of(userUnit));
         onPage(i, total);
       }
@@ -986,7 +987,8 @@ export class ExportService {
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
       const renderDoc  = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
       const renderPage = await renderDoc.getPage(1);
-      const vp = pointViewport(renderPage, { scale });
+      // `scale` is ~72 DPI per unit, per PHYSICAL inch — a /UserUnit page scales by its unit.
+      const vp = pointViewport(renderPage, { scale: scale * pageUserUnit(renderPage) });
       const offscreen = document.createElement('canvas');
       offscreen.width  = Math.round(vp.width);
       offscreen.height = Math.round(vp.height);

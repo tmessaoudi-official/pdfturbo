@@ -94,6 +94,17 @@ async function coverAsDrawn(doc: pdfjsLib.PDFDocumentProxy): Promise<RedactionEl
   return new RedactionElement(b.x0 - 4, b.y0 - 4, b.x1 - b.x0 + 8, b.y1 - b.y0 + 8, 'p1', '#000000');
 }
 
+/** Pixel width of the one image XObject on page 1 — the raster's resolution. */
+async function imageWidth(bytes: Uint8Array): Promise<number> {
+  const { PDFDocument, PDFName, PDFDict } = await import('@cantoo/pdf-lib');
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const xo = doc.getPage(0).node.Resources()?.lookup(PDFName.of('XObject'), PDFDict);
+  const entries = xo ? xo.entries() : [];
+  expect(entries.length, 'exactly one image on the page').toBe(1);
+  const img = doc.context.lookup(entries[0][1]) as unknown as { dict: { get(k: unknown): unknown } };
+  return (img.dict.get(PDFName.of('Width')) as { asNumber(): number }).asNumber();
+}
+
 async function darknessAt(bytes: Uint8Array, box: { x0: number; y0: number; x1: number; y1: number }): Promise<number> {
   const pdf = await open(bytes);
   const pg = await pdf.getPage(1);
@@ -158,9 +169,29 @@ describe('/UserUnit — the editor works in points', () => {
       const target = await PDFDocument.create();
       await rasterizePageWithRedactions(src, docPage, [cover as unknown as PDFElement], target,
         { rgb, StandardFonts, degrees }, noWatermark, new InkLayer(), failLoud);
-      const pg = await (await open(await target.save({ useObjectStreams: false }))).getPage(1);
+      const out = await target.save({ useObjectStreams: false });
+      const pg = await (await open(out)).getPage(1);
       expect([pg.view[2] - pg.view[0], pg.view[3] - pg.view[1]]).toEqual([W, H]);
       expect(pg.userUnit).toBe(unit);
+      // Resolution is PHYSICAL: the raster's SCALE 2 per physical point, i.e. 2·u pixels per point.
+      expect(await imageWidth(out)).toBe(W * 2 * unit);
+    });
+
+    it(`${label}: a CROPPED redaction raster page is the crop window, at 2 px per physical point`, async () => {
+      const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
+      const bytes = await build(unit);
+      const cover = await coverAsDrawn(await open(bytes));
+      const src = await loadPdfDocument(bytes, { viewerCheck: 'source', updateMetadata: false });
+      const target = await PDFDocument.create();
+      // Non-square, off-origin window so a clip divided by the wrong scale cannot pass by symmetry.
+      const cropped = { ...docPage, crop: { x: 20, y: 10, width: 240, height: 160 } } as DocumentPage;
+      await rasterizePageWithRedactions(src, cropped, [cover as unknown as PDFElement], target,
+        { rgb, StandardFonts, degrees }, noWatermark, new InkLayer(), failLoud);
+      const out = await target.save({ useObjectStreams: false });
+      const pg = await (await open(out)).getPage(1);
+      expect([pg.view[2] - pg.view[0], pg.view[3] - pg.view[1]]).toEqual([240, 160]);
+      expect(pg.userUnit).toBe(unit);
+      expect(await imageWidth(out)).toBe(240 * 2 * unit);
     });
 
     it(`${label}: a lossy-compressed page keeps the page's size and /UserUnit`, async () => {
@@ -173,6 +204,42 @@ describe('/UserUnit — the editor works in points', () => {
       const pg = await (await open(out)).getPage(1);
       expect([pg.view[2] - pg.view[0], pg.view[3] - pg.view[1]]).toEqual([W, H]);
       expect(pg.userUnit).toBe(unit);
+      // 72 DPI means 72 pixels per PHYSICAL inch: one per point times the UserUnit.
+      expect(await imageWidth(out)).toBe(W * unit);
+    });
+
+    it(`${label}: page-as-image renders at the physical resolution chosen`, async () => {
+      const bytes = await build(unit);
+      const doc = await open(bytes);
+      let settle!: (b: Blob) => void;
+      const captured = new Promise<Blob>(res => { settle = res; });
+      const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
+      const svc = new ExportService({
+        documentModel: {
+          pageCount: 1, currentPageIndex: 0, pages: [docPage],
+          sourcePdfs: new Map([['s1', { doc, bytes }]]),
+          watermark: { enabled: false }, bates: { enabled: false },
+        },
+        elements: [], formValues: {}, currentFilename: 'x.pdf', exportPassword: null,
+        inkLayer: { getStrokes: () => [] },
+        reportError: failLoud,
+        progress: { begin: () => handle },
+      } as unknown as IExportContext) as unknown as {
+        _saveOrDownload(t: unknown, b: Blob): Promise<void>;
+        downloadPageAsImage(i: number, o: { scale: number; format: 'png' }): Promise<void>;
+      };
+      svc._saveOrDownload = (_t, b) => { settle(b); return Promise.resolve(); };
+      const picker = globalThis as typeof globalThis & { showSaveFilePicker?: unknown };
+      const saved = picker.showSaveFilePicker;
+      delete picker.showSaveFilePicker;
+      try {
+        await svc.downloadPageAsImage(0, { scale: 1, format: 'png' });
+        const bmp = await createImageBitmap(await captured);
+        // Scale 1 is 72 DPI: one pixel per physical point, i.e. W·u across.
+        expect([bmp.width, bmp.height]).toEqual([W * unit, H * unit]);
+      } finally {
+        if (saved !== undefined) picker.showSaveFilePicker = saved;
+      }
     });
 
     it(`${label}: the selectable text layer lies on the canvas ink, at 150%`, async () => {

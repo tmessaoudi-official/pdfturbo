@@ -631,7 +631,11 @@ export async function rasterizePageWithRedactions(
   const tempBytes  = await tempDoc.save({ useObjectStreams: false });
   const renderDoc  = await pdfjsLib.getDocument({ data: tempBytes }).promise;
   const renderPage = await renderDoc.getPage(1);
-  const SCALE = 2;
+  // Pixels per POINT. The viewport is a points viewport, so a /UserUnit page multiplies the raster
+  // scale by its UserUnit to keep 2 px per PHYSICAL point — every pixel↔point conversion below
+  // (crop clip, link re-add) divides by this same SCALE, so they stay in one frame.
+  const userUnit = pageUserUnit(renderPage);
+  const SCALE = 2 * userUnit;
   const vp = pointViewport(renderPage, { scale: SCALE });
 
   const offscreen = document.createElement('canvas');
@@ -685,7 +689,6 @@ export async function rasterizePageWithRedactions(
   newPage.drawImage(pngImg, { x: 0, y: 0, width: outW, height: outH });
   // The page is sized in points (the viewport is a points viewport); keep the source's /UserUnit so
   // it exports at the same physical size as its copied neighbours.
-  const userUnit = pageUserUnit(renderPage);
   if (userUnit !== 1) newPage.node.set(PDFName.of('UserUnit'), PDFNumber.of(userUnit));
 
   // A4 — the image page has no annotations, so every link would be lost. Re-create the SAFE ones:

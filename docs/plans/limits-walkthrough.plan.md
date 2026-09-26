@@ -65,7 +65,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 12:31] FOUND (B1 probe): the searchable-OCR layer (`searchableTextLayer.ts:314`) positions its invisible text with pdf-lib `getSize()` — MediaBox size at origin (0,0) — while the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose MediaBox origin is not (0,0), the searchable text is offset from the words. Placement only, not a leak; 0 of 360 corpus pages have a CropBox that differs from the MediaBox. Not ruled.
 - [2026-09-26 13:38] AGREED: /UserUnit — the editor measures in points: one helper divides the viewport scale by the page's UserUnit, every getViewport call in src/ goes through it, and a test bans direct calls.
 - [2026-09-26 14:55] FOUND (row 34, crash-recovery review): the redaction raster and lossy compress BUILD a page sized from the points viewport and dropped /UserUnit, so on a /UserUnit 2 document those pages exported at half physical size; both now copy the source's /UserUnit (within the 13:38 ruling, no new decision).
-- [2026-09-26 15:20] FOUND (row 34 6C): on a /UserUnit page every raster (redaction page, lossy compress, page-as-image) now renders at 1/u of the physical DPI, because dpiToScale is dpi/72 over a points viewport; disclosed in KNOWN_ISSUES/SECURITY, not ruled.
+- [2026-09-26 15:20] FOUND (row 34 6C): on a /UserUnit page every raster (redaction page, lossy compress, page-as-image) now renders at 1/u of the physical DPI, because dpiToScale is dpi/72 over a points viewport; disclosed in KNOWN_ISSUES/SECURITY, then ruled and fixed (15:35, row 35).
+- [2026-09-26 15:35] AGREED: /UserUnit raster DPI — the three raster outputs (redaction page, lossy compress, page-as-image) multiply only their RASTER scale by the page's UserUnit, so the chosen DPI is physical again; page size stays points + /UserUnit.
 - [2026-09-26 08:33] FOUND (A3 probe): on a rotated page (source /Rotate or user rotation) every overlay with content orientation — text, image, signature, code, comment — exports turned by the page rotation, because the glyph/image rotation is degrees(-elemRot) and ignores totalRot; not yet ruled.
 
 ## Formal Plan
@@ -110,6 +111,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | todo | - | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
+| 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | doing | - | src/export/**, tests/browser/** |
 <!-- /progress-block -->
 
 ### Blocked
