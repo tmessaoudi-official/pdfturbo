@@ -7,18 +7,20 @@
  * signature landed displaced — rotated at 90/270. It now maps onto the assembled page's own box.
  *
  * The oracle assumes no frame: the source page carries a GREEN square, the rect is drawn over where pdf.js
- * DISPLAYS that square, and after the prefill the real assembly is rendered and sampled INSIDE the prefilled
- * /Rect. Green there means the signature sits on what the user drew over, whatever the frames do.
+ * DISPLAYS that square, and after the prefill the real `assemblePdfBytes()` — the bytes `PdfSigner` signs — is
+ * rendered and sampled INSIDE the prefilled /Rect. Green there means the signature sits on what the user drew
+ * over, whatever the frames do. The prefill reads its box through the real `ExportService.assembledPageBox`,
+ * which assembles the one page alone, so a disagreement between that and the whole-document assembly reds too.
  */
 import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import { PDFTurboApp } from '../../src/core/pdfTurboApp';
-import { rasterizePageWithRedactions } from '../../src/export/exportPipeline';
+import { ExportService, type IExportContext } from '../../src/export/exportService';
 import { RedactionElement } from '../../src/elements/redactionElement';
 import { pointViewport } from '../../src/utils/pointViewport';
 import { InkLayer } from '../../src/infra/inkLayer';
-import type { DocumentPage, WatermarkSettings } from '../../src/core/documentModel';
+import type { DocumentPage } from '../../src/core/documentModel';
 import type { IErrorReporter } from '../../src/core/errorReporter';
 import type { PDFElement } from '../../src/elements/annotationElement';
 
@@ -27,7 +29,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 const MEDIA = 400;
 const CROP = { x: 30, y: 70, w: 300, h: 240 };   // inset, non-square, asymmetric origin
 const SQUARE = { x: CROP.x + 190, y: CROP.y + 40, s: 50 }; // off-centre, so a rotation error misses it
-const noWatermark: WatermarkSettings = { enabled: false, text: '', opacity: 0, angle: 0, color: '#000000', fontSize: 10 };
 const loud = {
   info() {}, silent() {},
   warn(k: string) { throw new Error(`warned: ${k}`); },
@@ -55,7 +56,6 @@ function displayedSquare(page: pdfjsLib.PDFPageProxy, totalRot: number) {
 }
 
 async function prefillAndSample(opts: { srcRot: number; userRot?: number; crop?: DocumentPage['crop']; redacted: boolean }) {
-  const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
   const bytes = await sourceBytes(opts.srcRot);
   const pdfjsDoc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
   const srcPage = await pdfjsDoc.getPage(1);
@@ -63,38 +63,37 @@ async function prefillAndSample(opts: { srcRot: number; userRot?: number; crop?:
   const docPage = { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: opts.userRot ?? 0, crop: opts.crop } as DocumentPage;
   // A redaction far from the square: its only job is to send the page down the raster path.
   const elements = opts.redacted ? [new RedactionElement(4, 4, 20, 10, 'p1') as unknown as PDFElement] : [];
+  const documentModel = {
+    currentPage: docPage, currentPageIndex: 0, pageCount: 1, pages: [docPage],
+    sourcePdfs: new Map([['s1', { doc: pdfjsDoc, bytes }]]),
+    watermark: { enabled: false }, bates: { enabled: false },
+  };
+
+  // The real export path — the same one `PdfSigner` is handed bytes from.
+  const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
+  const svc = new ExportService({
+    documentModel, elements, formValues: {}, currentFilename: 'doc.pdf', exportPassword: null,
+    inkLayer: new InkLayer(), reportError: loud, progress: { begin: () => handle },
+    cleanEmptyTextElements() {}, renderCurrentPage: () => Promise.resolve(), rebuildElementLayer() {},
+  } as unknown as IExportContext);
 
   const app = Object.create(PDFTurboApp.prototype) as PDFTurboApp;
   const a = app as unknown as Record<string, unknown>;
   const field = () => ({ value: '' }) as HTMLInputElement;
   const ui = { signX: field(), signY: field(), signW: field(), signH: field(), signPage: field() };
   Object.defineProperty(a, 'ui', { value: ui, configurable: true });
-  a.documentModel = { currentPage: docPage, currentPageIndex: 0, sourcePdfs: new Map([['s1', { doc: pdfjsDoc, bytes }]]) };
+  a.documentModel = documentModel;
   a.elements = elements;
   a.setMode = () => {};
   a._reopenSignModal = () => {};
-  // The assembly the signer signs, for this one page: the real raster path, or the copied page.
-  const assemble = async (): Promise<Uint8Array> => {
-    const src = await PDFDocument.load(bytes);
-    const out = await PDFDocument.create();
-    if (opts.redacted) {
-      await rasterizePageWithRedactions(src, docPage, elements, out, { rgb, StandardFonts, degrees }, noWatermark, new InkLayer(), loud);
-    } else {
-      const [p] = await out.copyPages(src, [0]);
-      p.setRotation(degrees(totalRot));
-      out.addPage(p);
-    }
-    return out.save();
-  };
-  let assembled: Uint8Array | null = null;
-  a.assemblePdfBytes = async () => (assembled = await assemble());
+  a._exportService = svc;
 
   await app.onSignRectPicked(displayedSquare(srcPage, totalRot));
   const r = { x: +ui.signX.value, y: +ui.signY.value, w: +ui.signW.value, h: +ui.signH.value };
   expect(r.w, 'prefilled').toBeGreaterThan(0);
 
   // Render the page the signer signs and sample inside the prefilled /Rect.
-  const signed = await pdfjsLib.getDocument({ data: (assembled ?? await assemble()).slice(0) }).promise;
+  const signed = await pdfjsLib.getDocument({ data: (await svc.assemblePdfBytes()).slice(0) }).promise;
   const page = await signed.getPage(1);
   const vp = page.getViewport({ scale: 2 });
   const canvas = document.createElement('canvas');

@@ -556,6 +556,19 @@ export async function stripRedactedAnnotations(
   }
 }
 
+/**
+ * THE decision whether the assembly rebuilds a page as an image (`rasterizePageWithRedactions`) instead of copying
+ * it: a source page carrying a redaction. A blank page is never rasterised (its redactions drop the covered
+ * elements instead). One function, because the sign-rect prefill (limits row 16) must map onto whichever page the
+ * signer will see, and two copies of this test agreeing by text is the drift this repo keeps shipping.
+ */
+export function pageIsRasterised(
+  docPage: Pick<DocumentPage, 'id' | 'sourcePdfId'>,
+  elements: ReadonlyArray<Pick<PDFElement, 'pageId' | 'type'>>,
+): boolean {
+  return docPage.sourcePdfId !== 'blank' && elements.some(el => el.pageId === docPage.id && el.type === 'redaction');
+}
+
 export async function rasterizePageWithRedactions(
   srcDoc: import('@cantoo/pdf-lib').PDFDocument,
   docPage: DocumentPage,

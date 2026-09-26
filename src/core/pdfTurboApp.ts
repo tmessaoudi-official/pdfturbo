@@ -29,7 +29,8 @@ import { OcrHandler, type OcrOutputMode, type OcrRunProgress } from '../handlers
 import { ocrStatusLabelKey, OCR_LABEL_LOADING } from '../ocr/ocrStatus';
 import { t } from '../utils/i18n';
 import { SearchableLayerError } from '../ocr/searchableTextLayer';
-import { isPdfLoadRefusal, loadPdfDocument } from '../utils/pdfLoadGuard';
+import { isPdfLoadRefusal } from '../utils/pdfLoadGuard';
+import { pageIsRasterised } from '../export/exportPipeline';
 import { SigningHandler } from '../handlers/signingHandler';
 import { CodeElement } from '../elements/codeElement';
 import type { QRStyleOptions, BwipOptions } from '../utils/codeGenerator';
@@ -838,7 +839,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         // crop dimensions alone displaced the visible signature by exactly the CropBox origin —
         // the same frame mismatch as the redaction CropBox-origin leak, and invisible for the
         // same reason: almost every page has a (0,0) origin.
-        const rasterised = page.sourcePdfId !== 'blank' && this.elements.some(el => el.pageId === page.id && el.type === 'redaction');
+        // The assembly's own decision (`pageIsRasterised`), so the prefill cannot pick a different branch than the signer sees.
+        const rasterised = pageIsRasterised(page, this.elements);
         const us = rasterised
           ? await this._rectOnAssembledPage(displayRect, page, geom, totalRot)
           : displayRectToPageUserSpaceRect(displayRect, geom.viewBox, totalRot);
@@ -859,9 +861,9 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
    * does not copy the source page: it rasterises it onto a FRESH page at origin (0,0), sized to the displayed view
    * (the crop window when cropped, width and height swapped at 90/270), with no /Rotate — so the source mapping
    * above lands the signature displaced, or rotated. This maps the drawn rect onto the box of the page the signer
-   * will actually see, read from those same assembled bytes, proportionally from the window that page shows.
-   * Returns null when the assembly fails: the fields stay as they were, and pressing Sign runs the same assembly
-   * and reports the failure in the modal (`signingHandler` → `_showSignError`).
+   * will actually see, read by assembling that page through the same export path (`assembledPageBox`),
+   * proportionally from the window that page shows. Returns null when the assembly fails: the fields stay as they
+   * were, and pressing Sign runs the same assembly and reports the failure in the modal (`_showSignError`).
    */
   private async _rectOnAssembledPage(
     rect: { x: number; y: number; width: number; height: number },
@@ -876,8 +878,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
       : { x: 0, y: 0, width: swap ? H : W, height: swap ? W : H };
     let box: { x: number; y: number; width: number; height: number };
     try {
-      const assembled = await loadPdfDocument(await this.assemblePdfBytes(), { updateMetadata: false, viewerCheck: false });
-      box = assembled.getPage(this.documentModel.currentPageIndex).getCropBox();
+      box = await this.assembledPageBox(this.documentModel.currentPageIndex);
     } catch {
       return null;
     }
@@ -1056,6 +1057,9 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   }
   /** Assembled (edited) document bytes — used by the e-signing flow. */
   assemblePdfBytes(): Promise<Uint8Array> { return this._exportService.assemblePdfBytes(); }
+  assembledPageBox(pageIndex: number): Promise<{ x: number; y: number; width: number; height: number }> {
+    return this._exportService.assembledPageBox(pageIndex);
+  }
 
   _updatePlacementGhost(e: PointerEvent): void { this._placementManager.updatePlacementGhost(e); }
 }

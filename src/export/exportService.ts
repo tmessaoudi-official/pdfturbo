@@ -6,7 +6,7 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
-import { buildPageOverlays, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
+import { buildPageOverlays, pageIsRasterised, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
 import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
@@ -741,6 +741,20 @@ export class ExportService {
   }
 
   /**
+   * Limits row 16 (C9). The box of page `pageIndex` exactly as the signer will see it in `assemblePdfBytes()` —
+   * read, never reproduced. The page is assembled ALONE through the same `_assemblePdfDoc`: a page's frame depends
+   * only on that page (a raster page is rebuilt from its own view), so this is the same box without rasterising
+   * every other redaction-bearing page, saving, or running `assemblePdfBytes`'s empty-text cleanup. Measured at
+   * load 31: a raster page 0.5–1.8 s warm, and saving ten of them another 7 s — a cost a sign pick should not pay.
+   */
+  async assembledPageBox(pageIndex: number): Promise<{ x: number; y: number; width: number; height: number }> {
+    const docPage = this._ctx.documentModel.pages[pageIndex];
+    if (!docPage) throw new Error(`No page ${pageIndex} to assemble.`);
+    const pdfDoc = await this._assemblePdfDoc(undefined, [docPage]);
+    return pdfDoc.getPage(0).getCropBox();
+  }
+
+  /**
    * Build the flattened, edits-baked-in pdf-lib document (no save, no encrypt).
    * @param onPage optional per-page progress callback (done, total) — used by
    *   downloadPDF to drive the determinate overlay bar; the sign path omits it.
@@ -818,8 +832,7 @@ export class ExportService {
       // Keyed on the DOC PAGE, not the source index, so a source page used twice — once redacted,
       // once not — is still copied for the clean instance: the filter keeps any index that at least
       // one non-redacted doc page needs.
-      const pageHasRedaction = (p: typeof docPages[number]): boolean =>
-        elements.some(el => el.pageId === p.id && el.type === 'redaction');
+      const pageHasRedaction = (p: typeof docPages[number]): boolean => pageIsRasterised(p, elements);
       const copiedPages = new Map<string, import('@cantoo/pdf-lib').PDFPage>();
       // WS8 step 5: each source's layer settings travel with its pages (see `copySourcePages`).
       const layered: Array<{ id: string; ocProperties: import('@cantoo/pdf-lib').PDFDict }> = [];
@@ -852,7 +865,7 @@ export class ExportService {
       const docTotal = documentModel.pages.length;
       for (const docPage of docPages) {
         const pageElements = elements.filter(el => el.pageId === docPage.id);
-        const hasRedaction = pageElements.some(el => el.type === 'redaction');
+        const hasRedaction = pageIsRasterised(docPage, pageElements);
         const pageNumber = documentModel.pages.indexOf(docPage) + 1;
 
         // Blank page: create fresh page at specified dimensions
@@ -919,7 +932,7 @@ export class ExportService {
       const srcDocLib = await loadPdfDocument(srcEntry.bytes, { viewerCheck: 'source' });
       const pdfDoc    = await PDFDocument.create();
       const pageElements = elements.filter(el => el.pageId === docPage.id);
-      const hasRedaction = pageElements.some(el => el.type === 'redaction');
+      const hasRedaction = pageIsRasterised(docPage, pageElements);
 
       if (hasRedaction) {
         await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageIdx + 1, documentModel.pageCount);

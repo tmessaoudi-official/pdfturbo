@@ -1389,7 +1389,8 @@ assembly a redaction-bearing page is replaced by a fresh raster page at origin (
 crop box — so for that one page the absolute prefill is off by the crop origin, where the old
 crop-relative number happened to be right. Left alone deliberately: making the prefill depend on
 which assembly branch a page will take couples the UI to export internals, which is how this family
-of bug breeds. Recorded as a bound rather than papered over.
+of bug breeds. Recorded as a bound rather than papered over. **Superseded — closed by limits row 16; see the
+**CLOSED by limits row 16** paragraph below the WS4-E measurement.**
 
 **WS4-E re-examined it on 2026-09-04, and the sentence above UNDERSTATED it — "off by the crop
 origin" is true only at rotation 0.** Measured from the real assembly: at `/Rotate 0` the assembled
@@ -1411,18 +1412,24 @@ combination-dependent failure, strictly worse than one uniform bound. Guard:
 a fix, so a future attempt starts from the measurement instead of from this prose.
 
 **CLOSED by limits row 16 (2026-09-26, C9) — by reading the box, not reproducing the rounding.** The objection
-above was to REPRODUCING the rasteriser's rounding in the UI. The ruling was to read the page box from the
-assembled bytes the signer signs instead: on a redaction-bearing page `onSignRectPicked` calls
-`assemblePdfBytes()`, reads page N's box, and maps the drawn rect onto it PROPORTIONALLY from the window that page
-shows (`displayRectOntoBox` — the crop window via `contentRectToDisplay` when cropped, gated like the export, else
-the whole rotated view). Proportional absorbs the rounding, so cropped and uncropped get the same treatment. Every
-other page keeps the exact absolute mapping. An assembly failure leaves the fields and reopens the modal; pressing
-Sign runs the same assembly and reports it. Guards: 6 cases in `tests/core/signRectPrefill.test.ts` and
+above was to REPRODUCING the rasteriser's rounding in the UI. The ruling was to read the box instead: on a page
+`pageIsRasterised` (exportPipeline — the one predicate the assembly, `downloadPage` and the prefill all ask)
+`onSignRectPicked` calls `ExportService.assembledPageBox(i)`, which assembles THAT PAGE ALONE through the same
+`_assemblePdfDoc` and reads its box, then maps the drawn rect onto it PROPORTIONALLY from the window the page shows
+(`displayRectOntoBox` — the crop window via `contentRectToDisplay` when cropped, gated like the export, else the whole
+rotated view). Proportional absorbs the rounding, so cropped and uncropped get the same treatment. Every other page
+keeps the exact absolute mapping. An assembly failure leaves the fields and reopens the modal; pressing Sign runs the
+same assembly and reports it. **One page, not `assemblePdfBytes()`**: the first version read the whole assembled
+document, which rasterises every redaction-bearing page and saves — measured at load 31, 0.5–1.8 s per raster page
+warm (13 s cold) plus 7 s to save ten of them — and runs `cleanEmptyTextElements`, a model mutation a sign pick has
+no business making. A page's frame depends only on that page, so the one-page assembly is the same box. Guards: 6
+cases in `tests/core/signRectPrefill.test.ts` (which also pin that `assemblePdfBytes` is never called) and
 `tests/browser/sign-assembled-prefill.browser.test.ts` (7), whose oracle assumes no frame — a green square drawn
-over, the REAL raster assembly rendered, green sampled at five points inside the prefilled `/Rect` — at /Rotate
-0/90/180/270 with an inset CropBox, user rotation 90, and a #G23 crop, plus a copied-page control. Sabotage: the old
-mapping forced → the 6 raster cases in Chrome and 5 in jsdom; the crop window ignored → exactly the crop case in each.
-Cost: one assembly per pick, on redaction-bearing pages only.
+over, the REAL `assemblePdfBytes()` rendered through a real `ExportService`, green sampled at five points inside the
+prefilled `/Rect` — at /Rotate 0/90/180/270 with an inset CropBox, user rotation 90, and a #G23 crop, plus a
+copied-page control. Sabotage: the old mapping forced → the 6 raster cases in Chrome and 5 in jsdom; the crop window
+ignored → exactly the crop case in each; `assembledPageBox` returning the SOURCE page's box → the 6 raster cases,
+control green. Cost: one single-page assembly per pick, on redaction-bearing pages only.
 
 **Do not cite a count here** — it has been wrong at three surfaces simultaneously. Enumerate the instances from this section instead (`pdfElementRenderer`'s `cropOriginX/Y`, the OCR burn, the redaction text
 filter, this, and the flow-export LAYOUT closed as C22 on 2026-09-02) — so when touching anything that

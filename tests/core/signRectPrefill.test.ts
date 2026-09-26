@@ -25,7 +25,6 @@
  * assertion is kept alongside it, labelled for what it is: intent documentation.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { PDFDocument, degrees } from '@cantoo/pdf-lib';
 import { PDFTurboApp } from '../../src/core/pdfTurboApp';
 
 /** An inset CropBox: 300×400 of content whose origin is (50,70) — the frame the bug ignored. */
@@ -38,8 +37,8 @@ function makeApp(opts: {
   srcRot?: number; pageRotation?: number; blank?: boolean;
   /** Limits row 16: elements on the page (a redaction makes the assembly rasterise it). */
   elements?: Array<{ type: string; pageId: string }>;
-  /** Limits row 16: what `assemblePdfBytes` returns. Unset → it must not be called. */
-  assembled?: () => Promise<Uint8Array>;
+  /** Limits row 16: the assembled page's box. Unset → it must not be asked for. */
+  assembled?: () => Promise<{ x: number; y: number; width: number; height: number }>;
   crop?: { x: number; y: number; width: number; height: number };
 } = {}) {
   const srcRot = opts.srcRot ?? 0;
@@ -74,10 +73,10 @@ function makeApp(opts: {
   a.setMode = vi.fn();
   a._reopenSignModal = vi.fn();
   a.elements = opts.elements ?? [];
-  a.assemblePdfBytes = vi.fn(opts.assembled ?? (() => Promise.reject(new Error('assemblePdfBytes must not be called'))));
+  a.assembledPageBox = vi.fn(opts.assembled ?? (() => Promise.reject(new Error('assembledPageBox must not be called'))));
 
   return {
-    app, ui, getViewport, assemble: a.assemblePdfBytes as ReturnType<typeof vi.fn>,
+    app, ui, getViewport, assemble: a.assembledPageBox as ReturnType<typeof vi.fn>,
     setMode: a.setMode as ReturnType<typeof vi.fn>,
     reopen: a._reopenSignModal as ReturnType<typeof vi.fn>,
     pageGeom: () => (a._pageGeomForSign as (p: unknown) => Promise<Geom | null>).call(app, currentPage),
@@ -156,13 +155,8 @@ describe('_pageGeomForSign — the frame the prefill is built on (WS1-1c)', () =
   });
 });
 
-/** An assembled document whose page 1 is the raster page the redaction path adds: origin (0,0), no /Rotate. */
-async function rasterAssembly(w: number, h: number, rotate = 0): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  const page = doc.addPage([w, h]);
-  if (rotate) page.setRotation(degrees(rotate));
-  return doc.save();
-}
+/** The box of the raster page the redaction path adds: origin (0,0). */
+const rasterAssembly = (w: number, h: number) => Promise.resolve({ x: 0, y: 0, width: w, height: h });
 const REDACTED = [{ type: 'redaction', pageId: 'p1' }];
 
 describe('onSignRectPicked on a page the assembly RASTERISES (limits row 16, C9)', () => {
@@ -171,7 +165,7 @@ describe('onSignRectPicked on a page the assembly RASTERISES (limits row 16, C9)
     // x = 10, y = 400 - (20 + 50) = 330 — where the source mapping would add the (50,70) origin.
     const { app, ui, assemble } = makeApp({ elements: REDACTED, assembled: () => rasterAssembly(300, 400) });
     await app.onSignRectPicked({ x: 10, y: 20, width: 100, height: 50 });
-    expect(assemble).toHaveBeenCalledTimes(1);
+    expect(assemble).toHaveBeenCalledWith(0);
     expect(values(ui)).toEqual({ x: '10', y: '330', w: '100', h: '50', page: '1' });
   });
 

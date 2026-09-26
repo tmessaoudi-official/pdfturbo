@@ -404,8 +404,9 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
 - ~~**A signature drawn on a redacted page landed displaced** (P3, recorded in CLAUDE.md only):~~ **FIXED 2026-09-26
   (limits row 16):** the signer signs the assembled document, where a redaction-bearing page is rebuilt as an image
   at origin (0,0) with its rotation baked in, so the prefilled position was off by the crop origin, and rotated at
-  90/270. The prefill now reads that page's box from the assembled bytes and maps onto it. Measured in Chrome at
-  every rotation, with a crop and with a page crop.
+  90/270. The prefill now assembles that one page the way the export does, reads its box and maps onto it. Measured
+  in Chrome at every rotation, with a crop and with a page crop. Cost: picking a rectangle on a redacted page
+  rasterises that page once (about a second on a loaded machine), and only that page.
 
 
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a

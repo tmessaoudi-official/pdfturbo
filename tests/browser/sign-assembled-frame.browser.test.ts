@@ -69,7 +69,7 @@ async function assembledFrame(pageRot: number): Promise<{ w: number; h: number; 
   return { w: p.getWidth(), h: p.getHeight(), x0: mb.x, y0: mb.y };
 }
 
-describe('WS4-E — the signer sees a different frame than the sign prefill computes', () => {
+describe('WS4-E — the assembled frame of a redacted page (the prefill reads it since limits row 16)', () => {
   it('at rotation 0 the assembled page drops the crop origin — the recorded bound, confirmed', async () => {
     const f = await assembledFrame(0);
     expect({ w: f.w, h: f.h }).toEqual({ w: CROP_W, h: CROP_H });

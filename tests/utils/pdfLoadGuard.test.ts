@@ -785,8 +785,7 @@ describe('every pdf-lib load in src/ goes through the guard', () => {
       'src/handlers/textEditHandler.ts source',
       'src/ocr/searchableTextLayer.ts source',
     ]);
-    // 7 since limits row 16: `pdfTurboApp.ts` reads the sign page's box from `assemblePdfBytes()` — bytes pdf-lib wrote.
-    expect(sites.filter(s => s.endsWith(' false')).length).toBe(7);
+    expect(sites.filter(s => s.endsWith(' false')).length).toBe(6);
   });
 
   it('the scan is not vacuous: it sees the guard file and the viewer verdict', () => {
