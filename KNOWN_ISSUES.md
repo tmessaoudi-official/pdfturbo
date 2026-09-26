@@ -171,8 +171,14 @@ work in a private/incognito window when editing sensitive documents on a shared 
   loads — since round 13 even when the replacement is the same value as the older revision, which the
   round-12 comparison by value refused. Both are pinned in `tests/utils/pdfLoadGuard.test.ts`, on a file
   built for it.
-- **A legal dangling reference can be taken over by pdf-lib's metadata stamp** (P3, pre-existing).
-  When pdf-lib stamps `/Info` on load it registers the dictionary under the next free object number;
+- ~~**A legal dangling reference can be taken over by pdf-lib's metadata stamp** (P3, pre-existing).~~
+  **FIXED 2026-09-26 (limits row 14, C5):** measured, it changed an export — a page whose font `/F2` dangled got the
+  Info dict as its font, and pdf.js dropped the text drawn with it ("WORLD") from the export and from a true-edit
+  save while the viewer showed it; a later registration (a true edit's font) could take a higher dangling number the
+  same way. `loadPdfDocument` now reserves every referenced number (`reserveReferencedNumbers`), so new objects are
+  numbered above all of them; a file whose references all lie at or below its largest defined number is untouched —
+  0 of 104 corpus files are changed (3 have dangling references, all below it). Pinned in
+  `tests/utils/pdfLoadGuard.test.ts` and the browser bundle. The rest of this entry is the original record. When pdf-lib stamps `/Info` on load it registers the dictionary under the next free object number;
   a reference to that number which pointed at nothing (legal — it reads as null) then resolves to the
   Info dictionary. The load guard closes this for DROPPED objects by checking before the stamp, and
   deliberately leaves header-less dangling references alone, because refusing them would reject
@@ -384,7 +390,9 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   hand over the decoded images; the reduction itself 149 ms, the longest main-thread step 36 ms. The pass runs when
   a file opens and is cached, so it does not lengthen an export. Wrong refusals: none on 89 more public PDFs
   (`scripts/viewer-corpus-fetch.sh` — 44 IRS forms, 15 publications and instructions, 30 arXiv papers) in Node, and
-  none on the same files plus the 15-file corpus in Chrome.
+  none on the same files plus the 15-file corpus in Chrome. Bound: an image pdf.js does not hand over within 30 s
+  fingerprints as missing on that side, so a slow decode (a very large scan on a slow device — not measured, the
+  corpus ran on a desktop) refuses the file, and `viewerVerdict` keeps that verdict until the file is opened again.
 
 
 - **Arabic locale strings** — reviewed 2026-07-30: all 31 then-unverified keys were validated by a

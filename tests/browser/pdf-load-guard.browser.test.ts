@@ -13,7 +13,7 @@ import {
   appendRevision, buildContentStreamPdf, buildLinearizedPdf, buildObjStmPdf, buildPageOrderPdf, buildPageTreePdf,
   buildViewerNullPdf, buildXrefPointerPdf, buildXrefQueuePdf, buildXrefShapePdf, editPdfText,
 } from '../utils/_invalidObjectFixture';
-import { buildDupContentPdf, buildDupImagePdf } from '../utils/_viewerCheckFixture';
+import { buildDanglingFontPdf, buildDupContentPdf, buildDupImagePdf } from '../utils/_viewerCheckFixture';
 
 describe('loadPdfDocument in the browser bundle — the drop check', () => {
   it('REFUSES a classic object pdf-lib dropped', async () => {
@@ -81,5 +81,14 @@ describe('loadPdfDocument in the browser bundle — the viewer check (WS8)', () 
   it('does not run the viewer check for bytes the app wrote (viewerCheck: false)', async () => {
     const doc = await loadPdfDocument(buildXrefShapePdf('dupFirst'), { viewerCheck: false });
     expect(doc.getPageCount()).toBe(1);
+  });
+});
+
+describe('loadPdfDocument in the browser bundle — a dangling reference stays dangling (limits row 14)', () => {
+  it('the metadata stamp does not take the number a page font references: the font slot still reads null', async () => {
+    const { PDFRef } = await import('@cantoo/pdf-lib');
+    const doc = await loadPdfDocument(buildDanglingFontPdf(6), { viewerCheck: 'source' });
+    expect(doc.context.lookup(PDFRef.of(6))).toBeUndefined();
+    expect(String(doc.context.trailerInfo.Info)).not.toBe('6 0 R');
   });
 });

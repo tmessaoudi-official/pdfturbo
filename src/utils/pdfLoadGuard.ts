@@ -123,6 +123,7 @@ export async function loadPdfDocument(bytes: Uint8Array, options: GuardedLoadOpt
   const dropped = droppedObjects({ PDFRef, PDFDict, PDFArray, PDFStream, PDFInvalidObject }, doc.context);
   records.delete(doc.context); // the record is only needed for this check
   if (dropped.length > 0) throw new PdfObjectDroppedError(dropped);
+  reserveReferencedNumbers({ PDFRef, PDFDict, PDFArray, PDFStream }, doc.context);
   if (viewerCheck === 'source') {
     // `doc` is unmodified here and only read by the check, which settles before the caller gets it.
     const { pages } = await viewerVerdict(bytes, doc);
@@ -286,6 +287,36 @@ export function installDropRecorder(lib: RecorderLib): void {
 }
 
 /** The drops the document uses: reachable from the trailer and not replaced by a later assignment. */
+/**
+ * Limits row 14 (C5). pdf-lib hands out new object numbers from `largestObjectNumber`, which counts only the objects
+ * the file DEFINES. A reference to a number the file never defines is legal (it reads as null), but the next object
+ * registered in this document — the `/Info` stamp below, a true edit's font or graphics state — takes that number,
+ * and the reference then resolves to it. Measured: a page whose font `/F2` dangled got the Info dict as its font,
+ * and pdf.js dropped the text drawn with it from the export and from a true-edit save while the viewer showed it.
+ * So every referenced number is reserved: new objects are numbered above all of them. A file whose references all
+ * lie at or below its largest defined number is untouched.
+ */
+function reserveReferencedNumbers(lib: Pick<InspectLib, 'PDFRef' | 'PDFDict' | 'PDFArray' | 'PDFStream'>, ctx: PDFContext): void {
+  const { PDFRef, PDFDict, PDFArray, PDFStream } = lib;
+  let highest = ctx.largestObjectNumber;
+  const queue: unknown[] = [ctx.trailerInfo.Root, ctx.trailerInfo.Encrypt, ctx.trailerInfo.Info, ctx.trailerInfo.ID];
+  for (const [, obj] of ctx.enumerateIndirectObjects()) queue.push(obj);
+  // Every indirect object is enqueued above, so a reference is only read here, never followed.
+  while (queue.length > 0) {
+    const value = queue.pop();
+    if (value instanceof PDFRef) {
+      if (value.objectNumber > highest) highest = value.objectNumber;
+    } else if (value instanceof PDFStream) {
+      queue.push(value.dict);
+    } else if (value instanceof PDFDict) {
+      for (const v of value.values()) queue.push(v);
+    } else if (value instanceof PDFArray) {
+      for (let i = 0; i < value.size(); i++) queue.push(value.get(i));
+    }
+  }
+  ctx.largestObjectNumber = highest;
+}
+
 function droppedObjects(lib: InspectLib, ctx: PDFContext): string[] {
   const rec = records.get(ctx);
   if (!rec || (rec.drops.size === 0 && !rec.membersUnknown)) return [];

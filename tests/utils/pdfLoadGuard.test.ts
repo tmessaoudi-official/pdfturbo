@@ -23,6 +23,7 @@ import {
   appendRevision, buildContentStreamPdf as build, buildLinearizedPdf, buildObjStmPdf, buildPageOrderPdf, buildPageTreePdf,
   buildViewerNullPdf, buildXrefCountPdf, buildXrefPointerPdf, buildXrefQueuePdf, buildXrefShapePdf, editPdfText,
 } from './_invalidObjectFixture';
+import { buildDanglingFontPdf } from './_viewerCheckFixture';
 
 describe('loadPdfDocument', () => {
   it('REFUSES a document whose used object pdf-lib silently dropped, naming the object', async () => {
@@ -790,5 +791,39 @@ describe('every pdf-lib load in src/ goes through the guard', () => {
   it('the scan is not vacuous: it sees the guard file and the viewer verdict', () => {
     expect(RAW_LOAD.test(readFileSync('src/utils/pdfLoadGuard.ts', 'utf8'))).toBe(true);
     expect(RAW_LOAD.test(readFileSync('src/utils/viewerVerdict.ts', 'utf8'))).toBe(true);
+  });
+});
+
+describe('loadPdfDocument — a legal dangling reference keeps pointing at nothing (limits row 14, C5)', () => {
+  const { PDFRef, PDFDocument } = pdfLib;
+
+  it('the metadata stamp does not take the dangling number: the text the viewer shows survives a save', async () => {
+    const bytes = buildDanglingFontPdf(6);
+    // Non-vacuity: a raw default load hands number 6 to the stamp, and the saved file loses "WORLD".
+    const raw = await PDFDocument.load(bytes);
+    expect(raw.context.lookup(PDFRef.of(6))).toBeDefined();
+    expect(await pdfjsText(await raw.save())).toBe('HELLO');
+    expect(await pdfjsText(bytes)).toBe('HELLOWORLD');
+
+    const doc = await loadPdfDocument(bytes.slice(0), { viewerCheck: 'source' });
+    expect(doc.context.lookup(PDFRef.of(6))).toBeUndefined();
+    expect(await pdfjsText(await doc.save())).toBe('HELLOWORLD');
+  });
+
+  it('nor does any LATER registration — a true edit adding fonts walks the free numbers upward', async () => {
+    const doc = await loadPdfDocument(buildDanglingFontPdf(9), { viewerCheck: 'source' });
+    const taken = Array.from({ length: 6 }, () => doc.context.register(doc.context.obj({})).objectNumber);
+    expect(taken).not.toContain(9);
+    expect(doc.context.lookup(PDFRef.of(9))).toBeUndefined();
+    expect(await pdfjsText(await doc.save())).toBe('HELLOWORLD');
+  });
+
+  it('a file whose references all lie at or below its largest object number is stamped as before (control)', async () => {
+    for (const bytes of [buildDanglingFontPdf(6, true), build({})]) {
+      const raw = await PDFDocument.load(bytes.slice(0));
+      const doc = await loadPdfDocument(bytes.slice(0), { viewerCheck: false });
+      expect(doc.context.largestObjectNumber).toBe(raw.context.largestObjectNumber);
+      expect(String(doc.context.trailerInfo.Info)).toBe(String(raw.context.trailerInfo.Info));
+    }
   });
 });

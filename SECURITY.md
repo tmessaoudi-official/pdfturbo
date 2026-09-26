@@ -351,7 +351,9 @@ viewing the file are unaffected.
   Measured on 15 real-world PDFs — forms, papers and reports, most of them updated or linearized — and on the 5
   test files kept in the repository: none is refused. On 2026-09-26, with the picture comparison added, 89 more
   public PDFs (44 tax forms, 15 tax publications and instructions, 30 research papers) were measured in Node and
-  in Chrome: none is refused.
+  in Chrome: none is refused. One false-refusal bound: a picture pdf.js takes longer than 30 seconds to decode
+  (a very large scan on a slow device) counts as a difference, and the verdict is kept until the file is opened
+  again — the measurements above ran on a desktop machine, not on a phone.
 
 What the check does not compare, stated rather than hidden: pages the export library holds beyond the ones the
 viewer shows (they are never exported); annotation appearances (compared with annotations switched off, because

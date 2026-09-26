@@ -12,7 +12,9 @@
  * in the same worker. Encrypted sources never get here — every source-reading site loads with no password and pdf-lib
  * refuses encrypted input first, as it did before WS8.
  *
- * A rejected verdict stays cached: the check is deterministic, so the same bytes fail the same way every time.
+ * A rejected verdict stays cached: the check is deterministic, so the same bytes fail the same way every time —
+ * except an image pdf.js does not hand over within the image hash's 30 s timeout (limits row 13), which counts as a
+ * difference and so stays refused until the file is opened again (a stated bound in KNOWN_ISSUES).
  */
 import type { PDFDocument } from '@cantoo/pdf-lib';
 import { viewerMismatch, type ViewerCheckResult, type ViewerPdfJs } from './viewerCheck';

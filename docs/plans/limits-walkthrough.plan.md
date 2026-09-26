@@ -77,6 +77,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 18:40] AGREED (run rules): a finding the existing ruling does not cover is decided by the session (its recommended option), recorded here as session-chosen, and implemented — except a change that would weaken a documented invariant or safety promise, which still stops the run for a question (CLAUDE.md § Questions).
 - [2026-09-26 18:40] AGREED (run rules): certification is one advisor() call per gate, no reviewer panel during this run.
 - [2026-09-26 18:40] AGREED (run rules): full deploy gate + push per row; a browser red that looks like load noise → run the failing files alone and re-run the suite once, and if still red, set that row aside and continue.
+- [2026-09-26 22:25] SESSION-CHOSEN (run rules, not a developer ruling): C5 measured as a real export change (a dangling page font became the stamped Info dict and its text left the export), so it is fixed rather than kept — `loadPdfDocument` reserves every referenced object number before anything registers.
+- [2026-09-26 22:25] SESSION-CHOSEN (run rules): C3's 30 s per-image timeout is kept and stated as a false-refusal bound (a one-sided timeout refuses until the file is reopened), not engineered around.
 
 ## Formal Plan
 
@@ -99,8 +101,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 10 | B4 Arabic font runtime cache | S | done | 50cf966 | vite.config.ts, README.md, tests/** |
 | 11 | B5 clear recent files + delete canUseFsSave | S | done | 4f3c5fd | src/ui/recentFilesMenu.ts, src/utils/fileSystemAccess.ts, locales/** |
 | 12 | B6 OCR progress labels | S | done | 0b25e8b | src/core/pdfTurboApp.ts, locales/** |
-| 13 | C3 image pixel hash in the viewer check + wider corpus | M | done | - | src/utils/viewerCheck.ts, scripts/**, tests/** |
-| 14 | C5 dangling reference vs /Info stamp measured | S | todo | - | tests/** |
+| 13 | C3 image pixel hash in the viewer check + wider corpus | M | done | 2101ea9 | src/utils/viewerCheck.ts, scripts/**, tests/** |
+| 14 | C5 dangling reference vs /Info stamp measured | S | done | - | src/utils/pdfLoadGuard.ts, tests/** |
 | 15 | C8 hoist inline annotations before a locked save | M | todo | - | src/export/**, tests/export/exportPasswordSave.test.ts |
 | 16 | C9 signature rect mapped onto the assembled page | M | todo | - | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
 | 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | todo | - | var/claude/** |

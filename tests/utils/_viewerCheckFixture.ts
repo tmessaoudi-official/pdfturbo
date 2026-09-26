@@ -111,3 +111,23 @@ export function buildDupImagePdf(shape: 'swapped' | 'same'): Uint8Array {
     [6, image(shape === 'same' ? shown : px(30, 30, 220))],
   ]);
 }
+
+/**
+ * Limits row 14 (C5). A page whose font `/F2` is a reference to object `danglingAt`, which the file never defines —
+ * legal, it reads as null, and pdf.js draws "WORLD" in a fallback font. The file has no `/Info` (or has one when
+ * `withInfo`), so pdf-lib's metadata stamp registers a new dictionary under its next free number: with `danglingAt`
+ * 6 that number IS 6, the font slot resolves to the Info dict, and pdf.js then drops "WORLD" from the export. With
+ * `danglingAt` 9 the stamp takes 6 and a LATER registration (a true edit's font) walks up to 9 — the same takeover.
+ */
+export function buildDanglingFontPdf(danglingAt = 6, withInfo = false): Uint8Array {
+  const objs: Array<[number, string]> = [
+    [1, '<< /Type /Catalog /Pages 2 0 R >>'],
+    [2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    [3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 4 0 R /F2 ${danglingAt} 0 R >> >> /Contents 5 0 R >>`],
+    [4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],
+    [5, stream('BT /F1 12 Tf 20 250 Td (HELLO) Tj ET BT /F2 12 Tf 20 200 Td (WORLD) Tj ET')],
+  ];
+  if (!withInfo) return assemble(objs);
+  const bytes = new TextDecoder('latin1').decode(assemble([...objs, [danglingAt + 1, '<< /Producer (x) >>']]));
+  return enc(bytes.replace('/Root 1 0 R >>', `/Root 1 0 R /Info ${danglingAt + 1} 0 R >>`));
+}

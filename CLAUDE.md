@@ -1827,7 +1827,12 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   verdict is cached by BYTES IDENTITY (`viewerVerdict.ts`), prewarmed wherever `addSourcePdf` runs and inherited by a
   true edit's bytes, because the pass costs 8–13 s wall-clock on a 67–142-page report (measured in Chrome; main-thread
   long tasks ≤ 115 ms). A copy of a source's bytes (`.slice(0)`) misses the cache and re-runs it. `false` is for bytes
-  pdf-lib wrote in the same operation; which sites pass which is pinned by name in `pdfLoadGuard.test.ts`. The ten
+  pdf-lib wrote in the same operation; which sites pass which is pinned by name in `pdfLoadGuard.test.ts`.
+  **Since limits row 14 `loadPdfDocument` also raises `largestObjectNumber` past every REFERENCED number**
+  (`reserveReferencedNumbers`): pdf-lib numbers new objects from the largest DEFINED one, so the `/Info` stamp or a
+  true edit's font took a legal dangling number and the reference resolved to it — measured, a dangling page font
+  became the Info dict and pdf.js dropped its text from the export. The viewer check could not see it: it runs
+  BEFORE the stamp. 0 of 104 corpus files change (3 dangle, all below their largest number). The ten
   audit shapes are tracked in `tests/fixtures/ws8-audit/`: nine refuse with `PdfPageMismatchError`, and P6 does not
   load at all — pdf.js itself throws `InvalidPDFException` on it, so the check rejects. `viewerVerdict` sets the pdf.js worker
   itself in a real browser: relying on `infra/pdfRenderer.ts` having been imported first failed every guarded load
