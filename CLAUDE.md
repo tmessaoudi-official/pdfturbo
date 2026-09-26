@@ -296,8 +296,10 @@ Three traps, each found by a sabotage or a screenshot rather than by the first d
 - **A whole-page ink count cannot see the missing text.** The page's border rules alone are 498 dark pixels,
   so "ink > 200" passed without CMaps. The case counts only the text area, which reads 0 without them and 78
   with them at scale 1.
-- **`cMapPacked: false` does NOT blank the page** — the glyphs still draw, but the text extracts as garbage
-  (`͍͋͏…`). So the guarantee to pin is the EXTRACTED STRING, not the ink.
+- **`cMapPacked: false` did NOT blank the page in the harness** — the glyphs drew and the text extracted as
+  garbage (`͍͋͏…`). Scope that: pdf.js then asks for the UNPACKED name, which does not exist, and the dev
+  server answered it with `index.html` (trap one), so pdf.js parsed HTML as a CMap. On GitHub Pages that is a
+  real 404, and what pdf.js does then is unmeasured. Either way the guarantee to pin is the EXTRACTED STRING.
 
 Guards: `tests/browser/cjk-cmaps.browser.test.ts` (6: the URL serves a real CMap; `vertical.pdf`'s exact text,
 its ink in the text area, the Word/Markdown/text export, and the WS8 viewer check accepting it; a LibreOffice
