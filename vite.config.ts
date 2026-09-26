@@ -44,7 +44,7 @@ export default defineConfig({
             },
           },
           {
-            // Row 32 — pdf.js's packed CMap files (169, ~1.7 MB), vendored into public/pdfjs/cmaps/.
+            // Row 32 — pdf.js's packed CMap files (168 + their LICENSE, ~1.7 MB), vendored into public/pdfjs/cmaps/.
             // Fetched only by CJK documents that need one, so they stay OUT of the precache (.bcmap
             // matches no globPattern) and are cached on first use; maxEntries covers every file so a
             // CMap's usecmap chain is never evicted mid-document.
@@ -56,10 +56,11 @@ export default defineConfig({
             },
           },
           {
-            // Row 36 — pdf.js's JBIG2 / JPEG 2000 decoders (2 wasm modules + 2 JS fallbacks), vendored into
-            // public/pdfjs/wasm/. Fetched only by a document with such an image, so cached on first use; this
-            // rule must precede the generic .js rule so the fallbacks land here.
-            urlPattern: ({ url }) => url.pathname.includes('/pdfjs/wasm/') && url.origin === self.location.origin,
+            // Rows 36-37 — pdf.js's JBIG2 / JPEG 2000 decoders (2 wasm modules + 2 JS fallbacks) and its colour
+            // module (qcms) in public/pdfjs/wasm/, and its CMYK profile in public/pdfjs/iccs/. Fetched on first use,
+            // so cached then; this rule must precede the generic .js rule so the fallbacks land here.
+            urlPattern: ({ url }) =>
+              (url.pathname.includes('/pdfjs/wasm/') || url.pathname.includes('/pdfjs/iccs/')) && url.origin === self.location.origin,
             handler: 'CacheFirst',
             options: {
               cacheName: 'pdfjs-wasm',

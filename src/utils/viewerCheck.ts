@@ -32,7 +32,7 @@ import { withPdfjsAssets } from './pdfjsParams';
 
 /** The slice of the pdf.js module this check uses — the app's `pdfjs-dist`, or the legacy build under Node. */
 export interface ViewerPdfJs {
-  getDocument(src: { data: Uint8Array; verbosity?: number; cMapUrl?: string; cMapPacked?: boolean; wasmUrl?: string; useWorkerFetch?: boolean }): { promise: Promise<PDFDocumentProxy> };
+  getDocument(src: { data: Uint8Array; verbosity?: number; cMapUrl?: string; cMapPacked?: boolean; wasmUrl?: string; iccUrl?: string; useWorkerFetch?: boolean }): { promise: Promise<PDFDocumentProxy> };
   AnnotationMode: { DISABLE: number };
 }
 

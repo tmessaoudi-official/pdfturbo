@@ -280,7 +280,7 @@ only when `getDocument` is given `cMapUrl`, and `src/` never passed it: pdf.js's
 BLANK page (only its border rules drew) and extracted `""`, where with CMaps it reads `あいうえお日本語`
 [measured 2026-09-26, `var/claude/qa-shots/row32/`]. So such a page was unreadable, unselectable,
 unsearchable and absent from every export. Ruled fix: `scripts/prepare-pdfjs-assets.mjs` copies
-`pdfjs-dist/cmaps/` (169 files, ~1.7 MB) into gitignored `public/pdfjs/cmaps/` — hooked on `predev`,
+`pdfjs-dist/cmaps/` (169 files — 168 packed CMaps and their `LICENSE` — ~1.7 MB) into gitignored `public/pdfjs/cmaps/` — hooked on `predev`,
 `prebuild` and `pretest:browser`, so CI needs no workflow step — and every `getDocument` in `src/` goes
 through `withPdfjsAssets` (`src/utils/pdfjsParams.ts`; named `withCMaps` when it landed, renamed by row 36),
 which adds an ABSOLUTE same-origin `cMapUrl` and
@@ -293,7 +293,7 @@ Three traps, each found by a sabotage or a screenshot rather than by the first d
 
 - **The dev server answers a missing file with `index.html` and a 200.** The first URL case checked status
   and size and stayed GREEN with `public/pdfjs/` deleted. It now checks the body's packed-CMap signature (a
-  type byte, then `e0 52 43` — all 169 files).
+  type byte, then `e0 52 43` — all 168 `.bcmap` files).
 - **A whole-page ink count cannot see the missing text.** The page's border rules alone are 498 dark pixels,
   so "ink > 200" passed without CMaps. The case counts only the text area, which reads 0 without them and 78
   with them at scale 1.
@@ -335,13 +335,11 @@ deliberately NOT copied. The PWA ignores `**/pdfjs/**` for the precache — the 
 otherwise match its glob — and caches the four at runtime (`pdfjs-wasm`, placed before the generic `.js`
 rule).
 
-**`useWorkerFetch` is pinned `false`, and that is the load-bearing line.** pdf.js turns it on by itself only
+**Row 36 shipped `useWorkerFetch` pinned `false`; row 37 turned it on.** pdf.js turns it on by itself only
 when `cMapUrl`, `standardFontDataUrl` AND `wasmUrl` are all given (`pdf.mjs:15464`), and on also switches
-ON its ICC colour management (`IccColorSpace.setOptions`), shifting the colours of every ICC-tagged page —
-measured up to 18 levels per channel on 2 of 8 pages of a corpus paper, nothing blanked. That is a
-different change with a different blast radius, split out as row 37 and not ruled. With it false, pdf.js
-fetches the decoders on the main thread and hands them to the worker, exactly how CMaps were already
-fetched. Adding `standardFontDataUrl` to the helper would flip it silently; the unit test says so.
+ON its ICC colour management (`IccColorSpace.setOptions`). Row 36 kept that out of its own change so the
+colour shift could be measured and ruled on its own — see the next section. With it false, pdf.js fetched
+the decoders on the main thread and handed them to the worker.
 
 Guards: `tests/browser/scan-codecs.browser.test.ts` (13: the modules are served — body checked, the row-32
 SPA-fallback trap; each of the four images draws; the JS fallback draws a JBIG2 and a JPX image with
@@ -362,6 +360,48 @@ worker is created with `type: "module"` and the built chunk keeps the `import()`
 artifact (`vite preview`, Playwright `setInputFiles` on `#fileInput`): `jbig2_symbol_offset.pdf` drew 17278
 non-white pixels on `#pdfCanvas` and `bug_jpx.pdf` 27378, each fetching its module from `/pdfjs/wasm/`,
 no console error.
+
+### pdf.js colour management is on — row 37 (2026-09-26)
+
+Without it pdf.js draws DeviceCMYK with a fitted formula and ignores ICC profiles. Measured against
+Ghostscript renders at the same size: the Pub 17 cover's rich black came out slate-blue (44,46,53) where
+Ghostscript draws (35,31,32) and colour-managed pdf.js (34,31,33); 6×6-block error 10.81 → 4.27. DeviceCMYK
+is on nearly every page of the three government reports in the corpus. Developer ruling (18:00): full colour
+management, i.e. what pdf.js's own viewer does — its `pdf_viewer.mjs` sets `cMapUrl`, `iccUrl`,
+`standardFontDataUrl` and `wasmUrl`, so `useWorkerFetch` turns on there.
+
+`withPdfjsAssets` adds an absolute `iccUrl` and sets `useWorkerFetch: true`; the asset script copies
+`qcms_bg.wasm` into `public/pdfjs/wasm/` and `CGATS001Compat-v2-micro.icc` into `public/pdfjs/iccs/`, each vendored decoder / module / profile with its licence
+file (`THIRD-PARTY-NOTICES.md` lists them — rows 32 and 36 had not); the `pdfjs-wasm` runtime cache also takes
+`/pdfjs/iccs/`. **It is ONE switch with an optional half:** CMYK
+management works only when the ICC module does (`CmykICCBasedCS.isUsable` requires `IccColorSpace.isUsable`),
+and the ICC module works only with worker fetch. The ICC-tagged half alone measured no closer to Ghostscript
+(block error within half a level either way on the three corpus pages it changes) — it rides along, it is not
+the reason. **`standardFontDataUrl` stays unset**: it would change how non-embedded fonts are drawn, which is
+a separate change; the unit test pins its absence.
+
+Two consequences worth knowing. **Worker fetch moves the CMap fetch into the worker** — measured
+pixel-identical on a CJK page, a base-14 page and a plain page, and the viewer check stays clean on the Census
+and Pub 17 reports (+30% on Census at load ~13, +4% on Pub 17). **A missing colour module degrades, it does not
+break**: with `qcms_bg.wasm` absent the page renders in exactly the old colours and the viewer check passes —
+measured on the dev server, whose answer to a missing file is an HTML page; a real 404 reaches the same
+`try/catch` in pdf.js [Inferred]. So offline before the module was cached, colours are the old approximation.
+The rasters (redaction page, lossy compress, page-as-image), thumbnails and OCR now bake the managed colours;
+the vector PDF export is unaffected (colour operators are copied).
+
+Guards: `tests/browser/icc-colour.browser.test.ts` (3: the module and profile are served — body checked; five
+patches of `tests/fixtures/icc/cmyk-patches.pdf` within 4 levels of Ghostscript — the ICC-tagged one against
+its embedded profile, the DeviceCMYK ones against Ghostscript given pdf.js's own profile, a DeviceRGB CONTROL
+exact; the viewer check accepts it), two cases in `tests/infra/pdfjsParams.test.ts` and one in
+`pwaOcrCaching.test.ts`. Before the fix three patches were 9–11 levels off; after, 1 (rich black is 4 off both
+ways — qcms and lcms differ near black, so that patch does not discriminate). Sabotage, predicted first, each
+landed and restored with `cmp`: no `iccUrl` → the served case and the two DeviceCMYK patches, the ICC-tagged
+one green (the halves are separable in that direction); `useWorkerFetch: false` → all three patches, served
+case green; `qcms_bg.wasm` not copied → served case and all three patches, rendering intact; the profile not
+copied → served case and the two DeviceCMYK patches; the cache rule without `/pdfjs/iccs/` → exactly its case.
+Driven once by hand on the built artifact (`vite preview`, Playwright `setInputFiles`): the fixture's patches
+read the same values as in the harness, the worker fetched `qcms_bg.wasm` and the profile, and `pdfjs-vertical.pdf`
+still read `あいうえお日本語` with its CMap now fetched by the worker; no console error.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

@@ -1,16 +1,17 @@
 /**
- * Rows 32 and 36 (2026-09-26) — every pdf.js document is opened WITH pdf.js's data files.
+ * Rows 32, 36 and 37 (2026-09-26) — every pdf.js document is opened WITH pdf.js's data files.
  *
  * A CID font encoded with a predefined Adobe CMap (common in CJK PDFs) decodes only when `getDocument`
- * is given `cMapUrl` (row 32), and a JBIG2 or JPEG 2000 image only when it is given `wasmUrl` (row 36);
- * without them the text, or the scan, is lost. One helper, `withPdfjsAssets`, adds the parameters, and
- * this file bans a `getDocument` call that bypasses it, so a new open site cannot silently lose either.
- * `tests/browser/cjk-cmaps.browser.test.ts` and `scan-codecs.browser.test.ts` pin the behaviour.
+ * is given `cMapUrl` (row 32), a JBIG2 or JPEG 2000 image only when it is given `wasmUrl` (row 36), and
+ * CMYK / ICC colour is colour-managed only with `iccUrl` and worker fetch (row 37). One helper,
+ * `withPdfjsAssets`, adds the parameters, and this file bans a `getDocument` call that bypasses it, so a
+ * new open site cannot silently lose any of them. `tests/browser/cjk-cmaps.browser.test.ts`,
+ * `scan-codecs.browser.test.ts` and `icc-colour.browser.test.ts` pin the behaviour.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { withPdfjsAssets, cMapBaseUrl, wasmBaseUrl } from '../../src/utils/pdfjsParams';
+import { withPdfjsAssets, cMapBaseUrl, wasmBaseUrl, iccBaseUrl } from '../../src/utils/pdfjsParams';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -48,8 +49,15 @@ describe('withPdfjsAssets — the helper', () => {
     expect(new URL(p.wasmUrl).pathname.endsWith('/pdfjs/wasm/')).toBe(true);
   });
 
-  it('pins useWorkerFetch false, so pdf.js does not switch on ICC colour management (row 37, unruled)', () => {
-    expect(withPdfjsAssets({ data: new Uint8Array() }).useWorkerFetch).toBe(false);
+  it('turns on colour management: an absolute iccUrl ending in pdfjs/iccs/, and useWorkerFetch true (row 37)', () => {
+    const p = withPdfjsAssets({ data: new Uint8Array() });
+    expect(p.iccUrl).toBe(iccBaseUrl());
+    expect(new URL(p.iccUrl).pathname.endsWith('/pdfjs/iccs/')).toBe(true);
+    // pdf.js enables its ICC module only when the worker fetches its own data (IccColorSpace.setOptions).
+    expect(p.useWorkerFetch).toBe(true);
+  });
+
+  it('gives NO standardFontDataUrl: that would change how non-embedded fonts are drawn, a separate change', () => {
     expect('standardFontDataUrl' in withPdfjsAssets({ data: new Uint8Array() })).toBe(false);
   });
 

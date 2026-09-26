@@ -59,6 +59,10 @@ describe('PWA decoder caching (row 36)', () => {
     expect(cfg.indexOf("cacheName: 'pdfjs-wasm'")).toBeLessThan(cfg.indexOf("cacheName: 'pdf-chunks'"));
   });
 
+  it('the same cache also holds the CMYK profile under /pdfjs/iccs/ (row 37)', () => {
+    expect(cfg).toMatch(/url\.pathname\.includes\('\/pdfjs\/iccs\/'\)/);
+  });
+
   it('keeps everything under pdfjs/ out of the precache', () => {
     expect(cfg).toMatch(/globIgnores:\s*\[[^\]]*'\*\*\/pdfjs\/\*\*'[^\]]*\]/);
   });

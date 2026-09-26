@@ -335,10 +335,11 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   own test files. The vector PDF export was not affected. The decoders are now vendored into
   `public/pdfjs/wasm/` and every `getDocument` passes them (`tests/browser/scan-codecs.browser.test.ts`).
   Same offline bound as the CMaps: cached the first time a document needs them, never precached.
-- **pdf.js's ICC colour management is off** (found 2026-09-26, row 37, not ruled). pdf.js switches it on
-  only together with worker-side fetching, which `src/` pins off, so an ICC-tagged image or colour is drawn
-  through its alternate device space. Measured on a corpus paper: up to 18 levels per channel on 2 of 8
-  pages, nothing missing. Turning it on would change the colours of every ICC-tagged page at once.
+- ~~**pdf.js's ICC colour management was off**~~ **FIXED 2026-09-26 (row 37).** DeviceCMYK was drawn with an
+  approximate formula (rich black came out slate-blue) and ICC profiles were ignored. pdf.js's colour module
+  and CMYK profile are now served and every `getDocument` turns colour management on, as pdf.js's own viewer
+  does (`tests/browser/icc-colour.browser.test.ts`). Same offline bound as the decoders: cached the first time
+  a document needs them, never precached — offline before that, colours fall back to the old approximation.
 - **The searchable-OCR layer ignores the CropBox** (P2, found 2026-09-26, not yet ruled).
   `searchableTextLayer.ts` positions its invisible text with the MediaBox size at origin (0,0) while
   the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose

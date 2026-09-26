@@ -8,7 +8,8 @@ below).
 _Last generated: 2026-06-26, from `package.json`; versions refreshed 2026-09-13 after the upgrade to
 latest (every licence re-read from the installed `package.json` — none changed). fflate and the four
 packages under "Bundled transitively" were added the same day, after WS7 round 10 found them missing;
-the transitive dependencies of the other libraries followed after WS7 round 11._
+the transitive dependencies of the other libraries followed after WS7 round 11. The pdf.js data files
+(CMaps, decoders, colour module, CMYK profile) were added 2026-09-26 with rows 32, 36 and 37._
 
 ---
 
@@ -18,6 +19,13 @@ the transitive dependencies of the other libraries followed after WS7 round 11._
 - **Version**: ^6.3.289 · **License**: Apache-2.0
 - **Repository**: https://github.com/mozilla/pdf.js
 - Copyright © Mozilla Foundation and PDF.js contributors
+- **Data files served from `pdfjs/`** (copied from the package by `scripts/prepare-pdfjs-assets.mjs`; each
+  licence text is served beside its files):
+  - `pdfjs/cmaps/` — Adobe CMap resources · BSD-3-Clause · Copyright 1990-2009 Adobe Systems Incorporated (`cmaps/LICENSE`)
+  - `pdfjs/wasm/jbig2*` — JBIG2 decoder from PDFium · BSD-3-Clause · Copyright 2014 The PDFium Authors (`LICENSE_JBIG2`; pdf.js build glue Apache-2.0, `LICENSE_PDFJS_JBIG2`)
+  - `pdfjs/wasm/openjpeg*` — OpenJPEG · BSD-2-Clause (`LICENSE_OPENJPEG`, `LICENSE_PDFJS_OPENJPEG`)
+  - `pdfjs/wasm/qcms_bg.wasm` — qcms colour management · MIT · Copyright 2009-2024 Mozilla Corporation, 1998-2007 Marti Maria (`LICENSE_QCMS`, `LICENSE_PDFJS_QCMS`)
+  - `pdfjs/iccs/CGATS001Compat-v2-micro.icc` — default CMYK profile · CC0-1.0 (`iccs/LICENSE`)
 
 ### @cantoo/pdf-lib
 - **Version**: ^2.11.0 · **License**: MIT
