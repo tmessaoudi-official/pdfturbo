@@ -298,10 +298,27 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   hidden, the text fits in en/fr/ar, and a REAL failure: with the Arabic font unreachable, as offline on
   first use, the live ExportService + panel show the placeholder for a redacted page and still fall
   back to the plain raster for an unredacted one).
-- **`getPageCropBox` falls back to a MediaBox-derived box with a hardcoded (0,0) origin** (P3).
-  An undiagnosed-failure fallback on a safety path; pdf-lib's own `getCropBox` falls back
-  internally so it essentially never throws. Deferred under the anti-bandaid gate: there is no
-  observed instance, and replacing a fallback with a different fallback is not a root-cause fix.
+- ~~**`getPageCropBox` falls back to a MediaBox-derived box with a hardcoded (0,0) origin** (P3).~~
+  **FIXED 2026-09-26 (B1), and it was a P1 redaction leak, not a P3.** The premise "pdf-lib's
+  `getCropBox` essentially never throws" was wrong: it throws on a malformed `/CropBox`, and on a
+  MediaBox whose origin is not (0,0) the burn then missed its secret. Three sibling shapes leaked
+  through the same function, because it returned pdf-lib's RAW `/CropBox` while every editor coordinate
+  is measured against pdf.js's view (CropBox ∩ MediaBox): a CropBox past the MediaBox and a disjoint
+  one left the secret visible, and a zero-area one exported a blank Letter page. All four pass the
+  source loader. `getPageCropBox` is now a mirror of pdf.js's `Page.view`, and equals pdf.js's
+  `viewBox` on all 360 corpus pages (none of which has any of the four shapes). Guards:
+  `tests/browser/cropbox-view-parity.browser.test.ts` (18 — parity against pdf.js itself, and the burn
+  on the secret for each shape including a rotated one) and `tests/core/exportCoords.test.ts` (11).
+- **A page with `/UserUnit` misplaces every overlay, redactions included** (P1, found 2026-09-26, not
+  yet ruled). pdf.js scales the viewport by it (`pdf.mjs:826`), so editor coordinates are scaled too,
+  while the export maps them as plain points: on a `/UserUnit 2` page a redaction drawn over the secret
+  bakes at half its position and the secret stays visible. Disclosed in `SECURITY.md`. 0 of 360 corpus
+  pages carry `/UserUnit`.
+- **The searchable-OCR layer ignores the CropBox** (P2, found 2026-09-26, not yet ruled).
+  `searchableTextLayer.ts` positions its invisible text with the MediaBox size at origin (0,0) while
+  the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose
+  MediaBox origin is not (0,0), the searchable text is offset from the words it transcribes. Placement
+  only, not a leak. 0 of 360 corpus pages have a CropBox that differs from the MediaBox.
 - **`MODE_HINT_KEYS` is not exhaustive by type or test** (P3). All 16 modes are present today, so
   this is a guard gap, not a defect — the sibling `badgeKeys` was made exhaustive AND pinned after
   the signRect drift. Deferred as a one-line follow-up rather than mixed into an audit commit.

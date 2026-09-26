@@ -52,15 +52,56 @@ export interface BuildPageCtx {
 
 // ── Pure geometry helper ─────────────────────────────────────────────────────
 
+/** pdf.js's default when a page has no usable /MediaBox (`LETTER_SIZE_MEDIABOX`). */
+const LETTER_BOX: readonly [number, number, number, number] = [0, 0, 612, 792];
+
+/**
+ * The page's nearest (inherited) box `key` as a normalised `[x0, y0, x1, y1]`, or null unless it is an
+ * array of exactly four numbers with a positive area — pdf.js's `lookupNormalRect` plus the area check
+ * in `Page.getBoundingBox`. Only the NEAREST value counts: an invalid box on the page does not fall
+ * through to a valid one on an ancestor, in pdf.js or here.
+ */
+function readPageBox(
+  page: import('@cantoo/pdf-lib').PDFPage, key: 'MediaBox' | 'CropBox',
+): [number, number, number, number] | null {
+  const ctx = page.node.context;
+  const raw = page.node.getInheritableAttribute(PDFName.of(key));
+  const arr = raw === undefined ? undefined : ctx.lookup(raw);
+  if (!(arr instanceof PDFArray) || arr.size() !== 4) return null;
+  const n: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const v = ctx.lookup(arr.get(i));
+    if (!(v instanceof PDFNumber) || !Number.isFinite(v.asNumber())) return null;
+    n.push(v.asNumber());
+  }
+  const box: [number, number, number, number] =
+    [Math.min(n[0], n[2]), Math.min(n[1], n[3]), Math.max(n[0], n[2]), Math.max(n[1], n[3])];
+  return box[2] - box[0] > 0 && box[3] - box[1] > 0 ? box : null;
+}
+
+/**
+ * The box pdf.js SHOWS for this page, in absolute user space — `Page.view` in
+ * `pdf.worker.mjs:59242-59276` (6.3.289): a valid, non-empty /CropBox intersected with the /MediaBox;
+ * the /MediaBox when there is no such CropBox or the two do not overlap; US Letter when the MediaBox
+ * itself is unusable.
+ *
+ * Every editor coordinate is measured against that view, so this is the frame every export mapping must
+ * use. It used to return pdf-lib's RAW /CropBox and, when pdf-lib threw on a malformed one, a box at
+ * (0,0) — and on four shapes that made a redaction burn miss its secret (B1, 2026-09-26; pinned against
+ * pdf.js itself in `tests/browser/cropbox-view-parity.browser.test.ts`).
+ */
 export function getPageCropBox(
   page: import('@cantoo/pdf-lib').PDFPage,
 ): { x: number; y: number; width: number; height: number } {
-  try {
-    const cb = page.getCropBox?.();
-    if (cb && typeof cb.width === 'number') return { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
-  } catch { /* no CropBox */ }
-  const { width, height } = page.getSize();
-  return { x: 0, y: 0, width, height };
+  const media = readPageBox(page, 'MediaBox') ?? LETTER_BOX;
+  const crop = readPageBox(page, 'CropBox');
+  let view = media;
+  if (crop) {
+    const x0 = Math.max(crop[0], media[0]), y0 = Math.max(crop[1], media[1]);
+    const x1 = Math.min(crop[2], media[2]), y1 = Math.min(crop[3], media[3]);
+    if (x1 - x0 > 0 && y1 - y0 > 0) view = [x0, y0, x1, y1];
+  }
+  return { x: view[0], y: view[1], width: view[2] - view[0], height: view[3] - view[1] };
 }
 
 /**

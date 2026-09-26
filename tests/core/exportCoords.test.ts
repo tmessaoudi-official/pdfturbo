@@ -14,6 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { transformPoint, redactionRectToContent } from '../../src/utils/geometry';
+import { getPageCropBox } from '../../src/export/exportPipeline';
 
 // tp() with crop offset — mirrors the fixed production code inside _renderElementToPdfLib
 function tp(px: number, py: number, W: number, H: number, rot: number, cropX: number, cropY: number) {
@@ -21,10 +22,6 @@ function tp(px: number, py: number, W: number, H: number, rot: number, cropX: nu
   return { x: r.x + cropX, y: r.y + cropY };
 }
 
-// Inline the _getPageCropBox fallback logic (the js-side logic, not the pdf-lib call)
-function getPageCropBoxFallback(mediaW: number, mediaH: number) {
-  return { x: 0, y: 0, width: mediaW, height: mediaH };
-}
 
 // ── _transformPoint (no crop offset) ─────────────────────────────────────────
 describe('_transformPoint coordinate transform', () => {
@@ -148,96 +145,97 @@ describe('tp() CropBox offset (the CropBox export fix)', () => {
   });
 });
 
-// ── _getPageCropBox fallback behaviour ──────────────────────────────────────
-describe('_getPageCropBox fallback logic', () => {
-  it('returns zero origin and MediaBox dims when getCropBox is absent', () => {
-    const cb = getPageCropBoxFallback(703, 950);
-    expect(cb).toEqual({ x: 0, y: 0, width: 703, height: 950 });
-  });
-
-  it('standard A4 page returns zero-origin crop', () => {
-    const cb = getPageCropBoxFallback(595, 842);
-    expect(cb.x).toBe(0);
-    expect(cb.y).toBe(0);
-    expect(cb.width).toBe(595);
-    expect(cb.height).toBe(842);
-  });
-
-  // Simulate the live getCropBox() path (pdf-lib returns {x, y, width, height})
-  it('live path returns CropBox values directly', () => {
-    const mockCropBox = { x: 28.3465, y: 28.3465, width: 646.307, height: 893.307 };
-    const mockPage = { getCropBox: () => mockCropBox, getSize: () => ({ width: 703, height: 950 }) };
-
-    // Inline the production logic
-    let result: { x: number; y: number; width: number; height: number } = { x: 0, y: 0, width: 0, height: 0 };
-    try {
-      const cb = mockPage.getCropBox?.();
-      if (cb && typeof cb.width === 'number') {
-        result = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
-      } else {
-        throw new Error('no CropBox');
-      }
-    } catch {
-      const { width, height } = mockPage.getSize();
-      result = { x: 0, y: 0, width, height };
+// ── getPageCropBox — the page view pdf.js shows ─────────────────────────────
+// B1 (2026-09-26). The export maps editor-space elements through this box, and editor space is
+// measured against pdf.js's page VIEW (`pdf.worker.mjs:59242-59276`, 6.3.289): a valid, non-empty
+// /CropBox intersected with the /MediaBox, else the /MediaBox, else US Letter. It used to return
+// pdf-lib's RAW /CropBox and fall back to a (0,0)-origin box when that threw — so on four shapes the
+// redaction burn missed its target (pinned end to end, against pdf.js itself, in
+// tests/browser/cropbox-view-parity.browser.test.ts). These cases pin the rule without pdf.js.
+describe('getPageCropBox — mirrors pdf.js Page.view', () => {
+  async function page(boxes: { media?: unknown; crop?: unknown; parentCrop?: unknown }) {
+    const { PDFDocument, PDFName } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const p = doc.addPage([400, 300]);
+    const ctx = doc.context;
+    if (boxes.media !== undefined) p.node.set(PDFName.of('MediaBox'), ctx.obj(boxes.media as number[]));
+    if (boxes.crop !== undefined) p.node.set(PDFName.of('CropBox'), ctx.obj(boxes.crop as number[]));
+    if (boxes.parentCrop !== undefined) {
+      const parent = p.node.lookup(PDFName.of('Parent')) as import('@cantoo/pdf-lib').PDFDict;
+      parent.set(PDFName.of('CropBox'), ctx.obj(boxes.parentCrop as number[]));
     }
+    return p;
+  }
 
-    expect(result.x).toBeCloseTo(28.3465);
-    expect(result.y).toBeCloseTo(28.3465);
-    expect(result.width).toBeCloseTo(646.307);
-    expect(result.height).toBeCloseTo(893.307);
+  it('no /CropBox → the MediaBox, origin included', async () => {
+    expect(getPageCropBox(await page({ media: [50, 60, 450, 360] })))
+      .toEqual({ x: 50, y: 60, width: 400, height: 300 });
   });
 
-  it('falls back to MediaBox when getCropBox throws', () => {
-    type CropBox = { x: number; y: number; width: number; height: number };
-    const mockPage: { getCropBox: () => CropBox; getSize: () => { width: number; height: number } } = {
-      getCropBox: () => { throw new Error('no CropBox support'); },
-      getSize: () => ({ width: 703, height: 950 }),
-    };
-
-    let result: CropBox = { x: 0, y: 0, width: 0, height: 0 };
-    try {
-      const cb = mockPage.getCropBox?.();
-      if (cb && typeof cb.width === 'number') {
-        result = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
-      } else {
-        throw new Error('no CropBox');
-      }
-    } catch {
-      const { width, height } = mockPage.getSize();
-      result = { x: 0, y: 0, width, height };
-    }
-
-    expect(result.x).toBe(0);
-    expect(result.y).toBe(0);
-    expect(result.width).toBe(703);
-    expect(result.height).toBe(950);
+  it('a /CropBox inside the MediaBox is returned as is', async () => {
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], crop: [30, 70, 330, 290] })))
+      .toEqual({ x: 30, y: 70, width: 300, height: 220 });
   });
 
-  it('falls back when getCropBox returns null-ish', () => {
-    type CropBox = { x: number; y: number; width: number; height: number };
-    const mockPage: { getCropBox: () => CropBox | null; getSize: () => { width: number; height: number } } = {
-      getCropBox: () => null,
-      getSize: () => ({ width: 595, height: 842 }),
-    };
+  it('a /CropBox past the MediaBox is clipped to it', async () => {
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], crop: [-40, -30, 440, 330] })))
+      .toEqual({ x: 0, y: 0, width: 400, height: 300 });
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], crop: [100, 50, 500, 250] })))
+      .toEqual({ x: 100, y: 50, width: 300, height: 200 });
+  });
 
-    let result: CropBox = { x: 0, y: 0, width: 0, height: 0 };
-    try {
-      const cb = mockPage.getCropBox?.();
-      if (cb && typeof cb.width === 'number') {
-        result = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
-      } else {
-        throw new Error('no CropBox');
-      }
-    } catch {
-      const { width, height } = mockPage.getSize();
-      result = { x: 0, y: 0, width, height };
-    }
+  it('a malformed /CropBox → the MediaBox WITH its origin, never (0,0)', async () => {
+    expect(getPageCropBox(await page({ media: [50, 50, 450, 350], crop: [0, 0, 400] })))
+      .toEqual({ x: 50, y: 50, width: 400, height: 300 });
+  });
 
-    expect(result.x).toBe(0);
-    expect(result.y).toBe(0);
-    expect(result.width).toBe(595);
-    expect(result.height).toBe(842);
+  it('a zero-area /CropBox → the MediaBox', async () => {
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], crop: [100, 100, 100, 100] })))
+      .toEqual({ x: 0, y: 0, width: 400, height: 300 });
+  });
+
+  it('a /CropBox that does not meet the MediaBox → the MediaBox', async () => {
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], crop: [500, 500, 700, 700] })))
+      .toEqual({ x: 0, y: 0, width: 400, height: 300 });
+    // Touching along an edge is a zero-width intersection, which pdf.js also rejects.
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], crop: [400, 0, 500, 300] })))
+      .toEqual({ x: 0, y: 0, width: 400, height: 300 });
+  });
+
+  it('reversed corners are normalised', async () => {
+    expect(getPageCropBox(await page({ media: [400, 300, 0, 0], crop: [330, 290, 30, 70] })))
+      .toEqual({ x: 30, y: 70, width: 300, height: 220 });
+  });
+
+  it('a malformed or empty /MediaBox → US Letter, as pdf.js', async () => {
+    expect(getPageCropBox(await page({ media: [0, 0, 400] })))
+      .toEqual({ x: 0, y: 0, width: 612, height: 792 });
+    expect(getPageCropBox(await page({ media: [10, 10, 10, 10] })))
+      .toEqual({ x: 0, y: 0, width: 612, height: 792 });
+  });
+
+  it('an inherited /CropBox is honoured, and the NEAREST value wins even when it is invalid', async () => {
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], parentCrop: [30, 70, 330, 290] })))
+      .toEqual({ x: 30, y: 70, width: 300, height: 220 });
+    // pdf.js reads the nearest /CropBox only; an invalid one there does not fall through to the ancestor's.
+    expect(getPageCropBox(await page({ media: [0, 0, 400, 300], crop: [1, 2], parentCrop: [30, 70, 330, 290] })))
+      .toEqual({ x: 0, y: 0, width: 400, height: 300 });
+  });
+
+  it('box entries given as indirect numbers are resolved', async () => {
+    const { PDFDocument, PDFName, PDFNumber } = await import('@cantoo/pdf-lib');
+    const doc = await PDFDocument.create();
+    const p = doc.addPage([400, 300]);
+    const ctx = doc.context;
+    p.node.set(PDFName.of('CropBox'), ctx.obj([ctx.register(PDFNumber.of(30)), 70, 330, 290]));
+    expect(getPageCropBox(p)).toEqual({ x: 30, y: 70, width: 300, height: 220 });
+  });
+
+  it('a non-number entry makes the box invalid', async () => {
+    const { PDFName } = await import('@cantoo/pdf-lib');
+    const p = await page({ media: [50, 50, 450, 350] });
+    p.node.set(PDFName.of('CropBox'), p.doc.context.obj([0, 0, 400, PDFName.of('Oops')]));
+    expect(getPageCropBox(p)).toEqual({ x: 50, y: 50, width: 400, height: 300 });
   });
 });
 

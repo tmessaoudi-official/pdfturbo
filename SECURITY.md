@@ -95,6 +95,27 @@ green. It no longer does. Two consequences worth knowing:
   direction to err in.
 - **Annotations clear of every redaction are untouched** and still appear in your export.
 
+### Unusual page-box values could make the black box miss (fixed 2026-09-26)
+
+A PDF page declares its paper size (`MediaBox`) and, optionally, the part of it that is shown
+(`CropBox`). The editor shows exactly what pdf.js shows, but the export used to read the `CropBox` as
+written. On four kinds of page the two disagreed, and the black box of a redaction was burned in the
+wrong place, **leaving the secret visible** in the exported file:
+
+- a `CropBox` that extends past the page's paper size;
+- a `CropBox` that does not overlap the paper at all;
+- a malformed `CropBox` on a page whose paper does not start at (0,0);
+- an empty `CropBox`, which exported a blank page instead (content lost rather than leaked).
+
+None of the 360 pages of the real-file test corpus has any of these shapes, and every one of them opens
+normally, so nothing warned you. The export now uses the same visible area the editor shows, and each
+shape is tested end to end on real pdf.js pixels, including a rotated page.
+
+**Known and not yet fixed: pages with a `UserUnit`.** A PDF can declare that one of its units is larger
+than a point. pdf.js, and therefore the editor, draws such a page larger, but the export still places
+elements in plain points, so a redaction drawn on a `UserUnit` page can land away from what it covers.
+No page of the test corpus uses it. Check the exported file before sharing it if your document does.
+
 ### Redaction reaches the other exports too (fixed 2026-08-05)
 
 Redaction rasterises the page, which is what makes it removal-grade — but several exports do not go

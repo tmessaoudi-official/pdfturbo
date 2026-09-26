@@ -421,6 +421,47 @@ case; the mixed-line excess term removed → exactly the mixed-line case. Two of
 so a re-measure that finds it green is a tolerance question before it is a regression. The Arabic
 bands were swept too (20 strings, see the constant's comment in `textExtent.ts`).
 
+### The export frame is pdf.js's page VIEW, not pdf-lib's CropBox — B1 (2026-09-26)
+
+`getPageCropBox` (`exportPipeline.ts`) is the frame every export mapping uses — the overlay bake, the
+redaction rasterizer and both annotation strips — and every editor coordinate is measured against what
+pdf.js SHOWS: `Page.view` (`pdf.worker.mjs:59242-59276`), a valid, non-empty `/CropBox` INTERSECTED with
+the `/MediaBox`, else the MediaBox, else US Letter. It used to return pdf-lib's RAW `getCropBox()`, and a
+box at (0,0) when that threw.
+
+**The ruled fix was "delete the fallback, pdf-lib already falls back to the MediaBox" — and measuring it
+refuted the premise.** pdf-lib falls back only when `/CropBox` is ABSENT; `asRectangle` throws on a
+malformed one. Four shapes, each passing the source loader, each measured against the real rasterizer
+with the burn drawn where the editor would draw it: a malformed CropBox on a MediaBox at (50,50) — burn
+50pt off, secret visible; a CropBox past the MediaBox — burn shifted, page grown to the raw box; a
+disjoint CropBox — page cut to it, no burn; a zero-area one — a blank Letter page. **The fallback was one
+of four leaks through one function, and "no observed instance" (the reason it was deferred as P3) meant
+nobody had built the file, not that the file cannot exist.** The developer re-ruled to mirroring pdf.js.
+
+Three things worth carrying forward. **The parity test compares with pdf.js ITSELF** (`viewBox` at scale 1,
+rotation 0), not with a copy of its rule, so a pdf.js upgrade that changes the rule reds instead of
+drifting. **The nearest value wins, valid or not:** an invalid `/CropBox` on the page does not fall through
+to a valid one on an ancestor, in pdf.js or here. **The CropBox's non-empty check is redundant with the
+intersection's area check** — sabotaging it reds only the empty-MEDIABOX case, which is correct, not a
+weak guard. And `page.setCropBox(effBox)` now writes the intersection onto a page whose raw CropBox
+extended past its MediaBox: a byte change on exactly the divergent pages, visually identical in any
+conforming viewer, zero corpus pages affected.
+
+Two relatives found by the same probe, both NOT ruled and both in `KNOWN_ISSUES.md`: **`/UserUnit`**
+(pdf.js scales the viewport by it, `pdf.mjs:826`; the export maps editor coordinates as plain points, so a
+redaction on a `/UserUnit 2` page bakes at half its position — a leak, disclosed in `SECURITY.md`), and
+the **searchable-OCR layer**, which positions text with `getSize()` at origin (0,0) instead of the view.
+
+Guards: `tests/browser/cropbox-view-parity.browser.test.ts` (18 — 12 parity shapes against pdf.js, 6
+burn-on-the-secret cases through `rasterizePageWithRedactions` including a `/Rotate 90` page and a
+control, each also asserting the exported page size is the view's) and `tests/core/exportCoords.test.ts`
+(11 pure, replacing a block that tested a hand-copied fallback and asserted the (0,0) box as correct).
+Corpus: equal to pdf.js's `viewBox` on 360 of 360 pages. Sabotage, predicted first: the MediaBox
+fallback without its origin → 3 jsdom + 4 browser; the raw CropBox whenever valid → 2 + 6; the raw
+CropBox only where it overlaps → 1 + 3 (a narrower mutation than first predicted — disjoint and touching
+boxes still fell to the MediaBox); no Letter fallback → 1 + 1; no non-empty check → exactly the
+empty-MediaBox case; box entries not resolved through `lookup` → exactly the indirect-number case.
+
 ### Open via the native picker + recent files (#54b, 2026-09-04)
 
 The save side has used `showSaveFilePicker` since #54; the open side now mirrors it.
