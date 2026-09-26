@@ -28,11 +28,11 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { PDFDocument } from '@cantoo/pdf-lib';
 import { carryLayers, copySourcePages } from '../export/copySourcePages';
-import { withCMaps } from './pdfjsParams';
+import { withPdfjsAssets } from './pdfjsParams';
 
 /** The slice of the pdf.js module this check uses — the app's `pdfjs-dist`, or the legacy build under Node. */
 export interface ViewerPdfJs {
-  getDocument(src: { data: Uint8Array; verbosity?: number; cMapUrl?: string; cMapPacked?: boolean }): { promise: Promise<PDFDocumentProxy> };
+  getDocument(src: { data: Uint8Array; verbosity?: number; cMapUrl?: string; cMapPacked?: boolean; wasmUrl?: string; useWorkerFetch?: boolean }): { promise: Promise<PDFDocumentProxy> };
   AnnotationMode: { DISABLE: number };
 }
 
@@ -109,7 +109,7 @@ export async function viewerMismatch(
   if (ocProperties) await carryLayers(fresh, ocProperties);
   const copyBytes = await fresh.save();
 
-  const task = pdfjs.getDocument(withCMaps({ data: copyBytes, verbosity: 0 }));
+  const task = pdfjs.getDocument(withPdfjsAssets({ data: copyBytes, verbosity: 0 }));
   const copy = await task.promise;
   try {
     const shown = original.numPages;

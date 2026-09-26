@@ -69,6 +69,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 15:35] AGREED: /UserUnit raster DPI — the three raster outputs (redaction page, lossy compress, page-as-image) multiply only their RASTER scale by the page's UserUnit, so the chosen DPI is physical again; page size stays points + /UserUnit.
 - [2026-09-26 15:55] AGREED: row 32 — ship pdf.js's CMap files from the app origin (vendored into gitignored public/pdfjs/cmaps/, runtime-cached by the PWA, never precached); one helper adds cMapUrl + cMapPacked to every getDocument in src/, and a test bans a call that bypasses it.
 - [2026-09-26 16:20] FOUND (row 32): pdf.js also loads its JBIG2 / JPEG 2000 decoders (wasm and JS fallback) and ICC module from `wasmUrl`, which src/ never passes, so JBIG2/JPX scan images may not decode — read from pdf.worker.mjs WasmImage, not measured (no fixture); row 36, not ruled.
+- [2026-09-26 16:55] FOUND (row 36, measured): without `wasmUrl` all four JBIG2 / JPX test files from pdf.js draw 0 pixels, and 5067 / 5043 / 8192 / 600 with it; `wasmUrl` alone suffices (useWorkerFetch stays false), and so does the pure-JS fallback. Turning worker fetch on as well enables ICC colour management — up to 18 levels per channel on 2 of 8 pages of a corpus paper — so ICC is split into row 37, not ruled. Row 36 ships `wasmUrl` with useWorkerFetch pinned false (scope chosen by the session after the developer picked "row 36, measure first").
 - [2026-09-26 08:33] FOUND (A3 probe): on a rotated page (source /Rotate or user rotation) every overlay with content orientation — text, image, signature, code, comment — exports turned by the page rotation, because the glyph/image rotation is degrees(-elemRot) and ignores totalRot; not yet ruled.
 
 ## Formal Plan
@@ -114,7 +115,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | done | a16768e | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
 | 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | done | c6550bc | src/export/**, tests/browser/** |
-| 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images and ICC colour may not decode (measure with a fixture first) | M | todo | - | src/utils/pdfjsParams.ts, scripts/**, tests/** |
+| 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images draw nothing (measured; wasmUrl served, useWorkerFetch pinned false) | M | doing | - | src/utils/pdfjsParams.ts, scripts/**, tests/** |
+| 37 | NEW: pdf.js ICC colour management is off (on only with worker fetch; measured ≤18 levels/channel on ICC pages) | S | todo | - | src/utils/pdfjsParams.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked

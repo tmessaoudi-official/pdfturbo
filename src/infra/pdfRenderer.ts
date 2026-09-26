@@ -5,7 +5,7 @@ import type { DocumentModel } from '../core/documentModel';
 // worker chunk and return its URL — needed to polyfill Math.sumPrecise in the worker scope.
 import pdfjsWorkerShimUrl from '../utils/pdf-worker-shim?worker&url';
 import { pointViewport } from '../utils/pointViewport';
-import { withCMaps } from '../utils/pdfjsParams';
+import { withPdfjsAssets } from '../utils/pdfjsParams';
 
 // Worker shim polyfills Math.sumPrecise before pdfjs worker code, ensuring correct font
 // rendering in browsers without native support (Chrome/Edge <137).
@@ -72,7 +72,7 @@ export class PDFRenderer {
 
   async loadPDF(fileData: ArrayBuffer): Promise<PDFDocumentProxy> {
     const typedArray = new Uint8Array(fileData);
-    const doc = await pdfjsLib.getDocument(withCMaps({ data: typedArray })).promise;
+    const doc = await pdfjsLib.getDocument(withPdfjsAssets({ data: typedArray })).promise;
     this.pdfDoc = doc;
     return doc;
   }

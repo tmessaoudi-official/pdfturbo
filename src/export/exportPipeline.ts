@@ -22,7 +22,7 @@ import { batesStampText, batesPosition, type BatesSettings } from './batesStamp'
 import { isEnabled } from '../config/features';
 import { carryLayers, copySourcePages } from './copySourcePages';
 import { pointViewport, pageUserUnit } from '../utils/pointViewport';
-import { withCMaps } from '../utils/pdfjsParams';
+import { withPdfjsAssets } from '../utils/pdfjsParams';
 
 // ── Shared context for page overlay assembly ─────────────────────────────────
 
@@ -630,7 +630,7 @@ export async function rasterizePageWithRedactions(
   const h_eff = (totalRot === 90 || totalRot === 270) ? W_orig : H_orig;
 
   const tempBytes  = await tempDoc.save({ useObjectStreams: false });
-  const renderDoc  = await pdfjsLib.getDocument(withCMaps({ data: tempBytes })).promise;
+  const renderDoc  = await pdfjsLib.getDocument(withPdfjsAssets({ data: tempBytes })).promise;
   const renderPage = await renderDoc.getPage(1);
   // Pixels per POINT. The viewport is a points viewport, so a /UserUnit page multiplies the raster
   // scale by its UserUnit to keep 2 px per PHYSICAL point — every pixel↔point conversion below

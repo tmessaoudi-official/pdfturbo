@@ -27,7 +27,9 @@ export default defineConfig({
         // match the .js glob) and the multi-MB traineddata OUT of the precache;
         // non-OCR users should never download them on SW install. They are
         // served via the 'ocr-assets' runtime cache below, on first OCR use.
-        globIgnores: ['**/tesseract/**'],
+        // Row 36 — pdf.js's decoder fallbacks under pdfjs/wasm/ are .js too, and are fetched only when a
+        // JBIG2 / JPEG 2000 image meets a browser that cannot run WebAssembly; keep them out as well.
+        globIgnores: ['**/tesseract/**', '**/pdfjs/**'],
         // pdf.js + pdf-lib chunks can be >2MB — raise the precache limit
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
@@ -51,6 +53,17 @@ export default defineConfig({
             options: {
               cacheName: 'pdfjs-cmaps',
               expiration: { maxEntries: 200, maxAgeSeconds: 90 * 24 * 60 * 60 },
+            },
+          },
+          {
+            // Row 36 — pdf.js's JBIG2 / JPEG 2000 decoders (2 wasm modules + 2 JS fallbacks), vendored into
+            // public/pdfjs/wasm/. Fetched only by a document with such an image, so cached on first use; this
+            // rule must precede the generic .js rule so the fallbacks land here.
+            urlPattern: ({ url }) => url.pathname.includes('/pdfjs/wasm/') && url.origin === self.location.origin,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pdfjs-wasm',
+              expiration: { maxEntries: 10, maxAgeSeconds: 90 * 24 * 60 * 60 },
             },
           },
           {

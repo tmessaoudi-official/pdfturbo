@@ -45,3 +45,21 @@ describe('PWA CMap caching (row 32)', () => {
     expect(/globPatterns:\s*\[([^\]]*)\]/.exec(cfg)?.[1]).not.toMatch(/bcmap/);
   });
 });
+
+// Row 36 (2026-09-26) — pdf.js's JBIG2 / JPEG 2000 decoders are served from public/pdfjs/wasm/ and cached
+// on first use. Their JS fallbacks match the precache's **/*.js glob, so the ignore is load-bearing.
+describe('PWA decoder caching (row 36)', () => {
+  it('serves the decoders through a dedicated runtime cache keyed on /pdfjs/wasm/', () => {
+    expect(cfg).toContain("cacheName: 'pdfjs-wasm'");
+    expect(cfg).toMatch(/url\.pathname\.includes\('\/pdfjs\/wasm\/'\)/);
+  });
+
+  it('places that rule before the generic .js rule, so the JS fallbacks land in it', () => {
+    expect(cfg.indexOf("cacheName: 'pdfjs-wasm'")).toBeGreaterThan(-1);
+    expect(cfg.indexOf("cacheName: 'pdfjs-wasm'")).toBeLessThan(cfg.indexOf("cacheName: 'pdf-chunks'"));
+  });
+
+  it('keeps everything under pdfjs/ out of the precache', () => {
+    expect(cfg).toMatch(/globIgnores:\s*\[[^\]]*'\*\*\/pdfjs\/\*\*'[^\]]*\]/);
+  });
+});

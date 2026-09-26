@@ -15,7 +15,7 @@ import type { IProgressManager } from '../ui/progressManager';
 import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToRect, scaleCropToPageBox } from '../utils/geometry';
 import type { ToolMode } from './pdfTurboApp';
 import { pointViewport } from '../utils/pointViewport';
-import { withCMaps } from '../utils/pdfjsParams';
+import { withPdfjsAssets } from '../utils/pdfjsParams';
 
 /**
  * NaN-safe parse for the custom blank-page mm inputs (#QA-2026-06-23 P3 #4). Empty / non-numeric
@@ -334,7 +334,7 @@ export class PageService {
             fileName = file.name;
           }
           const bytesToStore = typedBytes.slice(0);
-          const doc = await pdfjsLib.getDocument(withCMaps({ data: typedBytes })).promise;
+          const doc = await pdfjsLib.getDocument(withPdfjsAssets({ data: typedBytes })).promise;
           const src = ctx.documentModel.addSourcePdf(doc, bytesToStore, fileName);
           prewarmViewerVerdict(bytesToStore);
           const cmd = new AddPagesCmd(ctx.documentModel, src.id, undefined, () => ctx.onPageStructureChange());

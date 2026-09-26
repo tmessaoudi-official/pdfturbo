@@ -32,7 +32,7 @@ import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../core/errorReporter';
 import type { IProgressManager } from '../ui/progressManager';
 import { pointViewport, pageUserUnit } from '../utils/pointViewport';
-import { withCMaps } from '../utils/pdfjsParams';
+import { withPdfjsAssets } from '../utils/pdfjsParams';
 
 // ── Context interface ────────────────────────────────────────────────────────
 
@@ -494,7 +494,7 @@ export class ExportService {
     const quality = clampQuality(opts.quality ?? COMPRESS_QUALITY_DEFAULT);
     let renderDoc: pdfjsLib.PDFDocumentProxy | undefined;
     try {
-      renderDoc = await pdfjsLib.getDocument(withCMaps({ data: assembled })).promise;
+      renderDoc = await pdfjsLib.getDocument(withPdfjsAssets({ data: assembled })).promise;
       const out = await PDFDocument.create();
       const total = renderDoc.numPages;
       for (let i = 1; i <= total; i++) {
@@ -986,7 +986,7 @@ export class ExportService {
       await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, idx + 1, documentModel.pageCount);
 
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
-      const renderDoc  = await pdfjsLib.getDocument(withCMaps({ data: pdfBytes })).promise;
+      const renderDoc  = await pdfjsLib.getDocument(withPdfjsAssets({ data: pdfBytes })).promise;
       const renderPage = await renderDoc.getPage(1);
       // `scale` is ~72 DPI per unit, per PHYSICAL inch — a /UserUnit page scales by its unit.
       const vp = pointViewport(renderPage, { scale: scale * pageUserUnit(renderPage) });
@@ -1077,7 +1077,7 @@ export class ExportService {
       }
 
       const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-      renderDoc = await pdfjsLib.getDocument(withCMaps({ data: pdfBytes })).promise;
+      renderDoc = await pdfjsLib.getDocument(withPdfjsAssets({ data: pdfBytes })).promise;
       const renderPage = await renderDoc.getPage(1);
       const vp = pointViewport(renderPage, { scale: thumbScale });
       const canvas = document.createElement('canvas');

@@ -325,14 +325,20 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
 - ~~**CJK text encoded with a predefined Adobe CMap did not show, select, search or export**~~ **FIXED
   2026-09-26 (row 32).** `src/` never gave pdf.js its CMap files, so pdf.js's own `vertical.pdf` showed a
   blank page and extracted nothing. The files are now vendored into `public/pdfjs/cmaps/` and every
-  `getDocument` passes them (`withCMaps`, guarded by `tests/infra/pdfjsParams.test.ts`; behaviour by
+  `getDocument` passes them (`withPdfjsAssets`, guarded by `tests/infra/pdfjsParams.test.ts`; behaviour by
   `tests/browser/cjk-cmaps.browser.test.ts`). Bound, like the OCR assets: each CMap file is cached the first
   time a document needs it, never precached, so offline, a document needing a CMap not yet fetched (a
   Chinese one after only Japanese ones, say) shows no text for that font.
-- **pdf.js's image decoders and ICC module are never given `wasmUrl`** (found 2026-09-26, not measured, not
-  ruled). pdf.js loads its JBIG2 and JPEG 2000 decoders — wasm and JS fallback alike — and its ICC colour
-  support from that URL, so a scan whose images are JBIG2 or JPX may render without them. Read from
-  `pdf.worker.mjs`, no fixture yet; row 36 of the limits plan.
+- ~~**JBIG2 and JPEG 2000 images drew nothing**~~ **FIXED 2026-09-26 (row 36).** pdf.js loads those decoders
+  from `wasmUrl`, which `src/` never passed, so a scanned black-and-white page (JBIG2 is what bilevel
+  scanners write) was blank in the editor, thumbnails, rasters and OCR — measured 0 pixels on four of pdf.js's
+  own test files. The vector PDF export was not affected. The decoders are now vendored into
+  `public/pdfjs/wasm/` and every `getDocument` passes them (`tests/browser/scan-codecs.browser.test.ts`).
+  Same offline bound as the CMaps: cached the first time a document needs them, never precached.
+- **pdf.js's ICC colour management is off** (found 2026-09-26, row 37, not ruled). pdf.js switches it on
+  only together with worker-side fetching, which `src/` pins off, so an ICC-tagged image or colour is drawn
+  through its alternate device space. Measured on a corpus paper: up to 18 levels per channel on 2 of 8
+  pages, nothing missing. Turning it on would change the colours of every ICC-tagged page at once.
 - **The searchable-OCR layer ignores the CropBox** (P2, found 2026-09-26, not yet ruled).
   `searchableTextLayer.ts` positions its invisible text with the MediaBox size at origin (0,0) while
   the OCR canvas is pdf.js's view, so on a page whose CropBox differs from its MediaBox, or whose

@@ -282,10 +282,11 @@ BLANK page (only its border rules drew) and extracted `""`, where with CMaps it 
 unsearchable and absent from every export. Ruled fix: `scripts/prepare-pdfjs-assets.mjs` copies
 `pdfjs-dist/cmaps/` (169 files, ~1.7 MB) into gitignored `public/pdfjs/cmaps/` — hooked on `predev`,
 `prebuild` and `pretest:browser`, so CI needs no workflow step — and every `getDocument` in `src/` goes
-through `withCMaps` (`src/utils/pdfjsParams.ts`), which adds an ABSOLUTE same-origin `cMapUrl` and
+through `withPdfjsAssets` (`src/utils/pdfjsParams.ts`; named `withCMaps` when it landed, renamed by row 36),
+which adds an ABSOLUTE same-origin `cMapUrl` and
 `cMapPacked: true`. Absolute because pdf.js fetches CMaps from its worker when it can. The PWA caches them
 at runtime (`pdfjs-cmaps`, `maxEntries` above the file count so a `usecmap` chain is never evicted) and never
-precaches them; the offline bound is stated in `KNOWN_ISSUES.md`. **Use `withCMaps` for any new
+precaches them; the offline bound is stated in `KNOWN_ISSUES.md`. **Use `withPdfjsAssets` for any new
 `getDocument`** — `tests/infra/pdfjsParams.test.ts` bans a call that bypasses it.
 
 Three traps, each found by a sabotage or a screenshot rather than by the first draft:
@@ -314,10 +315,53 @@ Sabotage, predicted first: no `cMapUrl` → 1 jsdom + 4 browser (text-area ink 0
 guard; a wrong path segment → 1 + 4; the vendored folder removed → 4 browser (3 before the body check);
 the cache's `maxEntries` below the file count → exactly that case.
 
-**Found, not fixed:** pdf.js also loads its JBIG2 and JPEG 2000 decoders — the wasm AND the JS fallback —
-and its ICC colour module from `wasmUrl`, which `src/` does not pass either (`pdf.worker.mjs` `WasmImage`).
-Scanner output is often JBIG2, so such images may not decode. Read from the code, not measured: no fixture.
-Row 36 of the limits plan; `withCMaps` is where the parameter would go.
+**Found by this row and fixed by row 36:** the JBIG2 / JPEG 2000 decoders load from `wasmUrl` — next section.
+
+### pdf.js's JBIG2 / JPEG 2000 decoders are served too — row 36 (2026-09-26)
+
+pdf.js decodes JBIG2 and JPEG 2000 images with WebAssembly modules (plus a pure-JS fallback) that it loads
+from `wasmUrl`, which `src/` never passed, so both decoders "failed to initialize" and every such image drew
+NOTHING. Measured on four of pdf.js's own test files (`tests/fixtures/scan-codecs/`, provenance in its
+README): 0 non-white pixels on every page, against 5067 / 5043 / 8192 / 600 with the modules served. JBIG2
+is what bilevel document scanners write, so a scanned black-and-white PDF showed a blank page, blank
+thumbnails, blank rasters (redaction page, lossy compress, page-as-image) and OCR read nothing. **The vector
+PDF export was never affected** — pdf-lib copies the stream bytes and any other viewer decodes them — and
+the WS8 viewer check passed throughout, since pdf.js was blank on both sides of its comparison.
+
+Fix: `withPdfjsAssets` adds an absolute same-origin `wasmUrl`, and the asset script copies FOUR named files
+(`jbig2.wasm`, `openjpeg.wasm` and their `*_nowasm_fallback.js`) into `public/pdfjs/wasm/`, failing the
+build if an upgrade renames one. The folder also holds the ICC module and the QuickJS scripting sandbox,
+deliberately NOT copied. The PWA ignores `**/pdfjs/**` for the precache — the fallbacks are `.js` and would
+otherwise match its glob — and caches the four at runtime (`pdfjs-wasm`, placed before the generic `.js`
+rule).
+
+**`useWorkerFetch` is pinned `false`, and that is the load-bearing line.** pdf.js turns it on by itself only
+when `cMapUrl`, `standardFontDataUrl` AND `wasmUrl` are all given (`pdf.mjs:15464`), and on also switches
+ON its ICC colour management (`IccColorSpace.setOptions`), shifting the colours of every ICC-tagged page —
+measured up to 18 levels per channel on 2 of 8 pages of a corpus paper, nothing blanked. That is a
+different change with a different blast radius, split out as row 37 and not ruled. With it false, pdf.js
+fetches the decoders on the main thread and hands them to the worker, exactly how CMaps were already
+fetched. Adding `standardFontDataUrl` to the helper would flip it silently; the unit test says so.
+
+Guards: `tests/browser/scan-codecs.browser.test.ts` (13: the modules are served — body checked, the row-32
+SPA-fallback trap; each of the four images draws; the JS fallback draws a JBIG2 and a JPX image with
+`useWasm: false`; the viewer check accepts all four; page-as-image carries the scan; a Flate CONTROL), two
+cases in `tests/infra/pdfjsParams.test.ts` and three in `pwaOcrCaching.test.ts`. Sabotage, predicted first,
+each landed and restored byte-identical: no `wasmUrl` → 1 jsdom + 8 browser (the viewer checks and the
+control stay green, correctly); `useWorkerFetch: true` → exactly the pin; one open site unwrapped → exactly
+the static guard; the precache ignore dropped → exactly that case; `openjpeg_nowasm_fallback.js` dropped
+from the list → exactly the served-file case and the JPX fallback case. A harness note from the first try
+of that last one: with ALL four files missing (vitest called directly, so the script never ran) every case
+in the file failed, the control included, several in 0 ms — the dev server hands the worker's dynamic
+`import()` an HTML page; a static host answers 404, as today's production did for `null…` URLs.
+
+**Uncertified by execution:** a JBIG2 image whose `/DecodeParms` carries `/JBIG2Globals` (a second object
+the viewer check's page copy must carry — no fixture has one); and the JS fallback in the BUILT app — the
+worker is created with `type: "module"` and the built chunk keeps the `import()`, so it should run
+[Inferred], but only the dev harness ran it. The WebAssembly path WAS driven once by hand on the built
+artifact (`vite preview`, Playwright `setInputFiles` on `#fileInput`): `jbig2_symbol_offset.pdf` drew 17278
+non-white pixels on `#pdfCanvas` and `bug_jpx.pdf` 27378, each fetching its module from `/pdfjs/wasm/`,
+no console error.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

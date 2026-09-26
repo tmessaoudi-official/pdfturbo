@@ -6,7 +6,7 @@
  * decoded with pdf.js's packed CMap files. Without `cMapUrl` pdf.js cannot read the codes: pdf.js's
  * own `vertical.pdf` rendered no glyphs and extracted no text in the app (measured 2026-09-25, A1).
  * The files are vendored into `public/pdfjs/cmaps/` by `scripts/prepare-pdfjs-assets.mjs` and every
- * `getDocument` in `src/` goes through `withCMaps` (the static guard is `tests/infra/pdfjsParams.test.ts`).
+ * `getDocument` in `src/` goes through `withPdfjsAssets` (the static guard is `tests/infra/pdfjsParams.test.ts`).
  *
  * The CONTROL is LibreOffice's vertical layout, whose embedded glyphs need no CMap: it must pass before
  * and after, so a red here is about CMaps, not about the fixture or the harness.
@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
-import { withCMaps } from '../../src/utils/pdfjsParams';
+import { withPdfjsAssets } from '../../src/utils/pdfjsParams';
 import { pointViewport } from '../../src/utils/pointViewport';
 import { loadPdfDocument } from '../../src/utils/pdfLoadGuard';
 import { ExportService, type IExportContext } from '../../src/export/exportService';
@@ -40,7 +40,7 @@ async function bytesOf(url: string): Promise<Uint8Array> {
 }
 
 function open(bytes: Uint8Array): Promise<pdfjsLib.PDFDocumentProxy> {
-  return pdfjsLib.getDocument(withCMaps({ data: bytes.slice(0) })).promise;
+  return pdfjsLib.getDocument(withPdfjsAssets({ data: bytes.slice(0) })).promise;
 }
 
 async function pageText(doc: pdfjsLib.PDFDocumentProxy): Promise<string> {
@@ -81,7 +81,7 @@ async function flowText(doc: pdfjsLib.PDFDocumentProxy, bytes: Uint8Array): Prom
 
 describe('row 32 — CMaps are served, so CMap-encoded text shows and exports', () => {
   it('the CMap URL is an absolute same-origin directory, and the app serves the files there', async () => {
-    const { cMapUrl, cMapPacked } = withCMaps({ data: new Uint8Array() }) as { cMapUrl?: string; cMapPacked?: boolean };
+    const { cMapUrl, cMapPacked } = withPdfjsAssets({ data: new Uint8Array() }) as { cMapUrl?: string; cMapPacked?: boolean };
     expect(cMapPacked).toBe(true);
     expect(cMapUrl).toMatch(/^https?:\/\//);
     const url = new URL(cMapUrl as string);
