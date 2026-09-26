@@ -115,7 +115,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | done | a16768e | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
 | 35 | UserUnit raster DPI: raster scale × UserUnit at the 3 raster sites | S | done | c6550bc | src/export/**, tests/browser/** |
-| 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images draw nothing (measured; wasmUrl served, useWorkerFetch pinned false) | M | doing | - | src/utils/pdfjsParams.ts, scripts/**, tests/** |
+| 36 | NEW: src/ never passes wasmUrl — JBIG2/JPX images draw nothing (measured; wasmUrl served, useWorkerFetch pinned false) | M | done | c3670a0 | src/utils/pdfjsParams.ts, scripts/**, tests/** |
 | 37 | NEW: pdf.js ICC colour management is off (on only with worker fetch; measured ≤18 levels/channel on ICC pages) | S | todo | - | src/utils/pdfjsParams.ts, tests/** |
 <!-- /progress-block -->
 
