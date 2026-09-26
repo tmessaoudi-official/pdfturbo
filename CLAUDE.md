@@ -504,13 +504,14 @@ each against a `/UserUnit 1` control) and `tests/infra/pointViewport.test.ts` (5
 viewport through the helper, so it certifies `TextLayerManager` and the CSS factor, while the static
 guard certifies that `pageRenderPipeline` wires the helper — a division of labour, not a gap. The test
 must import `src/styles/pdf-layers.css`: without it pdf.js's spans are not positioned and even the
-control is 61px off. Sabotage, predicted first and re-measured after the recovery: the helper ignoring UserUnit → the unit
-case + 4 browser cases (canvas, burn, Word, compress — the raster page's size comes from the CropBox, so
-it stays green) — the text-layer case stays GREEN, because canvas and layer are then both at
+control is 61px off. Sabotage, predicted first and re-measured on the 16-case file: the helper ignoring UserUnit → the unit
+case + 7 browser cases (canvas, burn, Word, raster, cropped raster, compress, page-as-image — every raster
+now asserts its physical resolution) — the text-layer case stays GREEN, because canvas and layer are then both at
 u× and aligned, which is correct: that case checks alignment, not frame; the editor renderer reverted to
 a direct call → the static guard + all 4 UserUnit-2 browser cases (every case takes its cover from that
 canvas, so the Word export reds too, which was predicted green); the text-layer factor reverted → exactly
-the UserUnit-2 text-layer case; either `/UserUnit` copy removed → exactly its own page case; raster
+the UserUnit-2 text-layer case; the rasterizer's `/UserUnit` copy removed → its plain and cropped cases
+(2), the compress copy removed → exactly its case; raster
 `SCALE` without u → the plain and cropped raster cases; the crop clip divided by 2 instead of `SCALE` →
 exactly the cropped case; compress or page-as-image without u → exactly its own case.
 
