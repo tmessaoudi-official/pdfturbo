@@ -174,6 +174,8 @@ describe('row 18 — the DOCX carries the real name, a fallback hint, and the Ea
     ['Noto Sans CJK JP', 'sans-serif'], ['MS Gothic', 'sans-serif'], ['Microsoft Sans Serif', 'sans-serif'],
     ['Noto Serif CJK JP', 'serif'], ['Aokin Mincho', 'serif'], ['DejaVu Serif', 'serif'],
     ['Myriad Pro', null], ['Cambria Math', null], ['Wingdings2', null],
+    // A word boundary is part of the rule: 'Unicode' ends in 'code' and 'Monotype' starts with 'mono' (row-18 6C).
+    ['Lucida Sans Unicode', 'sans-serif'], ['Arial Unicode MS', 'sans-serif'], ['Monotype Corsiva', null], ['Fira Code', 'monospace'],
   ] as const)('wordFamilyHint(%s) → %s', (name, want) => {
     expect(wordFamilyHint(name)).toBe(want);
   });

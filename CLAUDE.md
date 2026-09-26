@@ -2882,7 +2882,8 @@ REAL unknown family passes through split at word boundaries (`MyriadPro` → `My
 bare ids, hashes; the charset rule catches pdf.js's `g_d0_f1`) keeps the generic. Passed-through names are listed in
 `word/fontTable.xml` via `Packer.toBase64String`'s third argument (the `docx` package otherwise writes an empty
 table), with `w:family`/`w:pitch` from the NAME when it states a class (`wordFamilyHint`) — pdf.js's own guess reads
-FixedPitch and called NotoSerifCJKjp `monospace`. Guards: `tests/utils/flowDocFidelity.test.ts` row-18 blocks and
+FixedPitch and called NotoSerifCJKjp `monospace`. The hint is word-bounded: as first written it read 'Lucida Sans
+Unicode', 'Arial Unicode MS' and 'Monotype Corsiva' as monospace (`code`, `mono` substrings; found at the 6C gate). Guards: `tests/utils/flowDocFidelity.test.ts` row-18 blocks and
 `tests/browser/docx-font-names.browser.test.ts` (real extraction on `tests/fixtures/vertical/`). Sabotage, each
 restored with `cmp`: allowlist keys keep spaces → 3; vendor-edition fallback dropped → 5; generated-name rule
 dropped → 6 (predicted 7 — the `g_d` pattern was unreachable and was removed); fontTable override dropped → 2

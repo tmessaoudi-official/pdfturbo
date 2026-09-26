@@ -112,7 +112,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 15 | C8 hoist inline annotations before a locked save | M | done | f71054e | src/export/**, tests/export/exportPasswordSave.test.ts |
 | 16 | C9 signature rect mapped onto the assembled page | M | done | 8c175ac | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
 | 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | done | 62ff3eb | var/claude/**, KNOWN_ISSUES.md, CLAUDE.md |
-| 18 | D6+D7 real font names incl. eastAsia in DOCX | M | done | - | src/utils/flowDocWriters.ts, tests/** |
+| 18 | D6+D7 real font names incl. eastAsia in DOCX | M | done | 9c97c24 | src/utils/flowDocWriters.ts, tests/** |
 | 19 | D8 mixed-bidi DOCX lines measured | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 20 | D9 borderless-table discriminator research | M | todo | - | src/utils/borderlessTable.ts, tests/** |
 | 21 | D10 4+ column split with corpus proof | M | todo | - | src/utils/flowDoc.ts, tests/** |

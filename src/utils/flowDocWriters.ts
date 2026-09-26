@@ -137,7 +137,7 @@ export function wordFontFor(psName: string | undefined, family: FlowRun['fontFam
 /** The class a font's own name states, if it states one. Mono is tested first ("Noto Sans Mono"), then sans
  * ("Sans Serif" is sans), then serif. Gothic is the Japanese name for sans, Mincho for serif. */
 export function wordFamilyHint(name: string): FlowRun['fontFamily'] | null {
-  if (/mono|courier|code\b|typewriter/i.test(name)) return 'monospace';
+  if (/\bmono(space)?\b|courier|\bcode\b|typewriter/i.test(name)) return 'monospace'; // not 'Unicode', not 'Monotype'
   if (/sans|gothic|grotesk|helvetica|arial/i.test(name)) return 'sans-serif';
   if (/serif|mincho|roman|times|garamond|song|ming\b/i.test(name)) return 'serif';
   return null;
