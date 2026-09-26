@@ -16,7 +16,7 @@
  */
 import type { IErrorReporter } from '../core/errorReporter';
 import { pickOpenFiles, ensureReadPermission, canUseFsOpen, type FsOpenHandle } from '../utils/fileSystemAccess';
-import { addRecentFile, listRecentFiles, removeRecentFile } from '../infra/recentFiles';
+import { addRecentFile, listRecentFiles, removeRecentFile, clearRecentFiles } from '../infra/recentFiles';
 import { t } from '../utils/i18n';
 
 /** What the menu needs from the app — deliberately narrow, so this stays unit-testable. */
@@ -145,4 +145,20 @@ export async function renderRecentFiles(ctx: RecentMenuCtx): Promise<void> {
     group.appendChild(btn);
   }
   ctx.container.appendChild(group);
+
+  // Limits row 11: the one way to forget remembered files short of the browser's site-data settings.
+  // Outside the labelled group — it is an action, not a file. No confirmation: nothing is lost that
+  // opening the files again does not restore, and the handles never held more than the user's choice.
+  const clear = document.createElement('button');
+  clear.className = 'file-menu-item file-menu-clear-recents';
+  clear.type = 'button';
+  clear.textContent = t('toolbar.clearRecentFiles');
+  clear.addEventListener('click', () => {
+    ctx.closeMenu();
+    void (async () => {
+      await clearRecentFiles();
+      await renderRecentFiles(ctx);
+    })();
+  });
+  ctx.container.appendChild(clear);
 }

@@ -350,7 +350,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   this is a guard gap, not a defect — the sibling `badgeKeys` was made exhaustive AND pinned after
   the signRect drift. Deferred as a one-line follow-up rather than mixed into an audit commit.
 - ~~**The vendored Arabic `.ttf` is not precached and no runtime rule matches it** (P3),~~ **FIXED 2026-09-26
-  (limits row 10):** a same-origin `.ttf` runtime rule (`app-fonts`, CacheFirst) caches it on first use, still out
+  (limits row 10, `50cf966`):** a same-origin `.ttf` runtime rule (`app-fonts`, CacheFirst) caches it on first use, still out
   of the precache; measured on the built app, fetched once and then served offline. README says so. Was: so the Arabic
   overlay and searchable-OCR need network after install, which README's "app shell offline" does not
   say. Deferred: adding it to `globPatterns` grows the install payload, the opposite of the #48
@@ -359,7 +359,8 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   row 9, `babd6c9`):** a case pins the OCR rule above the `.js` catch-all. Was: though the
   comment says the order is load-bearing — reordering keeps the test green while the cores fall into
   the wrong cache. Deferred with the same one-line-follow-up reasoning as `MODE_HINT_KEYS`.
-- **Two exports have no production caller** (#54 / #54b): `canUseFsSave`
+- ~~**Two exports have no production caller** (#54 / #54b):~~ **FIXED 2026-09-26 (limits row 11):** the File
+  menu now has a "Clear recent files" control calling `clearRecentFiles`, and `canUseFsSave` was deleted. Was: `canUseFsSave`
   (`src/utils/fileSystemAccess.ts`) and `clearRecentFiles` (`src/infra/recentFiles.ts`). The first is
   a capability probe nothing branches on — `pickSaveTarget` degrades internally instead, which is the
   better design, so the probe is simply unused. Both are kept as the tests' entry points and as the

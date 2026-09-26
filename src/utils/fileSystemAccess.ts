@@ -29,11 +29,6 @@ function picker(): ShowSaveFilePicker | undefined {
   return (globalThis as { showSaveFilePicker?: ShowSaveFilePicker }).showSaveFilePicker;
 }
 
-/** True when the browser can save via the native file picker. */
-export function canUseFsSave(): boolean {
-  return typeof picker() === 'function';
-}
-
 /** A resolved save destination: a writable handle, plain download, or user-cancel. */
 export type SaveTarget = FsFileHandle | 'download' | 'cancelled';
 

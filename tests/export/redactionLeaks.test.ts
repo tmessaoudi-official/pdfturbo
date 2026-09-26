@@ -24,7 +24,6 @@ const W = 300, H = 400;
 // `'download'` is the real sentinel for "no native picker" — returning null instead sends
 // `_saveOrDownload` into the write-to-handle branch with a null handle.
 vi.mock('../../src/utils/fileSystemAccess', () => ({
-  canUseFsSave: () => false,
   pickSaveTarget: () => Promise.resolve('download'),
   writeToHandle: () => Promise.resolve(),
 }));

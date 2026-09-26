@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { canUseFsSave, pickSaveTarget, writeToHandle, canUseFsOpen, pickOpenFiles, ensureReadPermission, type FsOpenHandle } from '../../src/utils/fileSystemAccess';
+import { pickSaveTarget, writeToHandle, canUseFsOpen, pickOpenFiles, ensureReadPermission, type FsOpenHandle } from '../../src/utils/fileSystemAccess';
 
 type GlobalWithPicker = typeof globalThis & { showSaveFilePicker?: unknown; showOpenFilePicker?: unknown };
 const g = globalThis as GlobalWithPicker;
@@ -24,12 +24,6 @@ function fakeHandle() {
 }
 
 describe('fileSystemAccess', () => {
-  it('canUseFsSave() reflects showSaveFilePicker presence', () => {
-    expect(canUseFsSave()).toBe(false);
-    g.showSaveFilePicker = () => Promise.resolve({});
-    expect(canUseFsSave()).toBe(true);
-  });
-
   it('pickSaveTarget() returns "download" when the API is absent', async () => {
     expect(await pickSaveTarget('x.pdf')).toBe('download');
   });

@@ -96,7 +96,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 7 | B1 getPageCropBox returns pdf.js's page view | M | done | 5c2ed18 | src/export/exportPipeline.ts, tests/** |
 | 8 | B2 MODE_HINT_KEYS exhaustive by type | S | done | d0f218c | src/core/toolModeService.ts |
 | 9 | B3 PWA rule-order guard | S | done | babd6c9 | tests/infra/pwaOcrCaching.test.ts |
-| 10 | B4 Arabic font runtime cache | S | todo | - | vite.config.ts, README.md, tests/** |
+| 10 | B4 Arabic font runtime cache | S | done | 50cf966 | vite.config.ts, README.md, tests/** |
 | 11 | B5 clear recent files + delete canUseFsSave | S | todo | - | src/ui/recentFilesMenu.ts, src/utils/fileSystemAccess.ts, locales/** |
 | 12 | B6 OCR progress labels | S | todo | - | src/core/pdfTurboApp.ts, locales/** |
 | 13 | C3 image pixel hash in the viewer check + wider corpus | M | todo | - | src/utils/viewerCheck.ts, tests/** |

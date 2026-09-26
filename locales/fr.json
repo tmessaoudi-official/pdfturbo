@@ -105,7 +105,8 @@
     "exportChevronTitle": "Options d'export",
     "fillColorTitle": "Couleur de remplissage de la forme",
     "fillNoneTitle": "Sans remplissage / transparent",
-    "recentFiles": "Fichiers récents"
+    "recentFiles": "Fichiers récents",
+    "clearRecentFiles": "Effacer les fichiers récents"
   },
   "docxEditor": {
     "deleteImage": "Supprimer l'image",

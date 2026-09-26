@@ -219,6 +219,9 @@ body {
    separator and label must live inside it: rendering them from the markup would leave a dangling
    heading over nothing on Firefox and Safari. `:empty` keeps the menu tight in that case. */
 .file-menu-recents:not(:empty) { display: flex; flex-direction: column; border-top: 1px solid #e5e7eb; margin: 3px 0; padding-top: 3px; }
+/* The buttons sit inside the labelled `role="group"` wrapper, one level below the flexbox above, so the
+   wrapper must stack them too — as a plain block it let them flow side by side (limits row 11). */
+.file-menu-recents [role="group"] { display: flex; flex-direction: column; }
 .file-menu-label { padding: 4px 14px 2px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: #616a78; }
 /* A remembered name can be long; clamp it rather than letting the menu grow past the viewport. */
 .file-menu-recent { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }

@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { addRecentFile, clearRecentFiles, listRecentFiles } from '../../src/infra/recentFiles';
 import type { IErrorReporter } from '../../src/core/errorReporter';
+import { initI18n, t } from '../../src/utils/i18n';
 
 type G = typeof globalThis & { showOpenFilePicker?: unknown };
 const g = globalThis as G;
@@ -137,7 +138,7 @@ describe('renderRecentFiles', () => {
     await addRecentFile(new Handle('new.pdf', 'k2') as never);
     const c = ctx();
     await renderRecentFiles(c);
-    const btns = Array.from(c.container.querySelectorAll('button'));
+    const btns = Array.from(c.container.querySelectorAll('button.file-menu-recent'));
     expect(btns.map(b => b.textContent)).toEqual(['new.pdf', 'old.pdf']);
     // Labelled group, so a bare file name is announced with its heading.
     const group = c.container.querySelector('[role="group"]');
@@ -153,6 +154,30 @@ describe('renderRecentFiles', () => {
     const btn = c.container.querySelector('button') as HTMLButtonElement;
     expect(btn.querySelector('img')).toBeNull();
     expect(btn.textContent).toContain('<img');
+  });
+
+  it('offers a "Clear recent files" control that forgets every recent and empties the menu (limits row 11)', async () => {
+    g.showOpenFilePicker = () => Promise.resolve([]);
+    await addRecentFile(new Handle('a.pdf', 'ka') as never);
+    await addRecentFile(new Handle('b.pdf', 'kb') as never);
+    const c = ctx();
+    let closed = 0;
+    c.closeMenu = () => { closed++; };
+    await renderRecentFiles(c);
+    const clear = c.container.querySelector('button.file-menu-clear-recents') as HTMLButtonElement | null;
+    expect(clear).not.toBeNull();
+    await initI18n();
+    await renderRecentFiles(c);
+    const labelled = c.container.querySelector('button.file-menu-clear-recents') as HTMLButtonElement;
+    expect(labelled.textContent).toBe(t('toolbar.clearRecentFiles'));
+    expect(labelled.textContent).toMatch(/\S/);
+    // Not a member of the labelled group: it is an action, not a file, and must not be announced as one.
+    expect(clear?.closest('[role="group"]')).toBeNull();
+    labelled.click();
+    await vi.waitFor(async () => { expect(await listRecentFiles()).toHaveLength(0); });
+    await vi.waitFor(() => { expect(c.container.children).toHaveLength(0); });
+    expect(closed).toBe(1);
+    expect(c.loaded).toHaveLength(0);
   });
 
   it('drops a recent whose handle can no longer be read, instead of leaving a row that always fails', async () => {
