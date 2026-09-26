@@ -57,6 +57,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-26 08:36] AGREED: A3-pre — one shared fix for every oriented overlay (text, image, signature, code, comment): orientation = page rotation minus element rotation, pivot about the box centre, real-browser tested at page 0/90/180/270 x element 0/90; then A3.
 - [2026-09-25 21:06] AGREED: D22 — Bates: reload integration test, restored-value validation, oversized start-number cap.
 - [2026-09-26 08:33] AGREED: A3 — first fix the rotated-text export to turn about the box centre as the editor does (own reproduction + tests), then do A3 with rotated OCR words.
+- [2026-09-26 11:04] AGREED: A2 — ship the exact filter: drop text runs fully outside their Form XObject's /BBox clip from the Word/MD/TXT and CSV/XLSX exports, attributed by marker injection on a throwaway copy, trigger-gated, fail-open on any ambiguity; a run crossing the edge exports whole (disclosed).
 - [2026-09-26 10:58] FOUND (A2 investigation): exact item-level attribution IS possible — wrapping each Form XObject's stream in a unique `BMC … EMC` in a throwaway copy makes pdf.js getTextContent({includeMarkedContent}) bracket every item with its form chain (shared and nested forms included), and the operator list carries the same tags after each paintFormXObjectBegin, so the k-th occurrence pairs with that placement's /BBox clip. Extracted text is unchanged on all 360 corpus pages. Field frequency: 5 fully-hidden items in 1 of 15 real files (attention paper, figure labels, render-confirmed invisible); 13 items 87–95% inside (Inferred box slop and visible — not render-checked; kept either way, and a run crossing the edge would export whole). Cost: the copy re-saves the whole file, up to ~20 s on a 142-page report at load 20 — so it needs a cheap trigger. Not per-glyph: a run half past the edge is one item.
 - [2026-09-26 08:33] FOUND (A3 probe): on a rotated page (source /Rotate or user rotation) every overlay with content orientation — text, image, signature, code, comment — exports turned by the page rotation, because the glyph/image rotation is degrees(-elemRot) and ignores totalRot; not yet ruled.
 
@@ -69,7 +70,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
 | 1 | A1 vertical-text redaction measured + fixed | M | done | 2a40782 | src/utils/flowDoc.ts, tests/** |
-| 2 | A2 Form /BBox hidden text: attribution investigation | M | todo | - | src/export/**, src/utils/** |
+| 2 | A2 Form /BBox hidden text: attribution investigation | M | done | 76bed69 | src/export/**, src/utils/** |
 | 33 | A3-pre oriented overlays export upright on rotated pages + centre pivot | M | done | 94add82 | src/export/pdfElementRenderer.ts, src/export/textExtent.ts, tests/** |
 | 3 | A3 OCR visible mode on user-rotated pages | S | done | bf8655e | src/handlers/ocrHandler.ts, tests/** |
 | 4 | A4 re-add safe links on the raster export path | M | done | 5bc6dfe | src/export/**, tests/** |
