@@ -319,7 +319,10 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   source's `/UserUnit` onto it so the page keeps its physical size. Bounds, both consequences of the ruling: at 100% zoom such a page shows at its size in points,
   not its physical size; elements saved in a session before the fix were measured at u times and
   restore scaled by 1/u (no `SCHEMA_VERSION` bump — they exported to the wrong place anyway, and 0 of
-  360 corpus pages carry `/UserUnit`). Guards: `tests/infra/pointViewport.test.ts` (5) and
+  360 corpus pages carry `/UserUnit`); and every raster (redaction page, lossy compress, page-as-image)
+  renders over a points viewport, so its resolution is 1/u of the physical DPI chosen (`dpiToScale` is
+  `dpi / 72`). Before the fix those three had resolution right and position wrong. Not ruled: fixing
+  it means multiplying the RASTER scale (never the page size) by `pageUserUnit` at those three sites. Guards: `tests/infra/pointViewport.test.ts` (5) and
   `tests/browser/userunit-frame.browser.test.ts` (12).
 - **The searchable-OCR layer ignores the CropBox** (P2, found 2026-09-26, not yet ruled).
   `searchableTextLayer.ts` positions its invisible text with the MediaBox size at origin (0,0) while

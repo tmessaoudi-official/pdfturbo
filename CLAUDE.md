@@ -489,7 +489,9 @@ different answers for one document.
 Consequences of the ruling, stated in `KNOWN_ISSUES.md` rather than hidden: at 100% zoom such a page shows
 at its size in points, not its physical size; and elements saved in a session before the fix were
 measured at u× and restore scaled by 1/u. No `SCHEMA_VERSION` bump — they exported to the wrong place
-anyway, and 0 of 360 corpus pages carry `/UserUnit`.
+anyway, and 0 of 360 corpus pages carry `/UserUnit`. Third, found at the recovery review and NOT ruled: every raster
+(redaction page, lossy compress, page-as-image) now renders over a points viewport, so its resolution is
+1/u of the physical DPI — before the fix those had resolution right and position wrong.
 
 The test is honest about frames because it assumes none: the redaction is placed where the secret's INK
 is on the canvas the real `PDFRenderer` draws — where a user would drag — so it reds whenever editor and

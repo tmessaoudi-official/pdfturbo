@@ -118,7 +118,10 @@ drawn over a secret was burned at twice its position, and the secret stayed visi
 PDF and in the Word / Markdown / text export. The editor now works in points on every page, so what you
 cover is what is removed; this is tested end to end on the real editor canvas. Two visible consequences:
 at 100% zoom such a page now shows at its size in points rather than its physical size, and anything you
-had placed on such a page in an unsaved session from before this fix reopens scaled down by that factor.
+had placed on such a page in a session saved before this fix reopens scaled down by that factor. Pages
+turned into images — a redacted page, "flatten to images" compression and export-page-as-image — are
+rendered at half the resolution on a `UserUnit 2` page (the chosen DPI now counts per point, not per
+physical inch).
 
 ### Redaction reaches the other exports too (fixed 2026-08-05)
 
