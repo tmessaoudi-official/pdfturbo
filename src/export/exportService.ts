@@ -1014,6 +1014,10 @@ export class ExportService {
     const hasInk = inkLayer.getStrokes(docPage.id).length > 0;
     // Nothing to composite → let the caller use the cheaper source-only raster.
     if (pageElements.length === 0 && !hasInk) return null;
+    // A6 — null means "use the plain source raster", which for a REDACTED page shows on screen exactly
+    // what the redaction hides. So every failure below rejects for such a page (the panel then shows
+    // "preview unavailable"), and only an unredacted page keeps the null fallback.
+    const redacted = pageElements.some(el => el.type === 'redaction');
 
     let renderDoc: pdfjsLib.PDFDocumentProxy | undefined;
     try {
@@ -1030,7 +1034,7 @@ export class ExportService {
         await this._applyOverlaysToPage(pdfDoc, blankPage, docPage, pageElements, libs, pageNumber, documentModel.pageCount);
       } else {
         const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
-        if (!srcEntry) return null;
+        if (!srcEntry) throw new Error(`source document ${docPage.sourcePdfId} is not loaded`);
         const srcDoc = await loadPdfDocument(srcEntry.bytes, { viewerCheck: 'source' });
         const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDoc, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
@@ -1046,12 +1050,13 @@ export class ExportService {
       canvas.width = Math.max(1, Math.round(vp.width));
       canvas.height = Math.max(1, Math.round(vp.height));
       const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
+      if (!ctx) throw new Error('no 2d canvas context');
       await renderPage.render({ canvas, viewport: vp }).promise;
       return canvas.toDataURL('image/jpeg', 0.7);
     } catch (err) {
-      // Never break the thumbnail strip — fall back to the source-only raster.
       reportError.silent(err, `renderThumbnailWithOverlays failed for page ${pageIdx}`);
+      // A redacted page must fail CLOSED; an unredacted one falls back to the source-only raster.
+      if (redacted) throw new Error(`thumbnail of redacted page ${pageIdx + 1} could not be rendered`);
       return null;
     } finally {
       const task = (renderDoc as { loadingTask?: { destroy?: () => Promise<void> } } | undefined)?.loadingTask;

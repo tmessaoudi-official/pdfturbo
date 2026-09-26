@@ -132,6 +132,15 @@
 }
 .thumb-nav:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
 .thumb-img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+.thumb-img.thumb-img-unavailable { display: none; }
+/* A6 — a redacted page whose thumbnail could not be rendered: a visible placeholder, never the
+   plain source page. #374151 on #e5e7eb is 8.6:1. */
+.thumb-unavailable {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; box-sizing: border-box; padding: 4px;
+  background: #e5e7eb; color: #374151;
+  font-size: 9px; line-height: 1.2; text-align: center; pointer-events: none;
+}
 .thumb-label {
   position: absolute; bottom: 0; left: 0; right: 0;
   text-align: center; font-size: 9px; font-weight: 700;

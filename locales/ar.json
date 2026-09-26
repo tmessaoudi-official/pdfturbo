@@ -617,7 +617,8 @@
     "imgPngHi": "PNG (300 نقطة/بوصة)",
     "addPages": "إضافة PDF/صورة",
     "addPagesTitle": "إضافة صفحات من PDF أو صورة",
-    "moreActions": "إجراءات الصفحة"
+    "moreActions": "إجراءات الصفحة",
+    "previewUnavailable": "المعاينة غير متاحة"
   },
   "canvas": {
     "emptyState": "ارفع ملف PDF للبدء",

@@ -3,6 +3,9 @@ import type { DocumentModel } from '../core/documentModel';
 import type { ImageExportOptions } from '../export/exportService';
 import { t } from '../utils/i18n';
 
+/** A 1×1 transparent GIF: the empty tile shown until a thumbnail is rasterized. */
+const BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 /**
  * Image-export presets offered by the per-thumbnail 🖼 menu (G20). Each maps to
  * the `downloadPageAsImage` options: the default PNG (scale 2 — byte-identical to
@@ -248,11 +251,33 @@ export class PageThumbnailPanel {
     // G17 — prefer the overlay-aware raster; a null result means "no overlays on
     // this page", so fall through to the plain source thumbnail (unchanged path).
     if (this._overlayCompositor) {
-      const composited = await this._overlayCompositor(index);
+      let composited: string | null;
+      try {
+        composited = await this._overlayCompositor(index);
+      } catch {
+        // A6 — the compositor rejects when a REDACTED page could not be rendered (see
+        // ExportService.renderThumbnailWithOverlays). Falling through to the plain source raster
+        // would show on screen exactly what the redaction hides, so show a visible placeholder
+        // instead. Not cached: the next render (any edit re-renders the strip) tries again.
+        this._showUnavailable(img);
+        return;
+      }
       if (composited) { this._thumbCache.set(pageId, composited); img.src = composited; return; }
     }
     const url = await this.renderer.generateThumbnail(index);
     if (url) { this._thumbCache.set(pageId, url); img.src = url; }
+  }
+
+  /** A6 — the "preview unavailable" tile for a redacted page whose composite failed. */
+  private _showUnavailable(img: HTMLImageElement): void {
+    const msg = t('thumbnail.previewUnavailable');
+    img.src = BLANK_GIF;
+    img.classList.add('thumb-img-unavailable');
+    img.alt = msg;
+    const note = document.createElement('span');
+    note.className = 'thumb-unavailable';
+    note.textContent = msg;
+    img.insertAdjacentElement('afterend', note);
   }
 
   // oxlint-disable-next-line eslint/require-await -- Promise contract: callers (renderThumbnails, tests) await the returned Promise<void>
@@ -286,7 +311,7 @@ export class PageThumbnailPanel {
       if (this._thumbCache.has(page.id)) {
         img.src = this._thumbCache.get(page.id) ?? '';
       } else {
-        img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // blank placeholder
+        img.src = BLANK_GIF; // blank placeholder
         needsThumb = true; // generated lazily (on intersect) after the item is appended
       }
 

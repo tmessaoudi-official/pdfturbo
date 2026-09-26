@@ -78,6 +78,11 @@ every export path, at every page rotation, and with or without a crop. (The firs
 got that wrong: it removed the annotation correctly on the PDF export but not on the image export or
 the thumbnail when the page was rotated or cropped.)
 
+The page thumbnails fail closed too (since 2026-09-26): if the thumbnail of a page carrying a redaction
+cannot be drawn, the strip shows "Preview unavailable" rather than the page without its redaction.
+Before, it silently fell back to the plain page image — on screen only, never in a file, but showing
+exactly what the redaction hides.
+
 To be precise about what is *tested* rather than merely believed: the PDF-export rasteriser, the
 thumbnail and "export page as image" are each driven end-to-end on real pdf.js pixels, at rotations
 0/90/180/270 and with a crop. Until 2026-09-02 the image export was the exception — it was covered

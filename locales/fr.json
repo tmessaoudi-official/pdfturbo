@@ -617,7 +617,8 @@
     "imgPngHi": "PNG (300 ppp)",
     "addPages": "Ajouter PDF/Image",
     "addPagesTitle": "Ajouter des pages depuis un PDF ou une image",
-    "moreActions": "Actions de page"
+    "moreActions": "Actions de page",
+    "previewUnavailable": "Aperçu indisponible"
   },
   "canvas": {
     "emptyState": "Téléchargez un PDF pour commencer",

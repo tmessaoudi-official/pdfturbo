@@ -281,11 +281,15 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (5), `tests/browser/text-extent-ink.browser.test.ts` (33 — every inked pixel inside the footprint
   across 26 configs, and the drop's decisions both ways) and `tests/export/textExtent.test.ts` (6).
   Stated over-drop bounds are in `SECURITY.md` § "Dropping is blunt by design".
-- **A failed redaction render degrades to an un-redacted THUMBNAIL** (P3).
-  `renderThumbnailWithOverlays` catches everything and returns null, and the panel then falls back to
-  the plain source raster. On-screen only — never written to a file — but it is the wrong direction
-  for a fail-closed path. Deferred because the honest fix is a visibly-failed thumbnail, which needs
-  a placeholder and a string.
+- ~~**A failed redaction render degrades to an un-redacted THUMBNAIL** (P3).~~ **CLOSED 2026-09-26**
+  (limits walkthrough A6). `renderThumbnailWithOverlays` now REJECTS when a page carrying a redaction
+  cannot be rendered — a bake error, a refused source load, a missing source document or no canvas
+  context — and the thumbnail panel shows a visible "Preview unavailable" tile instead of the plain
+  source raster. An unredacted page keeps the old fallback (its plain raster hides nothing). The failure
+  is not cached, so the next re-render tries again. Guards: `tests/export/thumbnailFailClosed.test.ts`
+  (5, each rejection case with an unredacted control), the A6 case in
+  `tests/ui/pageThumbnailPanel.test.ts`, and `tests/browser/thumbnail-unavailable.browser.test.ts` (3 —
+  the tile is visible, the page image is hidden, the text fits in en/fr/ar).
 - **`getPageCropBox` falls back to a MediaBox-derived box with a hardcoded (0,0) origin** (P3).
   An undiagnosed-failure fallback on a safety path; pdf-lib's own `getCropBox` falls back
   internally so it essentially never throws. Deferred under the anti-bandaid gate: there is no

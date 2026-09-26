@@ -284,6 +284,37 @@ describe('PageThumbnailPanel — overlay compositor (G17)', () => {
     const img = container.querySelector('img.thumb-img');
     expect(img?.getAttribute('src')).toBe('data:image/jpeg;base64,SOURCE');
   });
+
+  // A6 — a failed REDACTED render must never fall back to the plain source raster: that would show,
+  // on screen, exactly what the redaction hides. The compositor rejects in that case (and only then;
+  // an unredacted failure still resolves null), and the tile shows a visible "preview unavailable".
+  it('A6: a compositor rejection shows "preview unavailable", never the plain source page', async () => {
+    const renderer = { generateThumbnail: vi.fn().mockResolvedValue('data:image/jpeg;base64,SOURCE') } as unknown as PDFRenderer;
+    const model = makeModel(1);
+    const panel = new PageThumbnailPanel({
+      container, renderer, model,
+      onNavigate: vi.fn(), onDelete: vi.fn(), onReorder: vi.fn(), onRotate: vi.fn(),
+      onAddPdf: vi.fn(), onDownload: vi.fn(), onDownloadImage: vi.fn(),
+    });
+    const compositor = vi.fn().mockRejectedValue(new Error('redacted render failed'));
+    panel.setOverlayCompositor(compositor);
+    await panel.render();
+    await new Promise(r => { setTimeout(r, 0); });
+    expect(renderer.generateThumbnail).not.toHaveBeenCalled();
+    const img = container.querySelector('img.thumb-img');
+    expect(img?.getAttribute('src')).not.toBe('data:image/jpeg;base64,SOURCE');
+    expect(img?.classList.contains('thumb-img-unavailable')).toBe(true);
+    const note = container.querySelector('.thumb-unavailable');
+    expect(note?.textContent).toBe('thumbnail.previewUnavailable'); // i18n is mocked to echo keys
+
+    // The failure is not cached: the next render tries again, and a success replaces the placeholder.
+    compositor.mockResolvedValue('data:image/jpeg;base64,OVERLAY');
+    await panel.render();
+    await new Promise(r => { setTimeout(r, 0); });
+    expect(compositor).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('img.thumb-img')?.getAttribute('src')).toBe('data:image/jpeg;base64,OVERLAY');
+    expect(container.querySelector('.thumb-unavailable')).toBeNull();
+  });
 });
 
 // F2b — on mobile the five overlaid hover controls are hidden (CSS); a single ⋮
