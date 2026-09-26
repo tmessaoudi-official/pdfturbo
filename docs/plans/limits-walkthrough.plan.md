@@ -108,7 +108,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | todo | - | KNOWN_ISSUES.md, SECURITY.md, CLAUDE.md |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | todo | - | src/infra/**, src/export/** |
-| 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | doing | - | src/**, tests/** |
+| 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
 <!-- /progress-block -->
 
 ### Blocked
