@@ -23,6 +23,7 @@ import {
   type PDFName,
 } from '@cantoo/pdf-lib';
 import type { TextElement } from '../elements/textElement';
+import { cosSinDeg } from '../utils/geometry';
 
 export interface StyledTextOpts {
   text: string;                 // single WinAnsi line (caller splits + excludes Arabic)
@@ -36,6 +37,7 @@ export interface StyledTextOpts {
   baselineRise?: number;        // Ts, pt (super +, sub −)
   wordSpacing?: number;         // Tw, pt (justify)
   gsName?: PDFName;             // opacity ExtGState (page.maybeEmbedGraphicsState)
+  rotate?: number;              // text direction, degrees CCW in page space (0/absent = upright)
 }
 
 /** True when an element needs the raw-operator bake (drawText can't express these). */
@@ -95,6 +97,8 @@ export function drawStyledTextLine(page: PDFPage, o: StyledTextOpts): void {
   }
   const baselineRise = o.baselineRise ?? 0;
   if (baselineRise !== 0) ops.push(setTextRise(baselineRise));
-  ops.push(setTextMatrix(1, 0, 0, 1, o.x, o.y), showText(o.font.encodeText(o.text)), endText(), popGraphicsState());
+  // Tc/Tw/Tz/Ts all act in TEXT space, so rotating the text matrix turns them with the line.
+  const { c, s } = cosSinDeg(o.rotate ?? 0);
+  ops.push(setTextMatrix(c, s, -s, c, o.x, o.y), showText(o.font.encodeText(o.text)), endText(), popGraphicsState());
   page.pushOperators(...ops);
 }

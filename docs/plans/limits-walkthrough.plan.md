@@ -53,7 +53,11 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-25 21:06] AGREED: D20 — a third compress mode that downsamples embedded JPEGs in place, keeping text.
 - [2026-09-25 21:06] AGREED: D21 — XFDF gains square/circle/line/ink, multi-line highlights and form <fields>; stamps stay skipped.
 - [2026-09-25 22:40] FOUND (A1): `src/` never passes `cMapUrl` to pdf.js, so pdf.js's own `vertical.pdf` extracts NO text in the app; recorded as row 32, not yet ruled.
+- [2026-09-26 09:27] FOUND (A3-pre): the thumbnail of a blank page whose rotate button was used composites with userRot = docPage.rotation (exportService `_applyOverlaysToPage`), while the editor and the PDF export draw a blank page unrotated; pre-existing, thumbnail-only, not yet ruled.
+- [2026-09-26 08:36] AGREED: A3-pre — one shared fix for every oriented overlay (text, image, signature, code, comment): orientation = page rotation minus element rotation, pivot about the box centre, real-browser tested at page 0/90/180/270 x element 0/90; then A3.
 - [2026-09-25 21:06] AGREED: D22 — Bates: reload integration test, restored-value validation, oversized start-number cap.
+- [2026-09-26 08:33] AGREED: A3 — first fix the rotated-text export to turn about the box centre as the editor does (own reproduction + tests), then do A3 with rotated OCR words.
+- [2026-09-26 08:33] FOUND (A3 probe): on a rotated page (source /Rotate or user rotation) every overlay with content orientation — text, image, signature, code, comment — exports turned by the page rotation, because the glyph/image rotation is degrees(-elemRot) and ignores totalRot; not yet ruled.
 
 ## Formal Plan
 
@@ -65,6 +69,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 |---|------|------|-------|----------|-------|
 | 1 | A1 vertical-text redaction measured + fixed | M | done | 2a40782 | src/utils/flowDoc.ts, tests/** |
 | 2 | A2 Form /BBox hidden text: attribution investigation | M | todo | - | src/export/**, src/utils/** |
+| 33 | A3-pre oriented overlays export upright on rotated pages + centre pivot | M | doing | - | src/export/pdfElementRenderer.ts, src/export/textExtent.ts, tests/** |
 | 3 | A3 OCR visible mode on user-rotated pages | S | todo | - | src/handlers/ocrHandler.ts, tests/** |
 | 4 | A4 re-add safe links on the raster export path | M | done | 5bc6dfe | src/export/**, tests/** |
 | 5 | A5 overflowing text vs blank-page redaction drop | M | done | 4533a88 | src/export/**, tests/** |

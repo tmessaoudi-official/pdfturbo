@@ -348,3 +348,18 @@ export function hexToRgbValues(hex: string): { r: number; g: number; b: number }
     b: parseInt(result[3], 16) / 255,
   };
 }
+
+/**
+ * cos/sin of an angle in degrees, snapped to exact 0 / ±1 at quarter turns. A text matrix built from
+ * `Math.cos(π/2)` would carry `6.1e-17` where the rotation is meant to be exact; snapping keeps the
+ * operand stream clean and a quarter-turn line exactly on its axis.
+ */
+export function cosSinDeg(deg: number): { c: number; s: number } {
+  const q = ((deg % 360) + 360) % 360;
+  if (q === 0) return { c: 1, s: 0 };
+  if (q === 90) return { c: 0, s: 1 };
+  if (q === 180) return { c: -1, s: 0 };
+  if (q === 270) return { c: 0, s: -1 };
+  const t = (deg * Math.PI) / 180;
+  return { c: Math.cos(t), s: Math.sin(t) };
+}

@@ -12,7 +12,8 @@
  * same function the bake draws with. What is NOT shared is the glyph band around each line: for a
  * Latin line it is the drawn face's own FontBBox (so a glyph's ink may reach up to ~0.2 em left of the
  * line start and ~0.07 em above the box top — a stated over-drop bound, not a guess), for an Arabic
- * line Noto Naskh's measured FontBBox. `tests/browser/text-extent-ink.browser.test.ts` pins both, and
+ * line Noto Naskh's measured FontBBox. A rotated element turns about its box centre, every line
+ * with it, so each line's band is bounded by its four corners turned the same way. `tests/browser/text-extent-ink.browser.test.ts` pins both, and
  * the one number the metrics cannot supply (right-hand overhang), against rendered pixels.
  */
 import { StandardFontEmbedder, StandardFonts } from '@cantoo/pdf-lib';
@@ -20,7 +21,7 @@ import type { TextElement } from '../elements/textElement';
 import { rotatedElementFootprint } from '../utils/geometry';
 import { visualRuns } from '../utils/bidi';
 import { hasAdvancedText } from './styledText';
-import { getStandardFont } from './pdfElementRenderer';
+import { getStandardFont, _rotateInElementSpace } from './pdfElementRenderer';
 import { layoutTextLines } from './textLayout';
 
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -89,7 +90,8 @@ export async function textDrawnFootprint(te: TextLike, measureArabic: ArabicMeas
   if (!te.text || !(te.fontSize > 0)) return stored;
   const fs = te.fontSize;
   const rot = te.rotation ?? 0;
-  const advanced = hasAdvancedText(te) && !rot;
+  // The bake keeps Tier-2 attrs on a rotated element too (its text matrix carries the rotation).
+  const advanced = hasAdvancedText(te);
   const drawSize = advanced && te.baselineShift ? fs * 0.65 : fs;
   const rise = !advanced ? 0 : te.baselineShift === 'super' ? fs * 0.33 : te.baselineShift === 'sub' ? -(fs * 0.15) : 0;
   const stroke = Math.max(0, te.strokeWidth ?? 0);
@@ -105,13 +107,12 @@ export async function textDrawnFootprint(te: TextLike, measureArabic: ArabicMeas
   const hsF = (advanced ? te.horizontalScale ?? 100 : 100) / 100;
   const cs = advanced ? te.charSpacing ?? 0 : 0;
   for (const laid of layoutTextLines(te, emb, advanced)) {
-    let left: number, right: number, top: number, bottom: number, pivotX: number;
+    let left: number, right: number, top: number, bottom: number;
     if (laid.arabic) {
       let w: number;
       try { w = await measureArabic(laid.line, fs, te.charSpacing, te.horizontalScale); } catch { w = Infinity; }
       // drawArabicLine: right-aligned to the box edge, never left of the box.
       const startX = Math.max(te.x, te.x + (te.width || 0) - w);
-      pivotX = te.x;
       left = startX - ARABIC.left * fs - stroke;
       right = startX + w + mixedLatinKernExcess(laid.line, fs) + ARABIC.right * fs + stroke;
       top = laid.baseY - ARABIC.top * fs - stroke;
@@ -125,7 +126,6 @@ export async function textDrawnFootprint(te: TextLike, measureArabic: ArabicMeas
         + cs * Math.max(0, laid.line.length - 1)) * hsF; // Tc term as effectiveLineWidth counts it
       const drawnW = Math.max(laid.lineW, laid.wordSpacing > 0 ? laid.boxW : 0) + Math.max(0, unkerned - laid.lineW);
       const start = te.x + laid.off;
-      pivotX = start;
       const baseline = laid.baseY - rise;
       const em = drawSize / 1000;
       // A negative Tc can pull a glyph back past the line start; bound it by the full pull.
@@ -138,12 +138,14 @@ export async function textDrawnFootprint(te: TextLike, measureArabic: ArabicMeas
       bottom = baseline - by0 * em + stroke;
     }
     if (!rot) { grow(left, top, right, bottom); continue; }
-    // A rotated line turns about its own start point (the bake's anchor), not the box centre. Bound
-    // it by the square of radius = farthest corner from that point: true whichever way it turns.
-    const px = pivotX, py = laid.baseY;
-    const r = Math.max(...[[left, top], [right, top], [left, bottom], [right, bottom]]
-      .map(([cx, cy]) => Math.hypot(cx - px, cy - py)));
-    grow(px - r, py - r, px + r, py + r);
+    // A rotated element turns about its BOX CENTRE, every line with it — in the editor and, since
+    // A3-pre (2026-09-26), in the bake. The line's band is a rigid rectangle in that turned frame, so
+    // its four corners turned the same way bound it exactly.
+    const cx = te.x + (te.width || 0) / 2, cy = te.y + (te.height || 0) / 2;
+    for (const [qx, qy] of [[left, top], [right, top], [left, bottom], [right, bottom]]) {
+      const p = _rotateInElementSpace(qx, qy, cx, cy, rot);
+      grow(p.x, p.y, p.x, p.y);
+    }
   }
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }

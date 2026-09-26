@@ -7,7 +7,7 @@ import type { HighlightElement } from '../elements/highlightElement';
 import type { ShapeElement } from '../elements/shapeElement';
 import type { CommentElement } from '../elements/commentElement';
 import { dataUrlToUint8Array } from '../utils/binaryUtils';
-import { transformPoint, hexToRgbValues } from '../utils/geometry';
+import { transformPoint, hexToRgbValues, cosSinDeg } from '../utils/geometry';
 import { drawArabicLine } from './arabicOverlay';
 import { drawStyledTextLine, hasAdvancedText } from './styledText';
 import { layoutTextLines } from './textLayout';
@@ -145,6 +145,26 @@ interface RenderHelpers {
   rectAnchor: (x: number, y: number, w: number, h: number) => { x: number; y: number };
   /** Unrotated content height (for freehand SVG y-flip). */
   Ho: number;
+  /**
+   * A DISPLAY point of this element, turned with the element about its box centre (as the editor's
+   * CSS `rotate()` turns it) and mapped to page space. With no element rotation it is exactly `tp`.
+   */
+  place: (px: number, py: number) => { x: number; y: number };
+  /**
+   * The pdf-lib `rotate` for anything with a reading direction (glyphs, pictures): the page's own
+   * rotation minus the element's, so it reads upright-then-turned in the viewer exactly as in the
+   * editor. Equal to `pdfRotVal` on an unrotated page.
+   */
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib degrees() return is untyped here
+  orient: any;
+  /** `orient` in degrees (CCW, page space). */
+  orientDeg: number;
+  /**
+   * drawImage placement for a DISPLAY sub-box of this element (its own width/height, never swapped)
+   * so a picture keeps its orientation and aspect whatever the page and element rotation.
+   */
+  // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib degrees() return is untyped here
+  placeBox: (x: number, y: number, w: number, h: number) => { x: number; y: number; width: number; height: number; rotate?: any };
 }
 
 /** Signature shared by every per-element-type renderer in the dispatch map. */
@@ -155,7 +175,7 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
   if (!te.text) return;
   const { pdfDoc, page, libs } = ctx;
   const { rgb, StandardFonts } = libs;
-  const { tp, swapDims, elemRot, pdfRotVal, anchorForCenter, rectAnchor } = hlp;
+  const { tp, swapDims, elemRot, anchorForCenter, rectAnchor, place, orient, orientDeg } = hlp;
   const col = hexToRgbValues(te.color);
   const alpha = te.opacity ?? 1;
   const fontName = getStandardFont(te.fontFamily, te.bold, te.italic);
@@ -175,9 +195,11 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
   }
 
   // Tier-2 attrs (stroke/charSpacing/horizontalScale/baselineShift/justify) require raw
-  // PDF operators — drawText cannot express them. Rotated elements always use drawText
-  // (the operator path doesn't reapply the rotation matrix, documented ceiling).
-  const advanced = hasAdvancedText(te) && !elemRot;
+  // PDF operators — drawText cannot express them. The operator path carries the rotation in its
+  // text matrix (`rotate`), so a rotated element keeps them too (A3-pre, 2026-09-26).
+  const advanced = hasAdvancedText(te);
+  // Page 0° and element 0°: the historical axis-aligned layout, byte-for-byte.
+  const upright = !elemRot && !ctx.totalRot;
   // fontKey is a PDFName used to reference the embedded font in the raw operator stream.
   // page.node is the internal PDFPageLeaf; accessed via `any` (same pattern as arabicOverlay).
   // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib PDFPageLeaf internals are untyped here
@@ -197,19 +219,20 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
     if (laid.arabic) {
       // Arabic: render shaped, right-to-left via the embedded Noto Naskh font
       // (drawText can't place shaped glyphs RTL). Right-align to the box edge.
-      const rawAnchor = tp(te.x, baseY);
-      const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
-      const rightAnchor = tp(te.x + (te.width || 0), baseY);
+      const a = place(te.x, baseY);
+      // Rotated: the box's left end of the baseline plus its width measured ALONG the line.
+      const right = upright ? Math.max(a.x, tp(te.x + (te.width || 0), baseY).x) : a.x + (te.width || 0);
       await drawArabicLine(pdfDoc, page, {
-        text: line, x: a.x, y: a.y, right: Math.max(a.x, rightAnchor.x),
+        text: line, x: a.x, y: a.y, right,
         size: te.fontSize, color: col,
         // Slice-2 advanced attrs now honoured on the Arabic overlay (Feature 4).
         charSpacing: te.charSpacing, horizontalScale: te.horizontalScale, strokeWidth: te.strokeWidth,
+        ...(upright ? {} : { rotate: orientDeg }),
       });
     } else {
       const { off, lineW, wordSpacing } = laid;
-      const rawAnchor = tp(te.x + off, baseY);
-      const a = elemRot ? anchorForCenter(rawAnchor.x, rawAnchor.y, 0, 0) : rawAnchor;
+      // The line's own start, turned with the box about its CENTRE (it used to turn about itself).
+      const a = place(te.x + off, baseY);
       if (advanced) {
         drawStyledTextLine(page, {
           text: line, x: a.x, y: a.y, size: drawSize, font, fontKey,
@@ -220,9 +243,10 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
           baselineRise: rise,
           wordSpacing,
           gsName,
+          rotate: orientDeg,
         });
       } else {
-        page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), opacity: alpha, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+        page.drawText(line, { x: a.x, y: a.y, size: te.fontSize, font, color: rgb(col.r, col.g, col.b), opacity: alpha, ...(orient ? { rotate: orient } : {}) });
       }
       // Underline / strikethrough as drawn lines. Rotated text is a documented ceiling
       // (the rule geometry would need the full rotation transform). `elemRot` (not
@@ -256,7 +280,7 @@ async function renderText(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHel
 async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const se = element as SignatureElement;
   const { pdfDoc, page, libs: { rgb, StandardFonts } } = ctx;
-  const { tp, swapDims, pdfRotVal, anchorForCenter, rectAnchor } = hlp;
+  const { place, orient, placeBox } = hlp;
   const img = await pdfDoc.embedPng(dataUrlToUint8Array(se.data));
 
   // F-D D1 — when an approval caption is attached, reserve a bottom band (in the
@@ -267,11 +291,8 @@ async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: Rend
   const captionBand = captionLines.length ? Math.min(element.height * 0.34, 22) : 0;
   const imgDispH = element.height - captionBand;
 
-  const ew = swapDims ? imgDispH : element.width;
-  const eh = swapDims ? element.width : imgDispH;
-  const corner = rectAnchor(element.x, element.y, element.width, imgDispH);
-  const a = anchorForCenter(corner.x, corner.y, ew, eh);
-  page.drawImage(img, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+  // The picture band turns with the WHOLE element about the element's centre, like the editor.
+  page.drawImage(img, placeBox(element.x, element.y, element.width, imgDispH));
 
   if (!captionLines.length) return;
 
@@ -284,11 +305,10 @@ async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: Rend
     const line = captionLines[i];
     if (!line) continue;
     const baseY = element.y + imgDispH + size * 0.9 + i * lineHeight;
-    const raw = tp(element.x + pad, baseY);
-    const at = pdfRotVal ? anchorForCenter(raw.x, raw.y, 0, 0) : raw;
+    const at = place(element.x + pad, baseY);
     page.drawText(line, {
       x: at.x, y: at.y, size, font, color: rgb(0.07, 0.07, 0.07),
-      maxWidth: element.width - pad * 2, ...(pdfRotVal ? { rotate: pdfRotVal } : {}),
+      maxWidth: element.width - pad * 2, ...(orient ? { rotate: orient } : {}),
     });
   }
 }
@@ -296,25 +316,15 @@ async function renderSignature(element: PDFElement, ctx: PdfRenderCtx, hlp: Rend
 async function renderImage(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const ie = element as ImageElement;
   const { pdfDoc, page } = ctx;
-  const { rectAnchor, swapDims, pdfRotVal, anchorForCenter } = hlp;
   const pdfImg = await embedImage(pdfDoc, ie.src);
-  const ew = swapDims ? element.height : element.width;
-  const eh = swapDims ? element.width : element.height;
-  const corner = rectAnchor(element.x, element.y, element.width, element.height);
-  const a = anchorForCenter(corner.x, corner.y, ew, eh);
-  page.drawImage(pdfImg, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+  page.drawImage(pdfImg, hlp.placeBox(element.x, element.y, element.width, element.height));
 }
 
 async function renderCode(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
   const ce = element as CodeElement;
   const { pdfDoc, page } = ctx;
-  const { rectAnchor, swapDims, pdfRotVal, anchorForCenter } = hlp;
   const codePdfImg = await embedImage(pdfDoc, ce.cachedDataUrl);
-  const ew = swapDims ? element.height : element.width;
-  const eh = swapDims ? element.width : element.height;
-  const corner = rectAnchor(element.x, element.y, element.width, element.height);
-  const a = anchorForCenter(corner.x, corner.y, ew, eh);
-  page.drawImage(codePdfImg, { x: a.x, y: a.y, width: ew, height: eh, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+  page.drawImage(codePdfImg, hlp.placeBox(element.x, element.y, element.width, element.height));
 }
 
 function renderHighlight(element: PDFElement, ctx: PdfRenderCtx, hlp: RenderHelpers): Promise<void> {
@@ -401,7 +411,7 @@ async function renderComment(element: PDFElement, ctx: PdfRenderCtx, hlp: Render
   const ce = element as CommentElement;
   const { pdfDoc, page, libs } = ctx;
   const { rgb, StandardFonts } = libs;
-  const { tp, swapDims, pdfRotVal, anchorForCenter, rectAnchor } = hlp;
+  const { swapDims, pdfRotVal, anchorForCenter, rectAnchor, place, orient } = hlp;
   const col = hexToRgbValues(ce.color);
   const ew = swapDims ? ce.height : ce.width;
   const eh = swapDims ? ce.width : ce.height;
@@ -411,8 +421,9 @@ async function renderComment(element: PDFElement, ctx: PdfRenderCtx, hlp: Render
   if (ce.text) {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     // Text starts at top of box with 4px padding + ~10pt ascent (matches canvas textarea layout)
-    const anchor2 = tp(ce.x + 4, ce.y + 4 + 10);
-    page.drawText(clampCommentText(ce.text), { x: anchor2.x, y: anchor2.y, size: 10, font, color: rgb(0, 0, 0), maxWidth: swapDims ? ce.height - 8 : ce.width - 8, lineHeight: 14, opacity: 0.9, ...(pdfRotVal ? { rotate: pdfRotVal } : {}) });
+    // Upright in the editor's frame, so it wraps at the DISPLAY width and turns with the box.
+    const anchor2 = place(ce.x + 4, ce.y + 4 + 10);
+    page.drawText(clampCommentText(ce.text), { x: anchor2.x, y: anchor2.y, size: 10, font, color: rgb(0, 0, 0), maxWidth: ce.width - 8, lineHeight: 14, opacity: 0.9, ...(orient ? { rotate: orient } : {}) });
   }
 }
 
@@ -487,5 +498,32 @@ export function renderElementToPdfLib(element: PDFElement, ctx: PdfRenderCtx): P
     };
   };
 
-  return RENDERERS[element.type](element, ctx, { tp, swapDims, elemRot, pdfRotVal, anchorForCenter, rectAnchor, Ho });
+  // Oriented overlays (A3-pre, 2026-09-26). The viewer turns the page by `totalRot` clockwise, so
+  // anything with a reading direction is drawn turned `totalRot` counter-clockwise to cancel it,
+  // then by the element's own rotation clockwise (pdf-lib `rotate` is CCW) — hence the difference.
+  // Before this, only `-elemRot` was applied: on a rotated page text, pictures, codes, signatures and
+  // comments came out turned by the page rotation, and pictures squashed into swapped dimensions.
+  const upright = !elemRot && !totalRot;
+  const orientDeg = totalRot - elemRot;
+  const orient = upright ? pdfRotVal : (libs.degrees ? libs.degrees(orientDeg) : undefined);
+  const pivotX = element.x + element.width / 2, pivotY = element.y + element.height / 2;
+  const place = (px: number, py: number) => {
+    if (!elemRot) return tp(px, py);
+    const r = _rotateInElementSpace(px, py, pivotX, pivotY, elemRot);
+    return tp(r.x, r.y);
+  };
+  const placeBox = (bx: number, by: number, bw: number, bh: number) => {
+    if (upright) {
+      const corner = rectAnchor(bx, by, bw, bh);
+      return { x: corner.x, y: corner.y, width: bw, height: bh, ...(orient ? { rotate: orient } : {}) };
+    }
+    // Centre of the sub-box, turned with the element, then back off half its size along the drawn
+    // axes — pdf-lib turns the picture about its bottom-left anchor.
+    const c = place(bx + bw / 2, by + bh / 2);
+    const { c: cos, s: sin } = cosSinDeg(orientDeg);
+    const ox = -bw / 2, oy = -bh / 2;
+    return { x: c.x + ox * cos - oy * sin, y: c.y + ox * sin + oy * cos, width: bw, height: bh, ...(orient ? { rotate: orient } : {}) };
+  };
+
+  return RENDERERS[element.type](element, ctx, { tp, swapDims, elemRot, pdfRotVal, anchorForCenter, rectAnchor, Ho, place, orient, orientDeg, placeBox });
 }

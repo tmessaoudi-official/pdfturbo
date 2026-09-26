@@ -29,7 +29,7 @@
  * returns runs already in visual L→R order, each drawn with its own font (Noto vs
  * Helvetica). Known limits (documented ceiling): bracket display-mirroring inside the
  * overlay (fontkit draws the logical glyph); tashkeel/diacritic GPOS positioning is
- * fontkit's weak spot; rotated Arabic elements are drawn upright.
+ * fontkit's weak spot. A rotated line (element or page rotation) is drawn along `rotate`.
  */
 import {
   PDFHexString,
@@ -39,6 +39,7 @@ import {
   StandardFonts,
   TextRenderingMode,
   beginText,
+  degrees,
   endText,
   popGraphicsState,
   pushGraphicsState,
@@ -60,6 +61,7 @@ import {
 // the WOFF of this font is mis-embedded by fontkit/pdf-lib (glyphs render blank).
 import notoNaskhUrl from '../assets/fonts/NotoNaskhArabic-Regular.ttf?url';
 import { visualRuns } from '../utils/bidi';
+import { cosSinDeg } from '../utils/geometry';
 
 const _fontCache = new WeakMap<PDFDocument, Promise<PDFFont>>();
 let _notoBytes: Promise<Uint8Array> | null = null;
@@ -129,6 +131,12 @@ export interface ArabicLineOpts {
   y: number;
   /** Right edge of the element box; the run is right-aligned to it when wider than the text. */
   right: number;
+  /**
+   * Direction the line runs in, degrees CCW in page space. When set, (x, y) is the box's left end
+   * of the baseline and `right − x` is the box width MEASURED ALONG that direction; the right-aligned
+   * start is then offset along it. Absent = the historical axis-aligned layout, byte-for-byte.
+   */
+  rotate?: number;
   size: number;
   color: { r: number; g: number; b: number };
   /** Slice-2 advanced attrs, applied to the shaped Arabic (Noto) runs (Feature 4). */
@@ -158,6 +166,7 @@ export function buildArabicRunOps(
   size: number,
   color: { r: number; g: number; b: number },
   style: ArabicRunStyle = {},
+  rotate = 0,
 ): PDFOperator[] {
   const ops: PDFOperator[] = [
     pushGraphicsState(),
@@ -180,12 +189,30 @@ export function buildArabicRunOps(
     ops.push(PDFOperator.of(PDFOperatorNames.SetTextHorizontalScaling, [PDFNumber.of(horizontalScale)]));
   }
   ops.push(
-    setTextMatrix(1, 0, 0, 1, x, y),
+    setTextMatrix(...rotatedTm(rotate), x, y),
     showText(PDFHexString.of(hex)),
     endText(),
     popGraphicsState(),
   );
   return ops;
+}
+
+/** The linear part of a text matrix turned `deg` CCW (identity at 0). */
+function rotatedTm(deg: number): [number, number, number, number] {
+  const { c, s } = cosSinDeg(deg);
+  return [c, s, -s, c];
+}
+
+/**
+ * Where a right-aligned run of `width` starts. Axis-aligned (no `rotate`): the historical
+ * `max(x, right − width)`. Rotated: offset from (x, y) along the line's direction by however much
+ * the box is wider than the run.
+ */
+function runStart(opts: ArabicLineOpts, width: number): { x: number; y: number } {
+  if (opts.rotate === undefined) return { x: Math.max(opts.x, opts.right - width), y: opts.y };
+  const along = Math.max(0, opts.right - opts.x - width);
+  const { c, s } = cosSinDeg(opts.rotate);
+  return { x: opts.x + along * c, y: opts.y + along * s };
 }
 
 /**
@@ -271,10 +298,10 @@ export async function drawArabicLine(
   };
   const textWidth = pureArabicWidth(font, opts.text, cidHex, opts.size, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
   // Right-align within the element box (RTL convention); never overflow left.
-  const startX = Math.max(opts.x, opts.right - textWidth);
+  const start = runStart(opts, textWidth);
 
   const fontKey = page.node.newFontDictionary(font.name, font.ref);
-  page.pushOperators(...buildArabicRunOps(fontKey, cidHex, startX, opts.y, opts.size, opts.color, style));
+  page.pushOperators(...buildArabicRunOps(fontKey, cidHex, start.x, start.y, opts.size, opts.color, style, opts.rotate ?? 0));
 }
 
 /**
@@ -300,17 +327,23 @@ async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLine
   };
   const measured = measureBidiRuns(arFont, latFont, opts.text, opts.size, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
   const total = measured.reduce((s, r) => s + r.width, 0);
-  let cx = Math.max(opts.x, opts.right - total);
+  const start = runStart(opts, total);
+  const rot = opts.rotate ?? 0;
+  const { c, s } = cosSinDeg(rot);
+  let cx = start.x, cy = start.y;
   const arKey = page.node.newFontDictionary(arFont.name, arFont.ref);
   for (const r of measured) { // ALREADY in visual L→R order — no reverse
     if (r.useLatin) {
       page.drawText(r.text, {
-        x: cx, y: opts.y, size: opts.size, font: latFont,
+        x: cx, y: cy, size: opts.size, font: latFont,
         color: rgb(opts.color.r, opts.color.g, opts.color.b),
+        ...(opts.rotate === undefined ? {} : { rotate: degrees(rot) }),
       });
     } else if (r.hex) {
-      page.pushOperators(...buildArabicRunOps(arKey, r.hex, cx, opts.y, opts.size, opts.color, style));
+      page.pushOperators(...buildArabicRunOps(arKey, r.hex, cx, cy, opts.size, opts.color, style, rot));
     }
-    cx += r.width;
+    // Advance along the line's own direction (identity when unrotated: y stays put).
+    if (opts.rotate === undefined) cx += r.width;
+    else { cx += r.width * c; cy += r.width * s; }
   }
 }

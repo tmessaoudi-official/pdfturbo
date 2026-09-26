@@ -303,6 +303,63 @@ One more, found by review: `/Subtype` and `/S` are read with `lookupMaybe(…, P
 legal indirect name reads as `12 0 R` through `get` and the link was silently skipped (the case that
 pins it was red before the change). The sanitizer had the same defect once; see § PDF sanitizer.
 
+### On a rotated page, text, pictures, signatures and comments exported turned by the page rotation (A3-pre, 2026-09-26)
+
+Every orientation-bearing renderer handed pdf-lib `rotate: degrees(-elemRot)` and nothing else. That is
+right only on an unrotated page: the viewer turns the page by its `/Rotate` clockwise, so on a scanned
+`/Rotate 90` page — or after the user pressed rotate — every text box, image, code, signature and
+comment came out turned by the page rotation, and pictures were squashed into their SWAPPED dimensions
+(`swapDims` is right for a filled rectangle, which has no orientation, and wrong for anything that
+does). Separately, rotated TEXT turned about its line start while the editor turns the box about its
+CENTRE (`elementLayerRenderer`: `transform-origin: center center`), so a rotated line landed up to
+~120pt from where the editor showed it. Nothing caught either: `rotated-overlay-placement` checks a
+symmetric green square, which reads the same in every orientation.
+
+**One shared placement in `renderElementToPdfLib`:** `orientDeg = totalRot − elemRot` (pdf-lib is
+CCW), `place()` turns a display point about the box centre then maps it through `tp`, and `placeBox()`
+anchors a picture of its OWN (never swapped) size at `C + Rot(φ)(−w/2, −h/2)`. The raw-operator paths
+take the angle into their text matrix (`drawStyledTextLine` `rotate`, `drawArabicLine` `rotate`), and an
+Arabic line's right-alignment offset runs ALONG the line (`runStart`). Rectangles, highlights,
+redactions, shapes, the text background and the link rect are deliberately untouched — they were
+already right. `cosSinDeg` snaps quarter turns to exact 0/±1 so no `6e-17` reaches an operand stream.
+
+**Byte-identical at page 0° and element 0°** — proved, not argued: the content stream of every element
+type hashed before and after the change (`caecf8e1…`, a throwaway probe, not committed). Every other
+orientation changes by design. The textExtent footprint moved with the bake (§ A5 above).
+
+**Two scope extensions, stated because they change output at page 0°:** rotated text now pivots about
+the box centre, and a rotated element keeps its Tier-2 attrs (the `!elemRot` gate on the operator path
+is gone — its only reason was the missing rotation in the text matrix).
+
+**The oracle is independent of the renderer.** Pictures: a four-colour quadrant PNG, a 4×4 point grid
+turned about the ELEMENT centre, colours sampled from the real pdf.js render. Text: pdf.js's own text
+transforms mapped to display space against the SAME element exported at page 0°/element 0° (the
+byte-identical path), turned about the box centre. `turn()` is checked against CSS itself with
+`getBoundingClientRect`, so the oracle does not share the repo's sign convention by construction.
+Three fixture lessons, each found by a sabotage that stayed green: **(1)** a signature WITHOUT a caption
+has its picture centred on the element, so a band-pivot error is invisible — the fixture carries one;
+**(2)** quadrant CENTRES leave ~15pt of slack, more than the caption band's 11pt offset — the grid
+reaches 10% from each edge; **(3)** a comment string must be long enough to wrap at the swapped width
+but not the real one, or a `maxWidth` from the wrong axis is invisible. And pdf.js truncates a text
+item at the page edge, so a turned box near an edge reads as a wrong STRING — the text boxes sit half a
+diagonal from every edge.
+
+Guards: `tests/browser/rotated-oriented-overlays.browser.test.ts` (38 — the oracle check, a reference
+non-vacuity check, and 6 page orientations × element 0/90/30° for pictures and text: source `/Rotate`
+0/90/180/270, user 90, and source 90 + user 180), plus three rotated-overflow configs in
+`text-extent-ink.browser.test.ts`. On the pre-fix source the new file fails 32 of 38 (the six that pass
+are the oracle, the reference, text at 0/0 and pictures on an unrotated page, which were already right).
+Sabotage, each restored and checked with `cmp`: page rotation dropped from the angle → exactly the 30
+rotated-page cases; no centre pivot → 18 (12 text at element ≠ 0, 6 captioned-signature pictures at
+90° — the 11pt band offset at 30° stays inside the grid's margin, a stated bound); styled text matrix
+unrotated → 15; comment `maxWidth` from the swapped axis → exactly the 12 cases on a 90°/270° page;
+Arabic start axis-aligned → 15; mixed-line advance axis-aligned → 15 (the 15s are every text case whose
+angle is non-zero — at source 90 + element 90 the angle cancels).
+
+**Found, not fixed:** the THUMBNAIL of a blank page whose rotate button was used composites with
+`userRot = docPage.rotation` (`_applyOverlaysToPage`), while the editor and the PDF export draw a blank
+page unrotated. Pre-existing, cosmetic, thumbnail-only; recorded in the limits plan.
+
 ### Typed text overflows its box, and the redaction drop now tests where it is DRAWN (A5, 2026-09-26)
 
 A `TextElement` has a fixed height (nothing grows it; the editor textarea scrolls) and `renderText`
@@ -317,8 +374,10 @@ extracted out of `renderText`, which now draws from it, so the drop and the bake
 where a line is. The glyph band around a line is NOT shared — it comes from the drawn face's own
 FontBBox (Latin) and Noto Naskh's measured bbox (Arabic), plus one measured right-overhang constant.
 `text-extent-ink.browser.test.ts` is the pin on those numbers: every non-white pixel of the real bake
-must lie inside the footprint, across 26 configs. **Rotated lines turn about their OWN start point**
-(the bake's anchor), not the box centre, so they are bounded by a square around that point.
+must lie inside the footprint, across 29 configs. **Rotated lines turn about the BOX CENTRE** — the
+editor's pivot, and the bake's since A3-pre (2026-09-26; until then the bake turned each line about its
+own start point, and the footprint followed it) — so each line's band is bounded by its four corners
+turned the same way.
 
 **Kerning, found by the ink probe and invisible otherwise.** pdf-lib's `widthOfTextAtSize` applies the
 AFM kerning pairs; `drawText` and the raw `Tj` path draw with none. So a kerned line inks WIDER than
@@ -342,11 +401,13 @@ CJK included — in measuring AND drawing, so CJK is measured as it is drawn and
 Stated over-drop bounds (`SECURITY.md` § "Dropping is blunt by design"): FontBBox left/top headroom,
 one union box per element (an empty line in the middle counts as covered), and an Arabic line whose
 font cannot load counts as reaching the page edge. Guards: `redaction-text-overflow.browser.test.ts`
-(5, reproduction + far-away control), `text-extent-ink.browser.test.ts` (33),
+(5, reproduction + far-away control), `text-extent-ink.browser.test.ts` (36),
 `tests/export/textExtent.test.ts` (6). **Sabotage, RE-MEASURED after the last cases were added** (the
 996fd7f commit message predates the four kerning/left-overhang cases and the upright pin, and its S2
 and S5 figures are stale): drop tests the stored box → 8 browser; no bottom band → 1 unit + 8 ink;
-Arabic never measured → KEPT(b) + 1 unit; rotated square removed → 3; right overhang 0 → 3 ink (two
+Arabic never measured → KEPT(b) + 1 unit; rotation ignored → 4 (re-measured 2026-09-26 with the
+three rotated-overflow configs A3-pre added; pivoting at each line's start instead of the box centre
+fails exactly those three); right overhang 0 → 3 ink (two
 italic, and the Helvetica "_____" upright pin — without that pin the kerning term absorbed the upright
 constant in every other config and S5 left it unguarded); kerning term removed → exactly the 3 kerning
 cases; `advanced` forced off → 1 (Tc/Tz); FontBBox left bound removed → exactly the Times-italic "jfjf"
@@ -2773,8 +2834,10 @@ sub −0.15×fontSize); (6) the popover super/sub buttons **toggle** — re-clic
 color — uses fill), letter-spacing, width%, x²/x₂); `uiController.updateFormattingToolbar` toggles `btn-active-fmt` + reflects values;
 i18n `formatting.{justify,stroke,charSpacing,horizontalScale,baseline,superscript,subscript}` in en/fr/ar (ar
 accepted by the 2026-09-13 WS3 closure ruling — see § i18n; the repo could never prove whether the
-2026-07-30 pass covered these, and the developer closed the question by ruling rather than a re-read). No feature flag (additive). **Ceilings:** rotated element + advanced attr → `drawText` fallback
-(attrs ignored, consistent with the `!elemRot` decoration gating); the Arabic overlay path NOW applies stroke/Tc/Tz
+2026-07-30 pass covered these, and the developer closed the question by ruling rather than a re-read). No feature flag (additive). **Ceilings:** ~~rotated element + advanced attr → `drawText` fallback~~
+LIFTED 2026-09-26 (A3-pre): the operator path's text matrix now carries the rotation, so a rotated
+element keeps stroke/Tc/Tz/justify/sub-super (underline, strikethrough and the background fill are
+still skipped on a rotated element); the Arabic overlay path NOW applies stroke/Tc/Tz
 too (Feature 4, 2026-06-24 — see below); the **raster export path** (`exportPipeline.ts`, redaction pages +
 thumbnails) applies these attrs through the same `renderText` and its rasterize round-trip is pixel-guarded
 since 2026-07-31 by `tests/browser/raster-text-attrs.browser.test.ts` (see the correction in Slice 1 above —

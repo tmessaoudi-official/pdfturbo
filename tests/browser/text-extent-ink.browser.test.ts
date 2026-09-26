@@ -100,6 +100,14 @@ const CONFIGS: Array<[string, TextElement, number?]> = [
   ['centred', mk(40, 40, 'Centred', { align: 'center', width: 200 })],
   ['element rotated 30°', mk(200, 150, 'Rotated line\nand another', { rotation: 30 })],
   ['element rotated 200°', mk(200, 150, 'Upside down', { rotation: 200 })],
+  // A rotated element turns about its BOX CENTRE (A3-pre, 2026-09-26). Three lines in a one-line box
+  // put the last lines' ink OUTSIDE the stored rotated box, on the side a footprint pivoted anywhere
+  // else (each line's start, which the bake used before) does not reach. The configs above keep
+  // their ink inside the stored rotated box and would pass with any pivot.
+  ['rotated 90°, line overflowing a narrow box', mk(250, 60, 'Overflowing far\nsecond overflow\nthird overflow', { rotation: 90, width: 40 })],
+  ['rotated 90°, Arabic overflowing a narrow box', mk(250, 60, 'نص عربي طويل\nسطر ثان هنا\nسطر ثالث هنا', { rotation: 90, width: 40 })],
+  // Tier-2 attrs are kept on a rotated element now (its text matrix carries the rotation).
+  ['rotated 90°, letter-spaced overflow', mk(250, 60, 'Spaced out\nsecond\nthird', { rotation: 90, width: 40, charSpacing: 4 })],
   ['page rotated 90°', mk(40, 40, 'On a rotated page\nsecond'), 90],
   ['CJK typed into a box (drawn as ?)', mk(40, 40, '机密文件内容', { width: 20 })],
   // Kerning: pdf-lib's widthOfTextAtSize applies the AFM kerning pairs, but the bake draws plain Tj

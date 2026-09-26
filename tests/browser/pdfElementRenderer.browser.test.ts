@@ -22,14 +22,15 @@ const W = 200;
 const H = 200;
 const SCALE = 2;
 
-async function renderOne(element: PDFElement): Promise<Uint8Array> {
+async function renderOne(element: PDFElement, totalRot = 0): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([W, H]);
+  if (totalRot) page.setRotation(degrees(totalRot));
   const ctx: PdfRenderCtx = {
     pdfDoc, page,
     libs: { rgb, StandardFonts, degrees },
     h: H, w: W, W_orig: W, H_orig: H,
-    totalRot: 0, cropOriginX: 0, cropOriginY: 0,
+    totalRot, cropOriginX: 0, cropOriginY: 0,
   };
   await renderElementToPdfLib(element, ctx);
   return pdfDoc.save();
@@ -185,6 +186,25 @@ describe('renderElementToPdfLib — pixel-region export (M1 #13, closes the P0)'
     // A javascript: URL is sanitized to null → the `safeUrl` falsy branch, no annotation.
     const blocked = await getAnnots(await renderOne(el({ ...base, linkUrl: 'javascript:alert(1)' })));
     expect(blocked.find((a) => a.subtype === 'Link')).toBeFalsy();
+  });
+
+  it('keeps a picture\'s orientation on a rotated page, turned about its centre (A3-pre)', async () => {
+    // Red top-left quadrant, blue elsewhere: the red centroid is a direction as well as a position.
+    const c = document.createElement('canvas');
+    c.width = 80; c.height = 40;
+    const cc = c.getContext('2d');
+    if (!cc) throw new Error('no 2d context');
+    cc.fillStyle = '#0000ff'; cc.fillRect(0, 0, 80, 40);
+    cc.fillStyle = '#ff0000'; cc.fillRect(0, 0, 40, 20);
+    const box = { x: 40, y: 60, width: 80, height: 40 };
+    const img = await rasterize(await renderOne(el({ type: 'image', ...box, src: c.toDataURL('image/png'), rotation: 30 }), 90));
+    const red = centroid(img, (r, g, b) => r > 180 && g < 90 && b < 90);
+    // Display (y-down) coordinates, turned 30° clockwise about the box centre as CSS does.
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2, t = Math.PI / 6;
+    const dx = -box.width / 4, dy = -box.height / 4;
+    expect(red.n).toBeGreaterThan(500);
+    expect(Math.abs(red.x / SCALE - (cx + dx * Math.cos(t) - dy * Math.sin(t)))).toBeLessThan(2);
+    expect(Math.abs(red.y / SCALE - (cy + dx * Math.sin(t) + dy * Math.cos(t)))).toBeLessThan(2);
   });
 
   it('rotates a filled shape around its center (rotation anchor)', async () => {
