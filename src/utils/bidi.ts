@@ -34,6 +34,15 @@ export function logicalToVisual(text: string, base: BidiBase = 'auto'): string {
   }
 }
 
+/** The Unicode Bidi_Mirroring_Glyph of one character (`(` ↔ `)`), or null when it has none. */
+export function mirroredChar(ch: string): string | null {
+  try {
+    return _api().getMirroredCharacter(ch) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Char types that lay out left-to-right inside an RTL line (UAX#9): strong-L plus
 // European numbers and their adjacent separators/terminators. AN (Arabic-Indic digits)
 // stay RTL.

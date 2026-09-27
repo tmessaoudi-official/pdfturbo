@@ -25,6 +25,7 @@ import type { DocumentPage } from '../../src/core/documentModel';
 import type { IErrorReporter } from '../../src/core/errorReporter';
 import type { FlowDoc } from '../../src/utils/flowDoc';
 import url from '../fixtures/bidi/mixed-bidi.pdf?url';
+import chromeUrl from '../fixtures/corpus-public/arabic-allcases.pdf?url';
 import { drawArabicLine } from '../../src/export/arabicOverlay';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
@@ -120,3 +121,35 @@ describe('row 19 — a second producer: the app\'s own Arabic bake reads back in
     expect(out.paras.map(p => p.bidi)).toEqual([true, true]);
   });
 });
+
+/**
+ * The per-glyph shape: `arabic-allcases.pdf` is Chrome print-to-PDF (scripts/gen-arabic-fixture.mjs holds the typed
+ * text), where pdf.js returns most Arabic glyphs as one item each. Chrome's ToUnicode maps a mirrored bracket glyph to
+ * its SHAPE, LibreOffice's to its logical character — the two files together pin the bracket rule both ways.
+ * Lines left out are pre-existing bounds, not guarantees: `الله` and the lam-alef in `والإصدار` are ligature glyphs
+ * whose multi-character ToUnicode pdf.js reverses with the chunk; `2026.` is one item drawn `.` first and returned as
+ * drawn; tashkeel lines come apart at the marks; table cells are a separate path.
+ */
+describe('row 19 — a per-glyph producer (Chrome print-to-PDF) reads back in typed order', () => {
+  let chrome: string[] = [];
+  beforeAll(async () => {
+    chrome = (await exportedParagraphs(new Uint8Array(await (await fetch(chromeUrl)).arrayBuffer()))).paras.map(p => p.text);
+  });
+  const has = (want: string) => expect(chrome.map(esc)).toContain(esc(want));
+
+  it('a pure Arabic heading', () => has('مستند اختبار شامل للغة العربية'));
+  it('brackets drawn by a shape-mapping producer come out as typed', () => {
+    has('١ ـ فقرة عربية خالصة (RTL)');
+    has('٢ ـ نص مختلط عربي ولاتيني وأرقام (bidi)');
+  });
+  it('an Arabic line with an embedded product name and a percentage', () =>
+    has('المنتج اسمه PDFturbo ويعمل بنسبة 100% داخل المتصفح، بدون خادم. البريد الإلكتروني'));
+  it('an English line with an Arabic file name: no space inside `نظام.pdf`', () =>
+    has('Mixed line the other way: the file نظام.pdf was opened at 14:30 with success.'));
+  it('a wrapped Arabic line with more Latin letters than Arabic reads right to left, and v2.0.0 stays whole', () => {
+    const line = chrome.find(t => t.includes('support@example.com')) ?? '';
+    expect(line.startsWith('support@example.com'), esc(line)).toBe(true);
+    expect(esc(line)).toContain(esc(' رقم v2.0.0 صدر سنة '));
+  });
+});
+

@@ -3298,15 +3298,35 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   digits) take their strong neighbours' direction or the line's (UAX#9 N1/N2 at item granularity), and
   `logicalItemOrder` applies L2 for either base (an Arabic phrase split across two items inside an English line
   reads right to left). Item text is only NFKC-folded (presentation forms → base letters, U+FEFB → ل+ا). The space
-  between two words is the gap between their boxes whichever side each is on. `reverseRtlText` survives only as the
-  text search's fallback. Bounds: a lam-alef LIGATURE glyph extracts reordered (`كلام` → `كالم`) because pdf.js
-  reverses the ligature's two-char ToUnicode with the chunk — pdftotext reads it the same; a producer that draws
-  RTL glyphs in logical order is read reversed (pdf.js's own copy is wrong the same way). Guards:
-  `tests/browser/docx-mixed-bidi.browser.test.ts` (10: the typed text of seven LibreOffice lines is the oracle,
-  plus the app's bake), `tests/utils/flowDocArabic.test.ts`, `tests/blockers/arabic.blockers.test.ts`. Sabotage,
-  each restored with `cmp`: per-item reversal back → 5 jsdom + 8 browser; item-count direction → 1 + 3; neutral
-  resolution off → 1 + 2; L2 for an LTR base off → 1 + 2; direction-keyed gap → 1 + 3 (the Markdown case aggregates
-  every line, so it reds with any of them). The writer emits complex-script attrs (`font.cs=Arial`,
+  between two words is the gap between their boxes whichever side each is on — and at a direction change, between
+  the two direction RUNS' boxes, because the logical neighbour is at the run's far end (Chrome draws `نظام` one
+  glyph per item; the gap from its last glyph `م` to `.pdf` spans the whole word). `reverseRtlText` survives only as
+  the text search's fallback.
+  **A second producer, measured, needed three more rules** (`tests/fixtures/corpus-public/arabic-allcases.pdf`,
+  Chrome print-to-PDF, typed text in `scripts/gen-arabic-fixture.mjs`). (1) **Producers disagree on what a mirrored
+  bracket glyph means**: LibreOffice's ToUnicode maps it to the logical character, Chrome's to its SHAPE, and pdf.js
+  mirrors nothing — so `(RTL)` came out `)RTL(`. `mirrorShapeBrackets` mirrors the RTL-placed bracket-only items of a
+  line only when its bracket order closes before it opens AND mirroring balances it; a balanced line is left alone,
+  which is what keeps LibreOffice right. (2) **W7 at item granularity**: a digit item touching a Latin item is Latin
+  (`v` + `2.0.0` → `v2.0.0`, not `2.0.0v`). (3) **Direction is a paragraph property** (UAX#9 P2) but lines are
+  ordered before grouping: a line whose letters are 35–65% right-to-left takes its paragraph's direction, or the side
+  it is flush with when the paragraph is near even too (`settleAmbiguousLines` — the wrapped `support@example.com …`
+  line of an Arabic paragraph has 18 Latin letters against 17 Arabic). A letter-less item is neutral whatever its
+  flag, so that second pass does not read resolved neutrals back as strong.
+  Bounds, each per producer measured: a LIGATURE glyph whose ToUnicode spans several characters extracts reordered
+  because pdf.js reverses it with the chunk — LibreOffice's lam-alef (`كلام` → `كالم`, pdftotext reads it the same),
+  Chrome's `الله` (→ `اهلل`) and the lam-alef in `والإصدار`; Chrome's `2026.` is ONE item drawn `.` first, returned
+  as drawn, and comes out `.2026`; tashkeel lines come apart at the marks (C19); a producer that draws RTL glyphs in
+  logical order is read reversed (pdf.js's own copy is wrong the same way). **UNCERTIFIED-BY-EXECUTION: the
+  tagged (struct-tree) path** — it now takes `letterDirection` but no tagged Arabic fixture exists, and it does not
+  run `settleAmbiguousLines`. Guards: `tests/browser/docx-mixed-bidi.browser.test.ts` (15: the typed text of seven
+  LibreOffice lines is the oracle, the app's bake, and five Chrome cases), `tests/utils/flowDocArabic.test.ts` and
+  `tests/blockers/arabic.blockers.test.ts` (27 together). Sabotage, predicted first, each restored with `cmp`, jsdom
+  + browser: per-item reversal back → 10 + 10; item-count direction → 6 + 3; letter-less items not neutral → 2 + 3;
+  L2 for an LTR base off → 2 + 3; direction-keyed gap → 3 + 4; bracket mirroring off → exactly the Chrome bracket
+  case in each (1 + 1, LibreOffice green); the paragraph tiebreak off → 1 + 1 (the email line); the run-box gap off →
+  1 + 1 (`نظام.pdf`); W7 off → 1 + 1 (the email line, via `v2.0.0`). The Markdown case aggregates every
+  LibreOffice line, so it reds with any of them. The writer emits complex-script attrs (`font.cs=Arial`,
   `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
 - **True-edit**: `replaceTextAt` REFUSES Arabic new-text before the Latin Path-3 redraw (it would emit '?')
   → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still

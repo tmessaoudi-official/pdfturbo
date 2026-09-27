@@ -94,6 +94,24 @@ describe('orderLineWords', () => {
     expect(r.rtl).toBe(true); // 2 of 3 rtl
   });
 
+  it('a bracket pair mapped to its SHAPE (Chrome) is mirrored back to what was typed', () => {
+    // Typed `فقرة (RTL)`. The brackets sit in the RTL run, so their glyphs are mirrored; Chrome's ToUnicode maps each to
+    // its shape, x ascending: ( RTL ) فقرة. Read in order that is `فقرة)RTL(`, which closes before it opens.
+    const r = orderLineWords([w('(', 10, false), w('RTL', 16, false), w(')', 40, false), w('فقرة', 60)]);
+    expect(r.words.map((x) => x.text).join('')).toBe('فقرة(RTL)');
+  });
+
+  it('a bracket pair mapped to its LOGICAL character (LibreOffice) is left alone', () => {
+    const r = orderLineWords([w(')', 10, false), w('RTL', 16, false), w('(', 40, false), w('فقرة', 60)]);
+    expect(r.words.map((x) => x.text).join('')).toBe('فقرة(RTL)');
+  });
+
+  it('a number touching a Latin item belongs to it (W7): `v2.0.0` in an Arabic line', () => {
+    // Typed `رقم v2.0.0 صدر`; Chrome draws `v` and `2.0.0` as two items. x ascending: صدر | v | 2.0.0 | رقم
+    const r = orderLineWords([w('صدر', 10), w('v', 50, false), w('2.0.0', 56, false), w('رقم', 100)]);
+    expect(r.words.map((x) => x.text)).toEqual(['رقم', 'v', '2.0.0', 'صدر']);
+  });
+
   it('does not mutate the input words', () => {
     const input = [w('cba', 200), w('fed', 40)];
     const before = input.map((x) => x.text);
@@ -144,6 +162,36 @@ describe('reconstructPage — RTL logical-order restoration (A1/A2)', () => {
     );
     const text = page.paragraphs.flatMap((p) => p.runs).map((r) => r.text).join('');
     expect(text.replace(/\s+/g, ' ').trim()).toBe('يدعم البرنامج Microsoft Word بالكامل');
+  });
+
+  it('no space inside a per-glyph Arabic word that meets a Latin suffix (`نظام.pdf`, limits row 19)', () => {
+    // An English line; Chrome draws `نظام` one glyph per item, x ascending م ا ظ ن, with `.pdf` touching its right end:
+    // `the file` | م ا ظ ن | `.pdf was`. In reading order the last Arabic glyph is م, the leftmost, so the gap from it
+    // to `.pdf` spans the whole word; the two RUNS touch.
+    const ltr = (str: string, x: number, width: number): RawTextItem => ({ ...rtlItem(str, x), dir: 'ltr', width });
+    const glyph = (str: string, x: number): RawTextItem => ({ ...rtlItem(str, x), width: 6 });
+    const page = reconstructPage(
+      [ltr('the file', 40, 48), glyph('م', 92), glyph('ا', 98), glyph('ظ', 104), glyph('ن', 110),
+        ltr('.pdf was', 116, 48)],
+      {} as FontInfoMap, 600, 800,
+    );
+    const text = page.paragraphs.flatMap((p) => p.runs).map((r) => r.text).join('');
+    expect(text.replace(/\s+/g, ' ').trim()).toBe('the file نظام.pdf was');
+  });
+
+  it('a near-even line of an Arabic paragraph reads right to left (limits row 19 tiebreak)', () => {
+    // Two lines, one paragraph. The first is plainly Arabic; the second has 8 Latin letters against 7 Arabic, x
+    // ascending: `ثم` | `hellos` | `xy` | `مرحبا`. Read by its own letters it is left to right and starts at `ثم`.
+    const ltr = (str: string, x: number, y: number): RawTextItem => ({ ...rtlItem(str, x), dir: 'ltr', transform: [12, 0, 0, 12, x, y] });
+    const at = (str: string, x: number, y: number): RawTextItem => ({ ...rtlItem(str, x), transform: [12, 0, 0, 12, x, y] });
+    const page = reconstructPage(
+      [at('هذا سطر عربي طويل جدا للتجربة', 100, 700),
+        at('ثم', 100, 686), ltr('hellos', 130, 686), ltr('xy', 175, 686), at('مرحبا', 200, 686)],
+      {} as FontInfoMap, 600, 800,
+    );
+    expect(page.paragraphs).toHaveLength(1);
+    const text = page.paragraphs[0].runs.map((r) => r.text).join('').replace(/\s+/g, ' ').trim();
+    expect(text).toBe('هذا سطر عربي طويل جدا للتجربة مرحبا hellos xy ثم');
   });
 
   it('emits w:rtl and a complex-script (cs) Arabic font in the DOCX (A3)', async () => {

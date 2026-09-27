@@ -85,6 +85,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 01:05] SESSION-CHOSEN (run rules): row 17 shipped on the pre-push hook (tsc/lint/jsdom) plus the two harness files `6439bca` changed, run green in Chrome — no `src/` changed since the full gate at `1effcc1`; a deviation from full-gate-per-row, recorded. Advisor 6C follow-ups (the mechanism measured on all 630 runs, the PDFium cause graded, C2 scoped to Noto Naskh) land with row 18.
 - [2026-09-27 01:35] SESSION-CHOSEN (run rules): row 18 — unknown real families pass through split at word boundaries into every rFonts slot and fontTable.xml, generated names keep the generic; the fontTable family/pitch hint comes from the name when it states a class, because pdf.js's guess called NotoSerifCJKjp monospace (measured). The clone/equivalent list (NimbusRomNo9L → Times New Roman …) is [Speculative] — metric-compatible clones, not Word's own faces; the split is right for 24 of 32 corpus names.
 - [2026-09-27 02:30] SESSION-CHOSEN (run rules): row 19 — measuring D8 found every Arabic word exported BACKWARDS (pdf.js items are already logical; the export reversed them) and item-count line direction; fixed both, plus neutral resolution and L2 for an LTR base, re-using `logicalItemOrder` (now with a base-direction argument). Corrects a documented claim, not a safety promise, so the run continued. Row re-sized S → M. The lam-alef ligature reorder is pinned as a ceiling, not fixed: `ال` is the definite article, so the reversed pair cannot be told from real text.
+- [2026-09-27 03:10] SESSION-CHOSEN (run rules): row 19 follow-up — a second producer (Chrome print-to-PDF) measured: brackets mapped to their mirrored SHAPE are put back only when that balances the line (LibreOffice's logical mapping left alone), W7 for a digit item touching Latin, a near-even line takes its paragraph's direction (flushness when that is near even too), and the space at a direction change is measured between run boxes. Ligature reordering and `.2026` stay pinned bounds; the tagged path is recorded uncertified; rows 41–43 logged.
 - [2026-09-26 22:25] SESSION-CHOSEN (run rules): C3's 30 s per-image timeout is kept and stated as a false-refusal bound (a one-sided timeout refuses until the file is reopened), not engineered around.
 
 ## Formal Plan
@@ -114,7 +115,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 16 | C9 signature rect mapped onto the assembled page | M | done | 8c175ac | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
 | 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | done | 62ff3eb | var/claude/**, KNOWN_ISSUES.md, CLAUDE.md |
 | 18 | D6+D7 real font names incl. eastAsia in DOCX | M | done | 9c97c24 | src/utils/flowDocWriters.ts, tests/** |
-| 19 | D8 mixed-bidi DOCX lines measured | M | done | - | src/utils/flowDoc.ts, src/utils/bidi.ts, tests/** |
+| 19 | D8 mixed-bidi DOCX lines measured | M | done | 873724b | src/utils/flowDoc.ts, src/utils/bidi.ts, tests/** |
 | 20 | D9 borderless-table discriminator research | M | todo | - | src/utils/borderlessTable.ts, tests/** |
 | 21 | D10 4+ column split with corpus proof | M | todo | - | src/utils/flowDoc.ts, tests/** |
 | 22 | D11 internal links to bookmarks/anchors | M | todo | - | src/export/**, src/utils/flowDocWriters.ts, tests/** |
@@ -135,6 +136,9 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 38 | NEW (row 17): Path 2 for literal-string operands — keep an embedded font with a ToUnicode in place (171/630 corpus runs substituted today) | M | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 | 39 | NEW (row 17): in-place edit of an embedded simple font without ToUnicode via its /Encoding, glyph presence checked with fontkit (459/630 runs) | L | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 | 40 | Edit-text prefill of an Arabic run split across items (`clusterBaselineRun` joins by ascending x — visual item order; found by row 19, unmeasured) | S | todo | - | src/handlers/textEditHandler.ts, tests/** |
+| 41 | NEW (row 19): a wrapped Latin-heavy line of an Arabic paragraph can split into its own paragraph (Chrome file, the `support@example.com` line — measured, cause not traced) | S | todo | - | src/utils/flowDoc.ts, tests/** |
+| 42 | NEW (row 19): table cells (CSV/XLSX/DOCX tables) are built from raw items, not `orderLineWords` — Arabic may come out as presentation forms and in visual item order (read, not measured) | M | todo | - | src/utils/tableExtract.ts, src/utils/flowDoc.ts, tests/** |
+| 43 | NEW (row 19): brackets in the text-layer copy and the search fallback were never checked against the two producer conventions — `visualToLogical` (only caller: `reverseRtlText`, the search fallback) un-mirrors every RTL-context bracket, i.e. assumes Chrome's shape mapping; copy (`reconstructLogicalText`) does not mirror at all (read, not measured) | S | todo | - | src/utils/rtlClipboard.ts, src/utils/bidi.ts, src/utils/flowDoc.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked

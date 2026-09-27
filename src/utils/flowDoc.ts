@@ -14,7 +14,7 @@
 
 import { redactionRectToPageSpace } from './geometry';
 import { buildTableGrid, clusterPositions, type TableGrid, type TableTextItem } from './tableExtract';
-import { logicalItemOrder, visualToLogical } from './bidi';
+import { logicalItemOrder, mirroredChar, visualToLogical } from './bidi';
 
 /** Shape of a pdf.js TextItem (subset we consume). */
 export interface RawTextItem {
@@ -455,7 +455,7 @@ export interface Line {
   size: number; // dominant font size on the line
   x0: number;
   x1: number;
-  rtl?: boolean; // line reads right-to-left (majority rtl words)
+  rtl?: boolean; // line reads right-to-left (letterDirection, settled in buildParagraph when near even)
 }
 
 // Same line when baselines are within half the font size (pdfminer.six recipe).
@@ -795,11 +795,21 @@ export function letterDirection(parts: ReadonlyArray<{ text: string; rtl: boolea
  */
 export function orderLineWords<T extends { x: number; width: number; rtl: boolean; text: string }>(
   words: T[],
+  baseRtl?: boolean,
 ): { words: T[]; rtl: boolean } {
   const byLetters = letterDirection(words);
-  const rtl = byLetters ?? (words.length > 0 && words.reduce((n, x) => n + (x.rtl ? 1 : 0), 0) * 2 > words.length);
+  const rtl = baseRtl
+    ?? byLetters
+    ?? (words.length > 0 && words.reduce((n, x) => n + (x.rtl ? 1 : 0), 0) * 2 > words.length);
   const visual = [...words].sort((a, b) => a.x - b.x); // page left→right
-  const strong = visual.map(w => (w.rtl ? true : letterCount(w.text) > 0 ? false : null));
+  // A word without letters is NEUTRAL whatever its flag says: pdf.js marks Arabic-Indic digits rtl, and this function
+  // marks a neutral it resolved to RTL as rtl, so a second pass over its own output (`buildParagraph`'s tiebreak) must
+  // not read those back as strong.
+  const letterStrong = visual.map(w => (letterCount(w.text) > 0 ? w.rtl : null));
+  // UAX#9 W7 at item granularity: a number touching a Latin item belongs to it (`v` + `2.0.0` in an Arabic line is
+  // `v2.0.0`, not `2.0.0v` — Chrome draws them as two items).
+  const strong = letterStrong.map((d, i) =>
+    d === null && /\d/.test(visual[i].text) && (letterStrong[i - 1] === false || letterStrong[i + 1] === false) ? false : d);
   const resolved = strong.map((d, i) => {
     if (d !== null) return d;
     let left: boolean | null = null, right: boolean | null = null;
@@ -809,11 +819,39 @@ export function orderLineWords<T extends { x: number; width: number; rtl: boolea
     return a === b ? a : rtl;
   });
   const dirOf = new Map(visual.map((w, i) => [w, resolved[i]]));
-  const ordered = logicalItemOrder(visual, w => dirOf.get(w) as boolean, rtl);
-  return {
-    words: ordered.map(w => (dirOf.get(w) ? { ...w, rtl: true, text: w.text.normalize('NFKC') } : w)),
-    rtl,
-  };
+  const ordered = logicalItemOrder(visual, w => dirOf.get(w) as boolean, rtl)
+    .map(w => (dirOf.get(w) ? { ...w, rtl: true, text: w.text.normalize('NFKC') } : { ...w, rtl: false }));
+  return { words: mirrorShapeBrackets(ordered), rtl };
+}
+
+const OPENING = new Set(['(', '[', '{']);
+const CLOSING = new Set([')', ']', '}']);
+
+/** True when the brackets in `text` never close before they open and all close. */
+function bracketsBalanced(text: string): boolean {
+  let depth = 0;
+  for (const ch of text) {
+    if (OPENING.has(ch)) depth++;
+    else if (CLOSING.has(ch) && --depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+/**
+ * Producers disagree on what a mirrored bracket glyph MEANS. In an RTL run the glyph drawn for a logical `(` looks like
+ * `)`; LibreOffice's ToUnicode maps it to the logical `(`, Chrome's (arabic-allcases.pdf) to the shape `)`. pdf.js
+ * mirrors nothing. So a line whose logical bracket order closes before it opens (`)RTL(`) and balances once its
+ * RTL-placed bracket-only items are mirrored came from a shape-mapping producer, and those items are mirrored;
+ * a line that already balances is left alone. A bracket glued inside a larger LTR item cannot be reached here.
+ */
+function mirrorShapeBrackets<T extends { rtl: boolean; text: string }>(words: T[]): T[] {
+  const joined = words.map(w => w.text).join('');
+  if (!/[()[\]{}]/.test(joined) || bracketsBalanced(joined)) return words;
+  const isBracketOnly = (t: string) => /^[\s()[\]{}]+$/.test(t);
+  const mirrored = words.map(w => (w.rtl && isBracketOnly(w.text)
+    ? { ...w, text: [...w.text].map(c => (OPENING.has(c) || CLOSING.has(c) ? mirroredChar(c) ?? c : c)).join('') }
+    : w));
+  return bracketsBalanced(mirrored.map(w => w.text).join('')) ? mirrored : words;
 }
 
 /** Geometry kept alongside each built paragraph for the continuation-merge pass. */
@@ -909,7 +947,19 @@ export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[]
     const lineRefSize = Math.max(...line.words.map(w => w.size));
     const lineRefBaseline = (line.words.find(w => w.size === lineRefSize) ?? line.words[0]).y;
     let prevWord: Word | null = null;
-    for (const w of line.words) {
+    // Consecutive same-direction words form a segment; its union box is what sits next to the segment before it. At a
+    // direction change the logical neighbour is at the FAR end of the previous segment (the last Arabic glyph of
+    // `نظام` read left to right is its leftmost), so the space is measured between the two segments' boxes.
+    const segOf: number[] = [];
+    const segBox: { x0: number; x1: number }[] = [];
+    line.words.forEach((w, i) => {
+      if (i === 0 || w.rtl !== line.words[i - 1].rtl) segBox.push({ x0: w.x, x1: w.x + w.width });
+      const b = segBox[segBox.length - 1];
+      b.x0 = Math.min(b.x0, w.x); b.x1 = Math.max(b.x1, w.x + w.width);
+      segOf.push(segBox.length - 1);
+    });
+    const boxGap = (a: { x0: number; x1: number }, b: { x0: number; x1: number }) => Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1);
+    for (const [wi, w] of line.words.entries()) {
       const info = fonts[w.fontName];
       const psName = extractPsName(info?.name ?? w.fontName);
       const sizeRatio = lineRefSize > 0 ? w.size / lineRefSize : 1;
@@ -936,7 +986,9 @@ export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[]
         // The empty space between the two boxes, whichever side each is on: consecutive words in reading order
         // advance leftward in an RTL run and rightward in an LTR one, on a line of either direction (limits row 19 —
         // a direction-keyed formula lost the space inside an embedded run: 'MicrosoftWord').
-        const gap = Math.max(prevWord.x, w.x) - Math.min(prevWord.x + prevWord.width, w.x + w.width);
+        const gap = segOf[wi] !== segOf[wi - 1]
+          ? boxGap(segBox[segOf[wi - 1]], segBox[segOf[wi]])
+          : boxGap({ x0: prevWord.x, x1: prevWord.x + prevWord.width }, { x0: w.x, x1: w.x + w.width });
         const needsSpace =
           gap > SPACE_GAP * Math.min(prevWord.size, w.size) &&
           !/\s$/.test(prevWord.text) &&
@@ -972,6 +1024,45 @@ export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[]
   return runs;
 }
 
+/** Share of a line's letters that are right-to-left, or null when it has none. */
+function rtlShare(words: ReadonlyArray<{ text: string; rtl: boolean }>): number | null {
+  let r = 0, l = 0;
+  for (const w of words) {
+    const n = letterCount(w.text);
+    if (w.rtl) r += n; else l += n;
+  }
+  return r + l ? r / (r + l) : null;
+}
+const AMBIGUOUS = (share: number | null) => share !== null && share >= 0.35 && share <= 0.65;
+
+/**
+ * Direction is a PARAGRAPH property (UAX#9 P2), but lines are ordered before they are grouped. A line whose letters
+ * are near even (35–65% right-to-left) takes the direction of its paragraph's letters; when those are near even too,
+ * the side it is flush with decides — flush right and ragged left reads right to left (limits row 19: a wrapped line
+ * `support@example.com … v2.0.0 … 2026.` of an Arabic paragraph is 18 Latin letters against 17 Arabic). Otherwise it
+ * keeps its own reading. A justified body line is flush on both sides and keeps its letters.
+ */
+function settleAmbiguousLines(group: Line[], colLeft: number, colRight: number): void {
+  const groupShare = rtlShare(group.flatMap(l => l.words));
+  for (const line of group) {
+    if (!AMBIGUOUS(rtlShare(line.words))) continue;
+    let want: boolean | null = null;
+    if (groupShare !== null && !AMBIGUOUS(groupShare)) want = groupShare > 0.5;
+    else {
+      const tol = indentTolerance(line.size);
+      const flushLeft = Math.abs(line.x0 - colLeft) <= tol;
+      const flushRight = Math.abs(line.x1 - colRight) <= tol;
+      if (flushRight && !flushLeft) want = true;
+      else if (flushLeft && !flushRight) want = false;
+    }
+    if (want !== null && want !== line.rtl) {
+      const ordered = orderLineWords(line.words, want);
+      line.words = ordered.words;
+      line.rtl = ordered.rtl;
+    }
+  }
+}
+
 function buildParagraph(
   group: Line[],
   gi: number,
@@ -981,6 +1072,7 @@ function buildParagraph(
   colLeft: number,
   colRight: number,
 ): { para: FlowParagraph; geom: ParaGeom } {
+  settleAmbiguousLines(group, colLeft, colRight);
   const runs = buildRunsFromLines(group, fonts);
 
   const pageCenter = pageWidth / 2;
@@ -1017,7 +1109,9 @@ function buildParagraph(
     runs,
     heading: 0 as const,
     alignment,
-    rtl: letterDirection(runs) ?? false, // letters, not characters: spaces and punctuation have no direction
+    // Letters, not characters (spaces and punctuation have no direction); lines that all read one way — after
+    // settleAmbiguousLines — carry the paragraph with them.
+    rtl: group.every(l => l.rtl) ? true : group.every(l => !l.rtl) ? false : letterDirection(runs) ?? false,
     // Top line's baseline y (PDF y-up) — lets the DOCX writer interleave this
     // paragraph with detected tables in reading order (G9).
     y: group[0].y,
