@@ -265,6 +265,16 @@ describe('Form XObject placed by the page CTM at its Do (limits row 48)', () => 
     }));
     expect(await findTextOpAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
   });
+
+  // A page that holds the form but cannot be read is a page the edit might change without the user seeing it, so it
+  // counts as drawing the form (fail closed → overlay), and the lookup must not throw (6C review, row 48).
+  it('another page holding the form whose content cannot be decoded counts as drawing it', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf({ ...placed, secondPage: true, secondPageContent: 'q Q' }));
+    const p2 = doc.getPage(1).node;
+    const stream = doc.context.lookup(p2.get(PDFName.of('Contents'))) as PDFRawStream;
+    stream.dict.set(PDFName.of('Filter'), PDFName.of('BogusDecode'));
+    expect(getEditableTextAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
+  });
 });
 
 /** Build a real 3-string PDF entirely in memory — no fixtures. */

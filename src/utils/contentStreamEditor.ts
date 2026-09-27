@@ -2746,16 +2746,23 @@ function formDrawnByAnotherPage(doc: PDFDocument, pageIndex: number, xobjName: s
   const count = doc.getPageCount();
   for (let i = 0; i < count; i++) {
     if (i === pageIndex) continue;
+    // A page that cannot be read might draw the form without the user seeing the change: it counts as drawing it
+    // (fail closed → the edit falls back to an overlay).
     let xo: unknown;
     try {
       const res = doc.getPage(i).node.Resources();
       xo = res ? doc.context.lookup(res.get(PDFName.of('XObject'))) : undefined;
     } catch {
-      continue;
+      return true;
     }
     if (!(xo instanceof PDFDict)) continue;
     if (!xo.values().some(v => v instanceof PDFRef && v.objectNumber === mine.objectNumber && v.generationNumber === mine.generationNumber)) continue;
-    const content = getPageContent(doc, i);
+    let content: string;
+    try {
+      content = getPageContent(doc, i);
+    } catch {
+      return true;
+    }
     if (!content) continue;
     if (formPlacements(groupOps(tokenizeContentStream(content))).some(pl => formStreamKey(doc, i, pl.name) === key)) return true;
   }

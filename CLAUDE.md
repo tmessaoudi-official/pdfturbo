@@ -3086,7 +3086,10 @@ change text the user did not click). This NARROWS A3a/A3b: a shared form placed 
 `/Parent`, so with `/Resources` inherited from the Pages node every page NAMES every form, and a name-based check made
 form text uneditable in the whole file; two names for one stream slipped the same-page count. `formStreamKey` keys a
 placement by its object reference, and `formDrawnByAnotherPage` reads another page's content only when its resources
-hold that reference, stopping at the first page that draws it. The corpus has neither shape (no inherited
+hold that reference, stopping at the first page that draws it; a page it cannot read (resources or content that
+fail to decode) counts as drawing it, so the edit falls back to an overlay — the content half is pinned (a bogus
+`/Filter`: the lookup threw before), the resources half is not. Cost measured on Publication 17 at load 27: 10–67 ms
+per click, so the check stays ahead of the hit test. The corpus has neither shape (no inherited
 `/Resources`, no XObject dictionary shared between pages — measured on all 15 files), so there it changes nothing.
 Bound: a nested form's name is resolved in the page's resources, not the enclosing form's.
 Guards: eight cases in `tests/utils/contentStreamEditor.test.ts` (placed point found; unplaced and wrong-order points
