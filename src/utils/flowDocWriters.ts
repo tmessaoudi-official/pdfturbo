@@ -341,14 +341,20 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
           if (r.linkUrl) {
             const safe = safeMdUrl(r.linkUrl);
             if (safe) styled = `[${styled}](${safe})`; // disallowed scheme → plain text, no link
+          } else if (r.linkAnchor) {
+            // Limits row 22: an internal link. The name is generated (letters, digits, `_`), never read from the PDF.
+            styled = `[${styled}](#${r.linkAnchor})`;
           }
           return lead + styled + trail;
         })
         .join('');
+      // Limits row 22: the target of an internal link. An HTML anchor is the one Markdown form every common renderer
+      // keeps; placed after any heading/list marker so the block still parses as what it is.
+      const bodyText = p.bookmark ? `<a id="${p.bookmark}"></a>${body.replace(/^\s+/, '')}` : body;
       const indent = '  '.repeat(p.listDepth ?? 0); // 2 spaces / nesting level
-      if (p.listType === 'bullet') { blocks.push(`${indent}- ${body.trim()}`); continue; }
-      if (p.listType === 'ordered') { blocks.push(`${indent}${orderedMarker(p, ordinals.get(p) ?? 1)} ${body.trim()}`); continue; }
-      blocks.push(p.heading > 0 ? `${'#'.repeat(p.heading)} ${body.trim()}` : body);
+      if (p.listType === 'bullet') { blocks.push(`${indent}- ${bodyText.trim()}`); continue; }
+      if (p.listType === 'ordered') { blocks.push(`${indent}${orderedMarker(p, ordinals.get(p) ?? 1)} ${bodyText.trim()}`); continue; }
+      blocks.push(p.heading > 0 ? `${'#'.repeat(p.heading)} ${bodyText.trim()}` : bodyText);
     }
     // G9: detected lattice tables render as GitHub pipe tables. Appended after the
     // page's paragraphs (DOCX gets true reading-order interleave; MD keeps simple).
@@ -369,7 +375,7 @@ export function flowDocToMarkdown(doc: FlowDoc): string {
 export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
   const docx = await import('docx');
   const {
-    Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun, HeadingLevel, AlignmentType,
+    Document, Packer, Paragraph, TextRun, ExternalHyperlink, InternalHyperlink, Bookmark, ImageRun, HeadingLevel, AlignmentType,
     LevelFormat, LineRuleType, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom,
     TextWrappingType, UnderlineType,
     Table, TableRow, TableCell, WidthType, BorderStyle, TableOfContents, Header, Footer,
@@ -480,10 +486,10 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
             rightToLeft: r.rtl || undefined,
             // Linked runs get the conventional blue + underline so they read as
             // hyperlinks; otherwise keep the run's own fill color.
-            color: r.linkUrl ? '0563C1' : r.color,
+            color: r.linkUrl || r.linkAnchor ? '0563C1' : r.color,
             // Hyperlinks force the conventional underline; otherwise honour a
             // detected baseline rule (b — underline/strikethrough fidelity).
-            underline: r.linkUrl || r.underline ? { type: UnderlineType.SINGLE } : undefined,
+            underline: r.linkUrl || r.linkAnchor || r.underline ? { type: UnderlineType.SINGLE } : undefined,
             strike: r.strikethrough || undefined,
             superScript: r.vertAlign === 'super' || undefined,
             subScript: r.vertAlign === 'sub' || undefined,
@@ -493,9 +499,18 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
         // Wrap consecutive runs sharing the same linkUrl in one ExternalHyperlink
         // (Gap 2). Adjacent same-url runs were already prevented from merging in
         // reconstructColumn's merge key, so grouping here re-joins them.
-        const textRuns: (ReturnType<typeof mkTextRun> | InstanceType<typeof ExternalHyperlink>)[] = [];
+        const textRuns: (ReturnType<typeof mkTextRun> | InstanceType<typeof ExternalHyperlink> | InstanceType<typeof InternalHyperlink>)[] = [];
         for (let ri = 0; ri < p.runs.length; ri++) {
           const url = p.runs[ri].linkUrl;
+          const anchor = p.runs[ri].linkAnchor;
+          if (!url && anchor) {
+            // Limits row 22 (D11): an internal link → a Word hyperlink to the bookmark placed on its target paragraph.
+            const group: FlowRun[] = [];
+            while (ri < p.runs.length && !p.runs[ri].linkUrl && p.runs[ri].linkAnchor === anchor) { group.push(p.runs[ri]); ri++; }
+            ri--;
+            textRuns.push(new InternalHyperlink({ anchor, children: group.map(mkTextRun) }));
+            continue;
+          }
           if (!url) { textRuns.push(mkTextRun(p.runs[ri])); continue; }
           const group: FlowRun[] = [];
           while (ri < p.runs.length && p.runs[ri].linkUrl === url) { group.push(p.runs[ri]); ri++; }
@@ -535,7 +550,8 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
           numbering: p.listType === 'ordered'
             ? { reference: refKeyOf(p), level: p.listDepth ?? 0, instance: orderedInstances.get(p) }
             : undefined,
-          children: textRuns,
+          // Limits row 22: a paragraph an internal link lands on carries the bookmark around its whole text.
+          children: p.bookmark ? [new Bookmark({ id: p.bookmark, children: textRuns })] : textRuns,
         });
       });
 

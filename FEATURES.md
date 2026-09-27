@@ -80,7 +80,8 @@ _Last updated: 2026-09-13 · Version 1.0.0_
 
 ## Conversion & export
 - **PDF → DOCX / Markdown / TXT** — reconstructs a flow document (headings, lists, columns, tables ruled or laid out with whitespace alone,
-  images, hyperlinks, underline/strike, RTL); uses the PDF's structure tags when present
+  images, hyperlinks — including jumps inside the document, as Word bookmarks and Markdown anchors — underline/strike, RTL);
+  uses the PDF's structure tags when present
 - **DOCX editor** — open a `.docx`, edit text with a rich toolbar (bold/italic/underline, headings,
   fonts, colour, lists, **tables** incl. add/remove rows & columns and merge/split cells, **images**
   incl. insert/move/resize/cut-paste/drag, **hyperlinks**), find & replace, paste-from-Word cleanup;

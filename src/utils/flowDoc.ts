@@ -50,6 +50,12 @@ export interface FlowRun {
   color?: string;
   /** External URL when this run sits under a Link annotation (→ DOCX/MD hyperlink). */
   linkUrl?: string;
+  /**
+   * Internal link (limits row 22, D11): the name of the bookmark this run jumps to, when it sits under a GoTo Link.
+   * Set to a target KEY during page reconstruction and rewritten to the bookmark name (or removed, when the target
+   * is not in the export) by {@link resolveLinkAnchors}.
+   */
+  linkAnchor?: string;
   /** Vertical alignment for super/subscript glyphs (smaller + baseline-offset). */
   vertAlign?: 'super' | 'sub';
   /** Set when a thin rule sits at this run's baseline (→ DOCX underline). */
@@ -100,7 +106,10 @@ export function classifyRuleAsUnderline(
  * `page.getAnnotations()` (subtype 'Link' with a `url`) in exportService.
  */
 export interface FlowLinkRect {
-  url: string;
+  /** External link target. Exactly one of `url` / `anchor` is set. */
+  url?: string;
+  /** Internal (GoTo) link: a target key resolved by {@link resolveLinkAnchors} after every page is built. */
+  anchor?: string;
   x0: number;
   y0: number;
   x1: number;
@@ -138,6 +147,11 @@ export interface FlowParagraph {
    * page-reconstruction path (overlay text), where order falls back to insertion.
    */
   y?: number;
+  /**
+   * Bookmark name placed on this paragraph because an internal link points here (limits row 22). Generated —
+   * letters, digits and `_` only — never taken from the PDF.
+   */
+  bookmark?: string;
 }
 
 /**
@@ -267,6 +281,53 @@ export interface FlowDoc {
   header?: string;
   /** B5 — running footer text hoisted from a repeated bottom-band paragraph (Word Footer). */
   footer?: string;
+}
+
+/**
+ * Limits row 22 (D11) — where an internal link lands: a flow page and the top edge of the view the PDF asked for, in
+ * that page's crop frame (y-up), or undefined when the destination names no height (`/Fit`, `/FitB`, a null top).
+ */
+export interface LinkTarget {
+  page: FlowPage;
+  top?: number;
+}
+
+/**
+ * Turn every internal link's target KEY into a bookmark on the paragraph it lands on, after every page is built (a
+ * link may point forward). The paragraph chosen is the nearest one starting at or below the view's top edge (a
+ * producer puts that edge at or just above the heading it targets); when every paragraph starts above it, the lowest
+ * one, which is the paragraph the edge falls in; and the page's first paragraph when the destination names no
+ * height. A target that is not in the export (its page was deleted, has no paragraph, or could not be resolved)
+ * leaves the run as plain text. Two links landing on one paragraph share its bookmark. Pure.
+ */
+export function resolveLinkAnchors(pages: FlowPage[], targets: ReadonlyMap<string, LinkTarget>): void {
+  const nameOf = new Map<string, string | null>();
+  let next = 0;
+  const bookmarkFor = (key: string): string | null => {
+    if (nameOf.has(key)) return nameOf.get(key) ?? null;
+    const t = targets.get(key);
+    const paras = t ? t.page.paragraphs.filter(p => p.runs.some(r => r.text.trim())) : [];
+    let chosen: FlowParagraph | undefined;
+    if (t && t.top !== undefined) {
+      // One point of slack: producers put the view's top a hair above the heading they target.
+      const placed = paras.filter(p => p.y !== undefined) as Array<FlowParagraph & { y: number }>;
+      for (const p of placed) if (p.y <= t.top + 1 && (!chosen || p.y > (chosen.y as number))) chosen = p;
+      if (!chosen) for (const p of placed) if (!chosen || p.y < (chosen.y as number)) chosen = p;
+    }
+    chosen ??= paras[0];
+    const name = chosen ? (chosen.bookmark ??= `_pdfturbo_link_${++next}`) : null;
+    nameOf.set(key, name);
+    return name;
+  };
+  for (const page of pages) {
+    for (const p of page.paragraphs) {
+      for (const r of p.runs) {
+        if (r.linkAnchor === undefined) continue;
+        const name = bookmarkFor(r.linkAnchor);
+        if (name) r.linkAnchor = name; else delete r.linkAnchor;
+      }
+    }
+  }
 }
 
 /**
@@ -448,6 +509,13 @@ export interface Word {
   rtl: boolean;
   color?: string;
   linkUrl?: string;
+  linkAnchor?: string;
+  /**
+   * Limits row 22: set when links cover only part of this word's text — consecutive slices of `text` (they rejoin to
+   * it), each with its own link. The word keeps its whole geometry; the parts become separate runs only when runs are
+   * built, so a link can never move text (a part given its own position sorted between other items' words).
+   */
+  linkParts?: Array<{ text: string; linkUrl?: string; linkAnchor?: string }>;
   underline?: boolean;
   strikethrough?: boolean;
 }
@@ -997,6 +1065,7 @@ export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[]
         psName,
         color: w.color,
         linkUrl: w.linkUrl,
+        linkAnchor: w.linkAnchor,
         vertAlign,
         underline: w.underline,
         strikethrough: w.strikethrough,
@@ -1015,25 +1084,31 @@ export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[]
           !/^\s/.test(w.text);
         if (needsSpace) text = ' ' + text;
       }
-      const last = runs[runs.length - 1];
-      if (
-        last &&
-        last.bold === style.bold &&
-        last.italic === style.italic &&
-        last.fontFamily === style.fontFamily &&
-        last.rtl === style.rtl &&
-        last.psName === style.psName &&
-        last.color === style.color &&
-        last.linkUrl === style.linkUrl &&
-        last.vertAlign === style.vertAlign &&
-        last.underline === style.underline &&
-        last.strikethrough === style.strikethrough &&
-        Math.abs(last.fontSize - style.fontSize) < 0.6
-      ) {
-        last.text += text;
-      } else {
-        runs.push({ text, ...style });
-      }
+      const parts = w.linkParts ?? [{ text: w.text, linkUrl: w.linkUrl, linkAnchor: w.linkAnchor }];
+      parts.forEach((part, pi) => {
+        const partStyle = { ...style, linkUrl: part.linkUrl, linkAnchor: part.linkAnchor };
+        const partText = pi === 0 ? text.slice(0, text.length - w.text.length) + part.text : part.text;
+        const last = runs[runs.length - 1];
+        if (
+          last &&
+          last.bold === partStyle.bold &&
+          last.italic === partStyle.italic &&
+          last.fontFamily === partStyle.fontFamily &&
+          last.rtl === partStyle.rtl &&
+          last.psName === partStyle.psName &&
+          last.color === partStyle.color &&
+          last.linkUrl === partStyle.linkUrl &&
+          last.linkAnchor === partStyle.linkAnchor &&
+          last.vertAlign === partStyle.vertAlign &&
+          last.underline === partStyle.underline &&
+          last.strikethrough === partStyle.strikethrough &&
+          Math.abs(last.fontSize - partStyle.fontSize) < 0.6
+        ) {
+          last.text += partText;
+        } else {
+          runs.push({ text: partText, ...partStyle });
+        }
+      });
       prevWord = w;
     }
     if (li < group.length - 1) {
@@ -1707,6 +1782,50 @@ export function fillOpToHex(
  *                  reconstructed paragraphs (dedup) and emitted on `page.tables`.
  *                  Omitted (the default) → no table detection, output unchanged.
  */
+/**
+ * Limits row 22 — cut a text item where a link rectangle's left or right edge crosses it, so a link covering part of an
+ * item tags only that part. pdf.js merges abutting text runs into one item, so a citation or "see Section 3" link
+ * usually sits INSIDE a longer item, and tagging by the item's centre either linked the whole line or none of it
+ * (measured on the corpus: 792 of 4,434 links landed on no item centre, most of the links in the arXiv papers).
+ *
+ * pdf.js gives no per-glyph positions, so an edge becomes a character index proportionally to the item's width, then
+ * snaps within two characters to a token start (left edge) or end (right edge) — a link covers whole tokens. Only called on text that
+ * survived the redaction filter: a boundary estimated a character off can move text between two pieces of a
+ * surviving item, never out from under a redaction. Returns one piece — the item as it was — when no edge crosses it.
+ */
+export function splitItemAtLinks(
+  str: string, x: number, width: number, cy: number, links: ReadonlyArray<FlowLinkRect>,
+): Array<{ text: string; x: number; width: number }> {
+  const n = str.length;
+  if (n < 2 || width <= 0) return [{ text: str, x, width }];
+  const isWord = (c: string) => /[\p{L}\p{N}]/u.test(c);
+  const cuts = new Set<number>();
+  for (const ln of links) {
+    if (cy < ln.y0 || cy > ln.y1 || ln.x1 <= x || ln.x0 >= x + width) continue;
+    for (const [edge, opens] of [[ln.x0, true], [ln.x1, false]] as const) {
+      if (edge <= x || edge >= x + width) continue;
+      let idx = Math.round(((edge - x) / width) * n);
+      // A left edge snaps to where a token STARTS, a right edge to where one ENDS — so the space beside a linked word
+      // stays outside the link whichever side of it the proportional estimate fell.
+      const fits = (i: number) => i > 0 && i < n && (opens ? !isWord(str[i - 1]) && isWord(str[i]) : isWord(str[i - 1]) && !isWord(str[i]));
+      let best = -1;
+      for (let d = 0; d <= 2 && best < 0; d++) {
+        for (const i of [idx - d, idx + d]) if (fits(i)) { best = i; break; }
+      }
+      if (best > 0) idx = best;
+      if (idx > 0 && idx < n) cuts.add(idx);
+    }
+  }
+  if (!cuts.size) return [{ text: str, x, width }];
+  const bounds = [0, ...[...cuts].sort((a, b) => a - b), n];
+  const pieces: Array<{ text: string; x: number; width: number }> = [];
+  for (let k = 0; k + 1 < bounds.length; k++) {
+    const [a, b] = [bounds[k], bounds[k + 1]];
+    pieces.push({ text: str.slice(a, b), x: x + (width * a) / n, width: (width * (b - a)) / n });
+  }
+  return pieces;
+}
+
 export function reconstructPage(
   items: RawTextItem[],
   fonts: FontInfoMap,
@@ -1761,15 +1880,30 @@ export function reconstructPage(
     // Hyperlink tagging: a word belongs to a Link annotation when its mid-glyph
     // centre (PDF y-up space) falls inside the link rectangle. Centre (not the
     // baseline origin) avoids edge words at a rect boundary being missed.
-    let linkUrl: string | undefined;
-    if (links?.length) {
-      const cx = x + Math.abs(it.width) / 2;
-      const cy = y + size * 0.4;
-      for (const ln of links) {
-        if (cx >= ln.x0 && cx <= ln.x1 && cy >= ln.y0 && cy <= ln.y1) { linkUrl = ln.url; break; }
+    // Limits row 22: an LTR, horizontal item is cut where a link's edge crosses it (`splitItemAtLinks`) and the centre
+    // test runs per piece. The pieces become `linkParts` of ONE word with the item's geometry, colour and rules.
+    const w = Math.abs(it.width);
+    const cy = y + size * 0.4;
+    const pieces = links?.length && it.dir !== 'rtl' && !it.transform[1] && !it.transform[2]
+      ? splitItemAtLinks(it.str, x, w, cy, links)
+      : [{ text: it.str, x, width: w }];
+    const tagged = pieces.map(pc => {
+      let linkUrl: string | undefined;
+      let linkAnchor: string | undefined;
+      if (links?.length) {
+        const cx = pc.x + pc.width / 2;
+        for (const ln of links) {
+          if (cx >= ln.x0 && cx <= ln.x1 && cy >= ln.y0 && cy <= ln.y1) { linkUrl = ln.url; linkAnchor = ln.anchor; break; }
+        }
       }
-    }
-    words.push({ text: foldLatinLigatures(it.str), x, y, width: Math.abs(it.width), size, fontName: it.fontName, rtl: it.dir === 'rtl', color, linkUrl, underline, strikethrough });
+      return { text: foldLatinLigatures(pc.text), linkUrl, linkAnchor };
+    });
+    const uniform = tagged.every(t => t.linkUrl === tagged[0].linkUrl && t.linkAnchor === tagged[0].linkAnchor);
+    words.push({
+      text: foldLatinLigatures(it.str), x, y, width: w, size, fontName: it.fontName, rtl: it.dir === 'rtl', color,
+      linkUrl: uniform ? tagged[0].linkUrl : undefined, linkAnchor: uniform ? tagged[0].linkAnchor : undefined,
+      linkParts: uniform ? undefined : tagged, underline, strikethrough,
+    });
   }
 
   // B1: tagged-PDF struct-tree exact-replace. A usable tree yields paragraphs/

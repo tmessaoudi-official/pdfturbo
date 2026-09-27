@@ -2150,6 +2150,55 @@ ragged); depth 2 → 5, 6, 8, 9 columns + the 5-column browser case; no 10pt flo
 half-page cases + all 3 browser cases; floor 8 → exactly the 11pt case; floor 12 → the 12pt case + the 14pt
 browser case; choose-then-refuse (the pre-follow-up order) → the half-page case + the 14pt browser case.
 
+### Internal links become bookmarks, and a link tags only the words it covers — limits row 22 (2026-09-27)
+
+Until row 22 only a Link carrying a `url` reached the DOCX/MD/TXT flow; a jump inside the document ("see
+Section 3", a contents page, a citation) exported as plain text. Now `_extractFlowDoc` resolves a Link's `dest`
+with `resolveGoToDest` (`src/export/linkDest.ts`: an explicit array or a NAME through `getDestination`, a page
+ref through `getPageIndex` or a bare 0-based index; the view top from `/XYZ`, `/FitH`, `/FitBH`, `/FitR`, none from
+`/Fit`), moves the top into the TARGET page's crop frame, and gives the link an anchor KEY. After every page is
+built — links point forward — and after the header/footer hoist, `resolveLinkAnchors` places a bookmark on the
+paragraph the view lands on: the nearest one starting at or below the top (1pt slack), else the lowest paragraph
+(the one the top falls in), and the page's first paragraph when the destination names no height. A target whose
+page is not in the export, or a reference to no object, leaves the text plain. Word gets `InternalHyperlink` to a
+`Bookmark` around the target paragraph's runs; Markdown gets `[text](#name)` and `<a id="name"></a>` after any
+heading/list marker; text gets nothing. Names are generated (`_pdfturbo_link_N` — the leading `_` makes them hidden
+bookmarks in Word, like `_Toc`), never read from the PDF.
+
+**The bigger half was item granularity, and it was already costing external links.** pdf.js MERGES abutting text
+runs into one item — three separate `drawText` calls came back as one `See Methods for the setup.` — and a word was
+tagged only when its ITEM's centre sat inside the link. So a link inside a line tagged the whole line or none of it:
+on the corpus 792 of 4,434 links (URL and GoTo) landed on no item centre, most of those in the arXiv papers, where
+citation and section links sit mid-line. `splitItemAtLinks` now cuts a surviving LTR horizontal item where a link
+edge crosses it — proportionally by character count, snapped within two characters to a token START for a left edge
+and a token END for a right edge, so the space beside a linked word stays outside the link. 4,343 of 4,434 now tag.
+
+**The pieces are NOT separate words — that was the first version, and it changed the exported text.** Each piece
+got its own estimated `x`, line building sorts by `x`, and where items overlap another item sorted between two
+pieces of one item: `library/html>` came out as `libraryhtml>` … `/` on 6 corpus pages. The pieces now ride on ONE
+word as `linkParts`, with the item's whole geometry, colour and rules, and become separate runs only in
+`buildRunsFromLines`. Measured: the reconstructed text of all 270 link-bearing corpus pages is identical with and
+without links. **The cut runs after the redaction filter**, on text that survived it: an estimated boundary a
+character off can move text between two parts of a surviving item, never out from under a redaction.
+
+Bounds, stated rather than hidden: a tagged page takes the struct-tree path, which never receives link rects, so it
+drops internal AND external links (pre-existing for URLs); lattice/borderless table cells carry no links; an RTL item
+is not cut (its characters do not run left to right); two columns' paragraphs are chosen by height alone, so a link
+into the right column of a two-column page can land on the left column's paragraph at that height; 91 corpus links
+land on no text (not traced per link). A bookmark on a paragraph the running-header hoist removes would vanish —
+resolution runs after the hoist for that reason, an ordering pinned by reading, not by a test.
+
+Guards: `tests/utils/flowDocLinkAnchors.test.ts` (24: placement rules, a missing target, sharing, the splitter and its
+snapping, URL links through `reconstructPage`, no cut on RTL, a redacted item dropped whole, the three writers,
+`resolveGoToDest` on every destination form) and `tests/browser/docx-internal-links.browser.test.ts` (3, real pdf.js
+through the real `_extractFlowDoc`: an explicit `/XYZ` into a page with a CropBox origin, a named destination, a
+dangling reference, and a target page left out of the export). Sabotage, predicted first and each restored with
+`cmp`: GoTo links never pushed → the 3 browser cases; the crop origin not subtracted → the 2 cases that check
+`Methods` (it lands on the paragraph above); no split → 3 splitter cases + the 3 browser cases; no snapping → the
+snapping case + the browser Markdown case (`[Methods ](#…)`); the view top ignored → 3 placement cases + 2 browser;
+no `Bookmark` in DOCX → the writer case + the browser Word case; `linkParts` ignored → the URL case + the 3 browser
+cases; no lowest-paragraph fallback → exactly that case.
+
 ### `/pdf-qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
 The sweep's `0 fail` covers **66 distinct controls of 141 in the DOM**. Every report now ends with

@@ -35,12 +35,13 @@ Where each structural ceiling is actually pinned.
    **Lifted by limits row 21 (2026-09-27)**, and that re-measurement found worse than the ceiling said: the
    5% minimum also refused the 12–17pt gutters of real two-column papers, whose Word/Markdown/text export
    interleaved the columns. See `CLAUDE.md` § "Columns: the cut, the depth and the gutter floor".
-2. **C11 is deliberately NOT pinned.** Its DOCX half is an inline predicate inside the private
+2. **C11 is deliberately NOT pinned.** Its DOCX half was an inline predicate inside the private
    `ExportService._extractFlowDoc` (`a.subtype === 'Link' && typeof a.url === 'string'`). Pinning it
-   would mean either booting the whole service or copying the predicate into a test — and a copy pins
-   nothing, since it cannot fail when the original changes. That is exactly the vacuous-assertion trap
-   this file warns about below. It becomes pinnable the day that predicate is extracted as a named pure
-   function; until then, "no test" is the honest state and is recorded as such.
+   would have meant either booting the whole service or copying the predicate into a test — and a copy pins
+   nothing, since it cannot fail when the original changes. **Lifted by limits row 22 (2026-09-27)** for
+   internal links: destination parsing is the pure `resolveGoToDest`, placement the pure
+   `resolveLinkAnchors`, and `tests/browser/docx-internal-links.browser.test.ts` boots the real service —
+   so the half that is fixed is pinned without a copy. Sheared images and ICC spot colour stay unpinned.
 
 | Ceiling | Pinned by | Where |
 |---|---|---|
@@ -62,7 +63,7 @@ Where each structural ceiling is actually pinned.
 | ~~C22~~ CropBox-origin flow LAYOUT | **not a ceiling any more — FIXED 2026-09-02.** The `it.fails` pin became a regression guard and lost the `blockers-` prefix, which means "an `it.fails` stating behaviour we do NOT have". The image-anchor and margin cases this row recorded as unasserted are now asserted, alongside three lockstep cases (colour / underline / hyperlink) that pass before AND after the fix — those are the ones a PARTIAL normalisation goes red on | `browser/cropbox-origin-layout.browser.test.ts` |
 | C19 Arabic tashkeel / GPOS | yes — marks reach the glyph stream; placement not asserted | `browser/ceilings.browser.test.ts` |
 | C21 raster ink, no per-stroke edit | yes — the bake returns a PNG data URL | `browser/ceilings.browser.test.ts` |
-| **C11** internal GoTo / sheared image / ICC spot | **NO**, and deliberately so — see below | — |
+| **C11** sheared image / ICC spot (internal GoTo lifted by row 22) | **NO**, and deliberately so — see above | `utils/flowDocLinkAnchors.test.ts` + `browser/docx-internal-links.browser.test.ts` pin the lifted half |
 | C5 PDF→DOCX pixel identity | **unencodable** — definitional (fixed-layout → reflowable); no assertion expresses it | — |
 | C15 OCR accuracy | **unencodable** — bounded by a non-deterministic LSTM model; evidence-only by design | — |
 | C20 XFDF Acrobat byte-exactness | **unencodable in-repo** — no Acrobat to compare against; the internal round-trip is the guarantee | `export/xfdfExport.test.ts`, `export/xfdfImport.test.ts` |

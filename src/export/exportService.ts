@@ -7,7 +7,8 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, pageIsRasterised, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
-import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, type FlowDoc, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
+import { resolveGoToDest, type DestDoc } from './linkDest';
+import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, resolveLinkAnchors, type FlowDoc, type FlowPage, type LinkTarget, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { FormHiddenTextFinder, type FormTextItem } from './formHiddenText';
@@ -1344,6 +1345,10 @@ export class ExportService {
     const { documentModel, elements } = this._ctx;
     const flowDoc: FlowDoc = { pages: [] };
     const formHidden = new FormHiddenTextFinder();
+    // Limits row 22 (D11): internal links resolve after every page is built — a link may point forward. `goTo` holds
+    // each link's target (source page + view top, crop frame); `flowPageOf` the first exported page per source page.
+    const goTo = new Map<string, { srcKey: string; top?: number }>();
+    const flowPageOf = new Map<string, FlowPage>();
     for (const docPage of documentModel.pages) {
       // Text the user TYPED on this page (overlay TextElements). `el.text` is logical
       // Unicode, so this exports correctly in DOCX/MD — including Arabic (#4).
@@ -1433,16 +1438,31 @@ export class ExportService {
       // Gap 2: Link annotations → hyperlinks. pdf.js gives each Link a `url` and a
       // `rect` [x0,y0,x1,y1] in PDF user space (y-up) — the same space the text
       // item transforms live in, so reconstructPage can bbox-match words to URLs.
-      const links: FlowLinkRect[] = (annotations as Array<{ subtype?: string; url?: string; rect?: number[] }>)
-        .filter(a => a.subtype === 'Link' && typeof a.url === 'string' && !!a.url && Array.isArray(a.rect) && a.rect.length === 4)
-        .map(a => {
-          const [rx0, ry0, rx1, ry1] = a.rect as number[];
-          return {
-            url: a.url as string,
-            x0: Math.min(rx0, rx1) - cropOriginX, y0: Math.min(ry0, ry1) - cropOriginY,
-            x1: Math.max(rx0, rx1) - cropOriginX, y1: Math.max(ry0, ry1) - cropOriginY,
-          };
-        });
+      // Limits row 22 (D11): a Link carrying a `dest` instead is an internal jump; it gets an anchor KEY naming its
+      // target, and `resolveLinkAnchors` below turns that into a Word bookmark / Markdown anchor once every page exists.
+      const links: FlowLinkRect[] = [];
+      for (const a of annotations as Array<{ subtype?: string; url?: string; dest?: unknown; rect?: number[] }>) {
+        if (a.subtype !== 'Link' || !Array.isArray(a.rect) || a.rect.length !== 4) continue;
+        const [rx0, ry0, rx1, ry1] = a.rect;
+        const box = {
+          x0: Math.min(rx0, rx1) - cropOriginX, y0: Math.min(ry0, ry1) - cropOriginY,
+          x1: Math.max(rx0, rx1) - cropOriginX, y1: Math.max(ry0, ry1) - cropOriginY,
+        };
+        if (typeof a.url === 'string' && a.url) { links.push({ url: a.url, ...box }); continue; }
+        if (a.dest === undefined || a.dest === null) continue;
+        const target = await resolveGoToDest(src.doc as unknown as DestDoc, a.dest);
+        if (!target) continue;
+        let top: number | undefined;
+        if (target.top !== undefined) {
+          // The destination's top is in the TARGET page's absolute user space; paragraphs carry y in its crop frame.
+          const tp = target.pageNum === docPage.sourcePageNum ? page : await src.doc.getPage(target.pageNum);
+          top = target.top - pointViewport(tp, { scale: 1, rotation: 0 }).viewBox[1];
+        }
+        const srcKey = `${docPage.sourcePdfId}#${target.pageNum}`;
+        const key = `${srcKey}#${top ?? ''}`;
+        goTo.set(key, { srcKey, top });
+        links.push({ anchor: key, ...box });
+      }
 
       // When the marked-content variant was requested, the stream interleaves
       // boundary markers (carry `type`) with text items; the heuristic path + font
@@ -1554,6 +1574,8 @@ export class ExportService {
       const overlayParas = textElementsToFlowParagraphs(overlayEls, vp.height);
       flowPage.paragraphs = interleaveByReadingOrder(flowPage.paragraphs, overlayParas);
       flowDoc.pages.push(flowPage);
+      const srcKey = `${docPage.sourcePdfId}#${docPage.sourcePageNum}`;
+      if (!flowPageOf.has(srcKey)) flowPageOf.set(srcKey, flowPage);
     }
     assignHeadings(flowDoc);
     // B3: attach the source PDF outline (bookmarks) so the DOCX writer can emit a
@@ -1569,6 +1591,16 @@ export class ExportService {
     // B5: hoist a running header/footer (repeated top/bottom band across pages)
     // into doc.header/footer and drop the inline duplicates. No band → no-op.
     applyRepeatedBands(flowDoc);
+    // After the header/footer hoist, so a bookmark never lands on a paragraph that has just left the body. A target
+    // whose page is not in this export (deleted, or a blank) stays unresolved and its link exports as plain text.
+    if (goTo.size) {
+      const targets = new Map<string, LinkTarget>();
+      for (const [key, t] of goTo) {
+        const fp = flowPageOf.get(t.srcKey);
+        if (fp) targets.set(key, { page: fp, top: t.top });
+      }
+      resolveLinkAnchors(flowDoc.pages, targets);
+    }
     return flowDoc;
   }
 
