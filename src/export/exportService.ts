@@ -9,7 +9,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, pageIsRasterised, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
 import { resolveGoToDest, type DestDoc } from './linkDest';
 import { flattenDocumentAnnotations } from './flattenAnnotations';
-import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, resolveLinkAnchors, type FlowDoc, type FlowPage, type LinkTarget, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
+import { reconstructPage, bidiCellText, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, resolveLinkAnchors, type FlowDoc, type FlowPage, type LinkTarget, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
 import { FormHiddenTextFinder, type FormTextItem } from './formHiddenText';
@@ -592,7 +592,8 @@ export class ExportService {
   private async _resolveTableGrid(docPage: DocumentPage): Promise<TableGrid | null> {
     const data = await this._extractPageTableData(docPage);
     if (!data) return null;
-    return buildTableGrid(data.hRules, data.vRules, data.items) ?? inferBorderlessGrid(data.items);
+    return buildTableGrid(data.hRules, data.vRules, data.items, undefined, bidiCellText)
+      ?? inferBorderlessGrid(data.items, { cellText: bidiCellText });
   }
 
   /**
@@ -712,7 +713,11 @@ export class ExportService {
       .filter((_, i) => !hidden?.has(i))
       .filter(it => typeof it.str === 'string' && it.str.trim().length > 0 && Array.isArray(it.transform))
       .filter(it => !contentRedactions.some(r => isItemRedacted(it, r, vp.viewBox[3])))
-      .map(it => ({ x: it.transform[4], y: it.transform[5], text: it.str, width: it.width }));
+      // rtl + size (limits row 42): an Arabic cell is built with the flow's line machinery; size is the flow's formula.
+      .map(it => ({
+        x: it.transform[4], y: it.transform[5], text: it.str, width: it.width, rtl: it.dir === 'rtl',
+        size: Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12,
+      }));
     return { hRules: ops.rules, vRules: ops.vRules, items };
   }
 

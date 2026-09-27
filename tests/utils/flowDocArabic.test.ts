@@ -210,6 +210,36 @@ describe('reconstructPage — RTL logical-order restoration (A1/A2)', () => {
     expect(text).toBe('مرحبا hellos xy ثم');
   });
 
+  it('a near-even FULL line takes the side the paragraph\'s ragged line is flush with (limits row 42)', () => {
+    // `PDFturbo` + `برنامج` fills the column 100..200; `الجديد` below is flush right and ragged left. The paragraph is
+    // 12 Arabic letters against 8 Latin (near even), and so is the first line, which is flush on both sides.
+    const ltr = (str: string, x: number, y: number, width: number): RawTextItem =>
+      ({ ...rtlItem(str, x), dir: 'ltr', transform: [12, 0, 0, 12, x, y], width });
+    const at = (str: string, x: number, y: number, width: number): RawTextItem =>
+      ({ ...rtlItem(str, x), transform: [12, 0, 0, 12, x, y], width });
+    const page = reconstructPage(
+      [ltr('PDFturbo', 100, 700, 60), at('برنامج', 164, 700, 36), at('الجديد', 164, 686, 36)],
+      {} as FontInfoMap, 600, 800,
+    );
+    expect(page.paragraphs).toHaveLength(1);
+    expect(page.paragraphs[0].runs.map(r => r.text).join('').replace(/\s+/g, ' ').trim()).toBe('برنامج PDFturbo الجديد');
+  });
+
+  it('...and keeps its own reading when the ragged lines disagree (limits row 42)', () => {
+    // Same full first line, then one line flush right and one flush left: no side to take. Its own letters are
+    // 8 Latin against 6 Arabic, so it reads left to right.
+    const ltr = (str: string, x: number, y: number, width: number): RawTextItem =>
+      ({ ...rtlItem(str, x), dir: 'ltr', transform: [12, 0, 0, 12, x, y], width });
+    const at = (str: string, x: number, y: number, width: number): RawTextItem =>
+      ({ ...rtlItem(str, x), transform: [12, 0, 0, 12, x, y], width });
+    const page = reconstructPage(
+      [ltr('PDFturbo', 100, 700, 60), at('برنامج', 164, 700, 36), at('الجديد', 164, 686, 36), ltr('abcd', 100, 672, 30)],
+      {} as FontInfoMap, 600, 800,
+    );
+    expect(page.paragraphs).toHaveLength(1);
+    expect(page.paragraphs[0].runs.map(r => r.text).join('').replace(/\s+/g, ' ').trim()).toBe('PDFturbo برنامج الجديد abcd');
+  });
+
   it('emits w:rtl and a complex-script (cs) Arabic font in the DOCX (A3)', async () => {
     const page = reconstructPage([rtlItem('CBA', 120), rtlItem('FED', 40)], {} as FontInfoMap, 600, 800);
     const b64 = await flowDocToDocxBase64({ pages: [page] });

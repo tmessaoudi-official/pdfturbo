@@ -3773,6 +3773,24 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   rule off → 1 + 1; list guard off → exactly the list case; typical gap pooled across sizes → exactly the per-size
   case (whose first fixture was vacuous — a tighter 10pt column only pulls a pooled median DOWN; it now pools a looser
   18pt column); two samples not required → 2 jsdom.
+- **Arabic table cells (limits row 42, 2026-09-27)**: a cell was its items sorted left to right and joined with spaces,
+  in the CSV/XLSX grid and the Word/Markdown/text tables alike. Chrome draws Arabic one glyph per item, so `الطول` came out
+  `ل و ط ل ا` in presentation forms; LibreOffice's `النص (RTL) هنا` came out `هنا ) RTL ( النص`. `buildTableGrid` now
+  takes an injected cell text (`bidiCellText` in flowDoc — injected because flowDoc imports tableExtract), used only
+  when the grid's items hold a right-to-left one: the cell is built like a paragraph (`clusterWordsIntoLines`,
+  `settleAmbiguousLines` against the cell's item extent, gap spacing). A grid with no right-to-left item keeps the old
+  join byte for byte — including `A 4` for a Latin `A4` drawn as two items, which is pre-existing and out of scope.
+  `TableTextItem` gained `rtl` and `size` (the flow's size formula). The tagged path's cells get the same settle.
+  `settleAmbiguousLines` gained one rule for paragraphs too: a near-even line flush on BOTH sides takes the side the
+  paragraph's other lines are flush with when those flush on one side agree, else keeps its own reading (a wrapped
+  `برنامج PDFturbo` above a flush-right `الجديد`). Fixture `tests/fixtures/bidi/arabic-table.fodt/.pdf` (LibreOffice).
+  Every cell of both fixtures now reads as typed. Column ORDER still differs for a right-to-left table — drawn order in
+  the lattice grid, tag order in the tagged path (row 53). Guards: `tests/browser/table-arabic.browser.test.ts` (5),
+  3 cases in `tableExtract.test.ts`, 2 in `flowDocArabic.test.ts`. Sabotage, each restored with `cmp` (jsdom +
+  browser): gate removed → exactly the LTR control; bidi path never used → 1 + 4; full-line rule off → 2 + 2 (the
+  paragraph and cell cases, both LibreOffice cases); abstain taking any side → exactly the abstain case; no settle in
+  cells → 1 + 2; exportService `rtl` dropped → the 3 CSV cases; flowDoc `rtl` dropped → exactly the Chrome flow case;
+  exportService `size` forced to 12 → green (equivalent on these fixtures, not pinned).
 - **Edit-text prefill (limits row 40, 2026-09-27)**: the edit-text tool's Arabic overlay takes its text from
   `clusterBaselineRun`, which joined the clicked run's items by ascending x — the same reversal as the DOCX export's,
   one step earlier: measured on the Chrome fixture, 19 of 157 runs read as typed and 70 came out reversed; on the

@@ -22,7 +22,17 @@ export interface TableTextItem {
    * without knowing where text ENDS.
    */
   width?: number;
+  /** Limits row 42: pdf.js's `dir === 'rtl'`. A grid whose items hold any is built with the injected cell text. */
+  rtl?: boolean;
+  /** Limits row 42: the glyph size, the same formula as the flow (`hypot(a, b) || |height| || 12`). */
+  size?: number;
 }
+
+/**
+ * Limits row 42: how one cell's items become its text when the grid holds right-to-left items. Injected, because the
+ * line machinery lives in `flowDoc.ts`, which imports this module.
+ */
+export type CellTextFn = (items: TableTextItem[]) => string;
 
 export interface TableGrid {
   rows: number;
@@ -64,7 +74,12 @@ export function buildTableGrid(
   vRules: RuleRect[],
   items: TableTextItem[],
   tol = DEFAULT_TOL,
+  cellText?: CellTextFn,
 ): TableGrid | null {
+  // Limits row 42: joining a cell's items left to right with a space is right for left-to-right text only. Chrome draws
+  // Arabic one glyph per item, so an Arabic cell came out as spaced presentation forms in page order. A grid holding
+  // no right-to-left item keeps the old join exactly.
+  const bidiCells = cellText !== undefined && items.some(it => it.rtl);
   const rowBounds = clusterPositions(hRules.map(r => r.y + r.height / 2), tol);
   const colBounds = clusterPositions(vRules.map(r => r.x + r.width / 2), tol);
   if (rowBounds.length < 2 || colBounds.length < 2) return null;
@@ -96,7 +111,9 @@ export function buildTableGrid(
         it.x >= xLo && (lastCol ? it.x <= xHi : it.x < xHi)
         && it.y >= lo && (topBand ? it.y <= hi : it.y < hi));
       inCell.sort((a, b) => (b.y - a.y) || (a.x - b.x)); // reading order: top→bottom, left→right
-      rowCells.push(inCell.map(it => it.text.trim()).filter(Boolean).join(' '));
+      rowCells.push(bidiCells && inCell.length
+        ? (cellText as CellTextFn)(inCell)
+        : inCell.map(it => it.text.trim()).filter(Boolean).join(' '));
     }
     cells.push(rowCells);
   }

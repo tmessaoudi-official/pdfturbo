@@ -1179,21 +1179,29 @@ const AMBIGUOUS = (share: number | null) => share !== null && share >= 0.35 && s
  * Direction is a PARAGRAPH property (UAX#9 P2), but lines are ordered before they are grouped. A line whose letters
  * are near even (35–65% right-to-left) takes the direction of its paragraph's letters; when those are near even too,
  * the side it is flush with decides — flush right and ragged left reads right to left (limits row 19: a wrapped line
- * `support@example.com … v2.0.0 … 2026.` of an Arabic paragraph is 18 Latin letters against 17 Arabic). Otherwise it
- * keeps its own reading. A justified body line is flush on both sides and keeps its letters.
+ * `support@example.com … v2.0.0 … 2026.` of an Arabic paragraph is 18 Latin letters against 17 Arabic). A line flush
+ * on BOTH sides — a full line, a justified body line — takes the side the paragraph's other lines are flush with when
+ * those that are flush on one side only all agree (limits row 42: a wrapped `برنامج PDFturbo` above a flush-right
+ * `الجديد` in a table cell); when they disagree or there are none, it keeps its own reading.
  */
 function settleAmbiguousLines(group: Line[], colLeft: number, colRight: number): void {
   const groupShare = rtlShare(group.flatMap(l => l.words));
+  const flush = (l: Line) => {
+    const tol = indentTolerance(l.size);
+    return { left: Math.abs(l.x0 - colLeft) <= tol, right: Math.abs(l.x1 - colRight) <= tol };
+  };
   for (const line of group) {
     if (!AMBIGUOUS(rtlShare(line.words))) continue;
     let want: boolean | null = null;
     if (groupShare !== null && !AMBIGUOUS(groupShare)) want = groupShare > 0.5;
     else {
-      const tol = indentTolerance(line.size);
-      const flushLeft = Math.abs(line.x0 - colLeft) <= tol;
-      const flushRight = Math.abs(line.x1 - colRight) <= tol;
-      if (flushRight && !flushLeft) want = true;
-      else if (flushLeft && !flushRight) want = false;
+      const f = flush(line);
+      if (f.right && !f.left) want = true;
+      else if (f.left && !f.right) want = false;
+      else if (f.left && f.right) {
+        const sides = new Set(group.filter(l => l !== line).map(flush).filter(o => o.left !== o.right).map(o => o.right));
+        if (sides.size === 1) want = [...sides][0];
+      }
     }
     if (want !== null && want !== line.rtl) {
       const ordered = orderLineWords(line.words, want);
@@ -1201,6 +1209,25 @@ function settleAmbiguousLines(group: Line[], colLeft: number, colRight: number):
       line.rtl = ordered.rtl;
     }
   }
+}
+
+/**
+ * The text of one table cell, built like a paragraph: lines, their reading order, the near-even line settled against
+ * the cell's own extent (the item extent, so the lattice and tagged paths agree by construction), spaces from the gaps
+ * between boxes (limits row 42).
+ */
+function cellLinesText(words: Word[], fonts: FontInfoMap): string {
+  if (!words.length) return '';
+  const lines = clusterWordsIntoLines(words);
+  settleAmbiguousLines(lines, Math.min(...words.map(w => w.x)), Math.max(...words.map(w => w.x + w.width)));
+  return buildRunsFromLines(lines, fonts).map(r => r.text).join('').replace(/\s+/g, ' ').trim();
+}
+
+/** {@link cellLinesText} for the grid builders' items (`buildTableGrid`'s injected cell text, limits row 42). */
+export function bidiCellText(items: TableTextItem[]): string {
+  return cellLinesText(items.map(it => ({
+    text: it.text, x: it.x, y: it.y, width: Math.abs(it.width ?? 0), size: it.size ?? 12, fontName: '', rtl: it.rtl === true,
+  })), {});
 }
 
 function buildParagraph(
@@ -1418,7 +1445,7 @@ function _detectLatticeRegions(
   // Feed only the in-region text items so cell assignment ignores body text that
   // happens to share a band but sits outside the table's horizontal extent.
   const inRegion = items.filter(it => _itemInRegion(it, region));
-  const grid = buildTableGrid(hRules, vRules, inRegion, TABLE_TOL);
+  const grid = buildTableGrid(hRules, vRules, inRegion, TABLE_TOL, bidiCellText);
   if (!grid) return [];
   // Reject a phantom grid drawn over empty space (no cell carries any text).
   const hasText = grid.cells.some(row => row.some(c => c.trim().length > 0));
@@ -1654,8 +1681,7 @@ function _structTable(
   const cellText = (cell: StructTreeNodeLike): string => {
     const words = _structItemsToWords(_collectLeafIds(cell, _STRUCT_CELL_STOP), mcMap, redactions, pageTopY);
     for (const w of words) topY = Math.max(topY, w.y);
-    if (!words.length) return '';
-    return buildRunsFromLines(clusterWordsIntoLines(words), fonts).map(r => r.text).join('').trim();
+    return cellLinesText(words, fonts);
   };
   const collectRows = (n: StructTreeNodeLike) => {
     for (const c of n.children ?? []) {
@@ -1976,7 +2002,7 @@ export function reconstructPage(
   // a stray paragraph. No vRules (or no both-axes grid) → regions is empty and
   // every downstream step is byte-identical to the pre-G9 path.
   // `width` is read only by the borderless detector below: it cannot find a column without knowing where text ENDS.
-  const tableInput: TableTextItem[] = words.map(w => ({ x: w.x, y: w.y, text: w.text, width: w.width }));
+  const tableInput: TableTextItem[] = words.map(w => ({ x: w.x, y: w.y, text: w.text, width: w.width, rtl: w.rtl, size: w.size }));
   const detected = rules?.length && vRules?.length
     ? _detectLatticeRegions(tableInput, rules, vRules)
     : [];
@@ -1984,7 +2010,7 @@ export function reconstructPage(
   // the page, so the whole page is the table and no word is left to the paragraphs — the flow gate refuses indexes and
   // contents pages, which pass the geometric one.
   if (!detected.length) {
-    const grid = inferBorderlessGridForFlow(tableInput);
+    const grid = inferBorderlessGridForFlow(tableInput, { cellText: bidiCellText });
     if (grid) {
       const page: FlowPage = { width: pageWidth, height: pageHeight, paragraphs: [], tables: [{ grid, y: Math.max(...words.map(w => w.y + w.size)), borderless: true }] };
       const margins = computeMargins(words, pageWidth, pageHeight);

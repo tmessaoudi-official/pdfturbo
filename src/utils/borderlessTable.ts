@@ -20,7 +20,7 @@
  * A miss costs the user nothing they had (today's answer is "no table found"); a phantom table corrupts
  * their export. So every gate refuses by returning null and none of them guesses.
  */
-import { buildTableGrid, type TableGrid, type TableTextItem } from './tableExtract';
+import { buildTableGrid, type CellTextFn, type TableGrid, type TableTextItem } from './tableExtract';
 import type { RuleRect } from './flowDoc';
 
 /** Baseline-clustering tolerance: items within this many points share a text line. */
@@ -111,6 +111,8 @@ export interface BorderlessOpts {
   minLines?: number;
   minSpanningRatio?: number;
   maxMedianCellWords?: number;
+  /** Limits row 42: the cell text for a grid holding right-to-left items (see `buildTableGrid`). */
+  cellText?: CellTextFn;
 }
 
 /**
@@ -170,7 +172,7 @@ export function inferBorderlessGrid(
   const hRules: RuleRect[] = rowBounds.map(y => ({ x: minX, y, width: maxX - minX, height: 0 }));
   const vRules: RuleRect[] = colBounds.map(x => ({ x, y: rowBounds[rowBounds.length - 1], width: 0, height: rowBounds[0] - rowBounds[rowBounds.length - 1] }));
 
-  const grid = buildTableGrid(hRules, vRules, withText, 0.5);
+  const grid = buildTableGrid(hRules, vRules, withText, 0.5, opts.cellText);
   if (!grid) return null;
 
   // FINAL GATE: is this tabular DATA, or is it prose that happens to align? See

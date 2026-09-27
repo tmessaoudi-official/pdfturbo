@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { clusterPositions, buildTableGrid, gridToCsv, type TableTextItem, type TableGrid } from '../../src/utils/tableExtract';
-import type { RuleRect } from '../../src/utils/flowDoc';
+import { bidiCellText, type RuleRect } from '../../src/utils/flowDoc';
 
 const h = (y: number, x = 0, width = 300): RuleRect => ({ x, y, width, height: 0 });
 const v = (x: number, y = 0, height = 200): RuleRect => ({ x, y, width: 0, height });
@@ -97,5 +97,37 @@ describe('gridToCsv', () => {
   });
   it('does not touch a cell where the dangerous char is not leading', () => {
     expect(gridToCsv({ rows: 1, cols: 1, cells: [['a=b']] })).toBe('a=b');
+  });
+});
+
+describe('buildTableGrid — right-to-left cells (limits row 42)', () => {
+  const hRules = [h(100), h(150), h(200)];
+  const vRules = [v(50), v(150), v(250)];
+  const g6 = (x: number, y: number, text: string, rtl = true): TableTextItem => ({ x, y, text, width: 6, size: 12, rtl });
+
+  it('control: a grid with no right-to-left item keeps the old join, even with the cell text injected', () => {
+    // `A` and `4` touch (Chrome draws them as two items). Only the injected text would read them as `A4`.
+    const out = grid(buildTableGrid(hRules, vRules, [g6(60, 170, 'A', false), g6(66, 170, '4', false)], 3, bidiCellText));
+    expect(out.cells[0][0]).toBe('A 4');
+  });
+
+  it('a per-glyph Arabic cell reads in logical order, and the Latin cell beside it loses the space', () => {
+    // `الطول` drawn one glyph per item, page left to right: ل و ط ل ا.
+    const glyphs = [...'لوطلا'].map((c, i) => g6(160 + i * 6, 170, c));
+    const out = grid(buildTableGrid(hRules, vRules, [...glyphs, g6(60, 170, 'A', false), g6(66, 170, '4', false)], 3, bidiCellText));
+    expect(out.cells[0]).toEqual(['A4', 'الطول']);
+    // Without the injected text the old join stands: spaced, in page order.
+    expect(grid(buildTableGrid(hRules, vRules, glyphs)).cells[0][0]).toBe('ل و ط ل ا');
+  });
+
+  it('a wrapped mixed cell: the full first line takes the side the ragged last line is flush with', () => {
+    // LibreOffice, flush right: `برنامج PDFturbo` fills the first line, `الجديد` sits flush right below it. 12 Arabic
+    // letters against 8 Latin is near even, and so is the first line alone.
+    const items: TableTextItem[] = [
+      { x: 60, y: 175, text: 'PDFturbo', width: 54, size: 12, rtl: false },
+      { x: 117, y: 175, text: 'برنامج', width: 29, size: 12, rtl: true },
+      { x: 116, y: 160, text: 'الجديد', width: 30, size: 12, rtl: true },
+    ];
+    expect(bidiCellText(items)).toBe('برنامج PDFturbo الجديد');
   });
 });
