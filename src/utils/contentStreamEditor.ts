@@ -927,8 +927,10 @@ export function replaceShowOpInPlace(op: CsOp, newText: string): boolean {
   if (op.operator === 'TJ') {
     const arr = op.operands[0];
     if (!arr || arr.type !== 'array' || !arr.items) return false;
-    const stringItems = arr.items.filter(t => t.type === 'string');
-    if (stringItems.length === 0) return false; // all hex → can't replace safely
+    // Limits row 49: a mixed array's HEX segments are rewritten too (as literals — byte == character here), else they
+    // keep showing their old glyphs. An all-hex array still goes to Path 2/3.
+    const stringItems = arr.items.filter(t => t.type === 'string' || t.type === 'hexstring');
+    if (!stringItems.some(t => t.type === 'string')) return false; // all hex → can't replace safely
     // Gap 1 (kerning preservation): distribute newText across the EXISTING string
     // segments by their original character counts, leaving the kerning numbers
     // between them untouched. Equal-length edits keep each segment's char count
@@ -936,7 +938,9 @@ export function replaceShowOpInPlace(op: CsOp, newText: string): boolean {
     // absorbed by the LAST segment (the common "fix one word" edit). This
     // replaces the old collapse-to-one-literal behaviour that discarded all
     // kerning and reflowed the line, shifting neighbouring glyphs.
-    const lengths = stringItems.map(it => decodeLiteralString(it.raw).length);
+    const lengths = stringItems.map(it => it.type === 'string'
+      ? decodeLiteralString(it.raw).length
+      : Math.ceil(it.raw.replace(/^</, '').replace(/>$/, '').replace(/\s/g, '').length / 2));
     let cursor = 0;
     for (let si = 0; si < stringItems.length; si++) {
       const isLast = si === stringItems.length - 1;
@@ -944,6 +948,7 @@ export function replaceShowOpInPlace(op: CsOp, newText: string): boolean {
       const slice = take > 0 ? newText.slice(cursor, cursor + take) : '';
       cursor += slice.length;
       stringItems[si].raw = encodeLiteralString(slice);
+      stringItems[si].type = 'string';
     }
     arr.raw = `[${arr.items.map(t => t.raw).join(' ')}]`;
     return true;
@@ -2375,7 +2380,8 @@ function getFontResourceDict(doc: PDFDocument, pageIndex: number, xObjectName?: 
 /** True when the font resource is a composite (Type0) font, whose codes may be wider than one byte. */
 function isType0Font(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): boolean {
   const entry = getPageFontEntry(doc, pageIndex, fontKey, xObjectName);
-  const sub = entry?.get?.(PDFName.of('Subtype'));
+  // Through `lookup`: an indirect /Subtype read with `get` is a PDFRef and would count as a simple font.
+  const sub = entry?.get ? doc.context.lookup(entry.get(PDFName.of('Subtype'))) : undefined;
   return sub instanceof PDFName && sub.asString() === '/Type0';
 }
 

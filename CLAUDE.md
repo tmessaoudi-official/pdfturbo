@@ -3067,8 +3067,10 @@ refuses a code wider than the code size.
 
 Corpus (the 729 row-17 records, each run's own decoded text reversed, one file per process): the editor pre-fills
 146; before, 48 edited in place, 97 substituted and 1 refused; after, all 146 in place, 79 of them with spaces. The
-other 583 have no ToUnicode, so the editor does not pre-fill them — row 39's case. An edit needing a character the
-ToUnicode does not map still falls through to Path 3 (pinned).
+other 583 are not pre-filled — no ToUnicode, or not located at tolerance 3; the probe did not record which, so that
+split is unmeasured (row 39 measures it). An edit needing a character the ToUnicode does not map still falls through
+to Path 3 (pinned). The font type is read through `lookup`: an indirect `/Subtype` read with `get` is a PDFRef, and a
+Type0 font then took one-byte codes (found at the 6C review, after 5b6aab4 shipped; pinned).
 
 Guards: 9 cases in `tests/utils/contentStreamEditor.test.ts` (Tj, a second edit, the escaped TJ, the mixed TJ, the
 `"` operator, wide and no codespace, the Path-3 control, the code-width refusal) plus the `replaceShowOpHex` contract
@@ -3079,8 +3081,16 @@ digits in the same font as an untouched run of the same file; the control is red
 each restored with `cmp`: literals refused → 8 jsdom + 4 browser; raw length → exactly the escaped TJ; `type` not
 updated → exactly the contract case (a second edit re-reads the saved stream, so the type matters only within one
 call); codespace trusted on a simple font → the wide and none cases; no code-width guard → exactly that case; TJ
-hex-only → the escaped and mixed TJ in both suites. Not covered by a test: a literal operand in a Type0 font (the
-G8 prefill fixture's shape) — the same code path with a two-byte code size.
+hex-only → the escaped and mixed TJ in both suites; `/Subtype` read with `get` → exactly the indirect case. A literal operand in a Type0 font (the
+G8 prefill fixture's shape) — now pinned by two jsdom cases on a real LiberationSans Type0 subset, one with an
+indirect `/Subtype`.
+
+**Path 1 had the same mixed-array hole (limits row 49, found at the row-38 review).** `replaceShowOpInPlace` rewrote
+only the literal segments of a TJ, so `[(He) -50 <6C6C6F>]` edited to "World" drew `Worldllo`. Hex segments are now
+rewritten too, as literals (byte == character on a standard font), a hex segment counting half its digits; an
+all-hex array still goes to Path 2/3. Guards: two cases (hex last, hex first — only hex first can see the length,
+because the last segment absorbs the remainder). Sabotage: literal segments only → both; hex counted by digits →
+exactly the hex-first case.
 
 ### True-edit composed nested `cm` backwards, and forgot the CTM at a form's `Do` — limits rows 47–48 (2026-09-27)
 

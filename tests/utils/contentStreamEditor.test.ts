@@ -46,6 +46,8 @@ import {
 } from '../../src/utils/contentStreamEditor';
 import { makeXObjectTextPdf } from './_xobjectFixture';
 import { makeLiteralSubsetPdf, LITERAL_RUNS, type LiteralSubsetOptions } from './_literalSubsetFixture';
+import fontkit from '@pdf-lib/fontkit';
+import { adaptFontkit } from '../../src/utils/fontkitAdapter';
 import { readFileSync } from 'node:fs';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
@@ -341,6 +343,60 @@ describe('Path 2 on literal-string operands (limits row 38)', () => {
     const doc = await load();
     const { x, y } = LITERAL_RUNS.tj;
     expect(await replaceTextAt(doc, 0, { x, y }, '12A45', 1)).toBe('substituted');
+  });
+
+  // A Type0 font written as literals (the G8 prefill fixture's shape): two-byte codes. `/Subtype` may be indirect, so it
+  // is read through `lookup` — through `get` it read as "not Type0" and one-byte codes went into a two-byte font.
+  it.each([false, true])('a literal Type0 run is rewritten with two-byte codes (indirect /Subtype: %s)', async indirect => {
+    const pdf = await PDFDocument.create();
+    pdf.registerFontkit(adaptFontkit(fontkit));
+    const ttf = new Uint8Array(readFileSync('node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf'));
+    const font = await pdf.embedFont(ttf, { subset: true });
+    const page = pdf.addPage([400, 200]);
+    page.drawText('Editable', { x: 30, y: 150, size: 24, font });
+    const hex = font.encodeText('Editable').toString().replace(/[<>]/g, '');
+    let literal = '';
+    for (let i = 0; i + 2 <= hex.length; i += 2) literal += '\\' + parseInt(hex.slice(i, i + 2), 16).toString(8).padStart(3, '0');
+    const ctx = pdf.context;
+    const fonts = PDFDict.fromMapWithContext(new Map(), ctx);
+    fonts.set(PDFName.of('F1'), font.ref);
+    const res = PDFDict.fromMapWithContext(new Map(), ctx);
+    res.set(PDFName.of('Font'), fonts);
+    page.node.set(PDFName.of('Resources'), res);
+    const content = `BT /F1 24 Tf 1 0 0 1 30 150 Tm (${literal}) Tj ET`;
+    const pcb = new Uint8Array(content.length);
+    for (let i = 0; i < content.length; i++) pcb[i] = content.charCodeAt(i) & 0xff;
+    page.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(pcb)));
+    const doc = await PDFDocument.load(await pdf.save({ useObjectStreams: false }));
+    if (indirect) {
+      const dict = doc.context.lookup(font.ref) as PDFDict;
+      dict.set(PDFName.of('Subtype'), doc.context.register(PDFName.of('Type0')));
+    }
+    expect(await replaceTextAt(doc, 0, { x: 30, y: 150 }, 'tableEdi', 1)).toBe(true);
+    const out = await pageContentText(await doc.save());
+    const written = out.match(/<([0-9A-F]+)> Tj/)?.[1] ?? '';
+    expect(written).toHaveLength(8 * 4);
+    expect(getEditableTextAt(doc, 0, { x: 30, y: 150 }, 1)).toBe('tableEdi');
+  });
+
+  // Limits row 49: Path 1 (a standard font, byte == character) rewrote only the literal segments of a mixed TJ and
+  // left the hex one showing its old glyphs.
+  it.each([
+    ['[(He) -50 <6C6C6F>] TJ', '[(Wo) -50 (rld)] TJ'],
+    // Hex first: a hex segment holds half as many characters as hex digits.
+    ['[<4865> -50 (llo)] TJ', '[(Wo) -50 (rld)] TJ'],
+  ])('Path 1 rewrites the hex segment of a mixed literal + hex TJ too: %s', async (array, expected) => {
+    const pdf = await PDFDocument.create();
+    const helv = await pdf.embedFont(StandardFonts.Helvetica);
+    const page = pdf.addPage([300, 200]);
+    page.node.set(PDFName.of('Resources'), pdf.context.register(pdf.context.obj({ Font: { F1: helv.ref } })));
+    const content = `BT /F1 24 Tf 30 100 Td ${array} ET`;
+    const pcb = new Uint8Array(content.length);
+    for (let i = 0; i < content.length; i++) pcb[i] = content.charCodeAt(i) & 0xff;
+    page.node.set(PDFName.of('Contents'), pdf.context.register(pdf.context.stream(pcb)));
+    const doc = await PDFDocument.load(await pdf.save());
+    expect(await replaceTextAt(doc, 0, { x: 30, y: 100 }, 'World', 1)).toBe(true);
+    expect(await pageContentText(await doc.save())).toContain(expected);
   });
 
   it('encodeWithSubset refuses a code wider than the code size', () => {
