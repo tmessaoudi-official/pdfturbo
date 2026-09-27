@@ -2262,25 +2262,33 @@ test files do: FreeText, Highlight, Line, Polygon/PolyLine, Square/Circle, Squig
 (12 annotations, 9 files) all flatten pixel-identically with their popups gone, and the Widget file is untouched.
 Four are vendored in `tests/fixtures/annotations/`.
 
-Guards: `tests/browser/flatten-annotations.browser.test.ts` (9) and `tests/export/flattenAnnotations.test.ts` (13).
+Guards: `tests/browser/flatten-annotations.browser.test.ts` (9) and `tests/export/flattenAnnotations.test.ts` (15).
 The oracle assumes no frame: the source rendered by pdf.js WITH annotations must equal the export rendered the same
 way — measured pixel-identical (no channel off by more than 40) at /Rotate 0/90/180/270, a CropBox origin, and a user
 rotation — and,
 since that alone passes if flatten does nothing, the export rendered WITHOUT annotations must show every flattened
 colour (A plain, B through an /AS state whose /Matrix turns it 90°, a sticky note), the OFF-layer one must stay
 hidden AND appear once the layer is forced on (without that half an OFF-layer case cannot fail), and the pending
-/Redact must not be baked. Sabotage, predicted first, each landed and restored with `cmp`: flatten never called →
-7 browser (the redaction case stays green: the strip already removes a covered annotation); an inherited `2 0 0 2
-0 0 cm` → 1 unit + 6 browser; identity transform instead of §12.5.5 → 5 browser; the first state instead of /AS →
-2 unit + 5 browser (green in the browser until the fixture listed `Off` first — the first version could not see
-it); no /OC wrapping → 1 unit + 5 browser; Redact drawn → 1 + 5; popups kept → 1 + 7 (the note's text then
-survives through the popup's `/Parent`); not-viewed flags ignored → 1 + 5; the rect not normalised → exactly
-the reversed-rect unit case; skipped ones not counted → 2 unit + 5 browser. The real-file case was added after the
-matrix; two mutations were re-run against it (never called, popups kept) and each reds it too — the other figures
-predate it and were not re-measured. Popups are swept only after every page is drawn, because one may sit on
-another page than its parent (the sanitizer met that shape): sweeping page by page → exactly the cross-page unit
-case. Three of those mutations (never
-called, identity transform, flags ignored) leave an unused name that `tsc` rejects; vitest runs them as written.
+/Redact must not be baked. Sabotage, predicted first, each landed and restored with `cmp`, re-measured on the final
+code (browser figures out of the file's 9 cases, unit out of the jsdom file's 15): flatten never
+called → 8 browser (the redaction case stays green: the strip already removes a covered annotation); an inherited
+`2 0 0 2 0 0 cm` → 1 unit + 8 browser; identity transform instead of §12.5.5 → 7 browser; the first state instead
+of /AS → 2 unit + 6 browser (green in the browser until the fixture listed `Off` first); no /OC wrapping → 1 + 6;
+Redact drawn → 1 + 6; popups kept → 2 + 8 (the note's text then survives through the popup's `/Parent`);
+not-viewed flags ignored → 1 + 6; the rect not normalised → exactly the reversed-rect unit case; skipped ones not
+counted → 3 unit + 6 browser; popups swept page by page instead of after every page → exactly the cross-page unit
+case (a popup may sit on another page than its parent — the sanitizer met that shape); `/F` read with
+`lookupMaybe` again → exactly the malformed-key unit case. Three of those mutations (never called, identity
+transform, flags ignored) leave an unused name that `tsc` rejects; vitest runs them as written.
+
+**A malformed key must not fail the export — found at 6C, after 8321fd8 shipped.** pdf-lib's
+`lookupMaybe(key, Type)` THROWS when the key holds another type; measured, a string `/F`, an array `/AP`, a
+string `/Subtype`, a dictionary `/BBox` and a non-array `/Annots` each failed the whole Flatten, on files the
+editor shows fine and that flattened fine before this row. pdf.js tolerates all of them, so every read is now
+`lookup` + `instanceof` with pdf.js's defaults: `/F` other than a positive integer is 0, a non-name `/Subtype` is a
+generic annotation (drawn), an invalid `/BBox` is the rect's size, an invalid `/Matrix` is identity, the stream is
+drawn as a form whatever its `/Subtype`. Pinned by two unit cases, red on 8321fd8. Same class as row 22's
+`getDestination` finding: a tolerant reader's input reached through a strict API.
 
 ### `/pdf-qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 

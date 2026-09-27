@@ -13,7 +13,7 @@
  * Nothing here converts a frame: /Rect and the appearance live in the page's own user space, the same space as its
  * content stream, so the result is right at every /Rotate and CropBox by construction.
  */
-import type { PDFDocument, PDFPage, PDFArray as PdfArray, PDFDict as PdfDict, PDFOperator as PdfOperator } from '@cantoo/pdf-lib';
+import type { PDFDocument, PDFPage, PDFDict as PdfDict, PDFOperator as PdfOperator } from '@cantoo/pdf-lib';
 
 /** Left as annotations on purpose, never counted: drawing their appearance would lose what they ARE. */
 const KEPT_SUBTYPES = new Set([
@@ -78,14 +78,15 @@ export async function flattenPageAnnotations(doc: PDFDocument, page: PDFPage): P
 async function pruneAnnots(doc: PDFDocument, page: PDFPage, flattened: Set<unknown>): Promise<void> {
   if (!flattened.size) return;
   const { PDFName, PDFDict, PDFArray } = await import('@cantoo/pdf-lib');
-  const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
-  if (!annots) return;
+  const annots = page.node.lookup(PDFName.of('Annots'));
+  if (!(annots instanceof PDFArray)) return;
   const kept = PDFArray.withContext(doc.context);
   for (let i = 0; i < annots.size(); i++) {
     const annot = annots.lookup(i);
     if (flattened.has(annot)) continue;
     // A popup is its parent's window; once the parent is page content it points at nothing.
-    if (annot instanceof PDFDict && annot.lookupMaybe(PDFName.of('Subtype'), PDFName)?.decodeText() === 'Popup') {
+    const sub = annot instanceof PDFDict ? annot.lookup(PDFName.of('Subtype')) : undefined;
+    if (annot instanceof PDFDict && sub instanceof PDFName && sub.decodeText() === 'Popup') {
       const parent = annot.get(PDFName.of('Parent'));
       if (parent && flattened.has(doc.context.lookup(parent))) continue;
     }
@@ -104,11 +105,14 @@ async function drawPageAnnotations(
   const { PDFName, PDFDict, PDFArray, PDFNumber, PDFRef, PDFStream, PDFOperator, PDFOperatorNames: Op } = lib;
   const ctx = doc.context;
   const result: FlattenAnnotationsResult = { flattened: 0, skipped: 0 };
-  const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
-  if (!annots || annots.size() === 0) return result;
+  // Every read below is `lookup` + `instanceof`, never `lookupMaybe(key, Type)`: that THROWS when the key holds another
+  // type (measured: a string /F, an array /AP, a string /Subtype, a dictionary /BBox, a non-array /Annots), and one
+  // such annotation would fail the whole export. pdf.js tolerates each, with the defaults mirrored here.
+  const annots = page.node.lookup(PDFName.of('Annots'));
+  if (!(annots instanceof PDFArray) || annots.size() === 0) return result;
 
-  const nums = (arr: PdfArray | undefined, n: number): number[] | null => {
-    if (!arr || arr.size() !== n) return null;
+  const nums = (arr: unknown, n: number): number[] | null => {
+    if (!(arr instanceof PDFArray) || arr.size() !== n) return null;
     const out: number[] = [];
     for (let i = 0; i < n; i++) {
       const v = arr.lookup(i);
@@ -117,15 +121,19 @@ async function drawPageAnnotations(
     }
     return out;
   };
-  const nameOf = (d: PdfDict, key: string): string | undefined =>
-    d.lookupMaybe(PDFName.of(key), PDFName)?.decodeText();
+  const nameOf = (d: PdfDict, key: string): string | undefined => {
+    const v = d.lookup(PDFName.of(key));
+    return v instanceof PDFName ? v.decodeText() : undefined;
+  };
 
   const ops: PdfOperator[] = [];
   let resources: PdfDict | undefined;
   const props = () => {
     resources ??= page.node.normalizedEntries().Resources;
-    let p = resources.lookupMaybe(PDFName.of('Properties'), PDFDict);
-    if (!p) { p = ctx.obj({}); resources.set(PDFName.of('Properties'), p); }
+    const found = resources.lookup(PDFName.of('Properties'));
+    if (found instanceof PDFDict) return found;
+    const p = ctx.obj({});
+    resources.set(PDFName.of('Properties'), p);
     return p;
   };
   const uniqueProp = (p: PdfDict) => {
@@ -137,20 +145,22 @@ async function drawPageAnnotations(
   for (let i = 0; i < annots.size(); i++) {
     const annot = annots.lookup(i);
     if (!(annot instanceof PDFDict)) continue;
+    // pdf.js draws an annotation whose /Subtype is missing or not a name as a generic one, so it is drawn here too.
     const subtype = nameOf(annot, 'Subtype');
-    if (!subtype || KEPT_SUBTYPES.has(subtype)) continue;
-    const flags = annot.lookupMaybe(PDFName.of('F'), PDFNumber)?.asNumber() ?? 0;
+    if (subtype && KEPT_SUBTYPES.has(subtype)) continue;
+    // pdf.js `setFlags`: anything but a positive integer reads as 0.
+    const f = annot.lookup(PDFName.of('F'));
+    const flags = f instanceof PDFNumber && Number.isInteger(f.asNumber()) && f.asNumber() > 0 ? f.asNumber() : 0;
     if (flags & NOT_VIEWED) continue;
 
     // pdf.js `setAppearance`: /N itself when it is a stream, else the /AS state inside it — no fallback.
-    const raw = annot.lookup(PDFName.of('Rect'));
-    const r = nums(raw instanceof PDFArray ? raw : undefined, 4);
-    const ap = annot.lookupMaybe(PDFName.of('AP'), PDFDict);
-    let nRaw = ap?.get(PDFName.of('N'));
+    const r = nums(annot.lookup(PDFName.of('Rect')), 4);
+    const apObj = annot.lookup(PDFName.of('AP'));
+    let nRaw = apObj instanceof PDFDict ? apObj.get(PDFName.of('N')) : undefined;
     let n = nRaw ? ctx.lookup(nRaw) : undefined;
     if (n instanceof PDFDict && !(n instanceof PDFStream)) {
-      const as = annot.lookupMaybe(PDFName.of('AS'), PDFName);
-      nRaw = as ? n.get(as) : undefined;
+      const as = annot.lookup(PDFName.of('AS'));
+      nRaw = as instanceof PDFName ? n.get(as) : undefined;
       n = nRaw ? ctx.lookup(nRaw) : undefined;
     }
     if (!r || !(n instanceof PDFStream)) { result.skipped++; continue; }
@@ -158,13 +168,15 @@ async function drawPageAnnotations(
     const w = rect[2] - rect[0], h = rect[3] - rect[1];
     if (w <= 0 || h <= 0) { result.skipped++; continue; }
 
-    // `Do` needs a Form XObject with a BBox; pdf.js reads the stream as one whatever it declares, and defaults the
-    // BBox to the rect's size. The stream belongs to this throwaway load of the source, so it is safe to complete it.
+    // `Do` needs a Form XObject with a BBox; pdf.js reads the stream as a form whatever it declares, and defaults an
+    // absent or invalid BBox to the rect's size and an invalid Matrix to identity. The stream belongs to this
+    // throwaway load of the source, so it is safe to complete it.
     const sd = n.dict;
-    if (!sd.has(PDFName.of('Subtype'))) sd.set(PDFName.of('Subtype'), PDFName.of('Form'));
-    let bbox = nums(sd.lookupMaybe(PDFName.of('BBox'), PDFArray), 4);
+    sd.set(PDFName.of('Subtype'), PDFName.of('Form'));
+    let bbox = nums(sd.lookup(PDFName.of('BBox')), 4);
     if (!bbox) { bbox = [0, 0, w, h]; sd.set(PDFName.of('BBox'), ctx.obj(bbox)); }
-    const matrix = nums(sd.lookupMaybe(PDFName.of('Matrix'), PDFArray), 6) ?? [1, 0, 0, 1, 0, 0];
+    const matrix = nums(sd.lookup(PDFName.of('Matrix')), 6);
+    if (!matrix) sd.delete(PDFName.of('Matrix'));
     const ref = nRaw instanceof PDFRef ? nRaw : ctx.register(n);
     const xName = page.node.newXObject('PdfturboAnnot', ref);
 
@@ -180,7 +192,7 @@ async function drawPageAnnotations(
       PDFOperator.of(Op.AppendRectangle, [rect[0], rect[1], w, h].map(v => PDFNumber.of(v))),
       PDFOperator.of(Op.ClipNonZero),
       PDFOperator.of(Op.EndPath),
-      PDFOperator.of(Op.ConcatTransformationMatrix, appearanceTransform(rect, bbox, matrix).map(v => PDFNumber.of(v))),
+      PDFOperator.of(Op.ConcatTransformationMatrix, appearanceTransform(rect, bbox, matrix ?? [1, 0, 0, 1, 0, 0]).map(v => PDFNumber.of(v))),
       PDFOperator.of(Op.DrawObject, [xName]),
       PDFOperator.of(Op.PopGraphicsState),
     );

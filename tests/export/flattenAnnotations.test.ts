@@ -118,6 +118,37 @@ describe('flattenPageAnnotations — what is drawn, kept and counted', () => {
     expect(await content(doc)).toMatch(/q\s+10 10 20 20 re\s+W\s+n\s+1 0 0 1 10 10 cm\s+\/PdfturboAnnot-?\d+ Do\s+Q/);
   });
 
+  it('a malformed key never fails the export — each shape read the way pdf.js reads it', async () => {
+    // Each of these THREW before (pdf-lib `lookupMaybe` on a type mismatch), failing the whole Flatten.
+    const run = async (extra: Record<string, unknown>, annotsAsDict = false) => {
+      const doc = await PDFDocument.create();
+      const pg = doc.addPage([300, 300]);
+      const ctx = doc.context;
+      const a = annot(ctx, 'Square', { AP: { N: form(ctx) }, ...extra });
+      pg.node.set(PDFName.of('Annots'), annotsAsDict ? ctx.obj({ A: a } as never) : ctx.obj([a] as never));
+      return flattenPageAnnotations(doc, pg);
+    };
+    expect(await run({ F: PDFString.of('2') })).toEqual({ flattened: 1, skipped: 0 });      // not an integer → 0 → viewed
+    expect(await run({ F: 2.5 })).toEqual({ flattened: 1, skipped: 0 });
+    expect(await run({ AP: [] })).toEqual({ flattened: 0, skipped: 1 });                    // no appearance
+    expect(await run({ Subtype: PDFString.of('Square') })).toEqual({ flattened: 1, skipped: 0 }); // a generic annotation
+    expect(await run({ AP: { N: { On: 1 } }, AS: PDFString.of('On') })).toEqual({ flattened: 0, skipped: 1 });
+    expect(await run({}, true)).toEqual({ flattened: 0, skipped: 0 });                      // /Annots not an array
+  });
+
+  it('an invalid /BBox or /Matrix falls back to pdf.js\'s default, and a non-Form /Subtype is drawn as a form', async () => {
+    let n: unknown;
+    const { doc, pg } = await page(ctx => {
+      n = ctx.register(ctx.stream('0 g 0 0 5 5 re f', { Subtype: 'Image', BBox: { a: 1 }, Matrix: [1, 0] } as never));
+      return [annot(ctx, 'Square', { AP: { N: n } })];
+    });
+    expect(await flattenPageAnnotations(doc, pg)).toEqual({ flattened: 1, skipped: 0 });
+    const sd = (doc.context.lookup(n as never) as PDFRawStream).dict;
+    expect((sd.lookup(PDFName.of('Subtype')) as PDFName).decodeText()).toBe('Form');
+    expect(sd.lookup(PDFName.of('BBox'), PDFArray).asArray().map(String)).toEqual(['0', '0', '20', '20']);
+    expect(sd.has(PDFName.of('Matrix'))).toBe(false);
+  });
+
   it('counts a zero-size rect instead of drawing it', async () => {
     const { doc, pg } = await page(ctx => [
       ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Square', Rect: [10, 10, 10, 30], AP: { N: form(ctx) } } as never)),
