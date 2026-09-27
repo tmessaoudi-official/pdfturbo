@@ -115,7 +115,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 16 | C9 signature rect mapped onto the assembled page | M | done | 8c175ac | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
 | 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | done | 62ff3eb | var/claude/**, KNOWN_ISSUES.md, CLAUDE.md |
 | 18 | D6+D7 real font names incl. eastAsia in DOCX | M | done | 9c97c24 | src/utils/flowDocWriters.ts, tests/** |
-| 19 | D8 mixed-bidi DOCX lines measured | M | done | 873724b | src/utils/flowDoc.ts, src/utils/bidi.ts, tests/** |
+| 19 | D8 mixed-bidi DOCX lines measured | M | done | c94b2eb | src/utils/flowDoc.ts, src/utils/bidi.ts, tests/** |
 | 20 | D9 borderless-table discriminator research | M | todo | - | src/utils/borderlessTable.ts, tests/** |
 | 21 | D10 4+ column split with corpus proof | M | todo | - | src/utils/flowDoc.ts, tests/** |
 | 22 | D11 internal links to bookmarks/anchors | M | todo | - | src/export/**, src/utils/flowDocWriters.ts, tests/** |

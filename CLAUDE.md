@@ -3321,10 +3321,12 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   tagged (struct-tree) path** — it now takes `letterDirection` but no tagged Arabic fixture exists, and it does not
   run `settleAmbiguousLines`. Guards: `tests/browser/docx-mixed-bidi.browser.test.ts` (15: the typed text of seven
   LibreOffice lines is the oracle, the app's bake, and five Chrome cases), `tests/utils/flowDocArabic.test.ts` and
-  `tests/blockers/arabic.blockers.test.ts` (27 together). Sabotage, predicted first, each restored with `cmp`, jsdom
+  `tests/blockers/arabic.blockers.test.ts` (28 together). Sabotage, predicted first, each restored with `cmp`, jsdom
   + browser: per-item reversal back → 10 + 10; item-count direction → 6 + 3; letter-less items not neutral → 2 + 3;
   L2 for an LTR base off → 2 + 3; direction-keyed gap → 3 + 4; bracket mirroring off → exactly the Chrome bracket
-  case in each (1 + 1, LibreOffice green); the paragraph tiebreak off → 1 + 1 (the email line); the run-box gap off →
+  case in each (1 + 1, LibreOffice green); the paragraph tiebreak off → 1 + 1 (the email line); only its flush-right arm off → 1 + 1 (a
+  one-paragraph jsdom case, and the email line — which does split into its own paragraph, row 41, so the flushness
+  branch is what reads it); the run-box gap off →
   1 + 1 (`نظام.pdf`); W7 off → 1 + 1 (the email line, via `v2.0.0`). The Markdown case aggregates every
   LibreOffice line, so it reds with any of them. The writer emits complex-script attrs (`font.cs=Arial`,
   `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.

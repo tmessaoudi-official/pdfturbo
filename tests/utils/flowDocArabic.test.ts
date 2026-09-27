@@ -194,6 +194,22 @@ describe('reconstructPage — RTL logical-order restoration (A1/A2)', () => {
     expect(text).toBe('هذا سطر عربي طويل جدا للتجربة مرحبا hellos xy ثم');
   });
 
+  it('a near-even paragraph flush right and ragged left reads right to left (limits row 19, flushness)', () => {
+    // An English paragraph above sets the column 50..400. Below it, alone in its paragraph, the same near-even line as
+    // above (8 Latin letters, 7 Arabic) ends at the column's right edge and starts well inside it.
+    const ltr = (str: string, x: number, y: number, width?: number): RawTextItem =>
+      ({ ...rtlItem(str, x), dir: 'ltr', transform: [12, 0, 0, 12, x, y], width: width ?? str.length * 7 });
+    const at = (str: string, x: number, y: number): RawTextItem => ({ ...rtlItem(str, x), transform: [12, 0, 0, 12, x, y] });
+    const page = reconstructPage(
+      [ltr('An English paragraph that spans the whole column width', 50, 700, 350),
+        at('ثم', 200, 640), ltr('hellos', 230, 640), ltr('xy', 290, 640), at('مرحبا', 365, 640)],
+      {} as FontInfoMap, 600, 800,
+    );
+    expect(page.paragraphs).toHaveLength(2);
+    const text = page.paragraphs[1].runs.map((r) => r.text).join('').replace(/\s+/g, ' ').trim();
+    expect(text).toBe('مرحبا hellos xy ثم');
+  });
+
   it('emits w:rtl and a complex-script (cs) Arabic font in the DOCX (A3)', async () => {
     const page = reconstructPage([rtlItem('CBA', 120), rtlItem('FED', 40)], {} as FontInfoMap, 600, 800);
     const b64 = await flowDocToDocxBase64({ pages: [page] });
