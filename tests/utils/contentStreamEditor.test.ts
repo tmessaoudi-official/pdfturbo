@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, StandardFonts, decodePDFRawStream, degrees, rgb } from '@cantoo/pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, PDFNumber, StandardFonts, decodePDFRawStream, degrees, rgb } from '@cantoo/pdf-lib';
 import {
   tokenizeContentStream,
   serializeTokens,
@@ -566,6 +566,83 @@ function showStrings(content: string): string[] {
   }
   return out;
 }
+
+// Limits row 39 — an EMBEDDED simple font with NO /ToUnicode (459 corpus runs: Type1C and TrueType on a bare
+// /WinAnsiEncoding, pdfTeX Type1 on /Differences with no base) was neither pre-filled nor edited in place: every edit
+// substituted a base-14 font. It is now read through its /Encoding and glyph names, and Path 2 reuses a code only when
+// the edited stream already DRAWS it with that font — the proof that the glyph is in the subset. The Noto fixture is a
+// FULL font, so no fixture can show what drawing an absent subset glyph looks like; the presence rule is pinned by its
+// outcome (a code the stream never draws goes to the standard-font redraw).
+describe('an embedded simple font without ToUnicode, read through its /Encoding (limits row 39)', () => {
+  const naskh = new Uint8Array(readFileSync('src/assets/fonts/NotoNaskhArabic-Regular.ttf'));
+  const load = async (o: LiteralSubsetOptions) => PDFDocument.load(await makeLiteralSubsetPdf(naskh, o));
+  const fontDict = (doc: PDFDocument) =>
+    doc.getPage(0).node.Resources()?.lookup(PDFName.of('Font'), PDFDict)?.lookup(PDFName.of('F1'), PDFDict);
+  const fontKeys = (doc: PDFDocument) =>
+    [...((doc.getPage(0).node.Resources()?.lookup(PDFName.of('Font'), PDFDict))?.keys() ?? [])].map(k => k.toString());
+  const SHAPES: [string, LiteralSubsetOptions, string][] = [
+    ['a bare /WinAnsiEncoding', { toUnicode: false, encoding: 'winansi' }, '<3534333231> Tj'],
+    ['/Differences with no base', { toUnicode: false, baseEncoding: false }, '<2625242322> Tj'],
+    ['/Differences over /WinAnsiEncoding', { toUnicode: false }, '<2625242322> Tj'],
+  ];
+
+  it.each(SHAPES)('%s pre-fills every run', async (_n, o) => {
+    const doc = await load(o);
+    for (const r of Object.values(LITERAL_RUNS)) expect(getEditableTextAt(doc, 0, { x: r.x, y: r.y }, 1)).toBe(r.text);
+  });
+
+  it.each(SHAPES)('%s is edited in place, in its own font', async (_n, o, written) => {
+    const doc = await load(o);
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await replaceTextAt(doc, 0, { x, y }, '54321', 1)).toBe(true);
+    expect(await pageContentText(await doc.save())).toContain(written);
+    expect(fontKeys(doc)).toEqual(['/F1']);
+    expect(getEditableTextAt(doc, 0, { x, y }, 1)).toBe('54321');
+  });
+
+  it.each(SHAPES)('%s: a digit the stream never draws (6) goes to the standard-font redraw', async (_n, o) => {
+    const doc = await load(o);
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await replaceTextAt(doc, 0, { x, y }, '12645', 1)).toBe('substituted');
+  });
+
+  // Over /WinAnsiEncoding the unknown name must also REMOVE the base entry (0x22 is `quotedbl` there), or the run reads
+  // as a quote mark the font does not draw.
+  it.each([false, true])('a glyph name it cannot read leaves the run unread, never partly read (over WinAnsi: %s)', async (overWinAnsi) => {
+    const doc = await load({ toUnicode: false, baseEncoding: overWinAnsi });
+    const enc = fontDict(doc)?.lookup(PDFName.of('Encoding'), PDFDict);
+    const diffs = enc?.lookup(PDFName.of('Differences'), PDFArray);
+    if (!diffs) throw new Error('fixture has no /Differences');
+    diffs.set(2, PDFName.of('a39')); // code 0x22, the "1" — a ZapfDingbats name
+    expect(getEditableTextAt(doc, 0, { x: LITERAL_RUNS.tj.x, y: LITERAL_RUNS.tj.y }, 1)).toBeNull();
+    expect(getEditableTextAt(doc, 0, { x: LITERAL_RUNS.quote.x, y: LITERAL_RUNS.quote.y }, 1)).toBe('789');
+  });
+
+  // /Differences with no base: the one shape a symbolic Type1 IS read in (pdfTeX), so only the TrueType rule refuses it.
+  it('a symbolic TrueType font is not read through its encoding', async () => {
+    const doc = await load({ toUnicode: false, baseEncoding: false });
+    fontDict(doc)?.lookup(PDFName.of('FontDescriptor'), PDFDict)?.set(PDFName.of('Flags'), PDFNumber.of(4));
+    expect(getEditableTextAt(doc, 0, { x: LITERAL_RUNS.tj.x, y: LITERAL_RUNS.tj.y }, 1)).toBeNull();
+    expect(await replaceTextAt(doc, 0, { x: LITERAL_RUNS.tj.x, y: LITERAL_RUNS.tj.y }, '54321', 1)).toBe('substituted');
+  });
+
+  it.each(['MacRomanEncoding', 'StandardEncoding'])('a base encoding it does not model (/%s) is not read', async (name) => {
+    const doc = await load({ toUnicode: false, encoding: 'winansi' });
+    fontDict(doc)?.set(PDFName.of('Encoding'), PDFName.of(name));
+    expect(getEditableTextAt(doc, 0, { x: LITERAL_RUNS.tj.x, y: LITERAL_RUNS.tj.y }, 1)).toBeNull();
+  });
+
+  it("an underline is sized from the font's own /Widths", async () => {
+    const doc = await load({ toUnicode: false, encoding: 'winansi' });
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await addDecorationAt(doc, 0, { x, y }, 'underline', 1)).toBe(true);
+    const widths = fontDict(doc)?.lookup(PDFName.of('Widths'), PDFArray);
+    const w = widths ? [1, 2, 3, 4, 5].reduce((sum, d) => sum + (widths.lookup(d, PDFNumber)?.asNumber() ?? 0), 0) * 24 / 1000 : 0;
+    const stroke = /([\d.]+) ([\d.-]+) m ([\d.]+) [\d.-]+ l S/.exec(await pageContentText(await doc.save()));
+    expect(stroke).not.toBeNull();
+    expect(Number(stroke?.[3]) - Number(stroke?.[1])).toBeCloseTo(w, 1);
+  });
+});
 
 describe('tokenizeContentStream', () => {
   it('round-trips a representative stream (re-tokenize equivalence)', () => {

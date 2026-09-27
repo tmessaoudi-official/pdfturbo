@@ -31,6 +31,7 @@ import {
 
 import type { CsToken, CsOp, TextOpInfo, DecorationRule } from '../types/contentStream';
 import { isArabicText, classifyRuleAsUnderline } from './flowDoc';
+import { glyphNameToUnicode, WIN_ANSI_NAMES } from './glyphNames';
 export type { CsToken, CsOp, TextOpInfo, DecorationRule } from '../types/contentStream';
 
 /**
@@ -1290,6 +1291,7 @@ function decodeShowOpText(
   forward: Map<number, string> | null,
   bytesPerCode: 1 | 2,
   byteSwapSafe: boolean,
+  strict = false,
 ): string {
   // Decode a raw byte sequence to a logical string, applying the SAME font-safety
   // gate to literal- and hex-string operands alike. A literal `( … )` operand's
@@ -1298,7 +1300,7 @@ function decodeShowOpText(
   // them verbatim yields garbage. (The literal branch used to skip this gate,
   // which prefilled the inline editor with random characters — the click-to-edit
   // regression.)
-  const decodeBytes = (bytes: number[]): string => {
+  const decodeBytes = (bytes: number[]): string | null => {
     let out = '';
     if (forward) {
       for (let i = 0; i + bytesPerCode <= bytes.length; i += bytesPerCode) {
@@ -1306,6 +1308,9 @@ function decodeShowOpText(
         for (let k = 0; k < bytesPerCode; k++) code = (code << 8) | bytes[i + k];
         const uni = forward.get(code);
         if (uni !== undefined) out += uni;
+        // A map read from the /Encoding (limits row 39) has no entry for a code it cannot name: reading the run
+        // without it would pre-fill text the op does not show, and the edit would write the rest back without it.
+        else if (strict) return null;
       }
       return out;
     }
@@ -1328,7 +1333,7 @@ function decodeShowOpText(
     return bytes;
   };
 
-  const decodeToken = (tok: CsToken | undefined): string => {
+  const decodeToken = (tok: CsToken | undefined): string | null => {
     if (!tok) return '';
     if (tok.type === 'string') return decodeBytes(literalToBytes(tok.raw));
     if (tok.type === 'hexstring') return decodeBytes(hexToBytes(tok.raw.replace(/^</, '').replace(/>$/, '')));
@@ -1339,13 +1344,28 @@ function decodeShowOpText(
     const arr = op.operands[0];
     if (!arr || arr.type !== 'array' || !arr.items) return '';
     // Concatenate string/hex segments in order; ignore the numeric kerning entries.
-    return arr.items
-      .filter(t => t.type === 'string' || t.type === 'hexstring')
-      .map(decodeToken)
-      .join('');
+    const parts = arr.items.filter(t => t.type === 'string' || t.type === 'hexstring').map(decodeToken);
+    return parts.includes(null) ? '' : parts.join('');
   }
   // Tj, ', " — the shown string is the last operand.
-  return decodeToken(op.operands[op.operands.length - 1]);
+  return decodeToken(op.operands[op.operands.length - 1]) ?? '';
+}
+
+/** The one-byte codes a show op draws, literal and hex operands alike (a simple font — limits row 39). */
+function showOpCodes(op: CsOp): number[] {
+  const toks = op.operator === 'TJ' ? (op.operands[0]?.items ?? []) : [op.operands[op.operands.length - 1]];
+  const codes: number[] = [];
+  for (const tok of toks) {
+    if (tok?.type === 'string') {
+      const decoded = decodeLiteralString(tok.raw);
+      for (let i = 0; i < decoded.length; i++) codes.push(decoded.charCodeAt(i) & 0xff);
+    } else if (tok?.type === 'hexstring') {
+      const clean = tok.raw.replace(/^</, '').replace(/>$/, '').replace(/\s+/g, '');
+      for (let i = 0; i + 2 <= clean.length; i += 2) codes.push(parseInt(clean.slice(i, i + 2), 16));
+      if (clean.length % 2 === 1) codes.push(parseInt(clean.slice(-1) + '0', 16));
+    }
+  }
+  return codes;
 }
 
 /**
@@ -1377,8 +1397,8 @@ function decodeShowOpText(
  */
 export function isPath3OnlyTarget(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): boolean {
   const byteSwapUnsafe = isByteSwapUnsafeFont(doc, pageIndex, fontKey, xObjectName);
-  const hasToUnicode = !!getPageFontToUnicode(doc, pageIndex, fontKey, xObjectName);
-  return byteSwapUnsafe && !hasToUnicode;
+  const hasCodeMap = !!getPageFontCodeMap(doc, pageIndex, fontKey, xObjectName);
+  return byteSwapUnsafe && !hasCodeMap;
 }
 
 export function getEditableTextAt(
@@ -1403,15 +1423,14 @@ export function getEditableTextAt(
 
   // Reuse the trusted ToUnicode machinery so hex operands decode exactly as Path-2
   // re-encodes them. Built once per call; null when the font carries no ToUnicode.
-  const cmapText = getPageFontToUnicode(doc, pageIndex, found.target.fontKey, found.xObjectName);
-  const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
-  // A simple font is single-byte whatever its ToUnicode declares (limits row 50 — the read side of row 38).
-  const bytesPerCode = showCodeSize(doc, pageIndex, found.target.fontKey, found.xObjectName, cmapText);
+  // The ToUnicode, or for an embedded simple font without one its /Encoding (limits row 39); a simple font is
+  // single-byte whatever its ToUnicode declares (limits row 50 — the read side of row 38).
+  const codeMap = getPageFontCodeMap(doc, pageIndex, found.target.fontKey, found.xObjectName);
   // For a hex op with no ToUnicode, only a standard byte==ASCII font (the Path-1
   // case) is safely decodable — gate on the SAME predicate Path-1 uses.
   const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, found.target.fontKey, found.xObjectName);
 
-  const text = decodeShowOpText(op, forward, bytesPerCode, byteSwapSafe);
+  const text = decodeShowOpText(op, codeMap?.forward ?? null, codeMap?.bytesPerCode ?? 1, byteSwapSafe, codeMap?.fromEncoding);
   return text.length > 0 ? text : null;
 }
 
@@ -1899,11 +1918,10 @@ export async function addDecorationAt(
   if (target.renderMode === 3 || target.renderMode === 7) return false;
 
   // Decode the shown text so we can measure its rendered width.
-  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
-  const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
-  const bytesPerCode = showCodeSize(doc, pageIndex, target.fontKey, undefined, cmapText);
+  const codeMap = getPageFontCodeMap(doc, pageIndex, target.fontKey, undefined);
+  const forward = codeMap?.forward ?? null;
   const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
-  const text = decodeShowOpText(ops[target.opIndex], forward, bytesPerCode, byteSwapSafe);
+  const text = decodeShowOpText(ops[target.opIndex], forward, codeMap?.bytesPerCode ?? 1, byteSwapSafe, codeMap?.fromEncoding);
   if (!text) return false;
 
   const size = target.fontSize || 12;
@@ -2023,16 +2041,22 @@ export async function replaceTextAt(
     return true;
   }
 
-  // Path 2: Subset glyph reuse via ToUnicode CMap.
-  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey, found.xObjectName);
-  if (!wantsRestyle && cmapText) {
-    const forward = parseToUnicodeCMap(cmapText);
-    // A simple font's codes are one byte whatever its ToUnicode declares (PDF 32000 §9.6.6); only a Type0 font's
-    // code size comes from the CMap (limits row 38).
-    const bytesPerCode = showCodeSize(doc, pageIndex, target.fontKey, found.xObjectName, cmapText);
+  // Path 2: Subset glyph reuse via the ToUnicode CMap — or, for an embedded simple font without one, its
+  // /Encoding (limits row 39). A simple font's codes are one byte whatever its ToUnicode declares (PDF 32000
+  // §9.6.6); only a Type0 font's code size comes from the CMap (limits row 38).
+  const codeMap = getPageFontCodeMap(doc, pageIndex, target.fontKey, found.xObjectName);
+  if (!wantsRestyle && codeMap) {
     const reverseMap = new Map<string, number>();
-    for (const [code, uni] of forward) reverseMap.set(uni, code);
-    const hexEncoded = encodeWithSubset(newText, reverseMap, bytesPerCode);
+    if (codeMap.fromEncoding) {
+      // An encoding names every code, including glyphs the subset dropped. A code the stream already DRAWS with
+      // this font is proof its glyph is there; any other character goes to the standard-font redraw below.
+      const drawn = new Set<number>();
+      for (const t of textOps) if (t.fontKey === target.fontKey) for (const c of showOpCodes(ops[t.opIndex])) drawn.add(c);
+      for (const [code, uni] of codeMap.forward) if (drawn.has(code) && !reverseMap.has(uni)) reverseMap.set(uni, code);
+    } else {
+      for (const [code, uni] of codeMap.forward) reverseMap.set(uni, code);
+    }
+    const hexEncoded = encodeWithSubset(newText, reverseMap, codeMap.bytesPerCode);
     if (hexEncoded !== null && replaceShowOpHex(ops[target.opIndex], hexEncoded)) {
       blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
       if (applyDeco) await applyDeco(newText, ops);
@@ -2253,11 +2277,10 @@ function prepareDecorationResize(
   // `tilted` flag (locateTextOps) that addDecorationAt already gates on.
   if (target.tilted) return null;
   // Decode the original text now (before any path mutates the op) to measure its width.
-  const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
-  const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
-  const bytesPerCode = showCodeSize(doc, pageIndex, target.fontKey, undefined, cmapText);
+  const codeMap = getPageFontCodeMap(doc, pageIndex, target.fontKey, undefined);
+  const forward = codeMap?.forward ?? null;
   const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
-  const oldText = decodeShowOpText(ops[target.opIndex], forward, bytesPerCode, byteSwapSafe);
+  const oldText = decodeShowOpText(ops[target.opIndex], forward, codeMap?.bytesPerCode ?? 1, byteSwapSafe, codeMap?.fromEncoding);
   if (!oldText) return null;
 
   // Reverse the ToUnicode map (unicode→code) so we can measure with the font's OWN
@@ -2385,8 +2408,86 @@ function getFontResourceDict(doc: PDFDocument, pageIndex: number, xObjectName?: 
  * font, where the size is not consulted). Limits rows 38 and 50.
  */
 function showCodeSize(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName: string | undefined, cmapText: string | null): 1 | 2 {
-  if (!cmapText) return 2;
-  return isType0Font(doc, pageIndex, fontKey, xObjectName) ? detectCMapBytesPerCode(cmapText) : 1;
+  if (!isType0Font(doc, pageIndex, fontKey, xObjectName)) return 1;
+  return cmapText ? detectCMapBytesPerCode(cmapText) : 2;
+}
+
+/** Where a font's codes get their text, and how wide they are. */
+interface FontCodeMap { forward: Map<number, string>; bytesPerCode: 1 | 2; fromEncoding: boolean }
+
+/**
+ * The font's code → text map: its ToUnicode, or — for a byte-swap-unsafe SIMPLE font that has none — its /Encoding
+ * read through glyph names (limits row 39). Null when neither can be read.
+ */
+function getPageFontCodeMap(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName: string | undefined): FontCodeMap | null {
+  const cmapText = getPageFontToUnicode(doc, pageIndex, fontKey, xObjectName);
+  if (cmapText) {
+    return { forward: parseToUnicodeCMap(cmapText), bytesPerCode: showCodeSize(doc, pageIndex, fontKey, xObjectName, cmapText), fromEncoding: false };
+  }
+  if (!isByteSwapUnsafeFont(doc, pageIndex, fontKey, xObjectName)) return null;
+  const entry = getPageFontEntry(doc, pageIndex, fontKey, xObjectName);
+  const forward = entry ? simpleEncodingMap(doc, entry) : null;
+  return forward ? { forward, bytesPerCode: 1, fromEncoding: true } : null;
+}
+
+/**
+ * A simple font's code → text map from its /Encoding: /WinAnsiEncoding as the base, then /Differences, each glyph
+ * name read by `glyphNameToUnicode`. Every rule errs towards null, because a wrong character would be written back as
+ * the wrong glyph:
+ *  - Type1, MMType1 and TrueType only (Type3 draws glyph procedures, Type0 has its own code space);
+ *  - a symbolic TrueType is drawn through its (3,0) cmap, not its /Encoding;
+ *  - a symbolic Type1 takes /Differences over its built-in encoding, so a base encoding there is not the one drawn;
+ *  - no /Encoding, or a base other than /WinAnsiEncoding (MacRoman, Standard: no corpus run uses one), is not read;
+ *  - a code whose name is unknown has no entry, and the reader fails closed on it.
+ */
+function simpleEncodingMap(doc: PDFDocument, font: PDFDict): Map<number, string> | null {
+  const ctx = doc.context;
+  const sub = ctx.lookup(font.get(PDFName.of('Subtype')));
+  if (!(sub instanceof PDFName) || !['/Type1', '/MMType1', '/TrueType'].includes(sub.asString())) return null;
+  const desc = ctx.lookup(font.get(PDFName.of('FontDescriptor')));
+  const flags = desc instanceof PDFDict ? ctx.lookup(desc.get(PDFName.of('Flags'))) : undefined;
+  const symbolic = flags instanceof PDFNumber && (flags.asNumber() & 4) !== 0;
+  if (symbolic && sub.asString() === '/TrueType') return null;
+  const enc = ctx.lookup(font.get(PDFName.of('Encoding')));
+  let base: string | undefined;
+  let diffs: PDFArray | undefined;
+  if (enc instanceof PDFName) {
+    base = enc.asString();
+  } else if (enc instanceof PDFDict) {
+    const b = ctx.lookup(enc.get(PDFName.of('BaseEncoding')));
+    const d = ctx.lookup(enc.get(PDFName.of('Differences')));
+    if ((b !== undefined && !(b instanceof PDFName)) || (d !== undefined && !(d instanceof PDFArray))) return null;
+    base = b?.asString();
+    diffs = d;
+  } else {
+    return null;
+  }
+  if (base !== undefined && (base !== '/WinAnsiEncoding' || symbolic)) return null;
+  const map = new Map<number, string>();
+  if (base) {
+    WIN_ANSI_NAMES.forEach((name, code) => {
+      const text = name ? glyphNameToUnicode(name) : null;
+      if (text) map.set(code, text);
+    });
+  }
+  if (diffs) {
+    let code = -1;
+    for (let i = 0; i < diffs.size(); i++) {
+      const item = ctx.lookup(diffs.get(i));
+      if (item instanceof PDFNumber) {
+        code = item.asNumber();
+      } else if (item instanceof PDFName) {
+        if (!Number.isInteger(code) || code < 0 || code > 255) return null;
+        const text = glyphNameToUnicode(item.decodeText());
+        if (text) map.set(code, text);
+        else map.delete(code);
+        code++;
+      } else {
+        return null;
+      }
+    }
+  }
+  return map.size > 0 ? map : null;
 }
 
 /** True when the font resource is a composite (Type0) font, whose codes may be wider than one byte. */

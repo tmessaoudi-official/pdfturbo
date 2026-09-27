@@ -2534,7 +2534,8 @@ bought is keeping an embedded SIMPLE font in place, which our engine never does 
 `replaceTextAt` on each of the 630 runs it located, alone on a fresh document: 608 substituted, 22 refused, 0 in
 place. Of those, 171 carry a ToUnicode that encodes the edit, and all 171 are literal-string operands, which Path 2
 could not rewrite then (`replaceShowOpHex` took hex only — fixed by row 38): 170 substituted, 1 refused. The other 459 have no ToUnicode.
-Rows 38–39 close both in our own engine. Report and scripts:
+Rows 38–39 close both in our own engine, within C1's floor: row 39 edits a no-ToUnicode run in place only with codes
+its stream already draws (147 of 459 for a realistic one-letter edit, 459 of 459 for its own reversed text). Report and scripts:
 `var/claude/d2/` (gitignored); the probes are not committed.
 
 **`صف` (table row) vs `سطر` (text line) — do not "fix" one into the other.** The reviewer flagged
@@ -3097,10 +3098,51 @@ single-byte for a simple font, but the editor's pre-fill, `addDecorationAt` and 
 code size from the ToUnicode codespace, so a simple font whose CMap declares `<0000> <FFFF>` (or none — then 2 was
 assumed) decoded pairs of codes and the editor never opened. On the corpus that is 75 runs — the budget (50) and
 census (25) reports, Type1C with a `<0000> <FFFF>` ToUnicode — and all 75 now pre-fill [measured: row-39 probe,
-before 0/75, after 75/75]. One helper, `showCodeSize`, now answers for all four sites: no CMap → 2, a Type0 font →
-its CMap, anything else → 1. Guards: pre-fill of all four literal runs with a wide and with no codespace, and an
+before 0/75, after 75/75]. One helper, `showCodeSize`, now answers for all four sites: a simple font → 1, a Type0
+font → its CMap, or 2 without one (the order changed at row 39, which gave the reader maps with no CMap at all). Guards: pre-fill of all four literal runs with a wide and with no codespace, and an
 underline added on the wide one. Sabotage: the helper trusting the CMap → 5 red (write wide/none, pre-fill wide/none,
 underline). The decoration-resize site shares the helper and is not pinned separately.
+
+### An embedded simple font without ToUnicode is read through its /Encoding — limits row 39 (2026-09-27)
+
+459 of row 17's 729 corpus runs are an embedded simple font with NO ToUnicode: 248 Type1C and 71 TrueType on a bare
+`/WinAnsiEncoding`, 140 pdfTeX Type1 on `/Differences` with no base. The editor could not read them (no pre-fill) and
+every edit substituted a base-14 font. `getPageFontCodeMap` now answers "code → text" for every reader: the ToUnicode
+when there is one, else `simpleEncodingMap` — `/WinAnsiEncoding` as the base, then `/Differences`, each glyph name
+read by `glyphNameToUnicode` (`src/utils/glyphNames.ts`).
+
+- **The name table is small on purpose**: the 361 names pdf-lib's standard-fonts WinAnsi and Symbol encodings use
+  (generated; `glyphNames.test.ts` re-derives it from the package), 10 extras the corpus draws (dotlessi, L-slash,
+  the spacing accents), the ligatures (`fi` reads as `fi`), and the AGL rules (`one.tab` → `1`, `f_f_i` → `ffi`,
+  `uniXXXX`, `uXXXX`). Anything else is unknown — ZapfDingbats `a39`, `.notdef` — and the READER FAILS CLOSED: a run
+  with one unknown code pre-fills nothing, because a partial read would be written back without the missing glyph.
+- **WinAnsi is Annex D, not cp1252**: 0xA0 is `space`, 0xAD is `hyphen`, and the six undefined codes are unmapped
+  (pdf.js draws them as bullets; no producer writes them to mean text). Pinned one by one.
+- **Refused shapes**, each a fail-closed branch: Type3 and Type0; a symbolic TrueType (drawn through its (3,0)
+  cmap); a symbolic Type1 WITH a base encoding (only Differences-over-built-in, the pdfTeX shape, is read); no
+  `/Encoding`; a base other than WinAnsi (MacRoman and Standard: 0 corpus runs).
+- **The write side reuses only codes the edited stream already DRAWS with that font.** An encoding names codes whose
+  glyph the subset dropped, and nothing in the file says which; a drawn code proves the glyph is there, for every
+  font-program type, without parsing the program. Any other character goes to the Path-3 redraw, exactly as today —
+  C1's floor, stated for this shape. A ligature code (`fi`) reads as letters but is never reused for them.
+
+Measured on all 459 runs (probes not committed; results in gitignored `var/claude/row39w/`): 459 pre-fill; 438 equal
+the row-17 reference text and the other 21 differ only where PDFium reports an end-of-line hyphen as `\x02`; the
+reversed text of every run goes in place (459/459 — by construction, it uses only drawn codes); pdf.js read-back
+confirms the text in the SAME font for 458 (one sideways label the probe cannot locate). A realistic edit — the first
+letter replaced by `Q` — goes in place on 147 and falls back to Path 3 on 312: the bound, measured.
+
+Guards: `tests/utils/glyphNames.test.ts` (28), 15 cases in `contentStreamEditor.test.ts` on three fixture shapes
+(`_literalSubsetFixture.ts` gained `toUnicode: false`, `encoding: 'winansi'`, `baseEncoding: false`; the runs draw
+every digit but 6, the presence probe), and `tests/browser/trueedit-encoding-path2.browser.test.ts` (12, real pdf.js:
+pdf.js reads the fixtures through its OWN glyph list, the edited run comes back in the same font with ink in its
+band, and a 6 comes back substituted). The Noto fixture font is FULL, so no fixture shows what an absent subset glyph
+looks like — the presence rule is pinned by outcome. Sabotage, predicted first, each restored with `cmp`: no encoding
+fallback → 9 jsdom + 8 browser; presence rule removed → exactly the 3 digit-6 cases + the 2 browser controls; reader
+not strict → the 2 unknown-name cases; the symbolic-TrueType rule removed → exactly its case (green until that case
+moved to the no-base shape — on `/WinAnsiEncoding` the symbolic-with-base rule refused it first); any base accepted →
+the 2 base cases; `map.delete` dropped → exactly the over-WinAnsi unknown-name case; no suffix strip → the 2 `.tab`
+cases; `showCodeSize` in its row-50 order → green, equivalent: it is now only called with a CMap in hand.
 
 ### True-edit composed nested `cm` backwards, and forgot the CTM at a form's `Do` — limits rows 47–48 (2026-09-27)
 
