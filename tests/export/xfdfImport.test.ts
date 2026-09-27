@@ -69,3 +69,42 @@ describe('importXfdf orchestration (#57)', () => {
     expect(app.warns).toContain('toast.xfdfImportEmpty');
   });
 });
+
+/** Limits row 26 (D21) — `<fields>` on import fill the form, undoably, and re-render the overlay. */
+describe('importXfdf — form fields (row 26)', () => {
+  function fieldApp() {
+    const page = {
+      rotate: 0,
+      getAnnotations: () => Promise.resolve([
+        { subtype: 'Widget', fieldType: 'Tx', fieldName: 'name', fieldValue: 'pre-filled', rect: [0, 0, 10, 10] },
+        { subtype: 'Widget', fieldType: 'Btn', checkBox: true, fieldName: 'ok', fieldValue: 'Yes', rect: [0, 20, 10, 30] },
+      ]),
+      getViewport: () => ({ viewBox: [0, 0, 600, 800] }),
+    };
+    const history: { undo(): void }[] = [];
+    const app = fakeApp();
+    Object.assign(app.self, {
+      documentModel: {
+        pages: [{ id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 }],
+        sourcePdfs: new Map([['s1', { doc: { getPage: () => Promise.resolve(page) } }]]),
+      },
+      _formValues: {} as Record<string, Record<string, string>>,
+      renderCurrentPage: vi.fn().mockResolvedValue(undefined),
+      historyManager: { execute: (cmd: { execute(): void; undo(): void }) => { cmd.execute(); history.push(cmd); } },
+    });
+    return { app, history, values: () => (app.self as unknown as { _formValues: Record<string, Record<string, string>> })._formValues };
+  }
+
+  it('fills named fields (Off unticks), counts them, re-renders, and one undo returns them to untouched', async () => {
+    const { app, history, values } = fieldApp();
+    const xml = buildXfdf([], [{ name: 'name', values: ['Ada'] }, { name: 'ok', values: ['Off'] }, { name: 'absent', values: ['x'] }]);
+    await PDFTurboApp.prototype.importXfdf.call(app.self, blob(xml));
+    expect(values().s1).toEqual({ name: 'Ada', ok: '' });
+    expect(app.infos.find(i => i.k === 'toast.xfdfImported')?.p).toEqual({ count: 2 });
+    expect((app.self as unknown as { renderCurrentPage: () => void }).renderCurrentPage).toHaveBeenCalledOnce();
+    expect(history).toHaveLength(1);
+    history[0].undo();
+    // Untouched, not blank: the overlay falls back to the PDF's own 'pre-filled' / 'Yes'.
+    expect(values().s1).toEqual({});
+  });
+});

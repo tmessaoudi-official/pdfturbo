@@ -308,10 +308,24 @@ describe('UndoRedoController.handleFormInput', () => {
     vi.advanceTimersByTime(500); // flush Last
     // two independent undoable commands
     ctx.historyManager.undo();
-    expect(ctx.formValues.s1.Last).toBe('');
+    expect(ctx.formValues.s1.Last).toBeUndefined(); // never set before → back to untouched (row 26)
     expect(ctx.formValues.s1.First).toBe('Ann');
     ctx.historyManager.undo();
-    expect(ctx.formValues.s1.First).toBe('');
+    expect(ctx.formValues.s1.First).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it('undoing the first edit of a field restores the PDF own value: the key is removed, not set to empty (limits row 26)', () => {
+    // The overlay shows `stored ?? the PDF's own value`, so storing '' on undo BLANKED a pre-filled field.
+    vi.useFakeTimers();
+    const ctx = makeCtx();
+    const ctrl = new UndoRedoController(ctx);
+    ctrl.handleFormInput('s1', 'Name', 'typed over the pre-filled value');
+    vi.advanceTimersByTime(500);
+    ctx.historyManager.undo();
+    expect(ctx.formValues.s1 && 'Name' in ctx.formValues.s1).toBe(false);
+    ctx.historyManager.redo();
+    expect(ctx.formValues.s1.Name).toBe('typed over the pre-filled value');
     vi.useRealTimers();
   });
 });

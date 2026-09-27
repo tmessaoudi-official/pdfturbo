@@ -131,6 +131,8 @@ through that path, and until 2026-08-05 each handed the redacted text back:
 - **OCR → "Copy text" / "Export to Word"** recognised the page *before* the box was applied.
 - **Export to Word / Markdown / text and XFDF** exported a redacted *text box you had typed* — the PDF
   export removed it, and these handed it back.
+  Since 2026-09-27 an XFDF also carries **form field values**; a field whose widget meets a redaction is
+  left out — the value you typed and the value the PDF was filled with alike **[pinned]**.
 - **A redaction on a blank page** (one you added in PDFturbo, not from a PDF) was drawn as an opaque
   rectangle over text that remained fully selectable.
 - **On a rotated page**, the filter that was supposed to protect the Word/Markdown export did nothing at

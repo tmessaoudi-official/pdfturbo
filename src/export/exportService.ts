@@ -22,7 +22,8 @@ import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '.
 import { inferBorderlessGrid } from '../utils/borderlessTable';
 import { stripDocMetadata, dpiToScale, clampQuality, COMPRESS_DPI_DEFAULT, COMPRESS_QUALITY_DEFAULT, type CompressOptions } from './compress';
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
-import { elementToXfdfAnnot, pageHeightPt, pageLeftPt } from './xfdfMapping';
+import { elementToXfdfAnnot, xfdfPageFrame } from './xfdfMapping';
+import { collectFormWidgets, fieldsForExport } from './xfdfFields';
 import { flowDocToDocxBlob, flowDocToMarkdown } from '../utils/flowDocWriters';
 import { PDFCheckBox, PDFRadioGroup, PDFDropdown, PDFOptionList, PDFTextField, type PDFForm } from '@cantoo/pdf-lib';
 import type { PDFElement } from '../elements/annotationElement';
@@ -531,13 +532,14 @@ export class ExportService {
   /**
    * Export the document's annotations as an Adobe XFDF file (#57) — shareable
    * markup without the PDF, round-trippable with Acrobat. Walks every page,
-   * converts each supported element (highlight / comment / text) from editor
-   * display space to PDF user space (per-page y-flip), and downloads a plain
-   * `.xfdf`. Unsupported element types are skipped; a document with no
-   * exportable annotation warns rather than emitting an empty file.
+   * converts each supported element from editor display space to PDF user space
+   * through the page's frame (rotation and CropBox origin included — row 26), adds
+   * the form field values (`<fields>`, row 26 — any field under a redaction left
+   * out), and downloads a plain `.xfdf`. Unsupported element types are skipped; a
+   * document with nothing to export warns rather than emitting an empty file.
    */
   async exportXfdf(): Promise<void> {
-    const { documentModel, elements, reportError } = this._ctx;
+    const { documentModel, elements, reportError, formValues } = this._ctx;
     if (!documentModel.pageCount) return;
     try {
       const annots: XfdfAnnot[] = [];
@@ -547,17 +549,18 @@ export class ExportService {
         // comment or text box the user had covered would hand it back in a plain-text sidecar file.
         const pageEls = await dropElementsUnderRedactions(elements.filter(el => el.pageId === docPage.id));
         if (!pageEls.length) continue;
-        const h = await pageHeightPt(docPage, documentModel.sourcePdfs);
-        const left = await pageLeftPt(docPage, documentModel.sourcePdfs);
+        const frame = await xfdfPageFrame(docPage, documentModel.sourcePdfs);
         for (const el of pageEls) {
-          const a = elementToXfdfAnnot(el.toJSON(), i, h, left);
+          const a = elementToXfdfAnnot(el.toJSON(), i, frame);
           if (a) annots.push(a);
         }
       }
-      if (!annots.length) { reportError.warn('toast.xfdfNoAnnots'); return; }
-      const xml = buildXfdf(annots);
+      const fields = fieldsForExport(await collectFormWidgets(documentModel.pages, documentModel.sourcePdfs, elements), formValues);
+      if (!annots.length && !fields.length) { reportError.warn('toast.xfdfNoAnnots'); return; }
+      const xml = buildXfdf(annots, fields);
       this._downloadBlob(new Blob([xml], { type: 'application/vnd.adobe.xfdf' }), this._exportBaseName() + '.xfdf');
-      reportError.info('toast.xfdfExported', { count: annots.length });
+      // The count covers annotations and field values alike (the existing key — no new string to translate).
+      reportError.info('toast.xfdfExported', { count: annots.length + fields.length });
     } catch (err) {
       reportError.error('toast.exportFailed', err);
     }

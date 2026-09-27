@@ -6,7 +6,8 @@ interface PdfAnnotation {
   subtype: string;
   fieldType?: string;
   fieldName?: string;
-  fieldValue?: string;
+  /** A string for text and buttons; an ARRAY for a choice field (measured, pdf.js 6.3.289). */
+  fieldValue?: string | string[] | null;
   rect: number[];
   alternativeText?: string;
   readOnly?: boolean;
@@ -29,6 +30,15 @@ interface PdfAnnotation {
  * (Btn without checkBox/radioButton) and signatures carry no fillable value and
  * are counted "unsupported" (warned once), never rendered.
  */
+/**
+ * The value the PDF itself holds for a field, in the store's string form: a choice field's array is
+ * newline-joined, as the store keeps a multi-select (limits row 26 — the overlay used to call `.split` on it).
+ */
+export function sourceFieldValue(field: { fieldValue?: string | string[] | null }): string {
+  const v = field.fieldValue;
+  return Array.isArray(v) ? v.join('\n') : (v ?? '');
+}
+
 function _isSupported(a: PdfAnnotation): boolean {
   if (a.subtype !== 'Widget') return false;
   if (a.fieldType === 'Tx' || a.fieldType === 'Ch') return true;
@@ -125,7 +135,7 @@ export class FormFieldOverlay {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'form-field-overlay';
-    input.value = values[name] ?? (field.fieldValue ?? '');
+    input.value = values[name] ?? sourceFieldValue(field);
     if (field.alternativeText) input.placeholder = field.alternativeText;
     this._position(input, rect);
     input.addEventListener('input', () => onValueChange(name, input.value));
@@ -146,7 +156,7 @@ export class FormFieldOverlay {
     input.className = 'form-field-overlay';
     // Stored value is the on-value when ticked, "" when unticked. Fall back to
     // the field's own value (the source PDF's saved state) if nothing stored.
-    const stored = values[name] ?? (field.fieldValue ?? '');
+    const stored = values[name] ?? sourceFieldValue(field);
     input.checked = stored !== '' && stored !== 'Off';
     this._position(input, rect);
     if (field.alternativeText) input.title = field.alternativeText;
@@ -167,7 +177,7 @@ export class FormFieldOverlay {
     input.className = 'form-field-overlay';
     input.name = `ffo-radio-${name}`; // group the option widgets by field name
     input.value = optionValue;
-    const stored = values[name] ?? (field.fieldValue ?? '');
+    const stored = values[name] ?? sourceFieldValue(field);
     input.checked = optionValue !== '' && stored === optionValue;
     this._position(input, rect);
     if (field.alternativeText) input.title = field.alternativeText;
@@ -191,7 +201,7 @@ export class FormFieldOverlay {
       // List box (single-select): show it as a sized list, not a dropdown.
       select.size = Math.max(2, Math.min((field.options?.length ?? 2), 6));
     }
-    const stored = values[name] ?? (field.fieldValue ?? '');
+    const stored = values[name] ?? sourceFieldValue(field);
     const selectedSet = new Set(stored === '' ? [] : stored.split('\n'));
 
     // A combo box gets a leading blank entry so "nothing selected" is reachable.

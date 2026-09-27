@@ -2793,21 +2793,67 @@ old direct `setFormValue` mutation in the callback is gone (it stays on the app 
 
 ### XFDF import/export (#57)
 
-`src/utils/xfdf.ts` is a **pure** codec (`buildXfdf`/`parseXfdf` via the platform
+`src/utils/xfdf.ts` is a **pure** codec (`buildXfdf`/`parseXfdf`/`parseXfdfDocument` via the platform
 `DOMParser`, no dep) over a normalized `XfdfAnnot` record in **PDF user space** (points, y-UP, bottom-left,
-0-based page). `src/export/xfdfMapping.ts` does the editor-display(top-left,y-DOWN)↔user-space flip
-(`elementToXfdfAnnot`/`xfdfAnnotToElement`) + `pageHeightPt` (blank→blankHeight, source→pdf.js viewport).
-Maps **highlight↔`<highlight>`, comment↔`<text>` (sticky note), text↔`<freetext>`** both ways; other subtypes
-return null (skipped, never mis-mapped). Export = `ExportService.exportXfdf` (XFDF↓ flyout button, plain
+0-based page), plus form `<fields>`. `src/export/xfdfMapping.ts` maps each coordinate through the page's
+`XfdfFrame` (`elementToXfdfAnnot`/`xfdfAnnotToElements`, frame from `xfdfPageFrame`).
+Maps **highlight↔`<highlight>`, comment↔`<text>` (sticky note), text↔`<freetext>`** and the shapes
+rect/ellipse/arrow/freehand ↔ square/circle/line/ink (G21) both ways; other subtypes return null / nothing
+(skipped, never mis-mapped). Export = `ExportService.exportXfdf` (XFDF↓ flyout button, plain
 download); import = `PDFTurboApp.importXfdf(file)` (XFDF↑ button → hidden `xfdfInput`; builds elements with the
 target page's id and adds them in ONE undoable `MacroCmd` — `app.elements` is a flat all-pages array filtered by
 `pageId` at render, so multi-page import just sets the right pageId). Gated by `VITE_FEATURE_XFDF` (#28 seam).
 **Non-obvious:** import constructs elements **directly** (not via `ElementFactory.fromJSON`, whose `applyBase`
 overrides `el.id` with `data.id` → `undefined` when absent); the element constructor auto-assigns `id` via
-`_nextId`. Ceiling **#57b**: ink/stamp/square/circle/line subtypes, multi-line highlight QuadPoints, freetext DA
-font appearance (fontSize rides a non-standard attr for app round-trip; Acrobat ignores it), form `<fields>`
-data, rotated-page coordinate transform. Acrobat byte-exactness is unverifiable in-repo (no Acrobat) — the
-internal export→import round-trip (tests) is the correctness guarantee.
+`_nextId`.
+
+**Limits row 26 (D18 + D21, 2026-09-27) — rotated and cropped pages, multi-line highlights, form fields.**
+- **The frame is pdf.js's own viewport**, `pointViewport` at scale 1 and `totalRot = (/Rotate + docPage.rotation)
+  % 360` — pdf.js `rotation` REPLACES `/Rotate`, so the sum is passed once — and `convertToPdfPoint` /
+  `convertToViewportPoint` map POINT by point. Until then the module flipped y about the page top and shifted x
+  by the CropBox origin with no un-rotation, so on any turned page every annotation exported elsewhere for any
+  other reader; PDFturbo's own round-trip was self-consistent, which is why nothing caught it. A blank page takes
+  the plain flip about its height (drawn unrotated in editor and export alike). The user crop needs no term:
+  elements live in the full page's display space and `setCropBox` does not move user space.
+- **Point by point, not box by box**: an arrow's two ends and an ink path are mapped one by one, so direction
+  survives; a highlight writes `coords` (QuadPoints, TL,TR,BL,BR as the reader sees the text). On import each
+  quad of a multi-line highlight becomes its own highlight (the app's highlight is one box).
+- **A free text on a turned page carries `rotation`** on export [Unverified against Acrobat — row 29 pack]; on
+  import it is parsed and ignored (the text box is upright in the editor).
+- **`<fields>`** (`src/export/xfdfFields.ts`): every fillable widget on the pages the document shows, read through
+  `getAnnotations()` like the form overlay (`getFieldObjects()` returned `{}` on the IRS corpus forms). Export writes
+  the user's value, else the PDF's own; a button unticked is `Off`, a multi-select list one `<value>` per option; a
+  name shared by two sources is written once, first in page order. **A field with any widget under a redaction is
+  left out whole — typed and PDF values alike** (`annotationRectRedacted` over `redactionRectToPageSpace`, the test
+  the export strip uses). Import fills every source that has the name, in the same `MacroCmd`, re-renders the page so
+  the overlay shows it, and counts names no source has as skipped.
+- **Undo restores an untouched field, not a blank one**: `SetFormValueCmd` takes `before: undefined` and DELETES
+  the key. Storing `''` overrode the PDF's own value in the overlay (`stored ?? source`) — true of the typed-edit
+  path too (`undoRedoController`), fixed with it.
+- **Found and fixed on the way:** the form overlay crashed (`stored.split is not a function`) on a PDF's own
+  pre-selected list, because pdf.js reports a choice value as an ARRAY; `sourceFieldValue` joins it.
+
+Guards: `tests/export/xfdfMapping.test.ts` (the WS5 `pageHeightPt` pins ported to `xfdfPageFrame` against a stub
+copying pdf.js's `PageViewport` transform, which pdf.js does not export), `tests/utils/xfdf.test.ts` (quads,
+fields, rotation), `tests/export/xfdfFields.test.ts` (10 — the redaction LEAK cases for a typed and a PDF value,
+a widget redacted through a second clear one, a `/Rotate 90` page, each with its CONTROL), the field cases in
+`xfdfExport`/`xfdfImport`, and `tests/browser/xfdf-frame.browser.test.ts` (14 — the oracle assumes no frame:
+coloured squares at KNOWN user rects, rendered by pdf.js at `/Rotate` 0/90/180/270, `/Rotate 90` + user 90, and a
+CropBox origin at 0 and at 270 + user 90; an element on the square's PIXELS must export to the known rect and the
+known rect import onto the pixels, and an arrow whose ends are NOT its box's min/max corners must keep its
+direction). Sabotage, predicted first, each landed and restored with `cmp` (jsdom set + the
+browser file): rotation forced to 0 → 2 + 8 (predicted 10: the `/Rotate 0` case, the CropBox case at 0 AND the
+CropBox case at 270 + user 90 — total 0 — are right under it); user rotation not added → 1 + 4; CropBox origin
+dropped → 1 + 4; arrow mapped through its box → 1 + 7; the fields redaction filter dropped → exactly the 5 LEAK
+cases, controls green; highlight `coords` not parsed → 4 (predicted 3 — the export test reads its own output back
+through the parser); import direction the identity → 1 + 7; import undo storing `''` → 1; no re-render after a
+fill → 1; a choice array not joined → 2.
+
+Ceiling **#57b**: stamps, polygon/polyline and the other subtypes stay skipped; freetext DA font appearance
+(fontSize rides a non-standard attr for the app's own round-trip; Acrobat ignores it); a rotated freetext comes
+back upright. Acrobat byte-exactness is unverifiable in-repo (no Acrobat — row 29 pack). **Bound:** on a
+redaction-bearing page PDFturbo's own EXPORT is a raster, so its XFDF positions refer to the original page, not
+to that image.
 
 ### Bates / page-numbering (#61 engine + #61b UI)
 
@@ -3859,13 +3905,19 @@ every string measured, so that half is pinned against Chrome's `measureText` but
 byte-identical, and only the two vowelled strings of the baseline changed. **pdf.js extracts the same code points
 before and after** on four strings, the mixed-line one included — the TJ/Ts split does not fragment items further.
 The embedder is a pdf-lib INTERNAL (`font.embedder.font`); absent, the old unpositioned output is kept.
+**Bound: letter spacing (`Tc`) still splits a mark from its base by one `Tc`** [Inferred from the pen arithmetic,
+not measured]: `Tc` accrues after every glyph, a zero-advance mark included, while the TJ adjustments are computed
+without it — the Feature-4 approximation (`Tc` counted per glyph, not per cluster). Before C19 the mark was off by
+its whole offset plus that `Tc`.
 
 Guards: `tests/browser/arabic-tashkeel.browser.test.ts` (6: three vowelled strings against Chrome's ink, all carrying
-marks with a NON-ZERO yOffset so a sideways-only fix still fails; an unvowelled control; the bidi path emits TJ and
-Ts; the measured width equals Chrome's), plus a tashkeel config in `text-extent-ink.browser.test.ts` (footprint
+marks with a NON-ZERO yOffset so a sideways-only fix still fails; an unvowelled control that also reads the operators —
+a plain `Tj`, no TJ array, no rise — because pixels cannot tell `Tj` from `TJ`; the bidi path emits TJ and Ts; the
+measured width equals Chrome's), plus a tashkeel config in `text-extent-ink.browser.test.ts` (footprint
 containment — green before and after). Sabotage, predicted first, restored and checked by hash: TJ adjustment dropped
 → the 3 vowelled cases; `Ts` dropped → those 3 + the bidi case; bidi path not passed the positions → exactly the bidi
-case; width from advance widths → green (equivalent, above); positioning off entirely (the pre-fix output) → 4.
+case; width from advance widths → green (equivalent, above); positioning off entirely (the pre-fix output) → 4; both
+"did anything move" checks dropped (every run as TJ) → exactly the control.
 ### Approval caption + guided Signers panel (F-D D1/D2)
 
 A drawn `SignatureElement` carries an OPTIONAL

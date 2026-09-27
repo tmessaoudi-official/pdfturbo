@@ -37,6 +37,15 @@ async function pdfInk(text: string): Promise<HTMLCanvasElement> {
   return c;
 }
 
+/** The page's decoded content stream(s) as text. */
+async function contentOps(text: string): Promise<string> {
+  const { PDFDocument, PDFArray } = await import('@cantoo/pdf-lib');
+  const doc = await PDFDocument.load(await exportLine(text));
+  const contents = doc.getPage(0).node.Contents();
+  const streams = contents instanceof PDFArray ? contents.asArray().map(r => doc.context.lookup(r)) : [contents];
+  return streams.map(s => new TextDecoder('latin1').decode(unzlibSync((s as unknown as { contents: Uint8Array }).contents))).join('\n');
+}
+
 let faceReady: Promise<void> | null = null;
 async function chromeInk(text: string): Promise<HTMLCanvasElement> {
   faceReady ??= (async () => {
@@ -82,14 +91,15 @@ describe('Arabic overlay — tashkeel positioned by GPOS (row 25, C19)', () => {
 
   it('CONTROL: an unvowelled line already matched Chrome, and still does', async () => {
     expect(overlap(await pdfInk('مرحبا بكم'), await chromeInk('مرحبا بكم'))).toBeGreaterThan(0.99);
+    // …and its bytes are the ones of before: a plain `<hex> Tj`, no TJ array and no text rise. Pixels
+    // cannot see this (pdf.js draws Tj and TJ alike), which is why the operators are read.
+    const ops = await contentOps('مرحبا بكم');
+    expect(ops).toMatch(/>\s*Tj/);
+    expect(ops).not.toMatch(/\]\s*TJ|[\d.-]+\s+Ts/);
   });
 
   it('a mark in a mixed Arabic + Latin line is positioned too (the bidi path)', async () => {
-    const { PDFDocument, PDFArray } = await import('@cantoo/pdf-lib');
-    const doc = await PDFDocument.load(await exportLine('مُحَمَّدٌ PDF'));
-    const contents = doc.getPage(0).node.Contents();
-    const streams = contents instanceof PDFArray ? contents.asArray().map(r => doc.context.lookup(r)) : [contents];
-    const ops = streams.map(s => new TextDecoder('latin1').decode(unzlibSync((s as unknown as { contents: Uint8Array }).contents))).join('\n');
+    const ops = await contentOps('مُحَمَّدٌ PDF');
     expect(ops).toMatch(/\]\s*TJ/);
     expect(ops).toMatch(/[1-9][\d.]*\s+Ts/);
   });

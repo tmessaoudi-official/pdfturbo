@@ -10,10 +10,12 @@
  *
  * Supported subtypes (clean two-way mapping): highlight, text (sticky note),
  * freetext, plus the shape subtypes square, circle, line and ink (G21 —
- * mapped to the app's `shape` element rect/ellipse/arrow/freehand). Remaining
- * subtypes (stamp, polygon, polyline) and richtext/DA appearances + form
- * `<fields>` data are a documented ceiling (#57b) — on import they are ignored
- * (forward-compatible), never mis-mapped.
+ * mapped to the app's `shape` element rect/ellipse/arrow/freehand). A highlight
+ * carries its QuadPoints (`coords`, several quads for a multi-line highlight),
+ * and form `<fields>` values are written and read (limits row 26). Remaining
+ * subtypes (stamp, polygon, polyline) and richtext/DA appearances are a
+ * documented ceiling (#57b) — on import they are ignored (forward-compatible),
+ * never mis-mapped.
  */
 
 export type XfdfAnnotType =
@@ -40,6 +42,19 @@ export interface XfdfAnnot {
   line?: [number, number, number, number];
   /** Ink gesture paths; each path is a flat [x0,y0,x1,y1,…] list in user space. */
   inkList?: number[][];
+  /**
+   * Highlight QuadPoints in user space, 8 numbers per quad in the TL,TR,BL,BR order of the text they cover
+   * (XFDF `coords`). Absent → one quad derived from `rect`.
+   */
+  quads?: number[];
+  /** Free-text rotation in degrees (XFDF `rotation`) — set on a page the viewer shows turned (row 26). */
+  rotation?: number;
+}
+
+/** One form field's value(s) — XFDF `<field name><value>…</value></field>`; `name` is fully qualified (dotted). */
+export interface XfdfField {
+  name: string;
+  values: string[];
 }
 
 const NS = 'http://ns.adobe.com/xfdf/';
@@ -82,14 +97,40 @@ function gestureToPath(body: string): number[] {
   return out;
 }
 
-/** Serialise annotation records to an XFDF document string. */
-export function buildXfdf(annots: XfdfAnnot[]): string {
+/**
+ * `<fields>` for XFDF: dotted names nest one `<field>` per segment, as Acrobat writes them, and each value is
+ * its own `<value>`. A name that is both a leaf and a parent carries its values and its children.
+ */
+function buildFields(fields: readonly XfdfField[], indent: string): string {
+  interface Node { values?: string[]; kids: Map<string, Node> }
+  const root: Node = { kids: new Map() };
+  for (const f of fields) {
+    let node = root;
+    for (const seg of f.name.split('.')) {
+      let next = node.kids.get(seg);
+      if (!next) { next = { kids: new Map() }; node.kids.set(seg, next); }
+      node = next;
+    }
+    node.values = f.values;
+  }
+  const emit = (node: Node, pad: string): string[] => [...node.kids].flatMap(([name, kid]) => [
+    `${pad}<field name="${escAttr(name)}">`,
+    ...(kid.values ?? []).map(v => `${pad}  <value>${escText(v)}</value>`),
+    ...emit(kid, pad + '  '),
+    `${pad}</field>`,
+  ]);
+  return [`${indent}<fields>`, ...emit(root, indent + '  '), `${indent}</fields>`].join('\n');
+}
+
+/** Serialise annotation records (and, when given, form field values) to an XFDF document string. */
+export function buildXfdf(annots: XfdfAnnot[], fields: readonly XfdfField[] = []): string {
   const lines = annots.map(a => {
     const attrs = [`page="${a.page}"`, `rect="${a.rect.join(',')}"`];
     if (a.color) attrs.push(`color="${escAttr(a.color)}"`);
     if (a.type === 'highlight') {
       if (a.opacity !== undefined) attrs.push(`opacity="${a.opacity}"`);
-      attrs.push(`coords="${quadFromRect(a.rect)}"`);
+      const quads = a.quads && a.quads.length >= 8 && a.quads.length % 8 === 0 ? a.quads.join(',') : quadFromRect(a.rect);
+      attrs.push(`coords="${quads}"`);
       return `    <highlight ${attrs.join(' ')}/>`;
     }
     if (a.type === 'square' || a.type === 'circle') {
@@ -109,11 +150,12 @@ export function buildXfdf(annots: XfdfAnnot[]): string {
       return `    <ink ${attrs.join(' ')}>${gestures}</ink>`;
     }
     if (a.type === 'freetext' && a.fontSize !== undefined) attrs.push(`fontsize="${a.fontSize}"`);
+    if (a.type === 'freetext' && a.rotation) attrs.push(`rotation="${a.rotation}"`);
     const body = a.contents !== undefined ? `<contents>${escText(a.contents)}</contents>` : '';
     return `    <${a.type} ${attrs.join(' ')}>${body}</${a.type}>`;
   });
   return `<?xml version="1.0" encoding="UTF-8"?>
-<xfdf xmlns="${NS}" xml:space="preserve">
+<xfdf xmlns="${NS}" xml:space="preserve">${fields.length ? '\n' + buildFields(fields, '  ') : ''}
   <annots>
 ${lines.join('\n')}
   </annots>
@@ -130,13 +172,42 @@ function num(v: string | null): number | undefined {
  *  document with no <annots>, yields an empty array. Unknown subtypes are
  *  skipped. */
 export function parseXfdf(xml: string): XfdfAnnot[] {
+  return parseXfdfDocument(xml).annots;
+}
+
+/** The `<fields>` of a parsed XFDF: nested names joined with `.`; a field with no `<value>` is skipped. */
+function parseFields(doc: Document): XfdfField[] {
+  const fieldsEl = doc.getElementsByTagName('fields')[0];
+  if (!fieldsEl) return [];
+  const out: XfdfField[] = [];
+  const walk = (el: Element, prefix: string) => {
+    for (const f of Array.from(el.children)) {
+      if (f.localName !== 'field') continue;
+      const name = f.getAttribute('name');
+      if (!name) continue;
+      const full = prefix ? `${prefix}.${name}` : name;
+      const values = Array.from(f.children).filter(c => c.localName === 'value').map(c => c.textContent ?? '');
+      if (values.length) out.push({ name: full, values });
+      walk(f, full);
+    }
+  };
+  walk(fieldsEl, '');
+  return out;
+}
+
+/** Parse an XFDF document into its annotations and its form field values. Malformed XML yields both empty. */
+export function parseXfdfDocument(xml: string): { annots: XfdfAnnot[]; fields: XfdfField[] } {
   let doc: Document;
   try {
     doc = new DOMParser().parseFromString(xml, 'application/xml');
   } catch {
-    return [];
+    return { annots: [], fields: [] };
   }
-  if (doc.getElementsByTagName('parsererror').length > 0) return [];
+  if (doc.getElementsByTagName('parsererror').length > 0) return { annots: [], fields: [] };
+  return { annots: parseAnnots(doc), fields: parseFields(doc) };
+}
+
+function parseAnnots(doc: Document): XfdfAnnot[] {
   const annotsEl = doc.getElementsByTagName('annots')[0];
   if (!annotsEl) return [];
 
@@ -161,6 +232,8 @@ export function parseXfdf(xml: string): XfdfAnnot[] {
     if (type === 'highlight') {
       const op = num(el.getAttribute('opacity'));
       if (op !== undefined) annot.opacity = op;
+      const quads = (el.getAttribute('coords') ?? '').split(',').map(v => Number(v.trim()));
+      if (quads.length >= 8 && quads.length % 8 === 0 && quads.every(Number.isFinite)) annot.quads = quads;
     } else if (type === 'square' || type === 'circle' || type === 'line' || type === 'ink') {
       const w = num(el.getAttribute('width'));
       if (w !== undefined) annot.width = w;
@@ -184,6 +257,8 @@ export function parseXfdf(xml: string): XfdfAnnot[] {
       if (type === 'freetext') {
         const fs = num(el.getAttribute('fontsize'));
         if (fs !== undefined) annot.fontSize = fs;
+        const rot = num(el.getAttribute('rotation'));
+        if (rot) annot.rotation = rot;
       }
     }
     out.push(annot);

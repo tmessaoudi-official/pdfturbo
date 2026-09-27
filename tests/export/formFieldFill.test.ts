@@ -312,6 +312,26 @@ describe('G14 — interactive overlay renders the new field controls', () => {
     expect(seen).toEqual([['l', 'one\ntwo']]);
   });
 
+  it('a PDF\'s own pre-selected choice (pdf.js reports an ARRAY) renders selected (limits row 26)', async () => {
+    // Measured 2026-09-27: for a pdf-lib form with a dropdown set to "y" and a multi-select list set to p + r,
+    // pdf.js getAnnotations() reports fieldValue ["y"] and ["p","r"] — arrays, where the overlay assumed a
+    // string and called .split on it. Every earlier fixture here left fieldValue unset, so none could see it.
+    const container = document.createElement('div');
+    const overlay = new FormFieldOverlay(container);
+    await overlay.render(
+      fakePage([
+        { subtype: 'Widget', fieldType: 'Ch', combo: true, fieldName: 'd', rect: [0, 0, 120, 20], fieldValue: ['y'],
+          options: [{ exportValue: 'x', displayValue: 'x' }, { exportValue: 'y', displayValue: 'y' }] },
+        { subtype: 'Widget', fieldType: 'Ch', multiSelect: true, fieldName: 'l', rect: [0, 30, 120, 90], fieldValue: ['p', 'r'],
+          options: [{ exportValue: 'p', displayValue: 'p' }, { exportValue: 'q', displayValue: 'q' }, { exportValue: 'r', displayValue: 'r' }] },
+      ]),
+      fakeViewport(), { left: 0, top: 0 }, {}, () => {},
+    );
+    const [combo, list] = Array.from(container.querySelectorAll('select'));
+    expect(combo.value).toBe('y');
+    expect(Array.from(list.selectedOptions).map(o => o.value)).toEqual(['p', 'r']);
+  });
+
   it('restores a stored checkbox tick and dropdown selection on render', async () => {
     const container = document.createElement('div');
     const overlay = new FormFieldOverlay(container);

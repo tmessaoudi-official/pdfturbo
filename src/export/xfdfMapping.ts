@@ -8,6 +8,11 @@
  * text ↔ <freetext>, and the shape subtypes (G21) rect ↔ <square>, ellipse ↔
  * <circle>, arrow ↔ <line>, freehand ↔ <ink>. Other element/annotation types
  * return null (skipped, never mis-mapped) — see the #57b ceiling in utils/xfdf.
+ *
+ * Every coordinate goes through the page's {@link XfdfFrame} (limits row 26, D18). Until then the module
+ * flipped y about the page top and shifted x by the CropBox origin, with no un-rotation anywhere, so on a
+ * page shown turned (its own `/Rotate`, or the user's rotate button) every exported annotation sat in the
+ * wrong place for any other reader. PDFturbo's own round-trip was self-consistent, which is why it survived.
  */
 import type { XfdfAnnot } from '../utils/xfdf';
 import type { ElementJSON, PDFElement } from '../elements/annotationElement';
@@ -24,17 +29,76 @@ const SHAPE_TO_XFDF: Record<ShapeType, 'square' | 'circle' | 'line' | 'ink'> = {
 };
 
 /**
- * Map one element record → an XFDF annotation in PDF user space, or null when
- * the type has no clean XFDF equivalent. `pageHeight` is the page height in
- * points (for the y-flip); `pageIndex` is the 0-based document page index.
+ * How one page's editor DISPLAY space (points at scale 1, top-left, y-down, turned by the page's total
+ * rotation) maps to the absolute PDF USER space an XFDF record is written in (y-up) — POINT by point, because
+ * an arrow and an ink path carry direction that an AABB would destroy (limits row 26, D18).
  */
-export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeight: number, pageLeft = 0): XfdfAnnot | null {
-  const x = el.x + pageLeft, y = el.y, w = el.width, h = el.height;
-  // display top-left (y-down) → user-space corners (y-up)
-  const rect: [number, number, number, number] = [x, pageHeight - (y + h), x + w, pageHeight - y];
+export interface XfdfFrame {
+  toUser(x: number, y: number): [number, number];
+  toDisplay(u: number, v: number): [number, number];
+  /** Degrees (clockwise) the page is displayed turned by; 0 on a blank page. */
+  rotation: number;
+}
+
+/** The unrotated flip: display y-down about `pageTop`, x shifted by `pageLeft`. A blank page's frame. */
+export function flipFrame(pageTop: number, pageLeft = 0): XfdfFrame {
+  return {
+    toUser: (x, y) => [x + pageLeft, pageTop - y],
+    toDisplay: (u, v) => [u - pageLeft, pageTop - v],
+    rotation: 0,
+  };
+}
+
+interface ViewportLike {
+  convertToPdfPoint(x: number, y: number): number[];
+  convertToViewportPoint(x: number, y: number): number[];
+}
+
+/**
+ * A frame from the very viewport the editor renders the page with (`pointViewport` at scale 1 and the page's
+ * total rotation): pdf.js's own point conversions, which carry the rotation, the CropBox origin and the
+ * `/UserUnit` together — so no second copy of any of them exists here to drift.
+ */
+export function viewportFrame(vp: ViewportLike, rotation: number): XfdfFrame {
+  return {
+    toUser: (x, y) => { const [u, v] = vp.convertToPdfPoint(x, y); return [u, v]; },
+    toDisplay: (u, v) => { const [x, y] = vp.convertToViewportPoint(u, v); return [x, y]; },
+    rotation,
+  };
+}
+
+type Rect4 = [number, number, number, number];
+
+/** A display rect → the user-space AABB of its four corners. */
+function rectToUser(f: XfdfFrame, x: number, y: number, w: number, h: number): Rect4 {
+  const pts = [f.toUser(x, y), f.toUser(x + w, y), f.toUser(x, y + h), f.toUser(x + w, y + h)];
+  const us = pts.map(p => p[0]), vs = pts.map(p => p[1]);
+  return [Math.min(...us), Math.min(...vs), Math.max(...us), Math.max(...vs)];
+}
+
+/** A user-space rect (corners in any order) → the display AABB of its four corners. */
+function rectToDisplay(f: XfdfFrame, r: readonly number[]): { x: number; y: number; w: number; h: number } {
+  const [u1, v1, u2, v2] = r;
+  const pts = [f.toDisplay(u1, v1), f.toDisplay(u2, v1), f.toDisplay(u1, v2), f.toDisplay(u2, v2)];
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const x = Math.min(...xs), y = Math.min(...ys);
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+}
+
+/**
+ * Map one element record → an XFDF annotation in PDF user space, or null when
+ * the type has no clean XFDF equivalent. `frame` maps this page's display space
+ * to user space; `pageIndex` is the 0-based document page index.
+ */
+export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, frame: XfdfFrame): XfdfAnnot | null {
+  const x = el.x, y = el.y, w = el.width, h = el.height;
+  const rect = rectToUser(frame, x, y, w, h);
   const color = el.color as string | undefined;
   if (el.type === 'highlight') {
-    const a: XfdfAnnot = { type: 'highlight', page: pageIndex, rect };
+    // QuadPoints in the TL,TR,BL,BR order of the text as the user sees it — mapped point by point, so on a
+    // turned page "top" is still the side the reader reads as the top.
+    const quads = [frame.toUser(x, y), frame.toUser(x + w, y), frame.toUser(x, y + h), frame.toUser(x + w, y + h)].flat();
+    const a: XfdfAnnot = { type: 'highlight', page: pageIndex, rect, quads };
     if (color) a.color = color;
     if (typeof el.opacity === 'number') a.opacity = el.opacity;
     return a;
@@ -48,6 +112,9 @@ export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeigh
     const a: XfdfAnnot = { type: 'freetext', page: pageIndex, rect, contents: (el.text as string) ?? '' };
     if (color) a.color = color;
     if (typeof el.fontSize === 'number') a.fontSize = el.fontSize;
+    // Text the user typed upright on a turned page runs along the display, not along user-space x. Acrobat
+    // records that as the free text's rotation [Unverified against Acrobat — in the row 29 pack].
+    if (frame.rotation) a.rotation = frame.rotation;
     return a;
   }
   if (el.type === 'shape') {
@@ -58,18 +125,13 @@ export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeigh
     if (stroke) a.color = stroke;
     if (typeof el.strokeWidth === 'number') a.width = el.strokeWidth;
     if (shapeType === 'arrow') {
-      // endpoints flip independently (directional — y_user = pageHeight - y_display)
-      // `+ pageLeft` on EVERY x, exactly as `rect` above. Applying the origin to `rect` alone left
-      // the arrow's own endpoints and the ink points in a MIXED frame — absolute y beside
-      // crop-relative x — which is the very thing fixing x was meant to end. Invisible to the
-      // internal round-trip (import reads the bbox back from these same numbers); the damage is
-      // external interop, which is what XFDF exists for. [WS7 round 2, 2026-09-04]
-      const x1 = (el.x1 as number) + pageLeft, y1 = el.y1 as number;
-      const x2 = (el.x2 as number) + pageLeft, y2 = el.y2 as number;
-      a.line = [x1, pageHeight - y1, x2, pageHeight - y2];
+      // Endpoints map one by one — direction survives, which an AABB would not keep.
+      const [u1, v1] = frame.toUser(el.x1 as number, el.y1 as number);
+      const [u2, v2] = frame.toUser(el.x2 as number, el.y2 as number);
+      a.line = [u1, v1, u2, v2];
     } else if (shapeType === 'freehand') {
       const points = (el.points as Array<{ x: number; y: number }> | undefined) ?? [];
-      a.inkList = [points.flatMap(p => [p.x + pageLeft, pageHeight - p.y])];
+      a.inkList = [points.flatMap(p => frame.toUser(p.x, p.y))];
     }
     return a;
   }
@@ -77,142 +139,93 @@ export function elementToXfdfAnnot(el: ElementJSON, pageIndex: number, pageHeigh
 }
 
 /**
- * Construct an annotation element (auto-assigned id) from an XFDF record, or
- * null for an unsupported subtype. `pageHeight` flips user space back to
- * display space; `pageId` is the target document page's id.
+ * Construct the annotation elements (auto-assigned ids) for an XFDF record — one per highlight quad, one
+ * otherwise, none for an unsupported subtype. `frame` maps user space back to this page's display space;
+ * `pageId` is the target document page's id.
  */
-export function xfdfAnnotToElement(a: XfdfAnnot, pageId: string, pageHeight: number, pageLeft = 0): PDFElement | null {
-  // Normalize the rect (#QA-2026-06-23 P3 #7): a foreign/malformed XFDF may store it
-  // inverted (urx<llx or ury<lly), which would otherwise yield a negative-size element.
-  const [rx1, ry1, rx2, ry2] = a.rect;
-  const x1 = Math.min(rx1, rx2), x2 = Math.max(rx1, rx2);
-  const y1 = Math.min(ry1, ry2), y2 = Math.max(ry1, ry2);
-  const x = x1 - pageLeft, w = x2 - x1, h = y2 - y1, y = pageHeight - y2;
+export function xfdfAnnotToElements(a: XfdfAnnot, pageId: string, frame: XfdfFrame): PDFElement[] {
+  // The four-corner mapping also normalises a rect a foreign/malformed XFDF stored inverted
+  // (#QA-2026-06-23 P3 #7), which would otherwise yield a negative-size element.
+  const { x, y, w, h } = rectToDisplay(frame, a.rect);
   if (a.type === 'highlight') {
-    return new HighlightElement(x, y, w, h, pageId, a.color ?? '#FFFF00', a.opacity ?? 0.3);
+    // A multi-line highlight is several quads; each becomes its own highlight (the app's highlight is one box).
+    const q = a.quads ?? [];
+    if (q.length >= 8) {
+      const out: PDFElement[] = [];
+      for (let i = 0; i + 8 <= q.length; i += 8) {
+        const pts = [0, 2, 4, 6].map(k => frame.toDisplay(q[i + k], q[i + k + 1]));
+        const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+        const qx = Math.min(...xs), qy = Math.min(...ys);
+        out.push(new HighlightElement(qx, qy, Math.max(...xs) - qx, Math.max(...ys) - qy, pageId, a.color ?? '#FFFF00', a.opacity ?? 0.3));
+      }
+      return out;
+    }
+    return [new HighlightElement(x, y, w, h, pageId, a.color ?? '#FFFF00', a.opacity ?? 0.3)];
   }
   if (a.type === 'text') {
     const el = new CommentElement(x, y, pageId, { color: a.color, text: a.contents });
     el.width = w; el.height = h;
-    return el;
+    return [el];
   }
   if (a.type === 'freetext') {
     const el = new TextElement(x, y, pageId, { width: w, height: h, fontSize: a.fontSize, color: a.color });
     el.text = a.contents ?? '';
-    return el;
+    return [el];
   }
   if (a.type === 'square' || a.type === 'circle') {
     const shapeType: ShapeType = a.type === 'square' ? 'rect' : 'ellipse';
-    return new ShapeElement(shapeType, x, y, w, h, pageId, { strokeColor: a.color, strokeWidth: a.width });
+    return [new ShapeElement(shapeType, x, y, w, h, pageId, { strokeColor: a.color, strokeWidth: a.width })];
   }
   if (a.type === 'line') {
-    // flip endpoints back to display space; bbox spans the endpoints
     const ln = a.line ?? a.rect;
-    const ex1 = ln[0] - pageLeft, ey1 = pageHeight - ln[1];
-    const ex2 = ln[2] - pageLeft, ey2 = pageHeight - ln[3];
+    const [ex1, ey1] = frame.toDisplay(ln[0], ln[1]);
+    const [ex2, ey2] = frame.toDisplay(ln[2], ln[3]);
     const bx = Math.min(ex1, ex2), by = Math.min(ey1, ey2);
     const bw = Math.abs(ex2 - ex1), bh = Math.abs(ey2 - ey1);
-    return new ShapeElement('arrow', bx, by, bw, bh, pageId,
-      { strokeColor: a.color, strokeWidth: a.width, x1: ex1, y1: ey1, x2: ex2, y2: ey2 });
+    return [new ShapeElement('arrow', bx, by, bw, bh, pageId,
+      { strokeColor: a.color, strokeWidth: a.width, x1: ex1, y1: ey1, x2: ex2, y2: ey2 })];
   }
   if (a.type === 'ink') {
     const points: Array<{ x: number; y: number }> = [];
     for (const path of a.inkList ?? []) {
-      for (let i = 0; i + 1 < path.length; i += 2) points.push({ x: path[i] - pageLeft, y: pageHeight - path[i + 1] });
+      for (let i = 0; i + 1 < path.length; i += 2) {
+        const [px, py] = frame.toDisplay(path[i], path[i + 1]);
+        points.push({ x: px, y: py });
+      }
     }
     const xs = points.map(p => p.x), ys = points.map(p => p.y);
     const bx = xs.length ? Math.min(...xs) : 0, by = ys.length ? Math.min(...ys) : 0;
     const bw = xs.length ? Math.max(...xs) - bx : 0, bh = ys.length ? Math.max(...ys) - by : 0;
-    return new ShapeElement('freehand', bx, by, bw, bh, pageId,
-      { strokeColor: a.color, strokeWidth: a.width, points });
+    return [new ShapeElement('freehand', bx, by, bw, bh, pageId,
+      { strokeColor: a.color, strokeWidth: a.width, points })];
   }
-  return null;
+  return [];
 }
 
-/**
- * The source box's LEFT edge in absolute user space (`viewBox[0]`), the x-axis companion to
- * {@link pageHeightPt}.
- *
- * An XFDF `/Rect` is absolute on BOTH axes. Fixing only the y axis left the exported rect in a MIXED
- * frame — y absolute, x crop-relative — which is worse than being consistently wrong, and it made
- * the sibling docstring's claim that "the source CropBox origin is no longer part of that ceiling"
- * true of one axis only. Both directions take the same term, so the internal round-trip stays
- * self-consistent either way; zero on a `[0 0 w h]` page, which is almost every page.
- * [WS7 round 1, 2026-09-04]
- */
-export async function pageLeftPt(
-  docPage: DocumentPage,
-  sourcePdfs: Map<string, {
-    doc: {
-      getPage(n: number): Promise<{
-        getViewport(o: { scale: number; rotation?: number }): { height: number; viewBox: readonly number[] };
-      }>;
-    };
-  }>,
-): Promise<number> {
-  if (docPage.sourcePdfId === 'blank') return 0;
-  const src = sourcePdfs.get(docPage.sourcePdfId);
-  if (!src) return 0;
-  const page = await src.doc.getPage(docPage.sourcePageNum);
-  return pointViewport(page, { scale: 1, rotation: 0 }).viewBox[0];
-}
+type SourcePdfsLike = Map<string, {
+  doc: {
+    getPage(n: number): Promise<{
+      rotate?: number;
+      userUnit?: number;
+      getViewport(o: { scale: number; rotation?: number }): ViewportLike & { height: number; viewBox: readonly number[] };
+    }>;
+  };
+}>;
 
 /**
- * Page height in points for the display↔user-space flip: blank pages carry it
- * directly; source pages read it from the loaded pdf.js page viewport.
+ * The frame of one document page (limits row 26, D18). A source page is displayed turned by its own `/Rotate`
+ * plus the user's rotation — the `totalRot` of `pageRenderPipeline` — and pdf.js's `rotation` REPLACES
+ * `/Rotate`, so the sum is passed, never added again. A blank page is drawn unrotated in the editor and the
+ * export alike, so it takes the plain flip about its height.
  *
- * Returns the source box's TOP in absolute user space (`viewBox[3]`), which is what an XFDF `/Rect`
- * is measured against — NOT the box's height, and NOT a rotated dimension.
- *
- * **Two defects lived here until the WS5 audit (2026-09-04), and both were invisible on an ordinary
- * page.** `getViewport({ scale: 1 })` omitted `rotation: 0`, so pdf.js applied the page's own
- * `/Rotate` and returned the SWAPPED dimension at 90/270 — making this function's own docstring
- * ("the FULL unrotated source height") false exactly where it mattered. And it returned the HEIGHT
- * where an absolute flip needs the TOP, so a page with a non-zero CropBox origin was off by that
- * origin. This is the sixth instance of the repo's recurring frame bug and the first that was not
- * disclosed anywhere; `viewBox` is rotation-invariant, so reading it settles both at once.
- *
- * Byte-identical on a page with `/Rotate 0` and a `[0 0 w h]` box — i.e. almost every page, which is
- * why it survived. Both the export and the import call this one function, so the internal
- * round-trip stays self-consistent either way.
- *
- * Ceiling (#QA-2026-06-23 P3 #12), NARROWED — **on the origin only**: the app-level per-page crop
- * (`docPage.crop`) is still ignored, so annotations on a page the user cropped inside PDFturbo
- * remain offset.
- *
- * **PAGE ROTATION IS STILL PART OF THAT CEILING, and a previous version of this comment said it was
- * not.** That claim was false when written [withdrawn WS7 round 6, 2026-09-04]. There is no
- * un-rotation anywhere in this module or in `xfdf.ts`, and neither caller passes a rotation, while
- * element rects are DISPLAY space — so on a `/Rotate 90` page the exported `/Rect` is off by the
- * difference between the two page dimensions. Worse, the fix that added the origin term MOVED the
- * flip base from `getViewport({ scale: 1 }).height` (the swapped, display height at 90/270) to
- * `viewBox[3]` (the unrotated top): both are wrong on a rotated page, so it exchanged one wrong
- * answer for another while claiming the ceiling was closed. `KNOWN_ISSUES.md` C20 and `CLAUDE.md`
- * #57b both still list rotated-page coordinates as OPEN, and they are right.
- *
- * What is NOT affected, and is what the product actually promises: export and import call this same
- * function, so PDFturbo's own XFDF round-trip is self-consistent at either base. The breakage is
- * third-party interop (Acrobat) on rotated pages, which was already broken.
- *
- * Closing it needs a POINT-level display<->user-space mapping in both directions, not a rect one:
- * `displayRectToPageUserSpaceRect` returns an AABB, and XFDF also carries arrow endpoints and ink
- * point lists, where an AABB would destroy direction. That is the C20/#57b work, not a docstring.
+ * The user's crop (`docPage.crop`) takes no part: elements live in the full page's display space (the crop is
+ * a frame drawn over it) and `setCropBox` does not move user space.
  */
-export async function pageHeightPt(
-  docPage: DocumentPage,
-  sourcePdfs: Map<string, {
-    doc: {
-      getPage(n: number): Promise<{
-        getViewport(o: { scale: number; rotation?: number }): { height: number; viewBox: readonly number[] };
-      }>;
-    };
-  }>,
-): Promise<number> {
-  if (docPage.sourcePdfId === 'blank') return docPage.blankHeight ?? 842;
+export async function xfdfPageFrame(docPage: DocumentPage, sourcePdfs: SourcePdfsLike): Promise<XfdfFrame> {
+  if (docPage.sourcePdfId === 'blank') return flipFrame(docPage.blankHeight ?? 842);
   const src = sourcePdfs.get(docPage.sourcePdfId);
-  if (!src) return docPage.blankHeight ?? 842;
+  if (!src) return flipFrame(docPage.blankHeight ?? 842);
   const page = await src.doc.getPage(docPage.sourcePageNum);
-  // `rotation: 0` is load-bearing, not tidiness: the default is the page's own `/Rotate`, which
-  // swaps the reported dimensions at 90/270. `viewBox` itself is rotation-invariant.
-  return pointViewport(page, { scale: 1, rotation: 0 }).viewBox[3];
+  const totalRot = ((((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360) + 360) % 360;
+  return viewportFrame(pointViewport(page, { scale: 1, rotation: totalRot }), totalRot);
 }

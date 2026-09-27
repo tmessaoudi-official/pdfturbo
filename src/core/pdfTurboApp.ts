@@ -16,8 +16,10 @@ import {
   ReplaceSourcePdfBytesCmd,
   type Command,
 } from './historyManager';
-import { parseXfdf } from '../utils/xfdf';
-import { xfdfAnnotToElement, pageHeightPt, pageLeftPt } from '../export/xfdfMapping';
+import { parseXfdfDocument } from '../utils/xfdf';
+import { SetFormValueCmd } from './commands/formCmds';
+import { xfdfAnnotToElements, xfdfPageFrame } from '../export/xfdfMapping';
+import { collectFormWidgets, fillsFromXfdf } from '../export/xfdfFields';
 import { InkLayer } from '../infra/inkLayer';
 import { InkLayerHandler } from '../handlers/inkLayerHandler';
 import { DocumentModel, type SourcePdf, type PageCrop, type DocumentPage } from './documentModel';
@@ -1028,29 +1030,41 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
 
   /**
    * Import annotations from an Adobe XFDF file (#57): parse it, convert each
-   * supported markup (highlight / text-note / freetext) from PDF user space back
-   * to editor display space (per-page y-flip), and add them as real annotation
-   * elements in one undoable MacroCmd. Unknown subtypes are ignored; an empty or
-   * unmappable file warns rather than failing silently.
+   * supported markup from PDF user space back to editor display space through the
+   * page's frame (rotation and CropBox origin — row 26), set the form field values
+   * it carries on every source that has a field of that name (row 26), and apply
+   * it all as one undoable MacroCmd. Unknown subtypes and field names are ignored;
+   * an empty or unmappable file warns rather than failing silently.
    */
   async importXfdf(file: File): Promise<void> {
     try {
-      const annots = parseXfdf(await file.text());
-      if (!annots.length) { this.reportError.warn('toast.xfdfImportEmpty'); return; }
-      const cmds: AddElementCmd[] = [];
+      const { annots, fields } = parseXfdfDocument(await file.text());
+      if (!annots.length && !fields.length) { this.reportError.warn('toast.xfdfImportEmpty'); return; }
+      const cmds: Command[] = [];
+      let added = 0;
       for (const a of annots) {
         const docPage = this.documentModel.pages[a.page];
         if (!docPage) continue;
-        const h = await pageHeightPt(docPage, this.documentModel.sourcePdfs);
-        const left = await pageLeftPt(docPage, this.documentModel.sourcePdfs);
-        const el = xfdfAnnotToElement(a, docPage.id, h, left);
-        if (el) cmds.push(new AddElementCmd(this.elements, el));
+        const frame = await xfdfPageFrame(docPage, this.documentModel.sourcePdfs);
+        for (const el of xfdfAnnotToElements(a, docPage.id, frame)) { cmds.push(new AddElementCmd(this.elements, el)); added++; }
+      }
+      let filled = 0;
+      if (fields.length) {
+        const widgets = await collectFormWidgets(this.documentModel.pages, this.documentModel.sourcePdfs, this.elements);
+        for (const f of fillsFromXfdf(fields, widgets).fills) {
+          // Undefined when the field was untouched: undo then restores the PDF's own value, not a blank.
+          const before = this._formValues[f.srcId]?.[f.name];
+          cmds.push(new SetFormValueCmd(this._formValues, f.srcId, f.name, before, f.value));
+          filled++;
+        }
       }
       if (!cmds.length) { this.reportError.warn('toast.xfdfImportEmpty'); return; }
       this.historyManager.execute(new MacroCmd(cmds));
       this.rebuildElementLayer();
+      // Field values live in the form overlay, which is rebuilt only by a page render.
+      if (filled) await this.renderCurrentPage();
       this.autosave();
-      this.reportError.info('toast.xfdfImported', { count: cmds.length });
+      this.reportError.info('toast.xfdfImported', { count: added + filled });
     } catch (err) {
       this.reportError.error('toast.xfdfImportFailed', err);
     }
