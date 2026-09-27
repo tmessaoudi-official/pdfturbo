@@ -14,7 +14,7 @@ is the developer's own persistent install; this repo never writes it — the con
 
 The repo carries exactly THREE skills, all repo-specific by name and content (global-is-reference
 ruling, 2026-08-18 — a repo may not duplicate anything that exists in `~/.claude/`):
-`/pdf-ask-human` (the question protocol with this repo's extra rules), `/pdf-lenses` (the mandatory
+`/pdf-ask-human` (this repo's additions to the global question protocol), `/pdf-lenses` (the mandatory
 review dimensions + sleuth lens K), and `/pdf-qa-sweep` (the whole-app QA driver). Every other
 skill — `/sweep`, `/sleuth`, `/inspect`, `/gaps`, `/forge`, `/cross-check`, `/converge`,
 `/pre-commit`, `/aggregate-findings`, `/handoff`, `/retrospective`, `/expanding-context` — comes
@@ -27,7 +27,8 @@ used to enforce. Reviewer agents stay in `.claude/agents/` (read in place, nothi
 
 Questions to the developer use the **`AskUserQuestion` tool**, per the global framework: options with
 the recommended one FIRST (labelled, with its reason) and a visible *"none of these / challenge the
-premise"* escape. Protocol details: `.claude/skills/pdf-ask-human/SKILL.md`.
+premise"* escape. Protocol: the global `/ask-human` skill, § "Question quality"; this repo's
+additions (mandatory cases, a worked example): `.claude/skills/pdf-ask-human/SKILL.md`.
 
 > The container-era plain-text protocol and the `❓`/`⏹` end-of-reply markers are **RETIRED**
 > (2026-08-18). They existed because `AskUserQuestion` timed out in the dead cloud container; on this
@@ -36,7 +37,7 @@ premise"* escape. Protocol details: `.claude/skills/pdf-ask-human/SKILL.md`.
 
 **Do not ask about routine work.** The standing directive for this repo is *no interrupts*: announce
 the task size and the plan, then build it. Asking is reserved for the cases in
-§ "When this protocol is mandatory" of that skill — chiefly a genuinely ambiguous request, or a change
+§ "When a question is mandatory here" of that skill — chiefly a genuinely ambiguous request, or a change
 that would weaken a documented invariant, a declared ceiling, or bump `SCHEMA_VERSION`.
 
 ## Certification ladder — governs every 3C/6C gate
