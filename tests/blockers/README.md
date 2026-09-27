@@ -32,6 +32,9 @@ Where each structural ceiling is actually pinned.
    restricted to the inner 20–80% of each region with a 5% minimum gap, so a level can decline to split
    even below the depth cap. A ceiling table is only as good as its last measurement — re-measure before
    citing a row.
+   **Lifted by limits row 21 (2026-09-27)**, and that re-measurement found worse than the ceiling said: the
+   5% minimum also refused the 12–17pt gutters of real two-column papers, whose Word/Markdown/text export
+   interleaved the columns. See `CLAUDE.md` § "Columns: the cut, the depth and the gutter floor".
 2. **C11 is deliberately NOT pinned.** Its DOCX half is an inline predicate inside the private
    `ExportService._extractFlowDoc` (`a.subtype === 'Link' && typeof a.url === 'string'`). Pinning it
    would mean either booting the whole service or copying the predicate into a test — and a copy pins
@@ -54,7 +57,7 @@ Where each structural ceiling is actually pinned.
 | C13 borderless → CSV | yes — same lattice-only detection | `utils/flowDocTable.test.ts`, `browser/table-extract.browser.test.ts` |
 | C14 Arabic searchable-OCR search | yes — the "Arabic honest contract" case | `browser/searchable-ocr.browser.test.ts` |
 | C18 RTL layer select/copy/search | yes — item-level highlight pinned | `browser/arabic-search.browser.test.ts`, `browser/arabic-selection.browser.test.ts` |
-| C10 4+ column layout | yes — 3 columns work, 4 measured as 3 groups | `blockers/layout-flatten.blockers.test.ts` |
+| C10 4+ column layout | lifted by limits row 21 — 4–8 columns and 14pt gutters split; 9+ come out as 8 groups | `utils/flowDocColumns.test.ts` ("limits row 21") + `browser/columns-split.browser.test.ts` — the pins left this file |
 | C12 markup-annotation flatten | yes — a `/Text` note survives `getForm().flatten()` | `blockers/layout-flatten.blockers.test.ts` |
 | ~~C22~~ CropBox-origin flow LAYOUT | **not a ceiling any more — FIXED 2026-09-02.** The `it.fails` pin became a regression guard and lost the `blockers-` prefix, which means "an `it.fails` stating behaviour we do NOT have". The image-anchor and margin cases this row recorded as unasserted are now asserted, alongside three lockstep cases (colour / underline / hyperlink) that pass before AND after the fix — those are the ones a PARTIAL normalisation goes red on | `browser/cropbox-origin-layout.browser.test.ts` |
 | C19 Arabic tashkeel / GPOS | yes — marks reach the glyph stream; placement not asserted | `browser/ceilings.browser.test.ts` |

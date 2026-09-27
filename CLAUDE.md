@@ -2103,6 +2103,45 @@ exactly the failure a green test suite cannot catch. `C11` is the counter-case i
 unpinned on purpose, because its only testable surface is an inline predicate in a private method and a
 copied predicate pins nothing.
 
+### Columns: the cut, the depth and the gutter floor — limits row 21 (2026-09-27)
+
+Re-measuring C10 on the 408-page corpus found a defect the ceiling never named: **real two-column papers
+exported with their columns interleaved line by line.** Their gutters are 12–17pt drawn (2–3% of the page)
+and `detectColumnSplit` wanted 5% of the region — 30pt on a Letter page — so BERT's page 2 came out
+`Unlike left-to- These approaches have been generalized to right language model …`. Three changes in
+`src/utils/flowDoc.ts`, each pinned:
+
+- **The cut is the gutter nearest the region's CENTRE**, ties to the left. The widest gutter cut a 4-column
+  page 1|3 whenever the third column was ragged (so its gutter was widest), and the 3 half then ran out of
+  depth. A central cut halves the column count at every level.
+- **`COLUMN_MAX_DEPTH = 3`**: 4 columns take two levels, 5–8 take three. 9+ come out as 8 groups with no
+  word lost — the remaining ceiling, pinned.
+- **`MIN_GUTTER_PT = 10`**: a gap splits at `min(5% of the region, 10pt)`. The floor applies to the gap as
+  measured on 2pt bins, which loses 2–4pt of the drawn gutter, so in DRAWN terms 14pt or more always splits,
+  11pt or less never, and 12–13pt depends on where the gap falls on the grid (measured). 10, not 12: 12
+  misses BERT p8 and Census p12. Not 8: 8 splits GPT-3's figure pages where a label column sits beside its
+  content, which looks exactly like a gutter. Publication 17's 3-column body pages (~8pt gutters) therefore
+  stay one column — a bound, logged as row 46, which needs a discriminator rather than a smaller number.
+
+Corpus: 40 of 408 pages change (35 go 1→2 groups, 3 go 1→3, 1 goes 1→4, 4 stay 2 but cut elsewhere) — BERT,
+the Census report, W-9, Publication 17's index. The probe ran `splitColumns` on every word, so three table
+pages among the 40 (two lattice, one tagged) are an upper bound: the export removes lattice-table words
+before splitting, and a tagged page takes the struct-tree path first. **Still interleaved:** a page whose
+title, abstract or figure spans both columns (BERT p1, 3, 5, 6) — the vertical cut sees no clean gutter, so
+it needs a horizontal cut first (row 44); ResNet and the Japanese multi-column paper never split at any
+floor measured, cause untraced (row 45).
+
+Guards: `tests/utils/flowDocColumns.test.ts` "limits row 21" (4, 5, 6, 8 columns; 9 → 8; the ragged
+centre cut; 14pt splits; 12pt on the grid splits; 11pt does not) and
+`tests/browser/columns-split.browser.test.ts` (3, real pdf.js through `reconstructPage`: a 14pt two-column
+page, 4 and 5 prose columns). The browser pages use five-word lines on purpose: short aligned cells are what
+the borderless-table gate claims as a table since row 20. Sabotage, predicted first and each restored with
+`cmp`: widest gutter instead of centre → the ragged centre case, the 9-column case and the 5-column browser
+case (the even fixtures stay green — the 20–80% zone clips the outer gutters, so widest and centre agree
+there; that is why the centre case is ragged); depth 2 → 5, 6, 8, 9 columns + the 5-column browser case;
+no 10pt floor → the 14pt case + the 4- and 5-column browser cases; floor 8 → exactly the 11pt case; floor
+12 → exactly the 12pt case.
+
 ### `/pdf-qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
 The sweep's `0 fail` covers **66 distinct controls of 141 in the DOM**. Every report now ends with
@@ -2972,8 +3011,8 @@ Separation/spot (`scn`) text no longer redraws black. Guards: `tests/utils/conte
 (real pdf.js render of a Separation colorspace → forces Path-3 via Helvetica `é` edit → asserts the
 redrawn glyph stays chromatic, and a no-fallback control redraws black). **All three `02-trueedit-matrix.md`
 "reachable gaps" are now done** (Gap 1 TJ-kerning distribute, Gap 2 this, Gap 3 exponent).
-**Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, recursive 3-col
-XY-cut, exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
+**Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, 9+ columns and
+a horizontal-first XY-cut (see § "Columns: the cut, the depth and the gutter floor"), exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
 true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder; tashkeel GPOS positioning.
 **Decoration + graphics-state fidelity (#text-decoration, 2026-06-18):** PDF has NO underline/strike TEXT
 attribute — they're SEPARATE thin filled `re` rects whose width is decoupled from the text, so a true-edit

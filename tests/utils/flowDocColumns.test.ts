@@ -60,3 +60,53 @@ describe('splitColumns (B6)', () => {
     expect(groups[2].every(w => w.x >= 400)).toBe(true);
   });
 });
+
+describe('limits row 21 (D10) — 4+ columns and narrow gutters', () => {
+  // `n` columns across a 600pt page, each `gutter` points from the next, two baselines each.
+  const page = (n: number, gutter: number) => {
+    const pitch = 580 / n;
+    return Array.from({ length: n }, (_, c) => [700, 680].map(y => ({ x: 10 + c * pitch, width: pitch - gutter, y, c }))).flat();
+  };
+  const inOrder = (groups: { c: number }[][]) => groups.every((g, i) => g.every(w => w.c === i));
+
+  for (const n of [4, 5, 6, 8]) {
+    it(`${n} columns split into ${n} groups in reading order`, () => {
+      const groups = splitColumns(page(n, 40), 600);
+      expect(groups).toHaveLength(n);
+      expect(inOrder(groups)).toBe(true);
+    });
+  }
+
+  it('9 columns under-split to the 8 three levels allow, losing no word (the remaining ceiling)', () => {
+    const groups = splitColumns(page(9, 40), 600);
+    expect(groups).toHaveLength(8);
+    expect(groups.flat()).toHaveLength(18);
+  });
+
+  it('the cut is the gutter nearest the centre, not the widest: a ragged 4-column page is halved', () => {
+    // Column 3 is ragged-right, so its gutter (385–445, 60pt) is WIDER than the middle one (260–300). The widest-gutter
+    // rule this replaced cut there, 3|1; the page must still be halved at the middle gutter.
+    const words = page(4, 40).map(w => (w.c === 2 ? { ...w, width: 85 } : w));
+    const cut = detectColumnSplit(words, 600) ?? -1;
+    expect(cut).toBeGreaterThanOrEqual(260);
+    expect(cut).toBeLessThanOrEqual(300);
+  });
+
+  it('a two-column paper with a 14pt gutter splits (2.3% of the page — the 5% rule alone never did)', () => {
+    const groups = splitColumns(page(2, 14), 600);
+    expect(groups).toHaveLength(2);
+    expect(inOrder(groups)).toBe(true);
+  });
+
+  it('a 12pt gutter that falls on the 2pt grid splits (the floor is 10pt, not 12 — BERT p8 and Census p12 need it)', () => {
+    // This fixture's columns start on an even x, so the whole 12pt gutter minus one bin of rounding (10pt) is measured.
+    expect(splitColumns(page(2, 12), 600)).toHaveLength(2);
+  });
+
+  it('an 11pt gutter does not split (the stated bound — a label column beside its content looks the same)', () => {
+    // The 10pt floor applies to the gap measured on 2pt bins, which loses 2–4pt of the drawn gutter: 11pt or less never
+    // splits, 14pt or more always does, 12–13pt depends on where the gap falls on the grid (measured, limits row 21).
+    expect(splitColumns(page(2, 11), 600)).toHaveLength(1);
+  });
+});
+

@@ -502,8 +502,19 @@ export function extractPsName(internalId: string): string {
  * Three conditions must all hold:
  *   1. At least 4 words in the input.
  *   2. At least 2 distinct baselines — gaps between words on a single line are NOT column gaps.
- *   3. The best gap lies in the inner 20–80% zone, is ≥ 5% of page width, and has words on both sides.
+ *   3. A gap lies in the inner 20–80% zone, is ≥ 5% of the region's width or {@link MIN_GUTTER_PT}, whichever is
+ *      smaller, and has words on both sides; of several,
+ *      the one nearest the region's centre is cut (limits row 21).
  */
+/**
+ * A gutter this wide splits columns even when it is under 5% of the region (limits row 21). Real two-column papers
+ * leave 12–17 pt (BERT, A4) — 2–3% of the page — so the 5% rule alone never split one, and their Word/Markdown/text
+ * export interleaved the two columns line by line. 10 pt was measured on 408 pages: every page it newly splits is a
+ * genuine multi-column layout; at 8 pt figures with a label column beside their content (GPT-3's prompt examples)
+ * start to split, while Publication 17's ~8 pt gutters stay unsplit (a stated bound).
+ */
+const MIN_GUTTER_PT = 10;
+
 export function detectColumnSplit(
   words: ReadonlyArray<{ x: number; width: number; y?: number }>,
   pageWidth: number,
@@ -531,21 +542,26 @@ export function detectColumnSplit(
   // Search only in the inner 20–80% zone (of the region) to avoid margin false positives.
   const left = Math.floor((bounds.min + regionW * 0.2) / BIN);
   const right = Math.ceil((bounds.min + regionW * 0.8) / BIN);
-  let bestLen = 0, bestMid = -1, gapStart = -1;
+  // Every clean gutter in the zone, then the one to cut at: among those at least as wide as the minimum, the one
+  // nearest the region's CENTRE (limits row 21, D10). Cutting at the widest-first-found gutter bisected a
+  // 4-column page 1|3, and the 3 half got one more cut before the depth cap — 3 groups. A central cut halves the
+  // column count at every level, so 4 columns take two levels and 5–8 take three.
+  const gaps: { len: number; mid: number }[] = [];
+  let gapStart = -1;
   for (let i = left; i <= right; i++) {
     if (covered[i] === 0) {
       if (gapStart === -1) gapStart = i;
     } else if (gapStart !== -1) {
-      const len = i - gapStart;
-      if (len > bestLen) { bestLen = len; bestMid = Math.round((gapStart + i - 1) / 2) * BIN; }
+      gaps.push({ len: i - gapStart, mid: Math.round((gapStart + i - 1) / 2) * BIN });
       gapStart = -1;
     }
   }
-  if (gapStart !== -1) {
-    const len = right - gapStart + 1;
-    if (len > bestLen) { bestLen = len; bestMid = Math.round((gapStart + right) / 2) * BIN; }
-  }
-  if (bestLen * BIN < regionW * 0.05) return null;
+  if (gapStart !== -1) gaps.push({ len: right - gapStart + 1, mid: Math.round((gapStart + right) / 2) * BIN });
+  const wide = gaps.filter(g => g.len * BIN >= Math.min(regionW * 0.05, MIN_GUTTER_PT));
+  if (!wide.length) return null;
+  const centre = bounds.min + regionW / 2;
+  // Ties go to the leftmost, as the first-found rule did.
+  const bestMid = wide.reduce((b, g) => (Math.abs(g.mid - centre) < Math.abs(b.mid - centre) ? g : b)).mid;
 
   // Require words on both sides of the split — a gap with nothing on one side is a margin, not a column.
   const leftCount = words.filter(w => w.x + w.width / 2 < bestMid).length;
@@ -553,10 +569,10 @@ export function detectColumnSplit(
   return leftCount > 0 && rightCount > 0 ? bestMid : null;
 }
 
-/** Depth cap for recursive column splitting: depth-0 cut + one further cut per
- * half → up to ~4 columns (covers the common 3-column case). Higher depths
- * over-split magazine layouts, so we stop here. */
-const COLUMN_MAX_DEPTH = 2;
+/** Depth cap for recursive column splitting: three levels of central cuts → up to 8 column groups (limits row 21 —
+ * it was 2, which with first-found gutters topped out at 3 in practice). Each level still needs a clean gutter of
+ * 5% of its region with words on both sides, so a depth that finds none adds nothing. */
+const COLUMN_MAX_DEPTH = 3;
 
 /**
  * B6 — recursively split words into columns in left-to-right reading order.
