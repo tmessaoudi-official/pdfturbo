@@ -3092,6 +3092,16 @@ all-hex array still goes to Path 2/3. Guards: two cases (hex last, hex first —
 because the last segment absorbs the remainder). Sabotage: literal segments only → both; hex counted by digits →
 exactly the hex-first case.
 
+**The READ side had the same codespace trap (limits row 50, found measuring row 39).** Row 38 made the WRITE side
+single-byte for a simple font, but the editor's pre-fill, `addDecorationAt` and the decoration resize still took the
+code size from the ToUnicode codespace, so a simple font whose CMap declares `<0000> <FFFF>` (or none — then 2 was
+assumed) decoded pairs of codes and the editor never opened. On the corpus that is 75 runs — the budget (50) and
+census (25) reports, Type1C with a `<0000> <FFFF>` ToUnicode — and all 75 now pre-fill [measured: row-39 probe,
+before 0/75, after 75/75]. One helper, `showCodeSize`, now answers for all four sites: no CMap → 2, a Type0 font →
+its CMap, anything else → 1. Guards: pre-fill of all four literal runs with a wide and with no codespace, and an
+underline added on the wide one. Sabotage: the helper trusting the CMap → 5 red (write wide/none, pre-fill wide/none,
+underline). The decoration-resize site shares the helper and is not pinned separately.
+
 ### True-edit composed nested `cm` backwards, and forgot the CTM at a form's `Do` — limits rows 47–48 (2026-09-27)
 
 PDF's `cm` sets CTM' = M × CTM: the NEW matrix applies to a point first. `multiplyMatrix(A, B)` applies A first,

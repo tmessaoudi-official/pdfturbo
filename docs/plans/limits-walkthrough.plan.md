@@ -123,6 +123,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 17:11] SESSION-CHOSEN (row 38, 6C review of 5b6aab4): `isType0Font` reads `/Subtype` through `lookup`; with `get`, an indirect `/Subtype` made a Type0 font single-byte and the edit wrote one-byte codes into it. Pinned by an indirect-/Subtype case on a real Type0 subset.
 - [2026-09-27 17:11] FOUND (row 38, not fixed): Path 1's `replaceShowOpInPlace` rewrites only the literal segments of a TJ and leaves hex segments stale — the A2 shape for a standard font whose producer wrote some segments as hex. Unmeasured on the corpus; recorded as row 49.
 - [2026-09-27 17:13] SESSION-CHOSEN (row 49): fixed in the same commit as the row-38 6C fix — hex segments of a mixed TJ are rewritten as literals on Path 1, counted as half their hex digits; an all-hex array still goes to Path 2/3.
+- [2026-09-27 17:39] MEASURED (row 39, before any fix): of 729 row-17 runs, 49 are not located, 146 carry a ToUnicode and pre-fill, 459 have no ToUnicode (248 bare-CFF Type1C WinAnsi, 140 pdfTeX Type1 /FontFile with /Differences, 71 TrueType WinAnsi), and 75 carry a ToUnicode yet do not pre-fill (budget 50 + census 25, Type1C whose ToUnicode codespace is `<0000> <FFFF>`).
+- [2026-09-27 17:39] FOUND + SESSION-CHOSEN (row 50): the 75 are a read-side twin of row 38's codespace rule — fixed with one `showCodeSize` helper at the four read sites (a simple font is single-byte whatever its CMap declares); after the fix 75/75 pre-fill. Row 39 then covers the 459 without ToUnicode only.
 
 ## Formal Plan
 
@@ -180,7 +182,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 46 | NEW (row 21): Publication 17's 3-column body pages leave ~8pt gutters, below the 10pt floor, so they stay one column; lowering the floor to 8 also splits GPT-3's label/content figure pages (measured) — needs a discriminator, not a smaller number | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 47 | NEW (row 27, confirmed row 30): contentStreamEditor composes nested `cm` as CTM × M instead of M × CTM (locateTextOps, locateDecorationRects) — measure how often a run's origin moves on the corpus, then fix under TDD | M | done | 3dd87d2 | src/utils/contentStreamEditor.ts, tests/** |
 | 48 | NEW (row 47): true-edit hit-tests Form XObject text through the form /Matrix only, never the page CTM at its `Do` (findTarget fallback, getAllTextOps) — measure on the corpus, then fix under TDD | M | done | d626bfd | src/utils/contentStreamEditor.ts, tests/** |
-| 49 | NEW (row 38): Path 1 (`replaceShowOpInPlace`) rewrites only the literal segments of a mixed literal+hex TJ and leaves the hex ones stale — the A2 shape on a standard font (read, not measured) | S | done | - | src/utils/contentStreamEditor.ts, tests/** |
+| 49 | NEW (row 38): Path 1 (`replaceShowOpInPlace`) rewrites only the literal segments of a mixed literal+hex TJ and leaves the hex ones stale — the A2 shape on a standard font (read, not measured) | S | done | b736a62 | src/utils/contentStreamEditor.ts, tests/** |
+| 50 | NEW (row 39 measurement): the read side (pre-fill, add-decoration, decoration resize) takes a simple font's code size from its ToUnicode codespace, so a `<0000> <FFFF>` or absent codespace decodes pairs and the editor never opens (75 corpus runs) | S | done | - | src/utils/contentStreamEditor.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked

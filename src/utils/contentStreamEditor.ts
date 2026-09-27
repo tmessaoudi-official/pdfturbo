@@ -1405,7 +1405,8 @@ export function getEditableTextAt(
   // re-encodes them. Built once per call; null when the font carries no ToUnicode.
   const cmapText = getPageFontToUnicode(doc, pageIndex, found.target.fontKey, found.xObjectName);
   const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
-  const bytesPerCode = cmapText ? detectCMapBytesPerCode(cmapText) : 2;
+  // A simple font is single-byte whatever its ToUnicode declares (limits row 50 — the read side of row 38).
+  const bytesPerCode = showCodeSize(doc, pageIndex, found.target.fontKey, found.xObjectName, cmapText);
   // For a hex op with no ToUnicode, only a standard byte==ASCII font (the Path-1
   // case) is safely decodable — gate on the SAME predicate Path-1 uses.
   const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, found.target.fontKey, found.xObjectName);
@@ -1900,7 +1901,7 @@ export async function addDecorationAt(
   // Decode the shown text so we can measure its rendered width.
   const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
   const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
-  const bytesPerCode = cmapText ? detectCMapBytesPerCode(cmapText) : 2;
+  const bytesPerCode = showCodeSize(doc, pageIndex, target.fontKey, undefined, cmapText);
   const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
   const text = decodeShowOpText(ops[target.opIndex], forward, bytesPerCode, byteSwapSafe);
   if (!text) return false;
@@ -2028,7 +2029,7 @@ export async function replaceTextAt(
     const forward = parseToUnicodeCMap(cmapText);
     // A simple font's codes are one byte whatever its ToUnicode declares (PDF 32000 §9.6.6); only a Type0 font's
     // code size comes from the CMap (limits row 38).
-    const bytesPerCode = isType0Font(doc, pageIndex, target.fontKey, found.xObjectName) ? detectCMapBytesPerCode(cmapText) : 1;
+    const bytesPerCode = showCodeSize(doc, pageIndex, target.fontKey, found.xObjectName, cmapText);
     const reverseMap = new Map<string, number>();
     for (const [code, uni] of forward) reverseMap.set(uni, code);
     const hexEncoded = encodeWithSubset(newText, reverseMap, bytesPerCode);
@@ -2254,7 +2255,7 @@ function prepareDecorationResize(
   // Decode the original text now (before any path mutates the op) to measure its width.
   const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey);
   const forward = cmapText ? parseToUnicodeCMap(cmapText) : null;
-  const bytesPerCode = cmapText ? detectCMapBytesPerCode(cmapText) : 2;
+  const bytesPerCode = showCodeSize(doc, pageIndex, target.fontKey, undefined, cmapText);
   const byteSwapSafe = !isByteSwapUnsafeFont(doc, pageIndex, target.fontKey);
   const oldText = decodeShowOpText(ops[target.opIndex], forward, bytesPerCode, byteSwapSafe);
   if (!oldText) return null;
@@ -2375,6 +2376,17 @@ function getFontResourceDict(doc: PDFDocument, pageIndex: number, xObjectName?: 
   } catch {
     return null;
   }
+}
+
+/**
+ * Bytes per show code for a font with the given ToUnicode text: a simple font is single-byte whatever its ToUnicode
+ * declares (PDF 32000 §9.6.6 — the budget and census reports declare `<0000> <FFFF>`); only a Type0 font takes its
+ * code size from the CMap. With no ToUnicode, 2 (the historical default; those callers decode only a byte==ASCII
+ * font, where the size is not consulted). Limits rows 38 and 50.
+ */
+function showCodeSize(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName: string | undefined, cmapText: string | null): 1 | 2 {
+  if (!cmapText) return 2;
+  return isType0Font(doc, pageIndex, fontKey, xObjectName) ? detectCMapBytesPerCode(cmapText) : 1;
 }
 
 /** True when the font resource is a composite (Type0) font, whose codes may be wider than one byte. */

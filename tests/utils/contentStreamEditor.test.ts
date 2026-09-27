@@ -339,6 +339,20 @@ describe('Path 2 on literal-string operands (limits row 38)', () => {
     expect(await pageContentText(await doc.save())).toContain('<2625242322> Tj');
   });
 
+  // Limits row 50: the READ side had the same code-size defect. A simple font whose ToUnicode declares a wide codespace
+  // (the budget and census reports: `<0000> <FFFF>`, 75 corpus runs) was decoded two bytes at a time, so the editor
+  // pre-filled nothing and the run could not be edited at all.
+  it.each(['wide', 'none'] as const)('a simple font with a %s codespace pre-fills one byte per code', async codespace => {
+    const doc = await load({ codespace });
+    for (const r of Object.values(LITERAL_RUNS)) expect(getEditableTextAt(doc, 0, { x: r.x, y: r.y }, 1)).toBe(r.text);
+  });
+
+  it('an underline can be added to a run of a simple font with a wide codespace', async () => {
+    const doc = await load({ codespace: 'wide' });
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await addDecorationAt(doc, 0, { x, y }, 'underline', 1)).toBe(true);
+  });
+
   it('a character the ToUnicode cannot encode still falls through to the standard-font redraw', async () => {
     const doc = await load();
     const { x, y } = LITERAL_RUNS.tj;
