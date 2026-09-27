@@ -2516,13 +2516,13 @@ starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pd
 session-written. The count's home is § "The hide-vs-remove audit"; `KNOWN_ISSUES.md` § "Arabic locale strings"
 carries a fifth copy (found stale at three on 2026-09-26) — update it with the others.
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
-remain open: C18 (per-glyph select/copy/search precision) and C19 (tashkeel/GPOS micro-positioning);
-bracket mirroring in the overlay and RTL list-marker placement were fixed by limits row 25. A reviewed string can still render
+remain open: C18 (per-glyph select/copy/search precision); bracket mirroring in the overlay, RTL list-marker
+placement and C19 (tashkeel/GPOS micro-positioning) were fixed by limits row 25. A reviewed string can still render
 imperfectly — those are separate, and none of them is a translation pass. **Nor do they need HarfBuzz
 (limits row 17, measured 2026-09-27):** fontkit — already the shaper behind pdf-lib's embed — produced HarfBuzz's
 glyphs and positions exactly on Noto Naskh (5 strings, 69 glyphs, 0.00 pt apart). The tashkeel error (up to 12.25 pt
-at 24 pt) is pdf-lib drawing fontkit's glyphs with their plain advances and dropping the GPOS offsets, so C19 is
-fixed from fontkit's own `layout().positions` (row 25, with the brackets and list markers). C18 is not a shaping
+at 24 pt) is pdf-lib drawing fontkit's glyphs with their plain advances and dropping the GPOS offsets, so C19 was
+fixed from fontkit's own `layout().positions` (row 25 — § "Tashkeel placed by GPOS in the Arabic overlay"). C18 is not a shaping
 problem: the glyphs and their positions come from the PDF, and what is missing is per-character advances inside a
 pdf.js text item. **The same row measured PDFium and did not adopt it** — 2.1 MB gzip of wasm, and on 729 corpus
 runs replaced by themselves reversed it kept font, ink, text and width on 474 (65%); on 222 runs containing spaces the
@@ -3162,7 +3162,8 @@ redrawn glyph stays chromatic, and a no-fallback control redraws black). **All t
 "reachable gaps" are now done** (Gap 1 TJ-kerning distribute, Gap 2 this, Gap 3 exponent).
 **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, 9+ columns and
 a horizontal-first XY-cut (see § "Columns: the cut, the depth and the gutter floor"), exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
-true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder; tashkeel GPOS positioning.
+true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder. (Tashkeel GPOS positioning in the
+overlay was fixed by limits row 25, C19.)
 **Decoration + graphics-state fidelity (#text-decoration, 2026-06-18):** PDF has NO underline/strike TEXT
 attribute — they're SEPARATE thin filled `re` rects whose width is decoupled from the text, so a true-edit
 that changed text LENGTH used to leave the rule frozen (longer edit → un-underlined tail; the reported bug).
@@ -3530,7 +3531,8 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   Bounds, each per producer measured: a LIGATURE glyph whose ToUnicode spans several characters extracts reordered
   because pdf.js reverses it with the chunk — LibreOffice's lam-alef (`كلام` → `كالم`, pdftotext reads it the same),
   Chrome's `الله` (→ `اهلل`) and the lam-alef in `والإصدار`; Chrome's `2026.` is ONE item drawn `.` first, returned
-  as drawn, and comes out `.2026`; tashkeel lines come apart at the marks (C19); a producer that draws RTL glyphs in
+  as drawn, and comes out `.2026`; tashkeel lines come apart at the marks (a READ-side bound — C19 fixed the overlay's
+  DRAWING of marks, not how pdf.js splits a source PDF's items at them); a producer that draws RTL glyphs in
   logical order is read reversed (pdf.js's own copy is wrong the same way). **UNCERTIFIED-BY-EXECUTION: the
   tagged (struct-tree) path** — it now takes `letterDirection` but no tagged Arabic fixture exists, and it does not
   run `settleAmbiguousLines`. Guards: `tests/browser/docx-mixed-bidi.browser.test.ts` (15: the typed text of seven
@@ -3618,8 +3620,8 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   as ONE logical-order span) and breaks search's char offsets → copy/search MUST reorder at ITEM granularity, never
   char. (3) boundary whitespace must stay put when re-reversing an LTR run (else an inter-word space migrates →
   `مرحباWorld `). Every engine call falls back to the raw string on a bidi-js throw (never regress below prior
-  behavior). **Ceiling:** tashkeel GPOS, shaped-ligature reorder (overlay bracket mirroring: fixed by limits
-  row 25 — § "RTL brackets and list markers in the Arabic overlay"). Guards:
+  behavior). **Ceiling:** shaped-ligature reorder (overlay bracket mirroring and tashkeel GPOS: fixed by limits
+  row 25 — § "RTL brackets and list markers in the Arabic overlay" and § "Tashkeel placed by GPOS"). Guards:
   `tests/utils/bidi.test.ts` (17) + the per-surface guards (`rtlClipboard`/`flowDocArabic`/`textSearchHandler`) +
   the extended `tests/browser/arabic-overlay.browser.test.ts`.
 - **RTL-aware text toolbar (Feature 3 Slice 2, `ebae519`)**: `TextElement.direction?: 'auto'|'rtl'|'ltr'`
@@ -3840,6 +3842,30 @@ parenthesis, double-bracket, `[PDF]` and guillemet cases + 2 unit; coverage spli
 and `[PDF]`, guillemet green; Helvetica piece not reversed → exactly the double bracket; segmentation gate off → the
 four pure-Arabic cases, `[PDF]` (mixed path) green; measure gate unlike the draw gate → exactly the width case; gutter
 never RTL → exactly its jsdom case.
+
+### Tashkeel placed by GPOS in the Arabic overlay — limits row 25, C19 (2026-09-27)
+
+pdf-lib's custom-font embedder keeps only each glyph's advance width (`/W`), so fontkit's GPOS offsets were
+dropped: a vowel mark (advance 0) drew at the pen with no offset — off its base letter and on the baseline. Measured
+against Chrome shaping the same string with the same TTF (HarfBuzz; row 17 measured fontkit identical to it): ink
+overlap 0.737 / 0.820 / 0.823 on three vowelled strings, 1.000 on an unvowelled one. `shapeOf` re-runs
+`font.layout(text, fontFeatures)` — the call pdf-lib's `encodeText` itself makes, so glyphs line up 1:1 with the CIDs
+(checked by count; a mismatch falls back to the old output) — and `shapedShowOps` emits each moved glyph with a TJ
+adjustment `-Δ·1000/upem` and each vertical offset as a text rise (`Ts`, in text-space units, NOT scaled by the font
+size). After: 0.964 / 1.000 / 0.974. The run's width is Σ xAdvance when a glyph moves — equal to Σ advance width on
+every string measured, so that half is pinned against Chrome's `measureText` but its sabotage is equivalent.
+
+**A run in which nothing moves is emitted exactly as before**: 24 unvowelled strings × {upright, rotated 30°} compared
+byte-identical, and only the two vowelled strings of the baseline changed. **pdf.js extracts the same code points
+before and after** on four strings, the mixed-line one included — the TJ/Ts split does not fragment items further.
+The embedder is a pdf-lib INTERNAL (`font.embedder.font`); absent, the old unpositioned output is kept.
+
+Guards: `tests/browser/arabic-tashkeel.browser.test.ts` (6: three vowelled strings against Chrome's ink, all carrying
+marks with a NON-ZERO yOffset so a sideways-only fix still fails; an unvowelled control; the bidi path emits TJ and
+Ts; the measured width equals Chrome's), plus a tashkeel config in `text-extent-ink.browser.test.ts` (footprint
+containment — green before and after). Sabotage, predicted first, restored and checked by hash: TJ adjustment dropped
+→ the 3 vowelled cases; `Ts` dropped → those 3 + the bidi case; bidi path not passed the positions → exactly the bidi
+case; width from advance widths → green (equivalent, above); positioning off entirely (the pre-fix output) → 4.
 ### Approval caption + guided Signers panel (F-D D1/D2)
 
 A drawn `SignatureElement` carries an OPTIONAL

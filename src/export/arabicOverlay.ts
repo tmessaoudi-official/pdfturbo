@@ -30,10 +30,12 @@
  * Helvetica). Brackets and guillemets at an RTL level are mirrored first (UAX#9 L4 —
  * fontkit draws a glyph as given), and a character Noto has no glyph for — `( ) [ ] •`,
  * `-`, `%` — is drawn in Helvetica instead of as a `.notdef` box (limits row 25, D17).
- * Tashkeel/diacritic GPOS positioning is still dropped (C19). A rotated line (element or
+ * Every glyph sits where fontkit's GPOS positions put it (C19 — a vowel mark's offset is a TJ
+ * adjustment plus a text rise; a line with nothing to move is emitted as before). A rotated line (element or
  * page rotation) is drawn along `rotate`.
  */
 import {
+  PDFArray,
   PDFHexString,
   PDFNumber,
   PDFOperator,
@@ -53,7 +55,9 @@ import {
   setStrokingRgbColor,
   setTextMatrix,
   setTextRenderingMode,
+  setTextRise,
   showText,
+  type PDFContext,
   type PDFDocument,
   type PDFFont,
   type PDFName,
@@ -169,6 +173,7 @@ export function buildArabicRunOps(
   color: { r: number; g: number; b: number },
   style: ArabicRunStyle = {},
   rotate = 0,
+  shaped?: ShapedRun,
 ): PDFOperator[] {
   const ops: PDFOperator[] = [
     pushGraphicsState(),
@@ -192,7 +197,7 @@ export function buildArabicRunOps(
   }
   ops.push(
     setTextMatrix(...rotatedTm(rotate), x, y),
-    showText(PDFHexString.of(hex)),
+    ...(shaped ? shapedShowOps(hex, shaped, size) : [showText(PDFHexString.of(hex))]),
     endText(),
     popGraphicsState(),
   );
@@ -227,6 +232,83 @@ export function effectiveArabicWidth(baseWidth: number, glyphCount: number, char
   return base * (horizontalScale / 100);
 }
 
+/** One shaped glyph as fontkit lays it out (font units), in the visual order encodeText emits its CIDs. */
+export interface ShapedGlyph { advanceWidth: number; xAdvance: number; xOffset: number; yOffset: number }
+
+/** fontkit's positions for a run in which at least one glyph moves; see {@link shapedShowOps}. */
+export interface ShapedRun { glyphs: readonly ShapedGlyph[]; upem: number; context: PDFContext }
+
+const movedGlyph = (g: ShapedGlyph) => g.xOffset !== 0 || g.yOffset !== 0 || g.xAdvance !== g.advanceWidth;
+
+/**
+ * The show operators for a shaped run whose CIDs are `hex` (4 hex digits per glyph), placing every glyph
+ * where fontkit's GPOS positions put it (limits row 25, C19). pdf-lib's embedder keeps only each glyph's
+ * advance width — a PDF advances a glyph by its /W entry — so a glyph fontkit moves (a vowel mark's
+ * xOffset/yOffset, or an xAdvance unlike its advance width) needs a TJ adjustment before it,
+ * `-Δ·1000/upem` (the renderer scales it by Tfs·Th like the glyphs), and a vertical offset needs a text
+ * rise (`Ts` is in text-space units, NOT scaled by the font size: `yOffset·size/upem`). Consecutive glyphs
+ * with nothing between them share one string. The rise is scoped by the caller's `BT … ET` inside `q … Q`.
+ */
+export function shapedShowOps(hex: string, run: ShapedRun, size: number): PDFOperator[] {
+  const { glyphs, upem } = run;
+  if (glyphs.length * 4 !== hex.length || !glyphs.some(movedGlyph)) return [showText(PDFHexString.of(hex))];
+  const ops: PDFOperator[] = [];
+  let pen = 0; // where the PDF pen is, font units from the run start
+  let at = 0;  // where fontkit's pen is
+  let rise = 0;
+  let arr: PDFArray | null = null;
+  let str = '';
+  const endString = () => { if (str && arr) arr.push(PDFHexString.of(str)); str = ''; };
+  const flush = () => {
+    endString();
+    if (arr) ops.push(PDFOperator.of(PDFOperatorNames.ShowTextAdjusted, [arr]));
+    arr = null;
+  };
+  glyphs.forEach((g, i) => {
+    if (g.yOffset !== rise) {
+      flush();
+      rise = g.yOffset;
+      ops.push(setTextRise((rise * size) / upem));
+    }
+    arr ??= PDFArray.withContext(run.context);
+    const target = at + g.xOffset;
+    if (target !== pen) {
+      endString();
+      arr.push(PDFNumber.of((-(target - pen) * 1000) / upem));
+    }
+    str += hex.slice(i * 4, i * 4 + 4);
+    pen = target + g.advanceWidth;
+    at += g.xAdvance;
+  });
+  flush();
+  if (rise !== 0) ops.push(setTextRise(0));
+  return ops;
+}
+
+interface FontkitLayout {
+  glyphs: Array<{ advanceWidth: number }>;
+  positions: Array<{ xAdvance: number; xOffset: number; yOffset: number }>;
+}
+interface FontkitLike { unitsPerEm: number; layout(text: string, features?: unknown): FontkitLayout }
+
+/**
+ * fontkit's positions for `text`, glyph for glyph with the `glyphCount` CIDs encodeText emitted (pdf-lib's
+ * encodeText is `font.layout(text, fontFeatures)` mapped to subset CIDs, so the order is the same) — or
+ * undefined when no glyph moves, which keeps that run's emission byte-identical to before, or when the
+ * embedder is not the fontkit one this reads (a pdf-lib internal: absent → the old unpositioned output).
+ */
+function shapeOf(font: PDFFont, text: string, glyphCount: number): ShapedRun | undefined {
+  const emb = (font as unknown as { embedder?: { font?: FontkitLike; fontFeatures?: unknown } }).embedder;
+  const fk = emb?.font;
+  if (!fk || typeof fk.layout !== 'function' || !fk.unitsPerEm) return undefined;
+  const { glyphs, positions } = fk.layout(text, emb?.fontFeatures);
+  if (glyphs.length !== glyphCount || positions.length !== glyphCount) return undefined;
+  const shaped = glyphs.map((g, i): ShapedGlyph => ({
+    advanceWidth: g.advanceWidth, xAdvance: positions[i].xAdvance, xOffset: positions[i].xOffset, yOffset: positions[i].yOffset,
+  }));
+  return shaped.some(movedGlyph) ? { glyphs: shaped, upem: fk.unitsPerEm, context: font.doc.context } : undefined;
+}
+
 const _coverage = new WeakMap<PDFFont, Set<number>>();
 
 /** The code points the embedded Arabic font has a glyph for (read once per font). */
@@ -248,9 +330,18 @@ function needsSegmentation(arFont: PDFFont, text: string): boolean {
   return false;
 }
 
+/**
+ * A run drawn in Noto: its CIDs, fontkit's positions when a glyph moves, and the width it is drawn at —
+ * the shaped advance (Σ xAdvance) when positioned, else pdf-lib's own width, as before. The one formula
+ * drawing and measuring both use, pure-Arabic line or bidi piece.
+ */
 function notoSeg(arFont: PDFFont, text: string, size: number, cs: number, hs: number): Seg {
   const hex = arFont.encodeText(text).toString().replace(/^<|>$/g, '');
-  return { text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(text, size), hex.length / 4, cs, hs) };
+  const shaped = shapeOf(arFont, text, hex.length / 4);
+  const base = shaped
+    ? (shaped.glyphs.reduce((sum, g) => sum + g.xAdvance, 0) * size) / shaped.upem
+    : arFont.widthOfTextAtSize(text, size);
+  return { text, useLatin: false, hex, width: effectiveArabicWidth(base, hex.length / 4, cs, hs), shaped };
 }
 
 /** Helvetica can draw `text` (WinAnsi), measured the way the bake draws it; null when it cannot. */
@@ -262,7 +353,7 @@ function latinSeg(latFont: PDFFont, text: string, size: number): Seg | null {
   }
 }
 
-interface Seg { text: string; useLatin: boolean; hex: string; width: number }
+interface Seg { text: string; useLatin: boolean; hex: string; width: number; shaped?: ShapedRun }
 
 /**
  * Split a line into segments in visual L→R order and measure each one exactly as {@link drawBidiLine}
@@ -308,13 +399,7 @@ export async function measureArabicLine(
     const latFont = await getLatinFont(pdfDoc);
     return measureBidiRuns(arFont, latFont, opts.text, opts.size, cs, hs).reduce((s, r) => s + r.width, 0);
   }
-  const hex = arFont.encodeText(opts.text).toString().replace(/^<|>$/g, '');
-  return pureArabicWidth(arFont, opts.text, hex, opts.size, cs, hs);
-}
-
-/** Width of a pure-Arabic line whose CIDs are `hex` — the one formula both drawing and measuring use. */
-function pureArabicWidth(font: PDFFont, text: string, hex: string, size: number, cs: number, hs: number): number {
-  return effectiveArabicWidth(font.widthOfTextAtSize(text, size), hex.length / 4, cs, hs);
+  return notoSeg(arFont, opts.text, opts.size, cs, hs).width;
 }
 
 /**
@@ -338,18 +423,17 @@ export async function drawArabicLine(
   // encodeText shapes (fontkit GSUB) + registers subset glyphs, returning 2-byte
   // CIDs ALREADY in visual right-to-left order — emit them straight to Tj. Do NOT
   // reverse: encodeText is not logical-order here, so reversing mirrors the line.
-  const cidHex = font.encodeText(opts.text).toString().replace(/^<|>$/g, '');
-  if (!cidHex) return;
+  const seg = notoSeg(font, opts.text, opts.size, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
+  if (!seg.hex) return;
 
   const style: ArabicRunStyle = {
     charSpacing: opts.charSpacing, horizontalScale: opts.horizontalScale, strokeWidth: opts.strokeWidth,
   };
-  const textWidth = pureArabicWidth(font, opts.text, cidHex, opts.size, opts.charSpacing ?? 0, opts.horizontalScale ?? 100);
   // Right-align within the element box (RTL convention); never overflow left.
-  const start = runStart(opts, textWidth);
+  const start = runStart(opts, seg.width);
 
   const fontKey = page.node.newFontDictionary(font.name, font.ref);
-  page.pushOperators(...buildArabicRunOps(fontKey, cidHex, start.x, start.y, opts.size, opts.color, style, opts.rotate ?? 0));
+  page.pushOperators(...buildArabicRunOps(fontKey, seg.hex, start.x, start.y, opts.size, opts.color, style, opts.rotate ?? 0, seg.shaped));
 }
 
 /**
@@ -363,7 +447,7 @@ export async function drawArabicLine(
  * Arabic font so the whole line never throws: pdf-lib base-14 fonts reject non-WinAnsi
  * codepoints (WinAnsiEncoding throws) — an inherent base-14 limit, not a maskable
  * defect. Brackets are mirrored and uncovered characters drawn in Helvetica by
- * {@link measureBidiRuns}; tashkeel GPOS positioning remains a documented partial (C19).
+ * {@link measureBidiRuns}, and every Noto piece is positioned by fontkit's GPOS (C19).
  */
 async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLineOpts): Promise<void> {
   const arFont = await getArabicFont(pdfDoc);
@@ -388,7 +472,7 @@ async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLine
         ...(opts.rotate === undefined ? {} : { rotate: degrees(rot) }),
       });
     } else if (r.hex) {
-      page.pushOperators(...buildArabicRunOps(arKey, r.hex, cx, cy, opts.size, opts.color, style, rot));
+      page.pushOperators(...buildArabicRunOps(arKey, r.hex, cx, cy, opts.size, opts.color, style, rot, r.shaped));
     }
     // Advance along the line's own direction (identity when unrotated: y stays put).
     if (opts.rotate === undefined) cx += r.width;
