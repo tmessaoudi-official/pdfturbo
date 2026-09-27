@@ -133,6 +133,22 @@ describe('locateTextOps CTM tracking', () => {
     expect(info.origin.x).toBeCloseTo(100);
     expect(info.origin.y).toBeCloseTo(200);
   });
+
+  // Limits row 47. A later `cm` applies to the point FIRST (PDF: CTM' = M × CTM), so a translation followed by
+  // a scale scales the text position but not the translation. Composing CTM × M instead scaled the translation
+  // too: (10,10) came out at (220,420). Measured on the corpus: every run of Publication 17 moved.
+  it('a later cm applies before an earlier one (translate, then scale)', () => {
+    const [info] = locateTextOps(ops('1 0 0 1 100 200 cm 2 0 0 2 0 0 cm BT /F1 12 Tf 10 10 Td (x) Tj ET'));
+    expect(info.origin.x).toBeCloseTo(120);
+    expect(info.origin.y).toBeCloseTo(220);
+  });
+
+  // For a translate/scale pair the linear parts commute, so only the origin differs. A rotation inside an uneven
+  // scale changes the linear part too — the matrix the A1 redraw emits as its Tm. R × S = [0 1 -2 0]; S × R = [0 2 -1 0].
+  it('a rotation inside an uneven scale gives the text→user matrix R × S', () => {
+    const [info] = locateTextOps(ops('2 0 0 1 0 0 cm 0 1 -1 0 0 0 cm BT /F1 12 Tf (x) Tj ET'));
+    expect(info.textMatrix?.map(v => Math.round(v * 1e6) / 1e6)).toEqual([0, 1, -2, 0]);
+  });
 });
 
 // ── Phase C: getPageRotation ───────────────────────────────────────────────────
@@ -1663,6 +1679,15 @@ describe('locateDecorationRects', () => {
     expect(rules[0].x).toBeCloseTo(25); // 10*2 + 5
     expect(rules[0].width).toBeCloseTo(200); // 100*2
     expect(rules[0].ctmScaleX).toBeCloseTo(2);
+  });
+
+  // Limits row 47: the rule's position follows the same composition order as text (a later cm applies first).
+  it('a later cm applies before an earlier one (translate, then scale)', () => {
+    const rules = locateDecorationRects(ops('1 0 0 1 100 200 cm 2 0 0 2 0 0 cm 10 10 50 1 re f'));
+    expect(rules).toHaveLength(1);
+    expect(rules[0].x).toBeCloseTo(120);
+    expect(rules[0].y).toBeCloseTo(220);
+    expect(rules[0].width).toBeCloseTo(100);
   });
 
   it('REFUSES (omits) a sheared/rotated-CTM rect', () => {

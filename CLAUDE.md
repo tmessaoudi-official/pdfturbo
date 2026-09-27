@@ -3052,6 +3052,35 @@ locked export failed where the unlocked one succeeded (the other `/Annots` reade
 is hoisted too, since it still holds strings. Pinned by the malformed-`/Annots` pair; dropping that branch reds
 exactly the locked case.
 
+### True-edit composed nested `cm` backwards — limits row 47 (2026-09-27)
+
+PDF's `cm` sets CTM' = M × CTM: the NEW matrix applies to a point first. `multiplyMatrix(A, B)` applies A first,
+and `locateTextOps` and `locateDecorationRects` passed `(ctm, m)`, so a translation followed by a scale scaled the
+translation too — `1 0 0 1 100 200 cm 2 0 0 2 0 0 cm` put a run at Td (10,10) at (220,420) instead of (120,220).
+Its own doc comment stated the wrong order, which is how two sites agreed with it. Nothing caught it because every
+test composed a single `cm`, or translations only, whose orders agree.
+
+**Measured before fixing, against pdf.js's own item origins** (throwaway probe over the 15-file corpus): all 50,243
+runs of Publication 17 moved, on all 142 pages; the correct order landed on a pdf.js item origin 47,174 times, the
+old one 482. ResNet: 476 runs on 4 pages. BERT: 1. The other 11 files: none (the census report was not measured —
+the probe ran out of memory). So on such a file a click on text either missed (the edit fell back to an overlay)
+or — the 482 — found a DIFFERENT run whose wrongly placed origin sat under the pointer, and **edited text the user
+did not click**: undoable, but reported as success. Paths 1/2 wrote the right bytes wherever they landed; Path 3
+also drew its redraw at the wrong origin. For a translate/scale pair only the origin differs (the linear parts
+commute), so `tilted`, the A1 redraw matrix and a decoration's `scaleX` were unchanged there; a rotation inside an
+uneven scale changes the matrix too. `translateMatrix` (Td/T*) and `trm = textMatrix × ctm` were already in PDF
+order.
+
+**Remaining, row 48:** text inside a Form XObject is mapped to the page through the form's `/Matrix` alone — the
+page CTM at the `Do` is never applied — so a form placed with `q … cm /Fm Do Q` still hit-tests at its unplaced
+position. Now that page text is placed right, that gap is the more visible one.
+
+Guards: three cases in `tests/utils/contentStreamEditor.test.ts` (text and rule origin under translate-then-scale,
+and the R × S matrix) and `tests/browser/trueedit-nested-cm.browser.test.ts` (5, real pdf.js origins; the fixture
+puts the old order's origin of run A exactly on run B, so the old code edited A on a click at B). Sabotage,
+predicted first, each restored with `cmp`: the text site reverted → 2 unit + 4 browser; the rule site reverted →
+exactly its unit case. The doc comment has no guard.
+
 ### True text editing engine
 
 `src/utils/contentStreamEditor.ts` can genuinely delete/
@@ -4387,10 +4416,10 @@ below a 0.9 factor, and only when the result is smaller. Every rule errs towards
 shrunk below where it shows is a visible loss while one left big only costs bytes:
 
 - **Measured by a walk, never guessed**: page content and every form it draws (`q`/`Q`/`cm`/`Do`, the form
-  `/Matrix`, `/UserUnit`). `cm` composes as `multiplyMatrix(m, ctm)` — inner first. **`contentStreamEditor`
-  composes it the other way at two sites** (FOUND, not ruled — see the plan): the two orders agree for any single
-  or commuting `cm`, which is every test there, and disagree for a rotation inside an uneven scale, which is the
-  exact fixture pinning this walk (the wrong order shrinks a 75-DPI image as if it were 300).
+  `/Matrix`, `/UserUnit`). `cm` composes as `multiplyMatrix(m, ctm)` — inner first. `contentStreamEditor`
+  composed it the other way at two sites until limits row 47 fixed it (see § "True-edit composed nested `cm`
+  backwards"); the two orders agree for any single or commuting `cm` and disagree for a rotation inside an uneven
+  scale, which is the exact fixture pinning this walk (the wrong order shrinks a 75-DPI image as if it were 300).
 - **Drawn only where measured**: every reference to the image must lead up, through resource and XObject
   dictionaries and forms the walk used, to a page leaf or page-tree node (`usedOnlyWhereMeasured` over a parent
   map of the whole object graph). An annotation appearance, a pattern, `/Alternates`, another image's `/SMask`, or

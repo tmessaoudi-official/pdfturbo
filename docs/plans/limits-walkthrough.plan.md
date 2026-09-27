@@ -112,6 +112,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 11:43] SESSION-CHOSEN (row 30): `toolbar.compressTitle` re-worded in all three locales to name the three compress modes; `toast.ocrRotatedUnsupported` re-worded too — it said rotated pages were unsupported, while only a `/Rotate` that is not a multiple of 90 is refused. Both Arabic values are session-written: pending count 12 → 14.
 - [2026-09-27 11:43] SESSION-CHOSEN (row 30): D6, D11 and D15 needed no further doc change — rows 18, 22 and 24 had already corrected C6/C7, C11's link half and C17 (including the "CA-trusted" wording); row 30 corrected C1 (D1), C3/C4 (D4), the searchable-OCR rotation lines (C11) and collapsed the four WS8-superseded bullets (B7).
 - [2026-09-27 11:43] FOUND (row 30, confirmed by reading): `multiplyMatrix(A, B)` applies A then B and PDF's `cm` sets CTM' = M × CTM, so `multiplyMatrix(ctm, m_cm)` is reversed — its doc comment states the wrong order. It differs for any non-commuting pair, including a translation followed by a scale (a common producer pattern), not only a rotation inside an uneven scale as recorded at 09:47. Queued as row 47, measure first; C4's KNOWN_ISSUES cell names the bound.
+- [2026-09-27 12:38] MEASURED (row 47): a throwaway probe walked every page's content stream in both `cm` orders and checked each show op's origin against the start of a pdf.js text item (1 pt). Publication 17: 50,243 of 50,243 runs move on all 142 pages; the correct order lands on a pdf.js item origin 47,174 times, the current order 482. ResNet: 476 of 2,785 runs on 4 pages (468 vs 2). BERT: 1 run. The other 11 files: none. The census report was not measured (the probe ran out of memory — a property of the probe, which held pdf.js and pdf-lib for the whole file). So true-edit's hit test misses nearly every run of Publication 17, and a click can pick a DIFFERENT run whose wrongly placed origin sits under it — an edit to text the user did not click, undoable but unreported. Raw figures: var/claude/row47/*.json (gitignored).
+- [2026-09-27 12:38] FOUND (row 47, not fixed there): text inside a Form XObject is mapped to the page by the form's /Matrix alone (findTarget's XObject fallback, getAllTextOps' recursion); the page CTM in effect at the `Do` is never applied, so a form placed with `q … cm /Fm Do Q` hit-tests at its unplaced position. Queued as row 48; one class per commit.
 
 ## Formal Plan
 
@@ -151,7 +153,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 27 | D20 JPEG downsampling compress mode | M | done | bc64357 | src/export/compress.ts, src/export/imageDownsample.ts, src/ui/compressPanel.ts, locales/** |
 | 28 | D22 Bates hardening | S | done | 240b91b | src/ui/batesPanel.ts, src/ui/documentLoader.ts, src/export/batesStamp.ts, src/export/exportPipeline.ts, tests/** |
 | 29 | Acrobat/Reader checklist pack (C2, C10, D15, D18) | S | todo | - | var/claude/** |
-| 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | done | - | KNOWN_ISSUES.md, CLAUDE.md, FEATURES.md, locales/*.json, src/core/pdfTurboApp.ts |
+| 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | done | 904e5ac | KNOWN_ISSUES.md, CLAUDE.md, FEATURES.md, locales/*.json, src/core/pdfTurboApp.ts |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | done | a16768e | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
@@ -167,7 +169,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 44 | NEW (row 21): a title, abstract or figure spanning both columns blocks the vertical cut, so the page stays one column and interleaves (BERT p1, 3, 5, 6 — measured); needs a horizontal cut first (XY-cut proper) | M | todo | - | src/utils/flowDoc.ts, tests/** |
 | 45 | NEW (row 21): ResNet (2-column) and arxiv-multicol-japanese never split at any gutter floor measured (6–12pt) — cause not traced | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 46 | NEW (row 21): Publication 17's 3-column body pages leave ~8pt gutters, below the 10pt floor, so they stay one column; lowering the floor to 8 also splits GPT-3's label/content figure pages (measured) — needs a discriminator, not a smaller number | S | todo | - | src/utils/flowDoc.ts, tests/** |
-| 47 | NEW (row 27, confirmed row 30): contentStreamEditor composes nested `cm` as CTM × M instead of M × CTM (locateTextOps, locateDecorationRects) — measure how often a run's origin moves on the corpus, then fix under TDD | M | todo | - | src/utils/contentStreamEditor.ts, tests/** |
+| 47 | NEW (row 27, confirmed row 30): contentStreamEditor composes nested `cm` as CTM × M instead of M × CTM (locateTextOps, locateDecorationRects) — measure how often a run's origin moves on the corpus, then fix under TDD | M | done | - | src/utils/contentStreamEditor.ts, tests/** |
+| 48 | NEW (row 47): true-edit hit-tests Form XObject text through the form /Matrix only, never the page CTM at its `Do` (findTarget fallback, getAllTextOps) — measure on the corpus, then fix under TDD | M | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked

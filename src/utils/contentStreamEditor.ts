@@ -351,8 +351,10 @@ function translateMatrix(tx: number, ty: number, m: Matrix): Matrix {
 }
 
 /**
- * Concatenate two affine matrices (PDF convention: A × B).
- * PDF `cm` concatenates as CTM_new = CTM_old × M_cm, so pass (CTM_old, M_cm).
+ * Concatenate two affine matrices (PDF row-vector convention: A × B applies A to a point FIRST, then B).
+ * PDF `cm` sets CTM_new = M_cm × CTM_old — the new matrix applies first — so pass (M_cm, CTM_old). Passing
+ * them the other way round scaled an earlier translation by a later scale (limits row 47: every run of
+ * Publication 17 was placed where pdf.js does not draw it). Text space → user space is (Tm, CTM).
  */
 export function multiplyMatrix(A: Matrix, B: Matrix): Matrix {
   return [
@@ -423,7 +425,7 @@ export function locateTextOps(ops: CsOp[]): TextOpInfo[] {
           num(op.operands[2]), num(op.operands[3]),
           num(op.operands[4]), num(op.operands[5]),
         ];
-        ctm = multiplyMatrix(ctm, m_cm);
+        ctm = multiplyMatrix(m_cm, ctm);
         break;
       }
       case 'BT':
@@ -647,10 +649,10 @@ export function locateDecorationRects(ops: CsOp[]): DecorationRule[] {
         break;
       }
       case 'cm':
-        ctm = multiplyMatrix(ctm, [
+        ctm = multiplyMatrix([
           num(op.operands[0]), num(op.operands[1]), num(op.operands[2]),
           num(op.operands[3]), num(op.operands[4]), num(op.operands[5]),
-        ]);
+        ], ctm);
         break;
       case 'w':
         lineWidthLocal = num(op.operands[0]);
