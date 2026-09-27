@@ -2160,10 +2160,15 @@ ref through `getPageIndex` or a bare 0-based index; the view top from `/XYZ`, `/
 built — links point forward — and after the header/footer hoist, `resolveLinkAnchors` places a bookmark on the
 paragraph the view lands on: the nearest one starting at or below the top (1pt slack), else the lowest paragraph
 (the one the top falls in), and the page's first paragraph when the destination names no height. A target whose
-page is not in the export, or a reference to no object, leaves the text plain. Word gets `InternalHyperlink` to a
+page is not in the export, or a reference to no object, leaves the text plain. **A malformed destination is a
+malformed link, never a failed export** — and both lookups can REJECT, measured in pdf.js 6.3.289, so both are
+caught: `getPageIndex` on a reference to a missing or non-page object, and `getDestination` whenever the
+`/Names /Dests` tree itself is corrupt (dangling, not a dictionary, or a `/Kids` entry to no object). An unknown name
+merely resolves `null`, and the catch on `getDestination` was nearly deleted on the strength of that one probe;
+`_extractFlowDoc` awaits the resolver with nothing around it, so an uncaught rejection fails the whole export. Word gets `InternalHyperlink` to a
 `Bookmark` around the target paragraph's runs; Markdown gets `[text](#name)` and `<a id="name"></a>` after any
-heading/list marker; text gets nothing. Names are generated (`_pdfturbo_link_N` — the leading `_` makes them hidden
-bookmarks in Word, like `_Toc`), never read from the PDF.
+heading/list marker; text gets nothing. Names are generated (`_pdfturbo_link_N`), never read from the PDF; the leading `_` should make them
+hidden bookmarks in Word, as `_Toc` ones are [Unverified: no Word on this machine].
 
 **The bigger half was item granularity, and it was already costing external links.** pdf.js MERGES abutting text
 runs into one item — three separate `drawText` calls came back as one `See Methods for the setup.` — and a word was
@@ -2186,18 +2191,21 @@ drops internal AND external links (pre-existing for URLs); lattice/borderless ta
 is not cut (its characters do not run left to right); two columns' paragraphs are chosen by height alone, so a link
 into the right column of a two-column page can land on the left column's paragraph at that height; 91 corpus links
 land on no text (not traced per link). A bookmark on a paragraph the running-header hoist removes would vanish —
-resolution runs after the hoist for that reason, an ordering pinned by reading, not by a test.
+resolution runs after the hoist for that reason, an ordering pinned by reading, not by a test. Cost, measured in the
+browser harness at load ~2: Publication 17's 2,685 destinations (2,285 distinct) resolve, with their target pages'
+crop origins, in 138 ms — sequential awaits and no memo, which is why there is none.
 
-Guards: `tests/utils/flowDocLinkAnchors.test.ts` (24: placement rules, a missing target, sharing, the splitter and its
+Guards: `tests/utils/flowDocLinkAnchors.test.ts` (25: placement rules, a missing target, sharing, the splitter and its
 snapping, URL links through `reconstructPage`, no cut on RTL, a redacted item dropped whole, the three writers,
-`resolveGoToDest` on every destination form) and `tests/browser/docx-internal-links.browser.test.ts` (3, real pdf.js
+`resolveGoToDest` on every destination form, and a name lookup that rejects) and `tests/browser/docx-internal-links.browser.test.ts` (3, real pdf.js
 through the real `_extractFlowDoc`: an explicit `/XYZ` into a page with a CropBox origin, a named destination, a
 dangling reference, and a target page left out of the export). Sabotage, predicted first and each restored with
 `cmp`: GoTo links never pushed → the 3 browser cases; the crop origin not subtracted → the 2 cases that check
 `Methods` (it lands on the paragraph above); no split → 3 splitter cases + the 3 browser cases; no snapping → the
 snapping case + the browser Markdown case (`[Methods ](#…)`); the view top ignored → 3 placement cases + 2 browser;
 no `Bookmark` in DOCX → the writer case + the browser Word case; `linkParts` ignored → the URL case + the 3 browser
-cases; no lowest-paragraph fallback → exactly that case.
+cases; no lowest-paragraph fallback → exactly that case; the `getDestination` catch removed → exactly the rejecting-lookup case; the `getPageIndex` catch removed →
+exactly the unknown/dangling/out-of-range case.
 
 ### `/pdf-qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 

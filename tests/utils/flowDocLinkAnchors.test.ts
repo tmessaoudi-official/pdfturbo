@@ -198,4 +198,9 @@ describe('resolveGoToDest — what pdf.js reports as a destination', () => {
     expect(await resolveGoToDest(doc, [7, { name: 'Fit' }])).toBeNull();
     expect(await resolveGoToDest(doc, [])).toBeNull();
   });
+  it('a name lookup that REJECTS (a corrupt /Names /Dests tree) drops the link instead of failing the export', async () => {
+    // Measured in pdf.js 6.3.289: a dangling, non-dictionary or bad-/Kids /Dests tree rejects getDestination.
+    const corrupt: DestDoc = { ...doc, getDestination: () => Promise.reject(new Error("Cannot read properties of null (reading 'has')")) };
+    expect(await resolveGoToDest(corrupt, 'sec2')).toBeNull();
+  });
 });
