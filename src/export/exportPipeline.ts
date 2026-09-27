@@ -372,7 +372,6 @@ export async function drawBatesOnPage(
   const text = batesStampText(bates, pageNumber, pageCount);
   if (!text) return;
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const textWidth = font.widthOfTextAtSize(text, bates.fontSize);
   const MARGIN = 24;
   const rot = ((totalRot % 360) + 360) % 360;
 
@@ -384,7 +383,16 @@ export async function drawBatesOnPage(
   // so this is byte-identical to the pre-fix path (with or without a crop).
   const visW = (rot === 90 || rot === 270) ? H_orig : W_orig;
   const visH = (rot === 90 || rot === 270) ? W_orig : H_orig;
-  const { x: vx, y: vyUp } = batesPosition(bates.position, visW, visH, textWidth, bates.fontSize, MARGIN);
+  // A stamp wider than the visible page between its side margins is drawn smaller so it stays on the page
+  // (limits row 28); a stamp that fits keeps the chosen size, so its draw is unchanged.
+  let fontSize = bates.fontSize;
+  let textWidth = font.widthOfTextAtSize(text, fontSize);
+  const room = visW - 2 * MARGIN;
+  if (room > 0 && textWidth > room) {
+    fontSize = fontSize * room / textWidth;
+    textWidth = font.widthOfTextAtSize(text, fontSize);
+  }
+  const { x: vx, y: vyUp } = batesPosition(bates.position, visW, visH, textWidth, fontSize, MARGIN);
   // batesPosition returns a y-UP baseline anchor in the visual box; convert to
   // display (y-down) for transformPoint, which maps display→content (y-up).
   const content = transformPoint(vx, visH - vyUp, W_orig, H_orig, rot);
@@ -392,7 +400,7 @@ export async function drawBatesOnPage(
   page.drawText(text, {
     x: cropOriginX + content.x,
     y: cropOriginY + content.y,
-    size: bates.fontSize,
+    size: fontSize,
     font,
     color: rgb(col.r, col.g, col.b),
   });

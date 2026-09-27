@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BatesPanel, type IBatesContext } from '../../src/ui/batesPanel';
 import type { AppDOMRefs } from '../../src/ui/uiController';
-import type { BatesSettings } from '../../src/export/batesStamp';
+import { BATES_MAX_START, type BatesSettings } from '../../src/export/batesStamp';
 
 vi.mock('../../src/utils/focusTrap', () => ({ trapFocus: vi.fn().mockReturnValue(vi.fn()) }));
 
@@ -152,6 +152,15 @@ describe('BatesPanel.apply', () => {
     expect(arg.startNumber).toBe(1);
     expect(arg.digits).toBe(1);
     expect(arg.fontSize).toBe(6);
+  });
+
+  it('caps an oversized start number at BATES_MAX_START (limits row 28)', () => {
+    const ctx = makeCtx();
+    const panel = new BatesPanel(ctx);
+    panel.open();
+    ctx.ui.batesStart.value = '99999999999999999999';
+    panel.apply();
+    expect(ctx.bates.startNumber).toBe(BATES_MAX_START);
   });
 
   it('autosaves and closes the modal after applying', () => {

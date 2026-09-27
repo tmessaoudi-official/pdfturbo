@@ -105,6 +105,9 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 09:47] SESSION-CHOSEN (run rules): every rule errs towards keeping an image: placements are measured by walking page content and forms (q/Q/cm/Do, form /Matrix, /UserUnit); an image qualifies only as a plain 8-bit DCT JPEG in DeviceRGB, DeviceGray (written back as DeviceRGB) or 3-channel ICCBased with no /Decode, /DecodeParms, colour-key /Mask or /Matte SMask; every reference to it must lead through resource dictionaries and forms the walk used to a page; a stream the walk cannot follow (malformed cm, unresolvable name, depth limit) leaves every image it can draw untouched.
 - [2026-09-27 09:47] FOUND (row 27): Chrome's createImageBitmap applied EXIF orientation while resizing even with imageOrientation 'none' (an Orientation-6 JPEG came back turned 90°; pdf.js draws it unturned) — fixed by stripping EXIF APP1 segments before decoding.
 - [2026-09-27 09:47] FOUND (row 27, not fixed): contentStreamEditor composes `cm` as multiplyMatrix(ctm, m) at two sites (locateTextOps ~:426, locateDecorationRects ~:650), the reverse of PDF order by that function's own formula; it only differs for nested non-commuting cm (a rotation inside an uneven scale), where the true-edit engine would place origins and decoration widths wrong. Not yet ruled.
+- [2026-09-27 11:08] SESSION-CHOSEN (row 28): Bates start number capped at 999 999 999 999 (twelve digits, the panel's widest padding) — keeps every stamped number an exact integer written in digits.
+- [2026-09-27 11:08] SESSION-CHOSEN (row 28): a Bates stamp wider than the visible page between its side margins is drawn smaller to fit; a stamp that fits is unchanged. Beyond the ruling (which named only the cap), because the cap alone does not keep a long prefix on the page.
+- [2026-09-27 11:08] FOUND (for row 30): `toolbar.compressTitle` still names two methods ("optimize or flatten to images") in all three locales; row 27 added a third. Changing it adds an Arabic value to the pending review.
 
 ## Formal Plan
 
@@ -141,8 +144,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 24 | D15 PAdES-B-B + TSA CORS probe | M | done | 07ca280 | src/signing/**, tests/signing/** |
 | 25 | D17 RTL bracket mirroring + list markers (+ C19 marks) | M | done | 7f5094c | src/export/arabicOverlay.ts, src/utils/bidi.ts, src/types/bidi-js.d.ts, src/elements/textElement.ts, src/styles/editor.css, tests/** |
 | 26 | D18+D21 XFDF rotation + more subtypes + fields | M | done | 1478c2c | src/utils/xfdf.ts, src/export/xfdf*.ts, src/core/**, tests/** |
-| 27 | D20 JPEG downsampling compress mode | M | done | - | src/export/compress.ts, src/export/imageDownsample.ts, src/ui/compressPanel.ts, locales/** |
-| 28 | D22 Bates hardening | S | todo | - | src/ui/batesPanel.ts, src/ui/documentLoader.ts, tests/** |
+| 27 | D20 JPEG downsampling compress mode | M | done | bc64357 | src/export/compress.ts, src/export/imageDownsample.ts, src/ui/compressPanel.ts, locales/** |
+| 28 | D22 Bates hardening | S | done | - | src/ui/batesPanel.ts, src/ui/documentLoader.ts, src/export/batesStamp.ts, src/export/exportPipeline.ts, tests/** |
 | 29 | Acrobat/Reader checklist pack (C2, C10, D15, D18) | S | todo | - | var/claude/** |
 | 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | todo | - | KNOWN_ISSUES.md, SECURITY.md, CLAUDE.md |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |

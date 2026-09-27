@@ -16,6 +16,7 @@ import { trapFocus } from '../utils/focusTrap';
 import { prewarmViewerVerdict } from '../utils/viewerVerdict';
 import { embedPngTolerant, rasterToPngBytes } from '../utils/pngEmbed';
 import { withPdfjsAssets } from '../utils/pdfjsParams';
+import { normalizeBatesSettings } from '../export/batesStamp';
 
 // Untrusted-PDF input caps — defence-in-depth against OOM/DoS from a malicious
 // or pathological file. Deliberately generous: a real document never approaches
@@ -126,7 +127,8 @@ export class DocumentLoader {
       }
       this._ctx.documentModel.pages = state.pages ?? [];
       this._ctx.documentModel.watermark = state.watermark ?? this._ctx.documentModel.watermark;
-      this._ctx.documentModel.bates = state.bates ?? this._ctx.documentModel.bates;
+      // A stored blob is not trusted: every field is checked and clamped (limits row 28).
+      this._ctx.documentModel.bates = normalizeBatesSettings(state.bates, this._ctx.documentModel.bates);
       this._ctx.syncWatermarkBtn();
       this._ctx.syncBatesBtn();
       this._ctx.documentModel.currentPageIndex = Math.max(0, Math.min(

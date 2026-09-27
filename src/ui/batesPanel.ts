@@ -1,6 +1,6 @@
 import type { AppDOMRefs } from './uiController';
 import type { IErrorReporter } from '../core/errorReporter';
-import type { BatesSettings, BatesMode, BatesPosition } from '../export/batesStamp';
+import { normalizeBatesSettings, type BatesSettings } from '../export/batesStamp';
 import { trapFocus } from '../utils/focusTrap';
 
 /**
@@ -10,7 +10,11 @@ import { trapFocus } from '../utils/focusTrap';
  * WatermarkPanel but has no live preview canvas (Bates is export-only by design).
  */
 
-const VALID_POSITIONS: readonly BatesPosition[] = ['tl', 'tc', 'tr', 'bl', 'bc', 'br'];
+/** What a blank or unreadable form field falls back to. Ranges and the start-number cap come from
+ * `normalizeBatesSettings`, the same check a restored session goes through (limits row 28). */
+const FORM_DEFAULTS: BatesSettings = {
+  enabled: false, mode: 'page', prefix: '', startNumber: 1, digits: 6, position: 'br', fontSize: 10, color: '#555555',
+};
 
 /** Parse an int field, returning `fallback` only for blank/NaN input — so a
  * deliberately-typed 0 is preserved (the `parseInt(...) || fallback` idiom would
@@ -67,18 +71,16 @@ export class BatesPanel {
 
   apply(): void {
     const ui = this._ctx.ui;
-    const mode: BatesMode = ui.batesMode.value === 'bates' ? 'bates' : 'page';
-    const posValue = ui.batesPosition.value as BatesPosition;
-    const bates: BatesSettings = {
+    const bates = normalizeBatesSettings({
       enabled: ui.batesEnabled.checked,
-      mode,
+      mode: ui.batesMode.value === 'bates' ? 'bates' : 'page',
       prefix: ui.batesPrefix.value,
-      startNumber: Math.max(0, intOr(ui.batesStart.value, 1)),
-      digits: Math.min(12, Math.max(1, intOr(ui.batesDigits.value, 6))),
-      position: VALID_POSITIONS.includes(posValue) ? posValue : 'br',
-      fontSize: Math.min(72, Math.max(6, intOr(ui.batesFontSize.value, 10))),
-      color: ui.batesColor.value || '#555555',
-    };
+      startNumber: intOr(ui.batesStart.value, FORM_DEFAULTS.startNumber),
+      digits: intOr(ui.batesDigits.value, FORM_DEFAULTS.digits),
+      position: ui.batesPosition.value,
+      fontSize: intOr(ui.batesFontSize.value, FORM_DEFAULTS.fontSize),
+      color: ui.batesColor.value,
+    }, FORM_DEFAULTS);
     this._ctx.setBates(bates);
     this.close();
     this.syncBtn();

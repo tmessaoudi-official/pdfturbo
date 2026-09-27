@@ -2272,7 +2272,8 @@ since that alone passes if flatten does nothing, the export rendered WITHOUT ann
 colour (A plain, B through an /AS state whose /Matrix turns it 90°, a sticky note), the OFF-layer one must stay
 hidden AND appear once the layer is forced on (without that half an OFF-layer case cannot fail), and the pending
 /Redact must not be baked. Sabotage, predicted first, each landed and restored with `cmp`, re-measured on the final
-code (browser figures out of the file's 9 cases, unit out of the jsdom file's 15): flatten never
+code (browser figures out of the file's 9 cases, unit out of the jsdom file's 15 — measured before limits row 27
+split the real-fixture case into one case per file, 13 browser cases now; the added ones were not re-measured): flatten never
 called → 8 browser (the redaction case stays green: the strip already removes a covered annotation); an inherited
 `2 0 0 2 0 0 cm` → 1 unit + 8 browser; identity transform instead of §12.5.5 → 7 browser; the first state instead
 of /AS → 2 unit + 6 browser (green in the browser until the fixture listed `Off` first); no /OC wrapping → 1 + 6;
@@ -2873,8 +2874,22 @@ NOT discarded; (2) input coercion uses a NaN-safe `intOr` (NOT `parseInt(...) ||
 typed `startNumber=0` is preserved (the engine emits `ACME-000000`) — the `|| fallback` idiom silently rewrote 0;
 (3) Esc-to-close lives in `keyboardBinder.ts` (every modal needs its own branch there — `trapFocus` only handles
 Tab); (4) `documentModel.toJSON()` now includes `bates` (it's dead code today but a future autosave refactor
-calling it must not silently drop Bates). Gated `VITE_FEATURE_BATES` (#28 seam). **#61c deferred**: full
-restore-path integration test, malformed-blob restore hardening, off-page huge-startNumber cap.
+calling it must not silently drop Bates). Gated `VITE_FEATURE_BATES` (#28 seam).
+**#61c closed by limits row 28 (2026-09-27, D22).** `normalizeBatesSettings` (batesStamp.ts) is the ONE check a
+settings object passes before it can reach the export: the panel's `apply()` and the session restore both call it,
+so a restored blob can hold nothing the panel could not have produced. A field of the wrong type or outside its set
+takes the fallback's value (the model's current settings on restore, the form defaults in the panel); numbers are
+truncated and clamped. The start number is capped at `BATES_MAX_START` = 999 999 999 999 (twelve digits, the widest
+the panel pads to): past 2^53 the number would round and past 1e21 `String()` writes it in exponent form. A stamp
+wider than the VISIBLE page between its 24pt side margins is drawn at a smaller size so it stays on the page — the
+visible width, so a turned page measures its short side; a stamp that fits keeps the chosen size and draws exactly
+as before. The shrink is SESSION-CHOSEN; the ruling named only the cap, and the cap alone does not keep a long
+prefix on the page. Guards: `tests/export/batesHardening.test.ts` (10), `tests/ui/batesRestore.test.ts` (3 — the
+REAL `saveState`/`loadState` over fake-indexeddb and the real `restoreSession`: exact round-trip, legacy blob,
+malformed blob) and a cap case in `batesPanel.test.ts`. Sabotage, predicted first, each restored with `cmp`:
+restore not normalised → exactly the malformed-blob case; no cap → 4 (predicted 3 — the malformed blob also stores
+`1e20`); shrink removed → the 2 shrink cases; shrink measured on the unturned width → exactly the turned-page case;
+`Infinity` accepted → exactly the cap case.
 
 ### PDF sanitizer (#53)
 
@@ -4382,15 +4397,17 @@ shrunk below where it shows is a visible loss while one left big only costs byte
   as written) to nothing, a form past depth 12 — every image that stream's resources can draw is left alone.
 - **Only JPEGs a re-encode keeps meaning-identical**: DCT alone, 8 bits, DeviceRGB, DeviceGray (written back as
   DeviceRGB — a canvas writes three channels) or 3-channel ICCBased; no `/Decode`, `/DecodeParms`, `/ImageMask`,
-  colour-key `/Mask` or `/Matte` SMask (whose size must equal the image's).
+  colour-key `/Mask` or `/Matte` SMask (whose size must equal the image's). A plain `/SMask` is kept and stays
+  valid: the reader stretches a mask of any size over the image, and the test's 4 × 3 mask still cuts the shrunk
+  image along the same line.
 - **EXIF is stripped before decoding** (`stripExif`): Chrome applied an Orientation-6 JPEG's rotation while
   resizing even with `imageOrientation: 'none'` [measured 2026-09-27], and pdf.js draws it unturned. The option is
   still passed; the stripping is what the test pins.
 
 Guards: `tests/export/imageDownsample.test.ts` (20, jsdom — fake header-only JPEGs, an injected re-encoder),
-`tests/browser/compress-images.browser.test.ts` (3, real Chrome: the output image's `/Width`/`/Height`, four
+`tests/browser/compress-images.browser.test.ts` (4, real Chrome: the output image's `/Width`/`/Height`, four
 quadrant colours rendered by pdf.js before and after, text still extractable, a turned placement, an image already
-at the target left byte-identical, an Orientation-6 JPEG unturned), two cases in `tests/ui/compressPanel.test.ts`
+at the target left byte-identical, a plain soft mask still masking, an Orientation-6 JPEG unturned), two cases in `tests/ui/compressPanel.test.ts`
 and the "shrink images" entry point in `exportPasswordSave`. Sabotage, predicted first, each landed and restored with `cmp` (jsdom = the two files above, browser = the
 Chrome file): `cm` composed in reverse → 1 + 1 (the jsdom composition case and the browser turned placement); form
 `/Matrix` ignored → 1; `/UserUnit` dropped → 1; malformed `cm` skipped instead of stopping → 1; unresolved `Do`
@@ -4398,7 +4415,8 @@ ignored → 1; usage check always passing → exactly the 3 usage cases, control
 last placement wins → 2 (predicted 1 — the malformed-`cm` CONTROL draws the image again at 1 × 1 pt after the
 4-inch placement); not-smaller guard removed → 1; EXIF not stripped → exactly the browser EXIF case; gray not
 rewritten → 1; the mode not routed to the downsample → the 3 browser cases, the password case green (its fixture
-has no JPEG). Not pinned: `colorSpaceConversion: 'none'` (no fixture
+has no JPEG) — those two figures predate the soft-mask case, which the mode sabotage should red as well [Inferred, not re-run]; the soft
+mask removed from the replacement → exactly the soft-mask case. Not pinned: `colorSpaceConversion: 'none'` (no fixture
 carries an ICC profile) and the form depth limit.
 
 ### DOCX read+edit (#1, Track B)

@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import { ExportService, type IExportContext } from '../../src/export/exportService';
-import type { PDFRawStream, PDFNumber } from '@cantoo/pdf-lib';
+import type { PDFRawStream, PDFNumber, PDFRef } from '@cantoo/pdf-lib';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 
@@ -50,7 +50,7 @@ const MAIN = { x: 100, y: 300, width: 288, height: 216 };
 
 interface Source { bytes: Uint8Array; names: Record<string, string>; images: Record<string, Uint8Array> }
 
-async function makeSource(opts: { exif?: boolean } = {}): Promise<Source> {
+async function makeSource(opts: { exif?: boolean; smask?: boolean } = {}): Promise<Source> {
   const { PDFDocument, StandardFonts, degrees, PDFName, PDFDict } = await import('@cantoo/pdf-lib');
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -64,7 +64,8 @@ async function makeSource(opts: { exif?: boolean } = {}): Promise<Source> {
   page.drawImage(eMain, MAIN);
   page.drawImage(eSmall, { x: 420, y: 300, width: 144, height: 108 });            // 150 DPI: at the target
   page.drawImage(eTurned, { x: 500, y: 60, width: 288, height: 216, rotate: degrees(90) }); // turned, 300 DPI
-  const bytes = await doc.save({ useObjectStreams: false });
+  let bytes: Uint8Array = await doc.save({ useObjectStreams: false });
+  if (opts.smask) bytes = await withHalfSMask(bytes, eMain.ref);
   // The XObject names on the page, per image (names survive the export's page copy).
   const x = page.node.lookup(PDFName.of('Resources'), PDFDict).lookup(PDFName.of('XObject'), PDFDict);
   const names: Record<string, string> = {};
@@ -73,6 +74,21 @@ async function makeSource(opts: { exif?: boolean } = {}): Promise<Source> {
     if (key) names[key] = k.decodeText();
   }
   return { bytes, names, images };
+}
+
+/**
+ * Gives the image at `ref` a 4 × 3 soft mask whose left half is opaque and right half transparent — a mask far
+ * smaller than the image, which is legal (the reader stretches it) and stays so after the image shrinks.
+ */
+async function withHalfSMask(bytes: Uint8Array, ref: PDFRef): Promise<Uint8Array> {
+  const { PDFDocument, PDFName } = await import('@cantoo/pdf-lib');
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const mask = doc.context.flateStream(new Uint8Array([255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0]), {
+    Type: 'XObject', Subtype: 'Image', Width: 4, Height: 3, ColorSpace: 'DeviceGray', BitsPerComponent: 8,
+  });
+  const img = doc.context.lookup(ref) as PDFRawStream;
+  img.dict.set(PDFName.of('SMask'), doc.context.register(mask));
+  return doc.save({ useObjectStreams: false });
 }
 
 function buildProbe(srcBytes: Uint8Array) {
@@ -164,6 +180,20 @@ describe('Compress → shrink images, real Chrome (row 27)', () => {
     const small = await imageIn(out, src.names.small);
     expect([small.width, small.height]).toEqual([300, 225]);
     expect(small.bytes).toEqual(src.images.small);
+  });
+
+  it('keeps a plain soft mask: the shrunk image still shows only where the (smaller, stretched) mask is opaque', async () => {
+    const src = await makeSource({ smask: true });
+    const out = await shrink(src);
+    const img = await imageIn(out, src.names.main);
+    expect([img.width, img.height]).toEqual([600, 450]);
+    const before = await sampler(src.bytes), after = await sampler(out);
+    QCENTRES.forEach(([x, y], i) => {
+      const a = after.at(Math.round(x), Math.round(y)), b = before.at(Math.round(x), Math.round(y));
+      const want = i % 2 === 0 ? QUAD[i] : [255, 255, 255]; // left quadrants drawn, right ones masked out
+      want.forEach((v, c) => expect(Math.abs(a[c] - v), `quadrant ${i} channel ${c}: ${a}`).toBeLessThanOrEqual(20));
+      a.forEach((v, c) => expect(Math.abs(v - b[c]), `quadrant ${i} channel ${c} vs before`).toBeLessThanOrEqual(16));
+    });
   });
 
   it('ignores EXIF orientation, as a PDF reader does: an Orientation-6 JPEG comes out unturned', async () => {

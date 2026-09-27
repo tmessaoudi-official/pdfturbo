@@ -44,7 +44,7 @@ _Last updated: 2026-09-13 · Version 1.0.0_
   [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content).
   Use **Redaction** to remove content permanently
 - **Watermark** — tiled, configurable text/opacity/angle/density; renders live in the editor and on export
-- **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
+- **Bates / page numbering** — prefix + zero-padded counter (start number capped at twelve digits) or "N / total", six anchor positions; a stamp wider than the page is drawn smaller to fit
 
 ## Forms
 - Auto-detect and fill AcroForm text fields (undoable)
