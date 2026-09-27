@@ -186,3 +186,45 @@ export function inferBorderlessGrid(
 
   return grid;
 }
+
+/**
+ * Share of LETTERED cells at or above which a grid is read as a book INDEX: an index entry is a term followed by the
+ * pages it appears on (`Refunds 18`, `Tax 100 , 104`), and a page of them flows in 3–4 aligned columns that pass every
+ * geometric gate above. Measured on the C9 corpus (limits row 20): 0.52–0.62 on all 9 index pages of Publication 17,
+ * at most 0.05 on every genuine table (the 1099-MISC box grids, the W-4 wage table, a Pub 17 rate worksheet).
+ */
+export const INDEX_ENTRY_SHARE = 0.3;
+/**
+ * Share of non-empty ROWS carrying a dot leader (`. . . .`) at or above which a grid is read as a table of CONTENTS.
+ * Measured: 0.47 on the corpus's contents page, 0 on every other firing.
+ */
+export const LEADER_ROW_SHARE = 0.2;
+
+const INDEX_ENTRY = /[A-Za-z][^\t]*?\s\d{1,4}(\s*[,-]\s*\d{1,4})*\s*$/;
+const DOT_LEADER = /(\.\s?){4,}/;
+
+/**
+ * Why a geometric grid is a list LAYOUT rather than a table, or null when it reads as a table. The two genres the C9
+ * corpus found passing every geometric gate: an index (`'index'`) and a table of contents (`'contents'`) — short
+ * entries in aligned columns are geometrically a table, so the refusal reads what the cells SAY. Pure.
+ */
+export function listLayoutGenre(grid: TableGrid): 'index' | 'contents' | null {
+  const cells = grid.cells.flat().map(c => c.trim()).filter(Boolean);
+  const lettered = cells.filter(c => /[A-Za-z]/.test(c));
+  if (lettered.length && lettered.filter(c => INDEX_ENTRY.test(c)).length / lettered.length >= INDEX_ENTRY_SHARE) return 'index';
+  const rows = grid.cells.filter(r => r.some(c => c.trim()));
+  if (rows.length && rows.filter(r => DOT_LEADER.test(r.join(' '))).length / rows.length >= LEADER_ROW_SHARE) return 'contents';
+  return null;
+}
+
+/**
+ * The gate for the Word / Markdown / text flow (C9, limits row 20): {@link inferBorderlessGrid} plus
+ * {@link listLayoutGenre}. Stricter than the CSV/XLSX gate on purpose — there the user asked for a table and a wrong
+ * answer costs one discardable file, while in the flow a table REMOVES its words from the paragraphs, so a phantom
+ * one turns an index into a grid of unrelated cells.
+ */
+export function inferBorderlessGridForFlow(items: TableTextItem[], opts: BorderlessOpts = {}): TableGrid | null {
+  const grid = inferBorderlessGrid(items, opts);
+  return grid && !listLayoutGenre(grid) ? grid : null;
+}
+

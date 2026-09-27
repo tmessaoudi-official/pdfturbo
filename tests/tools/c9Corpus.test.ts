@@ -21,7 +21,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { inferBorderlessGrid } from '../../src/utils/borderlessTable';
+import { inferBorderlessGrid, listLayoutGenre } from '../../src/utils/borderlessTable';
+import { reconstructPage, type RawTextItem, type FontInfoMap } from '../../src/utils/flowDoc';
 import type { TableTextItem } from '../../src/utils/tableExtract';
 
 const CORPUS = resolve(__dirname, '../../var/corpus');
@@ -41,6 +42,8 @@ interface PageHit {
   /** The statistic MAX_MEDIAN_CELL_WORDS gates on, recomputed so a firing's MECHANISM is recorded. */
   medianCellWords: number;
   nonEmptyCells: number;
+  /** The flow gate's genre refusal (limits row 20), or null when it reads as a table. */
+  genre: 'index' | 'contents' | null;
 }
 
 // Opt-in, twice over: the corpus must exist AND `C9_CORPUS=1` must be set. Excluding the file from
@@ -54,6 +57,9 @@ describe.skipIf(files.length === 0 || !process.env.C9_CORPUS)('C9 corpus probe',
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const hits: PageHit[] = [];
     const perFile: Record<string, { pages: number; hits: number }> = {};
+    // Limits row 20: the Word/MD/TXT flow, driven END TO END through `reconstructPage` — not the gate helper — so the
+    // report says what the shipped path does with the page (it builds its own table input from the words).
+    const flowTables: { file: string; page: number }[] = [];
 
     for (const f of files) {
       const bytes = new Uint8Array(readFileSync(resolve(CORPUS, f)));
@@ -80,6 +86,10 @@ describe.skipIf(files.length === 0 || !process.env.C9_CORPUS)('C9 corpus probe',
             width: ti.width as number,
           }));
 
+        const raw = (content.items as unknown as RawTextItem[]).filter(ti => typeof ti.str === 'string');
+        const vp = page.getViewport({ scale: 1, rotation: 0 });
+        if (reconstructPage(raw, {} as FontInfoMap, vp.width, vp.height).tables?.length) flowTables.push({ file: f, page: p });
+
         const grid = inferBorderlessGrid(items);
         if (grid) {
           perFile[f].hits++;
@@ -95,6 +105,7 @@ describe.skipIf(files.length === 0 || !process.env.C9_CORPUS)('C9 corpus probe',
             sample: grid.cells.slice(0, 2).map(r => r.map(c => c.slice(0, 40))),
             medianCellWords: counts[Math.floor(counts.length / 2)] ?? 0,
             nonEmptyCells: counts.length,
+            genre: listLayoutGenre(grid),
           });
         }
       }
@@ -105,7 +116,7 @@ describe.skipIf(files.length === 0 || !process.env.C9_CORPUS)('C9 corpus probe',
     const totalPages = Object.values(perFile).reduce((n, v) => n + v.pages, 0);
     writeFileSync(
       resolve(OUT_DIR, 'c9-corpus-report.json'),
-      JSON.stringify({ files: files.length, totalPages, firings: hits.length, perFile, hits }, null, 2),
+      JSON.stringify({ files: files.length, totalPages, firings: hits.length, flowTables, perFile, hits }, null, 2),
     );
 
     // The probe asserts only that it RAN over a real corpus. The pass/fail judgement is the

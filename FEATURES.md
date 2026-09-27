@@ -79,7 +79,7 @@ _Last updated: 2026-09-13 · Version 1.0.0_
 - **Approval signatures** — drawn signature with caption ("read & approved"), guided multi-signer panel
 
 ## Conversion & export
-- **PDF → DOCX / Markdown / TXT** — reconstructs a flow document (headings, lists, columns, tables,
+- **PDF → DOCX / Markdown / TXT** — reconstructs a flow document (headings, lists, columns, tables ruled or laid out with whitespace alone,
   images, hyperlinks, underline/strike, RTL); uses the PDF's structure tags when present
 - **DOCX editor** — open a `.docx`, edit text with a rich toolbar (bold/italic/underline, headings,
   fonts, colour, lists, **tables** incl. add/remove rows & columns and merge/split cells, **images**

@@ -20,7 +20,9 @@
 import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
-import { inferBorderlessGrid } from '../../src/utils/borderlessTable';
+import { inferBorderlessGrid, inferBorderlessGridForFlow, listLayoutGenre } from '../../src/utils/borderlessTable';
+import { reconstructPage, type RawTextItem, type FontInfoMap } from '../../src/utils/flowDoc';
+import { flowDocToDocxBase64 } from '../../src/utils/flowDocWriters';
 import type { TableTextItem } from '../../src/utils/tableExtract';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
@@ -28,7 +30,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 interface RawItem { str: string; transform: number[]; width: number }
 type Draw = (page: import('@cantoo/pdf-lib').PDFPage, font: import('@cantoo/pdf-lib').PDFFont) => void;
 
-async function pageItems(draw: Draw): Promise<TableTextItem[]> {
+async function rawItems(draw: Draw): Promise<RawItem[]> {
   const { PDFDocument, StandardFonts } = await import('@cantoo/pdf-lib');
   const doc = await PDFDocument.create();
   const page = doc.addPage([500, 320]);
@@ -38,8 +40,12 @@ async function pageItems(draw: Draw): Promise<TableTextItem[]> {
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   const pg = await pdf.getPage(1);
   const content = await pg.getTextContent();
-  return (content.items as unknown as RawItem[])
-    .filter(i => typeof i.str === 'string' && i.str.trim().length > 0)
+  return (content.items as unknown as RawItem[]).filter(i => typeof i.str === 'string');
+}
+
+async function pageItems(draw: Draw): Promise<TableTextItem[]> {
+  return (await rawItems(draw))
+    .filter(i => i.str.trim().length > 0)
     .map(i => ({ x: i.transform[4], y: i.transform[5], text: i.str, width: i.width }));
 }
 
@@ -104,6 +110,98 @@ const keyValue: Draw = (pg, f) => {
   [['Name:', 'Ada Lovelace'], ['Role:', 'Mathematician'], ['Born:', '1815'], ['Notes:', 'First programmer']]
     .forEach(([k, v], i) => { const y = 270 - i * 24; T(pg, f, k, 40, y); T(pg, f, v, 160, y); });
 };
+
+// ── list layouts that pass every GEOMETRIC gate (limits row 20 — the C9 corpus's 10 false tables) ───────────────
+const bookIndex: Draw = (pg, f) => {
+  const cols = [
+    ['Accrual 13', 'Adoption 29', 'Alimony 70', 'Annuities 60', 'Appeals 18', 'Assets 80', 'Awards 72', 'Bonds 59'],
+    ['Casualty 104', 'Charity 97', 'Children 28', 'Credits 44', 'Custody 29', 'Damages 75', 'Debts 89', 'Dental 95'],
+    ['Education 49', 'Elderly 74', 'Errors 44', 'Estates 75', 'Exempt 56', 'Fees 75', 'Filing 7', 'Fraud 16'],
+    ['Gifts 76', 'Grants 73', 'Income 47 , 66', 'Interest 56', 'Jury 75', 'Lottery 75', 'Medical 95', 'Moving 94'],
+  ];
+  cols.forEach((col, c) => col.forEach((e, i) => T(pg, f, e, 40 + c * 112, 280 - i * 20, 10)));
+};
+const contents: Draw = (pg, f) => {
+  T(pg, f, 'Contents', 40, 290);
+  [['1 Introduction', '3'], ['2 Approach', '6'], ['2.1 Model . . . . . . . . . . . . . . . . .', '8'],
+    ['2.2 Data . . . . . . . . . . . . . . . . . . .', '8'], ['3 Results', '10'], ['3.1 Tasks . . . . . . . . . . . . . . . . .', '11'],
+    ['4 Limits', '14'], ['5 Impacts', '15'], ['6 Conclusion', '18']]
+    .forEach(([t, n], i) => { const y = 266 - i * 24; T(pg, f, t, 40, y); T(pg, f, n, 440, y); });
+};
+
+describe('limits row 20 — the flow gate refuses list layouts the geometric gate accepts', () => {
+  // The PAIRING is the point: each layout FIRES the geometric gate, so the refusal is the genre check doing the work,
+  // not a fixture that never looked like a table.
+  for (const [name, draw, genre] of [['a book index', bookIndex, 'index'], ['a table of contents', contents, 'contents']] as const) {
+    it(`${name} passes the geometric gate and is refused as '${genre}'`, async () => {
+      const items = await pageItems(draw);
+      const g = inferBorderlessGrid(items);
+      expect(g, 'the geometric gate must fire, or this case tests nothing').not.toBeNull();
+      expect(listLayoutGenre(g as NonNullable<typeof g>)).toBe(genre);
+      expect(inferBorderlessGridForFlow(items)).toBeNull();
+    });
+  }
+
+  it('the invoice and the statement pass both gates', async () => {
+    for (const draw of [invoice, statement]) expect(inferBorderlessGridForFlow(await pageItems(draw))).not.toBeNull();
+  });
+
+  // The WIRING: `reconstructPage` builds its own table input from the words; driving it end to end is what shows the
+  // flow receives the table (a helper test cannot see a dropped `width`).
+  const flow = async (draw: Draw) =>
+    reconstructPage((await rawItems(draw)) as unknown as RawTextItem[], {} as FontInfoMap, 500, 320);
+
+  it('an invoice page exports as one table and no paragraphs', async () => {
+    const page = await flow(invoice);
+    expect(page.tables?.length).toBe(1);
+    expect(page.tables?.[0].grid.cells[1]).toEqual(['Widget A', '2', '9.99', '19.98']);
+    expect(page.paragraphs).toHaveLength(0);
+    // In Word it is a table with no drawn borders — the PDF had none.
+    const { unzipSync, strFromU8 } = await import('fflate');
+    const xml = strFromU8(unzipSync(Uint8Array.from(atob(await flowDocToDocxBase64({ pages: [page] })), c => c.charCodeAt(0)))['word/document.xml']);
+    expect(xml).toContain('<w:tbl>');
+    expect(xml).toContain('Widget A');
+    expect(xml).toMatch(/<w:tblBorders><w:top w:val="none"/);
+    expect(xml).not.toMatch(/w:val="single"/);
+  });
+
+  it('prose drawn as several runs per line exports with no table — the flow must know where each run ENDS', async () => {
+    // Real text arrives as several items per line (a bold word, a font change). Without each item's width, every gap
+    // between two run STARTS reads as a column gutter: dropping `width` from the flow's table input read 114 of the
+    // corpus's 360 pages as tables instead of 5, while every fixture drawn one item per cell stayed green.
+    const { StandardFonts } = await import('@cantoo/pdf-lib');
+    const styled: Draw = (pg, f) => {
+      const bold = pg.doc.embedStandardFont(StandardFonts.HelveticaBold);
+      const lines = [
+        ['The survey ran for', 'three months', 'and reached every district'],
+        ['in the region, including', 'remote villages', 'that had never been counted'],
+        ['before. Results were', 'published early', 'to the local councils'],
+        ['who asked for', 'a second round', 'the following spring'],
+        ['once the roads', 'reopened after', 'the winter floods'],
+      ];
+      lines.forEach((segs, i) => {
+        let x = 40;
+        segs.forEach((seg, k) => {
+          const font = k === 1 ? bold : f;
+          T(pg, font, seg, x, 270 - i * 20);
+          x += font.widthOfTextAtSize(seg, 11) + font.widthOfTextAtSize(' ', 11);
+        });
+      });
+    };
+    const raw = await rawItems(styled);
+    expect(raw.filter(i => i.str.trim()).length, 'several items per line, or this case tests nothing').toBeGreaterThanOrEqual(15);
+    const page = await flow(styled);
+    expect(page.tables).toBeUndefined();
+  });
+
+  it('prose, an index and a contents page export as paragraphs with no table (controls)', async () => {
+    for (const draw of [prose, bookIndex, contents]) {
+      const page = await flow(draw);
+      expect(page.tables).toBeUndefined();
+      expect(page.paragraphs.length).toBeGreaterThan(0);
+    }
+  });
+});
 
 describe('EH-E corpus — genuine borderless tables are FOUND', () => {
   it('an invoice-shaped 4x4 table', async () => {

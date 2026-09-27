@@ -387,14 +387,20 @@ export async function flowDocToDocxBase64(doc: FlowDoc): Promise<string> {
     top: TABLE_BORDER, bottom: TABLE_BORDER, left: TABLE_BORDER, right: TABLE_BORDER,
     insideHorizontal: TABLE_BORDER, insideVertical: TABLE_BORDER,
   };
+  // A borderless table (C9) keeps the PDF's look: explicit NONE on every edge, so Word's table style draws nothing.
+  const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'auto' } as const;
+  const NO_BORDERS = {
+    top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
+    insideHorizontal: NO_BORDER, insideVertical: NO_BORDER,
+  };
 
   /** Build a docx Table from a FlowTable's grid — one TableCell per cell, the
    * cell text as a single plain Paragraph. Header detection is out of scope (G9):
-   * the first row is a normal row. Borders are visible (it's a ruled table). */
+   * the first row is a normal row. Borders are visible for a ruled table and absent for a borderless one. */
   const mkTable = (t: FlowTable) =>
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: TABLE_BORDERS,
+      borders: t.borderless ? NO_BORDERS : TABLE_BORDERS,
       rows: t.grid.cells.map(row =>
         new TableRow({
           children: row.map(cell =>

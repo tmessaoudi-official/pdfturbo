@@ -14,6 +14,7 @@
 
 import { redactionRectToPageSpace } from './geometry';
 import { buildTableGrid, clusterPositions, type TableGrid, type TableTextItem } from './tableExtract';
+import { inferBorderlessGridForFlow } from './borderlessTable';
 import { logicalItemOrder, mirroredChar, visualToLogical } from './bidi';
 
 /** Shape of a pdf.js TextItem (subset we consume). */
@@ -143,12 +144,14 @@ export interface FlowParagraph {
  * A lattice (ruled) table detected on a page: a grid bounded by visible grid
  * lines on BOTH axes (≥2 horizontal + ≥2 vertical rules). `y` is the top edge in
  * PDF user space (y-up) — used to interleave the table with paragraphs in reading
- * order. Borderless tables are NOT detected (documented structural ceiling).
+ * order. A table drawn with whitespace alone comes from `inferBorderlessGridForFlow` (C9, limits row 20).
  */
 export interface FlowTable {
   grid: TableGrid;
   /** Top edge of the table region in PDF user space (y-up). */
   y: number;
+  /** Drawn with whitespace alone (C9, limits row 20): the DOCX writer then draws no borders the PDF never had. */
+  borderless?: true;
 }
 
 export interface FlowImage {
@@ -1301,8 +1304,9 @@ function _detectLatticeRegions(
  * v1 scope is ONE table region per page — the global rule extent (matching
  * buildTableGrid's single-grid contract and the CSV path). Multiple disjoint
  * lattice tables on one page collapse into one grid (a documented partial, still
- * strictly better than today's zero-table output). Borderless tables are NOT
- * detected (no vertical rules → []). Returns [] when no both-axes grid is found
+ * strictly better than today's zero-table output). Borderless tables are not
+ * detected HERE (no vertical rules → []) — `reconstructPage` asks `inferBorderlessGridForFlow` when this returns
+ * nothing (C9, limits row 20). Returns [] when no both-axes grid is found
  * or the grid has no non-empty cell (a stray rule pair over empty space).
  *
  * `_pageHeight` is accepted for caller symmetry / future multi-region work but is
@@ -1775,10 +1779,23 @@ export function reconstructPage(
   // reconstruction (dedup), so it appears once — inside the table — never also as
   // a stray paragraph. No vRules (or no both-axes grid) → regions is empty and
   // every downstream step is byte-identical to the pre-G9 path.
-  const tableInput: TableTextItem[] = words.map(w => ({ x: w.x, y: w.y, text: w.text }));
+  // `width` is read only by the borderless detector below: it cannot find a column without knowing where text ENDS.
+  const tableInput: TableTextItem[] = words.map(w => ({ x: w.x, y: w.y, text: w.text, width: w.width }));
   const detected = rules?.length && vRules?.length
     ? _detectLatticeRegions(tableInput, rules, vRules)
     : [];
+  // C9 (limits row 20): with no ruled table, a table drawn with whitespace alone. Its grid is built from EVERY word on
+  // the page, so the whole page is the table and no word is left to the paragraphs — the flow gate refuses indexes and
+  // contents pages, which pass the geometric one.
+  if (!detected.length) {
+    const grid = inferBorderlessGridForFlow(tableInput);
+    if (grid) {
+      const page: FlowPage = { width: pageWidth, height: pageHeight, paragraphs: [], tables: [{ grid, y: Math.max(...words.map(w => w.y + w.size)), borderless: true }] };
+      const margins = computeMargins(words, pageWidth, pageHeight);
+      if (margins) page.margins = margins;
+      return page;
+    }
+  }
   const regions = detected.map(d => d.region);
   const flowWords = regions.length ? words.filter(w => !regions.some(r => _itemInRegion(w, r))) : words;
 

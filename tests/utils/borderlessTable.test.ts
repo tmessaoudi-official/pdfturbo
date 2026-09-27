@@ -7,7 +7,7 @@
  * did not already have (today the answer is "no table found"); a phantom table corrupts their export.
  */
 import { describe, it, expect } from 'vitest';
-import { inferBorderlessGrid, whitespaceBands, lineClusters } from '../../src/utils/borderlessTable';
+import { inferBorderlessGrid, whitespaceBands, lineClusters, listLayoutGenre } from '../../src/utils/borderlessTable';
 import { gridToCsv, type TableTextItem } from '../../src/utils/tableExtract';
 
 /** A text item with a real horizontal extent — the gap detector needs where text ENDS. */
@@ -122,3 +122,35 @@ describe('whitespaceBands / lineClusters', () => {
     expect(lines[1].map(i => i.text)).toEqual(['low']);
   });
 });
+
+describe('listLayoutGenre — the flow gate\'s refusal of list layouts (limits row 20)', () => {
+  const grid = (cells: string[][]) => ({ rows: cells.length, cols: cells[0].length, cells });
+
+  it('an index: terms followed by page numbers, including ranges and lists of pages', () => {
+    expect(listLayoutGenre(grid([
+      ['Refunds 18', 'Tax 100 , 104', 'Filing status 7 , 21 - 26'],
+      ['Estates 75', '( See also Estate tax )', 'Grants 73'],
+    ]))).toBe('index');
+  });
+
+  it('a table of contents: dot leaders on a fifth of its rows or more', () => {
+    expect(listLayoutGenre(grid([
+      ['1 Introduction', '3'], ['2.1 Model . . . . . . . . .', '8'], ['3 Results', '10'], ['4 Limits', '14'], ['5 End', '15'],
+    ]))).toBe('contents');
+    // Four rows, none with a leader: below the share, and nothing else says index.
+    expect(listLayoutGenre(grid([['1 Introduction', '3'], ['3 Results', '10'], ['4 Limits', '14'], ['5 End', '15']]))).toBeNull();
+  });
+
+  it('a data table reads as a table: labels and values in separate cells, numbers alone in theirs', () => {
+    expect(listLayoutGenre(grid([
+      ['Description', 'Qty', 'Unit', 'Total'], ['Widget A', '2', '9.99', '19.98'], ['Service fee', '1', '35.00', '35.00'],
+    ]))).toBeNull();
+  });
+
+  it('the index share is a threshold, not "any entry": one `Box 1` label among five does not refuse a form', () => {
+    expect(listLayoutGenre(grid([
+      ['Payer name', 'Rents', 'Royalties'], ['Street address', 'Box 1', 'Other income'], ['City or town', 'Fishing boat', 'Medical care'],
+    ]))).toBeNull();
+  });
+});
+

@@ -2457,7 +2457,29 @@ two-column table. The discriminator: **in a table a single line spans multiple c
 multi-column page each line lives in exactly one.** Proven load-bearing — disabling that one check
 makes the two-column-page test fail and *only* that test. Do not "simplify" it away.
 
-**C9 (DOCX) stays UNWIRED — and as of 2026-08-05 that is a MEASURED decision, not a cautious one.**
+**C9 (DOCX/MD/TXT) is WIRED since limits row 20 (2026-09-27) — read the two paragraphs below it as the history
+that made the new discriminator necessary.** `inferBorderlessGridForFlow` is the geometric gate plus
+`listLayoutGenre`, which reads what the cells SAY: an INDEX (≥30% of lettered cells shaped `term + page numbers` —
+`Refunds 18`, `Tax 100 , 104`; measured 0.52–0.62 on all 9 index pages, ≤0.05 on every genuine table) and a table of
+CONTENTS (≥20% of rows with a dot leader; 0.47 on the contents page, 0 on every other firing). Both are signatures of
+the exact genre the corpus found, not smaller numbers on the old statistic. `reconstructPage` runs it only when no
+ruled table was found; the grid is built from every word on the page, so the page becomes one table and no
+paragraphs, and the DOCX writer draws it with NO borders (`FlowTable.borderless`). The CSV/XLSX gate is unchanged and
+deliberately looser — see the harm asymmetry below. Measured END TO END through `reconstructPage` (the probe now
+records `flowTables`): exactly the 5 genuine pages carry a table, 355 do not. Bounds, in `KNOWN_ISSUES.md` C9: a
+contents page with no leaders, a roster of short names with no page numbers, and a page of key-value pairs (which now
+exports as a two-column table — the corpus test declines to score that shape) all still fire; a genuine table whose
+label and value share one cell reads as an index and is refused (the safe direction). Guards: 4 pure cases in
+`tests/utils/borderlessTable.test.ts`, and 6 in `tests/browser/borderless-corpus.browser.test.ts` — each list layout
+FIRES the geometric gate and is refused by the genre (the pairing proves the refusal does the work), the invoice
+exports as one borderless table, prose drawn as several runs per line exports with no table, and prose/index/contents
+controls. Sabotage, predicted first, each restored with `cmp` (jsdom + browser + corpus flow tables): genre check off
+→ 0 + 3, corpus 15; index refusal off → 1 + 2, corpus 14; leader refusal off → 1 + 2, corpus 6; `width` dropped from
+the flow's table input → **every tracked test green and the corpus at 114** until the several-runs-per-line case was
+added, which now reds exactly it — one item per cell (every synthetic fixture) gives the same bands with or without
+widths; borders always drawn → exactly the invoice case.
+
+**Until row 20: C9 (DOCX) stays UNWIRED — and as of 2026-08-05 that is a MEASURED decision, not a cautious one.**
 A realistic corpus (`tests/browser/borderless-corpus.browser.test.ts`, real pdf.js extraction of 8 page
 shapes) found the gate had **2 false positives out of 6 prose shapes**, both invisible to the unit tests:
 a **side-by-side two-column article** (6×2) and a **bulleted list** (4×2). Both defeat
@@ -2474,8 +2496,8 @@ every page (double-gated: it needs the corpus AND `C9_CORPUS=1`, so it is inert 
 pre-push hook — invoke it as `C9_CORPUS=1 npx vitest run tests/tools/c9Corpus.test.ts`) and writes
 `var/claude/c9-corpus-report.json`. Result: **15 firings — 5 genuine data tables (1099-MISC box
 grids ×3, the W-4 withholding tables, a Pub-17 rate schedule) and 10 multi-column LAYOUT**, being 9
-pages of Publication 17's alphabetical INDEX and one paper's table of contents. C9 therefore stays
-unwired, which is the outcome the plan prescribes for a non-zero count.
+pages of Publication 17's alphabetical INDEX and one paper's table of contents. C9 therefore stayed
+unwired until row 20 found the discriminator above.
 
 **The mechanism is the useful part, and it is measured rather than argued.** An alphabetical index
 satisfies both discriminators HONESTLY: entries in different columns share baselines, so every line
