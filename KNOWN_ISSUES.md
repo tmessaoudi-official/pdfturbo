@@ -64,6 +64,20 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### From limits row 27 — Compress → shrink images (2026-09-27)
+
+- **What "shrink images" leaves alone, on purpose.** It re-saves an embedded JPEG only when it can measure
+  where the image is drawn and knows the re-save keeps its meaning. Left at full size: images stored in any
+  other format (PNG-style Flate, JPEG 2000, JBIG2 — shrinking those means a new encoder); CMYK, Lab, indexed and
+  one-channel ICC JPEGs; images with a `/Decode` array, a colour-key mask or an `/SMask` carrying `/Matte`; and any
+  image also drawn by an annotation appearance, a pattern, a Type3 glyph or as another image's mask — or through a
+  resource dictionary one of those shares — because its size there is not measured. A content stream the walk
+  cannot follow (a malformed `cm`, a name it cannot resolve) leaves every image it can draw untouched. A gray JPEG
+  comes back as RGB, since a canvas writes three channels.
+- **A cropped image is kept whole.** Shrinking re-saves the entire photo, including any part a crop hides.
+- **Colour conversion is off, not tested.** The decode passes `colorSpaceConversion: 'none'`, so a JPEG carrying
+  its own ICC profile keeps its samples; no fixture carries one.
+
 ### From the WS8 design probe (2026-09-24)
 
 - ~~**A layer the source switches OFF is visible in every PDF export**~~ — **FIXED by WS8 step 5 (2026-09-24).**
@@ -417,11 +431,12 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **Ten values are pending** (this line said three from WS7 round 10 on and
+  read, and it is recorded as one. **Twelve values are pending** (this line said three from WS7 round 10 on and
   missed five later keys: `toast.pdfLoadRefused` (WS7 round 15), `toast.exportLayersConflict` (WS8),
   `thumbnail.previewUnavailable` (A6), `toolbar.clearRecentFiles` and `progress.ocrLoadingModel` (limits rows
   11 and 12), all session-written; limits row 23 then added `toast.flattenAnnotationsSkipped` and re-worded
-  `toast.flattenDone`). `toolbar.sanitizeTitle` had UNDER-claimed
+  `toast.flattenDone`, and limits row 27 added `modal.compress.modeImages` and `modal.compress.hintImages`).
+  `toolbar.sanitizeTitle` had UNDER-claimed
   since `8ae525c` deleted a word and the 2026-09-05 scope widening left it behind, so it was re-worded
   the same day to the English and French scope — by the session, not by a native speaker, so the new
   wording starts `[Unverified]` like any new value. WS7 round 10 added two more the same day,

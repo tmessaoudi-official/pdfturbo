@@ -188,17 +188,21 @@ describe('flatten draws source annotations into the page (limits row 23)', () =>
 
   // Real files, not built here: pdf.js's own annotation tests (provenance in tests/fixtures/annotations/README.md).
   const real = import.meta.glob('../fixtures/annotations/*.pdf', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
-  it('pdf.js\'s own annotation test files flatten pixel-identically and leave no annotation', async () => {
+  // One case per file: the four together sat at the 30 s budget under full-suite load (timed out twice, passed
+  // alone), and a red then names the file.
+  it('pdf.js\'s own annotation test files are all here', () => {
     expect(Object.keys(real)).toHaveLength(4);
-    for (const [name, url] of Object.entries(real)) {
+  });
+  for (const [name, url] of Object.entries(real)) {
+    it(`${name.split('/').pop()} flattens pixel-identically and leaves no annotation`, async () => {
       const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
       expect((await annotSubtypes(bytes)).length, `${name} has annotations to start with`).toBeGreaterThan(0);
       const { out, warns } = await flattened(bytes);
       expect(mismatch(await render(bytes, true), await render(out, true)), name).toBe(0);
       expect(await annotSubtypes(out), name).toEqual([]);
       expect(warns, name).toEqual([]);
-    }
-  });
+    });
+  }
 
   it('an annotation under a redaction is flattened into content and burned with it', async () => {
     const { bytes } = await build();

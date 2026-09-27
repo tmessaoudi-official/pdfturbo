@@ -20,7 +20,8 @@ import { carryLayers, copySourcePages, ExportLayersConflictError } from './copyS
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '../utils/tableExtract';
 import { inferBorderlessGrid } from '../utils/borderlessTable';
-import { stripDocMetadata, dpiToScale, clampQuality, COMPRESS_DPI_DEFAULT, COMPRESS_QUALITY_DEFAULT, type CompressOptions } from './compress';
+import { stripDocMetadata, dpiToScale, clampDpi, clampQuality, COMPRESS_DPI_DEFAULT, COMPRESS_QUALITY_DEFAULT, type CompressOptions } from './compress';
+import { downsampleImages, browserJpegReencode } from './imageDownsample';
 import { buildXfdf, type XfdfAnnot } from '../utils/xfdf';
 import { elementToXfdfAnnot, xfdfPageFrame } from './xfdfMapping';
 import { collectFormWidgets, fieldsForExport } from './xfdfFields';
@@ -445,9 +446,10 @@ export class ExportService {
     const _prog = progress.begin('progress.compressing');
     try {
       const assembled = await this.assemblePdfBytes();
+      const onStep = (d: number, t: number) => _prog.setFraction(t ? d / t : null);
       const out = opts.mode === 'lossy'
-        ? await this._compressLossy(assembled, opts, (d, t) => _prog.setFraction(t ? d / t : null))
-        : await this._compressLossless(assembled);
+        ? await this._compressLossy(assembled, opts, onStep)
+        : await this._compressLossless(assembled, opts.mode === 'images' ? opts : undefined, onStep);
       _prog.setFraction(null);
       await this._saveOrDownload(target, out, filename, 'application/pdf');
       const saved = assembled.length - out.length;
@@ -474,9 +476,19 @@ export class ExportService {
    * size win. Loads with updateMetadata:false to avoid pdf-lib's load-time
    * Producer/ModDate re-stamp (which would re-inject the metadata we strip).
    */
-  private async _compressLossless(assembled: Uint8Array): Promise<Uint8Array> {
+  private async _compressLossless(
+    assembled: Uint8Array,
+    shrinkImages?: CompressOptions,
+    onImage?: (done: number, total: number) => void,
+  ): Promise<Uint8Array> {
     const doc = await loadPdfDocument(assembled, { updateMetadata: false, viewerCheck: false });
     await stripDocMetadata(doc);
+    // "Shrink images" (limits row 27) is quick optimize plus an in-place JPEG downsample on the same document,
+    // so the metadata strip, the password and the object-stream save stay one code path.
+    if (shrinkImages) {
+      await downsampleImages(doc, clampDpi(shrinkImages.dpi ?? COMPRESS_DPI_DEFAULT),
+        clampQuality(shrinkImages.quality ?? COMPRESS_QUALITY_DEFAULT), browserJpegReencode, onImage);
+    }
     await this._applyExportPassword(doc);
     return doc.save({ useObjectStreams: true });
   }

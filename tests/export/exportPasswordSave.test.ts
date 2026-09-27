@@ -84,6 +84,9 @@ const ENTRY_POINTS: Array<[string, (svc: ExportService) => Promise<void>, boolea
   // WS7 round 12, completeness F7: compress applies the password on its own save and had no pin. The
   // lossy mode rasterises through a canvas, so its case is in tests/browser/compress.browser.test.ts.
   ['compressAndDownload (lossless)', svc => svc.compressAndDownload({ mode: 'lossless' }), false, false],
+  // Limits row 27: "shrink images" saves through the same seam; this fixture has no JPEG, so what it pins is
+  // that the mode reaches the password (its re-encode is in tests/browser/compress-images.browser.test.ts).
+  ['compressAndDownload (images)', svc => svc.compressAndDownload({ mode: 'images', dpi: 150, quality: 0.8 }), false, false],
 ];
 
 async function exported(run: (svc: ExportService) => Promise<void>, password: { user: string; owner: string } | null): Promise<Uint8Array> {

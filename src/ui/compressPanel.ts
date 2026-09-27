@@ -52,8 +52,9 @@ export class CompressPanel {
 
   apply(): void {
     const ui = this._ctx.ui;
-    const mode: CompressMode = ui.compressMode.value === 'lossy' ? 'lossy' : 'lossless';
-    const opts: CompressOptions = mode === 'lossy'
+    const v = ui.compressMode.value;
+    const mode: CompressMode = v === 'lossy' || v === 'images' ? v : 'lossless';
+    const opts: CompressOptions = mode !== 'lossless'
       ? {
           mode,
           dpi: clampDpi(parseInt(ui.compressDpi.value, 10)),
@@ -66,11 +67,13 @@ export class CompressPanel {
 
   private _syncModeVisibility(): void {
     const ui = this._ctx.ui;
-    const lossy = ui.compressMode.value === 'lossy';
-    ui.compressLossyGroup.style.display = lossy ? '' : 'none';
+    const mode = ui.compressMode.value;
+    // The DPI and quality fields drive both raster modes.
+    ui.compressLossyGroup.style.display = mode === 'lossy' || mode === 'images' ? '' : 'none';
     // Swap the hint AND re-translate it in place (data-i18n is otherwise only read
     // at page load, so the hint would stay on whichever mode was shown first).
-    const key = lossy ? 'modal.compress.hintLossy' : 'modal.compress.hintLossless';
+    const key = mode === 'lossy' ? 'modal.compress.hintLossy'
+      : mode === 'images' ? 'modal.compress.hintImages' : 'modal.compress.hintLossless';
     ui.compressModeHint.setAttribute('data-i18n', key);
     ui.compressModeHint.textContent = t(key);
   }

@@ -58,7 +58,7 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
   that rasterises the page — see [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content).)
   To take content out permanently, use **Redaction**
 - **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
-- **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
+- **PDF compress** — lossless optimize, shrink embedded JPEG photos to a chosen DPI (keeps text), or flatten-to-images at a chosen DPI/quality
 - **Form flatten** — bake AcroForm field values, and the file's own annotations (notes, stamps, shapes), into the
   page on export. Note this *exposes* a value rather than concealing it: it stops being an editable field and
   becomes selectable page text

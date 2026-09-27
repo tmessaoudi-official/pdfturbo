@@ -1,7 +1,7 @@
 /**
  * PDF compression (#60) — pure / pdf-lib helpers shared by the export service.
  *
- * Two strategies, surfaced together as the HYBRID "Compress" modal:
+ * Three strategies, surfaced together as the HYBRID "Compress" modal:
  *  - LOSSLESS "quick optimize": re-serialize with cross-reference object streams
  *    (`useObjectStreams:true`) and strip /Info + XMP metadata. Keeps selectable
  *    text, vectors and form fields intact — just a smaller, cleaner container.
@@ -10,21 +10,23 @@
  *    raster loop is DOM-dependent (canvas) and lives in ExportService; this module
  *    only provides the pure DPI→scale math + clamps it shares.
  *
- * True in-place image-XObject downsampling (keep text, shrink only the embedded
- * rasters) is the ceiling #60b — pdf-lib has no XObject-replace API.
+ *  - "SHRINK IMAGES" (limits row 27): everything quick optimize does, plus each
+ *    embedded JPEG re-encoded at the chosen DPI where it is drawn largest, under
+ *    the same object number — text, vectors and forms kept. The former ceiling
+ *    #60b; see `imageDownsample.ts` for which images qualify.
  */
 
 import type { PDFDocument as PDFDocumentT } from '@cantoo/pdf-lib';
 import { sweepUnreachableObjects } from '../utils/pdfObjectGc';
 import { loadPdfDocument } from '../utils/pdfLoadGuard';
 
-export type CompressMode = 'lossless' | 'lossy';
+export type CompressMode = 'lossless' | 'lossy' | 'images';
 
 export interface CompressOptions {
   mode: CompressMode;
-  /** Lossy render resolution in DPI. Ignored for lossless. */
+  /** Lossy render resolution in DPI; for `images`, the resolution to shrink embedded JPEGs to. Ignored for lossless. */
   dpi?: number;
-  /** Lossy JPEG quality (0–1). Ignored for lossless. */
+  /** JPEG quality (0–1) for `lossy` and `images`. Ignored for lossless. */
   quality?: number;
 }
 

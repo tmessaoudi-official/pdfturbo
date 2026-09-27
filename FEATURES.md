@@ -92,7 +92,7 @@ _Last updated: 2026-09-13 · Version 1.0.0_
 - **Table → CSV / Excel (.xlsx)** — extract a table from a page; ruled tables and, since EH-E,
   borderless ones inferred from column whitespace. The xlsx export writes numeric cells as real
   numbers rather than text
-- **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
+- **PDF compress** — lossless optimize, shrink embedded JPEG photos to a chosen DPI (keeps text), or flatten-to-images at a chosen DPI/quality
 - **XFDF** import/export of annotations
 - **Export targets** — full PDF, page range, single page, page as PNG/JPEG image; native OS "Save As"
   dialog on Chromium (File System Access API), anchor-download elsewhere

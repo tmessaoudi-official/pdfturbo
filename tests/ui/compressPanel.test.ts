@@ -14,7 +14,7 @@ function makeUI() {
   document.body.appendChild(compressModal);
 
   const mode = document.createElement('select');
-  for (const v of ['lossless', 'lossy']) {
+  for (const v of ['lossless', 'images', 'lossy']) {
     const op = document.createElement('option'); op.value = v; mode.appendChild(op);
   }
   return {
@@ -74,6 +74,17 @@ describe('CompressPanel mode visibility', () => {
     expect(ctx.ui.compressLossyGroup.style.display).not.toBe('none');
     expect(ctx.ui.compressModeHint.getAttribute('data-i18n')).toBe('modal.compress.hintLossy');
   });
+
+  it('shows the DPI/quality group and its own hint for "shrink images" (limits row 27)', () => {
+    const ctx = makeCtx();
+    const panel = new CompressPanel(ctx);
+    panel.setupListeners();
+    panel.open();
+    ctx.ui.compressMode.value = 'images';
+    ctx.ui.compressMode.dispatchEvent(new Event('change'));
+    expect(ctx.ui.compressLossyGroup.style.display).not.toBe('none');
+    expect(ctx.ui.compressModeHint.getAttribute('data-i18n')).toBe('modal.compress.hintImages');
+  });
 });
 
 describe('CompressPanel.apply', () => {
@@ -97,6 +108,17 @@ describe('CompressPanel.apply', () => {
     ctx.ui.compressQuality.value = '0.7';
     panel.apply();
     expect(lastOpts(ctx)).toEqual({ mode: 'lossy', dpi: 150, quality: 0.7 });
+  });
+
+  it('"shrink images" emits its mode with clamped DPI + quality (limits row 27)', () => {
+    const ctx = makeCtx();
+    const panel = new CompressPanel(ctx);
+    panel.open();
+    ctx.ui.compressMode.value = 'images';
+    ctx.ui.compressDpi.value = '5000';
+    ctx.ui.compressQuality.value = '0.7';
+    panel.apply();
+    expect(lastOpts(ctx)).toEqual({ mode: 'images', dpi: 300, quality: 0.7 });
   });
 
   it('clamps an out-of-range DPI and quality to the supported bounds', () => {
