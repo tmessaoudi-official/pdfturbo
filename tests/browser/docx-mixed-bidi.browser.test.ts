@@ -142,14 +142,13 @@ describe('row 19 — a per-glyph producer (Chrome print-to-PDF) reads back in ty
     has('١ ـ فقرة عربية خالصة (RTL)');
     has('٢ ـ نص مختلط عربي ولاتيني وأرقام (bidi)');
   });
-  it('an Arabic line with an embedded product name and a percentage', () =>
-    has('المنتج اسمه PDFturbo ويعمل بنسبة 100% داخل المتصفح، بدون خادم. البريد الإلكتروني'));
+  // Limits row 41: the paragraph's second line (`support@example.com …`, more Latin letters than Arabic) used to split
+  // into its own paragraph — its box grew with the Latin fallback font, 22.50pt under a 22.38pt threshold. Typed as
+  // `… والإصدار رقم v2.0.0 صدر سنة 2026.`; the lam-alef of `والإصدار` and the `2026.` item are extraction bounds.
+  it('a two-line Arabic paragraph with a product name, a percentage, an e-mail and a version stays one paragraph', () =>
+    has('المنتج اسمه PDFturbo ويعمل بنسبة 100% داخل المتصفح، بدون خادم. البريد الإلكتروني support@example.com'
+      + ' إوالصدار رقم v2.0.0 صدر سنة .2026'));
   it('an English line with an Arabic file name: no space inside `نظام.pdf`', () =>
     has('Mixed line the other way: the file نظام.pdf was opened at 14:30 with success.'));
-  it('a wrapped Arabic line with more Latin letters than Arabic reads right to left, and v2.0.0 stays whole', () => {
-    const line = chrome.find(t => t.includes('support@example.com')) ?? '';
-    expect(line.startsWith('support@example.com'), esc(line)).toBe(true);
-    expect(esc(line)).toContain(esc(' رقم v2.0.0 صدر سنة '));
-  });
 });
 

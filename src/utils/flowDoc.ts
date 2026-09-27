@@ -995,14 +995,59 @@ export function clusterWordsIntoLines(words: Word[]): Line[] {
   return lines;
 }
 
-/** Stage 2 — group lines into paragraphs on baseline-gap or font-size jumps. */
+/** A gap past `PARA_GAP` within this factor of the column's typical in-paragraph gap is still a wrap (limits row 41). */
+const WRAP_SLACK = 1.1;
+const sizeKey = (size: number) => Math.round(size * 2) / 2;
+
+/**
+ * The typical in-paragraph baseline gap per font size (half-point key) in one column: the lower median of the gaps
+ * between consecutive same-size lines that `PARA_GAP` already calls a wrap. A size with fewer than two such gaps has
+ * no typical gap.
+ */
+function typicalLineGaps(lines: Line[]): Map<number, number> {
+  const gaps = new Map<number, number[]>();
+  for (let k = 1; k < lines.length; k++) {
+    const a = lines[k - 1], b = lines[k];
+    if (Math.abs(a.size - b.size) >= 1) continue;
+    const size = Math.max(a.size, b.size), gap = a.y - b.y;
+    if (gap <= 0 || gap > PARA_GAP * size) continue;
+    const key = sizeKey(size);
+    const list = gaps.get(key);
+    if (list) list.push(gap); else gaps.set(key, [gap]);
+  }
+  const out = new Map<number, number>();
+  for (const [key, list] of gaps) {
+    if (list.length < 2) continue;
+    list.sort((x, y) => x - y);
+    out.set(key, list[Math.floor((list.length - 1) / 2)]);
+  }
+  return out;
+}
+
+/**
+ * Stage 2 — group lines into paragraphs on baseline-gap or font-size jumps.
+ *
+ * Limits row 41: `PARA_GAP` alone split a wrapped line whose box grew — a Latin fallback font inside an Arabic
+ * paragraph (Chrome print-to-PDF) put it 22.50pt under its predecessor against a 22.38pt threshold. A gap past the
+ * threshold is still a wrap when it is within `WRAP_SLACK` of the column's typical in-paragraph gap at that size,
+ * unless the line opens with a list marker. A tightly spaced page keeps its breaks: LaTeX papers put paragraphs 1.613
+ * sizes apart on lines 1.2 apart (measured). Measured on 22 PDFs, 6 boundaries change: 4 wraps rejoin (the Arabic
+ * line, a Schedule C sentence, two table captions) and 2 IRS 1040 form rows now join the row below — a bound.
+ */
 export function groupLinesIntoParagraphs(lines: Line[]): Line[][] {
+  const typical = typicalLineGaps(lines);
   const paraLines: Line[][] = [];
   for (const line of lines) {
     const current = paraLines[paraLines.length - 1];
     const prev = current?.[current.length - 1];
     const sameSizeBand = prev ? Math.abs(prev.size - line.size) < 1 : false;
-    const closeEnough = prev ? prev.y - line.y <= PARA_GAP * Math.max(prev.size, line.size) : false;
+    let closeEnough = false;
+    if (prev) {
+      const size = Math.max(prev.size, line.size), gap = prev.y - line.y;
+      const t = typical.get(sizeKey(size));
+      closeEnough = gap <= PARA_GAP * size ||
+        (t !== undefined && gap <= WRAP_SLACK * t && !detectListPrefix(line.words.map(w => w.text).join(' ')));
+    }
     if (prev && sameSizeBand && closeEnough) {
       current.push(line);
     } else {

@@ -3748,17 +3748,31 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   DRAWING of marks, not how pdf.js splits a source PDF's items at them); a producer that draws RTL glyphs in
   logical order is read reversed (pdf.js's own copy is wrong the same way). **UNCERTIFIED-BY-EXECUTION: the
   tagged (struct-tree) path** — it now takes `letterDirection` but no tagged Arabic fixture exists, and it does not
-  run `settleAmbiguousLines`. Guards: `tests/browser/docx-mixed-bidi.browser.test.ts` (15: the typed text of seven
-  LibreOffice lines is the oracle, the app's bake, and five Chrome cases), `tests/utils/flowDocArabic.test.ts` and
+  run `settleAmbiguousLines`. Guards: `tests/browser/docx-mixed-bidi.browser.test.ts` (14: the typed text of seven
+  LibreOffice lines is the oracle, the app's bake, and four Chrome cases), `tests/utils/flowDocArabic.test.ts` and
   `tests/blockers/arabic.blockers.test.ts` (28 together). Sabotage, predicted first, each restored with `cmp`, jsdom
   + browser: per-item reversal back → 10 + 10; item-count direction → 6 + 3; letter-less items not neutral → 2 + 3;
   L2 for an LTR base off → 2 + 3; direction-keyed gap → 3 + 4; bracket mirroring off → exactly the Chrome bracket
-  case in each (1 + 1, LibreOffice green); the paragraph tiebreak off → 1 + 1 (the email line); only its flush-right arm off → 1 + 1 (a
-  one-paragraph jsdom case, and the email line — which does split into its own paragraph, row 41, so the flushness
-  branch is what reads it); the run-box gap off →
-  1 + 1 (`نظام.pdf`); W7 off → 1 + 1 (the email line, via `v2.0.0`). The Markdown case aggregates every
+  case in each (1 + 1, LibreOffice green); the paragraph tiebreak off → 1 + 0; only its flush-right arm off → 1 + 0; both off → 1 + 1 (re-measured after
+  row 41: the email line now sits in its Arabic paragraph, whose letters decide it, and the flushness arm reads it
+  too, so the browser needs both gone to red); the run-box gap off →
+  1 + 1 (`نظام.pdf`); W7 off → 1 + 1 (the Arabic paragraph, via `v2.0.0`). The Markdown case aggregates every
   LibreOffice line, so it reds with any of them. The writer emits complex-script attrs (`font.cs=Arial`,
   `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
+- **A wrap is measured against its own column (limits row 41, 2026-09-27)**: `groupLinesIntoParagraphs` split at
+  `PARA_GAP` (1.6 sizes) alone, and Chrome's Arabic line box grows with a Latin fallback font inside it — the
+  `support@example.com` line sat 22.50pt under its predecessor against a 22.38pt threshold and became its own
+  paragraph. No single threshold works: LaTeX papers break paragraphs 1.613 sizes apart on 1.2-size lines. A gap past
+  `PARA_GAP` is now a wrap when it is within `WRAP_SLACK` (1.1) of the column's typical in-paragraph gap AT THAT SIZE
+  (lower median of the gaps under `PARA_GAP`, keyed per half point, at least two of them), unless the next line opens
+  with a list marker. Measured on 22 PDFs: 6 boundaries change — 4 wraps rejoin (the Arabic line, a Schedule C
+  sentence, two table captions) and 2 IRS 1040 form rows join the row below (a bound; the list guard kept a Pub 17
+  bullet apart). Not reached: a Chrome LTR paragraph whose EVERY line gap is past `PARA_GAP` (arabic-allcases p2, all
+  1.608) has no in-paragraph gap to compare with (row 52). Guards: five cases in `tests/utils/flowDocColumn.test.ts`
+  and the merged two-line paragraph case in `docx-mixed-bidi.browser.test.ts`. Sabotage, each restored with `cmp`:
+  rule off → 1 + 1; list guard off → exactly the list case; typical gap pooled across sizes → exactly the per-size
+  case (whose first fixture was vacuous — a tighter 10pt column only pulls a pooled median DOWN; it now pools a looser
+  18pt column); two samples not required → 2 jsdom.
 - **Edit-text prefill (limits row 40, 2026-09-27)**: the edit-text tool's Arabic overlay takes its text from
   `clusterBaselineRun`, which joined the clicked run's items by ascending x — the same reversal as the DOCX export's,
   one step earlier: measured on the Chrome fixture, 19 of 157 runs read as typed and 70 came out reversed; on the
@@ -3771,7 +3785,10 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   Arabic case asserted the ascending-x join on glyphs drawn in logical order, a shape pdf.js never produces), and
   `tests/browser/edittext-arabic-prefill.browser.test.ts` (2, real pdf.js items against the typed text of both
   fixtures, the bounds excluded by name). Sabotage, each restored with `cmp`: the page-order join → 3 + 2; order
-  kept but folding dropped → 1 + 1 (predicted 1 + 0 — the Chrome case reds too, cause not traced).
+  kept but folding dropped → 1 + 1 (predicted 1 + 0 — the Chrome case reds too, cause not traced). The gate forced
+  always-true → green: "a run with no RTL item is joined exactly as before" holds by reading, not by a test (the
+  LTR control only shows LTR text is not scrambled). The browser file hands real pdf.js items to the function; the
+  handler passes pdf.js's own item objects (a cast, `dir` rides along), certified by reading.
 - **True-edit**: `replaceTextAt` REFUSES Arabic new-text before the Latin Path-3 redraw (it would emit '?')
   → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still
   runs first for in-subset edits. Guard: `isArabicText()` (defined in `flowDoc.ts`, imported by `contentStreamEditor.ts`).
