@@ -7,6 +7,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { SigningHandler, type SignFormInput } from '../../src/handlers/signingHandler';
+import { PdfSigner } from '../../src/signing/pdfSigner';
+import { verifyAllSignatures } from '../../src/signing/cmsVerify';
 
 /** Generate a self-signed PKCS#12 container at runtime (no fixtures, no secrets). */
 async function makeP12(passphrase: string): Promise<Uint8Array> {
@@ -98,5 +100,21 @@ describe('SigningHandler.sign (real Chrome)', () => {
     expect(p12.every((b) => b === 0)).toBe(true);
     // 60s: node-forge RSA-2048 keygen + CMS is CPU-bound and flakes past the default 30s under
     // full-suite contention (passes in isolation; mirrors the jsdom node-forge timeout bump).
+  }, 60_000);
+
+  it('PAdES-B-B (limits row 24) signs and verifies in the bundle, with the hole exactly the /Contents string', async () => {
+    const { bytes } = await new PdfSigner().sign(await makeAssembledBytes(), {
+      p12: await makeP12('pw'), passphrase: 'pw', page: 0, rect: { x: 72, y: 72, width: 220, height: 64 }, profile: 'pades',
+    });
+    let body = '';
+    for (const b of bytes) body += String.fromCharCode(b);
+    expect(body).toContain('/SubFilter /ETSI.CAdES.detached');
+    const m = /\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/.exec(body);
+    const [, l1, c] = (m ?? []).slice(1).map(Number);
+    expect(body[l1]).toBe('<');
+    expect(body[c - 1]).toBe('>');
+    expect(await verifyAllSignatures(bytes)).toEqual([
+      expect.objectContaining({ digestMatches: true, signatureValid: true, signerCommonName: 'Browser Test Signer' }),
+    ]);
   }, 60_000);
 });

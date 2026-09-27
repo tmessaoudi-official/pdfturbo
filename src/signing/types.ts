@@ -42,6 +42,12 @@ export interface SignOptions {
    * absent → the existing text-only appearance.
    */
   appearanceImage?: Uint8Array;
+  /**
+   * Signature format. `'pkcs7'` (default) writes ISO 32000-1 `adbe.pkcs7.detached`; `'pades'` writes PAdES-B-B
+   * (`ETSI.CAdES.detached`, with the ESS signing-certificate-v2 attribute and no signingTime). Limits row 24 —
+   * not the default until the developer's Adobe Reader check (limits row 29).
+   */
+  profile?: 'pkcs7' | 'pades';
 }
 
 /** Result of a successful signing operation. */

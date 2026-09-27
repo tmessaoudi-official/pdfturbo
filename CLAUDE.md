@@ -3759,10 +3759,53 @@ packaged as PKCS#12, feeds the SAME `PdfSigner` (no signer change — it only wa
 ⇒ readers show "validity unknown" until trusted (surfaced via `modal.sign.genTrustNote`).
 Guards: `tests/signing/certGen.test.ts` (round-trip: generated p12 actually signs) +
 `tests/browser/cert-gen.browser.test.ts` (real-Chrome keygen+sign).
-**NOT yet supported**: TSA timestamp, LTV/DSS, multi-signature rounds, CA-issued/trusted certs (v1 scope).
-**PAdES (ETSI.CAdES.detached) is a ceiling** with node-forge: its pkcs7 `_attributeToAsn1` can't add the
-ESS signing-certificate-v2 signed attribute PAdES-BES requires, so we keep the valid ISO 32000-1
-`adbe.pkcs7.detached` rather than emit a malformed PAdES. A real PAdES needs hand-rolled CAdES ASN.1.
+**NOT yet supported**: TSA timestamp, LTV/DSS, multi-signature rounds. A CA-trusted signature needs no
+code: it comes from a CA-issued `.p12` on the "Use my .p12" path; only a GENERATED cert is self-signed.
+PAdES-B-B exists since limits row 24 — see § "PAdES-B-B, and the ByteRange hole that failed every signature".
+
+### PAdES-B-B, and the ByteRange hole that failed every signature — limits row 24 (2026-09-27)
+
+`SignOptions.profile: 'pades'` writes `ETSI.CAdES.detached`; the default stays `adbe.pkcs7.detached` until the
+developer's Adobe Reader check (limits row 29 — both samples are in `var/claude/acrobat-pack/row24/`). node-forge's
+`_attributeToAsn1` encodes only contentType, messageDigest and signingTime, so `cms.ts` `buildPadesDer` builds the
+SignedData from forge's ASN.1 primitives: signed attributes contentType, messageDigest and ESS signing-certificate-v2
+(RFC 5035: the SHA-256 of the embedded certificate, `hashAlgorithm` OMITTED because DER forbids encoding its DEFAULT,
+and `issuerSerial` with the issuer as `[4] EXPLICIT` Name), DER-sorted, and NO signingTime (ETSI EN 319 142-1 — the
+claimed time is `/M`, which the dictionary already carries). Issuer and serial are copied from the certificate's own
+ASN.1, never rebuilt. `cmsVerify` and forge's `messageFromAsn1` still parse the result.
+
+**Measuring it found a defect in EVERY signature this app had ever produced.** `computeByteRange` covered the
+`/Contents` string's `<` and `>`, so the hole was the hex digits only. pyHanko sizes the hole as the whole string
+(`len(contents) * 2 + 2`) and judged both profiles "does not cover the entire file" → INVALID, while calling them
+cryptographically sound [Verified: its `evaluate_signature_coverage` and the measured verdict]. That the spec and
+other signers leave the delimiters out is [Unverified: recalled, not read here]. Fixed at the origin, so the default
+profile, PAdES and the unwired incremental signer all changed; both profiles now read `ENTIRE_FILE`, bottom line valid,
+and an incremental double-sign reads signature 1 `ENTIRE_REVISION` (form filling — the second field) and signature 2
+`ENTIRE_FILE`, both valid [Verified 2026-09-27, one probe run, not a committed test]. The old hole signed MORE bytes
+than required, never fewer, so it was a conformance failure, not a tamper gap; `SECURITY.md` discloses it for files
+already signed. [Unverified: whether Adobe Reader accepted the old hole — no Reader here; row 29 checks the new one.]
+
+Evidence, and what each piece can see. `tests/signing/pades.test.ts` (6) reads the structure back from the signed
+bytes. `tests/tools/padesPyhanko.test.ts` runs pyHanko and `openssl cms -verify -cades` and is inert unless
+`PYHANKO_PYTHON` names a Python with pyHanko (not in CI; its header has the two-line setup). `-cades` matters: plain
+`openssl cms -verify` never reads the ESS attribute — the default profile fails `-cades` with "missing signing
+certificate attribute", which is the proof the check exists. `cmsVerify` reads only messageDigest and the RSA
+signature, so it is not a check of the ESS half. A real-browser case in `signing.browser.test.ts` covers the bundle.
+Sabotage, predicted first, each landed and restored with `cmp`: ESS hash over wrong bytes → the ESS case + the gated
+test; signingTime kept → the attribute case only (neither validator checks the PAdES baseline); attributes unsorted
+AND reversed → the attribute case only (openssl and pyHanko both accept an unsorted SET — only the byte pin sees it);
+explicit `hashAlgorithm` → the ESS case only; `[4]` implicit → the ESS case + the gated test (pyHanko throws matching
+issuer and serial); the old hole → 2 jsdom + the browser case + the gated test; SubFilter ignoring the profile → the
+SubFilter case only; the profile not reaching the CMS → 2 + the gated test (`-cades`). Removing the sort alone is
+EQUIVALENT: the builder already lists the attributes in DER order, so no byte changes — keeping the sort with the
+ESS attribute listed first stays green, which is what shows the sort works.
+
+**TSA, probed and not wired.** 12 public RFC 3161 servers, POSTed a real `application/timestamp-query` with the
+production `Origin` [Verified 2026-09-27, curl]: 9 answered with a token and NO `Access-Control-Allow-Origin`, so a
+browser cannot read the reply; two did not answer. The tenth, the only one with CORS, `rfc3161.ai.moda` — an aggregator proxy, not a CA's TSA —
+echoes ANY origin. 8 of the 12 are `http://`, which an `https` page may not fetch anyway [Inferred: mixed-content
+policy, not run in a browser]. Wiring any TSA needs two rulings: the CSP `connect-src 'self'` and a document HASH
+leaving the device (the nothing-uploaded promise). LTV needs revocation fetches — the same two.
 
 ### Approval caption + guided Signers panel (F-D D1/D2)
 

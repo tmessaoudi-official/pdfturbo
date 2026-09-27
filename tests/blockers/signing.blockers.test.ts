@@ -45,16 +45,12 @@ const ascii = (bytes: Uint8Array): string => {
 
 const RECT = { x: 72, y: 72, width: 240, height: 70 };
 
-describe('Signing blocker S6 — uses legacy PKCS#7, not PAdES (ETSI.CAdES)', () => {
-  // CEILING (re-scoped 2026-06-15 after investigation). A compliant PAdES-BES needs
-  // the ESS signing-certificate-v2 SIGNED attribute, but node-forge's pkcs7
-  // `_attributeToAsn1` only encodes contentType/messageDigest/signingTime — for any
-  // other OID the value is left undefined (a broken attribute). So the ESS attr
-  // CANNOT be added via the forge API; emitting only the ETSI.CAdES.detached
-  // SubFilter without it would be MALFORMED PAdES — strictly worse than the valid
-  // ISO 32000-1 adbe.pkcs7.detached we emit today. A real fix means hand-rolling the
-  // CAdES SignedData ASN.1 (or a different crypto lib): deferred, NOT test-gamed.
-  it.fails('emits a PAdES ETSI.CAdES.detached SubFilter (ceiling: forge cannot add the ESS attr)', async () => {
+describe('Signing blocker S6 — the DEFAULT is legacy PKCS#7, not PAdES (ETSI.CAdES)', () => {
+  // PAdES-B-B exists since limits row 24 (`profile: 'pades'`, hand-rolled ESS signing-certificate-v2 — the old
+  // reason here, "forge cannot add the ESS attr", no longer holds). It is not the DEFAULT until the developer's
+  // Adobe Reader check (limits row 29), so the default output still names adbe.pkcs7.detached. Flip this to a plain
+  // `it` in the same commit that flips the default.
+  it.fails('emits a PAdES ETSI.CAdES.detached SubFilter by default (waits on the Reader check)', async () => {
     const s = ascii(await (await new PdfSigner().sign(await makePdf(), {
       p12: await makeP12('pw'), passphrase: 'pw', page: 0, rect: RECT,
     })).bytes);

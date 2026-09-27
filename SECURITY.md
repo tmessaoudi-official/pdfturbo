@@ -317,6 +317,16 @@ encrypted whether they were written as their own objects or inline in the page: 
 first moves every inline annotation into an object of its own. If a string must not be readable without the password, do not
 rely on it sitting in one of those places.
 
+### Signatures made before 2026-09-27 report "does not cover the entire file" in strict validators (fixed)
+
+A PDF signature's `/ByteRange` must leave out exactly the signature value — the `/Contents` string with its `<` and
+`>`. Until 2026-09-27 PDFturbo left out only the digits between them, so the two delimiters were signed too. That
+covers MORE of the file than required, never less: the document's content and the cryptography were always intact,
+and any change to a covered byte still breaks the signature. But a strict validator measured it as a signature that
+does not cover the whole file — pyHanko reported the result as INVALID. Whether Adobe Reader flagged it is not known
+[not checked: no Reader was available]. To get a standard signature, sign the unsigned original again; a signed file
+cannot be re-signed in place.
+
 ## One file, two readers — what you see is what you export and sign
 
 PDFturbo **shows** a PDF with pdf.js and **builds** every PDF export (the whole document, a page range, one

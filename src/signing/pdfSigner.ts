@@ -29,7 +29,7 @@ import {
   validateSignOptionsShape,
 } from './appearance';
 import { loadP12, scrubP12Material, type P12Material } from './p12';
-import { buildDetachedCms } from './cms';
+import { buildDetachedCms, type CmsProfile } from './cms';
 import { loadPdfDocument } from '../utils/pdfLoadGuard';
 import {
   BYTE_RANGE_SENTINEL,
@@ -113,7 +113,7 @@ export class PdfSigner {
       // Serialise WITHOUT object streams so /Contents stays a plain literal we can find.
       const draftBytes = await doc.save({ useObjectStreams: false, updateFieldAppearances: false });
 
-      const signedBytes = await this._spliceSignature(draftBytes, material);
+      const signedBytes = await this._spliceSignature(draftBytes, material, opts.profile ?? 'pkcs7');
 
       return { bytes: signedBytes, signerCommonName: material.commonName };
     } finally {
@@ -256,7 +256,7 @@ export class PdfSigner {
     const sigDict = ctx.obj({
       Type: PDFName.of('Sig'),
       Filter: PDFName.of('Adobe.PPKLite'),
-      SubFilter: PDFName.of('adbe.pkcs7.detached'),
+      SubFilter: PDFName.of(opts.profile === 'pades' ? 'ETSI.CAdES.detached' : 'adbe.pkcs7.detached'),
       M: PDFString.of(formatPdfDate(signDate)),
     });
     sigDict.set(PDFName.of('ByteRange'), byteRange);
@@ -348,7 +348,7 @@ export class PdfSigner {
    * overwrite it in place, build the detached CMS over the covered span, and
    * splice the signature hex into the Contents slot.
    */
-  private async _spliceSignature(draft: Uint8Array, material: P12Material): Promise<Uint8Array> {
+  private async _spliceSignature(draft: Uint8Array, material: P12Material, profile: CmsProfile): Promise<Uint8Array> {
     // Work on a mutable copy so the input is never touched.
     const bytes = new Uint8Array(draft);
 
@@ -391,7 +391,7 @@ export class PdfSigner {
 
     // Hash + sign the covered span (everything except the hex payload).
     const signedSpan = collectSignedBytes(bytes, range);
-    const cms = await buildDetachedCms(signedSpan, material);
+    const cms = await buildDetachedCms(signedSpan, material, profile);
 
     // Splice the signature hex into the reserved slot.
     const hex = signatureToPaddedHex(cms, HEX_SLOT_CAPACITY);

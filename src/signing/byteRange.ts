@@ -94,17 +94,18 @@ export function findContentsSlot(bytes: Uint8Array): ContentsSlot {
 }
 
 /**
- * Compute the `/ByteRange [start1 len1 start2 len2]` for a Contents slot: the
- * file is covered everywhere EXCEPT the hex payload between `<` and `>`. The
- * angle brackets themselves are part of the covered range.
+ * Compute the `/ByteRange [start1 len1 start2 len2]` for a Contents slot: the file is covered everywhere EXCEPT the
+ * `/Contents` string — the hex payload AND its `<` and `>` (ISO 32000-2 §12.8.1; every other signer does the same).
+ * Until limits row 24 the brackets were covered, and pyHanko judged every signature this app produced INVALID:
+ * "The signature does not cover the entire file" (it sizes the hole as `len(contents) * 2 + 2`).
  *
- * @returns a 4-tuple `[0, open+1, close, total-close]`
+ * @returns a 4-tuple `[0, open, close + 1, total - close - 1]`
  */
 export function computeByteRange(slot: ContentsSlot, totalLength: number): [number, number, number, number] {
   const start1 = 0;
-  const len1 = slot.open + 1; // include the '<'
-  const start2 = slot.close; // include the '>'
-  const len2 = totalLength - slot.close;
+  const len1 = slot.open; // up to, not including, the '<'
+  const start2 = slot.close + 1; // just after the '>'
+  const len2 = totalLength - start2;
   return [start1, len1, start2, len2];
 }
 

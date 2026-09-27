@@ -48,7 +48,7 @@ Where each structural ceiling is actually pinned.
 | C1 subset/CID new glyph | partial — B-3 refuses non-WinAnsi | `blockers/trueedit.blockers.test.ts`, `browser/trueedit-literal-subset.browser.test.ts` |
 | C8 DOCX char-level bidi | partial — AR-1 pins *word*-level order | `blockers/arabic.blockers.test.ts`, `utils/bidi.test.ts` |
 | ~~C16 encryption R6~~ | closed 2026-09-13 — CORE-P0-2 now pins `/R 6` beside AES-256 V5/AESV3 | `blockers/core-security.blockers.test.ts` |
-| C17 PAdES / TSA / LTV | yes — S2 + S6 as `it.fails` | `blockers/signing.blockers.test.ts` |
+| C17 TSA / LTV; PAdES not yet the default | yes — S2 + S6 as `it.fails` (S6 pins the DEFAULT; PAdES itself: `signing/pades.test.ts`) | `blockers/signing.blockers.test.ts` |
 | C2 Arabic in-place true-edit | yes — refuses → overlay | `handlers/textEditHandler.test.ts`, `utils/flowDocArabic.test.ts` |
 | C3 Type3 / Form-XObject | yes — `isType3Font` / `isPath3OnlyTarget` refuse | `utils/contentStreamEditor.test.ts` |
 | C4 `cm` rotation/shear in Path 3 | yes — F10 tilted-refuse | `utils/contentStreamEditor.test.ts` |

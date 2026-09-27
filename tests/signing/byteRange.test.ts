@@ -48,18 +48,19 @@ describe('findContentsSlot', () => {
 });
 
 describe('computeByteRange', () => {
-  it('spans the whole file except the hex payload (brackets included)', () => {
-    // index:           0123456789...
+  it('spans the whole file except the /Contents string, its < and > included', () => {
+    // Limits row 24: the hole must be EXACTLY the hex string with its delimiters — pyHanko measures it as
+    // `len(contents) * 2 + 2` and judged every signature with the brackets covered "does not cover the entire file".
     const src = 'AB/Contents <0000> CD';
     const slot = findContentsSlot(enc(src));
     const range = computeByteRange(slot, src.length);
-    // open is at index of '<', len1 includes through '<'
     expect(range[0]).toBe(0);
-    expect(range[1]).toBe(slot.open + 1);
-    expect(range[2]).toBe(slot.close);
-    expect(range[3]).toBe(src.length - slot.close);
-    // The two spans together must skip exactly the 4 hex chars between < and >.
-    expect(range[1] + range[3]).toBe(src.length - slot.hexLength);
+    expect(range[1]).toBe(slot.open);
+    expect(src[range[1]]).toBe('<');
+    expect(range[2]).toBe(slot.close + 1);
+    expect(src[range[2] - 1]).toBe('>');
+    expect(range[3]).toBe(src.length - slot.close - 1);
+    expect(range[1] + range[3]).toBe(src.length - slot.hexLength - 2);
   });
 });
 
