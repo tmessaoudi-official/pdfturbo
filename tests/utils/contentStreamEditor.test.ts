@@ -44,6 +44,7 @@ import {
   addPageExtGStateResource,
   lookupExtGStateAlpha,
 } from '../../src/utils/contentStreamEditor';
+import { makeXObjectTextPdf } from './_xobjectFixture';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
 
@@ -202,6 +203,48 @@ describe('locatePageTextOps', () => {
   });
 });
 
+// Limits row 48. A form's text reaches the page through its /Matrix AND the page CTM at the `Do` — the /Matrix
+// first, then the CTM (PDF 32000 §8.10.1). Only the /Matrix was applied, so a form placed with `cm` hit-tested at
+// its unplaced position (measured: 687 runs of BERT, 308 of ResNet, 363 of Publication 17). Local (50, 300) →
+// /Matrix 0.5 → (25, 150) → cm translate (100, 20) → (125, 170). The reverse order would give (75, 160).
+describe('Form XObject placed by the page CTM at its Do (limits row 48)', () => {
+  const placed = { pageDo: '\nq 1 0 0 1 100 20 cm /Fx0 Do Q', matrix: [0.5, 0, 0, 0.5, 0, 0] };
+
+  it('finds the form text where the page draws it', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf(placed));
+    expect((await findTextOpAt(doc, 0, { x: 125, y: 170 }, 1))?.inXObject).toBe(true);
+    expect(getEditableTextAt(doc, 0, { x: 125, y: 170 }, 1)).toBe('InsideXObj');
+  });
+
+  it('does not find it at the unplaced point, nor with the two matrices in the wrong order', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf(placed));
+    expect(await findTextOpAt(doc, 0, { x: 25, y: 150 }, 1)).toBeNull();
+    expect(await findTextOpAt(doc, 0, { x: 75, y: 160 }, 1)).toBeNull();
+  });
+
+  it('locatePageTextOps reports the placed origin', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf(placed));
+    const [t] = (await locatePageTextOps(doc, 0)).filter(r => r.inXObject);
+    expect(t.origin.x).toBeCloseTo(125);
+    expect(t.origin.y).toBeCloseTo(170);
+  });
+
+  // An edit writes the form's one stream, so it changes every place the form is drawn. Only a form drawn once, on
+  // this page alone, is a true-edit target; anything else falls back to an overlay (SESSION-CHOSEN, row 48).
+  it('a form drawn twice on the page is not a target', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf({
+      ...placed, pageDo: '\nq 1 0 0 1 100 20 cm /Fx0 Do Q q 1 0 0 1 100 60 cm /Fx0 Do Q',
+    }));
+    expect(await findTextOpAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
+    expect(await replaceTextAt(doc, 0, { x: 125, y: 170 }, 'Changed', 1)).toBe(false);
+  });
+
+  it('a form another page also names is not a target', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf({ ...placed, secondPage: true }));
+    expect(await findTextOpAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
+  });
+});
+
 /** Build a real 3-string PDF entirely in memory — no fixtures. */
 async function makeThreeStringPdf(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -292,64 +335,6 @@ async function makeAdjacentWordsPdf(): Promise<Uint8Array> {
   return doc.save();
 }
 
-/**
- * Build a PDF whose ONLY text lives inside a Form XObject, invoked from the page
- * via a `Do` operator. Used to exercise the XObject-target path (BUG A1): such a
- * target must be flagged inXObject and must NOT be blanked without replacement.
- */
-async function makeXObjectTextPdf(): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  const page = doc.addPage([400, 400]);
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  // Embed the font into the page once so the XObject can reference it by name.
-  page.drawText(' ', { x: 0, y: 0, size: 1, font });
-
-  const ctx = doc.context;
-  // Form XObject content: draw "InsideXObj" at (50,300) in the XObject's space.
-  const xContent = 'q BT /F1 12 Tf 1 0 0 1 50 300 Tm (InsideXObj) Tj ET Q';
-  const xBytes = new Uint8Array(xContent.length);
-  for (let i = 0; i < xContent.length; i++) xBytes[i] = xContent.charCodeAt(i) & 0xff;
-
-  // Reuse the page's /Resources/Font dict so /F1 resolves inside the XObject.
-  const pageRes = ctx.lookup(page.node.get(PDFName.of('Resources'))) as PDFDict;
-  const fontDictRef = pageRes.get(PDFName.of('Font'));
-
-  const xDict = PDFDict.fromMapWithContext(new Map(), ctx);
-  xDict.set(PDFName.of('Type'), PDFName.of('XObject'));
-  xDict.set(PDFName.of('Subtype'), PDFName.of('Form'));
-  xDict.set(PDFName.of('FormType'), ctx.obj(1));
-  const bbox = PDFArray.withContext(ctx);
-  [0, 0, 400, 400].forEach(n => bbox.push(ctx.obj(n)));
-  xDict.set(PDFName.of('BBox'), bbox);
-  const xRes = PDFDict.fromMapWithContext(new Map(), ctx);
-  if (fontDictRef) xRes.set(PDFName.of('Font'), fontDictRef);
-  xDict.set(PDFName.of('Resources'), xRes);
-  xDict.set(PDFName.of('Length'), ctx.obj(xBytes.length));
-  const xStream = PDFRawStream.of(xDict, xBytes);
-  const xRef = ctx.register(xStream);
-
-  // Register the XObject on the page resources under /Fx0.
-  let xobjDict = ctx.lookup(pageRes.get(PDFName.of('XObject'))) as PDFDict | undefined;
-  if (!xobjDict?.set) {
-    xobjDict = PDFDict.fromMapWithContext(new Map(), ctx);
-    pageRes.set(PDFName.of('XObject'), xobjDict);
-  }
-  xobjDict.set(PDFName.of('Fx0'), xRef);
-
-  // Append a `Do` to the page content stream so the XObject is actually drawn.
-  const pageContent = '\nq /Fx0 Do Q';
-  const pcBytes = new Uint8Array(pageContent.length);
-  for (let i = 0; i < pageContent.length; i++) pcBytes[i] = pageContent.charCodeAt(i) & 0xff;
-  const doStream = ctx.stream(pcBytes);
-  const doRef = ctx.register(doStream);
-  const existing = page.node.get(PDFName.of('Contents'));
-  const contentsArr = PDFArray.withContext(ctx);
-  if (existing) contentsArr.push(existing);
-  contentsArr.push(doRef);
-  page.node.set(PDFName.of('Contents'), contentsArr);
-
-  return doc.save();
-}
 
 function bytesToLatin1(bytes: Uint8Array): string {
   let s = '';

@@ -1209,13 +1209,16 @@ function findTarget(
     };
   }
 
-  // Fall back: search Form XObjects referenced by Do operators in the page stream.
+  // Fall back: search Form XObjects referenced by Do operators in the page stream. A form's text reaches the page
+  // through its /Matrix and then the page CTM at the `Do` (limits row 48 — the CTM used to be left out, so a form
+  // placed with `cm` hit-tested at its unplaced position). An edit writes the form's ONE stream, so a form drawn
+  // more than once, or named by another page, is not a target: editing it would change text the user did not click.
   interface XCandidate { dist: number; target: TextOpInfo; ops: CsOp[]; textOps: TextOpInfo[]; xObjectName: string; source: string }
   let bestX: XCandidate | null = null;
-  for (const op of pageOps) {
-    if (op.operator !== 'Do') continue;
-    const raw = op.operands[0]?.raw ?? '';
-    if (!raw) continue;
+  const placements = formPlacements(pageOps);
+  for (const { name: raw, ctm } of placements) {
+    if (placements.filter(pl => pl.name === raw).length > 1) continue;
+    if (formNamedByAnotherPage(doc, pageIndex, raw)) continue;
     const xContent = getFormXObjectContent(doc, pageIndex, raw);
     if (!xContent) continue;
     const xMatrix = getFormXObjectMatrix(doc, pageIndex, raw);
@@ -1223,7 +1226,8 @@ function findTarget(
     const xTextOps = locateTextOps(xOps);
     for (const t of xTextOps) {
       if (showOpPayload(xOps[t.opIndex]).trim() === '') continue; // skip blanked ghosts
-      const ps = applyMatrixToPoint(xMatrix, t.origin.x, t.origin.y);
+      const local = applyMatrixToPoint(xMatrix, t.origin.x, t.origin.y);
+      const ps = applyMatrixToPoint(ctm, local.x, local.y);
       const dist = Math.hypot(ps.x - point.x, ps.y - point.y);
       if (dist <= tolerance && dist < (bestX?.dist ?? Infinity)) {
         // Flag the target as XObject-sourced so callers (textEditHandler) can
@@ -2683,6 +2687,65 @@ export function getPageRotation(doc: PDFDocument, pageIndex: number): 0 | 90 | 1
 }
 
 /**
+ * Every `Do` in a stream with the CTM in effect at it, tracked through q/Q/cm in PDF order (a later `cm` applies
+ * first — limits row 47). One entry per occurrence, so a form drawn twice yields two placements.
+ */
+function formPlacements(ops: CsOp[]): { name: string; ctm: Matrix }[] {
+  const out: { name: string; ctm: Matrix }[] = [];
+  let ctm: Matrix = [...IDENTITY];
+  const stack: Matrix[] = [];
+  const num = (t: CsToken | undefined): number => t?.value ?? 0;
+  for (const op of ops) {
+    if (op.operator === 'q') stack.push([...ctm]);
+    else if (op.operator === 'Q') ctm = stack.pop() ?? ctm;
+    else if (op.operator === 'cm') {
+      ctm = multiplyMatrix([
+        num(op.operands[0]), num(op.operands[1]), num(op.operands[2]),
+        num(op.operands[3]), num(op.operands[4]), num(op.operands[5]),
+      ], ctm);
+    } else if (op.operator === 'Do') {
+      const name = op.operands[0]?.raw ?? '';
+      if (name) out.push({ name, ctm: [...ctm] });
+    }
+  }
+  return out;
+}
+
+/** The XObject a page's resources name, as stored (a reference when indirect). */
+function pageXObjectEntry(doc: PDFDocument, pageIndex: number, xobjName: string): unknown {
+  try {
+    const res = doc.getPage(pageIndex).node.Resources();
+    const xo = res ? doc.context.lookup(res.get(PDFName.of('XObject'))) : undefined;
+    return xo instanceof PDFDict ? xo.get(PDFName.of(xobjName.replace(/^\//, ''))) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * True when some OTHER page's resources name the same form stream — an edit to it would change that page too.
+ * An unreadable resource counts as not shared on that page; a direct (non-reference) stream cannot be shared.
+ */
+function formNamedByAnotherPage(doc: PDFDocument, pageIndex: number, xobjName: string): boolean {
+  const mine = pageXObjectEntry(doc, pageIndex, xobjName);
+  if (!(mine instanceof PDFRef)) return false;
+  const count = doc.getPageCount();
+  for (let i = 0; i < count; i++) {
+    if (i === pageIndex) continue;
+    let xo: unknown;
+    try {
+      const res = doc.getPage(i).node.Resources();
+      xo = res ? doc.context.lookup(res.get(PDFName.of('XObject'))) : undefined;
+    } catch {
+      continue;
+    }
+    if (!(xo instanceof PDFDict)) continue;
+    for (const v of xo.values()) if (v instanceof PDFRef && v.objectNumber === mine.objectNumber && v.generationNumber === mine.generationNumber) return true;
+  }
+  return false;
+}
+
+/**
  * Decode a Form XObject's content stream.
  * Returns null when the name doesn't resolve to a Form XObject on the page.
  */
@@ -2772,28 +2835,27 @@ export function locatePageTextOps(
   const directOps = groupOps(tokenizeContentStream(content));
   const result: TextOpInfo[] = locateTextOps(directOps);
 
-  // Recurse into Form XObjects (depth-limited to 5)
-  function recurse(xOps: ReturnType<typeof groupOps>, depth: number): TextOpInfo[] {
+  // Recurse into Form XObjects (depth-limited to 5). Each form's text maps through its /Matrix, then the CTM at its
+  // `Do` in the enclosing stream, then whatever placed that stream (`parent`) — PDF order, innermost first (row 48).
+  // Bound: a nested form's name is resolved in the PAGE's resources, not the enclosing form's.
+  function recurse(xOps: ReturnType<typeof groupOps>, depth: number, parent: Matrix): TextOpInfo[] {
     if (depth >= 5) return [];
     const xResults: TextOpInfo[] = [];
-    for (const op of xOps) {
-      if (op.operator !== 'Do') continue;
-      const xobjName = op.operands[0]?.raw ?? '';
-      if (!xobjName) continue;
+    for (const { name: xobjName, ctm } of formPlacements(xOps)) {
       const xContent = getFormXObjectContent(doc, pageIndex, xobjName);
       if (!xContent) continue;
-      const xMatrix = getFormXObjectMatrix(doc, pageIndex, xobjName);
+      const toPage = multiplyMatrix(multiplyMatrix(getFormXObjectMatrix(doc, pageIndex, xobjName), ctm), parent);
       const innerOps = groupOps(tokenizeContentStream(xContent));
       const innerInfos = locateTextOps(innerOps);
       for (const info of innerInfos) {
-        const transformed = applyMatrixToPoint(xMatrix, info.origin.x, info.origin.y);
+        const transformed = applyMatrixToPoint(toPage, info.origin.x, info.origin.y);
         xResults.push({ ...info, origin: transformed, opIndex: -1, inXObject: true });
       }
-      xResults.push(...recurse(innerOps, depth + 1));
+      xResults.push(...recurse(innerOps, depth + 1, toPage));
     }
     return xResults;
   }
 
-  result.push(...recurse(directOps, 0));
+  result.push(...recurse(directOps, 0, [...IDENTITY]));
   return result;
 }

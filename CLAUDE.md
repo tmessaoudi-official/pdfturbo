@@ -3052,7 +3052,7 @@ locked export failed where the unlocked one succeeded (the other `/Annots` reade
 is hoisted too, since it still holds strings. Pinned by the malformed-`/Annots` pair; dropping that branch reds
 exactly the locked case.
 
-### True-edit composed nested `cm` backwards — limits row 47 (2026-09-27)
+### True-edit composed nested `cm` backwards, and forgot the CTM at a form's `Do` — limits rows 47–48 (2026-09-27)
 
 PDF's `cm` sets CTM' = M × CTM: the NEW matrix applies to a point first. `multiplyMatrix(A, B)` applies A first,
 and `locateTextOps` and `locateDecorationRects` passed `(ctm, m)`, so a translation followed by a scale scaled the
@@ -3066,16 +3066,32 @@ old one 482. ResNet: 476 runs on 4 pages. BERT: 1. The other 11 files: none (the
 the probe ran out of memory). So on such a file a click on text either missed (the edit fell back to an overlay)
 or — the 482 — found a DIFFERENT run whose wrongly placed origin sat under the pointer, and **edited text the user
 did not click**: undoable, but reported as success. Paths 1/2 wrote the right bytes wherever they landed; Path 3
-also drew its redraw at the wrong origin. For a translate/scale pair only the origin differs (the linear parts
+places its redraw from the origin, so it would have drawn in the wrong place [by reading — the browser case reds at
+the hit test, before any redraw runs]. For a translate/scale pair only the origin differs (the linear parts
 commute), so `tilted`, the A1 redraw matrix and a decoration's `scaleX` were unchanged there; a rotation inside an
 uneven scale changes the matrix too. `translateMatrix` (Td/T*) and `trm = textMatrix × ctm` were already in PDF
 order.
 
-**Remaining, row 48:** text inside a Form XObject is mapped to the page through the form's `/Matrix` alone — the
-page CTM at the `Do` is never applied — so a form placed with `q … cm /Fm Do Q` still hit-tests at its unplaced
-position. Now that page text is placed right, that gap is the more visible one.
+**Row 48, the same class one level down (fixed the same day):** text inside a Form XObject was mapped to the page
+through the form's `/Matrix` alone — the page CTM at the `Do` was never applied — so a form placed with
+`q … cm /Fm Do Q` hit-tested at its unplaced position. Measured the same way: 687 form runs of BERT (4 pages), 308
+of ResNet (6), 363 of Publication 17 (69); the placed position met a pdf.js item origin 501 / 290 / 288 times
+against 2 / 0 / 0. `formPlacements` now records the CTM at every `Do` OCCURRENCE (q/Q/cm in PDF order), and a
+form's text maps through its `/Matrix` FIRST, then that CTM (`locatePageTextOps` also composes nested forms).
+**An edit writes the form's one stream, so it changes every place the form is drawn** — Publication 17's 114
+page-level form references resolve to 14 streams, one of them named by 47 pages. So a form drawn twice on the page,
+or named by any other page, is no longer a true-edit target and falls back to an overlay (SESSION-CHOSEN: never
+change text the user did not click). This NARROWS A3a/A3b: a shared form placed at identity was editable before.
+Bound: a nested form's name is resolved in the page's resources, not the enclosing form's.
+Guards: five cases in `tests/utils/contentStreamEditor.test.ts` (placed point found; unplaced and wrong-order points
+not; `locatePageTextOps`; drawn twice; named by another page) over the shared `tests/utils/_xobjectFixture.ts`, and
+`tests/browser/trueedit-form-placement.browser.test.ts` (2, real pdf.js origin). Sabotage, predicted, each restored
+with `cmp`: CTM dropped or applied before the `/Matrix` → 2 unit + the browser edit case; the drawn-twice guard
+dropped → exactly its case; the other-page guard dropped → exactly its case; `locatePageTextOps` without the CTM →
+exactly its case; the other-page check always true → every form hit, the A1/A3a/A3b cases included. A first M6
+(`return true` only for a non-reference entry) stayed green — vacuous, since the fixture's entry is a reference.
 
-Guards: three cases in `tests/utils/contentStreamEditor.test.ts` (text and rule origin under translate-then-scale,
+Row-47 guards: three cases in `tests/utils/contentStreamEditor.test.ts` (text and rule origin under translate-then-scale,
 and the R × S matrix) and `tests/browser/trueedit-nested-cm.browser.test.ts` (5, real pdf.js origins; the fixture
 puts the old order's origin of run A exactly on run B, so the old code edited A on a click at B). Sabotage,
 predicted first, each restored with `cmp`: the text site reverted → 2 unit + 4 browser; the rule site reverted →
