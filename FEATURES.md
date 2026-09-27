@@ -50,6 +50,9 @@ _Last updated: 2026-09-13 · Version 1.0.0_
 - Auto-detect and fill AcroForm text fields (undoable)
 - **Flatten forms** on export (bake field values into page content). Note this *exposes* the value rather
   than concealing it: it stops being an editable field and becomes selectable page text
+- The same **Flatten** also draws the file's own annotations (sticky notes, stamps, shapes, highlights) into the
+  page, as the editor shows them, rather than leaving them as annotations. Links, pending redaction marks,
+  attachments and media stay as they are; an annotation with no appearance to draw is left as it is and counted
 
 ## Redaction & privacy
 - **True redaction** — permanent black-box burn. Removal is real on both page kinds, by two different

@@ -1,6 +1,7 @@
 /**
  * CEILING pins that need a real browser — canvas for the ink raster, fontkit + a real font subset for
- * the Arabic shaping. Companion to tests/blockers/layout-flatten.blockers.test.ts (C10, C12).
+ * the Arabic shaping. Its jsdom companion, tests/blockers/layout-flatten.blockers.test.ts, was retired once
+ * limits rows 21 and 23 lifted C10 and C12.
  *
  * Per the tests/blockers convention, a CEILING is a normal PASSING test that pins current degraded
  * behaviour so a future change is noticed. Neither of these is a defect.

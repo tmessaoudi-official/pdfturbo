@@ -59,8 +59,9 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
   To take content out permanently, use **Redaction**
 - **Bates / page numbering** — prefix + zero-padded counter or "N / total", six anchor positions
 - **PDF compress** — lossless optimize, or flatten-to-images at a chosen DPI/quality
-- **Form flatten** — bake AcroForm field values into the page on export. Note this *exposes* the value
-  rather than concealing it: it stops being an editable field and becomes selectable page text
+- **Form flatten** — bake AcroForm field values, and the file's own annotations (notes, stamps, shapes), into the
+  page on export. Note this *exposes* a value rather than concealing it: it stops being an editable field and
+  becomes selectable page text
 - Which tools actually **delete** content versus only hide it is graded surface-by-surface in
   [`SECURITY.md`](SECURITY.md#hiding-is-not-removing--which-tool-actually-deletes-content)
 - **XFDF** — import / export annotations

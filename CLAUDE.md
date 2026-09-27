@@ -2207,6 +2207,81 @@ no `Bookmark` in DOCX → the writer case + the browser Word case; `linkParts` i
 cases; no lowest-paragraph fallback → exactly that case; the `getDestination` catch removed → exactly the rejecting-lookup case; the `getPageIndex` catch removed →
 exactly the unknown/dangling/out-of-range case.
 
+### Flatten draws source annotations, the way the editor canvas shows them — limits row 23 (2026-09-27)
+
+"Flatten & download" used to flatten AcroForm widgets only (`form.flatten()`); a note, stamp or shape authored
+elsewhere survived as an annotation (C12, #62b). `src/export/flattenAnnotations.ts` now draws each source
+annotation's normal appearance into its page and removes it, called in `_assemblePdfDoc` under `flattenAllForms`,
+on the SOURCE before any page is copied or rasterised — so an annotation under a redaction becomes content under
+the burn (pinned).
+
+**The rule is pdf.js's canvas, not an idealised spec reading**, because that canvas is what the user saw: PDFturbo
+renders with no `annotationCanvasMap`, so `beginAnnotation` (`pdf.mjs`) paints every viewable annotation onto the
+page canvas — reset to the base transform, clipped to /Rect, through `getTransformMatrix(rect, bbox, matrix)`
+(`pdf.worker.mjs`), inside its /OC marked content. The flatten emits exactly that:
+`[/OC /PdfturboOCn BDC] q Rect re W n A cm /X Do Q [EMC]`. Four consequences, each deliberate:
+
+- **NoRotate is ignored on a rotated page.** pdf.js honours it only on its own-canvas path, which PDFturbo does
+  not use; a /Text note (pdf.js forces NoRotate on all of them) turns with the page in the editor, and so here.
+- **Appearance selection is pdf.js `setAppearance`:** /N when it is a stream, else /N[/AS] — no fallback. A missing
+  /BBox defaults to the rect's size, a missing /Subtype is set to /Form (the stream belongs to a throwaway load).
+- **`Do` also clips to the form's /BBox**, which pdf.js does not — the one inherent difference: identical while the
+  appearance stays inside its BBox, spec-correct when it does not.
+- **No frame is converted.** /Rect and the appearance are in the page's user space, the same as its content
+  stream, so every /Rotate and CropBox is right by construction. The appended ops rely on pdf-lib wrapping the
+  existing content in `q…Q` before the first append, so a stray `cm` the page leaves behind cannot scale them —
+  pinned by a fixture whose content ends in an unbalanced `2 0 0 2 0 0 cm`.
+
+**Kept on purpose, not counted** — a SESSION-CHOSEN narrowing of "each source annotation": Link (stays
+clickable), Popup (removed only with its flattened parent), **Redact** (a PENDING redaction: its `/AP /N` is normally
+the mark that says one was placed — the black box is `/RO`, applied later — so baking it would put a redaction
+mark into content over text that is still there, the classic hide-not-remove trap; a producer that put `/RO`-like
+content in `/N` is not measured), **Widget** (left to `form.flatten()`; that call sits in a bare catch, and a
+widget it failed on would, drawn here, show its old appearance while `/V` holds the user's value [Inferred: from
+pdf-lib regenerating appearances inside `flatten()`, not reproduced]), FileAttachment/Sound/Movie/Screen/RichMedia/3D (the icon is not the
+payload), and anything pdf.js does not view (Invisible, Hidden, NoView). **Skipped and counted**: no usable
+appearance, or a zero-size rect — they stay annotations, and `toast.flattenAnnotationsSkipped` says how many.
+pdf.js generates appearances for many such annotations when DISPLAYING them, so the editor showed them and the
+export still does, as annotations.
+
+**Flatten and Save now treat a redacted page differently, without either leaking.** Save strips a source
+annotation that MEETS a redaction, whole; Flatten draws it into content first, so its uncovered part survives as
+pixels and only the covered part burns. Nothing under the box survives either way; the pinned case covers an
+annotation entirely, and a partially covered one is not driven by a test. The user's rotate button cannot change
+the flatten at all — it runs on the source, before the page is turned — and a variant with a user rotation over a
+/Rotate 270 CropBox page pins that too.
+
+A flattened note's `/Contents` leaves the file only when nothing else reaches the note: a reply kept as an
+annotation keeps its `/IRT`, `copyPages` then carries the note's dictionary, and the text sits in the bytes where
+no viewer shows it — measured both ways and stated in `SECURITY.md`. Also stated: an annotation without the Print
+flag prints once flattened.
+
+**Real files, measured:** the 15-file corpus carries only Link and Widget annotations, both kept, so flatten leaves
+every one of them unchanged — a no-regression result that says nothing about real markup. pdf.js's own annotation
+test files do: FreeText, Highlight, Line, Polygon/PolyLine, Square/Circle, Squiggly, Stamp, StrikeOut and Underline
+(12 annotations, 9 files) all flatten pixel-identically with their popups gone, and the Widget file is untouched.
+Four are vendored in `tests/fixtures/annotations/`.
+
+Guards: `tests/browser/flatten-annotations.browser.test.ts` (9) and `tests/export/flattenAnnotations.test.ts` (13).
+The oracle assumes no frame: the source rendered by pdf.js WITH annotations must equal the export rendered the same
+way — measured pixel-identical (no channel off by more than 40) at /Rotate 0/90/180/270, a CropBox origin, and a user
+rotation — and,
+since that alone passes if flatten does nothing, the export rendered WITHOUT annotations must show every flattened
+colour (A plain, B through an /AS state whose /Matrix turns it 90°, a sticky note), the OFF-layer one must stay
+hidden AND appear once the layer is forced on (without that half an OFF-layer case cannot fail), and the pending
+/Redact must not be baked. Sabotage, predicted first, each landed and restored with `cmp`: flatten never called →
+7 browser (the redaction case stays green: the strip already removes a covered annotation); an inherited `2 0 0 2
+0 0 cm` → 1 unit + 6 browser; identity transform instead of §12.5.5 → 5 browser; the first state instead of /AS →
+2 unit + 5 browser (green in the browser until the fixture listed `Off` first — the first version could not see
+it); no /OC wrapping → 1 unit + 5 browser; Redact drawn → 1 + 5; popups kept → 1 + 7 (the note's text then
+survives through the popup's `/Parent`); not-viewed flags ignored → 1 + 5; the rect not normalised → exactly
+the reversed-rect unit case; skipped ones not counted → 2 unit + 5 browser. The real-file case was added after the
+matrix; two mutations were re-run against it (never called, popups kept) and each reds it too — the other figures
+predate it and were not re-measured. Popups are swept only after every page is drawn, because one may sit on
+another page than its parent (the sanitizer met that shape): sweeping page by page → exactly the cross-page unit
+case. Three of those mutations (never
+called, identity transform, flags ignored) leave an unused name that `tsc` rejects; vitest runs them as written.
+
 ### `/pdf-qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 
 The sweep's `0 fail` covers **66 distinct controls of 141 in the DOM**. Every report now ends with
@@ -2426,7 +2501,8 @@ grades (see that § for why). They are single-verb substitutions and were pendin
 pending count before assuming a key is reviewed.
 **AMENDED 2026-09-13 — WS3 CLOSED by developer ruling** ("consider the arabic review done"): the 15
 values that had accumulated since, and the two UNRECONCILED sets, are accepted as reviewed. That is a
-RULING, not a second native read — say so whenever citing it. **Pending count: 8** —
+RULING, not a second native read — say so whenever citing it. **Pending count: 10** —
+`toast.flattenAnnotationsSkipped` (new) and `toast.flattenDone` (re-worded), limits row 23 on 2026-09-27,
 `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, and `toolbar.sanitizeTitle`, re-worded on the closure day to en/fr parity by the session, so it is a new value and
 starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), also
 session-written. The count's home is § "The hide-vs-remove audit"; `KNOWN_ISSUES.md` § "Arabic locale strings"
@@ -2538,7 +2614,7 @@ XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (th
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (ar accepted by the 2026-09-13 WS3 closure ruling, together
 with the 7 `toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day and the rest of that
-15-value set — **8 values pending as of 2026-09-26**, row 12's `progress.ocrLoadingModel`, row 11's `toolbar.clearRecentFiles`, the re-worded `toolbar.sanitizeTitle`, WS7 round 10's two new keys, round 15's `toast.pdfLoadRefused`, WS8's `toast.exportLayersConflict` and A6's `thumbnail.previewUnavailable`; § The
+15-value set — **10 values pending as of 2026-09-27**, row 23's new `toast.flattenAnnotationsSkipped` and re-worded `toast.flattenDone`, row 12's `progress.ocrLoadingModel`, row 11's `toolbar.clearRecentFiles`, the re-worded `toolbar.sanitizeTitle`, WS7 round 10's two new keys, round 15's `toast.pdfLoadRefused`, WS8's `toast.exportLayersConflict` and A6's `thumbnail.previewUnavailable`; § The
 hide-vs-remove audit is the count's home, so update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
@@ -2692,14 +2768,14 @@ on **every** source unconditionally, baking each widget's appearance into the pa
 the annotation. The opts param defaults false → byte-identical for the other 3 `_assemblePdfDoc` callers
 (downloadPDF / downloadPageRange / assemblePdfBytes). Gated by `VITE_FEATURE_FLATTEN` (#28 seam, default ON;
 `main.ts` removes the button when off). The app's own overlay annotations are already baked by `buildPageOverlays`;
-source **markup** annotations (notes/stamps authored elsewhere) = ceiling **#62b** — pdf-lib has no generic
-markup-flatten. **The claim that "the redaction-rasterize path + PNG export already cover that nuclear
+source annotations (notes/stamps authored elsewhere) were ceiling **#62b** until limits row 23 drew their
+appearances into the page — see § "Flatten draws source annotations". **The claim that "the redaction-rasterize path + PNG export already cover that nuclear
 case" was FALSE and is retracted (2026-08-29).** It was reasoning about a path nobody had driven: the burn
 is written into the page CONTENT STREAM and pdf.js paints annotation appearance streams AFTER it, so a
 covered note/stamp/widget was repainted ON TOP of the burn and baked into the exported pixels — measured
 `(255,0,0)` through an opaque black burn. Fixed by `stripRedactedAnnotations`; see § "A source annotation
-under a redaction was painted OVER the burn". The residual #62b ceiling is genuine and narrower than it
-looked: an annotation NOT under a redaction is still not flattened by these paths.
+under a redaction was painted OVER the burn". The residual #62b ceiling — an annotation NOT under a redaction
+— was lifted by limits row 23 (2026-09-27).
 **Form FILLS are undoable (#QA-2026-06-23 P1 fix):** the form-overlay change callback routes through
 `app.handleFormInput` → `UndoRedoController.handleFormInput`, which sets `_formValues` live AND coalesces a
 burst of edits to one field into a single `SetFormValueCmd` (`src/core/commands/formCmds.ts`) recorded after a
@@ -3853,7 +3929,7 @@ The three Arabic edits are single-verb substitutions (`للإبقاء على` �
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified. **The pending set is
 CLOSED as of 2026-09-13 by developer ruling** ("consider the arabic review done") — accepted by ruling, not
-by a second native read — **and the pending count is 8**: `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
+by a second native read — **and the pending count is 10**: `toast.flattenAnnotationsSkipped` and the re-worded `toast.flattenDone` (limits row 23, 2026-09-27), `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
 en/fr parity by the session, which makes it a new value, and the two keys WS7 round 10 added the same day
 (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), both session-written. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
 keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
@@ -4066,7 +4142,7 @@ this class twice over.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (ar accepted by the 2026-09-13 WS3
 closure ruling, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings,
-the 2 #54b keys and the old `toolbar.sanitizeTitle` — 8 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+the 2 #54b keys and the old `toolbar.sanitizeTitle` — 10 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

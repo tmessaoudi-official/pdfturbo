@@ -59,7 +59,7 @@ Where each structural ceiling is actually pinned.
 | C14 Arabic searchable-OCR search | yes — the "Arabic honest contract" case | `browser/searchable-ocr.browser.test.ts` |
 | C18 RTL layer select/copy/search | yes — item-level highlight pinned | `browser/arabic-search.browser.test.ts`, `browser/arabic-selection.browser.test.ts` |
 | C10 4+ column layout | lifted by limits row 21 — 4–8 columns and 14pt gutters split; 9+ come out as 8 groups | `utils/flowDocColumns.test.ts` ("limits row 21") + `browser/columns-split.browser.test.ts` — the pins left this file |
-| C12 markup-annotation flatten | yes — a `/Text` note survives `getForm().flatten()` | `blockers/layout-flatten.blockers.test.ts` |
+| C12 markup-annotation flatten | lifted by limits row 23 — annotations with an appearance are drawn into the page; the rest are counted | `export/flattenAnnotations.test.ts` + `browser/flatten-annotations.browser.test.ts` — the pin left this directory with its file |
 | ~~C22~~ CropBox-origin flow LAYOUT | **not a ceiling any more — FIXED 2026-09-02.** The `it.fails` pin became a regression guard and lost the `blockers-` prefix, which means "an `it.fails` stating behaviour we do NOT have". The image-anchor and margin cases this row recorded as unasserted are now asserted, alongside three lockstep cases (colour / underline / hyperlink) that pass before AND after the fix — those are the ones a PARTIAL normalisation goes red on | `browser/cropbox-origin-layout.browser.test.ts` |
 | C19 Arabic tashkeel / GPOS | yes — marks reach the glyph stream; placement not asserted | `browser/ceilings.browser.test.ts` |
 | C21 raster ink, no per-stroke edit | yes — the bake returns a PNG data URL | `browser/ceilings.browser.test.ts` |

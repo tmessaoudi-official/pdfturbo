@@ -51,7 +51,7 @@ rows were established by reading the code. Both are said plainly instead of impl
 | **Shape / rectangle over text** | ***not even hidden*** | **[pinned]** See below — this is the one that catches people. |
 | **Highlight** | *not hidden* | A semi-transparent annotation drawn over the text. |
 | **Sanitize** | metadata, scripts, egress, attachments | **[pinned]** Strips `/Info`, XMP `/Metadata` on **every** object (catalog, pages, form and image XObjects, fonts — until 2026-09-05 only the catalog and pages, while this row said "XMP" unqualified), `/PieceInfo` private application data (Illustrator and InDesign embed the source document there), and document JavaScript — including a script reached through an action chain (`/Next`), listed in an array-valued `/A`, attached to an `/Outlines` bookmark, hung as `/AA` on the page-tree root or on a form field that `/Fields` never lists (pdf.js inherits `/AA` through `/Parent`, so both ran after sanitize until 2026-09-05), or a 3D annotation's `/OnInstantiate` — and, since 2026-09-05, the **non-JavaScript actions that reach outside the document**: `/SubmitForm` (posts form data to a URL), `/Launch` (starts an external program or file), `/GoToR` and `/GoToE` (open another document) and `/ImportData` (reads a file into the form). A hyperlink chained behind a removed action keeps working; `/URI` and `/GoTo` links are never touched. Embedded files are removed from the `/Names` tree, as `/FileAttachment` (paperclip) annotations — listed on a page or reached only through a form field, with their Popup removed from whichever page lists it — and as `/AF` associated files on any object (catalog, page, annotation, field, bookmark, XObject). In every case the file's **bytes** leave the exported copy, because the Filespec itself loses its embedded stream rather than only the reference to it: a file that a kept media clip also pointed at is gone too, and that clip degrades to a name-only reference. Every claim in this row, including the kept list below, has a test. It does **not** touch page content, and does not claim to. A file holding an object the sanitizer **cannot parse** is refused rather than passed through with a clean report (since 2026-09-13): such an object can hide a script that no walk can see. What it deliberately keeps: in-document media actions (`/Rendition` without script, `/Sound`, `/Movie`, `/GoTo3DView`, `/RichMediaExecute`). These are **not** inert — a reader plays them when you click (pdf.js does; until 2026-09-13 this row said no browser reader executes them, which was false) — but they stay inside the document, and removing them would delete legitimate content. |
-| **Form flatten** | *converts, not conceals* | **[pinned]** See below. |
+| **Flatten (form fields and annotations)** | *converts, not conceals* | **[pinned]** See below. |
 
 Every grade above is about **the file you export** — none is about the copy in your browser. To restore
 your work after a reload, PDFturbo keeps the opened PDF's bytes in IndexedDB. Redaction and page deletion
@@ -274,6 +274,14 @@ generalise in either direction.
 the value stops being an editable field and becomes permanent page text that anyone can select and copy.
 That is the point of the feature — it is just worth knowing that flattening a form containing a national
 insurance number does not protect it.
+
+Since 2026-09-27 the same button also draws the file's own annotations into the page. Two consequences follow
+from the same "converts, not conceals" grade. A text box's words become page text. A sticky note's pop-up
+text is no longer shown anywhere, because the note is now only its icon. But it leaves the file only when nothing
+still refers to the note. A reply kept as an annotation (for example, one with no appearance to draw) still points
+at it, so the note's text stays in the file's bytes, where no viewer shows it. **[pinned]** Pending redaction
+marks (`/Redact` annotations from another program) are deliberately not drawn: baking one would put a redaction
+mark into the page over text that is still there. Only PDFturbo's own redaction removes content.
 
 ### A layer switched off in the source stays off in the export (found and fixed 2026-09-24)
 

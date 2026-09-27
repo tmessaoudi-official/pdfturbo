@@ -8,6 +8,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { buildPageOverlays, pageIsRasterised, rasterizePageWithRedactions, stripRedactedAnnotations, getPageCropBox, type BuildPageCtx } from './exportPipeline';
 import { resolveGoToDest, type DestDoc } from './linkDest';
+import { flattenDocumentAnnotations } from './flattenAnnotations';
 import { reconstructPage, translateItemsToCropOrigin, assignHeadings, flattenOutline, applyRepeatedBands, pickImageMime, decomposeImageCtm, textElementsToFlowParagraphs, ocrTextToFlowDoc, interleaveByReadingOrder, isItemRedacted, resolveLinkAnchors, type FlowDoc, type FlowPage, type LinkTarget, type FlowImage, type FlowLinkRect, type FontInfoMap, type MarkedContentMarker, type OverlayTextLike, type RawTextItem, type RedactionRect, type RuleRect, type StructTreeNodeLike } from '../utils/flowDoc';
 import { redactionRectToPageSpace, rotatedElementFootprint, type RotatableRect } from '../utils/geometry';
 import { walkPageOps, type ImagePlacement } from './opStreamWalker';
@@ -341,8 +342,9 @@ export class ExportService {
    * AcroForm — not just the ones the user typed into — so all interactive form
    * fields (and their widget annotations) are baked into static page content.
    * The app's own overlay annotations are already baked flat by the overlay
-   * pipeline; source markup annotations (notes/stamps authored elsewhere) are a
-   * documented ceiling (#62b). Save target acquired pre-assembly (#54 activation).
+   * pipeline; source annotations with an appearance (notes/stamps authored
+   * elsewhere) are drawn into their page (limits row 23, `flattenAnnotations`).
+   * Save target acquired pre-assembly (#54 activation).
    */
   async downloadFlattened(): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
@@ -813,6 +815,15 @@ export class ExportService {
       // without a trace. A warn (not an error) — the export still succeeds.
       if (droppedFields.length) {
         this._ctx.reportError.warn('toast.formValueDropped', { count: droppedFields.length });
+      }
+
+      // Limits row 23 (D12): with flattenAllForms every source annotation that has an appearance is drawn into its
+      // page too. It runs on the source, before any page is copied or rasterised, so an annotation under a redaction
+      // becomes content under the burn. Ones with no appearance stay annotations and are counted.
+      if (opts?.flattenAllForms) {
+        let skipped = 0;
+        for (const srcDoc of srcDocs.values()) skipped += (await flattenDocumentAnnotations(srcDoc)).skipped;
+        if (skipped) this._ctx.reportError.warn('toast.flattenAnnotationsSkipped', { count: skipped });
       }
 
       // Pre-copy all needed pages from each source (one copyPages call per source).
