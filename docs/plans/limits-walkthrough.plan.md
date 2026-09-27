@@ -109,6 +109,10 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 11:08] SESSION-CHOSEN (row 28): a Bates stamp wider than the visible page between its side margins is drawn smaller to fit; a stamp that fits is unchanged. Beyond the ruling (which named only the cap), because the cap alone does not keep a long prefix on the page.
 - [2026-09-27 11:08] FOUND (for row 30): `toolbar.compressTitle` still names two methods ("optimize or flatten to images") in all three locales; row 27 added a third. Changing it adds an Arabic value to the pending review.
 
+- [2026-09-27 11:43] SESSION-CHOSEN (row 30): `toolbar.compressTitle` re-worded in all three locales to name the three compress modes; `toast.ocrRotatedUnsupported` re-worded too — it said rotated pages were unsupported, while only a `/Rotate` that is not a multiple of 90 is refused. Both Arabic values are session-written: pending count 12 → 14.
+- [2026-09-27 11:43] SESSION-CHOSEN (row 30): D6, D11 and D15 needed no further doc change — rows 18, 22 and 24 had already corrected C6/C7, C11's link half and C17 (including the "CA-trusted" wording); row 30 corrected C1 (D1), C3/C4 (D4), the searchable-OCR rotation lines (C11) and collapsed the four WS8-superseded bullets (B7).
+- [2026-09-27 11:43] FOUND (row 30, confirmed by reading): `multiplyMatrix(A, B)` applies A then B and PDF's `cm` sets CTM' = M × CTM, so `multiplyMatrix(ctm, m_cm)` is reversed — its doc comment states the wrong order. It differs for any non-commuting pair, including a translation followed by a scale (a common producer pattern), not only a rotation inside an uneven scale as recorded at 09:47. Queued as row 47, measure first; C4's KNOWN_ISSUES cell names the bound.
+
 ## Formal Plan
 
 <!-- written when work starts; each row gets its own TDD + sabotage evidence per CLAUDE.md -->
@@ -145,9 +149,9 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 25 | D17 RTL bracket mirroring + list markers (+ C19 marks) | M | done | 7f5094c | src/export/arabicOverlay.ts, src/utils/bidi.ts, src/types/bidi-js.d.ts, src/elements/textElement.ts, src/styles/editor.css, tests/** |
 | 26 | D18+D21 XFDF rotation + more subtypes + fields | M | done | 1478c2c | src/utils/xfdf.ts, src/export/xfdf*.ts, src/core/**, tests/** |
 | 27 | D20 JPEG downsampling compress mode | M | done | bc64357 | src/export/compress.ts, src/export/imageDownsample.ts, src/ui/compressPanel.ts, locales/** |
-| 28 | D22 Bates hardening | S | done | - | src/ui/batesPanel.ts, src/ui/documentLoader.ts, src/export/batesStamp.ts, src/export/exportPipeline.ts, tests/** |
+| 28 | D22 Bates hardening | S | done | 240b91b | src/ui/batesPanel.ts, src/ui/documentLoader.ts, src/export/batesStamp.ts, src/export/exportPipeline.ts, tests/** |
 | 29 | Acrobat/Reader checklist pack (C2, C10, D15, D18) | S | todo | - | var/claude/** |
-| 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | todo | - | KNOWN_ISSUES.md, SECURITY.md, CLAUDE.md |
+| 30 | Doc corrections (B7, C11, D1, D4, D6, D11, D15 rows) | S | done | - | KNOWN_ISSUES.md, CLAUDE.md, FEATURES.md, locales/*.json, src/core/pdfTurboApp.ts |
 | 31 | Arabic review table (5 pending + every new string) | S | todo | - | locales/ar.json |
 | 32 | NEW: src/ never passes cMapUrl — CJK text needing pdf.js's CMap files is not extracted | M | done | a16768e | src/infra/**, src/export/** |
 | 34 | UserUnit: editor measures in points (one viewport helper, direct calls banned) | M | done | fdd13c6 | src/**, tests/** |
@@ -163,6 +167,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 44 | NEW (row 21): a title, abstract or figure spanning both columns blocks the vertical cut, so the page stays one column and interleaves (BERT p1, 3, 5, 6 — measured); needs a horizontal cut first (XY-cut proper) | M | todo | - | src/utils/flowDoc.ts, tests/** |
 | 45 | NEW (row 21): ResNet (2-column) and arxiv-multicol-japanese never split at any gutter floor measured (6–12pt) — cause not traced | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 46 | NEW (row 21): Publication 17's 3-column body pages leave ~8pt gutters, below the 10pt floor, so they stay one column; lowering the floor to 8 also splits GPT-3's label/content figure pages (measured) — needs a discriminator, not a smaller number | S | todo | - | src/utils/flowDoc.ts, tests/** |
+| 47 | NEW (row 27, confirmed row 30): contentStreamEditor composes nested `cm` as CTM × M instead of M × CTM (locateTextOps, locateDecorationRects) — measure how often a run's origin moves on the corpus, then fix under TDD | M | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked

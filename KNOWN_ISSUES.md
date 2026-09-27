@@ -9,7 +9,7 @@ The items below are **not defects and not on a fix list** — they are the hones
 client-side editor. Each notes the "escape hatch" that *would* lift it and the trade-off of taking
 it, so the limit is understood rather than mistaken for a bug.
 
-_Last updated: 2026-09-04._
+_Last updated: 2026-09-27._
 
 ---
 
@@ -37,10 +37,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 | ID | Ceiling | Why it's structural | Escape hatch |
 |----|---------|---------------------|--------------|
-| C1 | In-place edit of subset/CID fonts with a **new** glyph | The new character's outline is absent from the embedded subset | EH-A (today: reuse in-subset glyphs, else base-14 redraw or overlay) |
+| C1 | In-place edit of subset/CID fonts with a **new** glyph | The new character's outline is absent from the embedded subset, and no engine draws a glyph the file does not carry — PDFium (EH-A, measured by limits row 17) does not lift it either | None; this is the floor. Today: reuse in-subset glyphs, else a base-14 redraw (reported as a font substitution) or an overlay |
 | C2 | Arabic in-place true-edit | Subset CID font: the shaped glyphs must already be in the subset (C1) | Shaping with the vendored Noto Naskh needs no new engine — fontkit matches HarfBuzz there (row 17); an embedded subset's own shaping tables are unmeasured and often stripped. Today: refuses → overlay, which renders correctly |
-| C3 | Type3 / Form-XObject true-edit | Type3 glyphs are CharProcs; XObject text has its own space | EH-A (today: overlay) |
-| C4 | `cm` rotation/shear in the Path-3 redraw | Standard-font redraw flattens to an axis-aligned matrix | EH-A (today: translation-only redraw) |
+| C3 | Type3 true-edit | Type3 glyphs are CharProcs. The Form-XObject half is LIFTED (2026-06-25): a run inside a form edits in place with the form's own fonts (A3a), and a standard-font redraw is written into the form's own stream and resources (A3b); a form whose dictionary cannot be resolved still falls back to an overlay | EH-A (today: overlay) |
+| ~~C4~~ | ~~`cm` rotation/shear in the Path-3 redraw~~ | **LIFTED 2026-06-25 (A1):** the redraw carries the run's full text-to-user matrix, so rotated, scaled and sheared text redraws in place. Bound found by limits row 27: the true-edit engine composes nested `cm` operators in reverse order, which misplaces a run's computed origin when a translation is followed by a scale or rotation, so an edit there may miss the run and fall back to an overlay (the effect is not yet measured) | Fixing the composition order (limits row 47) |
 | C5 | PDF→DOCX **pixel-identity** | Fixed-layout → reflowable is lossy by definition | EH-C (kills text) or EH-D. Target is high-fidelity *editable*, not identical |
 | C6 | DOCX subset-font **face** | Narrowed by limits row 18 (2026-09-27). The subset tag and style suffix are stripped, then a family Word has maps to Word's name (allowlist plus equivalents such as NimbusRomNo9L → Times New Roman and vendor editions such as HelveticaLTStd → Arial); a real family Word does not know is written under its own name, split at word boundaries, and listed in `fontTable.xml` with a family/pitch hint for Word to substitute by. Generated names (TeX-internal CMR10, Acrobat TT…o00, bare ids, hashes) keep the serif/sans/mono generic. Census of 152 real family names in the corpus: 19 mapped, 32 passed through, 101 generic. The split is a heuristic: 24 of the 32 passed-through names were spelled as installed, 6 were not (OCRAStd, AdobePi Std, URW PalladioL, Arial UnicodeMS, Inconsolatazi4, Wingdings2), 2 could not be checked. The hint's family comes from the name when it states one (Mono/Sans/Gothic/Serif/Mincho …), otherwise from pdf.js's guess, which reads the FixedPitch flag and called a CJK serif face monospace | A misspelled name makes Word substitute by the hint. Content is exact; only typeface is approximate |
 | C7 | DOCX CJK font-face | Narrowed by limits row 18 (2026-09-27): the real family is written in every `w:rFonts` slot, `w:eastAsia` included — 'Noto Serif CJK JP' and 'Aokin Mincho' reach the DOCX from the two tracked vertical files (real pdf.js extraction). No CJK face is FORCED where the PDF names none (Han unification) | A generated or unnamed CJK font still gets the generic; Word's own fallback renders the codepoints |
@@ -119,20 +119,14 @@ work in a private/incognito window when editing sensitive documents on a shared 
   page, not a closer mirror — see `docs/ws7-certification-record.md` § Closing audit. The audit's one false
   refusal (a table declaring more or fewer rows than it has) is FIXED.
 
-### From WS7 round 17 (2026-09-14)
+### Superseded by WS8 (2026-09-24)
 
-- **A second cross-reference stream after one pdf.js rejects refuses the file** (P3, deliberate) **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. — when pdf-lib
-  parses the rejected stream. pdf.js reads the second stream with the first one's position, widths and ranges,
-  which PDFturbo does not model, so it refuses rather than guess. When pdf-lib cannot build the rejected stream at
-  all (a `/Type /XRef` stream without `/W`), the guard never learns it was rejected and LOADS — one of the ten
-  shapes of the closing-audit bound above. No real file measured has this shape.
-- **What the page-order check does not compare** (P3, bounds of a fix). **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. The PDF exports and signing refuse a
-  file where a page pdf.js shows is not the page pdf-lib holds at that position — a wrong `/Count`, a page
-  dictionary without `/Type`, a linearized file's first-page object. Not compared: a file whose page tree
-  pdf-lib cannot list, where every export fails anyway. Loads: pdf.js showing fewer pages than pdf-lib holds
-  while every page it shows is the one pdf-lib holds there. Pages written directly inside `/Kids` rather than as
-  references are compared by position only. When pdf.js rebuilds its table by scanning, the pages are walked
-  over pdf-lib's objects and root.
+- Four bounds written for the cross-reference / page-tree mirror of WS7 rounds 13, 14 and 17 — a second
+  cross-reference stream after a rejected one, what the page-order check did not compare, cross-reference
+  streams not decoded as pdf.js does, and what the viewer/export agreement check still did not compare —
+  described code that WS8 deleted when it replaced the mirror with pdf.js itself. The current bounds are
+  "What the viewer check does not compare" above. Their text is in git history:
+  `git log -S 'What the page-order check does not compare' -- KNOWN_ISSUES.md` (collapsed by limits row 30).
 
 ### From WS7 round 14 (2026-09-13)
 
@@ -142,33 +136,9 @@ work in a private/incognito window when editing sensitive documents on a shared 
   the last-page check falls back to). PDFturbo now mirrors those walks and compares nothing for such a file.
   The bound this left — pdf.js takes a linearized file's first page and page count from its linearization
   dictionary — is closed by WS7 round 17, which mirrors both.
-- **A cross-reference stream PDFturbo does not decode the way pdf.js does is not compared** (P3). **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. pdf-lib
-  never applies a cross-reference stream's predictor, so PDFturbo decodes those entries itself; a stream with
-  abbreviated filter keys, a predictor under a second filter, or a TIFF predictor at other than 8 bits is not
-  modelled, and nothing is compared through it — nor through one pdf.js rejects. None of the 15 real files
-  uses such a stream.
 
 ### From WS7 round 13 (2026-09-13)
 
-- **What the viewer/export agreement check still does not compare** (P3, bounds of a fix). **Superseded by WS8 (2026-09-24)**: this describes the mirror, which is gone — the current bounds are in "What the viewer check does not compare" above. Since rounds 13
-  and 14, the PDF exports, a page image, signing, the searchable OCR layer, sanitizing and compressing refuse a file whose cross-reference table names
-  a copy of an object pdf-lib did not keep, marks a used object free, or (round 16) places it at bytes that are
-  not that object — also behind an older section pdf.js cannot read and skips, and (round 17) behind a table it
-  cannot finish, after which it reads no later table — whose startxref trailer names a
-  different document root from the last trailer pdf-lib keeps, or whose root pdf-lib replaced — the shapes
-  that let a crafted file show one page and export or sign another. Editing in place falls back to an
-  editable overlay instead, and the export built afterwards refuses. The Word/Markdown/text, table and XFDF
-  exports and OCR's other modes read through pdf.js, the viewer's own reader, so they cannot disagree with the
-  screen and are not checked. Not compared: objects the table places
-  inside an object stream; a file pdf.js rebuilds by scanning — no section of its chain yields a trailer, the
-  root is unusable, or its opening walk to the first or last page meets an entry it cannot read — where it keeps
-  the last definition like pdf-lib, measured — except that when two copies differ in generation it keeps the
-  FIRST (closing audit, 2026-09-24) — but picks its trailer by its own rule. Since round 17 a
-  linearized file is read from its first-page table, where pdf.js starts. Zero refusals over the 15 files of `var/corpus` and the 5 of
-  `tests/fixtures/corpus-public`; all 15 are read through the chain pdf.js follows, with every in-use entry
-  landing on an object pdf-lib parsed (`tests/utils/pdfLoadGuardCorpus.test.ts`). Round 13 recorded "14 of
-  the 15 reaching the comparison": for 10 of those 14, the chain was a cross-reference stream pdf-lib had
-  parsed without its predictor, whose entries pointed nowhere, so nothing was really compared on them.
 - **A reachable damaged object makes any dropped object refuse the file** (P3, deliberate). Its contents
   cannot be read, so whether it points at a dropped object cannot be decided; the guard refuses rather than
   guess. A file with one reachable damaged object and one unrelated, unused dropped object is refused.
@@ -431,11 +401,13 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **Twelve values are pending** (this line said three from WS7 round 10 on and
+  read, and it is recorded as one. **Fourteen values are pending** (this line said three from WS7 round 10 on and
   missed five later keys: `toast.pdfLoadRefused` (WS7 round 15), `toast.exportLayersConflict` (WS8),
   `thumbnail.previewUnavailable` (A6), `toolbar.clearRecentFiles` and `progress.ocrLoadingModel` (limits rows
   11 and 12), all session-written; limits row 23 then added `toast.flattenAnnotationsSkipped` and re-worded
-  `toast.flattenDone`, and limits row 27 added `modal.compress.modeImages` and `modal.compress.hintImages`).
+  `toast.flattenDone`, limits row 27 added `modal.compress.modeImages` and `modal.compress.hintImages`, and limits row 30
+  re-worded `toolbar.compressTitle` (it named two of the three compress modes) and `toast.ocrRotatedUnsupported`
+  (it said rotated pages were unsupported; only a `/Rotate` that is not a multiple of 90 is)).
   `toolbar.sanitizeTitle` had UNDER-claimed
   since `8ae525c` deleted a word and the 2026-09-05 scope widening left it behind, so it was re-worded
   the same day to the English and French scope — by the session, not by a native speaker, so the new

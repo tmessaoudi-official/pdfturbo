@@ -2512,7 +2512,7 @@ grades (see that § for why). They are single-verb substitutions and were pendin
 pending count before assuming a key is reviewed.
 **AMENDED 2026-09-13 — WS3 CLOSED by developer ruling** ("consider the arabic review done"): the 15
 values that had accumulated since, and the two UNRECONCILED sets, are accepted as reviewed. That is a
-RULING, not a second native read — say so whenever citing it. **Pending count: 12** —
+RULING, not a second native read — say so whenever citing it. **Pending count: 14** — `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), 
 `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` (new) and `toast.flattenDone` (re-worded), limits row 23 on 2026-09-27,
 `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, and `toolbar.sanitizeTitle`, re-worded on the closure day to en/fr parity by the session, so it is a new value and
 starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), also
@@ -2625,7 +2625,7 @@ XML). The button is in the export flyout, so `/pdf-qa-sweep` never clicks it (th
 click) — it is covered by the live drive described above, not by the sweep.
 i18n: one new key `toolbar.exportXlsxTitle` (ar accepted by the 2026-09-13 WS3 closure ruling, together
 with the 7 `toolbar.cropMargin*` / `toast.cropMarginsTooLarge` keys added the same day and the rest of that
-15-value set — **12 values pending as of 2026-09-27**, row 27's `modal.compress.modeImages` and `modal.compress.hintImages`, row 23's new `toast.flattenAnnotationsSkipped` and re-worded `toast.flattenDone`, row 12's `progress.ocrLoadingModel`, row 11's `toolbar.clearRecentFiles`, the re-worded `toolbar.sanitizeTitle`, WS7 round 10's two new keys, round 15's `toast.pdfLoadRefused`, WS8's `toast.exportLayersConflict` and A6's `thumbnail.previewUnavailable`; § The
+15-value set — **14 values pending as of 2026-09-27**, row 30's re-worded `toolbar.compressTitle` and `toast.ocrRotatedUnsupported`, row 27's `modal.compress.modeImages` and `modal.compress.hintImages`, row 23's new `toast.flattenAnnotationsSkipped` and re-worded `toast.flattenDone`, row 12's `progress.ocrLoadingModel`, row 11's `toolbar.clearRecentFiles`, the re-worded `toolbar.sanitizeTitle`, WS7 round 10's two new keys, round 15's `toast.pdfLoadRefused`, WS8's `toast.exportLayersConflict` and A6's `thumbnail.previewUnavailable`; § The
 hide-vs-remove audit is the count's home, so update it there and here together). `toast.noTableFound` also dropped the word "ruled" in all three
 locales, since neither table export is lattice-only any more — the Arabic edit is a word DELETION, so it
 is verifiable at a glance.
@@ -3760,7 +3760,8 @@ baseline, `(y1−y0)/scale` size) + `buildInvisibleTextLayerOps` (`BT·Tr(3)·Tf
 `arabicOverlay` `pushOperators` pattern + `setTextRenderingMode(Invisible)`) +
 `partitionWordsByFont` (Arabic→Noto Naskh / WinAnsi-Latin→Helvetica / else skipped) +
 `applySearchableLayerToPdf` (loads pdf-lib doc, embeds fonts, pushes ops, returns rewritten bytes;
-throws `SearchableLayerError('ROTATED_PAGE')` on rotated pages — bbox space ≠ unrotated PDF coords).
+remaps a cardinal `/Rotate` (90/180/270) into unrotated PDF coords and throws
+`SearchableLayerError('ROTATED_PAGE')` only when `/Rotate` is not a multiple of 90 — a malformed page).
 Wired: `ocrHandler.run(lang, mode, onProgress)` with `mode:'visible'|'searchable'` (default
 `'visible'`); `'searchable'` swaps source bytes via the existing `_applySourcePdfEdit`
 (`ReplaceSourcePdfBytesCmd`, undoable + persisted). UI: `ocrModeSelect` in `ocrModal` (default
@@ -3786,7 +3787,8 @@ recovers as real Arabic Unicode (selectable + screen-reader-accessible) but full
 is imperfect — fontkit GSUB shaping yields contextual glyphs with incomplete pdf-lib ToUnicode (same
 ceiling as the visible Arabic overlay). A clean-ToUnicode PoC (per-codepoint isolated encoding) was
 tried + REJECTED: it traded the artifact for RTL order reversal in pdf.js `getTextContent`. Rotated
-pages: NOT yet supported (warn + skip). Guards: `tests/ocr/searchableTextLayer.test.ts` (32 jsdom:
+pages ARE supported for a cardinal `/Rotate`; only a non-multiple of 90 warns and skips (corrected by
+limits row 30 — this line said "NOT yet supported" long after the remap shipped, and so did the toast). Guards: `tests/ocr/searchableTextLayer.test.ts` (32 jsdom:
 transform/partition/apply/rotation) + `tests/browser/searchable-ocr.browser.test.ts` (Latin exact +
 Arabic honest contract + invisible-ink).
 
@@ -4108,7 +4110,7 @@ The three Arabic edits are single-verb substitutions (`للإبقاء على` �
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified. **The pending set is
 CLOSED as of 2026-09-13 by developer ruling** ("consider the arabic review done") — accepted by ruling, not
-by a second native read — **and the pending count is 12**: `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` and the re-worded `toast.flattenDone` (limits row 23, 2026-09-27), `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
+by a second native read — **and the pending count is 14**: `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` and the re-worded `toast.flattenDone` (limits row 23, 2026-09-27), `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
 en/fr parity by the session, which makes it a new value, and the two keys WS7 round 10 added the same day
 (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), both session-written. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
 keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
@@ -4321,7 +4323,7 @@ this class twice over.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (ar accepted by the 2026-09-13 WS3
 closure ruling, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings,
-the 2 #54b keys and the old `toolbar.sanitizeTitle` — 12 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+the 2 #54b keys and the old `toolbar.sanitizeTitle` — 14 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

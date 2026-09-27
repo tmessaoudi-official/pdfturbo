@@ -745,7 +745,8 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
         this.reportError.warn('toast.ocrNoText');
       }
     } catch (err) {
-      // Rotated pages can't yet be mapped into the unrotated source-page space.
+      // Only a /Rotate that is not a multiple of 90 is refused: cardinal rotations are remapped into
+      // the unrotated source-page space (searchableTextLayer.asCardinalAngle).
       if (err instanceof SearchableLayerError && err.code === 'ROTATED_PAGE') {
         this.reportError.warn('toast.ocrRotatedUnsupported');
       } else {
