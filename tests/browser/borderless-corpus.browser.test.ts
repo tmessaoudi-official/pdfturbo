@@ -21,8 +21,11 @@ import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import { inferBorderlessGrid, inferBorderlessGridForFlow, listLayoutGenre } from '../../src/utils/borderlessTable';
-import { reconstructPage, type RawTextItem, type FontInfoMap } from '../../src/utils/flowDoc';
+import { reconstructPage, type RawTextItem, type FontInfoMap, type FlowDoc } from '../../src/utils/flowDoc';
 import { flowDocToDocxBase64 } from '../../src/utils/flowDocWriters';
+import { ExportService, type IExportContext } from '../../src/export/exportService';
+import type { DocumentPage } from '../../src/core/documentModel';
+import type { IErrorReporter } from '../../src/core/errorReporter';
 import type { TableTextItem } from '../../src/utils/tableExtract';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
@@ -30,13 +33,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
 interface RawItem { str: string; transform: number[]; width: number }
 type Draw = (page: import('@cantoo/pdf-lib').PDFPage, font: import('@cantoo/pdf-lib').PDFFont) => void;
 
-async function rawItems(draw: Draw): Promise<RawItem[]> {
+async function pdfBytes(draw: Draw): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts } = await import('@cantoo/pdf-lib');
   const doc = await PDFDocument.create();
   const page = doc.addPage([500, 320]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   draw(page, font);
-  const bytes = await doc.save();
+  return doc.save();
+}
+
+async function rawItems(draw: Draw): Promise<RawItem[]> {
+  const bytes = await pdfBytes(draw);
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   const pg = await pdf.getPage(1);
   const content = await pg.getTextContent();
@@ -192,6 +199,41 @@ describe('limits row 20 — the flow gate refuses list layouts the geometric gat
     expect(raw.filter(i => i.str.trim()).length, 'several items per line, or this case tests nothing').toBeGreaterThanOrEqual(15);
     const page = await flow(styled);
     expect(page.tables).toBeUndefined();
+  });
+
+  // The export itself: `_extractFlowDoc` walks the page's operators for rules, and a RULED table must still take the
+  // lattice path — the borderless branch runs only when that finds nothing.
+  const exported = async (draw: Draw): Promise<FlowDoc> => {
+    const bytes = await pdfBytes(draw);
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+    const loud = {
+      info() {}, silent(_e?: unknown, msg?: string) { throw new Error(`export reported: ${msg}`); },
+      warn(k: string) { throw new Error(`export warned: ${k}`); },
+      error(k: string, e?: unknown) { throw new Error(`export errored: ${k} ${String(e)}`); },
+    } as unknown as IErrorReporter;
+    try {
+      const svc = new ExportService({
+        documentModel: { pages: [{ id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 } as DocumentPage], sourcePdfs: new Map([['s1', { doc, bytes }]]) },
+        elements: [], reportError: loud,
+      } as unknown as IExportContext) as unknown as { _extractFlowDoc(): Promise<FlowDoc> };
+      return await svc._extractFlowDoc();
+    } finally {
+      await doc.loadingTask.destroy();
+    }
+  };
+
+  it('the real export: a whitespace invoice is a borderless table, the same invoice ruled is a lattice one', async () => {
+    const plain = (await exported(invoice)).pages[0];
+    expect(plain.tables?.length).toBe(1);
+    expect(plain.tables?.[0].borderless).toBe(true);
+    const ruled: Draw = (pg, f) => {
+      invoice(pg, f);
+      for (const y of [288, 262, 240, 218, 196]) pg.drawLine({ start: { x: 34, y }, end: { x: 460, y }, thickness: 0.8 });
+      for (const x of [34, 222, 302, 392, 460]) pg.drawLine({ start: { x, y: 196 }, end: { x, y: 288 }, thickness: 0.8 });
+    };
+    const lattice = (await exported(ruled)).pages[0];
+    expect(lattice.tables?.length).toBe(1);
+    expect(lattice.tables?.[0].borderless).toBeUndefined();
   });
 
   it('prose, an index and a contents page export as paragraphs with no table (controls)', async () => {
