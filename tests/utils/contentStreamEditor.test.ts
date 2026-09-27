@@ -239,8 +239,30 @@ describe('Form XObject placed by the page CTM at its Do (limits row 48)', () => 
     expect(await replaceTextAt(doc, 0, { x: 125, y: 170 }, 'Changed', 1)).toBe(false);
   });
 
-  it('a form another page also names is not a target', async () => {
+  it('a form another page also draws is not a target', async () => {
     const doc = await PDFDocument.load(await makeXObjectTextPdf({ ...placed, secondPage: true }));
+    expect(await findTextOpAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
+  });
+
+  // What counts is what another page DRAWS, not what its resources NAME: with /Resources inherited from the Pages
+  // node every page names every form, and a name-based check made form text uneditable in the whole file.
+  it('a form another page only names (inherited /Resources) is still a target', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf({
+      ...placed, secondPage: true, inheritResources: true, secondPageContent: 'q Q',
+    }));
+    expect(getEditableTextAt(doc, 0, { x: 125, y: 170 }, 1)).toBe('InsideXObj');
+  });
+
+  it('a form another page draws through inherited /Resources is not a target', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf({ ...placed, secondPage: true, inheritResources: true }));
+    expect(await findTextOpAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
+  });
+
+  // Duplicates are counted by the stream drawn, not the name: two names for one stream are two placements.
+  it('a form drawn twice on the page under two names is not a target', async () => {
+    const doc = await PDFDocument.load(await makeXObjectTextPdf({
+      ...placed, alias: true, pageDo: '\nq 1 0 0 1 100 20 cm /Fx0 Do Q q 1 0 0 1 100 60 cm /Fx1 Do Q',
+    }));
     expect(await findTextOpAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
   });
 });

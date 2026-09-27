@@ -3080,16 +3080,26 @@ against 2 / 0 / 0. `formPlacements` now records the CTM at every `Do` OCCURRENCE
 form's text maps through its `/Matrix` FIRST, then that CTM (`locatePageTextOps` also composes nested forms).
 **An edit writes the form's one stream, so it changes every place the form is drawn** — Publication 17's 114
 page-level form references resolve to 14 streams, one of them named by 47 pages. So a form drawn twice on the page,
-or named by any other page, is no longer a true-edit target and falls back to an overlay (SESSION-CHOSEN: never
+or DRAWN by any other page, is no longer a true-edit target and falls back to an overlay (SESSION-CHOSEN: never
 change text the user did not click). This NARROWS A3a/A3b: a shared form placed at identity was editable before.
+**Drawn, not named, and counted by stream, not by name** (follow-up the same day): pdf-lib's `Resources()` follows
+`/Parent`, so with `/Resources` inherited from the Pages node every page NAMES every form, and a name-based check made
+form text uneditable in the whole file; two names for one stream slipped the same-page count. `formStreamKey` keys a
+placement by its object reference, and `formDrawnByAnotherPage` reads another page's content only when its resources
+hold that reference, stopping at the first page that draws it. The corpus has neither shape (no inherited
+`/Resources`, no XObject dictionary shared between pages — measured on all 15 files), so there it changes nothing.
 Bound: a nested form's name is resolved in the page's resources, not the enclosing form's.
-Guards: five cases in `tests/utils/contentStreamEditor.test.ts` (placed point found; unplaced and wrong-order points
-not; `locatePageTextOps`; drawn twice; named by another page) over the shared `tests/utils/_xobjectFixture.ts`, and
+Guards: eight cases in `tests/utils/contentStreamEditor.test.ts` (placed point found; unplaced and wrong-order points
+not; `locatePageTextOps`; drawn twice; drawn by another page; the three follow-up cases) over the shared `tests/utils/_xobjectFixture.ts`, and
 `tests/browser/trueedit-form-placement.browser.test.ts` (2, real pdf.js origin). Sabotage, predicted, each restored
 with `cmp`: CTM dropped or applied before the `/Matrix` → 2 unit + the browser edit case; the drawn-twice guard
 dropped → exactly its case; the other-page guard dropped → exactly its case; `locatePageTextOps` without the CTM →
-exactly its case; the other-page check always true → every form hit, the A1/A3a/A3b cases included. A first M6
-(`return true` only for a non-reference entry) stayed green — vacuous, since the fixture's entry is a reference.
+exactly its case; the other-page check always true → every form hit, the A1/A3a/A3b cases included (tsc rejected
+that mutant — [Inferred] the unreachable code — and vitest executed it). A first M6 (`return true` only for a
+non-reference entry) stayed green — vacuous, since the fixture's entry is a reference. The follow-up adds three cases
+(named but not drawn through inherited `/Resources`: editable; drawn through them: not; two names for one stream:
+not); keying by name again → the alias case and both drawn-by-another-page cases; "named" counted as "drawn" →
+exactly the inherited-names case.
 
 Row-47 guards: three cases in `tests/utils/contentStreamEditor.test.ts` (text and rule origin under translate-then-scale,
 and the R × S matrix) and `tests/browser/trueedit-nested-cm.browser.test.ts` (5, real pdf.js origins; the fixture

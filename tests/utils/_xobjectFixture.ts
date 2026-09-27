@@ -3,7 +3,9 @@
  * drawn from the page by `Do`. Used by the jsdom and real-pdf.js true-edit tests, so both build the same file.
  *
  * Options (limits row 48): `pageDo` replaces the page's `q /Fx0 Do Q` (to place the form with a `cm`, or draw it
- * twice); `matrix` sets the form's /Matrix; `secondPage` adds a page naming the same form stream.
+ * twice); `matrix` sets the form's /Matrix; `secondPage` adds a page naming the same form stream, whose content is
+ * `secondPageContent` (default: it draws the form); `inheritResources` moves page 0's /Resources onto the Pages
+ * node so every page inherits it; `alias` also registers the form as /Fx1 on page 0.
  */
 import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, StandardFonts } from '@cantoo/pdf-lib';
 
@@ -11,6 +13,9 @@ export interface XObjectFixtureOptions {
   pageDo?: string;
   matrix?: number[];
   secondPage?: boolean;
+  secondPageContent?: string;
+  inheritResources?: boolean;
+  alias?: boolean;
 }
 
 export async function makeXObjectTextPdf(opts: XObjectFixtureOptions = {}): Promise<Uint8Array> {
@@ -56,6 +61,7 @@ export async function makeXObjectTextPdf(opts: XObjectFixtureOptions = {}): Prom
     pageRes.set(PDFName.of('XObject'), xobjDict);
   }
   xobjDict.set(PDFName.of('Fx0'), xRef);
+  if (opts.alias) xobjDict.set(PDFName.of('Fx1'), xRef);
 
   // Append a `Do` to the page content stream so the XObject is actually drawn.
   const pageContent = opts.pageDo ?? '\nq /Fx0 Do Q';
@@ -70,14 +76,24 @@ export async function makeXObjectTextPdf(opts: XObjectFixtureOptions = {}): Prom
   page.node.set(PDFName.of('Contents'), contentsArr);
 
   if (opts.secondPage) {
-    // A second page naming the SAME form stream: an edit to it would change both pages.
+    // A second page naming the SAME form stream: an edit to it would change both pages if it draws it.
     const p2 = doc.addPage([400, 400]);
-    const xo2 = PDFDict.fromMapWithContext(new Map(), ctx);
-    xo2.set(PDFName.of('Fx0'), xRef);
-    const res2 = PDFDict.fromMapWithContext(new Map(), ctx);
-    res2.set(PDFName.of('XObject'), xo2);
-    p2.node.set(PDFName.of('Resources'), res2);
-    p2.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('q /Fx0 Do Q')));
+    if (opts.inheritResources) {
+      p2.node.delete(PDFName.of('Resources'));
+    } else {
+      const xo2 = PDFDict.fromMapWithContext(new Map(), ctx);
+      xo2.set(PDFName.of('Fx0'), xRef);
+      const res2 = PDFDict.fromMapWithContext(new Map(), ctx);
+      res2.set(PDFName.of('XObject'), xo2);
+      p2.node.set(PDFName.of('Resources'), res2);
+    }
+    p2.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(opts.secondPageContent ?? 'q /Fx0 Do Q')));
+  }
+
+  if (opts.inheritResources) {
+    // One /Resources on the Pages node, none on the leaves: every page NAMES the form, whatever it draws.
+    doc.catalog.Pages().set(PDFName.of('Resources'), ctx.register(pageRes));
+    page.node.delete(PDFName.of('Resources'));
   }
 
   return doc.save();

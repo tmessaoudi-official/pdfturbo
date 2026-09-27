@@ -117,6 +117,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 13:48] SESSION-CHOSEN (run rules): row 48 taken before rows 38–46 — the same class as row 47 in the same file, measured with the same probe while it was fresh.
 - [2026-09-27 13:48] MEASURED (row 48): form runs moved by the missing Do-site CTM — BERT 687 on 4 pages (a pdf.js item origin met 2 times now, 501 placed), ResNet 308 on 6 (0 / 290), Publication 17 363 on 69 (0 / 288); no other corpus file draws text in a form; the census report was not measured (probe ran out of memory). Publication 17's 114 page-level form references resolve to 14 distinct streams, one named by 47 pages (pyHanko reader). Raw figures: var/claude/row48/*.json (gitignored).
 - [2026-09-27 13:48] SESSION-CHOSEN (row 48): a form drawn more than once on the page, or named by another page, is not a true-edit target — an edit writes its one stream and would change text the user did not click; it falls back to an overlay. This narrows A3a/A3b for a shared form placed at identity, which was editable before.
+- [2026-09-27 14:22] SESSION-CHOSEN (row 48 follow-up, from the 6C review): "shared" means DRAWN by another page — a `Do` in its content resolving to the same reference — not NAMED by it, and same-page duplicates are counted by reference, not name. pdf-lib's Resources() follows /Parent, so a name-based check refused every form in a file with inherited /Resources. Corpus: 0 of 15 files have inherited /Resources or an XObject dictionary shared between pages, so the corpus behaviour is unchanged.
 
 ## Formal Plan
 
@@ -173,7 +174,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 45 | NEW (row 21): ResNet (2-column) and arxiv-multicol-japanese never split at any gutter floor measured (6–12pt) — cause not traced | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 46 | NEW (row 21): Publication 17's 3-column body pages leave ~8pt gutters, below the 10pt floor, so they stay one column; lowering the floor to 8 also splits GPT-3's label/content figure pages (measured) — needs a discriminator, not a smaller number | S | todo | - | src/utils/flowDoc.ts, tests/** |
 | 47 | NEW (row 27, confirmed row 30): contentStreamEditor composes nested `cm` as CTM × M instead of M × CTM (locateTextOps, locateDecorationRects) — measure how often a run's origin moves on the corpus, then fix under TDD | M | done | 3dd87d2 | src/utils/contentStreamEditor.ts, tests/** |
-| 48 | NEW (row 47): true-edit hit-tests Form XObject text through the form /Matrix only, never the page CTM at its `Do` (findTarget fallback, getAllTextOps) — measure on the corpus, then fix under TDD | M | done | - | src/utils/contentStreamEditor.ts, tests/** |
+| 48 | NEW (row 47): true-edit hit-tests Form XObject text through the form /Matrix only, never the page CTM at its `Do` (findTarget fallback, getAllTextOps) — measure on the corpus, then fix under TDD | M | done | 2c948f7 | src/utils/contentStreamEditor.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked

@@ -1216,9 +1216,11 @@ function findTarget(
   interface XCandidate { dist: number; target: TextOpInfo; ops: CsOp[]; textOps: TextOpInfo[]; xObjectName: string; source: string }
   let bestX: XCandidate | null = null;
   const placements = formPlacements(pageOps);
-  for (const { name: raw, ctm } of placements) {
-    if (placements.filter(pl => pl.name === raw).length > 1) continue;
-    if (formNamedByAnotherPage(doc, pageIndex, raw)) continue;
+  // Count placements by the STREAM drawn, not the name: two names for one stream are two placements.
+  const keys = placements.map(pl => formStreamKey(doc, pageIndex, pl.name));
+  for (const [i, { name: raw, ctm }] of placements.entries()) {
+    if (keys.filter(k => k === keys[i]).length > 1) continue;
+    if (formDrawnByAnotherPage(doc, pageIndex, raw)) continue;
     const xContent = getFormXObjectContent(doc, pageIndex, raw);
     if (!xContent) continue;
     const xMatrix = getFormXObjectMatrix(doc, pageIndex, raw);
@@ -2723,12 +2725,24 @@ function pageXObjectEntry(doc: PDFDocument, pageIndex: number, xobjName: string)
 }
 
 /**
- * True when some OTHER page's resources name the same form stream — an edit to it would change that page too.
- * An unreadable resource counts as not shared on that page; a direct (non-reference) stream cannot be shared.
+ * Identity of the stream a page's `name` draws: its object reference when indirect, else the name itself (a direct
+ * stream belongs to that one resource dictionary).
  */
-function formNamedByAnotherPage(doc: PDFDocument, pageIndex: number, xobjName: string): boolean {
+function formStreamKey(doc: PDFDocument, pageIndex: number, xobjName: string): string {
+  const e = pageXObjectEntry(doc, pageIndex, xobjName);
+  return e instanceof PDFRef ? `${e.objectNumber} ${e.generationNumber} R` : `name:${xobjName.replace(/^\//, '')}`;
+}
+
+/**
+ * True when some OTHER page DRAWS the same form stream — an edit to it would change that page too. What counts is a
+ * `Do` in that page's content whose name resolves to the same reference; merely NAMING it is not enough, because
+ * /Resources inherited from the Pages node names every form on every page. A page whose resources do not hold the
+ * reference is skipped without reading its content; the scan stops at the first page that draws it.
+ */
+function formDrawnByAnotherPage(doc: PDFDocument, pageIndex: number, xobjName: string): boolean {
   const mine = pageXObjectEntry(doc, pageIndex, xobjName);
   if (!(mine instanceof PDFRef)) return false;
+  const key = `${mine.objectNumber} ${mine.generationNumber} R`;
   const count = doc.getPageCount();
   for (let i = 0; i < count; i++) {
     if (i === pageIndex) continue;
@@ -2740,7 +2754,10 @@ function formNamedByAnotherPage(doc: PDFDocument, pageIndex: number, xobjName: s
       continue;
     }
     if (!(xo instanceof PDFDict)) continue;
-    for (const v of xo.values()) if (v instanceof PDFRef && v.objectNumber === mine.objectNumber && v.generationNumber === mine.generationNumber) return true;
+    if (!xo.values().some(v => v instanceof PDFRef && v.objectNumber === mine.objectNumber && v.generationNumber === mine.generationNumber)) continue;
+    const content = getPageContent(doc, i);
+    if (!content) continue;
+    if (formPlacements(groupOps(tokenizeContentStream(content))).some(pl => formStreamKey(doc, i, pl.name) === key)) return true;
   }
   return false;
 }
