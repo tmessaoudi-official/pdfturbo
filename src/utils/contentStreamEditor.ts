@@ -1582,15 +1582,20 @@ export function encodeWithSubset(
   let hex = '<';
   for (const ch of text) {
     const code = reverseMap.get(ch);
-    if (code === undefined) return null;
+    if (code === undefined || code >= 256 ** bytesPerCode) return null;
     hex += code.toString(16).padStart(bytesPerCode * 2, '0').toUpperCase();
   }
   return hex + '>';
 }
 
 /**
- * Replace the hexstring operand of a show op with a new hex payload.
- * Returns true on success; false when no hexstring operand is found.
+ * Replace the string operand(s) of a show op with a new hex payload.
+ * Returns true on success; false when the op carries no string operand.
+ *
+ * Limits row 38: a LITERAL operand is rewritten too — a hex token is a legal replacement for a literal one, and an
+ * embedded simple font written as literals (pdfTeX's shape) otherwise went to the Path-3 base-14 redraw. Every
+ * rewritten segment becomes a hexstring token (its `type` as well as its `raw`, so a later read decodes it as hex),
+ * and a literal segment's length is measured in BYTES (escapes decoded), the unit a hex segment is measured in.
  *
  * For a multi-segment TJ array (`[<h1> -50 <h2> …] TJ`) the FULL new payload is
  * written into the first hexstring item and EVERY other hexstring item is
@@ -1603,7 +1608,7 @@ export function replaceShowOpHex(op: CsOp, newHex: string): boolean {
   if (op.operator === 'TJ') {
     const arr = op.operands[0];
     if (!arr || arr.type !== 'array' || !arr.items) return false;
-    const hexItems = arr.items.filter(t => t.type === 'hexstring');
+    const hexItems = arr.items.filter(t => t.type === 'hexstring' || t.type === 'string');
     if (hexItems.length === 0) return false;
     // Gap 1 (kerning preservation, Path-2): distribute the new hex code units
     // across the EXISTING hex segments by their original content lengths instead
@@ -1621,19 +1626,24 @@ export function replaceShowOpHex(op: CsOp, newHex: string): boolean {
     let cursor = 0;
     for (let hi = 0; hi < hexItems.length; hi++) {
       const isLast = hi === hexItems.length - 1;
-      const origLen = hexItems[hi].raw.replace(/^</, '').replace(/>$/, '').length;
+      const item = hexItems[hi];
+      const origLen = item.type === 'string'
+        ? decodeLiteralString(item.raw).length * 2
+        : item.raw.replace(/^</, '').replace(/>$/, '').length;
       let take = isLast ? inner.length - cursor : Math.min(origLen, inner.length - cursor);
       if (!isLast) take -= take % 2; // never split a byte (2 hex chars) across segments
       const slice = take > 0 ? inner.slice(cursor, cursor + take) : '';
       cursor += slice.length;
-      hexItems[hi].raw = `<${slice}>`;
+      item.raw = `<${slice}>`;
+      item.type = 'hexstring';
     }
     arr.raw = `[${arr.items.map(t => t.raw).join(' ')}]`;
     return true;
   }
   const str = op.operands[op.operands.length - 1];
-  if (!str || str.type !== 'hexstring') return false;
+  if (!str || (str.type !== 'hexstring' && str.type !== 'string')) return false;
   str.raw = newHex;
+  str.type = 'hexstring';
   return true;
 }
 
@@ -2011,7 +2021,9 @@ export async function replaceTextAt(
   const cmapText = getPageFontToUnicode(doc, pageIndex, target.fontKey, found.xObjectName);
   if (!wantsRestyle && cmapText) {
     const forward = parseToUnicodeCMap(cmapText);
-    const bytesPerCode = detectCMapBytesPerCode(cmapText);
+    // A simple font's codes are one byte whatever its ToUnicode declares (PDF 32000 §9.6.6); only a Type0 font's
+    // code size comes from the CMap (limits row 38).
+    const bytesPerCode = isType0Font(doc, pageIndex, target.fontKey, found.xObjectName) ? detectCMapBytesPerCode(cmapText) : 1;
     const reverseMap = new Map<string, number>();
     for (const [code, uni] of forward) reverseMap.set(uni, code);
     const hexEncoded = encodeWithSubset(newText, reverseMap, bytesPerCode);
@@ -2358,6 +2370,13 @@ function getFontResourceDict(doc: PDFDocument, pageIndex: number, xObjectName?: 
   } catch {
     return null;
   }
+}
+
+/** True when the font resource is a composite (Type0) font, whose codes may be wider than one byte. */
+function isType0Font(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): boolean {
+  const entry = getPageFontEntry(doc, pageIndex, fontKey, xObjectName);
+  const sub = entry?.get?.(PDFName.of('Subtype'));
+  return sub instanceof PDFName && sub.asString() === '/Type0';
 }
 
 function getPageFontEntry(doc: PDFDocument, pageIndex: number, fontKey: string, xObjectName?: string): PDFDict | null {

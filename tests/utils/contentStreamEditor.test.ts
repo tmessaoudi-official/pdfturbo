@@ -45,6 +45,8 @@ import {
   lookupExtGStateAlpha,
 } from '../../src/utils/contentStreamEditor';
 import { makeXObjectTextPdf } from './_xobjectFixture';
+import { makeLiteralSubsetPdf, LITERAL_RUNS, type LiteralSubsetOptions } from './_literalSubsetFixture';
+import { readFileSync } from 'node:fs';
 
 // ── Phase C helpers ─────────────────────────────────────────────────────────────
 
@@ -274,6 +276,75 @@ describe('Form XObject placed by the page CTM at its Do (limits row 48)', () => 
     const stream = doc.context.lookup(p2.get(PDFName.of('Contents'))) as PDFRawStream;
     stream.dict.set(PDFName.of('Filter'), PDFName.of('BogusDecode'));
     expect(getEditableTextAt(doc, 0, { x: 125, y: 170 }, 1)).toBeNull();
+  });
+});
+
+// Limits row 38 — Path 2 (reuse the embedded font's glyphs through its ToUnicode) rewrote HEX operands only, so an
+// embedded simple font written as LITERAL strings — pdfTeX's shape, 171 corpus runs — was redrawn in a base-14
+// substitute. A hex token is a legal replacement for a literal one, so Path 2 now writes every string segment as hex.
+describe('Path 2 on literal-string operands (limits row 38)', () => {
+  const naskh = new Uint8Array(readFileSync('src/assets/fonts/NotoNaskhArabic-Regular.ttf'));
+  const load = async (o?: LiteralSubsetOptions) => PDFDocument.load(await makeLiteralSubsetPdf(naskh, o));
+  const fontKeys = (doc: PDFDocument) =>
+    [...((doc.getPage(0).node.Resources()?.lookup(PDFName.of('Font'), PDFDict))?.keys() ?? [])].map(k => k.toString());
+
+  it('a literal Tj keeps its embedded font: in place, as hex codes', async () => {
+    const doc = await load();
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await replaceTextAt(doc, 0, { x, y }, '54321', 1)).toBe(true);
+    expect(await pageContentText(await doc.save())).toContain('<2625242322> Tj');
+    expect(fontKeys(doc)).toEqual(['/F1']);
+    expect(getEditableTextAt(doc, 0, { x, y }, 1)).toBe('54321');
+  });
+
+  it('a second edit of the same run reads the hex it just wrote', async () => {
+    const doc = await load();
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await replaceTextAt(doc, 0, { x, y }, '54321', 1)).toBe(true);
+    expect(await replaceTextAt(doc, 0, { x, y }, '98765', 1)).toBe(true);
+    expect(getEditableTextAt(doc, 0, { x, y }, 1)).toBe('98765');
+    expect(fontKeys(doc)).toEqual(['/F1']);
+  });
+
+  // Segments are measured in CODES: `(\(\))` holds two codes although its raw text is four characters long.
+  it('a literal TJ keeps each segment its own code count, escapes included', async () => {
+    const doc = await load();
+    const { x, y } = LITERAL_RUNS.tjArray;
+    expect(await replaceTextAt(doc, 0, { x, y }, '0987', 1)).toBe(true);
+    expect(await pageContentText(await doc.save())).toContain('[<212A> -150 <2928>] TJ');
+  });
+
+  it('a mixed literal + hex TJ rewrites both segments', async () => {
+    const doc = await load();
+    const { x, y } = LITERAL_RUNS.mixed;
+    expect(await replaceTextAt(doc, 0, { x, y }, '4321', 1)).toBe(true);
+    expect(await pageContentText(await doc.save())).toContain('[<2524> -100 <2322>] TJ');
+  });
+
+  it('the " operator keeps its spacing operands', async () => {
+    const doc = await load();
+    const { x, y } = LITERAL_RUNS.quote;
+    expect(await replaceTextAt(doc, 0, { x, y }, '987', 1)).toBe(true);
+    expect(await pageContentText(await doc.save())).toContain('0 0 <2A2928> "');
+  });
+
+  // A simple font is single-byte whatever its ToUnicode declares (PDF 32000 §9.6.6): two-byte codes written into it
+  // would read as pairs of unrelated one-byte codes.
+  it.each(['wide', 'none'] as const)('a simple font writes one byte per code with a %s codespace', async codespace => {
+    const doc = await load({ codespace });
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await replaceTextAt(doc, 0, { x, y }, '54321', 1)).toBe(true);
+    expect(await pageContentText(await doc.save())).toContain('<2625242322> Tj');
+  });
+
+  it('a character the ToUnicode cannot encode still falls through to the standard-font redraw', async () => {
+    const doc = await load();
+    const { x, y } = LITERAL_RUNS.tj;
+    expect(await replaceTextAt(doc, 0, { x, y }, '12A45', 1)).toBe('substituted');
+  });
+
+  it('encodeWithSubset refuses a code wider than the code size', () => {
+    expect(encodeWithSubset('a', new Map([['a', 0x1f0]]), 1)).toBeNull();
   });
 });
 
@@ -1135,11 +1206,21 @@ describe('replaceShowOpHex', () => {
     expect(serializeOps(innerOps)).toContain('<0048>');
   });
 
-  it('returns false when the op has no hexstring operand', () => {
+  // Limits row 38: a literal operand is rewritten as hex (it used to be refused, which sent it to Path 3).
+  it('rewrites a literal operand as a hexstring token', () => {
     const src = 'BT (Hello) Tj ET';
     const innerOps = groupOps(tokenizeContentStream(src));
     const textOps = locateTextOps(innerOps);
-    expect(replaceShowOpHex(innerOps[textOps[0].opIndex], '<0048>')).toBe(false);
+    const op = innerOps[textOps[0].opIndex];
+    expect(replaceShowOpHex(op, '<0048>')).toBe(true);
+    expect(op.operands[0]).toMatchObject({ type: 'hexstring', raw: '<0048>' });
+  });
+
+  it('returns false when a TJ array holds no string at all', () => {
+    const innerOps = groupOps(tokenizeContentStream('BT [-100] TJ ET'));
+    const op = innerOps.find(o => o.operator === 'TJ');
+    if (!op) throw new Error('no TJ op');
+    expect(replaceShowOpHex(op, '<0048>')).toBe(false);
   });
 
   // BUG A2 (original): replaceShowOpHex used to swap ONLY the first hexstring of a

@@ -2533,7 +2533,7 @@ space read back as `ÿ` and the width changed [Inferred cause: the subset has no
 bought is keeping an embedded SIMPLE font in place, which our engine never does today — measured by running
 `replaceTextAt` on each of the 630 runs it located, alone on a fresh document: 608 substituted, 22 refused, 0 in
 place. Of those, 171 carry a ToUnicode that encodes the edit, and all 171 are literal-string operands, which Path 2
-cannot rewrite (`replaceShowOpHex` takes hex only): 170 substituted, 1 refused. The other 459 have no ToUnicode.
+could not rewrite then (`replaceShowOpHex` took hex only — fixed by row 38): 170 substituted, 1 refused. The other 459 have no ToUnicode.
 Rows 38–39 close both in our own engine. Report and scripts:
 `var/claude/d2/` (gitignored); the probes are not committed.
 
@@ -3051,6 +3051,36 @@ the first version used `lookupMaybe(…, PDFArray)`, which THROWS on a malformed
 locked export failed where the unlocked one succeeded (the other `/Annots` readers tolerate it); an inline dict there
 is hoisted too, since it still holds strings. Pinned by the malformed-`/Annots` pair; dropping that branch reds
 exactly the locked case.
+
+### Path 2 keeps an embedded font written as literal strings — limits row 38 (2026-09-27)
+
+Path 2 (reuse the embedded font's own glyphs through its ToUnicode) rewrote HEX operands only, so a font whose text is
+written as literal strings — pdfTeX's shape, and the corpus's — went to the Path-3 base-14 redraw. A hex token is a
+legal replacement for a literal one, so `replaceShowOpHex` now rewrites every string segment as hex: its `type` as
+well as its `raw`, and a literal segment is measured in BYTES with its escapes decoded (`(\(\))` is two codes, not
+four), so a kerned TJ keeps each segment its own code count. Two defects came out with it. **A mixed TJ
+(`[("#) -100 <2425>]`) wrote the whole payload into the hex segment and left the literal one stale** — the A2 shape,
+live for a hex-plus-literal array. And **a simple font's code size was read from its ToUnicode**, which wrote two-byte
+codes whenever the CMap declared a wide codespace or none (`detectCMapBytesPerCode` returns 2 without one): a simple
+font is single-byte (PDF 32000 §9.6.6), so only a Type0 font takes its code size from the CMap, and `encodeWithSubset`
+refuses a code wider than the code size.
+
+Corpus (the 729 row-17 records, each run's own decoded text reversed, one file per process): the editor pre-fills
+146; before, 48 edited in place, 97 substituted and 1 refused; after, all 146 in place, 79 of them with spaces. The
+other 583 have no ToUnicode, so the editor does not pre-fill them — row 39's case. An edit needing a character the
+ToUnicode does not map still falls through to Path 3 (pinned).
+
+Guards: 9 cases in `tests/utils/contentStreamEditor.test.ts` (Tj, a second edit, the escaped TJ, the mixed TJ, the
+`"` operator, wide and no codespace, the Path-3 control, the code-width refusal) plus the `replaceShowOpHex` contract
+case, and `tests/browser/trueedit-literal-path2.browser.test.ts` (6, real pdf.js: every run edited reads the new
+digits in the same font as an untouched run of the same file; the control is redrawn in another font). The fixture
+(`tests/utils/_literalSubsetFixture.ts`) is a simple TrueType built from the vendored Noto Naskh TTF with
+/Differences mapping 0x21..0x2A to the digits, so `(` and `)` are codes and need escapes. Sabotage, predicted first,
+each restored with `cmp`: literals refused → 8 jsdom + 4 browser; raw length → exactly the escaped TJ; `type` not
+updated → exactly the contract case (a second edit re-reads the saved stream, so the type matters only within one
+call); codespace trusted on a simple font → the wide and none cases; no code-width guard → exactly that case; TJ
+hex-only → the escaped and mixed TJ in both suites. Not covered by a test: a literal operand in a Type0 font (the
+G8 prefill fixture's shape) — the same code path with a two-byte code size.
 
 ### True-edit composed nested `cm` backwards, and forgot the CTM at a form's `Do` — limits rows 47–48 (2026-09-27)
 
