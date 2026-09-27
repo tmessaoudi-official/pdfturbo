@@ -14,7 +14,7 @@
 
 import { redactionRectToPageSpace } from './geometry';
 import { buildTableGrid, clusterPositions, type TableGrid, type TableTextItem } from './tableExtract';
-import { visualToLogical } from './bidi';
+import { logicalItemOrder, visualToLogical } from './bidi';
 
 /** Shape of a pdf.js TextItem (subset we consume). */
 export interface RawTextItem {
@@ -745,70 +745,75 @@ export function foldLatinLigatures(s: string): string {
 }
 
 /**
- * Reverse a string by codepoint (surrogate-pair-safe) and NFKC-normalize the
- * result. pdf.js returns RTL runs already visually reversed; reversing again
- * restores logical character order so Word's bidi engine can lay it out
- * correctly. (Combining-mark reordering is an accepted edge-case limitation —
- * see the Arabic-export ceiling notes.)
- *
- * NFKC runs AFTER the reversal (not before): many PDFs encode Arabic as Unicode
- * PRESENTATION FORMS (U+FB50–FDFF / U+FE70–FEFF — pre-shaped isolated/initial/
- * medial/final glyphs). Emitted verbatim into DOCX/MD they render disconnected
- * because Word shapes base letters, not pre-shaped forms. NFKC folds each
- * presentation form to its base letter (and expands ligatures like U+FEFB
- * lam-alef → ل + ا). Doing it after the per-codepoint reversal keeps a ligature's
- * internal logical order correct (one visual unit → expands in place).
+ * Reverse a string by codepoint (surrogate-pair-safe) and NFKC-normalize the result — the text search's FALLBACK
+ * match only (`textSearchHandler`), tried after a raw miss. The export does NOT use it since limits row 19: pdf.js
+ * already returns every RTL item in logical order (`runBidiTransform` runs UAX#9 L2 on each text chunk,
+ * pdf.worker.mjs), so reversing it spelled every Arabic word backwards in DOCX / Markdown / text. A genuinely mixed
+ * Arabic+Latin string gets char-level bidi instead of a blanket reversal.
  */
 export function reverseRtlText(s: string): string {
-  // A genuinely MIXED-script word (Arabic + Latin/digits) gets char-level bidi so an
-  // embedded multi-char Latin/number sub-run stays in logical (forward) order; a
-  // single-script word keeps the established simple visual→logical char reversal.
   if (isArabicText(s) && /[A-Za-z0-9]/.test(s)) {
     return visualToLogical(s, 'rtl').normalize('NFKC');
   }
   return [...s].reverse().join('').normalize('NFKC');
 }
 
+/** Letters in a word — the strong characters its pdf.js `dir` speaks for. Digits, punctuation and spaces are not. */
+function letterCount(text: string): number {
+  return (text.match(/\p{L}/gu) ?? []).length;
+}
+
 /**
- * Order one line's words into LOGICAL reading order and restore logical character
- * order for RTL runs. A line is RTL when the majority of its words are rtl.
+ * The base direction of a line or paragraph: RTL when its RTL items carry more LETTERS than its LTR ones. Counting
+ * letters, not items, is limits row 19: `النص (RTL) هنا` is two Arabic items and three Latin/punctuation ones, and an
+ * item majority read it left-to-right. `null` when nothing carries a letter (a line of digits or punctuation).
+ */
+export function letterDirection(parts: ReadonlyArray<{ text: string; rtl: boolean }>): boolean | null {
+  let r = 0, l = 0;
+  for (const p of parts) {
+    const n = letterCount(p.text);
+    if (p.rtl) r += n; else l += n;
+  }
+  return r + l === 0 ? null : r > l;
+}
+
+/**
+ * Order one line's words into LOGICAL reading order. pdf.js returns each item's text already in logical order, so
+ * only the ORDER of the items is decided here; their text is left as it is (NFKC-folded when RTL, for presentation
+ * forms).
  *
- * For an RTL-base line this applies the UAX#9 L2 reorder at WORD granularity:
- * lay words out visually (ascending x), split into maximal same-direction runs,
- * then emit runs right-to-left — RTL runs reversed (and each word char-reversed
- * back to logical), but each embedded LTR run kept in forward (ascending-x) order.
- * That fixes the mixed-line bug where a Latin/number run inside Arabic (e.g.
- * "PDF" in "… PDF …") was previously order-reversed by the blanket descending-x
- * sort (AR-1). LTR lines keep ascending-x, text untouched. Pure → jsdom-testable.
+ * The base direction is {@link letterDirection} (falling back to an item majority when no word has a letter). Each
+ * word's direction is its pdf.js `dir`, except a NEUTRAL word — no letters and not RTL: brackets, full stops,
+ * digits — which takes the direction of its strong neighbours when they agree and the line's otherwise, the line
+ * direction standing in past either end (UAX#9 N1/N2 at item granularity). Then {@link logicalItemOrder} applies L2 at
+ * item granularity for either base: an Arabic phrase split across two items inside an English line reads right to
+ * left, and a Latin run inside an Arabic line stays forward. A neutral that resolved to RTL is marked `rtl`, so it
+ * joins the Arabic run it sits in.
  *
- * Word-level only: deeper char-level bidi (digits nested in RTL, multi-level
- * embeddings, a single token mixing scripts) remains a documented partial.
+ * Not modelled: a producer that draws RTL glyphs in logical order (pdf.js then reverses them into visual order, and
+ * its own copy is wrong the same way), explicit embeddings, and bidi inside one item (pdf.js has resolved it).
  */
 export function orderLineWords<T extends { x: number; width: number; rtl: boolean; text: string }>(
   words: T[],
 ): { words: T[]; rtl: boolean } {
-  const rtlCount = words.reduce((n, x) => n + (x.rtl ? 1 : 0), 0);
-  const rtl = words.length > 0 && rtlCount * 2 > words.length;
-  if (!rtl) {
-    return { words: [...words].sort((a, b) => a.x - b.x), rtl: false };
-  }
+  const byLetters = letterDirection(words);
+  const rtl = byLetters ?? (words.length > 0 && words.reduce((n, x) => n + (x.rtl ? 1 : 0), 0) * 2 > words.length);
   const visual = [...words].sort((a, b) => a.x - b.x); // page left→right
-  const runs: T[][] = [];
-  for (const word of visual) {
-    const last = runs[runs.length - 1];
-    if (last && last[0].rtl === word.rtl) last.push(word);
-    else runs.push([word]);
-  }
-  const out: T[] = [];
-  for (let s = runs.length - 1; s >= 0; s--) {
-    const run = runs[s];
-    if (run[0].rtl) {
-      for (let i = run.length - 1; i >= 0; i--) out.push({ ...run[i], text: reverseRtlText(run[i].text) });
-    } else {
-      for (const word of run) out.push(word); // embedded LTR run stays forward
-    }
-  }
-  return { words: out, rtl: true };
+  const strong = visual.map(w => (w.rtl ? true : letterCount(w.text) > 0 ? false : null));
+  const resolved = strong.map((d, i) => {
+    if (d !== null) return d;
+    let left: boolean | null = null, right: boolean | null = null;
+    for (let k = i - 1; k >= 0 && left === null; k--) left = strong[k];
+    for (let k = i + 1; k < strong.length && right === null; k++) right = strong[k];
+    const a = left ?? rtl, b = right ?? rtl;
+    return a === b ? a : rtl;
+  });
+  const dirOf = new Map(visual.map((w, i) => [w, resolved[i]]));
+  const ordered = logicalItemOrder(visual, w => dirOf.get(w) as boolean, rtl);
+  return {
+    words: ordered.map(w => (dirOf.get(w) ? { ...w, rtl: true, text: w.text.normalize('NFKC') } : w)),
+    rtl,
+  };
 }
 
 /** Geometry kept alongside each built paragraph for the continuation-merge pass. */
@@ -853,8 +858,7 @@ export function clusterWordsIntoLines(words: Word[]): Line[] {
     }
   }
   for (const line of lines) {
-    // Order words for reading + restore logical char order on RTL lines (Arabic):
-    // pdf.js delivers RTL visually-reversed, which Word would double-reverse.
+    // Order words for reading (items only — pdf.js already gives each RTL item's text in logical order).
     const ordered = orderLineWords(line.words);
     line.words = ordered.words;
     line.rtl = ordered.rtl;
@@ -929,11 +933,10 @@ export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[]
       };
       let text = w.text;
       if (prevWord) {
-        // Reading-order gap: on an RTL line the previous word sits to the RIGHT
-        // of the current one, so measure leftward (prev.x − current right edge).
-        const gap = line.rtl
-          ? prevWord.x - (w.x + w.width)
-          : w.x - (prevWord.x + prevWord.width);
+        // The empty space between the two boxes, whichever side each is on: consecutive words in reading order
+        // advance leftward in an RTL run and rightward in an LTR one, on a line of either direction (limits row 19 —
+        // a direction-keyed formula lost the space inside an embedded run: 'MicrosoftWord').
+        const gap = Math.max(prevWord.x, w.x) - Math.min(prevWord.x + prevWord.width, w.x + w.width);
         const needsSpace =
           gap > SPACE_GAP * Math.min(prevWord.size, w.size) &&
           !/\s$/.test(prevWord.text) &&
@@ -1006,8 +1009,6 @@ function buildParagraph(
     bodyLines.every(l => Math.abs(l.x0 - colLeft) <= edgeTol) &&
     bodyLines.every(l => Math.abs(l.x1 - colRight) <= edgeTol);
 
-  const rtlChars = runs.reduce((n, r) => n + (r.rtl ? r.text.length : 0), 0);
-  const totalChars = runs.reduce((n, r) => n + r.text.length, 0);
 
   const alignment: FlowParagraph['alignment'] =
     isCentered ? 'center' : isRight ? 'right' : isJustified ? 'justify' : 'left';
@@ -1016,7 +1017,7 @@ function buildParagraph(
     runs,
     heading: 0 as const,
     alignment,
-    rtl: totalChars > 0 && rtlChars / totalChars > 0.5,
+    rtl: letterDirection(runs) ?? false, // letters, not characters: spaces and punctuation have no direction
     // Top line's baseline y (PDF y-up) — lets the DOCX writer interleave this
     // paragraph with detected tables in reading order (G9).
     y: group[0].y,
@@ -1378,9 +1379,7 @@ function _structBlockParagraph(
   const lines = clusterWordsIntoLines(words);
   const runs = buildRunsFromLines(lines, fonts);
   if (!runs.some(r => r.text.trim())) return null;
-  const rtlChars = runs.reduce((n, r) => n + (r.rtl ? r.text.length : 0), 0);
-  const totalChars = runs.reduce((n, r) => n + r.text.length, 0);
-  const rtl = totalChars > 0 && rtlChars / totalChars > 0.5;
+  const rtl = letterDirection(runs) ?? false; // same rule as the untagged path (limits row 19)
   const para: FlowParagraph = {
     runs,
     heading,

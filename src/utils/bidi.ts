@@ -110,9 +110,10 @@ export function visualToLogical(text: string, base: BidiBase = 'auto'): string {
  * split into maximal same-direction runs, then for an RTL line emit runs right-to-left —
  * RTL-item runs reversed, embedded LTR-item runs kept forward. Item internals are NEVER
  * touched, so multi-char tokens (a logical-order span like "PDF"/"لام") stay verbatim and
- * any token→source map is preserved. Consumed by copy + search.
+ * any token→source map is preserved. Consumed by copy + search, and by the Word/Markdown/text export
+ * (`orderLineWords`), which passes `baseRtl = false` for an LTR line.
  */
-export function logicalItemOrder<T>(itemsLToR: readonly T[], isRtl: (t: T) => boolean): T[] {
+export function logicalItemOrder<T>(itemsLToR: readonly T[], isRtl: (t: T) => boolean, baseRtl = true): T[] {
   const runs: T[][] = [];
   for (const it of itemsLToR) {
     const r = isRtl(it);
@@ -121,7 +122,10 @@ export function logicalItemOrder<T>(itemsLToR: readonly T[], isRtl: (t: T) => bo
     else runs.push([it]);
   }
   const out: T[] = [];
-  for (let s = runs.length - 1; s >= 0; s--) {
+  // An RTL base reads the runs right to left; an LTR base keeps them left to right (limits row 19). Either way an RTL
+  // run's items are reversed and an LTR run's stay forward — L2 at two levels, item internals untouched.
+  const order = baseRtl ? runs.map((_, i) => runs.length - 1 - i) : runs.map((_, i) => i);
+  for (const s of order) {
     const run = runs[s];
     if (isRtl(run[0])) for (let i = run.length - 1; i >= 0; i--) out.push(run[i]);
     else out.push(...run);

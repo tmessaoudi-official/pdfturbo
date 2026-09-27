@@ -13,19 +13,21 @@ type W = { text: string; x: number; width: number; rtl: boolean };
 const w = (text: string, x: number, rtl: boolean): W => ({ text, x, width: 40, rtl });
 
 describe('Arabic AR-1 — mixed RTL line keeps embedded LTR run forward', () => {
-  // RTL-base line (3 Arabic words dominate) with an embedded two-word Latin run.
-  // Page left→right: "PDF"(40) "report"(90) | "ج"(150) "ب"(200) "ا"(250).
+  // RTL-base line (the Arabic words carry more letters) with an embedded two-word Latin run.
+  // Page left→right: "PDF"(40) "report"(90) | "جميل"(150) "بيت"(200) "اليوم"(250).
+  // (Single-letter Arabic words until limits row 19, when the base direction moved from an item count to a letter
+  // count: three one-letter words against "PDF report" is now, correctly, an English line.)
   it('orders an RTL line with an embedded Latin run without reversing the run', () => {
     const r = orderLineWords([
       w('PDF', 40, false),
       w('report', 90, false),
-      w('ج', 150, true),
-      w('ب', 200, true),
-      w('ا', 250, true),
+      w('جميل', 150, true),
+      w('بيت', 200, true),
+      w('اليوم', 250, true),
     ]);
     expect(r.rtl).toBe(true);
-    // RTL runs read right→left (ا ب ج); the LTR run stays forward (PDF report).
-    expect(r.words.map((x) => x.text)).toEqual(['ا', 'ب', 'ج', 'PDF', 'report']);
+    // RTL runs read right→left; the LTR run stays forward (PDF report).
+    expect(r.words.map((x) => x.text)).toEqual(['اليوم', 'بيت', 'جميل', 'PDF', 'report']);
   });
 
   it('preserves embedded Latin run order (the old descending-x sort reversed it)', () => {

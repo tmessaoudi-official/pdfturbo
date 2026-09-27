@@ -3286,18 +3286,28 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
 ### Arabic support (Sprint Arabic, 2026-06-15)
 
 — three parts:
-- **DOCX export**: pdf.js returns RTL text in VISUAL order (each string bidi-reversed) tagged `dir:'rtl'`;
-  Word re-applies bidi to `w:rtl` runs → double-reversal. `reverseRtlText` restores logical char order
-  **and NFKC-normalizes** (P2, 2026-06-17) — many PDFs encode Arabic as Unicode PRESENTATION FORMS
-  (U+FB50–FDFF / U+FE70–FEFF, pre-shaped glyphs); emitted verbatim they render disconnected in Word, so
-  NFKC folds them to base letters (and expands ligatures, e.g. U+FEFB lam-alef → ل+ا) AFTER the reversal so
-  a ligature's logical order stays correct. Guard: `tests/utils/flowDocArabic.test.ts`;
-  `orderLineWords` orders an rtl line right-to-left (logical); **AR-1 (2026-06-15)** it now applies the
-  UAX#9 L2 run-reversal at WORD level — an RTL line is segmented into same-direction runs and emitted
-  right→left, but an embedded LTR run (Latin word / number) keeps forward order (the old blanket
-  descending-x sort reversed it). Word-level only; `bidi-js` is installed but unused (a dedicated lib
-  isn't needed for word granularity — deeper char-level bidi stays a documented partial). The writer emits
-  complex-script attrs (`font.cs=Arial`, `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
+- **DOCX export — CORRECTED by limits row 19 (2026-09-27).** This bullet used to say pdf.js returns RTL text in
+  VISUAL order and that `reverseRtlText` restores logical order. **That was false for every multi-character item**:
+  pdf.js's `runBidiTransform` runs UAX#9 L2 on each text chunk before returning it (`pdf.worker.mjs`, the
+  `reverseValues` loop in `bidi()`), so an RTL item arrives LOGICAL, and reversing it again wrote every Arabic word
+  backwards into DOCX, Markdown and text. Measured on a LibreOffice file (`tests/fixtures/bidi/mixed-bidi.pdf`) and on
+  the app's own Arabic bake. It survived because every Arabic export test was synthetic, built in the shape the
+  belief predicted — the same trap as the copy/search fix below, which had already found that multi-char items are
+  logical and never carried the finding here. Now `orderLineWords` decides only the ORDER of items: base direction by
+  LETTER count (`letterDirection` — an item count read `النص (RTL) هنا` as English), neutral items (brackets, dots,
+  digits) take their strong neighbours' direction or the line's (UAX#9 N1/N2 at item granularity), and
+  `logicalItemOrder` applies L2 for either base (an Arabic phrase split across two items inside an English line
+  reads right to left). Item text is only NFKC-folded (presentation forms → base letters, U+FEFB → ل+ا). The space
+  between two words is the gap between their boxes whichever side each is on. `reverseRtlText` survives only as the
+  text search's fallback. Bounds: a lam-alef LIGATURE glyph extracts reordered (`كلام` → `كالم`) because pdf.js
+  reverses the ligature's two-char ToUnicode with the chunk — pdftotext reads it the same; a producer that draws
+  RTL glyphs in logical order is read reversed (pdf.js's own copy is wrong the same way). Guards:
+  `tests/browser/docx-mixed-bidi.browser.test.ts` (10: the typed text of seven LibreOffice lines is the oracle,
+  plus the app's bake), `tests/utils/flowDocArabic.test.ts`, `tests/blockers/arabic.blockers.test.ts`. Sabotage,
+  each restored with `cmp`: per-item reversal back → 5 jsdom + 8 browser; item-count direction → 1 + 3; neutral
+  resolution off → 1 + 2; L2 for an LTR base off → 1 + 2; direction-keyed gap → 1 + 3 (the Markdown case aggregates
+  every line, so it reds with any of them). The writer emits complex-script attrs (`font.cs=Arial`,
+  `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
 - **True-edit**: `replaceTextAt` REFUSES Arabic new-text before the Latin Path-3 redraw (it would emit '?')
   → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still
   runs first for in-subset edits. Guard: `isArabicText()` (defined in `flowDoc.ts`, imported by `contentStreamEditor.ts`).
@@ -3365,8 +3375,8 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   **All four Arabic surfaces now route through it:** overlay `drawBidiLine`→`visualRuns` (the OLD hand-rolled
   `segmentBidiRuns`/`baseIsRtl` are DELETED — do not reintroduce); copy `reconstructLogicalText`→`logicalItemOrder`
   (SPAN-level); search `buildLogicalLines`→`logicalItemOrder` (ITEM-level, token→item map preserved); DOCX
-  `reverseRtlText`→`visualToLogical` **only when the word is mixed-script** (pure-Arabic incl. presentation
-  forms/ligatures keeps the blanket char-reverse — its contract). **Non-obvious (TDD-discovered):** (1) bidi-js is
+  `orderLineWords`→`logicalItemOrder` (ITEM-level for either base since limits row 19, which removed the DOCX
+  path's per-item char reversal: pdf.js items are already logical — see the DOCX export bullet above). **Non-obvious (TDD-discovered):** (1) bidi-js is
   logical→visual ONLY — the 3 read surfaces need the inverse, which is an APPROXIMATION (perfect inversion from
   visual order alone is impossible). (2) a char-level reorder SCRAMBLES pdf.js multi-char tokens (`لام`/`PDF` arrive
   as ONE logical-order span) and breaks search's char offsets → copy/search MUST reorder at ITEM granularity, never

@@ -61,12 +61,32 @@ describe('orderLineWords', () => {
     expect(r.words.map((x) => x.text)).toEqual(['hello', 'world']);
   });
 
-  it('RTL line: rightmost word first (logical) + each word char-reversed', () => {
-    // Visual page order: left word x=40 str "fed", right word x=200 str "cba".
-    // Logical reading: right-to-left → "abc" then "def".
-    const r = orderLineWords([w('fed', 40), w('cba', 200)]);
+  it('RTL line: rightmost word first, each word\'s text left as pdf.js gave it (limits row 19)', () => {
+    // pdf.js returns an RTL item's text in LOGICAL order already (runBidiTransform, pdf.worker.mjs), so only the
+    // item order changes. Visual page order: "def" at x=40, "abc" at x=200 → reading right to left: abc, def.
+    // (Until row 19 this expected each word char-reversed — a shape pdf.js never emits; measured on a LibreOffice file.)
+    const r = orderLineWords([w('def', 40), w('abc', 200)]);
     expect(r.rtl).toBe(true);
     expect(r.words.map((x) => x.text)).toEqual(['abc', 'def']);
+  });
+
+  it('a neutral item takes its strong neighbours\' direction when they agree, the line\'s when they differ', () => {
+    // RTL line "النص (RTL) هنا" as LibreOffice draws it (x ascending): هنا ) RTL ( النص
+    const r = orderLineWords([
+      w('هنا', 56), w(')', 77, false), w('RTL', 82, false), w('(', 106, false), w('النص', 114),
+    ]);
+    expect(r.rtl).toBe(true); // 7 Arabic letters against 3 Latin — three items against two by count
+    expect(r.words.map((x) => x.text)).toEqual(['النص', '(', 'RTL', ')', 'هنا']);
+    expect(r.words.map((x) => x.rtl)).toEqual([true, true, false, true, true]);
+  });
+
+  it('LTR line: an Arabic phrase split across two items reads right to left inside it', () => {
+    // "The phrase مرحبا بكم means" with the Arabic split by a bold word, x ascending: The phrase | بكم | مرحبا | means
+    const r = orderLineWords([
+      w('The phrase', 50, false), w('بكم', 120), w('مرحبا', 150), w('means', 200, false),
+    ]);
+    expect(r.rtl).toBe(false);
+    expect(r.words.map((x) => x.text)).toEqual(['The phrase', 'مرحبا', 'بكم', 'means']);
   });
 
   it('majority decides direction (a stray LTR token in an rtl line)', () => {
@@ -98,20 +118,32 @@ describe('isArabicText', () => {
   });
 });
 
-// A RawTextItem mimicking pdf.js output: dir 'rtl', str already visually reversed.
+// A RawTextItem mimicking pdf.js output: dir 'rtl', str in LOGICAL order (pdf.js reverses the drawn chunk itself).
 function rtlItem(str: string, x: number): RawTextItem {
   return { str, dir: 'rtl', transform: [12, 0, 0, 12, x, 700], width: str.length * 7, height: 12, fontName: 'f1', hasEOL: false };
 }
 
 describe('reconstructPage — RTL logical-order restoration (A1/A2)', () => {
-  it('restores logical word + char order for an RTL line', () => {
-    // Visual page: "FED" at x=40 (left), "CBA" at x=120 (right); both dir:'rtl'
-    // (pdf.js visual-reversed of logical "DEF" and "ABC"). Reading right→left:
-    // logical order is "ABC" then "DEF".
-    const page = reconstructPage([rtlItem('FED', 40), rtlItem('CBA', 120)], {} as FontInfoMap, 600, 800);
+  it('restores logical word order for an RTL line, leaving each item\'s text as pdf.js gave it', () => {
+    // Visual page: "DEF" at x=40 (left), "ABC" at x=120 (right), both dir:'rtl' and already logical inside.
+    // Reading right→left: "ABC" then "DEF".
+    const page = reconstructPage([rtlItem('DEF', 40), rtlItem('ABC', 120)], {} as FontInfoMap, 600, 800);
     const text = page.paragraphs.flatMap((p) => p.runs).map((r) => r.text).join('');
     expect(text.replace(/\s+/g, ' ').trim()).toBe('ABC DEF');
     expect(page.paragraphs[0].rtl).toBe(true);
+  });
+
+  it('keeps the space between two Latin items inside an Arabic line (limits row 19)', () => {
+    // x ascending: بالكامل | Microsoft | Word | يدعم البرنامج — the Arabic carries more letters, so the line is
+    // right-to-left and reads يدعم البرنامج, Microsoft, Word, بالكامل. The gap between
+    // Microsoft and Word advances RIGHTWARD on a right-to-left line; a direction-keyed gap lost that space.
+    const ltr = (str: string, x: number): RawTextItem => ({ ...rtlItem(str, x), dir: 'ltr' });
+    const page = reconstructPage(
+      [rtlItem('بالكامل', 40), ltr('Microsoft', 110), ltr('Word', 180), rtlItem('يدعم البرنامج', 230)],
+      {} as FontInfoMap, 600, 800,
+    );
+    const text = page.paragraphs.flatMap((p) => p.runs).map((r) => r.text).join('');
+    expect(text.replace(/\s+/g, ' ').trim()).toBe('يدعم البرنامج Microsoft Word بالكامل');
   });
 
   it('emits w:rtl and a complex-script (cs) Arabic font in the DOCX (A3)', async () => {

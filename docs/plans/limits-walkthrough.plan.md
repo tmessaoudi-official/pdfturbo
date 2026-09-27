@@ -84,6 +84,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 00:40] SESSION-CHOSEN (run rules): D2 verdict — PDFium not adopted (2.1 MB gzip; 474/729 runs clean, TJ spacing lost on spaced runs); its measured gain, keeping embedded simple fonts in place, becomes rows 38 (Path 2 for literal operands) and 39 (encoding-based in-place path, glyphs verified with fontkit), run after row 31.
 - [2026-09-27 01:05] SESSION-CHOSEN (run rules): row 17 shipped on the pre-push hook (tsc/lint/jsdom) plus the two harness files `6439bca` changed, run green in Chrome — no `src/` changed since the full gate at `1effcc1`; a deviation from full-gate-per-row, recorded. Advisor 6C follow-ups (the mechanism measured on all 630 runs, the PDFium cause graded, C2 scoped to Noto Naskh) land with row 18.
 - [2026-09-27 01:35] SESSION-CHOSEN (run rules): row 18 — unknown real families pass through split at word boundaries into every rFonts slot and fontTable.xml, generated names keep the generic; the fontTable family/pitch hint comes from the name when it states a class, because pdf.js's guess called NotoSerifCJKjp monospace (measured). The clone/equivalent list (NimbusRomNo9L → Times New Roman …) is [Speculative] — metric-compatible clones, not Word's own faces; the split is right for 24 of 32 corpus names.
+- [2026-09-27 02:30] SESSION-CHOSEN (run rules): row 19 — measuring D8 found every Arabic word exported BACKWARDS (pdf.js items are already logical; the export reversed them) and item-count line direction; fixed both, plus neutral resolution and L2 for an LTR base, re-using `logicalItemOrder` (now with a base-direction argument). Corrects a documented claim, not a safety promise, so the run continued. Row re-sized S → M. The lam-alef ligature reorder is pinned as a ceiling, not fixed: `ال` is the definite article, so the reversed pair cannot be told from real text.
 - [2026-09-26 22:25] SESSION-CHOSEN (run rules): C3's 30 s per-image timeout is kept and stated as a false-refusal bound (a one-sided timeout refuses until the file is reopened), not engineered around.
 
 ## Formal Plan
@@ -113,7 +114,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 16 | C9 signature rect mapped onto the assembled page | M | done | 8c175ac | src/core/pdfTurboApp.ts, src/signing/**, tests/** |
 | 17 | D2 PDFium+HarfBuzz evaluation (incl. D16, D17 marks) | M | done | 62ff3eb | var/claude/**, KNOWN_ISSUES.md, CLAUDE.md |
 | 18 | D6+D7 real font names incl. eastAsia in DOCX | M | done | 9c97c24 | src/utils/flowDocWriters.ts, tests/** |
-| 19 | D8 mixed-bidi DOCX lines measured | S | todo | - | src/utils/flowDoc.ts, tests/** |
+| 19 | D8 mixed-bidi DOCX lines measured | M | done | - | src/utils/flowDoc.ts, src/utils/bidi.ts, tests/** |
 | 20 | D9 borderless-table discriminator research | M | todo | - | src/utils/borderlessTable.ts, tests/** |
 | 21 | D10 4+ column split with corpus proof | M | todo | - | src/utils/flowDoc.ts, tests/** |
 | 22 | D11 internal links to bookmarks/anchors | M | todo | - | src/export/**, src/utils/flowDocWriters.ts, tests/** |
@@ -133,6 +134,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 37 | NEW: pdf.js ICC colour management is off — DeviceCMYK drawn with an approximate formula (measured: Pub 17 black slate-blue; ruled on 18:00) | M | done | b868be8 | src/utils/pdfjsParams.ts, scripts/**, vite.config.ts, tests/** |
 | 38 | NEW (row 17): Path 2 for literal-string operands — keep an embedded font with a ToUnicode in place (171/630 corpus runs substituted today) | M | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 | 39 | NEW (row 17): in-place edit of an embedded simple font without ToUnicode via its /Encoding, glyph presence checked with fontkit (459/630 runs) | L | todo | - | src/utils/contentStreamEditor.ts, tests/** |
+| 40 | Edit-text prefill of an Arabic run split across items (`clusterBaselineRun` joins by ascending x — visual item order; found by row 19, unmeasured) | S | todo | - | src/handlers/textEditHandler.ts, tests/** |
 <!-- /progress-block -->
 
 ### Blocked
