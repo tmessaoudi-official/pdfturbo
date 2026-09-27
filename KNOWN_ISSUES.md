@@ -427,8 +427,13 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   wording starts `[Unverified]` like any new value. WS7 round 10 added two more the same day,
   `docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`, also written by the session. This list lived in four prose copies and drifted
   three times (11 / 12 / 14 / 15) before the closure; `CLAUDE.md` § "The hide-vs-remove audit" is the
-  count's home. **RTL rendering was not part of that review** and is unchanged — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS),
-  plus overlay bracket mirroring and RTL list-marker placement. Correct strings, imperfect shaping.
+  count's home. **RTL rendering was not part of that review** — see ceilings C18 (select/copy/search precision) and C19 (tashkeel/GPOS).
+  Overlay bracket mirroring and RTL list-marker placement were fixed by limits row 25 (2026-09-27): brackets, `•`, `-` and `%`,
+  which the Arabic font has no glyph for, used to draw as empty boxes and extract as U+0000. Two bounds remain: a mirrored
+  guillemet extracts as its mirror (`«` drawn as `»` copies as `»`, as in any viewer's copy of such a PDF), and the export
+  right-aligns every Arabic line and resolves its direction from its first strong letter, while the editor honours the box's
+  alignment and its RTL/LTR toggle — so an Arabic list left-aligned in the editor shows its markers at the far right, where the
+  export draws them.
 - Crop: numeric per-edge **margins** SHIPPED 2026-08-04 (converted per page); resizable **handles**
   SHIPPED 2026-08-05 (8 grips, clamped so a drag cannot invert the rect). **Aspect-ratio-aware
   apply-to-all SHIPPED 2026-09-04**: a drawn crop now maps onto every page as a PROPORTION of that

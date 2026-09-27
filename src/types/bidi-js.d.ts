@@ -37,9 +37,10 @@ declare module 'bidi-js' {
     getBidiCharType(char: string): number;
     getBidiCharTypeName(char: string): string;
     getMirroredCharacter(char: string): string | null;
+    /** Takes the LEVELS ARRAY (`getEmbeddingLevels(...).levels`), not the result object — measured. */
     getMirroredCharactersMap(
       text: string,
-      embeddingLevels: BidiEmbeddingLevels,
+      embeddingLevels: Uint8Array,
       start?: number,
       end?: number,
     ): Map<number, string>;

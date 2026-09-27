@@ -2516,8 +2516,8 @@ starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pd
 session-written. The count's home is § "The hide-vs-remove audit"; `KNOWN_ISSUES.md` § "Arabic locale strings"
 carries a fifth copy (found stale at three on 2026-09-26) — update it with the others.
 **Sign-off covers STRING translations only.** The RTL *rendering* ceilings are untouched by it and
-remain open: C18 (per-glyph select/copy/search precision), C19 (tashkeel/GPOS micro-positioning),
-bracket mirroring in the overlay, and RTL list-marker placement. A reviewed string can still render
+remain open: C18 (per-glyph select/copy/search precision) and C19 (tashkeel/GPOS micro-positioning);
+bracket mirroring in the overlay and RTL list-marker placement were fixed by limits row 25. A reviewed string can still render
 imperfectly — those are separate, and none of them is a translation pass. **Nor do they need HarfBuzz
 (limits row 17, measured 2026-09-27):** fontkit — already the shaper behind pdf-lib's embed — produced HarfBuzz's
 glyphs and positions exactly on Noto Naskh (5 strings, 69 glyphs, 0.00 pt apart). The tashkeel error (up to 12.25 pt
@@ -3422,8 +3422,7 @@ the user typed as "3. foo"). Mutations: `FormattingService.setListType(kind|null
 (`MoveResizeCmd`, undoable, in `clearFormatting` + format-painter set); UI = two toggle buttons in the Text ⋮
 popover (`#bulletListBtn`/`#numberedListBtn`), `uiController.updateFormattingToolbar` reflects `te.list`.
 i18n `formatting.{list,bulletList,numberedList}` (ar reviewed 2026-07-30). No feature flag (additive). **Ceiling
-(v1):** nested/multi-level lists, custom marker styles (a/A/i, start-at-N), RTL/Arabic marker placement
-(the ASCII marker still prefixes the logical Arabic line → drawn within the RTL shaping), and DOCX export of
+(v1):** nested/multi-level lists, custom marker styles (a/A/i, start-at-N), and DOCX export of
 overlay-text markers (overlay annotations aren't in the PDF→DOCX path). Guards:
 `tests/utils/listMarkers.test.ts`, `tests/elements/textElement.test.ts` (model + gutter),
 `tests/core/formattingService.test.ts`, `tests/ui/{textOptionsPopover,uiController}.test.ts`,
@@ -3619,8 +3618,8 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   as ONE logical-order span) and breaks search's char offsets → copy/search MUST reorder at ITEM granularity, never
   char. (3) boundary whitespace must stay put when re-reversing an LTR run (else an inter-word space migrates →
   `مرحباWorld `). Every engine call falls back to the raw string on a bidi-js throw (never regress below prior
-  behavior). **Ceiling:** overlay bracket display-mirroring (fontkit draws the logical glyph; the string surfaces
-  DO mirror), tashkeel GPOS, shaped-ligature reorder → Feature 3 Slice 3 (evaluate-then-defer). Guards:
+  behavior). **Ceiling:** tashkeel GPOS, shaped-ligature reorder (overlay bracket mirroring: fixed by limits
+  row 25 — § "RTL brackets and list markers in the Arabic overlay"). Guards:
   `tests/utils/bidi.test.ts` (17) + the per-surface guards (`rtlClipboard`/`flowDocArabic`/`textSearchHandler`) +
   the extended `tests/browser/arabic-overlay.browser.test.ts`.
 - **RTL-aware text toolbar (Feature 3 Slice 2, `ebae519`)**: `TextElement.direction?: 'auto'|'rtl'|'ltr'`
@@ -3807,6 +3806,40 @@ echoes ANY origin. 8 of the 12 are `http://`, which an `https` page may not fetc
 policy, not run in a browser]. Wiring any TSA needs two rulings: the CSP `connect-src 'self'` and a document HASH
 leaving the device (the nothing-uploaded promise). LTV needs revocation fetches — the same two.
 
+
+### RTL brackets and list markers in the Arabic overlay — limits row 25, D17 (2026-09-27)
+
+Two defects, one line of code apart. **Noto Naskh Arabic has no glyph for `( ) [ ] •`** (nor `-`, `%`), so an
+Arabic export line drew them as `.notdef` boxes and they extracted as U+0000 — a bullet list in Arabic showed a box
+per item. And **fontkit draws a glyph as given**: nothing applied UAX#9 rule L4, so a bracket at an RTL level faced
+the wrong way (`«»` pointing outwards). Measured against a `dir=rtl` Chrome render of the same strings
+(`var/claude/qa-shots/row25/`).
+
+`mirrorForDisplay` (`utils/bidi.ts`) mirrors at odd levels before `visualRuns`; mirrored pairs share their bidi class,
+so the levels — and the runs — do not move. `measureBidiRuns` then splits each RTL run by the Noto character set:
+what Noto lacks and WinAnsi has goes to Helvetica. Inside an RTL run those pieces are laid out right to left, so their
+ORDER is reversed and so are the CHARACTERS of a Helvetica piece (`[(` must draw as `[(` at the left end, not `([`); a
+Noto piece is not reversed, because fontkit already emits visual order. A line needing neither keeps its old emission —
+measured byte-identical on 16 of 20 plain strings, the other 4 being `%`/`-` lines that were boxes. Note that a `%` in
+`نص 100%` lands LEFT of the number: digits after Arabic letters are AN, not EN (rule W2), exactly as in Chrome.
+**`bidi-js`'s `getMirroredCharactersMap` takes the LEVELS ARRAY**, not the `getEmbeddingLevels` result — the ambient
+type said otherwise, and the wrong call returns an EMPTY map with no error. The editor's list gutter follows the
+resolved direction (right side for RTL text, CSS `text-align: end`).
+
+Traps: pdf.js re-orders the text INSIDE an RTL item, so the oracle orders ITEMS by x and cannot place a character
+that rides inside the Noto item (the `.` of `1.` — the control asserts only that the digit is rightmost); and the
+subset CIDs are renumbered in order of use, so a content-stream compare cannot see a Noto glyph change (`«»` compared
+"identical" while being mirrored) — the guillemet case reads the pixels. Bounds, in `KNOWN_ISSUES.md`: a mirrored
+guillemet extracts as its mirror, and the export right-aligns Arabic lines and takes each line's base from its first
+strong letter while the editor honours align and the RTL toggle.
+
+Guards: `tests/browser/arabic-mirror-markers.browser.test.ts` (7), four `mirrorForDisplay` cases in
+`tests/utils/bidi.test.ts`, two gutter cases in `tests/elements/textElement.test.ts`, and a bracket/bullet config in
+`text-extent-ink.browser.test.ts`. Sabotage, predicted first, each restored and checked by hash: mirroring off → the
+parenthesis, double-bracket, `[PDF]` and guillemet cases + 2 unit; coverage split off → parenthesis, double, bullet
+and `[PDF]`, guillemet green; Helvetica piece not reversed → exactly the double bracket; segmentation gate off → the
+four pure-Arabic cases, `[PDF]` (mixed path) green; measure gate unlike the draw gate → exactly the width case; gutter
+never RTL → exactly its jsdom case.
 ### Approval caption + guided Signers panel (F-D D1/D2)
 
 A drawn `SignatureElement` carries an OPTIONAL

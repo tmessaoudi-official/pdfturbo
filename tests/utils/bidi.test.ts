@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { logicalToVisual, visualToLogical, visualRuns, logicalItemOrder, baseDirection } from '../../src/utils/bidi';
+import { logicalToVisual, visualToLogical, visualRuns, logicalItemOrder, baseDirection, mirrorForDisplay } from '../../src/utils/bidi';
 
 describe('logicalToVisual', () => {
   it('LTR-only text is returned unchanged', () => {
@@ -82,5 +82,26 @@ describe('logicalItemOrder', () => {
     const visual = [item('ب'), item('PDF'), item('ا')];
     const out = logicalItemOrder(visual, (s) => /[؀-ۿ]/.test(s.text)).map((s) => s.text);
     expect(out).toEqual(['ا', 'PDF', 'ب']);
+  });
+});
+
+describe('mirrorForDisplay — UAX#9 L4 (row 25)', () => {
+  it('mirrors brackets and guillemets at an RTL level', () => {
+    expect(mirrorForDisplay('(مرحبا)')).toBe(')مرحبا(');
+    expect(mirrorForDisplay('[(مرحبا)]')).toBe('])مرحبا([');
+    expect(mirrorForDisplay('«مرحبا»')).toBe('»مرحبا«');
+  });
+  it('leaves brackets around an LTR embedding alone, and mirrors the ones at the RTL level', () => {
+    // `[` sits between R and L → RTL level (mirrored); `(PDF)` inside the Latin run is LTR (kept).
+    expect(mirrorForDisplay('مرحبا [PDF (x)] نعم')).toBe('مرحبا ]PDF (x)[ نعم');
+  });
+  it('is the identity on LTR text, on text with nothing to mirror, and on an empty string', () => {
+    expect(mirrorForDisplay('(hello) [x]')).toBe('(hello) [x]');
+    expect(mirrorForDisplay('• مرحبا 1.')).toBe('• مرحبا 1.');
+    expect(mirrorForDisplay('')).toBe('');
+  });
+  it('mirroring keeps the embedding levels, so visualRuns orders the result like the original', () => {
+    const t = 'نص (مع PDF) هنا';
+    expect(visualRuns(mirrorForDisplay(t)).map(r => [r.rtl, r.text.length])).toEqual(visualRuns(t).map(r => [r.rtl, r.text.length]));
   });
 });

@@ -151,6 +151,31 @@ describe('TextElement direction (Slice 2 RTL)', () => {
       expect(gutter.textContent).toContain('1.');
       expect(gutter.textContent).toContain('2.');
     });
+    it('puts the gutter at the RIGHT, padded on the right, for RTL text (row 25 — where the export draws the marker)', () => {
+      const te = new TextElement(0, 0, 'p1', { list: 'bullet' });
+      te.text = 'مرحبا\nنعم';
+      const div = te.render(document.createElement('div'), { left: 0, top: 0 }, 1);
+      const gutter = div.querySelector('.text-list-gutter') as HTMLElement;
+      const input = div.querySelector('textarea, input') as HTMLTextAreaElement;
+      expect(gutter.dir).toBe('rtl');
+      expect(gutter.style.right).toBe('0px');
+      expect(gutter.style.left).toBe('');
+      expect(input.style.paddingRight).toBe('1.4em');
+      expect(input.style.paddingLeft).toBe('');
+    });
+    it('keeps the gutter at the left for LTR text, and for Arabic text the user forced LTR', () => {
+      for (const [text, direction] of [['a\nb', 'auto'], ['مرحبا', 'ltr']] as const) {
+        const te = new TextElement(0, 0, 'p1', { list: 'ordered', direction });
+        te.text = text;
+        const div = te.render(document.createElement('div'), { left: 0, top: 0 }, 1);
+        const gutter = div.querySelector('.text-list-gutter') as HTMLElement;
+        const input = div.querySelector('textarea, input') as HTMLTextAreaElement;
+        expect(gutter.style.left).toBe('0px');
+        expect(gutter.dir).toBe('');
+        expect(input.style.paddingLeft).toBe('2em');
+        expect(input.style.paddingRight).toBe('');
+      }
+    });
     it('renders no gutter when list is unset', () => {
       const te = new TextElement(0, 0, 'p1', {});
       te.text = 'a\nb';

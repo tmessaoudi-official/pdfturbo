@@ -4,6 +4,7 @@
  *   visualToLogical — pdf.js visual-order text → logical order (bounded inverse).
  *   visualRuns      — logical text → runs in visual L→R order, each run's text LOGICAL
  *                     (so the overlay shapes Arabic via fontkit and draws Latin LTR).
+ *   mirrorForDisplay — UAX#9 L4: mirror the Bidi_Mirrored characters at RTL levels.
  *
  * bidi-js is logical→visual; visualToLogical is a strong APPROXIMATION (perfect inversion
  * from visual order alone is impossible). Every call falls back to the raw string on a
@@ -29,6 +30,26 @@ export function logicalToVisual(text: string, base: BidiBase = 'auto'): string {
     const b = _api();
     const levels = b.getEmbeddingLevels(text, _explicit(base));
     return b.getReorderedString(text, levels);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * UAX#9 rule L4 on LOGICAL text: every Bidi_Mirrored character that resolves to an odd (RTL) embedding
+ * level is replaced by its mirror (`(` ↔ `)`, `«` ↔ `»`), so a renderer that draws glyphs as given —
+ * fontkit does not apply mirroring — shows the shape a bidi-aware viewer shows. Mirrored pairs share
+ * their bidi class, so the result resolves to the SAME levels as the input. Unchanged on a throw.
+ */
+export function mirrorForDisplay(text: string, base: BidiBase = 'auto'): string {
+  if (!text) return text;
+  try {
+    const b = _api();
+    const map = b.getMirroredCharactersMap(text, b.getEmbeddingLevels(text, _explicit(base)).levels);
+    if (!map.size) return text;
+    const units = text.split('');
+    map.forEach((ch, i) => { units[i] = ch; });
+    return units.join('');
   } catch {
     return text;
   }
@@ -161,8 +182,8 @@ export interface BidiVisualRun {
  * Logical text → runs in visual left-to-right order. Uses bidi-js reordered indices to
  * place runs; each run's `text` is rebuilt in LOGICAL order so the overlay can shape an
  * Arabic run with fontkit (which itself emits visual glyphs) and draw an LTR run directly.
- * Bracket display-mirroring inside the overlay is a documented residual (fontkit draws the
- * logical glyph); the copy/search/DOCX surfaces handle bracket mirroring.
+ * The overlay mirrors brackets BEFORE calling this ({@link mirrorForDisplay}); the levels are
+ * the same, so the runs are too.
  */
 export function visualRuns(text: string, base: BidiBase = 'auto'): BidiVisualRun[] {
   if (!text) return [];

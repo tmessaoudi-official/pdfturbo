@@ -112,7 +112,7 @@ input[type="file"] {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  text-align: right;
+  text-align: end;
   box-sizing: border-box;
   width: 1.4em;
 }

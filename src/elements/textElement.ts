@@ -92,12 +92,15 @@ export class TextElement extends PDFElement {
     input.value = this.text;
     this._applyInputFormatting(input, scale);
 
-    // List marker gutter (Feature 2): a non-editable column of markers at the box's left
-    // edge, kept out of `this.text` (no fragile prefix-and-strip that could eat user content).
-    // The input is padded to make room; the gutter shares the input's font metrics.
+    // List marker gutter (Feature 2): a non-editable column of markers at the box's START edge
+    // (left, or right for RTL text — where the export draws them), kept out of `this.text` (no
+    // fragile prefix-and-strip that could eat user content). The input is padded to make room;
+    // the gutter shares the input's font metrics.
     const gutter = this.list ? this._buildListGutter(scale) : null;
     if (gutter) {
-      input.style.paddingLeft = (this.list === 'ordered' ? 2.0 : 1.4) + 'em';
+      const pad = (this.list === 'ordered' ? 2.0 : 1.4) + 'em';
+      if (input.dir === 'rtl') input.style.paddingRight = pad;
+      else input.style.paddingLeft = pad;
     }
     input.addEventListener('input', (e) => {
       this.text = (e.target as HTMLInputElement).value;
@@ -129,12 +132,20 @@ export class TextElement extends PDFElement {
     const gutter = document.createElement('div');
     gutter.className = 'text-list-gutter';
     gutter.style.position = 'absolute';
-    gutter.style.left = '0';
+    // RTL: the gutter sits at the right, and its own direction shows an ordered marker as the
+    // export (UAX#9) and a dir=rtl browser do — `1.` reads `.1`, the dot towards the text.
+    const rtl = resolveDirection(this.direction, this.text) === 'rtl';
+    if (rtl) {
+      gutter.dir = 'rtl';
+      gutter.style.right = '0';
+    } else {
+      gutter.style.left = '0';
+    }
     gutter.style.top = '0';
     gutter.style.pointerEvents = 'none';
     gutter.style.whiteSpace = 'pre';
-    // Width matches the input's padding-left so markers sit in the reserved column,
-    // right-aligned against the text (a trailing 0.3em keeps the marker off the glyphs).
+    // Width matches the input's start padding so markers sit in the reserved column, aligned
+    // against the text (0.3em keeps the marker off the glyphs; CSS `text-align: end`).
     gutter.style.width = ((this.list === 'ordered' ? 2.0 : 1.4) - 0.3) + 'em';
     gutter.style.fontSize = (this.fontSize * scale) + 'px';
     gutter.style.fontFamily = this.fontFamily;

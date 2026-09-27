@@ -27,9 +27,11 @@
  * Mixed Arabic + Latin/digit lines get char-level bidi via the shared UAX#9 engine
  * (visualRuns in utils/bidi → drawBidiLine): the engine resolves embedding levels and
  * returns runs already in visual L→R order, each drawn with its own font (Noto vs
- * Helvetica). Known limits (documented ceiling): bracket display-mirroring inside the
- * overlay (fontkit draws the logical glyph); tashkeel/diacritic GPOS positioning is
- * fontkit's weak spot. A rotated line (element or page rotation) is drawn along `rotate`.
+ * Helvetica). Brackets and guillemets at an RTL level are mirrored first (UAX#9 L4 —
+ * fontkit draws a glyph as given), and a character Noto has no glyph for — `( ) [ ] •`,
+ * `-`, `%` — is drawn in Helvetica instead of as a `.notdef` box (limits row 25, D17).
+ * Tashkeel/diacritic GPOS positioning is still dropped (C19). A rotated line (element or
+ * page rotation) is drawn along `rotate`.
  */
 import {
   PDFHexString,
@@ -60,7 +62,7 @@ import {
 // Vite resolves ?url to the bundled asset URL. MUST be a TTF/OTF (see header note):
 // the WOFF of this font is mis-embedded by fontkit/pdf-lib (glyphs render blank).
 import notoNaskhUrl from '../assets/fonts/NotoNaskhArabic-Regular.ttf?url';
-import { visualRuns } from '../utils/bidi';
+import { mirrorForDisplay, visualRuns } from '../utils/bidi';
 import { cosSinDeg } from '../utils/geometry';
 
 const _fontCache = new WeakMap<PDFDocument, Promise<PDFFont>>();
@@ -225,24 +227,69 @@ export function effectiveArabicWidth(baseWidth: number, glyphCount: number, char
   return base * (horizontalScale / 100);
 }
 
+const _coverage = new WeakMap<PDFFont, Set<number>>();
+
+/** The code points the embedded Arabic font has a glyph for (read once per font). */
+function coverageOf(font: PDFFont): Set<number> {
+  let set = _coverage.get(font);
+  if (!set) { set = new Set(font.getCharacterSet()); _coverage.set(font, set); }
+  return set;
+}
+
 /**
- * Split a mixed line into visual runs and measure each one exactly as {@link drawBidiLine} draws it.
- * Shared with {@link measureArabicLine} so the redaction drop tests the width that is drawn.
+ * Whether a line needs the segmented path: a Bidi_Mirrored character at an RTL level (UAX#9 L4), or a
+ * character Noto Naskh has no glyph for — `( ) [ ] •` among them, which drew as `.notdef` boxes and
+ * extracted as U+0000. A line needing neither keeps its old emission byte for byte.
  */
-function measureBidiRuns(arFont: PDFFont, latFont: PDFFont, text: string, size: number, cs: number, hs: number):
-  Array<{ text: string; useLatin: boolean; hex: string; width: number }> {
-  return visualRuns(text).map((r) => {
-    if (!r.rtl) {
-      try {
-        return { text: r.text, useLatin: true, hex: '', width: latFont.widthOfTextAtSize(r.text, size) };
-      } catch {
-        // non-WinAnsi neutral → render via Noto instead of throwing the whole line.
-        const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
-        return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, size), hex.length / 4, cs, hs) };
-      }
+function needsSegmentation(arFont: PDFFont, text: string): boolean {
+  if (mirrorForDisplay(text) !== text) return true;
+  const covered = coverageOf(arFont);
+  for (const ch of text) if (!covered.has(ch.codePointAt(0) ?? 0)) return true;
+  return false;
+}
+
+function notoSeg(arFont: PDFFont, text: string, size: number, cs: number, hs: number): Seg {
+  const hex = arFont.encodeText(text).toString().replace(/^<|>$/g, '');
+  return { text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(text, size), hex.length / 4, cs, hs) };
+}
+
+/** Helvetica can draw `text` (WinAnsi), measured the way the bake draws it; null when it cannot. */
+function latinSeg(latFont: PDFFont, text: string, size: number): Seg | null {
+  try {
+    return { text, useLatin: true, hex: '', width: latFont.widthOfTextAtSize(text, size) };
+  } catch {
+    return null;
+  }
+}
+
+interface Seg { text: string; useLatin: boolean; hex: string; width: number }
+
+/**
+ * Split a line into segments in visual L→R order and measure each one exactly as {@link drawBidiLine}
+ * draws it. Shared with {@link measureArabicLine} so the redaction drop tests the width that is drawn.
+ *
+ * The text is mirrored first (UAX#9 L4, {@link mirrorForDisplay}); `visualRuns` then orders it. An LTR
+ * run is drawn in Helvetica (Noto when Helvetica cannot encode it). An RTL run is drawn in Noto, except
+ * the characters Noto lacks that Helvetica has: those split off into Helvetica pieces. Inside an RTL run
+ * the pieces are laid out right to left, so their ORDER is reversed and so are the characters of each
+ * Helvetica piece (`)]` drawn LTR); a Noto piece is not, because fontkit already emits it in visual order.
+ * Without mirrored or uncovered characters this is exactly the unsplit run-per-font layout of before.
+ */
+function measureBidiRuns(arFont: PDFFont, latFont: PDFFont, text: string, size: number, cs: number, hs: number): Seg[] {
+  const covered = coverageOf(arFont);
+  return visualRuns(mirrorForDisplay(text)).flatMap((r): Seg[] => {
+    // non-WinAnsi neutral → render via Noto instead of throwing the whole line.
+    if (!r.rtl) return [latinSeg(latFont, r.text, size) ?? notoSeg(arFont, r.text, size, cs, hs)];
+    const pieces: Array<{ text: string; latin: boolean }> = [];
+    for (const ch of r.text) {
+      const latin = !covered.has(ch.codePointAt(0) ?? 0) && latinSeg(latFont, ch, size) !== null;
+      const last = pieces[pieces.length - 1];
+      if (last && last.latin === latin) last.text += ch;
+      else pieces.push({ text: ch, latin });
     }
-    const hex = arFont.encodeText(r.text).toString().replace(/^<|>$/g, '');
-    return { text: r.text, useLatin: false, hex, width: effectiveArabicWidth(arFont.widthOfTextAtSize(r.text, size), hex.length / 4, cs, hs) };
+    return pieces.reverse().map((p) => (p.latin
+      ? (latinSeg(latFont, [...p.text].reverse().join(''), size) as Seg)
+      : notoSeg(arFont, p.text, size, cs, hs)));
   });
 }
 
@@ -257,7 +304,7 @@ export async function measureArabicLine(
 ): Promise<number> {
   const arFont = await getArabicFont(pdfDoc);
   const cs = opts.charSpacing ?? 0, hs = opts.horizontalScale ?? 100;
-  if (/[A-Za-z0-9]/.test(opts.text)) {
+  if (/[A-Za-z0-9]/.test(opts.text) || needsSegmentation(arFont, opts.text)) {
     const latFont = await getLatinFont(pdfDoc);
     return measureBidiRuns(arFont, latFont, opts.text, opts.size, cs, hs).reduce((s, r) => s + r.width, 0);
   }
@@ -283,10 +330,11 @@ export async function drawArabicLine(
   // ordering (#3b) — Noto has no Latin glyphs, so the whole-line path tofu'd them.
   // Pure Arabic falls through to the fast single-run path below, preserving the
   // verified RTL glyph order (#3).
-  if (/[A-Za-z0-9]/.test(opts.text)) {
+  const font = await getArabicFont(pdfDoc);
+  // Lines with a mirrored bracket or a glyph Noto lacks take the segmented path too (row 25, D17).
+  if (/[A-Za-z0-9]/.test(opts.text) || needsSegmentation(font, opts.text)) {
     return drawBidiLine(pdfDoc, page, opts);
   }
-  const font = await getArabicFont(pdfDoc);
   // encodeText shapes (fontkit GSUB) + registers subset glyphs, returning 2-byte
   // CIDs ALREADY in visual right-to-left order — emit them straight to Tj. Do NOT
   // reverse: encodeText is not logical-order here, so reversing mirrors the line.
@@ -314,8 +362,8 @@ export async function drawArabicLine(
  * A Latin run that Helvetica can't encode (a non-WinAnsi neutral) falls back to the
  * Arabic font so the whole line never throws: pdf-lib base-14 fonts reject non-WinAnsi
  * codepoints (WinAnsiEncoding throws) — an inherent base-14 limit, not a maskable
- * defect. Bracket display-mirroring inside the overlay and tashkeel GPOS positioning
- * remain documented partials.
+ * defect. Brackets are mirrored and uncovered characters drawn in Helvetica by
+ * {@link measureBidiRuns}; tashkeel GPOS positioning remains a documented partial (C19).
  */
 async function drawBidiLine(pdfDoc: PDFDocument, page: PDFPage, opts: ArabicLineOpts): Promise<void> {
   const arFont = await getArabicFont(pdfDoc);

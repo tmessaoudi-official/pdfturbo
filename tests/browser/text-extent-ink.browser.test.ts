@@ -86,6 +86,7 @@ const CONFIGS: Array<[string, TextElement, number?]> = [
   ['Courier', mk(40, 40, 'Courier monospace text', { fontFamily: 'Courier New' })],
   ['Arabic, longer than its box', mk(40, 40, 'مرحبا بالعالم هذا نص عربي طويل', { width: 60 })],
   ['mixed Arabic and digits', mk(40, 40, 'الرقم 12345 هنا', { width: 50 })],
+  ['Arabic with mirrored brackets, guillemets and a list bullet (row 25)', mk(40, 40, 'نص [(مرحبا)] «هنا»', { width: 60, list: 'bullet' })],
   ['superscript', mk(40, 40, 'Superscript text', { baselineShift: 'super' })],
   ['subscript', mk(40, 40, 'Subscript gjpqy', { baselineShift: 'sub' })],
   // Two lines of ALL-CAPS: no descenders, so the ink below the last line is the UNDERLINE alone —

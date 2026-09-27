@@ -96,6 +96,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 - [2026-09-27 06:05] SESSION-CHOSEN (run rules): row 23 follow-up — every flatten read is `lookup` + `instanceof` with pdf.js's defaults (measured: `lookupMaybe` threw on a string /F, array /AP, string /Subtype, dict /BBox and non-array /Annots, failing the whole Flatten); a non-name /Subtype is drawn as a generic annotation, as pdf.js does.
 - [2026-09-27 06:05] NOTE (provenance): seven SESSION-CHOSEN stamps of 2026-09-27 (00:40, 04:05, 05:10, 05:55, 06:40, 07:20, 08:10) were later than the commits that added them — written from an estimate, not the clock (found at row 23's 6C, `date` read 05:58). Each is re-stamped to at or before its commit time; the rulings themselves are unchanged and were session-chosen under the run rules, not developer rulings.
 - [2026-09-27 06:34] SESSION-CHOSEN (run rules): row 24 (D15) — PAdES-B-B is built as `SignOptions.profile: 'pades'` (hand-rolled SignedData: contentType, messageDigest, ESS signing-certificate-v2, no signingTime) and the DEFAULT stays `adbe.pkcs7.detached` until the developer's Reader check (row 29; samples in `var/claude/acrobat-pack/row24/`). Measuring with pyHanko found every signature the app produced judged INVALID ("does not cover the entire file"): the ByteRange covered the `/Contents` `<` `>`; fixed at `computeByteRange` for every profile (ISO 32000-2), both now `ENTIRE_FILE`. TSA probed, not wired: 9 of 10 answering public TSAs send no CORS, the tenth is a proxy allowing any origin; wiring needs rulings on the CSP and a hash leaving the device. C17's "CA-trusted" moved out of the limits (a CA-issued .p12 already gives one).
+- [2026-09-27 07:10] SESSION-CHOSEN (run rules): row 25 (D17) lands in two commits — brackets/markers first, C19 tashkeel positions second — so a C19 red cannot block the finished half. Brackets at RTL levels are mirrored (UAX#9 L4) and characters Noto lacks (`( ) [ ] •`, `-`, `%`) draw in Helvetica; the editor's list gutter moves to the right for RTL text. Found, NOT fixed (disclosed in KNOWN_ISSUES): the export right-aligns every Arabic line and takes its base direction from its first strong letter, ignoring the box's `align` and the RTL/LTR toggle that the editor honours — a separate change.
 
 ## Formal Plan
 
@@ -129,8 +130,8 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 21 | D10 4+ column split with corpus proof | M | done | 734c9c1 | src/utils/flowDoc.ts, tests/** |
 | 22 | D11 internal links to bookmarks/anchors | M | done | 03c0914 | src/export/**, src/utils/flowDocWriters.ts, tests/** |
 | 23 | D12 markup annotation appearance flatten | M | done | 8321fd8 | src/export/**, tests/** |
-| 24 | D15 PAdES-B-B + TSA CORS probe | M | done | - | src/signing/**, tests/signing/** |
-| 25 | D17 RTL bracket mirroring + list markers | M | todo | - | src/export/arabicOverlay.ts, src/export/pdfElementRenderer.ts, tests/** |
+| 24 | D15 PAdES-B-B + TSA CORS probe | M | done | 07ca280 | src/signing/**, tests/signing/** |
+| 25 | D17 RTL bracket mirroring + list markers (+ C19 marks) | M | doing | - | src/export/arabicOverlay.ts, src/utils/bidi.ts, src/types/bidi-js.d.ts, src/elements/textElement.ts, src/styles/editor.css, tests/** |
 | 26 | D18+D21 XFDF rotation + more subtypes + fields | M | todo | - | src/utils/xfdf.ts, src/export/xfdfMapping.ts, tests/** |
 | 27 | D20 JPEG downsampling compress mode | M | todo | - | src/export/compress.ts, src/ui/compressPanel.ts, locales/** |
 | 28 | D22 Bates hardening | S | todo | - | src/ui/batesPanel.ts, src/ui/documentLoader.ts, tests/** |
