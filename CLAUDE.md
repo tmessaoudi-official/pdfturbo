@@ -30,11 +30,6 @@ the recommended one FIRST (labelled, with its reason) and a visible *"none of th
 premise"* escape. Protocol: the global `/ask-human` skill, § "Question quality"; this repo's
 additions (mandatory cases, a worked example): `.claude/skills/pdf-ask-human/SKILL.md`.
 
-> The container-era plain-text protocol and the `❓`/`⏹` end-of-reply markers are **RETIRED**
-> (2026-08-18). They existed because `AskUserQuestion` timed out in the dead cloud container; on this
-> machine it works, `askUserQuestionTimeout` is `"never"` globally, and the marker's rationale
-> (a prose question being indistinguishable from a pause) dies with the prose protocol.
-
 **Do not ask about routine work.** The standing directive for this repo is *no interrupts*: announce
 the task size and the plan, then build it. Asking is reserved for the cases in
 § "When a question is mandatory here" of that skill — chiefly a genuinely ambiguous request, or a change
@@ -42,7 +37,7 @@ that would weaken a documented invariant, a declared ceiling, or bump `SCHEMA_VE
 
 ## Certification ladder — governs every 3C/6C gate
 
-`advisor()` **is available on this machine** (verified 2026-08-18) and is the FIRST rung: call it
+`advisor()` **is available on this machine** and is the FIRST rung: call it
 per the global framework. The panel of record for gate rounds is the set of **fresh-context,
 read-only, adversarial reviewer subagents** in `.claude/agents/`. Three lenses, one agent each:
 
