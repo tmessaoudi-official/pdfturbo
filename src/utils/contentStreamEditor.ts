@@ -1390,8 +1390,8 @@ function showOpCodes(op: CsOp): number[] {
  */
 /**
  * A3a — true when an edit at this target could ONLY proceed via Path 3 (standard-font
- * redraw): the font is not Path-1-safe (byte-swap-unsafe) AND has no Path-2 ToUnicode
- * subset to reuse. Used to gate XObject editing: a Path-1/2-safe XObject target edits
+ * redraw): the font is not Path-1-safe (byte-swap-unsafe) AND has no Path-2 code map to reuse
+ * (its ToUnicode, or for a simple font without one, its /Encoding — limits row 39). Used to gate XObject editing: a Path-1/2-safe XObject target edits
  * in place, a Path-3-only one overlays (Path-3-in-XObject is refused until A3b).
  * `xObjectName` routes the font introspection into the XObject's own resources.
  */

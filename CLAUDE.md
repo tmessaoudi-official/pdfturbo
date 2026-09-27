@@ -3101,7 +3101,7 @@ census (25) reports, Type1C with a `<0000> <FFFF>` ToUnicode — and all 75 now 
 before 0/75, after 75/75]. One helper, `showCodeSize`, now answers for all four sites: a simple font → 1, a Type0
 font → its CMap, or 2 without one (the order changed at row 39, which gave the reader maps with no CMap at all). Guards: pre-fill of all four literal runs with a wide and with no codespace, and an
 underline added on the wide one. Sabotage: the helper trusting the CMap → 5 red (write wide/none, pre-fill wide/none,
-underline). The decoration-resize site shares the helper and is not pinned separately.
+underline; re-measured on the row-39 order, still 5). The decoration-resize site shares the helper and is not pinned separately.
 
 ### An embedded simple font without ToUnicode is read through its /Encoding — limits row 39 (2026-09-27)
 
@@ -3214,8 +3214,8 @@ history stack by design). See the design doc (recoverable — see the note openi
 remaining limitations (cm transforms, XObjects, Helvetica fallback font — Phase B/C).
 **ISSUE-2 fix (2026-06-14):** `replaceTextAt` has 3 paths — (1) literal byte-swap, now GATED by
 `isByteSwapUnsafeFont()` so it NEVER runs for subset/CID/embedded fonts (byte≠glyph there → was the
-heading "data-loss" bug); (2) subset glyph reuse via ToUnicode (keeps original font for in-subset
-edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
+heading "data-loss" bug); (2) subset glyph reuse via ToUnicode — or, since limits row 39, a simple font's /Encoding, reusing only codes the
+stream already draws (keeps original font for in-subset edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
 pdf-lib `page.drawText` after `setPageContent` — it orphans the redraw). XObject-embedded targets
 refuse before blanking (no delete-without-replacement). Guarded by
 `tests/browser/issue2-true-edit.browser.test.ts`. **Honest restyle font-substitution (Slice B,
@@ -3759,6 +3759,19 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   1 + 1 (`نظام.pdf`); W7 off → 1 + 1 (the email line, via `v2.0.0`). The Markdown case aggregates every
   LibreOffice line, so it reds with any of them. The writer emits complex-script attrs (`font.cs=Arial`,
   `bold/italics/sizeComplexScript`). All in `flowDoc.ts`/`flowDocWriters.ts`.
+- **Edit-text prefill (limits row 40, 2026-09-27)**: the edit-text tool's Arabic overlay takes its text from
+  `clusterBaselineRun`, which joined the clicked run's items by ascending x — the same reversal as the DOCX export's,
+  one step earlier: measured on the Chrome fixture, 19 of 157 runs read as typed and 70 came out reversed; on the
+  LibreOffice one a split line's items came out in page order (`اليوم2.5النسخة`). A run holding a `dir: 'rtl'` item
+  is now ordered by `orderLineWords` (folding and bracket mirroring included); a run with none is joined exactly as
+  before. After: 109 of 157 and 9 of 10, and every remaining miss is an extraction bound above (marks, `الله`, the
+  lam-alef line, punctuation inside a Chrome item) — none reversed. The run's box is unchanged. Bound: the text keeps
+  no space between two items pdf.js did not put one in (row 51). Guards: four cases in
+  `tests/handlers/textEditHandler.test.ts`, whose `flowDoc` mock now passes the REAL `orderLineWords` (the old
+  Arabic case asserted the ascending-x join on glyphs drawn in logical order, a shape pdf.js never produces), and
+  `tests/browser/edittext-arabic-prefill.browser.test.ts` (2, real pdf.js items against the typed text of both
+  fixtures, the bounds excluded by name). Sabotage, each restored with `cmp`: the page-order join → 3 + 2; order
+  kept but folding dropped → 1 + 1 (predicted 1 + 0 — the Chrome case reds too, cause not traced).
 - **True-edit**: `replaceTextAt` REFUSES Arabic new-text before the Latin Path-3 redraw (it would emit '?')
   → routes to the overlay (mirrors the Type3/vertical refusals). Faithful Path-2 subset-glyph reuse still
   runs first for in-subset edits. Guard: `isArabicText()` (defined in `flowDoc.ts`, imported by `contentStreamEditor.ts`).

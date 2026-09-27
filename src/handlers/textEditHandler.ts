@@ -4,7 +4,7 @@ import { RedactionElement } from '../elements/redactionElement';
 import { TextElement } from '../elements/textElement';
 import { AddElementCmd, MacroCmd } from '../core/historyManager';
 import { findTextOpAt, deleteTextAt, replaceTextAt, changeSizeAt, changeColorAt, addDecorationAt, fillColorToHex, getPageFontBaseName, getEditableTextAt, isPath3OnlyTarget, type TextStyle } from '../utils/contentStreamEditor';
-import { extractPsName, isArabicText } from '../utils/flowDoc';
+import { extractPsName, isArabicText, orderLineWords } from '../utils/flowDoc';
 import { t } from '../utils/i18n';
 import { isEnabled } from '../config/features';
 import type { IAppContext } from '../core/appContext';
@@ -61,6 +61,8 @@ interface PdfTextItem {
   width: number;
   height: number;
   fontName: string;
+  /** pdf.js's direction for the item ('ltr' | 'rtl' | 'ttb'); absent on older fixtures. */
+  dir?: string;
 }
 
 /** A contiguous same-baseline run, in pdf.js item space (x = transform[4], y = baseline transform[5]). */
@@ -93,8 +95,12 @@ export interface BaselineRun {
  *  - run break: an adjacent item is whitespace-only, OR the horizontal gap to it
  *    (next.x − (cur.x + cur.width)) ≥ 1.0 × fontSize — i.e. a real inter-word space.
  *
- * RTL note: items arrive in VISUAL order; we concatenate by ascending x and do
- * NOT reverse — the Arabic overlay renderer re-shapes RTL from logical-visual.
+ * RTL (limits row 40): the run's TEXT is what the Arabic overlay renderer shapes, which needs LOGICAL order. pdf.js
+ * returns a glyph-positioned RTL word as one item per glyph in VISUAL order and a split RTL line as several
+ * logical-order items, so joining by ascending x reversed the word (measured on a Chrome PDF: 70 of 157 runs
+ * reversed). A run holding an RTL item is put in reading order by flowDoc's `orderLineWords` — the DOCX export's
+ * rule, presentation forms folded included; a run with none keeps page order, unchanged. The geometry (x, width)
+ * is the run's box either way.
  */
 export function clusterBaselineRun(items: PdfTextItem[], best: PdfTextItem): BaselineRun {
   const fontSize = Math.hypot(best.transform[0], best.transform[1]) || Math.abs(best.height) || 12;
@@ -135,7 +141,10 @@ export function clusterBaselineRun(items: PdfTextItem[], best: PdfTextItem): Bas
   }
 
   const run = sameLine.slice(lo, hi + 1);
-  const text = run.map(it => it.str).join('');
+  const text = run.some(it => it.dir === 'rtl')
+    ? orderLineWords(run.map(it => ({ x: it.transform[4], width: Math.abs(it.width), rtl: it.dir === 'rtl', text: it.str })))
+      .words.map(w => w.text).join('')
+    : run.map(it => it.str).join('');
   const x = run[0].transform[4];
   const right = Math.max(...run.map(it => it.transform[4] + Math.abs(it.width)));
   const height = Math.max(...run.map(it => Math.abs(it.height)));

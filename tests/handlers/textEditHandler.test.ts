@@ -37,8 +37,10 @@ vi.mock('../../src/utils/contentStreamEditor', () => ({
   getEditableTextAt: mockGetEditableTextAt,
 }));
 
-vi.mock('../../src/utils/flowDoc', () => ({
+vi.mock('../../src/utils/flowDoc', async (importOriginal) => ({
   extractPsName: vi.fn((name: string) => name),
+  // The REAL line ordering (limits row 40): the RTL cluster cases test it, and a stub would only mirror the belief.
+  orderLineWords: (await importOriginal<typeof import('../../src/utils/flowDoc')>()).orderLineWords,
   // Real Arabic-script test (mirrors the source regex) so the handler's
   // Arabic pre-route is exercised faithfully without importing the heavy module.
   isArabicText: vi.fn((s: string) => /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/.test(s)),
@@ -50,7 +52,7 @@ vi.mock('../../src/utils/i18n', () => ({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type FakeItem = { str: string; transform: number[]; width: number; height: number; fontName: string };
+type FakeItem = { str: string; transform: number[]; width: number; height: number; fontName: string; dir?: string };
 
 function makeItem(str: string, tx: number, ty: number, w = 30, h = 14, fontName = 'Helvetica'): FakeItem {
   return { str, transform: [0, 0, 0, 0, tx, ty], width: w, height: h, fontName };
@@ -561,17 +563,41 @@ describe('clusterBaselineRun', () => {
     expect(run.width).not.toBe(40);
   });
 
-  it('clusters a row of single-glyph Arabic items into the full word (no reversal)', () => {
-    // "مرحبا" — five 1-char glyphs in visual order on baseline 500.
-    const items = [
-      item('م', 100, 500), item('ر', 110, 500), item('ح', 120, 500),
-      item('ب', 130, 500), item('ا', 140, 500),
-    ];
+  // Limits row 40: pdf.js hands a glyph-positioned RTL word back as one item per glyph in VISUAL order (the logical
+  // last letter leftmost — measured on a Chrome PDF), and a split RTL line as several logical-order items. The run is
+  // the overlay's TEXT, which the Arabic renderer shapes from LOGICAL order, so the items are put in reading order
+  // (flowDoc's orderLineWords, the DOCX export's rule). This case used to assert the glyphs joined left to right with
+  // the fixture drawn in logical order — a shape pdf.js never produces.
+  const rtl = (str: string, tx: number, w = 10): FakeItem => ({ ...item(str, tx, 500, w), dir: 'rtl' });
+  const ltr = (str: string, tx: number, w = 10): FakeItem => ({ ...item(str, tx, 500, w), dir: 'ltr' });
+
+  it('reads a word drawn one glyph per item right to left, in logical order (limits row 40)', () => {
+    // "مرحبا" drawn right to left: 'ا' is leftmost.
+    const items = [rtl('ا', 100), rtl('ب', 110), rtl('ح', 120), rtl('ر', 130), rtl('م', 140)];
     const run = clusterBaselineRun(items, items[0]);
-    // Concatenated by ascending x (visual order) — the Arabic overlay renderer
-    // re-shapes RTL, so the helper must NOT reverse here.
     expect(run.text).toBe('مرحبا');
+    expect(run.x).toBe(100);
     expect(run.width).toBe(50);
+  });
+
+  it('folds presentation forms of an RTL run to base letters (limits row 40)', () => {
+    // "لغة" as Chrome's ToUnicode gives it: final, medial and initial forms, drawn right to left.
+    const items = [rtl('\ufe94', 100), rtl('\ufed0', 110), rtl('\ufedf', 120)];
+    expect(clusterBaselineRun(items, items[1]).text).toBe('لغة');
+  });
+
+  it('orders a split RTL line with an embedded number in reading order (limits row 40)', () => {
+    // Typed "النسخة 2.5 اليوم": the first word is rightmost, the number stays forward.
+    const items = [rtl('اليوم', 100, 30), ltr('2.5', 135, 15), rtl('النسخة', 155, 35)];
+    const run = clusterBaselineRun(items, items[1]);
+    expect(run.text).toBe('النسخة2.5اليوم');
+    expect(run.x).toBe(100);
+    expect(run.width).toBe(90);
+  });
+
+  it('leaves a run with no RTL item in page order, untouched (limits row 40)', () => {
+    const items = [ltr('ab', 100, 20), ltr('ﬁ', 125, 10), item('c', 140, 500)];
+    expect(clusterBaselineRun(items, items[0]).text).toBe('abﬁc');
   });
 
   it('returns only the clicked word when two words are separated by a real space', () => {
