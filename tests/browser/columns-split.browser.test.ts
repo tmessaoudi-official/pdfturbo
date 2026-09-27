@@ -22,9 +22,14 @@ async function exported(cols: number, gutter: number, lines: string[][], size = 
   const doc = await PDFDocument.create();
   const page = doc.addPage([W, H]);
   const font = await doc.embedFont(StandardFonts.TimesRoman);
-  const colW = (W - 2 * 54 - (cols - 1) * gutter) / cols;
-  lines.forEach((col, c) => col.forEach((l, i) =>
-    page.drawText(l, { x: 54 + c * (colW + gutter), y: 760 - i * size * 1.2, size, font, maxWidth: colW })));
+  // Each column starts `gutter` points after the previous column's WIDEST line, so the gap pdf.js reports is the
+  // gutter itself — placing columns on a nominal width left a 14pt page with a ~140pt gap that split under any floor.
+  let x = 54;
+  lines.forEach(col => {
+    col.forEach((l, i) => page.drawText(l, { x, y: 760 - i * size * 1.2, size, font }));
+    x += Math.max(...col.map(l => font.widthOfTextAtSize(l, size))) + gutter;
+  });
+  expect(x - gutter, 'the page holds every column').toBeLessThan(W - 20);
   const pdf = await pdfjsLib.getDocument({ data: await doc.save() }).promise;
   const p = await pdf.getPage(1);
   const items = (await p.getTextContent()).items as unknown as RawTextItem[];

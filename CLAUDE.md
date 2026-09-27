@@ -2122,8 +2122,14 @@ and `detectColumnSplit` wanted 5% of the region — 30pt on a Letter page — so
   misses BERT p8 and Census p12. Not 8: 8 splits GPT-3's figure pages where a label column sits beside its
   content, which looks exactly like a gutter. Publication 17's 3-column body pages (~8pt gutters) therefore
   stay one column — a bound, logged as row 46, which needs a discriminator rather than a smaller number.
+- **A candidate gutter needs words on both sides BEFORE the choice** (row 21 follow-up). The empty strip
+  between the text's right edge and the edge of the 20–80% search zone is also a gap; on a page whose text
+  stops short of that edge it can lie nearer the centre than the real gutter. Choosing it and refusing
+  afterwards (the old order — the widest rule had the same hole) left such a page one column. Found because the
+  first browser fixture placed its columns on a nominal width: its "14pt" page really had a ~140pt gap, split
+  under any floor, and so could not see the floor or this.
 
-Corpus: 40 of 408 pages change (35 go 1→2 groups, 3 go 1→3, 1 goes 1→4, 4 stay 2 but cut elsewhere) — BERT,
+Corpus: 40 of 408 pages change (35 go 1→2 groups, 3 go 1→3, 1 goes 1→4, and Census p5 stays 2 but is cut elsewhere), plus Census p67 (the back-cover mailer, 2→3) with the follow-up — BERT,
 the Census report, W-9, Publication 17's index. The probe ran `splitColumns` on every word, so three table
 pages among the 40 (two lattice, one tagged) are an upper bound: the export removes lattice-table words
 before splitting, and a tagged page takes the struct-tree path first. **Still interleaved:** a page whose
@@ -2132,15 +2138,17 @@ it needs a horizontal cut first (row 44); ResNet and the Japanese multi-column p
 floor measured, cause untraced (row 45).
 
 Guards: `tests/utils/flowDocColumns.test.ts` "limits row 21" (4, 5, 6, 8 columns; 9 → 8; the ragged
-centre cut; 14pt splits; 12pt on the grid splits; 11pt does not) and
+centre cut; 14pt splits; 12pt on the grid splits; text filling half the page splits; 11pt does not) and
 `tests/browser/columns-split.browser.test.ts` (3, real pdf.js through `reconstructPage`: a 14pt two-column
-page, 4 and 5 prose columns). The browser pages use five-word lines on purpose: short aligned cells are what
-the borderless-table gate claims as a table since row 20. Sabotage, predicted first and each restored with
-`cmp`: widest gutter instead of centre → the ragged centre case, the 9-column case and the 5-column browser
-case (the even fixtures stay green — the 20–80% zone clips the outer gutters, so widest and centre agree
-there; that is why the centre case is ragged); depth 2 → 5, 6, 8, 9 columns + the 5-column browser case;
-no 10pt floor → the 14pt case + the 4- and 5-column browser cases; floor 8 → exactly the 11pt case; floor
-12 → exactly the 12pt case.
+page, 4 and 5 prose columns). Each browser column starts exactly `gutter` points after the previous column's
+WIDEST line, measured with the font, so the gap pdf.js reports is the gutter. The browser pages use five-word
+lines on purpose: short aligned cells are what the borderless-table gate claims as a table since row 20.
+Sabotage, predicted first and each restored with `cmp`, measured on the 15 + 3 cases: widest gutter instead of
+centre → the ragged centre case, the 9-column case and the 5-column browser case (the even fixtures stay green —
+the 20–80% zone clips the outer gutters, so widest and centre agree there; that is why the centre case is
+ragged); depth 2 → 5, 6, 8, 9 columns + the 5-column browser case; no 10pt floor → the 14pt, 12pt and
+half-page cases + all 3 browser cases; floor 8 → exactly the 11pt case; floor 12 → the 12pt case + the 14pt
+browser case; choose-then-refuse (the pre-follow-up order) → the half-page case + the 14pt browser case.
 
 ### `/pdf-qa-sweep` reaches 66 of 141 controls, and that is the app's design — do not "fix" the crawl (2026-07-31)
 

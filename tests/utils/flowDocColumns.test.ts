@@ -103,6 +103,16 @@ describe('limits row 21 (D10) — 4+ columns and narrow gutters', () => {
     expect(splitColumns(page(2, 12), 600)).toHaveLength(2);
   });
 
+  it('two columns filling only the left half of the page still split (the margin beyond them is not a gutter)', () => {
+    // Text ends at x≈290 on a 600pt page, so the empty strip from there to the zone's edge (480) is a gap nearer the
+    // centre than the real 20pt gutter at 150–170. It has no words beyond it; choosing it and refusing afterwards left
+    // this page one column.
+    const words = [0, 1].flatMap(c => [700, 680].map(y => ({ x: 30 + c * 140, width: 120, y, c })));
+    const groups = splitColumns(words, 600);
+    expect(groups).toHaveLength(2);
+    expect(inOrder(groups)).toBe(true);
+  });
+
   it('an 11pt gutter does not split (the stated bound — a label column beside its content looks the same)', () => {
     // The 10pt floor applies to the gap measured on 2pt bins, which loses 2–4pt of the drawn gutter: 11pt or less never
     // splits, 14pt or more always does, 12–13pt depends on where the gap falls on the grid (measured, limits row 21).

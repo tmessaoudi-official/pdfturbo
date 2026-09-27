@@ -511,7 +511,8 @@ export function extractPsName(internalId: string): string {
  * leave 12–17 pt (BERT, A4) — 2–3% of the page — so the 5% rule alone never split one, and their Word/Markdown/text
  * export interleaved the two columns line by line. 10 pt was measured on 408 pages: every page it newly splits is a
  * genuine multi-column layout; at 8 pt figures with a label column beside their content (GPT-3's prompt examples)
- * start to split, while Publication 17's ~8 pt gutters stay unsplit (a stated bound).
+ * start to split, while Publication 17's ~8 pt gutters stay unsplit (a stated bound). The floor applies to the gap
+ * measured on 2 pt bins, which loses 2–4 pt: a DRAWN gutter of 14 pt or more always splits, 11 pt or less never.
  */
 const MIN_GUTTER_PT = 10;
 
@@ -557,16 +558,16 @@ export function detectColumnSplit(
     }
   }
   if (gapStart !== -1) gaps.push({ len: right - gapStart + 1, mid: Math.round((gapStart + right) / 2) * BIN });
-  const wide = gaps.filter(g => g.len * BIN >= Math.min(regionW * 0.05, MIN_GUTTER_PT));
+  // A candidate needs words on BOTH sides: a gap with nothing beyond it is the margin between the text and the edge
+  // of the search zone, not a gutter. Filtered before the choice, because on a page whose text stops short of the
+  // zone's edge that margin can lie nearer the centre than the real gutter — choosing it and refusing afterwards
+  // left such a page unsplit (measured, limits row 21: a 14pt two-column page 290pt wide).
+  const sides = (mid: number) => words.some(w => w.x + w.width / 2 < mid) && words.some(w => w.x + w.width / 2 >= mid);
+  const wide = gaps.filter(g => g.len * BIN >= Math.min(regionW * 0.05, MIN_GUTTER_PT) && sides(g.mid));
   if (!wide.length) return null;
   const centre = bounds.min + regionW / 2;
   // Ties go to the leftmost, as the first-found rule did.
-  const bestMid = wide.reduce((b, g) => (Math.abs(g.mid - centre) < Math.abs(b.mid - centre) ? g : b)).mid;
-
-  // Require words on both sides of the split — a gap with nothing on one side is a margin, not a column.
-  const leftCount = words.filter(w => w.x + w.width / 2 < bestMid).length;
-  const rightCount = words.filter(w => w.x + w.width / 2 >= bestMid).length;
-  return leftCount > 0 && rightCount > 0 ? bestMid : null;
+  return wide.reduce((b, g) => (Math.abs(g.mid - centre) < Math.abs(b.mid - centre) ? g : b)).mid;
 }
 
 /** Depth cap for recursive column splitting: three levels of central cuts → up to 8 column groups (limits row 21 —

@@ -119,7 +119,7 @@ bounds, D = structural ceilings and deferred features). Each ruling is below; th
 | 18 | D6+D7 real font names incl. eastAsia in DOCX | M | done | 9c97c24 | src/utils/flowDocWriters.ts, tests/** |
 | 19 | D8 mixed-bidi DOCX lines measured | M | done | c94b2eb | src/utils/flowDoc.ts, src/utils/bidi.ts, tests/** |
 | 20 | D9 borderless-table discriminator research | M | done | ed54015 | src/utils/borderlessTable.ts, src/utils/flowDoc.ts, src/utils/flowDocWriters.ts, tests/** |
-| 21 | D10 4+ column split with corpus proof | M | done | - | src/utils/flowDoc.ts, tests/** |
+| 21 | D10 4+ column split with corpus proof | M | done | 734c9c1 | src/utils/flowDoc.ts, tests/** |
 | 22 | D11 internal links to bookmarks/anchors | M | todo | - | src/export/**, src/utils/flowDocWriters.ts, tests/** |
 | 23 | D12 markup annotation appearance flatten | M | todo | - | src/export/**, tests/** |
 | 24 | D15 PAdES-B-B + TSA CORS probe | M | todo | - | src/signing/**, tests/signing/** |
