@@ -24,6 +24,9 @@ export default defineConfig({
     // test:browser); they need canvas/pdf.js/?url imports that jsdom lacks.
     exclude: [...configDefaults.exclude, 'tests/browser/**'],
     setupFiles: ['tests/setup.ts'],
+    // vitest 5 never removes its root module-cache dir (/tmp/<nanoid>, ~23 MB per run); this
+    // removes it at run end, and refuses to start if the internal field it reads changes.
+    globalSetup: ['tests/vitestTmpCleanup.ts'],
     // @cantoo/pdf-lib 2.11.0 restructured its ES build and now ships
     //     import CourierBoldCompressed from './Courier-Bold.compressed.json';
     // with no `with { type: 'json' }` attribute. Node's ESM loader rejects that, so an EXTERNALIZED

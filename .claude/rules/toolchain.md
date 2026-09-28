@@ -39,6 +39,16 @@ fix the origin. Second, `tests/infra/vitestTimeouts.test.ts` asserts the **effec
 not the file text — a text regex would accept a present-but-too-small `hookTimeout`, which sabotage
 confirmed (5s → the guard goes red on both assertions; absent → red as well).
 
+### vitest 5 leaks its root module cache into /tmp on every run — `globalSetup` removes it (2026-09-28)
+
+Every `vitest run` left `/tmp/<nanoid>/{client,ssr}/<sha1>` (23 MB, 842 files per full suite; 375 dirs
+after one day of pushes). Vitest keeps two fetcher caches: each project's `tmpDir`, removed by
+`TestProject.close()`, and the root `Vitest._tmpDir`, removed by nothing (5.0.0 and 5.0.2). The
+`globalSetup` `tests/vitestTmpCleanup.ts` removes it at run end. It reads that `@internal` field, so it
+checks it at SETUP and stops the run if a vitest upgrade reshapes it: re-check then whether vitest
+cleans up itself, and if so delete the file and its `globalSetup` line. `vitest.browser.config.ts` does
+not need it: a full `npm run test:browser` left 0 such dirs (measured 2026-09-28).
+
 ### The 2026-09-13 upgrade to latest — three traps, each measured before it was fixed
 
 Every dependency went to its latest release on 2026-09-13 (vitest 5.0.0 and its four `@vitest/*`
