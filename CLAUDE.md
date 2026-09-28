@@ -327,7 +327,7 @@ the WS8 viewer check passed throughout, since pdf.js was blank on both sides of 
 Fix: `withPdfjsAssets` adds an absolute same-origin `wasmUrl`, and the asset script copies FOUR named files
 (`jbig2.wasm`, `openjpeg.wasm` and their `*_nowasm_fallback.js`) into `public/pdfjs/wasm/`, failing the
 build if an upgrade renames one. The folder also holds the ICC module and the QuickJS scripting sandbox,
-deliberately NOT copied. The PWA ignores `**/pdfjs/**` for the precache — the fallbacks are `.js` and would
+deliberately NOT copied. [superseded 2026-09-28: row 37 copies the ICC module (`qcms_bg.wasm`) too — `WASM_FILES` in `scripts/prepare-pdfjs-assets.mjs` is the list; the QuickJS sandbox is still not copied] The PWA ignores `**/pdfjs/**` for the precache — the fallbacks are `.js` and would
 otherwise match its glob — and caches the four at runtime (`pdfjs-wasm`, placed before the generic `.js`
 rule).
 
@@ -497,6 +497,8 @@ page unrotated. Pre-existing, cosmetic, thumbnail-only; recorded in the limits p
 
 ### Typed text overflows its box, and the redaction drop now tests where it is DRAWN (A5, 2026-09-26)
 
+> **[Re-checked 2026-09-28]** the config and case counts below have grown since (`4808f0d`, `7f5094c`) — the `CONFIGS` table in `tests/browser/text-extent-ink.browser.test.ts` is the authority, not the numbers here.
+
 A `TextElement` has a fixed height (nothing grows it; the editor textarea scrolls) and `renderText`
 never wraps or clips, so the default 200×30 box at 14pt already draws its second line below the box
 and a long line runs past the right edge. `dropElementsUnderRedactions` tested the STORED box, so a
@@ -592,6 +594,8 @@ empty-MediaBox case; box entries not resolved through `lookup` → exactly the i
 
 ### Every viewport is a POINTS viewport — `/UserUnit` (2026-09-26)
 
+> **[Re-checked 2026-09-28]** the call count below has grown (`03c0914`); the guarantee holds — the only direct `.getViewport(` in `src/` is in `src/utils/pointViewport.ts`, and its test asserts that. Re-count, don't quote.
+
 pdf.js multiplies every viewport by the page's `/UserUnit` (`pdf.mjs:826`), so the editor canvas of a
 `/UserUnit 2` page was twice the page's size in points and every coordinate the user drew was doubled,
 while pdf-lib — the export — works in plain points. A redaction drawn over a secret was therefore burned
@@ -645,6 +649,8 @@ the UserUnit-2 text-layer case; the rasterizer's `/UserUnit` copy removed → it
 exactly the cropped case; compress or page-as-image without u → exactly its own case.
 
 ### Open via the native picker + recent files (#54b, 2026-09-04)
+
+> **[Re-checked 2026-09-28]** `tests/ui/recentFilesMenu.test.ts` has gained a case since (`4f3c5fd`), and that commit deleted `canUseFsSave` — so `canUseFsOpen` no longer has a save twin. The file is the authority for the count.
 
 The save side has used `showSaveFilePicker` since #54; the open side now mirrors it.
 `canUseFsOpen`/`pickOpenFiles`/`ensureReadPermission` sit beside their save twins in
@@ -710,6 +716,8 @@ The enhanced path was strictly worse than the one it enhances. The two lists liv
 files, so a test reads `index.html` and asserts the picker covers every MIME it accepts.
 
 ### Deleting a DOCX image left its bytes in the package — WS4-D, and the scan IS the fix (2026-09-04)
+
+> **[Re-checked 2026-09-28]** the `tests/docx/opcGc.test.ts` case count below has grown (`6f08fc7`) — the file is the authority.
 
 `reconcileImageAnchors` removed the image's anchor `w:p`, which strips its `r:embed` from
 `document.xml` — but the relationship in `word/_rels/document.xml.rels` and the bytes in
@@ -832,6 +840,8 @@ LibreOffice stay green every time. The 0.1 em end padding is NOT pinned by any m
 
 ### Clipping is not removing, for anything vector — WS4-C refuted (2026-09-04)
 
+> **[Re-checked 2026-09-28]** the `pdfElementRenderer.ts` / `exportService.ts` line citations below have drifted again — cite by symbol (`drawArabicLine`, `drawStyledTextLine`, `dropElementsUnderRedactions`). Since A5 the line layout IS shared (`layoutTextLines`, `src/export/textLayout.ts`), which weakens the "second implementation" argument; the whole-drop conclusion stands.
+
 The blank-page redaction filter drops a partly-covered element WHOLE. WS4-C asked whether it could
 clip the element to its un-redacted region instead. **Refuted, and the reason is measured rather
 than argued:** a PDF clip is an instruction to the RENDERER, not a deletion. Drawing the secret
@@ -869,6 +879,8 @@ it cannot pass on a document where the text simply never drew — removing the c
 visibility half at 47.7, which is also what proves the darkness probe is aimed at real ink.
 
 ### A rule the reader never sees deleted a paragraph — the Form `/BBox` clip (2026-09-04)
+
+> **[Re-checked 2026-09-28]** the `flowDoc.ts` line citation below has drifted — search the file for the redaction-region filter rather than the line.
 
 WS4-F, and the first of the six PoCs to land as a fidelity fix rather than a leak fix. pdf.js clips
 a Form XObject to its `/BBox` — `pdf.mjs:12534-12545` (6.3.289) does `save()`, then `transform(...matrix)`,
@@ -1103,6 +1115,8 @@ end-to-end case and neither figure had been updated**: call site reverted → 5 
 over-reach controls, because an all-transparent canvas makes the helper return `null`); wrong frame → 6.
 
 ### The flow export mixed absolute and crop-relative coordinates — C22, and the lockstep is now structural (2026-09-02)
+
+> **[Re-checked 2026-09-28]** "216-file jsdom suite" is the count at the fix; `git ls-files tests` is the authority today.
 
 pdf.js reports every CONTENT channel in **absolute user space** — text items, operator-list CTMs
 (rules, vRules, image placements, the colour keys) and Link annotation rects alike — while
@@ -1360,6 +1374,8 @@ composition fails exactly the placement and redaction cases.
 
 ### The drag-placed signature rect was crop-relative while `/Rect` is absolute (2026-08-29)
 
+> **[Re-checked 2026-09-28]** the `exportPipeline.ts` line citations below have drifted — the render viewport is the `pointViewport(renderPage, …)` call and the page add is `targetPdfDoc.addPage(`.
+
 The 4th instance of the CropBox frame mismatch, and the only one that is not a leak — it MISPLACES a
 signature. The sign modal's X/Y/W/H go verbatim into the signature annotation's `/Rect`, which PDF
 defines in ABSOLUTE user space, and `PdfSigner` bounds-checks them against pdf-lib's `getSize()` (the
@@ -1468,6 +1484,8 @@ beside it and **labelled in the test as intent documentation** — it exists so 
 line deliberately.
 
 ### The redaction filter compared two coordinate frames — a non-zero CropBox origin defeated it, and images were never filtered at all (2026-08-28)
+
+> **[Re-checked 2026-09-28]** the call-site count below is stale — re-count as this section itself says; do not quote it.
 
 Three live leaks, each reproduced against shipping code with a passing control before any fix.
 
@@ -1984,6 +2002,8 @@ never changed, so nothing in the repo's own history hints at it.
 
 ### The Claude bundle is a CROSS-REPO artefact — align it, don't fork it (2026-08-06)
 
+> **[Re-checked 2026-09-28]** **superseded** — container-era history. `install.sh`, `CLAUDE-global.md`, `test-install.sh` and the repo's own `/converge` / `/cross-check` copies were removed on 2026-08-18 (`3bb130b`, `b139d7d`); § "Claude config in this repo" is current. The present-tense sentences below describe that removed setup. Candidate for deletion with the developer.
+
 Five repos share this bundle (`phorj` 07-23 → **pdfturbo** 07-28 → `twes-in` 08-02 → `stack` 08-06 →
 `rent-watch` 08-06). The *file set* is identical in all five; every difference is content, and each repo
 tailors the prose to its own invariants. **pdfturbo was second-oldest, so it had missed four rounds of
@@ -2080,6 +2100,8 @@ second pass.**
   that case.
 
 ### A ceiling table is only as good as its last measurement — C10 was wrong in two places (2026-07-31)
+
+> **[Re-checked 2026-09-28]** **superseded** by § "Columns: the cut, the depth and the gutter floor" (limits row 21): `COLUMN_MAX_DEPTH` is 3 now, and `tests/blockers/layout-flatten.blockers.test.ts` was deleted in `8321fd8`. What still holds is the habit — re-measure a ceiling before citing it.
 
 `KNOWN_ISSUES.md` listed **C10** as *"DOCX 3+ column recursive layout — Reconstructor is 2-column"*.
 That had been false since B6: `splitColumns` **is** recursive (`COLUMN_MAX_DEPTH = 2`) and
@@ -2485,6 +2507,8 @@ the old integer-1..5 factors EXACTLY → byte-stable at integer densities). `app
 parse density with `parseFloat` (NOT `parseInt`, which truncated 1.5→1).
 
 ### `renderElements()` destroys and recreates every element DOM node
+
+> **[Re-checked 2026-09-28]** `renderElements()` was removed in `a49a6d8`; the behaviour below holds in `rebuildElementLayer()` (`src/ui/elementLayerRenderer.ts`), and `rerenderElement()` replaces a single node the same way.
 
 On each call.
 Focus-restoration hacks depend on this; keyed identity is NOT preserved.
@@ -2893,7 +2917,7 @@ restore not normalised → exactly the malformed-blob case; no cap → 4 (predic
 `src/utils/pdfSanitizer.ts` `sanitizePdf(bytes)` strips `/Info`, XMP
 `/Metadata`, `/OpenAction`, `/AA` (catalog + every page), and `/Names→/JavaScript` +
 `/Names→/EmbeddedFiles` via pdf-lib key-deletion (no new dep; 1.31 KB lazy chunk). **Non-obvious:
-it MUST load with `PDFDocument.load(bytes, { updateMetadata: false })`** — the default `true`
+it MUST load with `PDFDocument.load(bytes, { updateMetadata: false })`** [2026-09-28: the call is now the guard wrapper `loadPdfDocument(…, { updateMetadata: false, … })`; the requirement stands] — the default `true`
 makes pdf-lib re-stamp `/Info` Producer + ModDate at *load time* (constructor → `updateInfoDict`),
 silently re-injecting the metadata you're stripping. The same applies to any verification re-load.
 Wired via `ExportService.sanitizeAndDownload()` (🧹 export-flyout button) over the **assembled**
@@ -3041,7 +3065,7 @@ tree and every page leaf OUTSIDE object streams (`PDFStreamWriter`'s `shouldNotC
 inline in a page's `/Annots` array went out in plaintext with the page — and pdf.js with the password read it as
 garbage. `encryptPdf` now calls `hoistInlineAnnotations` first, registering each inline `/Annots` entry as its own
 object; `encryptPdf` has one caller, the export seam, so every locked save gets it and no unlocked one does. The
-fixture's third note is inline, so all six entry points pin it. Sabotage: hoist removed → the 12 locked cases (6
+fixture's third note is inline, so all six entry points pin it. [superseded 2026-09-28: `bc64357` (limits row 27) added a seventh, `compressAndDownload (images)` — the `ENTRY_POINTS` table in `tests/export/exportPasswordSave.test.ts` is the authority for the counts that follow] Sabotage: hoist removed → the 12 locked cases (6
 plaintext + 6 read-back); hoist on unlocked saves too → 4 classic controls, not 5 — an unlocked sanitize writes the
 sanitizer's bytes directly and never reaches `_saveForExport`. **A non-array `/Annots` is read without a type check**:
 the first version used `lookupMaybe(…, PDFArray)`, which THROWS on a malformed page pdf.js simply ignores, so a
@@ -3207,13 +3231,13 @@ Wired into the edit-text tool (2026-06-11): `textEditHandler` tries a true edit 
 overlay approach when no content-stream match is found. The edit swaps `SourcePdf.bytes`
 + pdfjs doc via `ReplaceSourcePdfBytesCmd` (undoable; old pdfjs docs stay alive on the
 history stack by design). See the design doc (recoverable — see the note opening this section) for
-remaining limitations (cm transforms, XObjects, Helvetica fallback font — Phase B/C).
+remaining limitations (cm transforms, XObjects, Helvetica fallback font — Phase B/C). [superseded 2026-09-28: XObject text editing landed in A3a (`a5bc8f3`) and nested `cm` composition in limits rows 47–48 — § "True-edit composed nested `cm` backwards"]
 **ISSUE-2 fix (2026-06-14):** `replaceTextAt` has 3 paths — (1) literal byte-swap, now GATED by
 `isByteSwapUnsafeFont()` so it NEVER runs for subset/CID/embedded fonts (byte≠glyph there → was the
 heading "data-loss" bug); (2) subset glyph reuse via ToUnicode — or, since limits row 39, a simple font's /Encoding, reusing only codes the
 stream already draws (keeps original font for in-subset edits); (3) standard-font redraw emitted as in-stream text operators in ONE `writeBack` (do NOT use
 pdf-lib `page.drawText` after `setPageContent` — it orphans the redraw). XObject-embedded targets
-refuse before blanking (no delete-without-replacement). Guarded by
+refuse before blanking (no delete-without-replacement). [superseded 2026-09-28: since A3a only a Path-3-only XObject target refuses (`isPath3OnlyTarget`)] Guarded by
 `tests/browser/issue2-true-edit.browser.test.ts`. **Honest restyle font-substitution (Slice B,
 2026-06-20):** `replaceTextAt` returns `false | true | 'substituted'` (was `boolean`). Path 1/2 →
 `true` (original font KEPT); refuse → `false`; Path 3 → `'substituted'` **only when the original was a
@@ -3268,6 +3292,8 @@ allows unused args/vars only when `_`-prefixed (`argsIgnorePattern`/`varsIgnoreP
 `no-underscore-dangle` is deliberately OFF in `.oxlintrc.json` so it doesn't fight this convention.
 
 ### PDF→DOCX/MD export (beta)
+
+> **[Re-checked 2026-09-28]** this section is long and dated; the statements it has outgrown carry dated markers in place, its line citations (`matchStandardFont`, `hasNonWinAnsi`) have drifted — cite by symbol — and the `clearFormatting` field count has grown (`formattingService.ts` is the authority).
 
 `src/utils/flowDoc.ts` reconstructs a flow model
 (lines→paragraphs→headings/styles/RTL/lists/2-column) from pdf.js text items;
@@ -3371,7 +3397,7 @@ redrawn glyph stays chromatic, and a no-fallback control redraws black). **All t
 "reachable gaps" are now done** (Gap 1 TJ-kerning distribute, Gap 2 this, Gap 3 exponent).
 **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, 9+ columns and
 a horizontal-first XY-cut (see § "Columns: the cut, the depth and the gutter floor"), exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
-true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder. (Tashkeel GPOS positioning in the
+true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder. [superseded 2026-09-28: A1 (`6586c23`) redraws with the full text matrix, and mixed-direction lines are reordered — `drawBidiLine` in the overlay, `logicalItemOrder` in the DOCX flow] (Tashkeel GPOS positioning in the
 overlay was fixed by limits row 25, C19.)
 **Decoration + graphics-state fidelity (#text-decoration, 2026-06-18):** PDF has NO underline/strike TEXT
 attribute — they're SEPARATE thin filled `re` rects whose width is decoupled from the text, so a true-edit
@@ -3454,7 +3480,7 @@ and Path 2 (subset hex) mutate ONLY the show-op operand, so they preserve EVERY 
 construction (font/size/fill/stroke/Tc/Tw/Tz/Ts/Tr/Tm/CTM/alpha/dash/clip). Path 3 (standard-font redraw) is the
 ONLY lossy path — it is appended at **end-of-stream** in an isolated `q…Q`, so it inherits the DEFAULT graphics
 state and must re-emit each attribute explicitly: it DOES re-emit fill/font/size/Tc/Tw/Tz/Ts/Tr/stroke/`w` and
-applies `style`. **Path-3 ceilings (all rare, all documented, no real-file repro → not coded):** (1) Tm
+applies `style`. **Path-3 ceilings (all rare, all documented, no real-file repro → not coded):** [superseded 2026-09-28 for (1), (3) and (4): A1 `6586c23`, A2 `14f5a55` (`lookupExtGStateAlpha`) and A6a `3b9a553` (`dashPattern`) capture them — documented further down this section] (1) Tm
 rotation/skew + CTM scale/rotation flattened to an axis-aligned `1 0 0 1 x y Tm` (F3/F4, the same cm-rotation
 ceiling above); (2) embedded font face → standard substitute (the core Path-3 tradeoff — glyph shapes/metrics
 shift slightly); (3) **ExtGState alpha (`ca`/`CA`)** is NOT captured by `locateTextOps`, so semi-transparent
@@ -3508,7 +3534,7 @@ OVERSHOOTS because `R_old` came from the ORIGINAL embedded font (`R_old ≠ prox
 when `forceProxy`, set the rule to the **absolute redrawn width** `newW × (Tz hScale/100)` (the proxy IS the render
 font in Path 3, starting at the same left edge), NOT `R_old × ratio`. Verified on the real file via the live app +
 canvas pixel scan: overshoot 66px → 1px. Path 1/2 keep the ratio (correct there, `R_old` = embedded oldW). Known
-P2: a Path-3 edit that ALSO changes fontSize measures `newW` at `target.fontSize`, not the new size (rare). **Ceiling #text-decoration-b:** highlight/background-rect resize, `re`-drawn-as-stroke (`re S`)
+P2: a Path-3 edit that ALSO changes fontSize measures `newW` at `target.fontSize`, not the new size (rare). [superseded 2026-09-28: addressed in `3b9a553` ("size-change deco width") — see the A6 notes below] **Ceiling #text-decoration-b:** highlight/background-rect resize, `re`-drawn-as-stroke (`re S`)
 underline, decorations inside Form XObjects, rotated-CTM rects/lines; non-Identity CID encodings + ligature
 ToUnicode keys fall back to the (approximate) proxy. Guards: `tests/utils/contentStreamEditor.test.ts` (rect+line
 locate/match/adjust/redraw/capture/resize/delete + slanted/polyline/sheared/co-painted refusals;
@@ -3572,7 +3598,7 @@ unguarded is their survival through the extra **rasterize → `embedPng` round-t
 improvement). Guards:
 `tests/core/formattingService.test.ts`, `tests/utils/{textCase,recentColors}.test.ts`,
 `tests/ui/{textOptionsPopover,uiController}.test.ts`, `tests/browser/{text-toolbar,text-toolbar-bake}.browser.test.ts`.
-**Backlog/ceiling (Slice 2+):** Tier-2 (stroke/outline, char-spacing `Tc`, horizontal-scale `Tz`, justify,
+**Backlog/ceiling (Slice 2+):** [superseded 2026-09-28: Tier-2, find & replace, links and lists shipped — Slice 2 and Features 2/3 below] Tier-2 (stroke/outline, char-spacing `Tc`, horizontal-scale `Tz`, justify,
 whole-box sub/superscript), find&replace on overlay text, links, bullet/numbered lists, multi-run rich text
 (ceiling); RTL direction-aware controls are gated behind the open Arabic-RTL P1 overflow defect.
 **Rich text toolbar Slice 2 (Tier-2, 2026-06-21)** — 5 advanced controls on overlay `TextElement`s: text
@@ -3589,7 +3615,7 @@ through `FormattingService`: `setTextStroke(width)`/`clearTextStroke`, `setCharS
 painter carry all 5. **The core is the raw-operator bake** `src/export/styledText.ts` (`hasAdvancedText(te)`,
 `effectiveLineWidth(font,line,size,charSpacing,horizontalScale)`, `drawStyledTextLine(page,opts)` via
 `page.pushOperators` — the `arabicOverlay.ts` pattern): `renderText` takes the operator path **ONLY when
-`hasAdvancedText(te) && !elemRot`**, else the existing `page.drawText` runs UNCHANGED → **byte-identical export for
+`hasAdvancedText(te) && !elemRot`** [superseded 2026-09-26 by A3-pre: a rotated element takes the operator path too — see the LIFTED note below], else the existing `page.drawText` runs UNCHANGED → **byte-identical export for
 every element without an advanced attr** (real-Chrome-guarded). **Non-obvious:** (1) stroke = render mode 2 via
 `TextRenderingMode.FillAndOutline` (NOT `FillThenStroke`, which does not exist in `@cantoo/pdf-lib`) + `RG`(= the
 fill color)/`w`;
@@ -3743,10 +3769,10 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   as drawn, and comes out `.2026`; tashkeel lines come apart at the marks (a READ-side bound — C19 fixed the overlay's
   DRAWING of marks, not how pdf.js splits a source PDF's items at them); a producer that draws RTL glyphs in
   logical order is read reversed (pdf.js's own copy is wrong the same way). **UNCERTIFIED-BY-EXECUTION: the
-  tagged (struct-tree) path** — it now takes `letterDirection` but no tagged Arabic fixture exists, and it does not
+  tagged (struct-tree) path** — it now takes `letterDirection` but no tagged Arabic fixture exists, [superseded 2026-09-28: `tests/fixtures/bidi/arabic-table.pdf` is tagged and `tests/browser/table-arabic.browser.test.ts` runs it (`6ea75e2`, row 42)] and it does not
   run `settleAmbiguousLines`. Guards: `tests/browser/docx-mixed-bidi.browser.test.ts` (14: the typed text of seven
   LibreOffice lines is the oracle, the app's bake, and four Chrome cases), `tests/utils/flowDocArabic.test.ts` and
-  `tests/blockers/arabic.blockers.test.ts` (28 together). Sabotage, predicted first, each restored with `cmp`, jsdom
+  `tests/blockers/arabic.blockers.test.ts` (28 together). [2026-09-28: `6ea75e2` added two cases since — the files are the authority] Sabotage, predicted first, each restored with `cmp`, jsdom
   + browser: per-item reversal back → 10 + 10; item-count direction → 6 + 3; letter-less items not neutral → 2 + 3;
   L2 for an LTR base off → 2 + 3; direction-keyed gap → 3 + 4; bracket mirroring off → exactly the Chrome bracket
   case in each (1 + 1, LibreOffice green); the paragraph tiebreak off → 1 + 0; only its flush-right arm off → 1 + 0; both off → 1 + 1 (re-measured after
@@ -3817,13 +3843,15 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
   identically → font container, not RTL code); the prior `@fontsource/noto-naskh-arabic` woff dep is REMOVED.
   The TTF embeds cleanly (5 glyphs, full word renders, correct logical ToUnicode). Deps: `@pdf-lib/fontkit`
   (0 vulns; a single RTL run needs no bidi lib — `encodeText` is already visual; mixed LTR+RTL line reorder
-  is a documented ceiling). `getArabicFont` is shared by the searchable-OCR Arabic layer, so this fix covers both.
+  is a documented ceiling). [superseded 2026-09-28: `drawBidiLine` reorders mixed lines (`c394b1a`)] `getArabicFont` is shared by the searchable-OCR Arabic layer, so this fix covers both.
   Browser-only (font fetch); wired in `pdfElementRenderer.ts` text branch, guarded by `isArabicText`,
   right-aligned. Guards: `tests/utils/flowDocArabic.test.ts`, `tests/export/arabicOverlay.test.ts`,
   `tests/browser/arabic-overlay.browser.test.ts` (rasterized: now asserts multi-glyph ink **width**, not just
   presence — catches the single-alef WOFF regression).
 
 ### Cornerstone QA 2026-06-17 — RTL text-layer selection/copy/search + multi-language DOCX
+
+> **[Re-checked 2026-09-28]** the `tests/utils/bidi.test.ts` case count below has grown (`4808f0d` added the `mirrorForDisplay` cases), and `src/utils/bidi.ts` exports more than the four functions named — the files are the authority.
 
 :
 - **Text-layer selection / copy / search (RTL)**: pdf.js v6 builds the selection layer as one PER-GLYPH
@@ -3989,7 +4017,7 @@ Arabic honest contract + invisible-ink).
 ### E-signing (Sprint 4, 2026-06-15)
 
 `src/signing/*` produces a single visible PKCS#12/CMS signature
-via **node-forge@1.3.1** (dynamically imported; pure-JS, runs in jsdom AND browser). `PdfSigner.sign`
+via **node-forge@1.3.1** [2026-09-28: `package.json` pins `^1.4.0`, and has since the first commit] (dynamically imported; pure-JS, runs in jsdom AND browser). `PdfSigner.sign`
 reserves a fixed `/Contents` hex slot + `/ByteRange`, serialises without object streams, then splices the
 detached CMS. **"Sign WITH edits"**: `signingHandler.ts` signs `app.assemblePdfBytes()` (the shared
 downloadPDF assembly — edits/annotations/redactions/form-fills baked in — exposed on `exportService`),
@@ -4002,7 +4030,7 @@ is refused (S3, 2026-06-15)**: the exported `isPdfSigned(bytes)` detects a `/Byt
 corrupt the existing ByteRange with an opaque crash). `.p12` bytes are zeroed after signing;
 the password field is cleared on close. `buildSignOptions` is the pure 1-based-UI→0-based-signer map.
 **S-FLOW cert-free pre-flight (2026-06-15)**: `PdfSigner.preflight(bytes, page, rect)` runs the
-cert-INDEPENDENT checks (already-signed + page-index + rect-bounds) and is called by `pdfTurboApp.signPdf`
+cert-INDEPENDENT checks (already-signed + page-index + rect-bounds) and is called by `pdfTurboApp.signPdf` [2026-09-28: now by `SigningHandler.runSignFlow`, since `dfbe86b`]
 **BEFORE** any certificate is generated/loaded — so an off-page rect or already-signed PDF shows the error
 and bails WITHOUT downloading an orphan generated `.p12`/`.pem` (the prior bug). `sign()` reuses `preflight`
 internally (DRY; standalone API stays safe). The generate-mode password is **no longer wiped in the
@@ -4133,6 +4161,8 @@ case; width from advance widths → green (equivalent, above); positioning off e
 "did anything move" checks dropped (every run as TJ) → exactly the control.
 ### Approval caption + guided Signers panel (F-D D1/D2)
 
+> **[Re-checked 2026-09-28]** the `locales/ar.json` and `placementManager.ts` line citations below have drifted — cite the key (`mentionDefault`) and the method (`commitPlacement`).
+
 A drawn `SignatureElement` carries an OPTIONAL
 caption (`signer`/`mention` default "Lu et approuvé"/`signedDate`); `buildSignatureCaptionLines` (pure) is
 shared by the DOM render and the export bake (`pdfElementRenderer`) — caption ABSENT ⇒ byte-identical, and
@@ -4229,6 +4259,8 @@ creating them: a margin is exactly the affordance for a header banner, and typin
 measurement.
 
 ### The hide-vs-remove audit — every surface graded, and two more traps found (2026-08-05)
+
+> **[Re-checked 2026-09-28]** two `contentStreamEditor.ts` line citations below have drifted — cite the font gates by symbol (`isType3Font`); the "fourth leak … DISCLOSED rather than fixed" paragraph is marked superseded in place.
 
 Crop's disclosure gap begged the obvious question: **what else claims, or merely implies, removal?** So
 every surface a user could believe deletes content was graded — building a file, performing the operation,
@@ -4396,7 +4428,7 @@ its reasoning, but its verdict is SUPERSEDED: `src/docx/opcGc.ts` now collects t
 retracted security grade live in the decision register is the same defect this file recorded for #62b
 and C10; found by the WS5 audit the same day the fix landed.
 
-**A fourth leak, verified and DISCLOSED rather than fixed: deleting an image in the DOCX editor leaves
+[superseded 2026-09-28: `opcGc.ts` removes the orphan now — § "Deleting a DOCX image left its bytes in the package — WS4-D"] **A fourth leak, verified and DISCLOSED rather than fixed: deleting an image in the DOCX editor leaves
 its bytes in the saved file.** `reconcileImageAnchors` does `el.remove()` on the anchor `w:p` and nothing
 else; `grep -rn "delete opc.files" src/docx/` returns **nothing**, and `packOpc` re-zips every part
 verbatim — so `word/media/imageN.png` survives as an unreferenced part, recoverable by renaming to
@@ -4482,7 +4514,7 @@ listener teardown so an in-flight drag cannot leak across the re-render that des
 
 `✓ cropMarginApplyBtn` + four `#cropMargin{Top,Right,Bottom,Left}` number inputs in `#cropControls`
 → `PDFTurboApp.cropPageByMargins` → `PageService.cropPageByMargins`. Margins are typed in **points, in
-unrotated content space**, converted by the pure `marginsToRect` (`utils/geometry.ts`).
+unrotated content space**, [superseded 2026-09-28: they are typed in DISPLAY space and mapped through `redactionRectToContent` (`0c2629b`) — the paragraph below is right] converted by the pure `marginsToRect` (`utils/geometry.ts`).
 
 **Margins are converted PER PAGE, which is a real improvement over the drag path's apply-to-all.**
 "20pt off each edge" means the same thing on a mixed-size document; one drawn rect clamped to each page
@@ -4617,6 +4649,8 @@ carries an ICC profile) and the form depth limit.
 
 ### DOCX read+edit (#1, Track B)
 
+> **[Re-checked 2026-09-28]** this section is an append-only changelog — a later paragraph supersedes an earlier one. The earlier statements it overtook carry dated markers in place; the `docxToPdf.ts` line citation has drifted (cite `DocxToPdfOptions` by name).
+
 A SEPARATE editor from the PDF pipeline (it edits a Word doc, not a
 PDF) — `src/docx/*`, gated `VITE_FEATURE_DOCX_EDIT` (#28 seam). Entry: file-menu `fileMenuEditDocx` →
 `createDocxEditorController` (lazy-imported on first click; `main.ts` removes the menu item when the flag
@@ -4718,7 +4752,7 @@ flag (keydown on `view.dom`) → `handlePaste` does `tr.insertText` (NOT `view.p
 `ClipboardEvent` internally, which jsdom lacks; insertText is jsdom-safe and correctly "match destination style":
 drops SOURCE formatting, inherits the cursor context). **Ceiling:** pasted tables fall back to ProseMirror default
 (grid dropped, cell text → paragraphs — feature #3 upgrades this); colour/highlight/strikethrough dropped (no
-schema mark); link URL survives in the editor but NOT the OPC save (`DocRun` carries no `linkUrl`). Guards:
+schema mark); [superseded 2026-09-28 for colour: `docxSchema.ts` has a `color` mark since `e7e2096`] link URL survives in the editor but NOT the OPC save (`DocRun` carries no `linkUrl`). [superseded 2026-09-28: `DocRun.linkUrl` exists and the `link` mark maps to it] Guards:
 `tests/docx/wordPaste.test.ts` (12 jsdom: MSO strip + format survival + totality), `tests/docx/docxPaste.test.ts`
 (wiring + plain-text via fake event), `tests/browser/docx-paste.browser.test.ts` (real Chrome: `view.pasteHTML`
 real pipeline → bold/underline/list through save→reopen; plain-text drops formatting).
@@ -4743,7 +4777,7 @@ toolbar's own hook to refresh BOTH toolbar + bar (setProps merges, so paste prop
 the bar's `run()` calls `update()` after each command so the counter refreshes even in unit tests with no
 view-level hook; the central hook covers external doc edits. **Ceilings (v1):** matches do NOT cross paragraph
 boundaries (regex `^`/`$` anchor per block); replace formatting = match-start marks only (mixed-format matches
-collapse); table-cell text is not searched (tables aren't in the PM model until feature #3); PDF find/replace
+collapse); table-cell text is not searched (tables aren't in the PM model until feature #3); [superseded 2026-09-28: lifted by the Slice C #3a paragraph below] PDF find/replace
 is the separate follow-up ("DOCX first, PDF after"). i18n `findReplace.*` in en/fr/ar (ar reviewed 2026-07-30). Guards:
 `tests/docx/findReplace.test.ts` (15 pure), `tests/docx/findReplacePlugin.test.ts` (11), `tests/docx/findReplaceBar.test.ts`
 (7), `tests/browser/docx-find-replace.browser.test.ts` (real Chrome: Mod-f opens, decorations paint+cycle,
@@ -4758,8 +4792,8 @@ the no-new-dep rule) — NOT defended, documented. (b) **`Mod-f` override is int
 a `prosemirror-keymap` handler fires only on editor-focused keydown, so native browser Find works everywhere except
 inside the open editor (the in-app-editor norm: Docs/VS Code/Notion). No new locale key (counter reuses
 `findReplace.counter` with a string `total`). Guards: the 3 truncation cases above (core+plugin+bar).
-**Table editing (Slice C #3a)**: `src/docx/*` extends the DOCX model to recursive `blocks: (DocParagraph | DocTable)[]` (replacing the flat `paragraphs` array, which is now a derived view for back-compat). `DocTable = { rows: DocRow[] }`, `DocRow = { cells: DocCell[] }`, `DocCell = { blocks: ... }` — nested tables are supported. The in-place save uses a table-anchored recursive reconciler `applyBlocks` in `docxMapping.ts` (partitions a container's `w:p`/`w:tbl` children into table-delimited paragraph segments; tables zip 1:1 by order and recurse into cells; cell paragraphs are rewritten in place via `applyParagraphRuns`; `w:tblPr`/`w:tblGrid`/`w:tcPr` structural/grid/styling elements are preserved verbatim — zero reconstruction). The **cardinal rule is maintained**: no docx-writer rebuild, only position-addressed in-place text edits. Schema integration via `prosemirror-tables@1.8.5` (MIT) — `tableEditing()` plugin + node specs merged into `docxSchema` (`docxSchema.ts`) supply cell selection/nav only (add row/col/merge/split NOT bound — structure read-only in 3a; 3b/3c/3d deferred). `docModelToDoc`/`docToDocModel` emit/read table nodes recursively; PDF export (`docxToPdf.ts`) reads the top-level `paragraphs` view only (table structure not rendered in v1). Find/replace now reaches cell text (the C#2 scope was lifted — `findMatches` descendants() recurses into cells; zero code change post-3a). Deps: prosemirror-tables (0 vulns; shipping MIT + attr). Gated by existing `VITE_FEATURE_DOCX_EDIT` (no new flag). Guards: `tests/docx/docModelTables.test.ts` (recursive model + populated paragraphs), `tests/docx/docxTablesMapping.test.ts` (in-place reconcile + nested round-trip), `tests/browser/docx-tables.browser.test.ts` (real Chrome: cell edit+format → save → reopen, nested table survives, structure byte-identical).
-**Table editing — Slice 3b (add/del row & column, 2026-06-23)**: the 3a "structure read-only" limitation is LIFTED for SIMPLE (un-merged) tables. `docxToolbar.ts` wires four prosemirror-tables commands — `addRowAfter`/`deleteRow`/`addColumnAfter`/`deleteColumn` (data-act = the command name; `update()` toggles `button.disabled` from `isInTable(view.state)` so they're greyed outside a table). The real work is `writeTable` in `docModel.ts`: it now reconciles row & cell COUNTS in place (NOT just the 1:1-min overlap) — extra rows cloned from the last `w:tr` (inherits cell `tcPr`/column structure), extra cells per row cloned from the row's last `w:tc`, trailing rows/cells removed, and `w:tblGrid` kept in sync (`syncTableGrid`: clone last `w:gridCol` to widen, trim to shrink — **no-op when the count already matches**, so a non-structural cell-text edit stays byte-identical and the 3a verbatim-structure tests still pass). **Cardinal rule preserved** — still in-place OPC surgery, never a docx-writer rebuild. **REFUSE gate (the 3b ceiling):** `tableHasMerges(tbl)` (a direct cell carries `w:gridSpan` or `w:vMerge`) → fall back to the 3a text-only min-reconcile (structure verbatim) — restructuring a spanned grid is deferred to **3c/3d (merge/split)**, which still need `DocCell` colspan/rowspan + the gridSpan/vMerge round-trip. The controller's `tableStructureUnsupported` warning is unchanged and still correct: row/col edits keep the table COUNT equal → the `saved` toast fires AND the change now genuinely round-trips (the prior silent-discard for same-count structural edits is fixed). i18n `docxToolbar.{addRow,deleteRow,addColumn,deleteColumn}` (ar reviewed 2026-07-30). Mid-column-insert may shift a cell's `tcPr` (text content + column count stay correct) — documented ceiling. Guards: `docModelTables.test.ts` (add/del row+col, grid sync, merged-table refusal, byte-identical non-structural), `docxToolbar.test.ts` (the 4 acts dispatch), `docx-tables.browser.test.ts` (real Chrome: add-row via the toolbar button → save → reopen → 3 rows; buttons disabled outside a table). Verified live (synthetic table .docx, `qa-shots/f2-table-3b/`).
+**Table editing (Slice C #3a)**: `src/docx/*` extends the DOCX model to recursive `blocks: (DocParagraph | DocTable)[]` (replacing the flat `paragraphs` array, which is now a derived view for back-compat). `DocTable = { rows: DocRow[] }`, `DocRow = { cells: DocCell[] }`, `DocCell = { blocks: ... }` — nested tables are supported. The in-place save uses a table-anchored recursive reconciler `applyBlocks` in `docxMapping [2026-09-28: sic: `applyBlocks` lives in `docModel.ts` — no `docxMapping.ts` source file ever existed].ts` (partitions a container's `w:p`/`w:tbl` children into table-delimited paragraph segments; tables zip 1:1 by order and recurse into cells; cell paragraphs are rewritten in place via `applyParagraphRuns`; `w:tblPr`/`w:tblGrid`/`w:tcPr` structural/grid/styling elements are preserved verbatim — zero reconstruction). The **cardinal rule is maintained**: no docx-writer rebuild, only position-addressed in-place text edits. Schema integration via `prosemirror-tables@1.8.5` (MIT) — `tableEditing()` plugin + node specs merged into `docxSchema` (`docxSchema.ts`) supply cell selection/nav only (add row/col/merge/split NOT bound — structure read-only in 3a; 3b/3c/3d deferred). `docModelToDoc`/`docToDocModel` emit/read table nodes recursively; PDF export (`docxToPdf.ts`) reads the top-level `paragraphs` view only (table structure not rendered in v1) [superseded 2026-09-28: Feature 5 renders tables — `buildCellGrid` in `docxToPdf.ts`]. Find/replace now reaches cell text (the C#2 scope was lifted — `findMatches` descendants() recurses into cells; zero code change post-3a). Deps: prosemirror-tables (0 vulns; shipping MIT + attr). Gated by existing `VITE_FEATURE_DOCX_EDIT` (no new flag). Guards: `tests/docx/docModelTables.test.ts` (recursive model + populated paragraphs), `tests/docx/docxTablesMapping.test.ts` (in-place reconcile + nested round-trip), `tests/browser/docx-tables.browser.test.ts` (real Chrome: cell edit+format → save → reopen, nested table survives, structure byte-identical).
+**Table editing — Slice 3b (add/del row & column, 2026-06-23)**: the 3a "structure read-only" limitation is LIFTED for SIMPLE (un-merged) tables. `docxToolbar.ts` wires four prosemirror-tables commands — `addRowAfter`/`deleteRow`/`addColumnAfter`/`deleteColumn` (data-act = the command name; `update()` toggles `button.disabled` from `isInTable(view.state)` so they're greyed outside a table). The real work is `writeTable` in `docModel.ts`: it now reconciles row & cell COUNTS in place (NOT just the 1:1-min overlap) — extra rows cloned from the last `w:tr` (inherits cell `tcPr`/column structure), extra cells per row cloned from the row's last `w:tc`, trailing rows/cells removed, and `w:tblGrid` kept in sync (`syncTableGrid`: clone last `w:gridCol` to widen, trim to shrink — **no-op when the count already matches**, so a non-structural cell-text edit stays byte-identical and the 3a verbatim-structure tests still pass). **Cardinal rule preserved** — still in-place OPC surgery, never a docx-writer rebuild. **REFUSE gate (the 3b ceiling):** `tableHasMerges(tbl)` [2026-09-28: removed since: `currentTableHasMerges` + the rebuild path, `db24f01`] (a direct cell carries `w:gridSpan` or `w:vMerge`) → fall back to the 3a text-only min-reconcile (structure verbatim) — restructuring a spanned grid is deferred to **3c/3d (merge/split)**, which still need `DocCell` colspan/rowspan + the gridSpan/vMerge round-trip. The controller's `tableStructureUnsupported` warning is unchanged and still correct: row/col edits keep the table COUNT equal → the `saved` toast fires AND the change now genuinely round-trips (the prior silent-discard for same-count structural edits is fixed). i18n `docxToolbar.{addRow,deleteRow,addColumn,deleteColumn}` (ar reviewed 2026-07-30). Mid-column-insert may shift a cell's `tcPr` (text content + column count stay correct) — documented ceiling. Guards: `docModelTables.test.ts` (add/del row+col, grid sync, merged-table refusal, byte-identical non-structural), `docxToolbar.test.ts` (the 4 acts dispatch), `docx-tables.browser.test.ts` (real Chrome: add-row via the toolbar button → save → reopen → 3 rows; buttons disabled outside a table). Verified live (synthetic table .docx, `qa-shots/f2-table-3b/`).
 **Table editing — Slice 3c/3d (cell merge & split, 2026-06-23)**: `DocCell` gains OPTIONAL `colspan?`/`rowspan?`
 (the **PM shape** — covered grid positions are ABSENT, matching prosemirror-tables AND `docToDocModel`; `toJSON`
 not involved — docx model isn't persisted to IndexedDB). `parseTable` (docModel.ts) reads `w:gridSpan`→colspan and
@@ -4800,7 +4834,7 @@ it persists on save; true delete is Phase-2 C2). `parseContainerBlocks` emits `D
 read-only `extractDocImages` channel — indices align: both walk `body` children filtering `w:p`/`w:tbl` in order).
 `docxSchema` gains read-only atom nodes `docx_image` (renders the real PNG/JPEG via a `data:` URI) + `docx_link`
 (shows link text); the PM bridge maps `DocImageBlock`↔atom (`imageBlockToNode`/`emitBlockTo`). `docxToPdf` SKIPS
-image blocks in its text-flow loops (the image is drawn via its own `imagesByBlock` channel — never as a
+image blocks in its text-flow loops (the image is drawn via its own `imagesByBlock` channel [2026-09-28: removed by `539f308` — see below] — never as a
 paragraph). **Byte-identical when no drawing/hyperlink present** (the boundary set is then just tables, as before
 — guarded by a no-regression control test). `parseDocModel`'s `paragraphs` view excludes image blocks too
 (`!isDocTable && !isDocImageBlock`). **Ceiling (Phase 1):** a paragraph mixing flowing text + an inline
@@ -4875,7 +4909,7 @@ renders inline immediately (the C2 NodeView) and survives `save()` as a brand-ne
 part + Content-Types Default + image rel. **Engine:** `opcParts.ensureImagePart(opc, bytes, mime) → {rId,
 target}` mints a fresh `word/media/imageN.png|jpg` (N = 1 + max existing), adds the Content-Types `Default`
 for the extension **once** (images are typed by Default, not Override), and a `…/relationships/image` rel.
-`docModel.materializeNewImageAnchors(mintImage, body, blocks)` is a save pre-pass that inserts a DOM `w:p`
+[superseded 2026-09-28: absorbed into `placeImageAnchors` (slice 2, below)] `docModel.materializeNewImageAnchors(mintImage, body, blocks)` is a save pre-pass that inserts a DOM `w:p`
 anchor (`buildDrawingParagraph` → minimal spec-valid inline pic) for every NEW image block (`kind:'image'`,
 `image` defined, **no** `anchorId`), placed by a per-block parallel walk of `blocks` vs the body's block
 children so boundary order lines up and `reconcileContainer`'s segment-zip stays aligned. **Minting is a
