@@ -41,7 +41,7 @@ files, the actual tests. If you catch yourself writing "the change appears to…
 ## The claim you are attacking
 
 **pdfturbo's core promise is that adding a feature does not change existing output.** Roughly fifteen
-entries in `CLAUDE.md` say some variant of *"byte-identical when the flag/attribute is unset"*. That
+entries in `CLAUDE.md` § Gotchas — which live in `.claude/rules/*.md` since 2026-09-28, mostly `export.md` — say some variant of *"byte-identical when the flag/attribute is unset"*. That
 claim is load-bearing — users' existing documents export through this code — and it is exactly the
 kind of claim that rots silently, because the default path has no new test.
 

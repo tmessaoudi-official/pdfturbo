@@ -88,7 +88,8 @@ editor for months; a DOCX image was destroyed on save.
    `.gitignore` through the `532a64f` scrub that was supposed to catch exactly that (fixed 2026-07-28).
 5. **Docs and config rows are real rows.** Did a public interface change (a feature flag, a toolbar
    control, a skill, a hook, an exported function, a persisted field)? Then `CLAUDE.md` / `README.md` /
-   `FEATURES.md` / `KNOWN_ISSUES.md` must reflect it. `CLAUDE.md` § Gotchas is this project's decision
+   `FEATURES.md` / `KNOWN_ISSUES.md` must reflect it. `CLAUDE.md` § Gotchas (its entries live in `.claude/rules/*.md`
+   since 2026-09-28; the § indexes every heading) is this project's decision
    register — a non-obvious choice that isn't recorded there will be re-litigated or silently reverted
    by a future session. "No config impact" is acceptable **with** a one-line reason; bare is not.
 6. **Stubs, TODOs and partial features.** Grep the diff for `TODO`, `FIXME`, `XXX`, `throw new Error('not implemented')`,

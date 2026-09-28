@@ -29,7 +29,7 @@ skills: run the global skill for its machinery, with everything below folded int
 
 Run these **in addition to** the global skill's own dimensions, on every review:
 
-- **Export byte-identity at defaults (P0).** ~15 features in `CLAUDE.md` claim "byte-identical when
+- **Export byte-identity at defaults (P0).** ~15 features in `CLAUDE.md` § Gotchas (now `.claude/rules/*.md`, mostly `export.md`) claim "byte-identical when
   the flag/attribute is unset" (`te.list`, `bates.enabled`, `flattenAllForms`, `hasAdvancedText`,
   `images: []`, `opts.editImages`, `ids`, `mintImage`, integer watermark densities…). Any change to
   `src/export/**` must either preserve that or amend the claim. A new branch in `renderText` or
