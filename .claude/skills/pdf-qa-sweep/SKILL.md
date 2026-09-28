@@ -120,6 +120,13 @@ The driver reports facts. You decide what they mean.
    happened to be in. It does not fill forms with boundary values, does not test tool *interactions*
    (draw → undo → export), and cannot drive the native Save dialog. Say so.
 
+7. **A 200 is not proof.** The Vite dev server answers ANY unserved path under `/pdfturbo/` with `index.html`
+   and **200** (measured here — the global `/qa-sweep` step 7 records it). A missing pdf.js
+   asset (`pdfjs/cmaps/*`, `pdfjs/wasm/*.wasm`) or OCR asset (`tesseract/*`) therefore passes a status check
+   (locales are bundled at build time, not fetched). For every asset a finding relies on, assert the **content-type** and a **body signature** (the
+   wasm magic `\0asm`, a JSON key) and treat `text/html` where a non-HTML type was requested as a failed
+   asset — a render that silently falls back looks like a PASS.
+
 ## Visual evidence — CAPTURED IS NOT DELIVERED
 
 `var/claude/` is gitignored. A screenshot left on disk is evidence

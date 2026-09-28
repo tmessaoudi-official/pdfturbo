@@ -30,10 +30,14 @@ the recommended one FIRST (labelled, with its reason) and a visible *"none of th
 premise"* escape. Protocol: the global `/ask-human` skill, § "Question quality"; this repo's
 additions (mandatory cases, a worked example): `.claude/skills/pdf-ask-human/SKILL.md`.
 
-**Do not ask about routine work.** The standing directive for this repo is *no interrupts*: announce
-the task size and the plan, then build it. Asking is reserved for the cases in
-§ "When a question is mandatory here" of that skill — chiefly a genuinely ambiguous request, or a change
-that would weaken a documented invariant, a declared ceiling, or bump `SCHEMA_VERSION`.
+**Mode — the global `~/.claude/CLAUDE.md` § Mode decides what stops** (developer rulings 2026-09-27).
+This tree is bypassed for the ask-human gate family (as of 2026-09-28 — the SessionStart banner shows the live
+MODE), so sessions here run **autonomous**: announce the
+task size and the plan, then build it; on an ambiguity take the recommended option and log it as
+`ASSUMED (review)` in the plan's Decisions Log. Phase markers, evidence grades and the Rule 6 table
+still show (output parity). In every mode, still stop for the cases in § "When a question is mandatory
+here" of that skill — a change that would weaken a documented invariant or a declared ceiling, a
+`SCHEMA_VERSION` bump — and for a destructive step.
 
 ## Certification ladder — governs every 3C/6C gate
 
@@ -56,6 +60,11 @@ repo's severe bugs have not been confined to one subsystem — a destroyed `w:dr
 Android keyboard loop that made typing impossible, OCR dead in production for three reasons, an
 invisible watermark. A path allowlist would have to cover nearly everything, so a single rule is both
 safer and cheaper to follow.
+
+> **Per task vs milestone (2026-09-27):** MAXIMAL is the milestone ceiling. Per task the global tier
+> applies: in autonomous mode (this tree) the project's certification schedule
+> (`~/.claude/projects/-stack-projects-pdfturbo/certification-schedule`, asked once), in spec mode the
+> per-gate tier question — `advisor()` recommended (economize ruling, 2026-08-21).
 
 **The one carve-out is mechanical, not a judgement call:** if `git diff --name-only` touches no
 `src/`, STANDARD is enough — one reviewer, three lenses in a single pass, one clean round. Locale
@@ -85,10 +94,10 @@ directive. Limits:
 - **NOT authorised**: `--force` / `--force-with-lease` push, rewriting published history,
   `npm publish`. **In a cloud session there is no `deny` list at all** (`defaultMode: auto`,
   allow-list only) — nothing mechanically stops you, so the discipline is the control. **On the
-  developer's local machine** `~/.claude/settings.json` does deny `git push --force`, `-f` and
-  `--mirror` globally, and `ask-bash-firewall.sh` carries the same force patterns. Its blanket
-  `Bash(git push *)` deny had made this section inert locally from the day it was written (the deny
-  dates to 2026-04-24); it was dropped 2026-08-23.
+  developer's local machine** `~/.claude/hooks/ask-bash-firewall.sh` denies `git push --force`, `-f`,
+  `--mirror` and `+refspec` at every level (since 2026-09-27); it allows `--force-with-lease`, which this
+  repo still does not authorise. `~/.claude/settings.json` holds no force-push rule (dropped 2026-08-29;
+  an earlier blanket `Bash(git push *)` deny went 2026-08-23).
 - Commit only when the deploy gate is green and the change is self-contained; never a broken build.
 - Commit style: `feat:` / `fix:` / `refactor:` / `docs:` / `chore:`, imperative subject.
 - If the safety classifier blocks a `git commit`, present the exact command for manual execution —
