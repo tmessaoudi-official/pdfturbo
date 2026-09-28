@@ -8,7 +8,7 @@ paths:
 
 # pdfturbo gotchas — export
 
-Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: the export pipeline: rotation, text extent, the export frame, links, flatten, XLSX, forms, XFDF, Bates, sanitize, lock, compress. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas indexes every one.
+Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: the export pipeline: rotation, text extent, the export frame, links, flatten, XLSX, forms, XFDF, Bates, sanitize, lock, compress. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
 
 ### On a rotated page, text, pictures, signatures and comments exported turned by the page rotation (A3-pre, 2026-09-26)
 

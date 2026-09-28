@@ -10,7 +10,7 @@ paths:
 
 # pdfturbo gotchas — flow-export
 
-Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: PDF→DOCX/MD: flow reconstruction, columns, tables and CSV, the tagged-PDF fast path. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas indexes every one.
+Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: PDF→DOCX/MD: flow reconstruction, columns, tables and CSV, the tagged-PDF fast path. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
 
 ### A ceiling table is only as good as its last measurement — C10 was wrong in two places (2026-07-31)
 

@@ -287,7 +287,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 
 **Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 6 files (`redaction.md`, `export.md`, `flow-export.md`, `docx-edit.md`, `ui.md`, `toolchain.md`) exceed that cap at birth: single entries run 200–400 lines and a verbatim move cannot cut them — they are the first candidates for a prune with the developer.
 
-Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves through this list):
+Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves through this list; one that names a bold paragraph or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`):
 
 - § "pdf.js's CMap files are served by the app — row 32 (2026-09-26)" → `pdfjs.md`
 - § "pdf.js's JBIG2 / JPEG 2000 decoders are served too — row 36 (2026-09-26)" → `pdfjs.md`
