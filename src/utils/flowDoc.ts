@@ -866,6 +866,23 @@ export function letterDirection(parts: ReadonlyArray<{ text: string; rtl: boolea
 }
 
 /**
+ * The direction of a text-layer ROW of per-glyph spans or items (copy, search): RTL when more than half of the spans
+ * that carry a letter are Arabic. A span with no letter — a bracket, digits, a full stop — abstains, as a letter-less
+ * item does in {@link letterDirection}: counting it against RTL read `النص (RTL) هنا` (two Arabic spans, three others)
+ * as English (limits row 43). Arabic marks still vote Arabic; this is a span count, not a letter count, because pdf.js
+ * emits Arabic one glyph per span and a letter count would let one long Latin word outvote a whole Arabic line.
+ * A row with no letter at all is not RTL.
+ */
+export function rowIsRtl(texts: readonly string[]): boolean {
+  let rtl = 0, voters = 0;
+  for (const t of texts) {
+    if (isArabicText(t)) { rtl++; voters++; }
+    else if (letterCount(t) > 0) voters++;
+  }
+  return rtl * 2 > voters;
+}
+
+/**
  * Order one line's words into LOGICAL reading order. pdf.js returns each item's text already in logical order, so
  * only the ORDER of the items is decided here; their text is left as it is (NFKC-folded when RTL, for presentation
  * forms).
@@ -932,7 +949,7 @@ function bracketsBalanced(text: string): boolean {
  * RTL-placed bracket-only items are mirrored came from a shape-mapping producer, and those items are mirrored;
  * a line that already balances is left alone. A bracket glued inside a larger LTR item cannot be reached here.
  */
-function mirrorShapeBrackets<T extends { rtl: boolean; text: string }>(words: T[]): T[] {
+export function mirrorShapeBrackets<T extends { rtl: boolean; text: string }>(words: T[]): T[] {
   const joined = words.map(w => w.text).join('');
   if (!/[()[\]{}]/.test(joined) || bracketsBalanced(joined)) return words;
   const isBracketOnly = (t: string) => /^[\s()[\]{}]+$/.test(t);

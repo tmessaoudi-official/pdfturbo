@@ -86,3 +86,33 @@ describe('reconstructLogicalText (#6 Arabic copy)', () => {
     expect(reconstructLogicalText(spans)).toBe('مرحبا Main');
   });
 });
+
+// Limits row 43 — brackets in the copy. Two producers, two reasons the copy was wrong (both measured on real pdf.js
+// items, tests/browser/arabic-copy.browser.test.ts): the LibreOffice bracket spans carry the LOGICAL character and
+// the row was voted left-to-right because "(" ")" "RTL" outvoted the Arabic words; Chrome's ToUnicode carries the
+// SHAPE, so a correctly ordered row reads `)RTL(`. Geometry as pdf.js emits it: brackets touch the word they wrap
+// (gap 2), words are 14 apart (a space).
+describe('reconstructLogicalText — brackets in an RTL row (limits row 43)', () => {
+  it('reads a LibreOffice bracket row (logical chars) right to left: النص (RTL) هنا', () => {
+    // logical `النص (RTL) هنا`; visual L→R: هنا, ")"(logical), RTL, "("(logical), النص
+    const spans = [g('هنا', 0, 24), g(')', 38, 5), g('RTL', 45, 24), g('(', 71, 5), g('النص', 90, 30)];
+    expect(reconstructLogicalText(spans)).toBe('النص (RTL) هنا');
+  });
+
+  it('un-mirrors a Chrome bracket row (glyph SHAPES): فقرة عربية خالصة (RTL)', () => {
+    // logical `فقرة عربية خالصة (RTL)`; Chrome stores the shape, so visual L→R is "(" RTL ")" then the words.
+    const spans = [g('(', 0, 5), g('RTL', 7, 24), g(')', 33, 5), g('خالصة', 52, 30), g('عربية', 96, 30), g('فقرة', 140, 30)];
+    expect(reconstructLogicalText(spans)).toBe('فقرة عربية خالصة (RTL)');
+  });
+
+  it('leaves a selection that stops inside the brackets alone (mirroring would not balance it)', () => {
+    // logical `فقرة عربية (RTL`; the closing bracket is outside the selection
+    const spans = [g('RTL', 0, 24), g('(', 26, 5), g('عربية', 45, 30), g('فقرة', 89, 30)];
+    expect(reconstructLogicalText(spans)).toBe('فقرة عربية (RTL');
+  });
+
+  it('does not touch an LTR row: (LTR control) stays as extracted', () => {
+    const spans = [g('(LTR', 0, 20), g('control)', 30, 20)];
+    expect(reconstructLogicalText(spans)).toBe('(LTR control)');
+  });
+});

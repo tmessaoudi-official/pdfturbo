@@ -161,7 +161,7 @@ Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, 
   This OVERTURNS the original #6b assumption (visual-order multi-char items) — its synthetic single-item
   fixture was unrealistic and was corrected to logical order. Selection ordering was already correct
   (`alignSpanOrderToVisual`); residual striped highlight at large fonts = inherent per-glyph-span SEAMS
-  (cosmetic, not fixed). Ceilings: neutral bracket mirroring "(RTL)"→")RTL(" (UAX#9 L4), "الله" ligature
+  (cosmetic, not fixed). Ceilings: neutral bracket mirroring "(RTL)"→")RTL(" (UAX#9 L4) [fixed for copy and the Arabic search line by limits row 43 — § "Brackets in the text-layer copy"], "الله" ligature
   reorder, multi-token LTR run order. Guards: `tests/handlers/textSearchHandler.test.ts` (per-glyph spanning),
   `tests/utils/rtlClipboard.test.ts` (multi-char span + embedded-LTR), `tests/browser/arabic-search.browser.test.ts`
   + `tests/browser/arabic-copy.browser.test.ts` (real pdf.js items). Fixture+gen: `scripts/gen-arabic-fixture.mjs`.
@@ -277,3 +277,39 @@ containment — green before and after). Sabotage, predicted first, restored and
 → the 3 vowelled cases; `Ts` dropped → those 3 + the bidi case; bidi path not passed the positions → exactly the bidi
 case; width from advance widths → green (equivalent, above); positioning off entirely (the pre-fix output) → 4; both
 "did anything move" checks dropped (every run as TJ) → exactly the control.
+
+### Brackets in the text-layer copy and the Arabic search line — limits row 43 (2026-09-29)
+
+Row 43 suspected copy ("does not mirror") and the search fallback ("un-mirrors every RTL bracket"). Measured on real
+pdf.js items, the copy was wrong for **two different reasons, one per producer**:
+
+- **LibreOffice** (`tests/fixtures/bidi/mixed-bidi.pdf`) stores the LOGICAL bracket, so the brackets were fine. The row
+  was read left to right (`هنا )RTL(النص`) because the direction vote, `rtlVotes * 2 > byX.length`, counted `(`, `)` and
+  `RTL` against the two Arabic words — the item-count mistake row 19 fixed in the export, still live in copy and in
+  `buildLogicalLines` (the search's Arabic line pass).
+- **Chrome** (`arabic-allcases.pdf`) stores the mirrored SHAPE, so a correctly ordered row read `)RTL(` — the producer
+  disagreement row 19 solved with `mirrorShapeBrackets`, which copy never used.
+- **The search fallback needed no change (measured).** `visualToLogical` un-mirrors only a bracket standing ALONE
+  between Arabic letters, `reverseRtlText` reaches it only for an item mixing Arabic with ASCII, and it runs only for a
+  non-Arabic query. pdf.js emits each bracket as its own item on both producers, so no real item reaches it.
+
+`rowIsRtl` (`flowDoc.ts`) is the vote now: a span with no letter abstains, an Arabic span votes RTL, any other lettered
+span votes LTR. It is a SPAN count, not a letter count — pdf.js emits Arabic one glyph per span, so a letter count lets
+one long Latin word outvote an Arabic line. `reconstructLogicalText` and `buildLogicalLines` use it and run their
+ordered spans through the now-exported `mirrorShapeBrackets` (mirrors bracket-only RTL spans only when the row closes
+before it opens AND mirroring balances it). One character for one, so the search token offsets hold. Search was outside
+the row's Files cell; it shares the cause (logged `ASSUMED` in the plan).
+
+Guards: 4 unit cases in `tests/utils/rtlClipboard.test.ts` and 3 in `tests/handlers/textSearchHandler.test.ts`
+(LibreOffice, Chrome, LTR control; copy adds a selection that stops inside the brackets), 3 in
+`tests/browser/arabic-copy.browser.test.ts` (Chrome headings, LibreOffice line, LTR control) and 1 in
+`arabic-search.browser.test.ts` that asserts BOTH producers, so it cannot show one of them green. Sabotage, predicted
+first, each restored by hash: old vote → 5 of 7 unit (both LibreOffice, both synthetic Chrome, the partial selection) +
+browser LibreOffice copy + the search case, real Chrome copy green; mirroring off → the 2 Chrome unit cases + browser
+Chrome copy + the search case; mirroring unconditional → 3 unit (both LibreOffice, the partial selection) + browser
+LibreOffice copy + the search case. One browser run printed `Tests no tests` under mutation and was re-run (noise).
+
+**Bounds.** The LibreOffice line copies as `النص(RTL) هنا`, one space short: word-level items make the median span width
+large, so a real 3.6pt space falls under the `0.4 × median` threshold (row 54; the browser case tolerates exactly that
+space). The vote is still a span count. **UNCERTIFIED-BY-EXECUTION:** the live text layer's own span geometry — the
+browser cases synthesise `SpanGeom` from `getTextContent`, as the existing copy test does.

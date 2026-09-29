@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import fixtureUrl from '../fixtures/corpus-public/arabic-allcases.pdf?url';
+import libreUrl from '../fixtures/bidi/mixed-bidi.pdf?url';
 import { TextSearchHandler } from '../../src/handlers/textSearchHandler';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
@@ -49,5 +50,25 @@ describe('Arabic search across per-glyph text items (real Chrome)', () => {
     expect(await countAll('PDFturbo')).toBeGreaterThan(0);
     // A word that is not present must not over-match.
     expect(await countAll('زقاقمستحيل')).toBe(0);
+  });
+
+  async function hitsIn(url: string, q: string): Promise<number> {
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const handler = new TextSearchHandler();
+    let n = 0;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      const page = await pdf.getPage(i);
+      // eslint-disable-next-line no-await-in-loop
+      await handler.buildIndex(page, `p${i}`);
+      n += handler.search(q, `p${i}`, page.getViewport({ scale: 1 }), 1).length;
+    }
+    return n;
+  }
+
+  it('finds a bracketed Arabic phrase as typed, in both producers (limits row 43)', async () => {
+    expect(await hitsIn(fixtureUrl, 'عربية خالصة (RTL)')).toBeGreaterThan(0); // Chrome: bracket SHAPES
+    expect(await hitsIn(libreUrl, '(RTL) هنا')).toBeGreaterThan(0); // LibreOffice: logical characters (row 54 keeps `النص (` from matching: no space)
   });
 });

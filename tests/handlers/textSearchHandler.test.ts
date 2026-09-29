@@ -210,3 +210,36 @@ describe('buildLogicalLines — embedded LTR run order (Arabic)', () => {
     }
   });
 });
+
+describe('buildLogicalLines — brackets in an RTL line (limits row 43)', () => {
+  const it_ = (str: string, x: number, w = 8) => ({ str, transform: [1, 0, 0, 1, x, 100], width: w, height: 10 });
+  // every token's [start,end) still slices the text at its source item's length; only a bracket may differ in value
+  const expectTokensValid = (line: ReturnType<typeof buildLogicalLines>[number], items: { str: string }[]): void => {
+    for (const tk of line.tokens) {
+      const src = items[tk.itemIndex].str.normalize('NFKC');
+      const got = line.text.slice(tk.start, tk.end);
+      expect(got.length).toBe(src.length);
+      if (!/^[()]$/.test(src)) expect(got).toBe(src);
+    }
+  };
+  it('reads a LibreOffice bracket line (logical chars) right to left, so its phrase is findable', () => {
+    const items = [it_('هنا', 0, 24), it_(')', 38, 5), it_('RTL', 45, 24), it_('(', 71, 5), it_('النص', 90, 30)];
+    const [line] = buildLogicalLines(items);
+    expect(line.rtl).toBe(true);
+    expect(line.text).toBe('النص (RTL) هنا');
+    expectTokensValid(line, items);
+  });
+  it('un-mirrors a Chrome bracket line (glyph shapes) and keeps every token slice valid', () => {
+    const items = [
+      it_('(', 0, 5), it_('RTL', 7, 24), it_(')', 33, 5), it_('خالصة', 52, 30), it_('عربية', 96, 30), it_('فقرة', 140, 30),
+    ];
+    const [line] = buildLogicalLines(items);
+    expect(line.text).toBe('فقرة عربية خالصة (RTL)');
+    expectTokensValid(line, items);
+  });
+  it('leaves an LTR line alone', () => {
+    const [line] = buildLogicalLines([it_('(LTR', 0, 20), it_('control)', 30, 20)]);
+    expect(line.rtl).toBe(false);
+    expect(line.text).toBe('(LTR control)');
+  });
+});

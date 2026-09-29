@@ -16,13 +16,17 @@
  * scrambled multi-char spans ("السلام"→"السمال"). Position-ordering + NFKC fixes that
  * (the same rule `TextSearchHandler.buildLogicalLines` uses for Arabic find).
  *
+ * Brackets (limits row 43): a span with no letter abstains from the row's direction vote, and a row whose brackets
+ * close before they open but balance once its bracket-only spans are mirrored is read as shape-mapped (Chrome) and
+ * mirrored; a balanced row (LibreOffice) is left alone.
+ *
  * Ceiling (documented partial): an embedded LTR run inside an RTL line whose glyphs are
- * split into multiple spans/tokens still ends up token-order-reversed, and neutral
- * brackets mirror — full UAX#9 char-level bidi is out of scope, same as the DOCX export.
+ * split into multiple spans/tokens still ends up token-order-reversed — full UAX#9 char-level bidi is out of
+ * scope, same as the DOCX export.
  * Special shaped ligatures (e.g. "الله") whose own item text is reordered also remain a
  * partial.
  */
-import { isArabicText } from './flowDoc';
+import { mirrorShapeBrackets, rowIsRtl } from './flowDoc';
 import { logicalItemOrder } from './bidi';
 
 export interface SpanGeom {
@@ -62,8 +66,7 @@ export function reconstructLogicalText(spans: ReadonlyArray<SpanGeom>): string {
 
   const lines = rows.map((row) => {
     const byX = [...row].sort((a, b) => a.left - b.left); // visual L→R
-    const rtlVotes = byX.reduce((n, s) => n + (isArabicText(s.text) ? 1 : 0), 0);
-    const rtl = rtlVotes * 2 > byX.length;
+    const rtl = rowIsRtl(byX.map((s) => s.text));
     // Reading order comes from span POSITION (RTL → right-to-left), NEVER from reversing a
     // span's internal chars: pdf.js emits single glyphs in visual position order but a
     // MULTI-char span keeps its native (logical) char order (the trailing "لام" of "السلام"
@@ -74,7 +77,10 @@ export function reconstructLogicalText(spans: ReadonlyArray<SpanGeom>): string {
     // embedded "100" "%" laid in RTL visual order) flows WITH the RTL line and is reversed
     // — matching the bidi behavior for European numbers inside an RTL paragraph. Multi-char
     // tokens are never internally reversed.
-    const order = rtl ? logicalItemOrder(byX, (s) => !/[A-Za-z]/.test(s.text)) : byX;
+    const logical = rtl ? logicalItemOrder(byX, (s) => !/[A-Za-z]/.test(s.text)) : byX;
+    // Producers disagree on what a bracket glyph means (limits row 43): LibreOffice's ToUnicode carries the logical
+    // character, Chrome's the mirrored SHAPE — the same rule the export applies (`mirrorShapeBrackets`).
+    const order = rtl ? mirrorShapeBrackets(logical.map((s) => ({ ...s, rtl: !/[A-Za-z]/.test(s.text) }))) : logical;
     let out = '';
     for (let i = 0; i < order.length; i++) {
       if (i > 0) {

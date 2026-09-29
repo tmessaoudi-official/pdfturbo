@@ -1,4 +1,4 @@
-import { isArabicText, reverseRtlText } from '../utils/flowDoc';
+import { isArabicText, mirrorShapeBrackets, reverseRtlText, rowIsRtl } from '../utils/flowDoc';
 import { logicalItemOrder } from '../utils/bidi';
 
 export interface MatchResult {
@@ -75,13 +75,17 @@ export function buildLogicalLines(
 
   return rows.map((row) => {
     const byX = [...row].sort((a, b) => a.it.transform[4] - b.it.transform[4]); // visual L→R
-    const rtlVotes = byX.reduce((n, c) => n + (isArabicText(c.it.str) ? 1 : 0), 0);
-    const rtl = rtlVotes * 2 > byX.length;
+    const rtl = rowIsRtl(byX.map((c) => c.it.str));
     // Logical reading order at ITEM granularity (UAX#9 L2). An item flows forward (LTR)
     // ONLY if it carries a strong-LTR Latin LETTER; a pure number/neutral run (e.g. an
     // embedded "100"/"%" laid in RTL visual order) flows WITH the RTL line and is reversed.
     // Items stay atomic → the token→item map is valid.
-    const order = rtl ? logicalItemOrder(byX, (c) => !/[A-Za-z]/.test(c.it.str)) : byX;
+    const logical = rtl ? logicalItemOrder(byX, (c) => !/[A-Za-z]/.test(c.it.str)) : byX;
+    // A bracket item is read as the producer meant it (limits row 43): LibreOffice's is the logical character, Chrome's
+    // the mirrored shape — `mirrorShapeBrackets` mirrors only a row that balances once mirrored. One character for one
+    // character, so the [start,end) offsets below are unaffected.
+    const shaped = rtl ? mirrorShapeBrackets(logical.map((c) => ({ c, rtl: !/[A-Za-z]/.test(c.it.str), text: c.it.str }))) : null;
+    const order = shaped ? shaped.map((w) => w.c) : logical;
     let text = '';
     const tokens: LogicalLineToken[] = [];
     for (let k = 0; k < order.length; k++) {
@@ -91,7 +95,7 @@ export function buildLogicalLines(
         const right = a.transform[4] <= b.transform[4] ? b : a;
         if (right.transform[4] - (left.transform[4] + left.width) > medianW * 0.4) text += ' ';
       }
-      const piece = order[k].it.str.normalize('NFKC'); // order (not internal reversal) gives logical
+      const piece = (shaped ? shaped[k].text : order[k].it.str).normalize('NFKC'); // order (not internal reversal) gives logical
       const start = text.length;
       text += piece;
       tokens.push({ itemIndex: order[k].i, start, end: text.length });

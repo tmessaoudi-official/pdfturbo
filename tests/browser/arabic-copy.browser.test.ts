@@ -10,13 +10,16 @@
  * the live text layer sees) and asserts pure-Arabic words AND an embedded Latin token
  * come back correct.
  *
- * Ceiling (asserted as documented partial): neutral brackets mirror ("(RTL)"→")RTL(")
- * and the "الله" ligature item reorders — not asserted as correct.
+ * Brackets (limits row 43) are asserted against the TYPED text of both producers: Chrome's ToUnicode stores the
+ * mirrored SHAPE (`)RTL(` before the fix), LibreOffice's the logical character (its row was voted left-to-right).
+ *
+ * Ceiling (documented partial): the "الله" ligature item reorders — not asserted as correct.
  */
 import { describe, it, expect } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerShimUrl from '../../src/utils/pdf-worker-shim?worker&url';
 import fixtureUrl from '../fixtures/corpus-public/arabic-allcases.pdf?url';
+import libreUrl from '../fixtures/bidi/mixed-bidi.pdf?url';
 import { reconstructLogicalText, type SpanGeom } from '../../src/utils/rtlClipboard';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerShimUrl as string;
@@ -47,5 +50,36 @@ describe('Arabic copy reconstruction over real pdf.js items (real Chrome)', () =
     // Embedded LTR token and number inside RTL lines stay intact (not reversed).
     expect(logical).toContain('PDFturbo');
     expect(logical).toContain('100%');
+  });
+
+  async function copyOf(url: string, page: number): Promise<string> {
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const content = await (await pdf.getPage(page)).getTextContent();
+    const spans: SpanGeom[] = (content.items as { str: string; transform: number[]; width: number; height: number }[])
+      .filter((ti) => typeof ti.str === 'string' && ti.str.length > 0)
+      .map((ti) => ({
+        text: ti.str, left: ti.transform[4], right: ti.transform[4] + ti.width, top: -ti.transform[5], height: ti.height || 10,
+      }));
+    return reconstructLogicalText(spans);
+  }
+
+  it('Chrome (bracket glyph SHAPES): every bracketed Arabic heading copies as typed (limits row 43)', async () => {
+    const logical = await copyOf(fixtureUrl, 1);
+    expect(logical).toContain('فقرة عربية خالصة (RTL)');
+    expect(logical).toContain('نص مختلط عربي ولاتيني وأرقام (bidi)');
+    expect(logical).toContain('جدول بالعربية (table RTL)');
+    expect(logical).not.toContain(')RTL(');
+  });
+
+  it('LibreOffice (LOGICAL bracket characters): the bracketed line copies as typed, not in visual order (limits row 43)', async () => {
+    const logical = await copyOf(libreUrl, 1);
+    // The optional space is limits row 54, not this row: LibreOffice's word-level items make the median span width so
+    // large that a 3.6pt space gap (a real space) falls under the 0.4 × median threshold, so `النص (RTL)` loses it.
+    expect(logical).toMatch(/النص ?\(RTL\) هنا/);
+  });
+
+  it('an LTR line keeps its brackets (control)', async () => {
+    expect(await copyOf(fixtureUrl, 2)).toContain('(LTR control)');
   });
 });
