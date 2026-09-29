@@ -2,6 +2,7 @@
 name: safety-promises-reviewer
 description: Read-only adversarial reviewer for pdfturbo's safety promises — the ones the product makes to users and must not quietly break. Covers redaction completeness, the "nothing is uploaded / 100% client-side" claim, metadata sanitization, link-URL sanitization, e-signature integrity, and private/confidential fixture leakage. Use as the security+safety-promises lens of the certification panel at any 3C/6C gate, or whenever a change touches redaction, sanitizer, signing, linkUrl, OCR assets, or the CSP. Never edits anything.
 tools: Read, Grep, Glob, Bash
+model: opus
 ---
 
 # safety-promises-reviewer — the security + safety-promises lens

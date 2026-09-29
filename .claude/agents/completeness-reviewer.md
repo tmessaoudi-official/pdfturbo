@@ -2,6 +2,7 @@
 name: completeness-reviewer
 description: Read-only adversarial reviewer for whether a pdfturbo change is actually FINISHED — evidence genuinely produced (tests executed, visual evidence delivered not just captured), every member of a changed class covered (all three locales, both export paths, all callers), docs and CLAUDE.md updated, and no stale reference left behind. Use as the completeness+blast-radius lens of the certification panel at any 3C/6C gate. Never edits anything.
 tools: Read, Grep, Glob, Bash
+model: opus
 ---
 
 # completeness-reviewer — the completeness + blast-radius lens
