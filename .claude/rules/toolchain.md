@@ -49,6 +49,25 @@ checks it at SETUP and stops the run if a vitest upgrade reshapes it: re-check t
 cleans up itself, and if so delete the file and its `globalSetup` line. `vitest.browser.config.ts` does
 not need it: a full `npm run test:browser` left 0 such dirs (measured 2026-09-28).
 
+### `jsdom` is held at 30.0.x — vitest 5.0.2's Blob shim cannot read 30.1's Blob (2026-09-29)
+
+The 2026-09-29 upgrade-to-latest took every dependency to its newest release except this one, and the reason is
+measured. With `jsdom` 30.1.1 under `vitest` 5.0.2, `URL.createObjectURL(new Blob([…]))` throws
+`Cannot read properties of undefined (reading '_bytes')` — 3 cases in `tests/utils/codeGenerator.test.ts`,
+deterministic in isolation, not load. vitest replaces `URL.createObjectURL` with a shim (`createJSDOMCompatURL`,
+`node_modules/vitest/dist/chunks/index.*.js`) that finds jsdom's hidden implementation object as
+`Object.getOwnPropertySymbols(Object.getOwnPropertyDescriptors(new window.Blob()))[0]` and reads `impl._bytes`. A real
+30.1.1 Blob has **no own symbols** (`[]`), so the lookup is `undefined` and the read throws. vitest 5.0.2 is the
+latest release, so nothing upstream fixes it yet.
+
+`package.json` therefore has `"jsdom": "~30.0.1"` (patch-only, so a fresh install cannot float to 30.1) and the
+`overrides` block gained `"undici": "^8.11.2"`: jsdom 30.0.1 pulls `undici@8.10.0`, inside the advisory range
+GHSA-3wwx-pv8p-q78v (8.1.0–8.10.1); jsdom 30.1.1 had cleared it by bumping `undici` to `^8.10.2`, and the override does
+the same without the jsdom bump. jsdom 30.0.1 declares `undici ^8.9.0`, so 8.11.2 stays inside its own range. Both are
+devDependency-only. **Remove both when a vitest release reads jsdom 30.1's Blob:** bump `jsdom` to `^30.1.x`, drop the
+override, and the `codeGenerator` cases are the check (they fail on the first `createObjectURL`). Do not stub
+`URL.createObjectURL` in the test to make it pass — that hides the harness break for every future caller.
+
 ### The 2026-09-13 upgrade to latest — three traps, each measured before it was fixed
 
 Every dependency went to its latest release on 2026-09-13 (vitest 5.0.0 and its four `@vitest/*`

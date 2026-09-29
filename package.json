@@ -28,24 +28,24 @@
     "test:coverage:export": "vitest run --config vitest.browser.config.ts --coverage tests/browser/pdfElementRenderer.browser.test.ts"
   },
   "dependencies": {
-    "@cantoo/pdf-lib": "^2.11.0",
+    "@cantoo/pdf-lib": "^2.11.1",
     "bidi-js": "1.1.0",
     "bwip-js": "^4.11.4",
-    "docx": "^9.7.1",
+    "docx": "^9.8.1",
     "fflate": "^0.8.3",
     "i18next": "^26.4.2",
     "i18next-browser-languagedetector": "^8.2.1",
     "node-forge": "^1.4.0",
     "pdfjs-dist": "^6.3.289",
     "prosemirror-commands": "^1.7.1",
-    "prosemirror-history": "^1.5.0",
+    "prosemirror-history": "^1.5.1",
     "prosemirror-keymap": "^1.2.3",
-    "prosemirror-model": "^1.25.9",
-    "prosemirror-schema-basic": "^1.2.4",
+    "prosemirror-model": "^1.25.12",
+    "prosemirror-schema-basic": "^1.2.5",
     "prosemirror-schema-list": "^1.5.1",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "1.8.5",
-    "prosemirror-view": "^1.42.3",
+    "prosemirror-view": "^1.42.6",
     "qr-code-styling": "^1.9.2",
     "sortablejs": "^1.15.7",
     "tesseract.js": "^7.0.0"
@@ -54,22 +54,23 @@
     "@pdf-lib/fontkit": "^1.1.1",
     "@types/node-forge": "^1.3.14",
     "@types/sortablejs": "^1.15.9",
-    "@vitest/browser": "^5.0.0",
-    "@vitest/browser-playwright": "^5.0.0",
-    "@vitest/coverage-v8": "^5.0.0",
-    "@vitest/ui": "^5.0.0",
+    "@vitest/browser": "^5.0.2",
+    "@vitest/browser-playwright": "^5.0.2",
+    "@vitest/coverage-v8": "^5.0.2",
+    "@vitest/ui": "^5.0.2",
     "axe-core": "^4.12.1",
     "fake-indexeddb": "^6.2.5",
-    "jsdom": "^30.0.0",
-    "oxlint": "^1.82.0",
+    "jsdom": "~30.0.1",
+    "oxlint": "^1.86.0",
     "playwright": "^1.63.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0",
+    "vite": "^8.3.1",
     "vite-plugin-pwa": "^1.0.0",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.2"
   },
   "overrides": {
     "brace-expansion": "^5.0.9",
-    "fast-uri": "^3.1.7"
+    "fast-uri": "^3.1.7",
+    "undici": "^8.11.2"
   }
 }
