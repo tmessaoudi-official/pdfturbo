@@ -179,3 +179,13 @@ Read the numbers in this order, because two of them mislead on their own:
   someone re-opened a hole in the gate — find out why before shipping.
 - A run reporting materially fewer checks than this has probably failed to reach the surface at all.
   Investigate before trusting a green summary.
+
+## Subagent models
+
+Set by the model-assignment audit (decision D5, 2026-09-29; source table `projects/-home-developer-.claude/model-audit/classified-all.tsv`). **Pass `model:` on every Agent call** — an omitted model inherits the session, so quality and cost would follow the `/model` choice. `opus` = judgment work, `sonnet` = detection and mapping (rubric ruled 2026-09-29).
+
+| Agent | model | why |
+|---|---|---|
+| the three reviewers by name (completeness, export-fidelity, safety-promises) | the reviewer model — `opus` by default (their agent files also pin `opus`) | certification is judgment work |
+
+Reviewer model: resolve it exactly as `/certify` § 3 step 1b before spawning the reviewers (stored value or `opus`; a follow-up question in spec mode when it differs from the session model) and pass the result as `model:` on each reviewer Agent call.
