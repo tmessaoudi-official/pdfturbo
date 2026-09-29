@@ -1,8 +1,8 @@
 /**
  * The load guard in the SHIPPED module graph. Two things only this environment can show:
  *  - The drop check records pdf-lib's drops by wrapping parser and context methods, which only works if the classes
- *    it patches are the classes `PDFDocument.load` uses. jsdom runs pdf-lib through vitest's `server.deps.inline`, a
- *    different graph from Vite's pre-bundled one — so a split there (two copies of the parser) would leave the jsdom
+ *    it patches are the classes `PDFDocument.load` uses. jsdom loads pdf-lib through Node (it was inlined through vitest
+ *    until 2.11.1), a different graph from Vite's pre-bundled one — so a split there (two copies of the parser) would leave the jsdom
  *    suite green while every browser load accepted a dropped object.
  *  - The viewer check (WS8) runs the app's own `pdfjs-dist`, with its real worker, on the source and on the
  *    export-shaped copy. Under Node it runs pdf.js without a worker; here it is the path users take.

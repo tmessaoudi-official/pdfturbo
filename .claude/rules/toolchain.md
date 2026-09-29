@@ -90,7 +90,7 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   import dies with `needs an import attribute of "type: json"` — 48 jsdom files went red. (This bullet
   split them 37 at collection and 11 downstream; the failing run's log was not kept, so the split is
   withdrawn [WS7 round 10].) The browser bundle is unaffected (Vite handles JSON), so
-  `vitest.config.ts` sets `server.deps.inline: ['@cantoo/pdf-lib']`. **`deps.optimizer.client` looks
+  `vitest.config.ts` set `server.deps.inline: ['@cantoo/pdf-lib']` [removed 2026-09-29: 2.11.1 ships the attribute and the full jsdom suite passes without it — 3304 tests]. **`deps.optimizer.client` looks
   like the faster fix and is not one**: its pre-bundle resolves fflate's `node` export condition
   (`esm/index.mjs` opens with `createRequire`) and throws `createRequire is not a function` at import.
   The cost of inlining is a cold transform per worker — enough to push the DOCX editor's lazy

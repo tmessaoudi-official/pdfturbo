@@ -17,8 +17,8 @@ async function makeDocx(text: string): Promise<Uint8Array> {
 }
 
 describe('createDocxEditorController', () => {
-  // Warm the lazy PDF exporter once. Under `server.deps.inline` (vitest.config.ts) its first import
-  // transforms all of @cantoo/pdf-lib — seconds, cold — and the Export PDF case below waits
+  // Warm the lazy PDF exporter once. Its first import was cold under the former `server.deps.inline` (removed 2026-09-29; the
+  // hook is kept as a guard, its cost without inlining not re-measured) — seconds — and the Export PDF case below waits
   // with `vi.waitFor`'s 1 s default. Left cold, that case timed out, skipped its `c.destroy()`, and
   // every later case then queried the stale modal. This file tests the wiring, not import latency.
   beforeAll(async () => { await import('../../src/docx/docxToPdf'); });
