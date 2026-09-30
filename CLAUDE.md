@@ -421,6 +421,11 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   4.1.4 would force a major past that range — an override can express it, and the PWA build is what
   pays. Same shape as the `brace-expansion` `^5.0.8` → `^5.0.9` bump.
 
+  **Fourth occurrence, 2026-09-30 — both again.** `brace-expansion` 4.0.0–5.0.11 (three DoS advisories, high) put the
+  `^5.0.9` pin in scope, and `fast-uri` 3.0.0–3.1.7 (host-case normalisation, moderate) did the same to `^3.1.7`. Bumped
+  to `^5.0.12` / `^3.1.8`, one deduped copy each, `found 0 vulnerabilities`. It surfaced as the first step of the deploy
+  gate on an unrelated change, which is the normal way this shows up.
+
   **Never run the audit gate with `--offline`.** It reads the cached advisory database and reported
   `found 0 vulnerabilities` against the very tree that was carrying this high — a false green that
   looks exactly like a real one [measured 2026-09-04].
