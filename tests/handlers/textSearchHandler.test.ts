@@ -198,8 +198,8 @@ describe('buildLogicalLines — embedded LTR run order (Arabic)', () => {
   it('orders a per-glyph embedded LTR run forward in an RTL line (token map intact)', () => {
     // visual L→R: M a i n  then Arabic ا ب ح ر م (rtl-dominant). Logical: "مرحبا Main".
     const items = [
-      it_('M', 0), it_('a', 10), it_('i', 20), it_('n', 30),
-      it_('ا', 60), it_('ب', 70), it_('ح', 80), it_('ر', 90), it_('م', 100),
+      it_('M', 0), it_('a', 8.5), it_('i', 17), it_('n', 25.5),
+      it_('ا', 60), it_('ب', 68.5), it_('ح', 77), it_('ر', 85.5), it_('م', 94),
     ];
     const [line] = buildLogicalLines(items);
     expect(line.rtl).toBe(true);
@@ -223,7 +223,7 @@ describe('buildLogicalLines — brackets in an RTL line (limits row 43)', () => 
     }
   };
   it('reads a LibreOffice bracket line (logical chars) right to left, so its phrase is findable', () => {
-    const items = [it_('هنا', 0, 24), it_(')', 38, 5), it_('RTL', 45, 24), it_('(', 71, 5), it_('النص', 90, 30)];
+    const items = [it_('هنا', 0, 24), it_(')', 38, 5), it_('RTL', 44, 24), it_('(', 69, 5), it_('النص', 90, 30)];
     const [line] = buildLogicalLines(items);
     expect(line.rtl).toBe(true);
     expect(line.text).toBe('النص (RTL) هنا');
@@ -231,7 +231,7 @@ describe('buildLogicalLines — brackets in an RTL line (limits row 43)', () => 
   });
   it('un-mirrors a Chrome bracket line (glyph shapes) and keeps every token slice valid', () => {
     const items = [
-      it_('(', 0, 5), it_('RTL', 7, 24), it_(')', 33, 5), it_('خالصة', 52, 30), it_('عربية', 96, 30), it_('فقرة', 140, 30),
+      it_('(', 0, 5), it_('RTL', 5.5, 24), it_(')', 30, 5), it_('خالصة', 52, 30), it_('عربية', 96, 30), it_('فقرة', 140, 30),
     ];
     const [line] = buildLogicalLines(items);
     expect(line.text).toBe('فقرة عربية خالصة (RTL)');
@@ -241,5 +241,24 @@ describe('buildLogicalLines — brackets in an RTL line (limits row 43)', () => 
     const [line] = buildLogicalLines([it_('(LTR', 0, 20), it_('control)', 30, 20)]);
     expect(line.rtl).toBe(false);
     expect(line.text).toBe('(LTR control)');
+  });
+});
+
+describe('buildLogicalLines — word space keyed to the font size (limits row 54)', () => {
+  const it_ = (str: string, x: number, width: number) => ({ str, transform: [1, 0, 0, 1, x, 100], width, height: 12 });
+
+  it('keeps a 3.6pt word space between WORD-level items', () => {
+    const [line] = buildLogicalLines([it_('هنا', 0, 30), it_('النص', 33.6, 40)]);
+    expect(line.text).toBe('النص هنا');
+  });
+
+  it('keeps the spaces in a three-word line of long items', () => {
+    const [line] = buildLogicalLines([it_('ثلاثة', 0, 44), it_('كلمات', 47.6, 48), it_('طويلة', 99.2, 46)]);
+    expect(line.text).toBe('طويلة كلمات ثلاثة');
+  });
+
+  it('control: a 1.5pt kerning gap between per-glyph items is still not a space', () => {
+    const items = [...'ابحرم'].map((ch, i) => it_(ch, i * 7.5, 6));
+    expect(buildLogicalLines(items)[0].text).toBe('مرحبا');
   });
 });

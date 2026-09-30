@@ -69,6 +69,6 @@ describe('Arabic search across per-glyph text items (real Chrome)', () => {
 
   it('finds a bracketed Arabic phrase as typed, in both producers (limits row 43)', async () => {
     expect(await hitsIn(fixtureUrl, 'عربية خالصة (RTL)')).toBeGreaterThan(0); // Chrome: bracket SHAPES
-    expect(await hitsIn(libreUrl, '(RTL) هنا')).toBeGreaterThan(0); // LibreOffice: logical characters (row 54 keeps `النص (` from matching: no space)
+    expect(await hitsIn(libreUrl, 'النص (RTL) هنا')).toBeGreaterThan(0); // LibreOffice: logical characters, word space included (row 54)
   });
 });

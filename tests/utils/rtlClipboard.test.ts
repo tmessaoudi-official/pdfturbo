@@ -116,3 +116,25 @@ describe('reconstructLogicalText — brackets in an RTL row (limits row 43)', ()
     expect(reconstructLogicalText(spans)).toBe('(LTR control)');
   });
 });
+
+describe('reconstructLogicalText — word space keyed to the font size (limits row 54)', () => {
+  // A word-level producer (LibreOffice) emits one span per word, so the MEDIAN span width is several ems and
+  // `0.4 × median width` swallowed a real 0.3 em word space. The threshold is now capped by the font size.
+  const w = (text: string, left: number, width: number): SpanGeom => ({ text, left, right: left + width, top: 0, height: 12 });
+
+  it('keeps a 3.6pt word space between WORD-level spans', () => {
+    // logical `النص هنا`; visual L→R: هنا [3.6pt] النص
+    const spans = [w('هنا', 0, 30), w('النص', 33.6, 40), w('فيPDFturbo', 77.2, 60)];
+    expect(reconstructLogicalText(spans.slice(0, 2))).toBe('النص هنا');
+  });
+
+  it('keeps the space in a three-word line of long spans', () => {
+    const spans = [w('ثلاثة', 0, 44), w('كلمات', 47.6, 48), w('طويلة', 99.2, 46)];
+    expect(reconstructLogicalText(spans)).toBe('طويلة كلمات ثلاثة');
+  });
+
+  it('control: a 1.5pt kerning gap between per-glyph spans is still not a space', () => {
+    const spans = [...'ابحرم'].map((ch, i) => w(ch, i * 7.5, 6));
+    expect(reconstructLogicalText(spans)).toBe('مرحبا');
+  });
+});

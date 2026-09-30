@@ -74,9 +74,13 @@ describe('Arabic copy reconstruction over real pdf.js items (real Chrome)', () =
 
   it('LibreOffice (LOGICAL bracket characters): the bracketed line copies as typed, not in visual order (limits row 43)', async () => {
     const logical = await copyOf(libreUrl, 1);
-    // The optional space is limits row 54, not this row: LibreOffice's word-level items make the median span width so
-    // large that a 3.6pt space gap (a real space) falls under the 0.4 × median threshold, so `النص (RTL)` loses it.
-    expect(logical).toMatch(/النص ?\(RTL\) هنا/);
+    // The word space is exact since limits row 54: the gap threshold is capped by the font size, so a word-level
+    // producer's real 3.6pt space is no longer swallowed by `0.4 × the median span width`.
+    expect(logical).toContain('النص (RTL) هنا');
+  });
+
+  it('LibreOffice word-level items keep every word space around a Latin token and a number (limits row 54)', async () => {
+    expect(await copyOf(libreUrl, 1)).toContain('مرحبا بكم في PDFturbo النسخة 2.5 اليوم');
   });
 
   it('an LTR line keeps its brackets (control)', async () => {

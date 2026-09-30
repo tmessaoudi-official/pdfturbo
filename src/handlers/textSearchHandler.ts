@@ -63,6 +63,9 @@ export function buildLogicalLines(
   const medianH = _median(idx.map((x) => x.it.height).filter((h) => h > 0)) || 10;
   const medianW = _median(idx.map((x) => x.it.width).filter((w) => w > 0)) || medianH * 0.5;
   const rowTol = Math.max(3, medianH * 0.6);
+  // Word space (limits row 54): capped by the font size, as in `reconstructLogicalText` — a word-level producer's
+  // median item width is several ems, and 0.4 × that swallowed a real 0.3 em space.
+  const spaceGap = Math.min(medianW * 0.4, medianH * 0.15);
 
   // Cluster into rows by baseline y (transform[5]); PDF y grows upward → top row = highest y.
   const byY = [...idx].sort((a, b) => b.it.transform[5] - a.it.transform[5] || a.it.transform[4] - b.it.transform[4]);
@@ -93,7 +96,7 @@ export function buildLogicalLines(
         const a = order[k - 1].it, b = order[k].it;
         const left = a.transform[4] <= b.transform[4] ? a : b;
         const right = a.transform[4] <= b.transform[4] ? b : a;
-        if (right.transform[4] - (left.transform[4] + left.width) > medianW * 0.4) text += ' ';
+        if (right.transform[4] - (left.transform[4] + left.width) > spaceGap) text += ' ';
       }
       const piece = (shaped ? shaped[k].text : order[k].it.str).normalize('NFKC'); // order (not internal reversal) gives logical
       const start = text.length;

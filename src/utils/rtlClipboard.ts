@@ -54,6 +54,9 @@ export function reconstructLogicalText(spans: ReadonlyArray<SpanGeom>): string {
   const medianH = _median(cells.map((s) => s.height).filter((h) => h > 0)) || 10;
   const medianW = _median(cells.map((s) => s.right - s.left).filter((w) => w > 0)) || medianH * 0.5;
   const rowTol = Math.max(3, medianH * 0.6);
+  // Word space (limits row 54): 0.4 × the median span width suits per-glyph producers (Chrome), but a word-level one
+  // (LibreOffice) has a median of several ems and swallowed a real 0.3 em space — so it is capped by the font size.
+  const spaceGap = Math.min(medianW * 0.4, medianH * 0.15);
 
   // Cluster into rows by vertical position (top), then read each row left→right.
   const byTop = [...cells].sort((a, b) => a.top - b.top || a.left - b.left);
@@ -88,7 +91,7 @@ export function reconstructLogicalText(spans: ReadonlyArray<SpanGeom>): string {
         const b = order[i];
         const leftCell = a.left <= b.left ? a : b;
         const rightCell = a.left <= b.left ? b : a;
-        if (rightCell.left - leftCell.right > medianW * 0.4) out += ' ';
+        if (rightCell.left - leftCell.right > spaceGap) out += ' ';
       }
       out += order[i].text.normalize('NFKC');
     }

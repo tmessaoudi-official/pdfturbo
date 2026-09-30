@@ -309,7 +309,37 @@ browser LibreOffice copy + the search case, real Chrome copy green; mirroring of
 Chrome copy + the search case; mirroring unconditional → 3 unit (both LibreOffice, the partial selection) + browser
 LibreOffice copy + the search case. One browser run printed `Tests no tests` under mutation and was re-run (noise).
 
-**Bounds.** The LibreOffice line copies as `النص(RTL) هنا`, one space short: word-level items make the median span width
-large, so a real 3.6pt space falls under the `0.4 × median` threshold (row 54; the browser case tolerates exactly that
-space). The vote is still a span count. **UNCERTIFIED-BY-EXECUTION:** the live text layer's own span geometry — the
+**Bounds.** The vote is still a span count. (The LibreOffice line once copied as `النص(RTL) هنا`, one space short — fixed by
+row 54, next entry.) **UNCERTIFIED-BY-EXECUTION:** the live text layer's own span geometry — the
 browser cases synthesise `SpanGeom` from `getTextContent`, as the existing copy test does.
+
+### The word space is capped by the font size, not only the median span width — limits row 54 (2026-09-30)
+
+Copy (`reconstructLogicalText`) and the search line pass (`buildLogicalLines`) decided a word space with
+`gap > 0.4 × the MEDIAN span width`. That suits per-glyph producers (Chrome: median ≈ 0.5 em), but a word-level one
+(LibreOffice) has a median of ~2.9 em, so the threshold was ~1.1 em and a real 0.25–0.3 em space was swallowed
+(`النص(RTL) هنا`, `فيPDFturboالنسخة2.5اليوم`). The threshold is now `min(0.4 × median width, 0.15 × median height)`:
+the cap fires whenever `median width / median height > 0.375`, so it ALSO lowers a per-glyph page's threshold (Chrome,
+median ≈ 0.4–0.5 em) from ≈ 0.19 em to 0.15 em — it is not a no-op there. What protects those pages is measured, not
+structural: over every Arabic page in the corpus the change flips **11 of 887** adjacent pairs, all real 0.25–0.27 em word
+spaces on the two word-level LibreOffice fixtures, and **0 of 845** on the per-glyph Chrome page. **Measured on
+the real fixtures** (pdf.js `getTextContent`, gap ÷ item height, a throwaway probe over `mixed-bidi.pdf`, `arabic-table.pdf` and `arabic-allcases.pdf`): in-word gaps are ≈ 0
+(Chrome per-glyph rows p90 = 0; LibreOffice p50 = 0.002) and real word spaces are 0.251–0.269 em, so 0.15 sits between
+them with room on both sides. The height is a proxy for the font size: `SpanGeom.height` is the DOM box (≈ 1.2–1.5 em),
+pdf.js's item height is ≈ 1 em, which makes the effective threshold 0.15–0.2 em in copy and 0.15 em in search — both
+below 0.25.
+
+**Synthetic fixtures must not invent a gap no producer emits.** Three older search tests spaced per-glyph items 0.2 em
+apart (a 2pt gap at height 10); that sits in the band the cap moved (0.15–0.19 em), so they began emitting spaces and
+were respaced to ≤ 0.1 em, order assertions unchanged. That is the one place the old per-glyph behaviour differed.
+
+Guards: 3 cases each in `tests/utils/rtlClipboard.test.ts` and `tests/handlers/textSearchHandler.test.ts` (a 3.6pt space
+between word-level items, a three-word line, a kerning-gap control), and two real-Chrome cases in
+`arabic-copy.browser.test.ts` (the exact `النص (RTL) هنا` line, and `مرحبا بكم في PDFturbo النسخة 2.5 اليوم`) plus the
+exact-phrase search hit in `arabic-search.browser.test.ts`. Sabotage (the cap removed): 4 unit cases and both new browser
+copy cases red, each restored byte-exact. **Bounds.** A line set with spaces compressed below 0.15 em would lose them
+(none measured; justification only widens). A per-glyph Chrome page set with CSS `letter-spacing` of 0.15–0.19 em would
+now gain phantom spaces (Arabic is rarely letter-spaced — it breaks joining; none in the corpus — and pdfturbo's own `Tc`
+export does not split items, so the gap never appears inside one [Inferred: pdf.js merges a Tj string into one item]).
+Only the Arabic copy and search paths use this rule; Latin selections fall through. The mixed-direction ORDER is
+untouched — only whether a space is emitted.
