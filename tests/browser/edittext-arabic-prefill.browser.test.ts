@@ -73,4 +73,14 @@ describe('edit-text Arabic prefill keeps the word spaces pdf.js put in no item (
     expect(checked.some(t => spaced(t).split(' ').length >= 2)).toBe(true);
     expect(checked.filter(t => !ref.includes(spaced(t))).map(esc)).toEqual([]);
   });
+
+  // The other direction: Chrome draws one item per glyph, so a wrong in-word gap would now become a PHANTOM space.
+  it('Chrome (one item per glyph): no run gains a space the typed text does not have', async () => {
+    const spaced = (x: string) => x.normalize('NFKC').replace(/\s+/g, ' ').trim();
+    const ref = spaced(stripTags(generator));
+    const all = await runs(chromeUrl);
+    const checked = all.filter(t => !bounded(t));
+    expect(checked.length).toBeGreaterThan(100);
+    expect(checked.filter(t => !ref.includes(spaced(t))).map(esc)).toEqual([]);
+  });
 });
