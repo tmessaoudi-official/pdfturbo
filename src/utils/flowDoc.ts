@@ -533,6 +533,15 @@ export interface Line {
 const LINE_Y_TOL = 0.5;
 // Insert a space when the horizontal gap exceeds this fraction of the font size.
 const SPACE_GAP = 0.15;
+
+/**
+ * Whether a word space belongs between two consecutive words in reading order, given the empty gap between their
+ * boxes: wider than `SPACE_GAP` of the smaller font size, and neither side already carries whitespace. The one rule the
+ * DOCX export and the edit-text prefill share (limits row 51 — the prefill joined with '' and dropped it).
+ */
+export function needsWordSpace(gap: number, prev: { text: string; size: number }, next: { text: string; size: number }): boolean {
+  return gap > SPACE_GAP * Math.min(prev.size, next.size) && !/\s$/.test(prev.text) && !/^\s/.test(next.text);
+}
 // New paragraph when the baseline gap exceeds this multiple of the font size
 // (normal leading is ~1.15–1.35× the size).
 const PARA_GAP = 1.6;
@@ -1140,10 +1149,7 @@ export function buildRunsFromLines(group: Line[], fonts: FontInfoMap): FlowRun[]
         const gap = segOf[wi] !== segOf[wi - 1]
           ? boxGap(segBox[segOf[wi - 1]], segBox[segOf[wi]])
           : boxGap({ x0: prevWord.x, x1: prevWord.x + prevWord.width }, { x0: w.x, x1: w.x + w.width });
-        const needsSpace =
-          gap > SPACE_GAP * Math.min(prevWord.size, w.size) &&
-          !/\s$/.test(prevWord.text) &&
-          !/^\s/.test(w.text);
+        const needsSpace = needsWordSpace(gap, prevWord, w);
         if (needsSpace) text = ' ' + text;
       }
       const parts = w.linkParts ?? [{ text: w.text, linkUrl: w.linkUrl, linkAnchor: w.linkAnchor }];

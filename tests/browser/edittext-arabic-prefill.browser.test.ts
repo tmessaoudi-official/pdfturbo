@@ -63,3 +63,14 @@ describe('edit-text Arabic prefill is in logical order (limits row 40)', () => {
     expect(wrong).toEqual([]);
   });
 });
+
+describe('edit-text Arabic prefill keeps the word spaces pdf.js put in no item (limits row 51)', () => {
+  it('LibreOffice (word-level items): every checked run occurs in the typed text WITH its spaces', async () => {
+    const spaced = (x: string) => x.normalize('NFKC').replace(/\s+/g, ' ').trim();
+    const ref = spaced(stripTags(fodt));
+    const checked = (await runs(libreOfficeUrl)).filter(t => !bounded(t));
+    // Non-vacuity: a run of several words really is among them, so a closed-up join cannot pass by being short.
+    expect(checked.some(t => spaced(t).split(' ').length >= 2)).toBe(true);
+    expect(checked.filter(t => !ref.includes(spaced(t))).map(esc)).toEqual([]);
+  });
+});

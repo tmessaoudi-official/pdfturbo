@@ -343,3 +343,20 @@ now gain phantom spaces (Arabic is rarely letter-spaced — it breaks joining; n
 export does not split items, so the gap never appears inside one [Inferred: pdf.js merges a Tj string into one item]).
 Only the Arabic copy and search paths use this rule; Latin selections fall through. The mixed-direction ORDER is
 untouched — only whether a space is emitted.
+
+### The edit-text prefill puts the word space the DOCX export would — limits row 51 (2026-10-01)
+
+`clusterBaselineRun` (the edit-text overlay's prefill) joined an RTL run's words with `''`, so two word-level items that pdf.js
+gave no space item for came back closed — `النسخة2.5اليوم` for the typed `النسخة 2.5 اليوم` (LibreOffice). The DOCX export
+already decides that space: a gap wider than `SPACE_GAP` (0.15) of the smaller font size, and no whitespace already on
+either side. That rule is now ONE exported function, `needsWordSpace` in `flowDoc.ts`, called by both the export and
+`_rtlRunText` in `textEditHandler.ts`, so the two cannot drift again. Glyph-per-item rows abut (gap ≈ 0) and stay
+closed. Scope is unchanged from row 40: only a run holding an RTL item; a run with none keeps page order and no added space.
+
+Guards: the row 40 unit case that asserted the dropped spaces (`النسخة2.5اليوم`) now asserts the spaced line, plus 3 new cases
+in `tests/handlers/textEditHandler.test.ts` (word-sized gap, no second space after an item that already ends in one, a
+0.04 em kerning gap stays closed — the mock uses the REAL `needsWordSpace`), and a real-Chrome case in
+`edittext-arabic-prefill.browser.test.ts` that compares every LibreOffice run WITH its spaces against the typed text (the
+row 40 case squashes spaces, so it could not see this). Sabotage (the space forced off): 2 unit cases and the real-Chrome case
+red, restored byte-exact. **Bounds.** The Chrome file is still compared space-squashed (its per-glyph rows are checked for
+ORDER); the DOCX export is unchanged by construction and by the 34 related real-Chrome suites.

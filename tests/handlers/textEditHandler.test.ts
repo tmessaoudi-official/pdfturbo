@@ -41,6 +41,8 @@ vi.mock('../../src/utils/flowDoc', async (importOriginal) => ({
   extractPsName: vi.fn((name: string) => name),
   // The REAL line ordering (limits row 40): the RTL cluster cases test it, and a stub would only mirror the belief.
   orderLineWords: (await importOriginal<typeof import('../../src/utils/flowDoc')>()).orderLineWords,
+  // The REAL space rule too (limits row 51): the prefill and the DOCX export share it, so a stub would hide drift.
+  needsWordSpace: (await importOriginal<typeof import('../../src/utils/flowDoc')>()).needsWordSpace,
   // Real Arabic-script test (mirrors the source regex) so the handler's
   // Arabic pre-route is exercised faithfully without importing the heavy module.
   isArabicText: vi.fn((s: string) => /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/.test(s)),
@@ -590,9 +592,28 @@ describe('clusterBaselineRun', () => {
     // Typed "النسخة 2.5 اليوم": the first word is rightmost, the number stays forward.
     const items = [rtl('اليوم', 100, 30), ltr('2.5', 135, 15), rtl('النسخة', 155, 35)];
     const run = clusterBaselineRun(items, items[1]);
-    expect(run.text).toBe('النسخة2.5اليوم');
+    // The 5pt gaps are word spaces pdf.js put in no item (limits row 51): the row used to assert them dropped.
+    expect(run.text).toBe('النسخة 2.5 اليوم');
     expect(run.x).toBe(100);
     expect(run.width).toBe(90);
+  });
+
+  // Limits row 51: the DOCX export inserts a space where the gap between two words exceeds 0.15 of the font size and
+  // neither side already carries one; the prefill joined the same words with nothing, so `النسخة 2.5 اليوم` came back
+  // as `النسخة2.5اليوم` (LibreOffice, word-level items).
+  it('puts a space between two RTL word items that have a word-sized gap (limits row 51)', () => {
+    const items = [rtl('بكم', 100, 25), rtl('مرحبا', 130, 35)]; // a 5pt gap = 0.36 em of the 14pt font
+    expect(clusterBaselineRun(items, items[0]).text).toBe('مرحبا بكم');
+  });
+
+  it('adds no second space where an item already ends in one (limits row 51)', () => {
+    const items = [rtl('بكم', 100, 25), rtl('مرحبا ', 130, 35)];
+    expect(clusterBaselineRun(items, items[0]).text).toBe('مرحبا بكم');
+  });
+
+  it('keeps a kerning-sized gap between RTL items closed (limits row 51)', () => {
+    const items = [rtl('ا', 100, 10), rtl('ب', 110.5, 10), rtl('ح', 121, 10)]; // 0.5pt gaps = 0.04 em
+    expect(clusterBaselineRun(items, items[0]).text).toBe('حبا');
   });
 
   it('leaves a run with no RTL item in page order, untouched (limits row 40)', () => {
