@@ -1050,6 +1050,53 @@ function typicalLineGaps(lines: Line[]): Map<number, number> {
   return out;
 }
 
+/** The widest a uniformly leaded wrap may sit past `PARA_GAP` (limits row 52: Chrome's `line-height: 1.6` is 1.608). */
+const UNIFORM_WRAP_MAX = 1.75;
+/** Two gaps are the same leading when they differ by at most this fraction. */
+const UNIFORM_TOL = 0.01;
+/** A line "fills the measure" — it ran out of room, so the text continues below — at this share of the column width. */
+const FULL_LINE = 0.85;
+
+/** A gap inside one line wider than this many sizes is a COLUMN gap (a table row), not a word space (limits row 52). */
+const COLUMN_GAP = 1.0;
+
+/** Whether a line has a column-sized gap between two of its words — prose wraps do not; table rows do. */
+function hasColumnGap(line: Line): boolean {
+  const w = [...line.words].sort((p, q) => p.x - q.x);
+  for (let i = 1; i < w.length; i++) if (w[i].x - (w[i - 1].x + w[i - 1].width) > COLUMN_GAP * line.size) return true;
+  return false;
+}
+
+/**
+ * Limits row 52: the uniform leading of a size that has NO typical gap. A paragraph set at `line-height: 1.6` has every
+ * wrap gap at 1.608 sizes, just past `PARA_GAP`, so {@link typicalLineGaps} (which counts only gaps up to it) finds
+ * nothing to compare with. Two or more consecutive same-size gaps in (PARA_GAP, UNIFORM_WRAP_MAX] sizes that agree within
+ * `UNIFORM_TOL` are that page's leading. Only a size with no typical gap gets one, and it is honoured only where the line
+ * above fills the measure and neither line holds a column gap ({@link groupLinesIntoParagraphs}) — one gap, or unequal
+ * ones, is not evidence of a wrap, and equal-spaced table rows would otherwise read as one.
+ */
+function uniformLineGaps(lines: Line[], typical: Map<number, number>): Map<number, number> {
+  const gaps = new Map<number, number[]>();
+  for (let k = 1; k < lines.length; k++) {
+    const a = lines[k - 1], b = lines[k];
+    if (Math.abs(a.size - b.size) >= 1) continue;
+    const size = Math.max(a.size, b.size), gap = a.y - b.y;
+    if (gap <= PARA_GAP * size || gap > UNIFORM_WRAP_MAX * size) continue;
+    const key = sizeKey(size);
+    if (typical.has(key)) continue;
+    const list = gaps.get(key);
+    if (list) list.push(gap); else gaps.set(key, [gap]);
+  }
+  const out = new Map<number, number>();
+  for (const [key, list] of gaps) {
+    list.sort((x, y) => x - y);
+    for (let i = 1; i < list.length; i++) {
+      if (list[i] - list[i - 1] <= UNIFORM_TOL * list[i - 1]) { out.set(key, list[i - 1]); break; }
+    }
+  }
+  return out;
+}
+
 /**
  * Stage 2 — group lines into paragraphs on baseline-gap or font-size jumps.
  *
@@ -1062,6 +1109,8 @@ function typicalLineGaps(lines: Line[]): Map<number, number> {
  */
 export function groupLinesIntoParagraphs(lines: Line[]): Line[][] {
   const typical = typicalLineGaps(lines);
+  const uniform = uniformLineGaps(lines, typical);
+  const measure = Math.max(0, ...lines.map(l => l.x1 - l.x0));
   const paraLines: Line[][] = [];
   for (const line of lines) {
     const current = paraLines[paraLines.length - 1];
@@ -1071,8 +1120,12 @@ export function groupLinesIntoParagraphs(lines: Line[]): Line[][] {
     if (prev) {
       const size = Math.max(prev.size, line.size), gap = prev.y - line.y;
       const t = typical.get(sizeKey(size));
+      const u = uniform.get(sizeKey(size));
       closeEnough = gap <= PARA_GAP * size ||
-        (t !== undefined && gap <= WRAP_SLACK * t && !detectListPrefix(line.words.map(w => w.text).join(' ')));
+        (t !== undefined && gap <= WRAP_SLACK * t && !detectListPrefix(line.words.map(w => w.text).join(' '))) ||
+        // Limits row 52: a uniformly leaded wrap, read only off a line that fills the measure.
+        (u !== undefined && gap <= WRAP_SLACK * u && prev.x1 - prev.x0 >= FULL_LINE * measure &&
+          !hasColumnGap(prev) && !hasColumnGap(line) && !detectListPrefix(line.words.map(w => w.text).join(' ')));
     }
     if (prev && sameSizeBand && closeEnough) {
       current.push(line);

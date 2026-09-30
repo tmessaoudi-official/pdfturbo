@@ -57,11 +57,11 @@ const esc = (s: string) => [...s].map(c => { const n = c.codePointAt(0) ?? 0; re
 let paras: { text: string; bidi: boolean }[] = [];
 let markdown = '';
 
-async function exportedParagraphs(bytes: Uint8Array): Promise<{ paras: { text: string; bidi: boolean }[]; markdown: string }> {
+async function exportedParagraphs(bytes: Uint8Array, pageNum = 1): Promise<{ paras: { text: string; bidi: boolean }[]; markdown: string }> {
   const doc = await pdfjsLib.getDocument(withPdfjsAssets({ data: bytes.slice(0) })).promise;
   try {
     const svc = new ExportService({
-      documentModel: { pages: [docPage], sourcePdfs: new Map([['s1', { doc, bytes }]]) },
+      documentModel: { pages: [{ ...docPage, sourcePageNum: pageNum }], sourcePdfs: new Map([['s1', { doc, bytes }]]) },
       elements: [],
       reportError: failLoud,
     } as unknown as IExportContext) as unknown as { _extractFlowDoc(): Promise<FlowDoc> };
@@ -152,3 +152,14 @@ describe('row 19 — a per-glyph producer (Chrome print-to-PDF) reads back in ty
     has('Mixed line the other way: the file نظام.pdf was opened at 14:30 with success.'));
 });
 
+// Limits row 52 — Chrome sets this paragraph at `line-height: 1.6`: every wrap gap is 22.5pt on a 14pt line, 1.608
+// sizes, just past `PARA_GAP`, so each of its three lines used to export as its own paragraph. The oracle is the text
+// typed in `scripts/gen-arabic-fixture.mjs`, never a reading of the PDF.
+describe('row 52 — a uniformly leaded paragraph exports as ONE paragraph', () => {
+  it('Chrome LTR control paragraph (page 2): the three wrapped lines are one paragraph', async () => {
+    const { paras: p2 } = await exportedParagraphs(new Uint8Array(await (await fetch(chromeUrl)).arrayBuffer()), 2);
+    const typed = squash('This English paragraph is the LTR control case. It also exercises French accents: voilà, déjà, château, élève — all within Windows-1252. Numbers: 1,234.56 and dates 2026-06-21.');
+    const mine = p2.filter(p => typed.startsWith(p.text.slice(0, 30)) || p.text.includes('1,234.56') || p.text.includes('accents:'));
+    expect(mine.map(p => esc(p.text))).toEqual([esc(typed)]);
+  });
+});

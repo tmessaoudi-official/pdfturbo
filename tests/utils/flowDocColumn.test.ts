@@ -91,3 +91,55 @@ describe('groupLinesIntoParagraphs', () => {
     expect(sizes(groups)).toEqual([3, 1]);
   });
 });
+
+// Limits row 52: Chrome prints a paragraph with `line-height: 1.6`, so every wrap gap is 22.5pt on a 14pt line — 1.608
+// sizes, JUST past `PARA_GAP` (1.6). Row 41's typical gap counts only gaps up to the threshold, so such a page has none
+// and each wrapped line became its own paragraph (measured on arabic-allcases p2). The evidence that it IS one
+// paragraph: two or more consecutive equal gaps just past the threshold, AND the line above fills the measure (a line
+// that ran out of room continues on the next).
+describe('groupLinesIntoParagraphs — a uniformly leaded paragraph (limits row 52)', () => {
+  const lines = (spec: Array<[number, number]>, size = 14, x0 = 58): Line[] => spec.map(([y, x1]) => L(y, size, x0, x1));
+  const sizes = (g: Line[][]) => g.map(x => x.length);
+  const HEAD = L(700, 18, 58, 507); // a wider line of another size fixes the column measure at 449pt
+
+  it('joins a paragraph whose every wrap gap is 1.608 sizes and whose lines fill the measure', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 494], [599, 507], [576.5, 507], [554, 257]])]);
+    expect(sizes(g)).toEqual([1, 4]); // the heading, then the four-line paragraph
+  });
+
+  it('control: the same gaps between SHORT lines are still separate paragraphs (single-line items)', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 158], [599, 158], [576.5, 158], [554, 158]])]);
+    expect(sizes(g)).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('control: a short last line ends the paragraph — the next full line opens a new one', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 257], [554, 507], [531.5, 507]])]);
+    expect(sizes(g)).toEqual([1, 3, 2]);
+  });
+
+  it('control: a gap well past the threshold (2.3 sizes) is a break even after a full line', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 507], [544.3, 507]])]);
+    expect(sizes(g)).toEqual([1, 3, 1]);
+  });
+
+  it('control: a line that opens a list marker starts its own paragraph', () => {
+    const item: Line = { ...L(576.5, 14, 58, 507), words: [W('•', 58, 576.5, 14, 6), W('item', 70, 576.5, 14, 24)] };
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507]]), item]);
+    expect(sizes(g)).toEqual([1, 2, 1]);
+  });
+
+  it('control: equal-spaced TABLE rows (column gaps inside each line) are not a wrapped paragraph', () => {
+    // measured on sample-tables-lattice.pdf: rows of `Property 345 445 222` span the measure at 1.61 sizes apart
+    const row = (y: number): Line => ({
+      ...L(y, 14, 58, 507),
+      words: [W('Property', 58, y, 14, 48), W('345', 250, y, 14, 18), W('445', 350, y, 14, 18), W('222', 489, y, 14, 18)],
+    });
+    const g = groupLinesIntoParagraphs([HEAD, row(621.5), row(599), row(576.5), row(554)]);
+    expect(sizes(g)).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('control: ONE just-past gap is not uniform leading (row 41: a single in-paragraph gap stays a break)', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[600, 507], [578.25, 507], [555.75, 507]])]);
+    expect(sizes(g)).toEqual([1, 2, 1]);
+  });
+});

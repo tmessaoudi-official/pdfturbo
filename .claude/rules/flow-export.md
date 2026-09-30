@@ -660,3 +660,28 @@ normal top-down docs). Gated purely by struct-tree PRESENCE (no feature flag). G
 `tests/utils/flowDocStructTree.test.ts` (10: map attribution/nesting, heading/body/list/ordered/table/null/
 redaction, assignHeadings tagged-skip) + `tests/browser/docx-structtree.browser.test.ts` (2: real tagged PDF →
 H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without the struct arg).
+
+### A uniformly leaded paragraph stays one paragraph — limits row 52 (2026-10-01)
+
+Chrome prints a paragraph at `line-height: 1.6`, so every wrap gap is 22.5pt on a 14pt line — 1.608 sizes, **just past**
+`PARA_GAP` (1.6) — and each line exported as its own paragraph (`arabic-allcases.pdf` p2, the English control paragraph:
+three lines → three paragraphs). Row 41's `typicalLineGaps` counts only gaps up to the threshold, so a page whose every wrap sits
+just past it has no typical gap to compare with. `groupLinesIntoParagraphs` now has a second, separate source of
+evidence: `uniformLineGaps` — for a size with NO typical gap, two or more same-size gaps in (`PARA_GAP`, 1.75] sizes that
+agree within 1% are that page's leading. It is honoured only where ALL of these hold: the line above fills the measure
+(≥ 85% of the widest line in the column — a line that ran out of room continues below), neither line has a column-sized
+gap inside it (> 1 size: a table row), and the line does not open a list marker. One just-past gap, or unequal ones, is
+not evidence: row 41's "one in-paragraph gap is not enough" case still breaks.
+
+**Measured blast (real `reconstructPage`, one PDF per process, before vs after, 23 files / 5,107 paragraphs):** exactly ONE
+boundary changes — the target. The first version (fullness only) also merged equal-spaced rows of
+`sample-tables-lattice.pdf` on 5 pages (15→8, 16→13, 32→22, 29→16, 20→9 paragraphs); the column-gap test is what removed
+them. The probe has no content-stream rules, so it over-counts table pages — the test is kept anyway.
+
+Guards: 7 unit cases in `tests/utils/flowDocColumn.test.ts` (the 4-line paragraph; controls for short lines, a short last
+line, a 2.3-size gap, a list marker, table rows, one gap) and one real-Chrome case in `docx-mixed-bidi.browser.test.ts`
+(the page-2 paragraph exports as ONE paragraph equal to the typed text). Sabotage, each restored byte-exact: uniform
+evidence off → the defect case + 3 controls; fullness off → 2 controls; column-gap off → the table control; list-marker
+off → its control; the browser case red with the uniform evidence off. **Bounds.** A wrapped paragraph whose lines are
+under 85% of the widest line in the column (a narrow column beside a wide figure caption) still splits; a list of
+single-line, full-width, column-gap-free items at a uniform 1.6–1.75 leading would join (none in the corpus).
