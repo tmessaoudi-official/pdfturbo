@@ -162,3 +162,51 @@ describe('detectColumnSplit — a page number in the gutter (limits row 45)', ()
     expect(groups.some(g => g.some(w => w.y === 51))).toBe(true);
   });
 });
+
+// Limits row 46: Publication 17's three-column body pages leave ~8pt gutters (measured 6pt on the 2pt bins), under the 10pt
+// floor, so they exported one interleaved column. Lowering the floor to 8 would also split GPT-3's prompt-example pages,
+// where a narrow LABEL column sits beside its content (94pt of 612, 6–16 lines, gap 4–8pt) — a smaller number cannot tell
+// the two apart. What does: a narrow gutter splits only between two BODY blocks — at least 20 lines on each side and the
+// narrower side at least a quarter of the region — a label column fails both, a body column passes both with margin
+// (Pub 17: 53–70+ lines, 27% at the page and 40% inside a half; GPT-3: ≤ 16 lines, 15%).
+describe('detectColumnSplit — a narrow gutter between body blocks (limits row 46)', () => {
+  const W = 612;
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => 700 - i * 12);
+  const block = (x: number, w: number, n: number, c: number) => lines(n).map(y => ({ x, width: w, y, c }));
+  const inOrder = (groups: { c: number }[][]) => groups.every((g, i) => g.every(w => w.c === i));
+
+  it('three body columns 9pt apart (Publication 17) split into three, in reading order', () => {
+    const groups = splitColumns([...block(36, 168, 40, 0), ...block(213, 168, 40, 1), ...block(390, 168, 40, 2)], W);
+    expect(groups).toHaveLength(3);
+    expect(inOrder(groups)).toBe(true);
+  });
+
+  it('four narrow columns 9pt apart split into four (the test is relative to the region, not the page)', () => {
+    // Each column is 124pt = 20% of the page, under a quarter; it is the HALVES (40% of the page) the first cut tests, and
+    // 40% of a half the next.
+    const groups = splitColumns([0, 1, 2, 3].flatMap(c => block(36 + c * 133, 124, 40, c)), W);
+    expect(groups).toHaveLength(4);
+    expect(inOrder(groups)).toBe(true);
+  });
+
+  it('control: a short LABEL column beside its content stays one group (GPT-3 prompt examples)', () => {
+    // 94pt = 15% of the page, 12 lines — fails the width and the line count.
+    expect(splitColumns([...block(36, 94, 12, 0), ...block(139, 400, 40, 1)], W)).toHaveLength(1);
+  });
+
+  it('control: a narrow column with MANY lines still stays one group (the width criterion alone refuses it)', () => {
+    expect(splitColumns([...block(36, 94, 40, 0), ...block(139, 400, 40, 1)], W)).toHaveLength(1);
+  });
+
+  it('control: two wide blocks of FEW lines stay one group (the line criterion alone refuses them)', () => {
+    expect(splitColumns([...block(36, 250, 10, 0), ...block(295, 250, 10, 1)], W)).toHaveLength(1);
+  });
+
+  it('control: a 6pt drawn gutter between body columns stays one group (below the narrow-gutter floor)', () => {
+    expect(splitColumns([...block(36, 250, 40, 0), ...block(292, 250, 40, 1)], W)).toHaveLength(1);
+  });
+
+  it('the 10pt rule is unchanged: a 14pt gutter splits even between short blocks', () => {
+    expect(splitColumns([...block(36, 250, 5, 0), ...block(300, 250, 5, 1)], W)).toHaveLength(2);
+  });
+});

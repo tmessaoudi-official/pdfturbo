@@ -594,6 +594,17 @@ export function extractPsName(internalId: string): string {
 const MIN_GUTTER_PT = 10;
 /** The share of the page's text height, from its lowest baseline, taken as the footer band for gutter search (row 45). */
 const FOOTER_BAND = 0.05;
+/**
+ * A gutter measured at 6–10 pt (on the 2 pt bins) splits only between two BODY blocks (limits row 46): Publication 17's
+ * three-column body pages leave ~8 pt gutters (6 pt measured), and lowering the 10 pt floor for everyone also splits a
+ * narrow label column beside its content (GPT-3's prompt examples, gap 4–8 pt) — a smaller number cannot tell them
+ * apart. A body block has at least {@link MIN_BODY_LINES} baselines and a quarter of the region's width on EACH side of the
+ * cut: a label column fails both (≤ 16 lines, 15% of the page), a body column passes both with margin (53–70+ lines; 27% at
+ * the page, 40% inside a half — the width is the region's, so a 4-column page splits at its middle and then again).
+ */
+const NARROW_GUTTER_PT = 6;
+const MIN_BODY_LINES = 20;
+const MIN_BODY_WIDTH = 0.25;
 
 export function detectColumnSplit(
   words: ReadonlyArray<{ x: number; width: number; y?: number }>,
@@ -651,7 +662,14 @@ export function detectColumnSplit(
   // zone's edge that margin can lie nearer the centre than the real gutter — choosing it and refusing afterwards
   // left such a page unsplit (measured, limits row 21: a 14pt two-column page 290pt wide).
   const sides = (mid: number) => words.some(w => w.x + w.width / 2 < mid) && words.some(w => w.x + w.width / 2 >= mid);
-  const wide = gaps.filter(g => g.len * BIN >= Math.min(regionW * 0.05, MIN_GUTTER_PT) && sides(g.mid));
+  const floor = Math.min(regionW * 0.05, MIN_GUTTER_PT);
+  const bodyBlocks = (mid: number) => {
+    const side = (ws: typeof words) => ws.length > 0
+      && new Set(ws.map(w => Math.round(w.y ?? 0))).size >= MIN_BODY_LINES
+      && Math.max(...ws.map(w => w.x + w.width)) - Math.min(...ws.map(w => w.x)) >= MIN_BODY_WIDTH * regionW;
+    return side(words.filter(w => w.x + w.width / 2 < mid)) && side(words.filter(w => w.x + w.width / 2 >= mid));
+  };
+  const wide = gaps.filter(g => sides(g.mid) && (g.len * BIN >= floor || (g.len * BIN >= Math.min(floor, NARROW_GUTTER_PT) && bodyBlocks(g.mid))));
   if (!wide.length) return null;
   const centre = bounds.min + regionW / 2;
   // Ties go to the leftmost, as the first-found rule did.

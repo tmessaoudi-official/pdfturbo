@@ -52,7 +52,8 @@ and `detectColumnSplit` wanted 5% of the region — 30pt on a Letter page — so
   11pt or less never, and 12–13pt depends on where the gap falls on the grid (measured). 10, not 12: 12
   misses BERT p8 and Census p12. Not 8: 8 splits GPT-3's figure pages where a label column sits beside its
   content, which looks exactly like a gutter. Publication 17's 3-column body pages (~8pt gutters) therefore
-  stay one column — a bound, logged as row 46, which needs a discriminator rather than a smaller number.
+  stay one column — a bound, logged as row 46, which needs a discriminator rather than a smaller number
+  [superseded 2026-10-01: row 46 found it — § "A narrow gutter splits between body blocks only — limits row 46"].
 - **A candidate gutter needs words on both sides BEFORE the choice** (row 21 follow-up). The empty strip
   between the text's right edge and the edge of the 20–80% search zone is also a gap; on a page whose text
   stops short of that edge it can lie nearer the centre than the real gutter. Choosing it and refusing
@@ -734,3 +735,61 @@ are justified, so the fixture now fills the measure from the font's own widths (
 sabotage). **Bounds.** A page number is only the commonest intruder: a centred footer WORD, or a figure label placed in the gutter
 away from the bottom edge, still blocks; and the footer band is a fraction of the text's own span, so a page whose body is
 only a few lines at the bottom is unchanged by the two-baseline guard.
+
+### A narrow gutter splits between body blocks only — limits row 46 (2026-10-01)
+
+Publication 17's three-column body pages (and its four-column index pages) leave ~8pt gutters — 6pt measured on the 2pt
+bins — under the 10pt floor, so `detectColumnSplit` left them as ONE column and a reconstruction that reaches it interleaves
+the columns line by line. **The product never showed it on this corpus: Publication 17 is TAGGED (141 of its 142 pages take
+the struct-tree path in the real `_extractFlowDoc`, measured), and so are 28 of Census-income's 67 pages — a tagged page never
+reaches the column splitter.** The defect is real for UNTAGGED multi-column PDFs (about 85% of files), of which the corpus holds
+no three-column example; row 46 is therefore certified on synthetic and real-pdf.js fixtures and on the splitter measured
+over a real file whose tags the probe ignores, not on a real untagged one. Lowering the floor for everyone
+is refused for the reason row 21 gave (8pt splits GPT-3's prompt examples, where a narrow LABEL column sits beside its
+content, gap 4–8pt), so the question was a discriminator, and the measurement is what found it (a throwaway probe over
+every sub-10pt gutter of Pub 17 and GPT-3: lines, words and extent on each side). A body column and a label column differ in
+size, not in gap: Pub 17's sides carry 53–70+ baselines and are 168pt wide (27% of the page; a half of a 4-column page is
+40%); GPT-3's label columns carry 6–16 baselines and are 94pt (15%).
+
+`detectColumnSplit` now accepts a gap measured at 6–10pt (`NARROW_GUTTER_PT`) when BOTH sides are body blocks — at least
+`MIN_BODY_LINES` (20) baselines and at least `MIN_BODY_WIDTH` (a quarter) of the REGION's width, the extent of the words on
+that side of the candidate. Gaps of 10pt or more split exactly as before; gaps under 6pt never do. The test is evaluated
+per candidate BEFORE the choice (row 21's lesson), and against the region, not the page: a 4-column page's first cut halves
+it (each half is 40% of the page), the next cut tests 124pt against a 306pt half (40%), whereas against the page it would be
+20% and the page would stay one column.
+
+**Measured, and what it does and does not say.** The census drives `reconstructPage` WITHOUT a struct tree (one PDF per process,
+before vs after, 15 files / 360 pages): 108 pages change — Publication 17 107, Census p8 1 — and none elsewhere (GPT-3, BERT, ResNet,
+Attention, the budget and every form 0). **In the product that is ZERO pages**: every one of the 108 is tagged and takes the
+struct-tree path (the probe, re-run with the struct arguments exactly as `_extractFlowDoc` passes them). So the census is the
+splitter's effect on a layout, not the export's effect on a file, and it was first written up as the latter.
+
+**Read, not counted** (reconstructed paragraphs of Pub 17 p3, 52, 66, 130 and Census p8 after the change, no rules passed): the
+three-column body prose reads column by column, each paragraph one column's; the lists and numbered worksheet lines stay inside
+their column. Two bounds showed up. **A footer is cut by the same column assignment as the body:** `128`, `64 Chapter 7` and
+`Publication 17 (2025)` land at the end of the column their centre falls in, so a running footer can sit between two columns
+(p66: after the first column's last paragraph) — the same thing a two-column page has done since row 21; it is not new, and the
+running-header hoist is what removes a footer that recurs. **Census p8 is only partly fixed**: it splits 1 → 2 groups at the
+right-hand column, but its first paragraph still interleaves the two left columns (`INTRODUCTION 2022: … The official poverty
+The U.S. Census Bureau pro-`) — their gutter is not wide enough or not clean enough for the new rule; cause not traced. An
+earlier version of this entry called that page a real layout, read before and after; it had only the candidate statistics.
+Pages that keep 2 groups where 3 columns may exist (Pub 17 p11, p13, p26, p60) were not read [Unverified]. A worksheet or
+table page without ruled lines but with 20+ rows and a quarter-width block on each side of a narrow gap would now read
+column by column; Pub 17 p52 (a worksheet) did so and read acceptably, but the probe passes no rules, so a page the real
+export turns into a lattice table first was not exercised.
+
+Guards: 7 cases in `tests/utils/flowDocColumns.test.ts` (three columns 9pt apart split in reading order; four narrow
+columns split — the region-relative width; controls: a short label, a tall but narrow label, wide blocks of few lines, a 6pt
+gutter between body columns, and the 14pt rule unchanged) and `tests/browser/flow-narrow-gutter.browser.test.ts` (real
+pdf.js: three justified columns 9pt apart read A, then B, then C with no mixed paragraph; a justified label column beside
+justified content reads across). Sabotage, predicted first and each restored with `cmp`: body test always true → 4 unit cases
+(the three controls and row 21's 11pt case) + the browser label control; line criterion off → the few-lines control + the 11pt
+case; width criterion off → exactly the tall-narrow-label control; floor 4 → the 6pt control + row 45's mid-body-item control
+(its gap is 4pt measured); width taken against the page → exactly the four-column case; rule off → the three- and
+four-column cases + the browser three-column case. **The first browser label fixture was vacuous**: its label was a bare
+`A-01`, ~20pt wide, leaving an ~80pt gap that splits under any floor — it failed against the unchanged detector too. A label
+fixture must RUN to its column edge, like GPT-3's. **Bounds.** The two thresholds come from two populations (Pub 17 and GPT-3),
+not a wider corpus; a label column of 20+ lines wider than a quarter of the region would split (none measured); a
+body block with fewer than 20 lines (a short last column, a sidebar) beside a narrow gutter stays unsplit; the count is of
+distinct baselines, so a two-column page of few long lines needs the 10pt gutter as before.
+
