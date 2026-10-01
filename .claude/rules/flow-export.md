@@ -846,3 +846,24 @@ off → exactly the number-table case; line rule off → exactly the alignment c
 failed the width rule too, so the control could not see the line rule — widened to 140pt); footer per slab → exactly the
 footer control; rotated kept in coverage → exactly the stamp case.
 
+### A rotated margin stamp is no longer glued into a body line — limits row 55 (2026-10-01)
+
+pdf.js reports text turned 90° at its baseline origin, and line clustering is by baseline, so the arXiv stamp joined whichever
+left-column line shared its baseline ("…24 May 2019be effective for…" on BERT p1; ResNet p1 and GPT-3 p1 the same).
+`reconstructPage` now takes the words `rotated` (row 44's flag: past 45°, so slanted italics are not) out of the column path
+and clusters them among THEMSELVES after the columns: a lone stamp is its own paragraph, and a figure's rotated labels still
+group. **The first version made every rotated word its own paragraph, and the census caught it:** Attention p13–15, whose
+heat-map labels are 66–108 rotated items, went from 5/10/11 paragraphs to 69/112/112. Clustering them together put the counts
+back (5/10/10). **Measured by text hash**, old (row 44) against new, over the four untagged papers: text differs on Attention
+p1, 13, 14, 15; BERT p1, 16; GPT-3 p1; ResNet p1, 5, 8, and nowhere else. Read: every stamp ("arXiv:…") and every rotated
+axis label ("MNLI Dev Accuracy", "error (%)") is a paragraph of its own or grouped with its siblings; Attention p13–15 differ
+only in paragraph ORDER (the rotated labels now follow the columns) — the text of the long label paragraph is identical to the
+old output, run-together words included, which is not a rotated-item defect and was already there. **Bounds:** a rotated item
+sits at the END of the page's paragraphs whatever its position; rotated body text on a page that also has upright text (a
+landscape table turned inside a portrait page) is read after the upright text; the ordering among rotated words is the
+existing line clustering. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (5) — the stamp as its own paragraph beside a body
+line sharing its baseline, nothing lost, a slanted-run control, an unrotated-page control, a page of only rotated text.
+Sabotage, each landing checked, restored byte-exact: rotated words kept in the columns → 3 cases (the glue and both
+exactly-once checks, the words appear twice); rotated words dropped → the same 3; italics counted as rotated → exactly the
+slanted control.
+

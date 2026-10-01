@@ -2222,8 +2222,16 @@ export function reconstructPage(
 
   // B6: recursive column split (≤2 columns is byte-identical to the prior single
   // cut; a genuine 3rd gutter now yields a 3rd column in reading order).
-  const columns = splitColumns(flowWords, pageWidth);
-  const paragraphs: FlowParagraph[] = columns.flatMap(colWords => reconstructColumn(colWords, fonts, pageWidth));
+  // Limits row 55: a rotated item (a margin stamp turned 90°) is clustered into lines by BASELINE like any other, so it joined
+  // whichever body line shared its baseline ("…24 May 2019be effective for…"). Rotated words now cluster only among
+  // themselves, after the columns (a lone stamp is its own paragraph; a figure's rotated labels still group, as they did); a page with no rotated item takes the same two calls as before.
+  const upright = flowWords.filter(w => !w.rotated);
+  const turned = flowWords.filter(w => w.rotated);
+  const columns = splitColumns(upright, pageWidth);
+  const paragraphs: FlowParagraph[] = [
+    ...columns.flatMap(colWords => reconstructColumn(colWords, fonts, pageWidth)),
+    ...(turned.length ? reconstructColumn(turned, fonts, pageWidth) : []),
+  ];
 
   const margins = computeMargins(flowWords, pageWidth, pageHeight);
   const page: FlowPage = { width: pageWidth, height: pageHeight, paragraphs };
