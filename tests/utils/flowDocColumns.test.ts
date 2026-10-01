@@ -390,6 +390,15 @@ describe('splitColumns — a spanning block cuts the page into bands first (limi
     expect(detectColumnSplit(words, 612)).toBeNull();
   });
 
+  it('a LONE footer piece wider than FOOTER_PIECE but shorter than a run (100pt over the gutter) still blocks the gutter search', () => {
+    // Only the FOOTER_PIECE rule rescues this one: the piece is wide (16% of the page), so it is not a folio, but it is alone on
+    // its line, so `bridgesRun` (a run of a quarter of the page) does not claim it. Round 5: the venue-line case is now also
+    // kept by `bridgesRun`, so this is the fixture that keeps FOOTER_PIECE from being dead code.
+    const body = (x: number, c: string) => Array.from({ length: 24 }, (_, i) => ({ x, width: 226, y: 700 - i * 12, c }));
+    const words = [...body(72, 'L'), ...body(316, 'R'), { x: 250, width: 100, y: 100, c: 'FOOT' }];
+    expect(detectColumnSplit(words, 612)).toBeNull();
+  });
+
   it('control: a 14pt gutter page with no spanning block is unchanged (vertical cut first, no bands)', () => {
     const words = [...block(72, 218, 20, 740, 'L'), ...block(307, 219, 20, 740, 'R')];
     expect(ids(splitColumns(words, W))).toEqual(['L', 'R']);
