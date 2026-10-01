@@ -666,22 +666,35 @@ H1 + `<w:tbl>`; untagged → `reconstructPage` byte-identical with vs without th
 Chrome prints a paragraph at `line-height: 1.6`, so every wrap gap is 22.5pt on a 14pt line — 1.608 sizes, **just past**
 `PARA_GAP` (1.6) — and each line exported as its own paragraph (`arabic-allcases.pdf` p2, the English control paragraph:
 three lines → three paragraphs). Row 41's `typicalLineGaps` counts only gaps up to the threshold, so a page whose every wrap sits
-just past it has no typical gap to compare with. `groupLinesIntoParagraphs` now has a second, separate source of
-evidence: `uniformLineGaps` — for a size with NO typical gap, two or more same-size gaps in (`PARA_GAP`, 1.75] sizes that
-agree within 1% are that page's leading. It is honoured only where ALL of these hold: the line above fills the measure
-(≥ 85% of the widest line in the column — a line that ran out of room continues below), neither line has a column-sized
-gap inside it (> 1 size: a table row), and the line does not open a list marker. One just-past gap, or unequal ones, is
-not evidence: row 41's "one in-paragraph gap is not enough" case still breaks.
+just past it has no typical gap to compare with. `groupLinesIntoParagraphs(lines, pageWidth)` now has a second, separate
+source of evidence: `uniformLineGaps` — for a size with NO typical gap, **two CONSECUTIVE** same-size gaps (three lines in a
+row) in (`PARA_GAP`, 1.75] sizes that agree within 1% are that page's leading. It is honoured only where ALL of these hold:
+the page width is known (the rule is OFF without it), the widest line spans ≥ 30% of the page (else "fills the measure"
+means nothing — in a column of equal-width single-line items those lines ARE the widest), the line above fills the measure
+(≥ 85% of the widest line — a line that ran out of room continues below), the gap is within 2% of the leading (not row 41's
+10% `WRAP_SLACK`: a 1.70-size break on a 1.608 page stays a break), neither line has a column-sized gap inside it
+(> 1 size: a table row), and the line does not open a list marker. One just-past gap, unequal ones, or two equal gaps that
+are not adjacent are not evidence: row 41's "one in-paragraph gap is not enough" case still breaks.
 
-**Measured blast (real `reconstructPage`, one PDF per process, before vs after, 23 files / 5,107 paragraphs):** exactly ONE
-boundary changes — the target. The first version (fullness only) also merged equal-spaced rows of
-`sample-tables-lattice.pdf` on 5 pages (15→8, 16→13, 32→22, 29→16, 20→9 paragraphs); the column-gap test is what removed
-them. The probe has no content-stream rules, so it over-counts table pages — the test is kept anyway.
+**Two review rounds changed the rule, both found by reading it, not by the census.** The first version's fullness test was
+relative to the widest line of the input, so equal-width single-line items satisfied it by construction (fixed by the page
+share); and uniformity was established at 1% but accepted at 10%, with the comment saying "consecutive" while the code did not
+require it (fixed: consecutive in the code, 2% on acceptance). The first version also merged equal-spaced table rows of
+`sample-tables-lattice.pdf` on 5 pages (15→8, 16→13, 32→22, 29→16, 20→9 paragraphs); the column-gap test removed them.
 
-Guards: 7 unit cases in `tests/utils/flowDocColumn.test.ts` (the 4-line paragraph; controls for short lines, a short last
-line, a 2.3-size gap, a list marker, table rows, one gap) and one real-Chrome case in `docx-mixed-bidi.browser.test.ts`
-(the page-2 paragraph exports as ONE paragraph equal to the typed text). Sabotage, each restored byte-exact: uniform
-evidence off → the defect case + 3 controls; fullness off → 2 controls; column-gap off → the table control; list-marker
-off → its control; the browser case red with the uniform evidence off. **Bounds.** A wrapped paragraph whose lines are
-under 85% of the widest line in the column (a narrow column beside a wide figure caption) still splits; a list of
-single-line, full-width, column-gap-free items at a uniform 1.6–1.75 leading would join (none in the corpus).
+**What the census does and does not show** (real `reconstructPage`, one PDF per process, before vs after, 23 files / 5,107
+paragraphs: exactly ONE boundary changes, the target). The new branch runs only for a size with NO gap ≤ 1.6 sizes, which the
+LaTeX and IRS files never are — so the census proves the rule stays OFF elsewhere, not that it is safe where it is ON. About one
+file in the corpus (the Chrome `arabic-allcases`) is a document where it can fire at all. The probe has no content-stream rules,
+so it also over-counts table pages.
+
+Guards: 12 unit cases in `tests/utils/flowDocColumn.test.ts` (the 4-line paragraph; controls for short lines with and without a
+wider line, unequal short widths, a short last line, a 2.3-size gap, a 1.70-size break, a list marker, table rows, one gap,
+non-consecutive gaps, and no page width) and one real-Chrome case in `docx-mixed-bidi.browser.test.ts` (the page-2 paragraph
+exports as ONE paragraph equal to the typed text). Sabotage, each restored byte-exact: uniform evidence off → the defect case + 3
+controls; fullness off → 2; column-gap off → 1; list-marker off → 1; page-width floor off → 2; consecutive off → 1; loose
+acceptance → 1; page width ignored → 1; the browser case red with the uniform evidence off. **Bounds.** A wrapped paragraph
+whose lines are under 85% of the widest line in its column (a narrow column beside a wide figure caption) still splits; a list
+of single-line, full-width, column-gap-free items at a uniform 1.6–1.75 leading on a wide page would join (none in the corpus);
+the constants come from one measured target and the false-positive classes above, not a wider corpus; a page-level fixture
+for the class (a Chrome page at `line-height: 1.6` with a short list, an address block and a date column) was not built.

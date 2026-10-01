@@ -101,30 +101,31 @@ describe('groupLinesIntoParagraphs — a uniformly leaded paragraph (limits row 
   const lines = (spec: Array<[number, number]>, size = 14, x0 = 58): Line[] => spec.map(([y, x1]) => L(y, size, x0, x1));
   const sizes = (g: Line[][]) => g.map(x => x.length);
   const HEAD = L(700, 18, 58, 507); // a wider line of another size fixes the column measure at 449pt
+  const PAGE = 595; // the page width `reconstructColumn` knows; the rule needs it to tell a real column from equal-width items
 
   it('joins a paragraph whose every wrap gap is 1.608 sizes and whose lines fill the measure', () => {
-    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 494], [599, 507], [576.5, 507], [554, 257]])]);
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 494], [599, 507], [576.5, 507], [554, 257]])], PAGE);
     expect(sizes(g)).toEqual([1, 4]); // the heading, then the four-line paragraph
   });
 
   it('control: the same gaps between SHORT lines are still separate paragraphs (single-line items)', () => {
-    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 158], [599, 158], [576.5, 158], [554, 158]])]);
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 158], [599, 158], [576.5, 158], [554, 158]])], PAGE);
     expect(sizes(g)).toEqual([1, 1, 1, 1, 1]);
   });
 
   it('control: a short last line ends the paragraph — the next full line opens a new one', () => {
-    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 257], [554, 507], [531.5, 507]])]);
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 257], [554, 507], [531.5, 507]])], PAGE);
     expect(sizes(g)).toEqual([1, 3, 2]);
   });
 
   it('control: a gap well past the threshold (2.3 sizes) is a break even after a full line', () => {
-    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 507], [544.3, 507]])]);
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 507], [544.3, 507]])], PAGE);
     expect(sizes(g)).toEqual([1, 3, 1]);
   });
 
   it('control: a line that opens a list marker starts its own paragraph', () => {
     const item: Line = { ...L(576.5, 14, 58, 507), words: [W('•', 58, 576.5, 14, 6), W('item', 70, 576.5, 14, 24)] };
-    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507]]), item]);
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507]]), item], PAGE);
     expect(sizes(g)).toEqual([1, 2, 1]);
   });
 
@@ -134,12 +135,41 @@ describe('groupLinesIntoParagraphs — a uniformly leaded paragraph (limits row 
       ...L(y, 14, 58, 507),
       words: [W('Property', 58, y, 14, 48), W('345', 250, y, 14, 18), W('445', 350, y, 14, 18), W('222', 489, y, 14, 18)],
     });
-    const g = groupLinesIntoParagraphs([HEAD, row(621.5), row(599), row(576.5), row(554)]);
+    const g = groupLinesIntoParagraphs([HEAD, row(621.5), row(599), row(576.5), row(554)], PAGE);
     expect(sizes(g)).toEqual([1, 1, 1, 1, 1]);
   });
 
   it('control: ONE just-past gap is not uniform leading (row 41: a single in-paragraph gap stays a break)', () => {
-    const g = groupLinesIntoParagraphs([HEAD, ...lines([[600, 507], [578.25, 507], [555.75, 507]])]);
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[600, 507], [578.25, 507], [555.75, 507]])], PAGE);
     expect(sizes(g)).toEqual([1, 2, 1]);
   });
+
+  // Review (advisor, 2026-10-01): the measure was the widest line of the input, so a column of similar-width single-line
+  // items (dates, an address block, a sidebar) WAS the measure and every line was "full" by construction.
+  it('control: equal-width SHORT single-line items with no wider line are not a paragraph', () => {
+    const g = groupLinesIntoParagraphs(lines([[621.5, 158], [599, 158], [576.5, 158], [554, 158]]), PAGE);
+    expect(sizes(g)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('control: short items of slightly different widths (100/95/92/100) are not a paragraph either', () => {
+    const g = groupLinesIntoParagraphs(lines([[621.5, 158], [599, 153], [576.5, 150], [554, 158]]), PAGE);
+    expect(sizes(g)).toEqual([1, 1, 1, 1]);
+  });
+
+  // Uniformity is established at UNIFORM_TOL and must be ACCEPTED at about that tolerance, not at WRAP_SLACK (10%).
+  it('control: on a 1.608-leaded page a break at 1.70 sizes after a full line is still a break', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 507], [552.7, 507]])], PAGE);
+    expect(sizes(g)).toEqual([1, 3, 1]); // the last gap is 23.8 = 1.70 sizes
+  });
+
+  it('control: two equal just-past gaps that are NOT consecutive do not establish a leading', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [559, 507], [536.5, 507]])], PAGE);
+    expect(sizes(g)).toEqual([1, 1, 1, 1, 1]); // gaps 22.5, 40, 22.5 — no two CONSECUTIVE gaps agree, so there is no leading
+  });
+
+  it('the rule is off when the page width is unknown', () => {
+    const g = groupLinesIntoParagraphs([HEAD, ...lines([[621.5, 507], [599, 507], [576.5, 507]])]);
+    expect(sizes(g)).toEqual([1, 1, 1, 1]);
+  });
 });
+
