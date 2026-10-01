@@ -342,8 +342,8 @@ between word-level items, a three-word line, a kerning-gap control), and two rea
 `arabic-copy.browser.test.ts` (the exact `النص (RTL) هنا` line, and `مرحبا بكم في PDFturbo النسخة 2.5 اليوم`) plus the
 exact-phrase search hit in `arabic-search.browser.test.ts`. Sabotage (the cap removed): 4 unit cases and both new browser
 copy cases red, each restored byte-exact. **Bounds.** A line set with spaces compressed below 0.15 em would lose them
-(none measured; justification only widens). A per-glyph Chrome page set with CSS `letter-spacing` up to about 0.24 em
-(the cap is 0.4 × the MEDIAN glyph width, which is ~0.24 em for 0.6 em capitals — measured by a milestone reviewer: a Latin heading
+(none measured; justification only widens). A per-glyph Chrome page set with CSS `letter-spacing` past about 0.15 em
+(the gap threshold is `min(0.4 × the MEDIAN span width, 0.15 × the median height)`, and the second term is the cap since row 54 — measured by a milestone reviewer: a Latin heading
 letter-spaced 0.2 em inside an Arabic copy selection came out `N O T I C E`, was `NOTICE` before) would
 now gain phantom spaces (Arabic is rarely letter-spaced — it breaks joining; none in the corpus — and pdfturbo's own `Tc`
 export does not split items, so the gap never appears inside one [Inferred: pdf.js merges a Tj string into one item]).

@@ -111,8 +111,7 @@ paragraphs, and the DOCX writer draws it with NO borders (`FlowTable.borderless`
 deliberately looser — see the harm asymmetry below. The corpus probe now drives `reconstructPage` itself (it records
 `flowTables`): exactly the 5 genuine pages carry a table, 355 do not. It passes NO rules, so it measures the borderless
 gate on every page and is an upper bound on its firings; which of the 5 take the lattice path in the real export (the
-1099-MISC boxes are drawn) is unmeasured. A tagged page never reaches this branch — the struct-tree path returns
-first. Bounds, in `KNOWN_ISSUES.md` C9: a
+1099-MISC boxes are drawn) is unmeasured. A page whose struct tree RESOLVES text never reaches this branch (the struct-tree path returns first); one whose tree resolves nothing does (see § row 44, "What reaches the splitter"). Bounds, in `KNOWN_ISSUES.md` C9: a
 contents page with no leaders, a roster of short names with no page numbers, and a page of key-value pairs (which now
 exports as a two-column table — the corpus test declines to score that shape) all still fire; a genuine table whose
 label and value share one cell reads as an index and is refused (the safe direction). Guards: 4 pure cases in
@@ -717,7 +716,7 @@ pages the body lines span 134.8–480.6 and no word lies left of x = 132, so the
 and `detectColumnSplit` is right to refuse (the `sides` test: no words on both sides). The filename names its subject, not its
 layout.
 
-**Measured blast (real `reconstructPage`, 23 files / 5,105 → 5,231 paragraphs, 24 pages change in 5 files):** ResNet 8 of 12
+**Measured blast (real `reconstructPage` with NO struct tree — a SPLITTER-ONLY census, not the product; 23 files / 5,105 → 5,231 paragraphs, 24 pages change in 5 files; on the product path only ResNet's change is visible — Census p23, the 1099-MISC form and Publication 17 take the struct path or never reach the splitter, § row 44):** ResNet 8 of 12
 pages (2, 3, 4, 6, 7, 9, 10, 12), census-income 12, pub17 2, 1099-MISC 1, sample-tables-lattice 1. Every changed page read was
 INTERLEAVING two columns before (`for 2025 ted tax payments on time. for Form`) and reads column by column after; character
 totals move by at most 1.4% (joins and spacing), so no text is lost. The 1099-MISC form moves from merged label rows
@@ -739,9 +738,8 @@ only a few lines at the bottom is unchanged by the two-baseline guard.
 
 Publication 17's three-column body pages (and its four-column index pages) leave ~8pt gutters — 6pt measured on the 2pt
 bins — under the 10pt floor, so `detectColumnSplit` left them as ONE column and a reconstruction that reaches it interleaves
-the columns line by line. **The product never showed it on this corpus: Publication 17 is TAGGED (141 of its 142 pages take
-the struct-tree path in the real `_extractFlowDoc`, measured), and so are 28 of Census-income's 67 pages — a tagged page never
-reaches the column splitter.** The defect is real for UNTAGGED multi-column PDFs (about 85% of files), of which the corpus holds
+the columns line by line. **The product showed it on little of this corpus: Publication 17 is TAGGED (141 of its 142 pages take
+the struct-tree path in the real `_extractFlowDoc`, measured), and most Census-income pages are too — a page whose struct tree resolves text never reaches the column splitter, but 38 of Census's 67 resolve nothing and do (corrected 2026-10-01, § row 44).** The defect is real for UNTAGGED multi-column PDFs (about 85% of files), of which the corpus holds
 no three-column example; row 46 is therefore certified on synthetic and real-pdf.js fixtures and on the splitter measured
 over a real file whose tags the probe ignores, not on a real untagged one. Lowering the floor for everyone
 is refused for the reason row 21 gave (8pt splits GPT-3's prompt examples, where a narrow LABEL column sits beside its
@@ -837,8 +835,7 @@ numeric rule from its own sabotage.
 column, each key losing its value (the 15%-of-bounding-box rule passed it) — the rule is now the median line; a footer that
 spans the gutter was split between the columns once row 45 left it out of the search — `FOOTER_PIECE`; the step that keeps a
 trailing slab that did not split had no test (commenting it out lost 2 of 44 words and the 806 related jsdom tests stayed
-green) — now pinned; the page-wide `footerY` that carried the page's footer cut into each slab was dead after `FOOTER_PIECE`
-and is gone.
+green) — now pinned; the page-wide `footerY` was NOT dead, and removing it was itself a regression (round 2): without it each slab judged its own lowest line to be a footer, so a short piece over the gutter on the last line of a band (a citation `[12]`, an italic word — pdf.js splits a line at every font change) dropped out of the gutter search and the sentence was cut in half (`groups=4`, the halves attached to different columns). The PAGE's footer cut is passed down again (`detectColumnSplit`'s `footerCut`, threaded through `splitVertical`); the spanning-line case in the unit file now uses PIECES, because a single 454pt item hides it. **The census above was run before that change, so it was re-run on the final code (2026-10-01 06:2x): 360 pages, 159 reach, 35 differ, and every per-page row identical to the earlier run — the fixtures are the only place the regression showed.**
 
 **Bounds, stated.** (1) Horizontal cuts only at depth 0 and only across the whole page width: a figure in ONE column of a
 two-column page is not cut. (2) A white band at the same height in both flowing columns (a section break spanning the page)
@@ -877,8 +874,8 @@ milestone reviewer; the test that should have seen it split on a string with a t
 **Measured on the product path** (see § row 44): the pages row 55 changes are Attention p1, 13, 14, 15; BERT p1, 16; GPT-3 p1;
 ResNet p1, 5, 8; Census 27, 28, 29, 43–49 (order only — the sideways table now follows the running header). Attention p13's long
 label paragraph is character-identical to the old output, run-together words included, which was already there and is not a
-rotated-item defect. **Bounds:** a rotated item sits AFTER the page's upright paragraphs whatever its position (a sideways table
-on a portrait page, a margin stamp); `assignHeadings` ranks by font size, so a 20pt stamp paragraph outranks the title as Heading
+rotated-item defect. **Bounds:** a rotated paragraph sits AFTER the page's upright paragraphs in the array whatever its position (a sideways table
+on a portrait page, a margin stamp), but carries a real PAGE `y` — the highest baseline on its first line (round 2: it first kept the turned frame's `-x`/`+x`, which the running-footer step read as a position, so an up-reading label on three pages was hoisted as the footer and the real footer stayed in every body; `tests/utils/flowDocRotatedStamp.test.ts` pins it through `applyRepeatedBands`); `assignHeadings` ranks by font size, so a 20pt stamp paragraph outranks the title as Heading
 1 — it did before too, glued to the body line — logged as row 56; the stamp is still in the DOCX, and some readers may prefer it
 dropped. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (9) — the stamp as its own paragraph beside a body line sharing its
 baseline, nothing lost, a slanted-run control, an unrotated-page control, a stamp and an axis label on one baseline, one rotated

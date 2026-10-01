@@ -291,7 +291,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **crop** — per-page crop, its handles and numeric margins — and why crop HIDES while redaction REMOVES (4) → `.claude/rules/crop.md` (loads when you read `src/core/pageService.ts`, `src/core/pageRenderPipeline.ts` …).
 - **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep (12) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
 - **ocr** — OCR engine, CSP and assets (1) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
-- **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle (7) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
+- **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle (9) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
 - **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods (4) → `.claude/rules/conventions.md` (loads at session start).
 
 **Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 6 files (`redaction.md`, `export.md`, `flow-export.md`, `docx-edit.md`, `ui.md`, `toolchain.md`) exceed that cap at birth: single entries run 200–400 lines and a verbatim move cannot cut them — they are the first candidates for a prune with the developer.

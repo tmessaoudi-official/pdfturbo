@@ -5,7 +5,7 @@
  * whichever line it landed beside. A rotated item now leaves the line clustering and is a paragraph of its own.
  */
 import { describe, it, expect } from 'vitest';
-import { reconstructPage, type RawTextItem, type FontInfoMap } from '../../src/utils/flowDoc';
+import { reconstructPage, applyRepeatedBands, type RawTextItem, type FontInfoMap, type FlowDoc } from '../../src/utils/flowDoc';
 
 const FONTS: FontInfoMap = { f1: { name: 'Helvetica', family: 'sans-serif' } };
 const text = (str: string, x: number, y: number): RawTextItem => ({
@@ -93,4 +93,29 @@ describe('rotated items group by their own vertical line (limits row 55 review)'
     expect(firstR).toBeGreaterThan(lastL);
     expect(out.some(t => t.includes('L-') && t.includes('R-'))).toBe(false);
   });
+});
+
+describe('a rotated paragraph carries a PAGE y, so the running footer is still found (milestone round 2, e779ad7)', () => {
+  // Three pages, each: body lines, `Page footer` at y 40, and one rotated label up the right margin. A rotated paragraph kept
+  // the turned frame's y (-x going up, +x going down), which the footer step reads as a page position: the label (y -520) was
+  // "the lowest paragraph in the footer band" and was hoisted in place of the real footer, which stayed in every body.
+  const page = (n: number, dir: 'up' | 'down') => {
+    const label = dir === 'up' ? stamp(`Axis label number ${n}`, 520, 300) : { ...stamp(`Axis label number ${n}`, 520, 600), transform: [0, -20, 20, 0, 520, 600] as number[] };
+    return reconstructPage([...[0, 1, 2, 3].map(i => text(`Body line ${i} of page ${n}`, 72, 700 - i * 14)), text('Page footer', 72, 40), label], FONTS, 612, 792);
+  };
+  for (const dir of ['up', 'down'] as const) {
+    it(`reading ${dir}: the label's y is a real page position and the real footer is hoisted`, () => {
+      const doc: FlowDoc = { pages: [1, 2, 3].map(n => page(n, dir)) };
+      for (const p of doc.pages) {
+        const lab = p.paragraphs.find(q => q.runs.map(r => r.text).join('').includes('Axis label'));
+        expect(lab).toBeDefined();
+        expect(lab?.y).toBeGreaterThan(0);
+        expect(lab?.y).toBeLessThanOrEqual(792);
+      }
+      applyRepeatedBands(doc);
+      expect(doc.footer).toBe('Page footer');
+      // the labels differ by page number only; they are body text and must all survive
+      for (const [i, p] of doc.pages.entries()) expect(p.paragraphs.map(q => q.runs.map(r => r.text).join('')).join(' ')).toContain(`Axis label number ${i + 1}`);
+    });
+  }
 });

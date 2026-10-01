@@ -114,8 +114,8 @@ describe('limits row 21 (D10) — 4+ columns and narrow gutters', () => {
   });
 
   it('an 11pt gutter does not split (the stated bound — a label column beside its content looks the same)', () => {
-    // The 10pt floor applies to the gap measured on 2pt bins, which loses 2–4pt of the drawn gutter: 11pt or less never
-    // splits, 14pt or more always does, 12–13pt depends on where the gap falls on the grid (measured, limits row 21).
+    // The 10pt floor applies to the gap measured on 2pt bins, which loses 2–4pt of the drawn gutter: 11pt or less splits only
+    // between two body blocks of 20+ lines (row 46; this fixture has 2 lines), 14pt or more always does, 12–13pt depends on where the gap falls on the grid (measured, limits row 21).
     expect(splitColumns(page(2, 11), 600)).toHaveLength(1);
   });
 });
@@ -307,6 +307,22 @@ describe('splitColumns — a spanning block cuts the page into bands first (limi
       ...block(150, 300, 2, 760, 'T', 14),
       ...block(72, 218, 12, 650, 'L'), ...block(307, 219, 12, 650, 'R'),
       ...block(72, 454, 1, 650 - 12 * 12, 'SPAN'),
+      ...block(72, 454, 3, 400, 'END'),
+    ];
+    expect(splitColumns(words, W)).toHaveLength(1);
+  });
+
+  it('a spanning line made of PIECES (a short citation piece over the gutter) at the bottom of a band still blocks that band', () => {
+    // pdf.js splits a line at every font change: a 218pt roman run, a 15pt `[12]` piece over the gutter and a 147pt run. The
+    // 15pt piece is narrower than FOOTER_PIECE, and the lowest line of a BAND is not the page's footer — so the band must be
+    // judged against the PAGE's footer cut, or the piece is left out of the gutter search and the sentence is cut in half
+    // (milestone round 2, e779ad7: `groups=4`, the halves attached to different columns).
+    const y = 650 - 12 * 12;
+    const span = [{ x: 72, width: 218, y, size: 10, c: 'SPAN' }, { x: 291, width: 15, y, size: 10, c: 'SPAN' }, { x: 307, width: 147, y, size: 10, c: 'SPAN' }];
+    const words = [
+      ...block(150, 300, 2, 760, 'T', 14),
+      ...block(72, 218, 12, 650, 'L'), ...block(307, 219, 12, 650, 'R'),
+      ...span,
       ...block(72, 454, 3, 400, 'END'),
     ];
     expect(splitColumns(words, W)).toHaveLength(1);

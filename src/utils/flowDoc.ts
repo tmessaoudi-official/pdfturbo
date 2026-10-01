@@ -615,8 +615,9 @@ const MIN_BODY_WIDTH = 0.25;
  *   3. A gap lies in the inner 20–80% zone of the region, has words on both sides, and is at least
  *      {@link MIN_GUTTER_PT} (10 pt, or 5% of the region when that is smaller) — or, down to {@link NARROW_GUTTER_PT}
  *      (6 pt), when BOTH sides are body blocks (row 46). Of several, the one nearest the region's centre is cut (row 21).
- * Words in the page's bottom band narrower than {@link FOOTER_PIECE} of the page (a page number) are left out of the gutter
- * search (row 45); wider ones stay in it.
+ * Words in the bottom band of the word set narrower than {@link FOOTER_PIECE} of the page (a page number) are left out of the
+ * gutter search (row 45); wider ones stay in it. The band is the lowest 5% of `words` unless `footerCut` names it: a caller
+ * that passes a SLAB of the page must pass the PAGE's cut, or the lowest line of every slab counts as a footer.
  */
 export function detectColumnSplit(
   words: ReadonlyArray<{ x: number; width: number; y?: number }>,
@@ -626,6 +627,7 @@ export function detectColumnSplit(
   // inner-20–80% zone and the 5%-min-gap threshold are taken relative to the
   // region width, so recursion on a narrower column scales correctly.
   bounds: { min: number; max: number } = { min: 0, max: pageWidth },
+  footerCut: number = pageFooterCut(words),
 ): number | null {
   if (words.length < 4) return null;
 
@@ -641,7 +643,6 @@ export function detectColumnSplit(
   // page's BOTTOM edge band; those words still go to a column by their centre (`sides`, `splitColumns`). The TOP band is
   // not excluded: a title block lives there and is row 44's problem, and dropping it would put a centred title in the
   // wrong column. Skipped when it would leave fewer than two baselines, or when no word is in the body.
-  const footerCut = pageFooterCut(words);
   // A footer WORD that is wide is not a page number: a venue line 150pt a piece spans the gutter and must keep blocking the
   // cut (row 44 review) — left out of the search, the cut succeeded and the sentence was split between the columns. Only a
   // piece narrower than FOOTER_PIECE of the page (a folio, a 3-digit number) is left out.
@@ -701,7 +702,7 @@ function pageFooterCut(words: ReadonlyArray<{ y?: number }>): number {
 
 /** Depth cap for recursive column splitting: three levels of central cuts → up to 8 column groups (limits row 21 —
  * it was 2, which with first-found gutters topped out at 3 in practice). Each level still needs a clean gutter of
- * 5% of its region with words on both sides, so a depth that finds none adds nothing. */
+ * 5% of its region (or 6–10pt between two body blocks, row 46) with words on both sides, so a depth that finds none adds nothing. */
 const COLUMN_MAX_DEPTH = 3;
 
 type SplitWord = { x: number; width: number; y?: number; size?: number; text?: string };
@@ -711,27 +712,18 @@ function splitVertical<T extends SplitWord>(
   pageWidth: number,
   bounds: { min: number; max: number },
   depth: number,
+  footerCut?: number,
 ): T[][] {
-  const split = depth < COLUMN_MAX_DEPTH ? detectColumnSplit(words, pageWidth, bounds) : null;
+  const split = depth < COLUMN_MAX_DEPTH ? detectColumnSplit(words, pageWidth, bounds, footerCut) : null;
   if (split === null) return [words];
   const leftWords = words.filter(w => w.x + w.width / 2 < split);
   const rightWords = words.filter(w => w.x + w.width / 2 >= split);
   return [
-    ...splitVertical(leftWords, pageWidth, { min: bounds.min, max: split }, depth + 1),
-    ...splitVertical(rightWords, pageWidth, { min: split, max: bounds.max }, depth + 1),
+    ...splitVertical(leftWords, pageWidth, { min: bounds.min, max: split }, depth + 1, footerCut),
+    ...splitVertical(rightWords, pageWidth, { min: split, max: bounds.max }, depth + 1, footerCut),
   ];
 }
 
-/**
- * Limits row 44 — the horizontal half of an XY-cut. A title, abstract, figure or table spanning both columns blocks the
- * vertical cut for the whole page, so the page was read as ONE column and interleaved (BERT p1, 3, 5, 6; ResNet p1, 5, 8,
- * 11 — untagged, so the product goes through here). A full-width white BAND — no word's extent `[y − 0.25 em, y + em]` in
- * it, at least {@link BAND_MIN_EM} em tall — cuts the page into slabs, each tried for a vertical split. Interleaved column baselines never make a band; a paragraph gap is one, and is harmless because the slabs are
- * used only when one of them is a real column band: every group of it has at least {@link SLAB_MIN_LINES} baselines and a
- * median line of {@link SLAB_MIN_WIDTH} of the page (a two-line alignment, an equation or a key column is not), and the slab
- * is not mostly numbers (a number table is read row by row). When none is, `null` — the caller returns what it always did.
- * Neighbouring slabs that did not split are merged back into one group, so a title and its authors stay together.
- */
 const BAND_MIN_EM = 1.5;
 const SLAB_MIN_LINES = 6;
 /** …and the MEDIAN LINE of each of its groups spans at least this share of the page: a number table's columns (GPT-3 Table
@@ -742,6 +734,16 @@ const SLAB_MIN_WIDTH = 0.18;
  * under 15%), and its blocks are read ROW by row as they always were. Words without text count as non-numeric. */
 const SLAB_MAX_NUMERIC = 0.5;
 const NUMERIC_TOKEN = /^[(+\-−]?\d[\d.,%/)]*$/;
+/**
+ * Limits row 44 — the horizontal half of an XY-cut. A title, abstract, figure or table spanning both columns blocks the
+ * vertical cut for the whole page, so the page was read as ONE column and interleaved (BERT p1, 3, 5, 6; ResNet p1, 5, 8,
+ * 11 — untagged, so the product goes through here). A full-width white BAND — no word's extent `[y − 0.25 em, y + em]` in
+ * it, at least {@link BAND_MIN_EM} em tall — cuts the page into slabs, each tried for a vertical split. Interleaved column baselines never make a band; a paragraph gap is one, and is harmless because the slabs are
+ * used only when one of them is a real column band: every group of it has at least {@link SLAB_MIN_LINES} baselines and a
+ * median line of {@link SLAB_MIN_WIDTH} of the page (a two-line alignment, an equation or a key column is not), and the slab
+ * is not mostly numbers (a number table is read row by row). When none is, `null` — the caller returns what it always did.
+ * Neighbouring slabs that did not split are merged back into one group, so a title and its authors stay together.
+ */
 function splitBySlabs<T extends SplitWord>(words: T[], pageWidth: number, bounds: { min: number; max: number }): T[][] | null {
   if (words.length < 8) return null;
   const size = (w: T) => w.size && w.size > 0 ? w.size : 10;
@@ -770,8 +772,11 @@ function splitBySlabs<T extends SplitWord>(words: T[], pageWidth: number, bounds
     const toks = ws.flatMap(w => (w.text ?? '').split(/\s+/).filter(Boolean));
     return toks.length > 0 && toks.filter(t => NUMERIC_TOKEN.test(t)).length / toks.length >= SLAB_MAX_NUMERIC;
   };
+  // The footer band is the PAGE's, not each slab's: judged per slab, the last line of every band is a "footer" and its short
+  // pieces (a citation, an italic word over the gutter) drop out of the gutter search, cutting the sentence in half.
+  const pageCut = pageFooterCut(words);
   const parts = slabs.filter(s => s.length).map(s => {
-    const g = numeric(s) ? [s] : splitVertical(s, pageWidth, bounds, 0);
+    const g = numeric(s) ? [s] : splitVertical(s, pageWidth, bounds, 0, pageCut);
     return g.length > 1 && g.every(c => lines(c) >= SLAB_MIN_LINES && lineSpan(c) >= SLAB_MIN_WIDTH * pageWidth)
       ? { groups: g, split: true } : { groups: [s], split: false };
   });
@@ -792,7 +797,7 @@ function splitBySlabs<T extends SplitWord>(words: T[], pageWidth: number, bounds
  * clean gutter (or the depth cap) becomes one column group. A 1- or 2-column
  * page returns exactly what the prior single-cut path did (the depth-0 cut is
  * byte-identical with the default bounds), so output is unchanged unless a
- * genuine additional gutter exists. Pure → jsdom-testable.
+ * genuine additional gutter exists or a full-width band cuts the page into slabs (row 44). Pure → jsdom-testable.
  * Row 44: a page the vertical cut leaves whole is tried band by band ({@link splitBySlabs}).
  */
 export function splitColumns<T extends SplitWord>(
@@ -2244,7 +2249,16 @@ export function reconstructPage(
     const ws = flowWords.filter(w => w.rotated && (w.rotDir ?? 1) === dir);
     // up: the next line lies to the RIGHT, so a larger x is later; down: to the LEFT. Reading position runs with y (up) or
     // against it (down).
-    return ws.length ? reconstructColumn(ws.map(w => ({ ...w, x: dir === 1 ? w.y : -w.y, y: dir === 1 ? -w.x : w.x })), fonts, pageWidth) : [];
+    if (!ws.length) return [];
+    const paras = reconstructColumn(ws.map(w => ({ ...w, x: dir === 1 ? w.y : -w.y, y: dir === 1 ? -w.x : w.x })), fonts, pageWidth);
+    // A paragraph's `y` is read as a PAGE y by the running-header/footer step, the table interleave and the overlay merge; here it
+    // is the turned frame's (-x going up, +x going down — never a position on the page; up-reading text read as the footer
+    // band's lowest paragraph and took a page's real footer with it). Restore it: the highest baseline of the words on the
+    // paragraph's first line (every cluster's `y` is one of those words' turned y, so the match is exact).
+    return paras.map(par => {
+      const ys = ws.filter(w => (dir === 1 ? -w.x : w.x) === par.y).map(w => w.y);
+      return ys.length ? { ...par, y: Math.max(...ys) } : par;
+    });
   };
   const columns = splitColumns(upright, pageWidth);
   const paragraphs: FlowParagraph[] = [
