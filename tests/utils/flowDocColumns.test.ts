@@ -261,37 +261,48 @@ describe('splitColumns — a spanning block cuts the page into bands first (limi
     expect(splitColumns(words, W)).toHaveLength(1);
   });
 
-  it('control: a table of four wide NUMBER blocks is not read block by block (GPT-3 Table H.1, measured: every block 20-28% of the page)', () => {
-    // A names block, then three blocks of 8 tight numeric columns (gaps under the 10pt floor inside a block, 14pt between
-    // blocks), 12 rows. Each block has a clean gutter, 12 lines and well over 15% of the page: geometry alone cannot refuse it.
+  it('control: a table of a names block and three NUMBER blocks is not read block by block (GPT-3 Table H.1 shape)', () => {
+    // A names block 140pt (23% of the page) wide, a 20pt gutter, then three blocks of 6 numeric columns, each 111pt (19%) wide with
+    // 3pt between its columns and 16pt between blocks. Both groups have 12 lines and a median line over 18% of
+    // the page — the line, width and gutter rules all pass it, so only the NUMERIC rule can refuse the slab.
     const row = (y: number) => [
-      { x: 40, width: 100, y, size: 10, text: 'HellaSwag acc dev', c: 'names' },
-      ...[0, 1, 2].flatMap(b => Array.from({ length: 8 }, (_, k) => ({ x: 154 + b * 150 + k * 18, width: 16, y, size: 10, text: `${(k * 7.3 + b).toFixed(1)}`, c: `blk${b}` }))),
+      { x: 40, width: 140, y, size: 10, text: 'HellaSwag acc dev SOTA', c: 'names' },
+      ...[0, 1, 2].flatMap(b => Array.from({ length: 6 }, (_, k) => ({ x: 200 + b * 127 + k * 19, width: 16, y, size: 10, text: `${(k * 7.3 + b).toFixed(1)}`, c: `blk${b}` }))),
     ];
     const words = [...block(150, 300, 1, 780, 'T', 14), ...Array.from({ length: 12 }, (_, r) => row(740 - r * 12)).flat()];
     expect(splitColumns(words, W)).toHaveLength(1);
   });
 
-  it('a rotated margin stamp whose projected width crosses the gutter does not block the split (the arXiv stamp, BERT/ResNet p1)', () => {
-    // pdf.js reports a 90-degree item with its advance as `width`, drawn along x from the margin: x 32-385 here, over the
-    // gutter at 290-307, though the ink is a 20pt-wide strip at x=32.
-    const stamp = { x: 32, width: 353, y: 400, size: 20, c: 'STAMP', rotated: true };
-    const words = [...block(150, 300, 3, 760, 'T', 14), ...block(72, 218, 30, 650, 'L'), ...block(307, 219, 30, 650, 'R'), stamp];
-    const groups = splitColumns(words, W);
-    expect(ids(groups).filter(g => g !== 'STAMP')).toEqual(expect.arrayContaining(['T']));
-    expect(groups.length).toBeGreaterThanOrEqual(3);
-    expect(groups.flat()).toHaveLength(words.length);
-  });
-
-  it('control: the same stamp NOT marked rotated is a real spanning item and still blocks', () => {
-    const stamp = { x: 32, width: 353, y: 400, size: 20, c: 'STAMP' };
-    const words = [...block(72, 218, 30, 650, 'L'), ...block(307, 219, 30, 650, 'R'), stamp];
+  it('control: an 8-row key/value TEXT table inside a one-column page is not read column by column', () => {
+    // Keys (100pt, 17% of the page) beside values (160pt), white bands above and below, no rules and no numbers — so neither
+    // the numeric rule nor the 6-line rule refuses it. Only what a text COLUMN is that a key column is not can: its lines run
+    // long (a median line span of at least 18% of the page; a key is ~13%).
+    const kv = (r: number) => [
+      { x: 72, width: 70 + (r % 3) * 12, y: 600 - r * 12, size: 10, text: 'Customer name', c: 'k' },
+      { x: 200, width: 150 + (r % 2) * 10, y: 600 - r * 12, size: 10, text: 'Acme Corporation Europe', c: 'v' },
+    ];
+    const words = [...block(72, 454, 8, 740, 'P1'), ...Array.from({ length: 8 }, (_, r) => kv(r)).flat(), ...block(72, 454, 8, 460, 'P2')];
     expect(splitColumns(words, W)).toHaveLength(1);
   });
 
-  it('control: a spanning line at the bottom of a column band still blocks that band (the footer cut is the PAGE\'s, not the band\'s)', () => {
-    // title, band, two columns whose last line spans the page at normal leading, band, a closing paragraph. Judged against
-    // its own bottom edge the band would drop that spanning line from the gutter search and cut through it.
+  it('a venue footer that SPANS the gutter keeps the page whole in its own slab: left, right, then the footer intact', () => {
+    // Row 45 leaves the bottom band out of the gutter search so a 5pt page number cannot block the cut. A footer sentence
+    // 150pt a piece is not a page number: left in the search it blocks the cut, the band path runs, and it stays one group.
+    const footer = [72, 232, 392].map(x => ({ x, width: 150, y: 190, size: 10, c: 'FOOT' }));
+    const words = [...block(72, 218, 40, 700, 'L'), ...block(307, 219, 40, 700, 'R'), ...footer];
+    expect(ids(splitColumns(words, W))).toEqual(['L', 'R', 'FOOT']);
+  });
+
+  it('every word survives when the LAST slab does not split (a closing full-width line after two column bands)', () => {
+    const words = [...block(150, 300, 2, 760, 'T', 14), ...block(72, 218, 14, 650, 'L'), ...block(307, 219, 14, 650, 'R'), ...block(72, 454, 2, 440, 'END')];
+    const groups = splitColumns(words, W);
+    expect(groups.flat()).toHaveLength(words.length);
+    expect(ids(groups)).toEqual(['T', 'L', 'R', 'END']);
+  });
+
+  it('control: a spanning line at the bottom of a column band still blocks that band', () => {
+    // title, band, two columns whose last line spans the page at normal leading, band, a closing paragraph: the spanning
+    // line is wide, so the footer-band exemption (a page number's) does not apply and it keeps blocking the cut.
     const words = [
       ...block(150, 300, 2, 760, 'T', 14),
       ...block(72, 218, 12, 650, 'L'), ...block(307, 219, 12, 650, 'R'),

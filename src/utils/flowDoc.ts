@@ -519,11 +519,13 @@ export interface Word {
   underline?: boolean;
   strikethrough?: boolean;
   /**
-   * Limits row 44: the item is drawn off the horizontal (a margin stamp turned 90°). pdf.js gives its advance as `width`,
-   * and every geometry here projects that along x, so a 20pt-wide strip at the page edge reads as a 350pt bar across the
-   * gutter. Skipped when the gutter is looked for; the word still joins a column by its centre as before.
+   * Limits rows 44/55: the item is drawn off the horizontal (a margin stamp, an axis label turned 90°). pdf.js gives its
+   * advance as `width`, and every geometry here projects that along x, so a 20pt-wide strip at the page edge reads as a 350pt
+   * bar across the gutter. `reconstructPage` takes such words out of the column path and reads them as vertical lines.
    */
   rotated?: boolean;
+  /** With `rotated`: 1 when the text reads UP the page (transform[1] > 0), −1 when it reads down. */
+  rotDir?: 1 | -1;
 }
 
 export interface Line {
@@ -578,28 +580,18 @@ export function extractPsName(internalId: string): string {
 }
 
 /**
- * Detect a vertical whitespace gap that divides words into two side-by-side columns.
- * Returns the x-midpoint of the best gap found, or null if no column split is detected.
- *
- * Words are expressed as `{ x, width, y? }` so the function is pure and testable.
- * Three conditions must all hold:
- *   1. At least 4 words in the input.
- *   2. At least 2 distinct baselines — gaps between words on a single line are NOT column gaps.
- *   3. A gap lies in the inner 20–80% zone, is ≥ 5% of the region's width or {@link MIN_GUTTER_PT}, whichever is
- *      smaller, and has words on both sides; of several,
- *      the one nearest the region's centre is cut (limits row 21).
- */
-/**
  * A gutter this wide splits columns even when it is under 5% of the region (limits row 21). Real two-column papers
  * leave 12–17 pt (BERT, A4) — 2–3% of the page — so the 5% rule alone never split one, and their Word/Markdown/text
  * export interleaved the two columns line by line. 10 pt was measured on 408 pages: every page it newly splits is a
  * genuine multi-column layout; at 8 pt figures with a label column beside their content (GPT-3's prompt examples)
- * start to split, while Publication 17's ~8 pt gutters stay unsplit (a stated bound). The floor applies to the gap
- * measured on 2 pt bins, which loses 2–4 pt: a DRAWN gutter of 14 pt or more always splits, 11 pt or less never.
+ * start to split. The floor applies to the gap measured on 2 pt bins, which loses 2–4 pt: a DRAWN gutter of 14 pt or more
+ * always splits, and 11 pt or less splits only between two body blocks (row 46 — Publication 17's ~8 pt gutters).
  */
 const MIN_GUTTER_PT = 10;
 /** The share of the page's text height, from its lowest baseline, taken as the footer band for gutter search (row 45). */
 const FOOTER_BAND = 0.05;
+/** A bottom-band word at least this share of the page wide is not a page number and stays in the gutter search (row 44 review). */
+const FOOTER_PIECE = 0.04;
 /**
  * A gutter measured at 6–10 pt (on the 2 pt bins) splits only between two BODY blocks (limits row 46): Publication 17's
  * three-column body pages leave ~8 pt gutters (6 pt measured), and lowering the 10 pt floor for everyone also splits a
@@ -612,17 +604,28 @@ const NARROW_GUTTER_PT = 6;
 const MIN_BODY_LINES = 20;
 const MIN_BODY_WIDTH = 0.25;
 
+/**
+ * Detect a vertical whitespace gap that divides words into two side-by-side columns.
+ * Returns the x-midpoint of the best gap found, or null if no column split is detected.
+ *
+ * Words are expressed as `{ x, width, y? }` so the function is pure and testable.
+ * Conditions that must all hold:
+ *   1. At least 4 words in the input.
+ *   2. At least 2 distinct baselines — gaps between words on a single line are NOT column gaps.
+ *   3. A gap lies in the inner 20–80% zone of the region, has words on both sides, and is at least
+ *      {@link MIN_GUTTER_PT} (10 pt, or 5% of the region when that is smaller) — or, down to {@link NARROW_GUTTER_PT}
+ *      (6 pt), when BOTH sides are body blocks (row 46). Of several, the one nearest the region's centre is cut (row 21).
+ * Words in the page's bottom band narrower than {@link FOOTER_PIECE} of the page (a page number) are left out of the gutter
+ * search (row 45); wider ones stay in it.
+ */
 export function detectColumnSplit(
-  words: ReadonlyArray<{ x: number; width: number; y?: number; rotated?: boolean }>,
+  words: ReadonlyArray<{ x: number; width: number; y?: number }>,
   pageWidth: number,
   // B6: restrict the gutter search to a sub-column region [min,max]. Default
   // {0,pageWidth} → byte-identical to the original full-page single cut. The
   // inner-20–80% zone and the 5%-min-gap threshold are taken relative to the
   // region width, so recursion on a narrower column scales correctly.
   bounds: { min: number; max: number } = { min: 0, max: pageWidth },
-  // Limits row 44: the footer cut of the WHOLE page, when the words are one band of it. Left out, it is derived from
-  // `words` as before; a band judged by its own bottom edge would drop its last line from the gutter search.
-  footerY?: number,
 ): number | null {
   if (words.length < 4) return null;
 
@@ -638,9 +641,14 @@ export function detectColumnSplit(
   // page's BOTTOM edge band; those words still go to a column by their centre (`sides`, `splitColumns`). The TOP band is
   // not excluded: a title block lives there and is row 44's problem, and dropping it would put a centred title in the
   // wrong column. Skipped when it would leave fewer than two baselines, or when no word is in the body.
-  const footerCut = footerY ?? pageFooterCut(words);
-  const body = words.filter(w => (w.y ?? 0) > footerCut);
-  const gutterWords = (new Set(body.map(w => Math.round(w.y ?? 0))).size >= 2 ? body : words).filter(w => !w.rotated);
+  const footerCut = pageFooterCut(words);
+  // A footer WORD that is wide is not a page number: a venue line 150pt a piece spans the gutter and must keep blocking the
+  // cut (row 44 review) — left out of the search, the cut succeeded and the sentence was split between the columns. Only a
+  // piece narrower than FOOTER_PIECE of the page (a folio, a 3-digit number) is left out.
+  const above = words.filter(w => (w.y ?? 0) > footerCut);
+  const gutterWords = new Set(above.map(w => Math.round(w.y ?? 0))).size >= 2
+    ? words.filter(w => (w.y ?? 0) > footerCut || w.width >= FOOTER_PIECE * pageWidth)
+    : words;
   for (const w of gutterWords) {
     const s = Math.max(0, Math.floor(w.x / BIN));
     const e = Math.min(bins - 1, Math.ceil((w.x + w.width) / BIN));
@@ -696,22 +704,21 @@ function pageFooterCut(words: ReadonlyArray<{ y?: number }>): number {
  * 5% of its region with words on both sides, so a depth that finds none adds nothing. */
 const COLUMN_MAX_DEPTH = 3;
 
-type SplitWord = { x: number; width: number; y?: number; size?: number; text?: string; rotated?: boolean };
+type SplitWord = { x: number; width: number; y?: number; size?: number; text?: string };
 
 function splitVertical<T extends SplitWord>(
   words: T[],
   pageWidth: number,
   bounds: { min: number; max: number },
   depth: number,
-  footerY?: number,
 ): T[][] {
-  const split = depth < COLUMN_MAX_DEPTH ? detectColumnSplit(words, pageWidth, bounds, footerY) : null;
+  const split = depth < COLUMN_MAX_DEPTH ? detectColumnSplit(words, pageWidth, bounds) : null;
   if (split === null) return [words];
   const leftWords = words.filter(w => w.x + w.width / 2 < split);
   const rightWords = words.filter(w => w.x + w.width / 2 >= split);
   return [
-    ...splitVertical(leftWords, pageWidth, { min: bounds.min, max: split }, depth + 1, footerY),
-    ...splitVertical(rightWords, pageWidth, { min: split, max: bounds.max }, depth + 1, footerY),
+    ...splitVertical(leftWords, pageWidth, { min: bounds.min, max: split }, depth + 1),
+    ...splitVertical(rightWords, pageWidth, { min: split, max: bounds.max }, depth + 1),
   ];
 }
 
@@ -719,17 +726,18 @@ function splitVertical<T extends SplitWord>(
  * Limits row 44 — the horizontal half of an XY-cut. A title, abstract, figure or table spanning both columns blocks the
  * vertical cut for the whole page, so the page was read as ONE column and interleaved (BERT p1, 3, 5, 6; ResNet p1, 5, 8,
  * 11 — untagged, so the product goes through here). A full-width white BAND — no word's extent `[y − 0.25 em, y + em]` in
- * it, at least {@link BAND_MIN_EM} em tall — cuts the page into slabs, each tried for a vertical split on the page's own
- * footer cut. Interleaved column baselines never make a band; a paragraph gap is one, and is harmless because the slabs are
- * used only when one of them is a real column band: every group of it has at least {@link SLAB_MIN_LINES} baselines and
- * spans {@link SLAB_MIN_WIDTH} of the page (a two-line alignment or an equation is not), and the slab is not mostly numbers (a table is read row by row). When none is, `null` — the caller returns what it always did.
+ * it, at least {@link BAND_MIN_EM} em tall — cuts the page into slabs, each tried for a vertical split. Interleaved column baselines never make a band; a paragraph gap is one, and is harmless because the slabs are
+ * used only when one of them is a real column band: every group of it has at least {@link SLAB_MIN_LINES} baselines and a
+ * median line of {@link SLAB_MIN_WIDTH} of the page (a two-line alignment, an equation or a key column is not), and the slab
+ * is not mostly numbers (a number table is read row by row). When none is, `null` — the caller returns what it always did.
  * Neighbouring slabs that did not split are merged back into one group, so a title and its authors stay together.
  */
 const BAND_MIN_EM = 1.5;
 const SLAB_MIN_LINES = 6;
-/** …and each of its groups spans at least this share of the page: a number table's columns (GPT-3 Table H.1: ~7%) are not
- * text columns (a 4-column page: 20%, a 3-column one: 27%, a two-column one: 40%). */
-const SLAB_MIN_WIDTH = 0.15;
+/** …and the MEDIAN LINE of each of its groups spans at least this share of the page: a number table's columns (GPT-3 Table
+ * H.1: ~7%) and a key/value table's key column (~13%) are not text columns, whose lines run to the column edge (a 4-column
+ * page: 21%, a 3-column one: 28%, a two-column one: 37%). The bounding box of the group is no measure — one long cell sets it. */
+const SLAB_MIN_WIDTH = 0.18;
 /** A slab whose words are at least this share numbers is a table, not prose (GPT-3 Table H.1 is ~85%; the papers' body text
  * under 15%), and its blocks are read ROW by row as they always were. Words without text count as non-numeric. */
 const SLAB_MAX_NUMERIC = 0.5;
@@ -751,16 +759,20 @@ function splitBySlabs<T extends SplitWord>(words: T[], pageWidth: number, bounds
   const slabOf = (w: T) => cuts.filter(c => c > (w.y ?? 0)).length;
   const slabs: T[][] = Array.from({ length: cuts.length + 1 }, () => []);
   for (const w of words) slabs[slabOf(w)].push(w);
-  const footerY = pageFooterCut(words);
   const lines = (ws: T[]) => new Set(ws.map(w => Math.round(w.y ?? 0))).size;
-  const spread = (ws: T[]) => Math.max(...ws.map(w => w.x + w.width)) - Math.min(...ws.map(w => w.x));
+  const lineSpan = (ws: T[]) => {
+    const byLine = new Map<number, { lo: number; hi: number }>();
+    for (const w of ws) { const k = Math.round(w.y ?? 0); const e = byLine.get(k) ?? { lo: Infinity, hi: -Infinity }; e.lo = Math.min(e.lo, w.x); e.hi = Math.max(e.hi, w.x + w.width); byLine.set(k, e); }
+    const spans = [...byLine.values()].map(e => e.hi - e.lo).sort((a, b) => a - b);
+    return spans[Math.floor(spans.length / 2)] ?? 0;
+  };
   const numeric = (ws: T[]) => {
     const toks = ws.flatMap(w => (w.text ?? '').split(/\s+/).filter(Boolean));
     return toks.length > 0 && toks.filter(t => NUMERIC_TOKEN.test(t)).length / toks.length >= SLAB_MAX_NUMERIC;
   };
   const parts = slabs.filter(s => s.length).map(s => {
-    const g = numeric(s) ? [s] : splitVertical(s, pageWidth, bounds, 0, footerY);
-    return g.length > 1 && g.every(c => lines(c) >= SLAB_MIN_LINES && spread(c) >= SLAB_MIN_WIDTH * pageWidth)
+    const g = numeric(s) ? [s] : splitVertical(s, pageWidth, bounds, 0);
+    return g.length > 1 && g.every(c => lines(c) >= SLAB_MIN_LINES && lineSpan(c) >= SLAB_MIN_WIDTH * pageWidth)
       ? { groups: g, split: true } : { groups: [s], split: false };
   });
   if (!parts.some(p => p.split)) return null;
@@ -2170,7 +2182,7 @@ export function reconstructPage(
     const uniform = tagged.every(t => t.linkUrl === tagged[0].linkUrl && t.linkAnchor === tagged[0].linkAnchor);
     words.push({
       text: foldLatinLigatures(it.str), x, y, width: w, size, fontName: it.fontName, rtl: it.dir === 'rtl', color,
-      ...(Math.abs(it.transform[1]) > Math.abs(it.transform[0]) ? { rotated: true } : {}), // past 45°: a slanted (italic) run is not
+      ...(Math.abs(it.transform[1]) > Math.abs(it.transform[0]) ? { rotated: true, rotDir: it.transform[1] > 0 ? 1 as const : -1 as const } : {}), // past 45°: a slanted (italic) run is not
       linkUrl: uniform ? tagged[0].linkUrl : undefined, linkAnchor: uniform ? tagged[0].linkAnchor : undefined,
       linkParts: uniform ? undefined : tagged, underline, strikethrough,
     });
@@ -2222,15 +2234,23 @@ export function reconstructPage(
 
   // B6: recursive column split (≤2 columns is byte-identical to the prior single
   // cut; a genuine 3rd gutter now yields a 3rd column in reading order).
-  // Limits row 55: a rotated item (a margin stamp turned 90°) is clustered into lines by BASELINE like any other, so it joined
-  // whichever body line shared its baseline ("…24 May 2019be effective for…"). Rotated words now cluster only among
-  // themselves, after the columns (a lone stamp is its own paragraph; a figure's rotated labels still group, as they did); a page with no rotated item takes the same two calls as before.
+  // Limits row 55: a rotated item (a margin stamp, an axis label turned 90°) was clustered into lines by BASELINE like any
+  // other, so it joined whichever body line shared its baseline ("…24 May 2019be effective for…"). Rotated words now leave the
+  // column path and are read as what they are — VERTICAL lines, after the columns: the text of one line is a column of items
+  // at one x, so they are mapped to the horizontal frame (position along the text → x, across it → y) and clustered there.
+  // A page with no rotated item takes the same two calls as before.
   const upright = flowWords.filter(w => !w.rotated);
-  const turned = flowWords.filter(w => w.rotated);
+  const turnedLines = (dir: 1 | -1) => {
+    const ws = flowWords.filter(w => w.rotated && (w.rotDir ?? 1) === dir);
+    // up: the next line lies to the RIGHT, so a larger x is later; down: to the LEFT. Reading position runs with y (up) or
+    // against it (down).
+    return ws.length ? reconstructColumn(ws.map(w => ({ ...w, x: dir === 1 ? w.y : -w.y, y: dir === 1 ? -w.x : w.x })), fonts, pageWidth) : [];
+  };
   const columns = splitColumns(upright, pageWidth);
   const paragraphs: FlowParagraph[] = [
     ...columns.flatMap(colWords => reconstructColumn(colWords, fonts, pageWidth)),
-    ...(turned.length ? reconstructColumn(turned, fonts, pageWidth) : []),
+    ...turnedLines(1),
+    ...turnedLines(-1),
   ];
 
   const margins = computeMargins(flowWords, pageWidth, pageHeight);

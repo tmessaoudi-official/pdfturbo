@@ -4,8 +4,12 @@ paths:
   - "src/utils/rtlClipboard.ts"
   - "src/export/arabicOverlay.ts"
   - "locales/ar.json"
+  - "src/handlers/textEditHandler.ts"
+  - "src/handlers/textSearchHandler.ts"
   - "tests/**/*bidi*"
   - "tests/**/*arabic*"
+  - "tests/handlers/textEditHandler.test.ts"
+  - "tests/handlers/textSearchHandler.test.ts"
 ---
 
 # pdfturbo gotchas — arabic-rtl
@@ -338,7 +342,9 @@ between word-level items, a three-word line, a kerning-gap control), and two rea
 `arabic-copy.browser.test.ts` (the exact `النص (RTL) هنا` line, and `مرحبا بكم في PDFturbo النسخة 2.5 اليوم`) plus the
 exact-phrase search hit in `arabic-search.browser.test.ts`. Sabotage (the cap removed): 4 unit cases and both new browser
 copy cases red, each restored byte-exact. **Bounds.** A line set with spaces compressed below 0.15 em would lose them
-(none measured; justification only widens). A per-glyph Chrome page set with CSS `letter-spacing` of 0.15–0.19 em would
+(none measured; justification only widens). A per-glyph Chrome page set with CSS `letter-spacing` up to about 0.24 em
+(the cap is 0.4 × the MEDIAN glyph width, which is ~0.24 em for 0.6 em capitals — measured by a milestone reviewer: a Latin heading
+letter-spaced 0.2 em inside an Arabic copy selection came out `N O T I C E`, was `NOTICE` before) would
 now gain phantom spaces (Arabic is rarely letter-spaced — it breaks joining; none in the corpus — and pdfturbo's own `Tc`
 export does not split items, so the gap never appears inside one [Inferred: pdf.js merges a Tj string into one item]).
 Only the Arabic copy and search paths use this rule; Latin selections fall through. The mixed-direction ORDER is
@@ -355,8 +361,9 @@ closed. Scope is unchanged from row 40: only a run holding an RTL item; a run wi
 
 Guards: the row 40 unit case that asserted the dropped spaces (`النسخة2.5اليوم`) now asserts the spaced line, plus 3 new cases
 in `tests/handlers/textEditHandler.test.ts` (word-sized gap, no second space after an item that already ends in one, a
-0.04 em kerning gap stays closed — the mock uses the REAL `needsWordSpace`), and a real-Chrome case in
-`edittext-arabic-prefill.browser.test.ts` that compares every LibreOffice run WITH its spaces against the typed text (the
-row 40 case squashes spaces, so it could not see this). Sabotage (the space forced off): 2 unit cases and the real-Chrome case
-red, restored byte-exact. **Bounds.** The Chrome file is still compared space-squashed (its per-glyph rows are checked for
-ORDER); the DOCX export is unchanged by construction and by the 34 related real-Chrome suites.
+0.04 em kerning gap stays closed — the mock uses the REAL `needsWordSpace`), and two real-Chrome cases in
+`edittext-arabic-prefill.browser.test.ts` — one compares every LibreOffice run WITH its spaces against the typed text (the
+row 40 case squashes spaces, so it could not see this), the other (`15cc74b`) pins that a Chrome per-glyph run gains NO space
+the typed text does not have. Sabotage (the space forced off): 2 unit cases and the real-Chrome case
+red, restored byte-exact. **Bounds.** The row 40 Chrome case is still compared space-squashed (its per-glyph rows are checked for
+ORDER; the new Chrome case covers the space direction); the DOCX export is unchanged by construction and by the 34 related real-Chrome suites.

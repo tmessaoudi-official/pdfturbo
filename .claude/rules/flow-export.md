@@ -49,7 +49,7 @@ and `detectColumnSplit` wanted 5% of the region — 30pt on a Letter page — so
   word lost — the remaining ceiling, pinned.
 - **`MIN_GUTTER_PT = 10`**: a gap splits at `min(5% of the region, 10pt)`. The floor applies to the gap as
   measured on 2pt bins, which loses 2–4pt of the drawn gutter, so in DRAWN terms 14pt or more always splits,
-  11pt or less never, and 12–13pt depends on where the gap falls on the grid (measured). 10, not 12: 12
+  11pt or less splits only between two body blocks of 20+ lines (row 46; it never did before), and 12–13pt depends on where the gap falls on the grid (measured). 10, not 12: 12
   misses BERT p8 and Census p12. Not 8: 8 splits GPT-3's figure pages where a label column sits beside its
   content, which looks exactly like a gutter. Publication 17's 3-column body pages (~8pt gutters) therefore
   stay one column — a bound, logged as row 46, which needs a discriminator rather than a smaller number
@@ -67,7 +67,7 @@ pages among the 40 (two lattice, one tagged) are an upper bound: the export remo
 before splitting, and a tagged page takes the struct-tree path first. **Still interleaved:** a page whose
 title, abstract or figure spans both columns (BERT p1, 3, 5, 6) — the vertical cut sees no clean gutter, so
 it needs a horizontal cut first (row 44 — [superseded 2026-10-01: done for untagged pages, see § "A title, figure or caption spanning both columns now cuts the page into bands first"]); ResNet and the Japanese multi-column paper never split at any
-floor measured, cause untraced (row 45).
+floor measured, cause untraced (row 45 — [superseded 2026-10-01: traced to a page number in the gutter and fixed, see § "A page number in the gutter"]).
 
 Guards: `tests/utils/flowDocColumns.test.ts` "limits row 21" (4, 5, 6, 8 columns; 9 → 8; the ragged
 centre cut; 14pt splits; 12pt on the grid splits; text filling half the page splits; 11pt does not) and
@@ -732,8 +732,7 @@ byte-exact: exclusion off → the 2 defect cases and the browser with-folio case
 control; the band covering 90% → the mid-body control. **The first version of the browser fixture stayed green with the fix
 removed** — its lines were a third of the column width, so the gutter was ~100pt and no page number could block it; real columns
 are justified, so the fixture now fills the measure from the font's own widths (the fixture-mirrors-detector trap, caught by
-sabotage). **Bounds.** A page number is only the commonest intruder: a centred footer WORD, or a figure label placed in the gutter
-away from the bottom edge, still blocks; and the footer band is a fraction of the text's own span, so a page whose body is
+sabotage). **Bounds.** A page number is only the commonest intruder: a figure label placed in the gutter away from the bottom edge still blocks, and so does a footer piece wider than 4% of the page (`FOOTER_PIECE`, row 44 review: a venue line of 150pt pieces spans the gutter, and leaving it out of the search split the sentence between the columns); and the footer band is a fraction of the text's own span, so a page whose body is
 only a few lines at the bottom is unchanged by the two-baseline guard.
 
 ### A narrow gutter splits between body blocks only — limits row 46 (2026-10-01)
@@ -762,7 +761,7 @@ it (each half is 40% of the page), the next cut tests 124pt against a 306pt half
 before vs after, 15 files / 360 pages): 108 pages change — Publication 17 107, Census p8 1 — and none elsewhere (GPT-3, BERT, ResNet,
 Attention, the budget and every form 0). **In the product that is ZERO pages**: every one of the 108 is tagged and takes the
 struct-tree path (the probe, re-run with the struct arguments exactly as `_extractFlowDoc` passes them). So the census is the
-splitter's effect on a layout, not the export's effect on a file, and it was first written up as the latter.
+splitter's effect on a layout, not the export's effect on a file, and it was first written up as the latter. [Confirmed 2026-10-01 by the product-path census of § row 44: of Publication 17's 142 pages one (p33) reaches the splitter and none differs; Census p8 is struct-tree.]
 
 **Read, not counted** (reconstructed paragraphs of Pub 17 p3, 52, 66, 130 and Census p8 after the change, no rules passed): the
 three-column body prose reads column by column, each paragraph one column's; the lists and numbered worksheet lines stay inside
@@ -798,72 +797,92 @@ distinct baselines, so a two-column page of few long lines needs the 10pt gutter
 A full-width block (a centred title, a figure with its caption, a wide table) crosses the gutter, so no vertical cut existed
 for the WHOLE page and the page read as one interleaved column. `splitColumns` now falls back to the horizontal half of an
 XY-cut when the vertical cut finds nothing at depth 0: **`splitBySlabs`** finds full-width white bands (no word's extent
-`[y − 0.25 em, y + em]` in them, at least 1.5 median-em tall), cuts the page into slabs, and tries the existing vertical
-split inside each, on the PAGE's footer cut (`pageFooterCut`, computed once — a slab judged by its own bottom edge would drop
-its last, possibly spanning, line from the gutter search; M5 reds on exactly that). Slabs are used only if one of them is a
-real column band — every group at least 6 baselines and 15% of the page wide, and the slab under 50% numeric tokens — and
-neighbouring slabs that did not split are merged back (a title and its authors stay together). Otherwise the function
-returns what it always did, so a page that does not benefit is byte-identical. Reading order is top to bottom, left to right
-inside each slab. A second, separate change rides with it: a word turned past 45° (`rotated`, from `transform`) is skipped
-when the gutter is looked for, because every geometry here projects pdf.js's `width` along x and the arXiv margin stamp
-(`x 32–385`, 20pt wide on the page) read as a bar across the gutter — BERT p1 and ResNet p1 stayed null even with the title
-cut until it was skipped. A slanted (italic) run is not rotated: `transform[2]` alone is not the test.
+`[y − 0.25 em, y + em]` in them, at least 1.5 median-em tall), cuts the page into slabs and tries the existing vertical split in
+each. Slabs are used only if one of them is a real column band — every group has at least 6 baselines and a MEDIAN LINE of
+18% of the page (not its bounding box: one long cell sets that), and the slab is under 50% numeric tokens — and neighbouring
+slabs that did not split are merged back (a title and its authors stay together). Otherwise the function returns what it
+always did. Reading order is top to bottom, left to right inside each slab. Two things ride with it. A footer piece is left out
+of the gutter search only if it is narrower than 4% of the page (`FOOTER_PIECE`): a folio is, a venue line of 150pt pieces is
+not and keeps blocking the cut, so that page is read left, right, footer. And rotated words leave the column path altogether
+(row 55) — that is what lets BERT p1 and ResNet p1 split beneath their title: the arXiv stamp, whose `width` pdf.js projects
+along x (`x 32–385`, 20pt wide on the page), read as a bar across the gutter.
 
-**Scope, measured — and this time read, not counted.** The product reads a TAGGED page through the struct tree and never
-reaches this splitter (see § row 46), so the evidence is the four UNTAGGED corpus papers only (inventory, 2026-10-01:
-attention 0/15, bert 0/16, gpt3 0/75, resnet 0/12 tagged; every form, census, Pub 17 and the budget report are tagged).
-Census before/after, one PDF per process, words carrying `size`, `text` and `rotated`: attention 0 of 15 pages changed;
-BERT 6 of 16 (p1, 3, 5, 6, 13, 15); GPT-3 1 of 75 (p49); ResNet 4 of 12 (p1, 5, 8, 11). **Read:** BERT p1, 3, 6, 13, 15 —
-title, authors, abstract, then figure and caption, then the left column in full and the right after it, footnotes at the
-foot of their column; ResNet p1, 5, 8, 11 — tables stay row by row, text columns separate; GPT-3 p49 — two columns of poems,
-which the old output had interleaved ("Generated Poem 1 … Generated Poem 3" in one paragraph), now poems 1, 2, 3, 4. **BERT
-p5 was counted, not read.** **The census caught a regression the fixtures did not:** GPT-3 Table H.1 (four wide blocks of
-tight numeric columns) was split block by block on the first cut — rows broken apart, 16 paragraphs → 54 — and the width
-rule did not catch it (each block is 20–28% of the page). The numeric-token rule did; both fixtures that pin it carry the
-measured shape. **Not changed by the census, by design:** every page the vertical cut already split. **The unchanged pages were compared by
-TEXT, not counts:** a SHA-1 of each page's paragraph text, old code (`a9365c7`) against new, over all 118 pages of the four
-untagged papers plus the two untagged pages of otherwise tagged files — the decision is PER PAGE (`_extractFlowDoc` reads
-`getStructTree()` for each page), and the inventory's 66/67 and 3/4 leave Census p66 and budget p4 on the splitter. Text
-differs on exactly the 11 pages above and on neither of those two; the rotated-word filter, which runs on every page, changed
-nothing else. Row 46's claim stands: Census p8, its one changed page, is tagged.
+**What "reaches the splitter" means, because this section first got it wrong.** `_extractFlowDoc` asks `getStructTree()` PER PAGE and
+passes a struct tree when it has children, but `reconstructPage` takes the struct path only when `structTreeToFlow` returns
+something; a tree that resolves no text falls through to the splitter. Counting pages WITH struct children (66 of Census's 67) is
+therefore the wrong test: 38 Census pages and Publication 17 p33 have a tree that resolves nothing (the row 46 probe, 2026-10-01
+03:29, already showed it). An earlier version of this section, and two commit messages, said the tagged files "never reach" the
+splitter and that its census was complete over the 4 untagged papers; both were wrong, and a milestone reviewer found it.
+
+**Scope, measured on the PRODUCT path.** All 15 corpus files, 360 pages, one PDF per process, `reconstructPage` called exactly as
+`_extractFlowDoc` calls it (struct tree and marked content), the code before row 45 (`1067df8`) against the code now — so rows 45,
+46, 44 and 55 together. **159 pages reach the splitter** (attention 15/15, bert 16/16, gpt3 75/75, resnet 12/12, census 39/67,
+pub17 1/142, budget 1/4, every form 0); **35 differ**: attention 1, 13, 14, 15; bert 1, 3, 5, 6, 13, 15, 16; gpt3 1, 49; resnet
+all 12; census 27, 28, 29, 43–49; Publication 17, the budget report and every form 0. **Read:** BERT p1, 3, 6, 13, 15 and ResNet
+p1, 5, 8, 11 (title, authors, abstract, figure and caption, then the left column in full, then the right; tables stay row by
+row), ResNet p2, 3, 4, 6, 7, 9, 10, 12 (their first paragraphs: the References page, interleaved before, reads in two columns),
+GPT-3 p49 (two columns of poems, interleaved before: "Generated Poem 1 … Generated Poem 3" in one paragraph), Attention p13–15
+(the figure's rotated labels). **The ten Census pages differ in paragraph ORDER only**: the paragraphs are the same multiset,
+the running header ("20 Poverty in the United States: 2022 U.S. Census Bureau") reads first instead of last, because the
+table on those pages is turned sideways and row 55 reads turned text after upright text. **Counted, not read:** BERT p5 and
+p16, Attention p1, GPT-3 p1 (a stamp, own paragraph). An earlier, splitter-only census (no struct tree) is what these pages
+were first picked from; it changed 11 pages.
+
+**The census caught a regression the fixtures did not:** GPT-3 Table H.1 (a names block and three blocks of tight numeric
+columns) was split block by block on the first cut — rows broken apart, 16 paragraphs → 54. The numeric-token rule restored it;
+the fixture that pins it was rebuilt twice because the width rule and then the line-span rule refused it first and hid the
+numeric rule from its own sabotage.
+
+**Milestone review, round 1 (2026-10-01), fixed:** an 8-row key/value TEXT table inside a one-column page was read column by
+column, each key losing its value (the 15%-of-bounding-box rule passed it) — the rule is now the median line; a footer that
+spans the gutter was split between the columns once row 45 left it out of the search — `FOOTER_PIECE`; the step that keeps a
+trailing slab that did not split had no test (commenting it out lost 2 of 44 words and the 806 related jsdom tests stayed
+green) — now pinned; the page-wide `footerY` that carried the page's footer cut into each slab was dead after `FOOTER_PIECE`
+and is gone.
 
 **Bounds, stated.** (1) Horizontal cuts only at depth 0 and only across the whole page width: a figure in ONE column of a
-two-column page is not cut. (2) A number-heavy two-column TEXT page (a statistics appendix of prose) is refused as a table
-and keeps the old reading. (3) The 1.5 em band height is margin, not measurement — no fixture is sensitive to it (a lower
-value changes nothing on the corpus), so it is unpinned. (4) The stamp is glued to whichever left-column line shares its baseline —
-PRE-EXISTING on both papers, checked against the old code: BERT p1 "…24 May 2019be effective for…" (identical before and
-after), ResNet p1 "…Dec 2015Deep convolutional…" before and "…Dec 20151. IntroductionDe…" after (the neighbouring line
-changed because the column order did, the glue did not). Still there, and more visible now that the page reads in order. (5) A rotated item is still assigned to a column by its projected centre. (6) The
-census probe passes no rules, no vRules and no struct tree: it measures the splitter, not the full export.
+two-column page is not cut. (2) A white band at the same height in both flowing columns (a section break spanning the page)
+makes the slabs read top to bottom — left-top, right-top, left-bottom, right-bottom — where continuous columns would read left
+in full first; `tests/browser/flow-bands.browser.test.ts` case 1 pins exactly that stacked-blocks reading. A lower band with
+fewer than 6 lines per column is not split and stays interleaved. (3) A number-heavy two-column TEXT page is refused as a table
+and keeps the old reading; a text table whose every column has a median line of 18% of the page or more, beside prose, still
+splits into columns. (4) The 1.5 em band height is margin, not measurement — no fixture is sensitive to it. (5) The census
+probe passes no rules, no vRules, no links and no redactions: it measures the splitter and the struct fall-through, not the
+whole export. (6) The corpus holds no untagged three-column PDF and no non-LaTeX two-column paper with figures.
 
-Guards: `tests/utils/flowDocColumns.test.ts` (10 cases in the row 44 block — title + two columns; caption between two column
-bands; one-column control returned as the same array; a 3-row alignment with 23%-wide cells, so only the line count refuses
-it; a 6-column number table, so only the width refuses it; the four-block Table H.1 shape; a rotated stamp and its unrotated
-control; the footer control; a 14pt page unchanged) and `tests/browser/flow-bands.browser.test.ts` (2, a pdf-lib page read
-back through real pdf.js, oracle = the typed `T-`/`A-`/`B-`/`CAP-`/`C-`/`D-` markers). Sabotage, each landing checked and the
-file restored byte-exact: slabs off → 3 unit + both browser cases; numeric rule off → exactly the Table H.1 case; width rule
-off → exactly the number-table case; line rule off → exactly the alignment case (it first stayed green: the 60pt cells
-failed the width rule too, so the control could not see the line rule — widened to 140pt); footer per slab → exactly the
-footer control; rotated kept in coverage → exactly the stamp case.
+Guards: `tests/utils/flowDocColumns.test.ts` (11 cases in the row 44 block — title + two columns; caption between two column
+bands; one-column page returned as the same array; a 3-row alignment of 23%-wide cells (only the line count refuses it); a
+6-column number table (only the width/line-span rule refuses it); a names block + three number blocks (only the numeric rule);
+the 8-row key/value text table; a venue footer spanning the gutter; a closing full-width line after two column bands (the
+trailing slab); a spanning line at the bottom of a column band; a 14pt page unchanged) and `tests/browser/flow-bands.browser.test.ts`
+(2, a pdf-lib page read back through real pdf.js, oracle = typed `T-`/`A-`/`B-`/`CAP-`/`C-`/`D-` markers). Sabotage on the final
+code, each landing checked and restored byte-exact: slabs off → 5 unit cases (title, caption, footer span, trailing slab, the
+BERT-shape stamp case) and both browser cases; numeric rule off → exactly the names + number blocks case; line rule off → exactly
+the 3-row alignment; width/line-span rule off → the 6-column number table and the key/value table; footer exemption unbounded →
+the footer span and the spanning bottom line; trailing slab dropped → the footer span and the trailing-slab case.
 
 ### A rotated margin stamp is no longer glued into a body line — limits row 55 (2026-10-01)
 
 pdf.js reports text turned 90° at its baseline origin, and line clustering is by baseline, so the arXiv stamp joined whichever
-left-column line shared its baseline ("…24 May 2019be effective for…" on BERT p1; ResNet p1 and GPT-3 p1 the same).
-`reconstructPage` now takes the words `rotated` (row 44's flag: past 45°, so slanted italics are not) out of the column path
-and clusters them among THEMSELVES after the columns: a lone stamp is its own paragraph, and a figure's rotated labels still
-group. **The first version made every rotated word its own paragraph, and the census caught it:** Attention p13–15, whose
-heat-map labels are 66–108 rotated items, went from 5/10/11 paragraphs to 69/112/112. Clustering them together put the counts
-back (5/10/10). **Measured by text hash**, old (row 44) against new, over the four untagged papers: text differs on Attention
-p1, 13, 14, 15; BERT p1, 16; GPT-3 p1; ResNet p1, 5, 8, and nowhere else. Read: every stamp ("arXiv:…") and every rotated
-axis label ("MNLI Dev Accuracy", "error (%)") is a paragraph of its own or grouped with its siblings; Attention p13–15 differ
-only in paragraph ORDER (the rotated labels now follow the columns) — the text of the long label paragraph is identical to the
-old output, run-together words included, which is not a rotated-item defect and was already there. **Bounds:** a rotated item
-sits at the END of the page's paragraphs whatever its position; rotated body text on a page that also has upright text (a
-landscape table turned inside a portrait page) is read after the upright text; the ordering among rotated words is the
-existing line clustering. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (5) — the stamp as its own paragraph beside a body
-line sharing its baseline, nothing lost, a slanted-run control, an unrotated-page control, a page of only rotated text.
-Sabotage, each landing checked, restored byte-exact: rotated words kept in the columns → 3 cases (the glue and both
-exactly-once checks, the words appear twice); rotated words dropped → the same 3; italics counted as rotated → exactly the
-slanted control.
+left-column line shared its baseline ("…24 May 2019be effective for…" on BERT p1, "…Dec 2015Deep convolutional…" on ResNet p1
+before row 44, "…20151. IntroductionDe…" after; GPT-3 p1 the same). `reconstructPage` now takes the words `rotated` (|transform[1]| >
+|transform[0]|, so slanted italics are not) out of the column path and reads them as what they are — VERTICAL lines, after the
+columns: the text of one line is a column of items at one x, so each is mapped to the horizontal frame (position along the text → x,
+across it → y; `rotDir` says whether it reads up or down) and clustered there. A stamp and an axis label on the same baseline are
+two paragraphs; the words of one rotated line keep their order and spaces whichever way they read. **Two earlier versions failed
+and were caught:** one paragraph per rotated word took Attention p13–15's 66–108 rotated figure words from 5/10/11 paragraphs to
+69/112/112 (census); clustering the rotated words together by BASELINE glued a stamp to an axis label that shared its y (a
+milestone reviewer; the test that should have seen it split on a string with a trailing space and could not).
 
+**Measured on the product path** (see § row 44): the pages row 55 changes are Attention p1, 13, 14, 15; BERT p1, 16; GPT-3 p1;
+ResNet p1, 5, 8; Census 27, 28, 29, 43–49 (order only — the sideways table now follows the running header). Attention p13's long
+label paragraph is character-identical to the old output, run-together words included, which was already there and is not a
+rotated-item defect. **Bounds:** a rotated item sits AFTER the page's upright paragraphs whatever its position (a sideways table
+on a portrait page, a margin stamp); `assignHeadings` ranks by font size, so a 20pt stamp paragraph outranks the title as Heading
+1 — it did before too, glued to the body line — logged as row 56; the stamp is still in the DOCX, and some readers may prefer it
+dropped. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (9) — the stamp as its own paragraph beside a body line sharing its
+baseline, nothing lost, a slanted-run control, an unrotated-page control, a stamp and an axis label on one baseline, one rotated
+line reading up and one reading down, a page of only rotated text, and a BERT page-1 shape (title, two columns, stamp). Sabotage,
+each landing checked and restored byte-exact: rotated words kept in the columns → the glue case and the exactly-once cases;
+rotated words dropped → the same; italics counted as rotated → exactly the slanted control; clustering by baseline again → the
+four cases about lines; reading direction ignored → exactly the reading-down case.

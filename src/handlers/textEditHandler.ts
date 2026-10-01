@@ -75,6 +75,28 @@ export interface BaselineRun {
 }
 
 /**
+ * An RTL run's text in reading order, with the word space the DOCX export would put between two words whose boxes are a
+ * word apart (limits row 51): pdf.js puts that space in no item on a word-level producer (LibreOffice), so joining with
+ * '' gave `النسخة2.5اليوم` for the typed `النسخة 2.5 اليوم`. Glyph-per-item rows abut (gap ≈ 0) and stay closed.
+ */
+function _rtlRunText(run: PdfTextItem[]): string {
+  const { words } = orderLineWords(run.map(it => ({
+    x: it.transform[4], width: Math.abs(it.width), rtl: it.dir === 'rtl', text: it.str,
+    size: Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12,
+  })));
+  let out = '';
+  words.forEach((w, i) => {
+    if (i > 0) {
+      const p = words[i - 1];
+      const gap = Math.max(p.x, w.x) - Math.min(p.x + p.width, w.x + w.width); // empty space between the boxes, either side
+      if (needsWordSpace(gap, p, w)) out += ' ';
+    }
+    out += w.text;
+  });
+  return out;
+}
+
+/**
  * Re-assemble the contiguous, same-baseline, same-font run of text items that
  * contains the clicked item `best`, for use as the OVERLAY text + bounding box.
  *
@@ -102,28 +124,6 @@ export interface BaselineRun {
  * rule, presentation forms folded included; a run with none keeps page order, unchanged. The geometry (x, width)
  * is the run's box either way.
  */
-/**
- * An RTL run's text in reading order, with the word space the DOCX export would put between two words whose boxes are a
- * word apart (limits row 51): pdf.js puts that space in no item on a word-level producer (LibreOffice), so joining with
- * '' gave `النسخة2.5اليوم` for the typed `النسخة 2.5 اليوم`. Glyph-per-item rows abut (gap ≈ 0) and stay closed.
- */
-function _rtlRunText(run: PdfTextItem[]): string {
-  const { words } = orderLineWords(run.map(it => ({
-    x: it.transform[4], width: Math.abs(it.width), rtl: it.dir === 'rtl', text: it.str,
-    size: Math.hypot(it.transform[0], it.transform[1]) || Math.abs(it.height) || 12,
-  })));
-  let out = '';
-  words.forEach((w, i) => {
-    if (i > 0) {
-      const p = words[i - 1];
-      const gap = Math.max(p.x, w.x) - Math.min(p.x + p.width, w.x + w.width); // empty space between the boxes, either side
-      if (needsWordSpace(gap, p, w)) out += ' ';
-    }
-    out += w.text;
-  });
-  return out;
-}
-
 export function clusterBaselineRun(items: PdfTextItem[], best: PdfTextItem): BaselineRun {
   const fontSize = Math.hypot(best.transform[0], best.transform[1]) || Math.abs(best.height) || 12;
   const baselineBand = 0.3 * fontSize;
