@@ -5,6 +5,7 @@ paths:
   - "src/utils/borderlessTable.ts"
   - "tests/utils/flowDoc*"
   - "tests/utils/table*"
+  - "tests/browser/flow-*"
   - "tests/blockers/**"
 ---
 
@@ -324,7 +325,7 @@ Separation/spot (`scn`) text no longer redraws black. Guards: `tests/utils/conte
 redrawn glyph stays chromatic, and a no-fallback control redraws black). **All three `02-trueedit-matrix.md`
 "reachable gaps" are now done** (Gap 1 TJ-kerning distribute, Gap 2 this, Gap 3 exponent).
 **Ceiling** (genuinely hard client-side): lattice/borderless tables, vector→raster, 9+ columns and
-a horizontal-first XY-cut (see § "Columns: the cut, the depth and the gutter floor"), exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
+a horizontal cut INSIDE one column (see § "Columns: the cut, the depth and the gutter floor"; the whole-page horizontal cut shipped as row 44 — [superseded 2026-10-01 in part]), exact subset-font faces; true-edit IN-PLACE Arabic (subset CID fonts lack the glyphs — structural),
 true-edit cm-rotation Path-3 redraw, Type3; mixed LTR+RTL single-line reorder. [superseded 2026-09-28: A1 (`6586c23`) redraws with the full text matrix, and mixed-direction lines are reordered — `drawBidiLine` in the overlay, `logicalItemOrder` in the DOCX flow] (Tashkeel GPOS positioning in the
 overlay was fixed by limits row 25, C19.)
 **Decoration + graphics-state fidelity (#text-decoration, 2026-06-18):** PDF has NO underline/strike TEXT
@@ -727,7 +728,7 @@ which is row 44's horizontal-cut problem, not this one.
 Guards: 5 unit cases in `tests/utils/flowDocColumns.test.ts` (the ResNet shape; controls: the same item mid-body still blocks, a
 top-band title still blocks, no folio splits as before; `splitColumns` keeps every word) and `tests/browser/flow-gutter-folio.browser.test.ts`
 (a pdf-lib two-column page of JUSTIFIED lines read back through real pdf.js, with and without the folio). Sabotage, each restored
-byte-exact: exclusion off → the 2 defect cases and the browser with-folio case; the band also covering the top → the title
+byte-exact: exclusion off → the 2 defect cases ONLY (re-measured 2026-10-01, milestone round 4: the browser with-folio case stays GREEN, rescued redundantly by row 44's slab fallback and by row 46's body-block rule — with the exclusion, the narrow-gutter rule and the slabs all off it reds; a browser fixture only row 45 rescues needs fewer than 20 lines a side and no full-width white band above the folio [Inferred]); the band also covering the top → the title
 control; the band covering 90% → the mid-body control. **The first version of the browser fixture stayed green with the fix
 removed** — its lines were a third of the column width, so the gutter was ~100pt and no page number could block it; real columns
 are justified, so the fixture now fills the measure from the font's own widths (the fixture-mirrors-detector trap, caught by
@@ -775,9 +776,9 @@ table page without ruled lines but with 20+ rows and a quarter-width block on ea
 column by column; Pub 17 p52 (a worksheet) did so and read acceptably, but the probe passes no rules, so a page the real
 export turns into a lattice table first was not exercised.
 
-Guards: 7 cases in `tests/utils/flowDocColumns.test.ts` (three columns 9pt apart split in reading order; four narrow
+Guards: 8 cases in `tests/utils/flowDocColumns.test.ts` (three columns 9pt apart split in reading order; four narrow
 columns split — the region-relative width; controls: a short label, a tall but narrow label, wide blocks of few lines, a 6pt
-gutter between body columns, and the 14pt rule unchanged) and `tests/browser/flow-narrow-gutter.browser.test.ts` (real
+gutter between body columns, a narrow label column on the RIGHT — round 4: judging only the left side passed every test until it was added — and the 14pt rule unchanged) and `tests/browser/flow-narrow-gutter.browser.test.ts` (real
 pdf.js: three justified columns 9pt apart read A, then B, then C with no mixed paragraph; a justified label column beside
 justified content reads across). Sabotage, predicted first and each restored with `cmp`: body test always true → 4 unit cases
 (the three controls and row 21's 11pt case) + the browser label control; line criterion off → the few-lines control + the 11pt
@@ -845,18 +846,20 @@ fewer than 6 lines per column is not split and stays interleaved. (3) A number-h
 and keeps the old reading; a text table whose every column has a median line of 18% of the page or more, beside prose, still
 splits into columns. (4) The 1.5 em band height is margin, not measurement — no fixture is sensitive to it. (5) The census
 probe passes no rules, no vRules, no links and no redactions: it measures the splitter and the struct fall-through, not the
-whole export. (6) The corpus holds no untagged three-column PDF and no non-LaTeX two-column paper with figures.
+whole export. (6) The corpus holds no untagged three-column PDF and no non-LaTeX two-column paper with figures. (7) **Column, band and rotated order do not survive two later y-sorts** (milestone round 4, pre-existing, undisclosed until now): `interleaveByReadingOrder` merges typed overlay paragraphs into the page's source paragraphs by sorting ALL of them by descending y — on every page that carries typed overlay text, in DOCX, Markdown and TXT — and the DOCX writer re-sorts every paragraph by y on a page that carries a lattice table. Either returns two columns interleaved paragraph by paragraph (L0 R0 L1 R1…), puts a slab's paragraphs back in page order, and moves a rotated paragraph to its mid-page `y` instead of after the upright text. Probe (reviewer): `reconstructPage` gave L0-3, L4-7, L8-11, R0-3…; after `interleaveByReadingOrder` with one overlay note, L0-3, R0-3, L4-7, R4-7… and the note. The overlay half was EXECUTED; the table half is code-read only (`flowDocWriters.ts`, the paragraph sort). Documented rather than fixed (ASSUMED, plan Decisions Log): a fix is a design change to how overlay text is merged into reading order, not a splitter bug. So every reading-order statement in this section and in rows 21, 55 and C10 holds for the flow reconstruction itself, not for a page with typed overlay text or a lattice table.
 
-Guards: `tests/utils/flowDocColumns.test.ts` (13 cases in the row 44 block — title + two columns; caption between two column
+**Milestone round 4 fix (P1, 2026-10-01).** The footer-band exemption of row 45 was judged per PIECE, so a short piece (`[12]`, an italic word) over the gutter in the page's LOWEST line — or in a line within 5% of the text height above a folio — dropped out of the gutter search, the depth-0 cut succeeded and the sentence was split between the columns (reviewer probe: `Figure 3: results are shown for the[12]` | `baseline and our method across all`; at caption y 62 and 55 over a folio at 40, split; at y 80, whole). It is now judged per LINE: `bridgesRun` keeps a narrow band piece in the search when the same-baseline run it belongs to (words closer than `MIN_GUTTER_PT`) is at least `MIN_BODY_WIDTH` (a quarter) of the page wide — a folio, `7` or `Page 2 of 9`, is tens of points, a sentence is not.
+
+Guards: `tests/utils/flowDocColumns.test.ts` (17 cases in the row 44 block — title + two columns; caption between two column
 bands; one-column page returned as the same array; a 3-row alignment of 23%-wide cells (only the line count refuses it); a
 6-column number table (only the width/line-span rule refuses it); a names block + three number blocks (only the numeric rule);
 the 8-row key/value text table; a venue footer spanning the gutter; a closing full-width line after two column bands (the
-trailing slab); a spanning line at the bottom of a column band; the same line made of PIECES with a 15pt `[12]` over the gutter (a single 454pt item hides the page-cut regression); a four-column page whose LEFT half has a lowest spanning line in pieces, the folio in the middle gutter (a half judges the page's footer cut); a 14pt page unchanged) and `tests/browser/flow-bands.browser.test.ts`
+trailing slab); a spanning line at the bottom of a column band; the same line made of PIECES with a 15pt `[12]` over the gutter (a single 454pt item hides the page-cut regression); a four-column page whose LEFT half has a lowest spanning line in pieces, the folio in the middle gutter (a half judges the page's footer cut); a pieced caption that is the page's LOWEST line, the same caption 22-30pt above a folio, a lone folio and a `Page 2 of 9` folio of short pieces still leaving the search, a footer with only ONE baseline above it still blocking; a 14pt page unchanged) and `tests/browser/flow-bands.browser.test.ts`
 (2, a pdf-lib page read back through real pdf.js, oracle = typed `T-`/`A-`/`B-`/`CAP-`/`C-`/`D-` markers). Sabotage on the final
 code, each landing checked and restored byte-exact: slabs off → 5 unit cases (title, caption, footer span, trailing slab, the
 BERT-shape stamp case) and both browser cases; numeric rule off → exactly the names + number blocks case; line rule off → exactly
 the 3-row alignment; width/line-span rule off → the 6-column number table and the key/value table; footer exemption unbounded →
-exactly the footer-span case (the spanning bottom line of a band is above the page's footer cut and never in it); the page cut dropped in `splitBySlabs` → exactly the PIECES case; dropped in `splitColumns` → exactly the half-judges-the-page case; trailing slab dropped → the footer span and the trailing-slab case.
+exactly the footer-span case (the spanning bottom line of a band is above the page's footer cut and never in it); the page cut dropped in `splitBySlabs` → exactly the PIECES case; dropped in `splitColumns` → exactly the half-judges-the-page case; trailing slab dropped → the footer span and the trailing-slab case. Round-4 additions, each landing checked (one line changed) and restored with `cmp`: `bridgesRun` off → exactly the 2 pieced-caption cases; the `>= 2` baselines guard replaced with `true` → exactly the one-baseline case; row 46's body test on the left side only → exactly the right-label control; rotated text exempted from the redaction filter → exactly the rotated-redaction case.
 
 ### A rotated margin stamp is no longer glued into a body line — limits row 55 (2026-10-01)
 
@@ -877,9 +880,8 @@ label paragraph is character-identical to the old output, run-together words inc
 rotated-item defect. **Bounds:** a rotated paragraph sits AFTER the page's upright paragraphs in the array whatever its position (a sideways table
 on a portrait page, a margin stamp), but carries a real PAGE `y` — the MIDDLE of its first line's extent along the page (round 2: it first kept the turned frame's `-x`/`+x`, which the running-footer step read as a position, so an up-reading label on three pages was hoisted as the footer and the real footer stayed in every body; round 3: the highest baseline, the fix's first form, is an END of the run, so a banner starting at the bottom edge was still "in the footer band" — the middle is where the text is; the same `y` feeds the table interleave, the overlay merge and `resolveLinkAnchors`, which can now pick a stamp as an internal link's target paragraph when its middle is the nearest at or below the view's top). A turned line that repeats on every page can now be hoisted as the running header or footer when its middle lies in a band (a short vertical `Downloaded from … day N` stamp in the margin band), which the Markdown and TXT writers then drop — the same B5 rule as any running line, and better than the old glue, which hoisted a real body line; two labels at the SAME x on one page (stacked subplots) cluster into one paragraph, bottom label first, because the turned frame has no break for a gap along the text; alignment is measured along the text (the turned frame is `pageHeight` wide, `pageHeight - y` going down, so a label centred on the page height is 'center' in both directions); `assignHeadings` ranks by font size, so a 20pt stamp paragraph outranks the title as Heading
 1 — it did before too, glued to the body line — logged as row 56; the stamp is still in the DOCX, and some readers may prefer it
-dropped. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (14) — the stamp as its own paragraph beside a body line sharing its
+dropped. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (17; the last three are round 4's: a redaction box over rotated text removes it, with two controls) — the stamp as its own paragraph beside a body line sharing its
 baseline, nothing lost, a slanted-run control, an unrotated-page control, a stamp and an axis label on one baseline, one rotated
 line reading up and one reading down, a page of only rotated text, a BERT page-1 shape (title, two columns, stamp), and five on the page `y`: the middle of an up- and a down-reading label (a left-margin one at x 30 must not land in the footer band), a banner from the bottom edge and one from the top edge both leaving the real footer and header detection alone through `applyRepeatedBands`, and the alignment of a label centred on the page height in both directions. Sabotage,
-each landing checked and restored byte-exact: rotated words kept in the columns → the glue case and the exactly-once cases;
-rotated words dropped → the same; italics counted as rotated → exactly the slanted control; clustering by baseline again → the
-four cases about lines; reading direction ignored → exactly the reading-down case; the `y` restoration off → all 4 of the `y` cases; the highest baseline instead of the middle (the round-2 form) → 3 of them; the turned frame's width taken as `pageWidth` → exactly the alignment case.
+each landing checked and restored byte-exact: rotated words kept in the columns and NOT turned (the pre-row-55 shape) → 11 red, but "loses no word … exactly once" stays GREEN (a glued stamp still appears once); kept in the columns AND still turned (`upright = flowWords`, the stamp twice) → 9 red; rotated words dropped → 11 red (re-measured by the round-4 completeness reviewer; the earlier line named neither form); italics counted as rotated → exactly the slanted control; clustering by baseline again → the
+four cases about lines; reading direction ignored → exactly the reading-down case; the `y` restoration off → all 4 of the `y` cases; the highest baseline instead of the middle (the exact round-2 form) → 4 of them (re-measured round 4; this line said 3); the turned frame's width taken as `pageWidth` → exactly the alignment case.

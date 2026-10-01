@@ -198,6 +198,12 @@ describe('detectColumnSplit — a narrow gutter between body blocks (limits row 
     expect(splitColumns([...block(36, 94, 40, 0), ...block(139, 400, 40, 1)], W)).toHaveLength(1);
   });
 
+  it('control: a narrow label column on the RIGHT beside a body column stays one group (both sides must be body blocks — round 4, P3)', () => {
+    // the mirror of the left-label control: a 9pt gap, a 400pt body column and a 94pt (15%) column of 40 lines on its right.
+    // Judging only the left side would split it.
+    expect(splitColumns([...block(36, 400, 40, 0), ...block(445, 94, 40, 1)], W)).toHaveLength(1);
+  });
+
   it('control: two wide blocks of FEW lines stay one group (the line criterion alone refuses them)', () => {
     expect(splitColumns([...block(36, 250, 10, 0), ...block(295, 250, 10, 1)], W)).toHaveLength(1);
   });
@@ -343,6 +349,45 @@ describe('splitColumns — a spanning block cuts the page into bands first (limi
     const groups = splitColumns(words, W);
     expect(groups.filter(g => g.some(w => w.c === 'SPAN'))).toHaveLength(1);
     expect(groups.flat()).toHaveLength(words.length);
+  });
+
+  it('a PIECED spanning line that is the page\'s LOWEST line keeps blocking the cut (milestone round 4, P1)', () => {
+    // The caption is in the page's footer band (it IS the lowest baseline, or lies within 5% of the text height above a folio):
+    // its short `[12]` piece over the gutter was left out of the gutter search by row 45, the cut succeeded and the sentence
+    // was split between the columns. The exemption is judged per LINE: a piece that sits inside a run of text wide enough to
+    // span the gutter is not a folio.
+    const y = 380;
+    const cap = [{ x: 72, width: 226, y, size: 10, c: 'CAP' }, { x: 299, width: 16, y, size: 10, c: 'CAP' }, { x: 316, width: 224, y, size: 10, c: 'CAP' }];
+    const words = [...block(72, 226, 24, 700, 'L'), ...block(316, 224, 24, 700, 'R'), ...cap];
+    expect(ids(splitColumns(words, 612))).toEqual(['L', 'R', 'CAP']);
+  });
+
+  it('the same pieced caption 22-30pt above a folio (inside the footer band) still keeps the sentence whole', () => {
+    for (const y of [62, 55]) {
+      const cap = [{ x: 72, width: 226, y, size: 10, c: 'CAP' }, { x: 299, width: 16, y, size: 10, c: 'CAP' }, { x: 316, width: 224, y, size: 10, c: 'CAP' }];
+      const words = [...block(72, 226, 24, 700, 'L'), ...block(316, 224, 24, 700, 'R'), ...cap, { x: 300, width: 8, y: 40, size: 10, c: 'FOLIO' }];
+      const groups = splitColumns(words, 612);
+      expect(groups.filter(g => g.some(w => w.c === 'CAP')), `caption at y ${y}`).toHaveLength(1);
+    }
+  });
+
+  it('control: a lone folio and a "Page 2 of 9" folio made of short pieces still leave the gutter search', () => {
+    const lonely = [...block(72, 226, 24, 700, 'L'), ...block(316, 224, 24, 700, 'R'), { x: 300, width: 8, y: 40, size: 10, c: 'FOLIO' }];
+    const split = (ws: { x: number; width: number; y: number; c: string }[]) =>
+      (splitColumns(ws, 612) as { c: string }[][]).map(g => new Set(g.map(w => w.c).filter(c => c !== 'FOLIO')).size);
+    expect(split(lonely)).toEqual([1, 1]); // two columns; the folio rides with whichever its centre falls in
+    const pieces = [{ x: 280, width: 22, text: 'Page' }, { x: 303, width: 6, text: '2' }, { x: 310, width: 10, text: 'of' }, { x: 321, width: 6, text: '9' }]
+      .map(p => ({ ...p, y: 40, size: 10, c: 'FOLIO' }));
+    const paged = [...block(72, 226, 24, 700, 'L'), ...block(316, 224, 24, 700, 'R'), ...pieces];
+    expect(split(paged)).toEqual([1, 1]);
+  });
+
+  it('the footer exemption is skipped when it would leave ONE baseline: the band line then still blocks (round 4, P3)', () => {
+    // Two baselines only. The lower is the page's footer band; leaving its narrow pieces out of the search would leave a single
+    // baseline to look for a gutter in, so the pieces stay in and the cut is refused.
+    const line = (ws: [number, number][], y: number) => ws.map(([x, width]) => ({ x, width, y }));
+    const words = [...line([[60, 200], [340, 200]], 700), ...line([[262, 24], [287, 24], [312, 24]], 100)];
+    expect(detectColumnSplit(words, 612)).toBeNull();
   });
 
   it('control: a 14pt gutter page with no spanning block is unchanged (vertical cut first, no bands)', () => {

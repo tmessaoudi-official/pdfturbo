@@ -106,7 +106,7 @@ describe('a rotated paragraph carries a PAGE y: the middle of its extent (milest
     return p?.y;
   };
 
-  it('reading up, from y 300 over 190pt: y is the middle, 395', () => {
+  it('reading up, from y 300 over 200pt: y is the middle, 400', () => {
     expect(labelY([text('Body', 72, 700), stamp('LABEL 0123456789abcd', 520, 300)])).toBeCloseTo(300 + 100, 5); // 20 chars x 10 = 200pt
   });
   it('reading down, from y 600 over 200pt: y is the middle, 500 — and a left-margin label (x 30) is not in the footer band', () => {
@@ -138,4 +138,21 @@ describe('a rotated paragraph carries a PAGE y: the middle of its extent (milest
       for (let i = 0; i < 3; i++) expect(bodyText(doc, i)).toContain('CONFIDENTIAL DRAFT');
     });
   }
+});
+
+describe('a redaction over rotated text removes it from the flow (milestone round 4, P3)', () => {
+  // The item filter runs before words are built, so a rotated item leaves with the rest. A stamp 380pt long reading up from
+  // y 242 occupies the page's y 242..622, which is 170..550 from the top: the box below covers it, the control box does not.
+  const items = [text('Body line one', 72, 700), stamp('SECRETSTAMP arXiv:1810.04805v2 [cs.CL] 24 May 2019', 32, 242)];
+  const flat = (red: { x: number; y: number; width: number; height: number }[]) =>
+    reconstructPage(items, FONTS, 612, 792, undefined, red).paragraphs.map(p => p.runs.map(r => r.text).join('')).join(' | ');
+
+  it('control: no redaction keeps the stamp', () => expect(flat([])).toContain('SECRETSTAMP'));
+  it('control: a box beside the stamp keeps it', () => expect(flat([{ x: 300, y: 170, width: 60, height: 380 }])).toContain('SECRETSTAMP'));
+  it('a box over the stamp removes it, and only it', () => {
+    const out = flat([{ x: 20, y: 160, width: 60, height: 400 }]);
+    expect(out).not.toContain('SECRETSTAMP');
+    expect(out).not.toContain('arXiv');
+    expect(out).toContain('Body line one');
+  });
 });

@@ -624,8 +624,9 @@ export function detectColumnSplit(
   pageWidth: number,
   // B6: restrict the gutter search to a sub-column region [min,max]. Default
   // {0,pageWidth} → the full-page single cut. The
-  // inner-20–80% zone and the 5%-min-gap threshold are taken relative to the
-  // region width, so recursion on a narrower column scales correctly.
+  // inner-20–80% zone and the gutter floor (min(5% of the region, 10pt); 6–10pt between two
+  // body blocks, row 46) are taken relative to the region width, so recursion on a narrower
+  // column scales correctly.
   bounds: { min: number; max: number } = { min: 0, max: pageWidth },
   footerCut: number = pageFooterCut(words),
 ): number | null {
@@ -646,9 +647,12 @@ export function detectColumnSplit(
   // A footer WORD that is wide is not a page number: a venue line 150pt a piece spans the gutter and must keep blocking the
   // cut (row 44 review) — left out of the search, the cut succeeded and the sentence was split between the columns. Only a
   // piece narrower than FOOTER_PIECE of the page (a folio, a 3-digit number) is left out.
+  // The exemption is judged per LINE (milestone round 4, P1): a short piece that sits inside a run of text wide enough to span a
+  // gutter (a `[12]` between two roman runs) is part of a sentence, not a folio — and when that sentence is the page's lowest
+  // line, or lies within the band above a folio, exempting the piece let the cut succeed and halved the sentence.
   const above = words.filter(w => (w.y ?? 0) > footerCut);
   const gutterWords = new Set(above.map(w => Math.round(w.y ?? 0))).size >= 2
-    ? words.filter(w => (w.y ?? 0) > footerCut || w.width >= FOOTER_PIECE * pageWidth)
+    ? words.filter(w => (w.y ?? 0) > footerCut || w.width >= FOOTER_PIECE * pageWidth || bridgesRun(w, words, pageWidth))
     : words;
   for (const w of gutterWords) {
     const s = Math.max(0, Math.floor(w.x / BIN));
@@ -691,6 +695,26 @@ export function detectColumnSplit(
   const centre = bounds.min + regionW / 2;
   // Ties go to the leftmost, as the first-found rule did.
   return wide.reduce((b, g) => (Math.abs(g.mid - centre) < Math.abs(b.mid - centre) ? g : b)).mid;
+}
+
+/**
+ * True when `w` belongs to a same-baseline run of text (words closer than {@link MIN_GUTTER_PT} to their neighbour) that is at
+ * least {@link MIN_BODY_WIDTH} of the page wide. A folio — `7`, `Page 2 of 9` — is a run of tens of points; a sentence is not.
+ */
+function bridgesRun(w: { x: number; width: number; y?: number }, words: ReadonlyArray<{ x: number; width: number; y?: number }>, pageWidth: number): boolean {
+  const y = Math.round(w.y ?? 0);
+  const line = words.filter(o => Math.round(o.y ?? 0) === y).sort((a, b) => a.x - b.x);
+  let lo = w.x, hi = w.x + w.width;
+  // Grow the run outward from `w` until the next word is a gutter's distance away.
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const o of line) {
+      if (o.x + o.width >= lo - MIN_GUTTER_PT && o.x <= hi + MIN_GUTTER_PT && (o.x < lo || o.x + o.width > hi)) {
+        lo = Math.min(lo, o.x); hi = Math.max(hi, o.x + o.width); grew = true;
+      }
+    }
+  }
+  return hi - lo >= MIN_BODY_WIDTH * pageWidth;
 }
 
 /** The y below which a word is in the page's footer band (row 45): the lowest baseline plus {@link FOOTER_BAND} of the text height. */
@@ -2240,8 +2264,8 @@ export function reconstructPage(
   const regions = detected.map(d => d.region);
   const flowWords = regions.length ? words.filter(w => !regions.some(r => _itemInRegion(w, r))) : words;
 
-  // B6: recursive column split (≤2 columns is byte-identical to the prior single
-  // cut; a genuine 3rd gutter now yields a 3rd column in reading order).
+  // B6: recursive column split (a genuine 3rd gutter yields a 3rd column in reading order). Since rows 21, 44-46 a page the
+  // old single cut left whole may split, in columns or in bands — see `detectColumnSplit` and `splitBySlabs`.
   // Limits row 55: a rotated item (a margin stamp, an axis label turned 90°) was clustered into lines by BASELINE like any
   // other, so it joined whichever body line shared its baseline ("…24 May 2019be effective for…"). Rotated words now leave the
   // column path and are read as what they are — VERTICAL lines, after the columns: the text of one line is a column of items
