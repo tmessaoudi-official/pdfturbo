@@ -328,6 +328,23 @@ describe('splitColumns — a spanning block cuts the page into bands first (limi
     expect(splitColumns(words, W)).toHaveLength(1);
   });
 
+  it('below the first cut, a half judges the PAGE\'s footer band, not its own lowest line (a spanning line in PIECES in the left half)', () => {
+    // Four columns, 16pt gutters; the folio sits in the middle gutter at the page bottom, and the left half has one more line
+    // than the right: its lowest line spans columns 1-2 as three pieces, the middle one a 14pt `[12]` over the gutter. Judged
+    // against the left half's own words that line is its "footer", the short piece drops out of the gutter search and the
+    // sentence is cut between two groups (milestone round 3, e779ad7 + 7946418: 4 groups).
+    const col = (x: number, c: string, n: number) => Array.from({ length: n }, (_, i) => ({ x, width: 120, y: 740 - i * 12, size: 10, c }));
+    const y = 740 - 20 * 12;
+    const words = [
+      ...col(40, 'L0', 20), ...col(176, 'L1', 20), ...col(312, 'R2', 20), ...col(448, 'R3', 20),
+      { x: 40, width: 120, y, size: 10, c: 'SPAN' }, { x: 161, width: 15, y, size: 10, c: 'SPAN' }, { x: 176, width: 120, y, size: 10, c: 'SPAN' },
+      { x: 300, width: 8, y: 40, size: 10, c: 'FOLIO' },
+    ];
+    const groups = splitColumns(words, W);
+    expect(groups.filter(g => g.some(w => w.c === 'SPAN'))).toHaveLength(1);
+    expect(groups.flat()).toHaveLength(words.length);
+  });
+
   it('control: a 14pt gutter page with no spanning block is unchanged (vertical cut first, no bands)', () => {
     const words = [...block(72, 218, 20, 740, 'L'), ...block(307, 219, 20, 740, 'R')];
     expect(ids(splitColumns(words, W))).toEqual(['L', 'R']);

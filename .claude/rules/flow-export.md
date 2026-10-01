@@ -716,7 +716,7 @@ pages the body lines span 134.8–480.6 and no word lies left of x = 132, so the
 and `detectColumnSplit` is right to refuse (the `sides` test: no words on both sides). The filename names its subject, not its
 layout.
 
-**Measured blast (real `reconstructPage` with NO struct tree — a SPLITTER-ONLY census, not the product; 23 files / 5,105 → 5,231 paragraphs, 24 pages change in 5 files; on the product path only ResNet's change is visible — Census p23, the 1099-MISC form and Publication 17 take the struct path or never reach the splitter, § row 44):** ResNet 8 of 12
+**Measured blast (real `reconstructPage` with NO struct tree — a SPLITTER-ONLY census, not the product; 23 files / 5,105 → 5,231 paragraphs, 24 pages change in 5 files; on the 15-file product-path census only ResNet's change is visible — Census p23, the 1099-MISC form and Publication 17 take the struct path or never reach the splitter, § row 44; `sample-tables-lattice`, the one of the 23 files outside those 15, was never measured on the product path):** ResNet 8 of 12
 pages (2, 3, 4, 6, 7, 9, 10, 12), census-income 12, pub17 2, 1099-MISC 1, sample-tables-lattice 1. Every changed page read was
 INTERLEAVING two columns before (`for 2025 ted tax payments on time. for Form`) and reads column by column after; character
 totals move by at most 1.4% (joins and spacing), so no text is lost. The 1099-MISC form moves from merged label rows
@@ -847,16 +847,16 @@ splits into columns. (4) The 1.5 em band height is margin, not measurement — n
 probe passes no rules, no vRules, no links and no redactions: it measures the splitter and the struct fall-through, not the
 whole export. (6) The corpus holds no untagged three-column PDF and no non-LaTeX two-column paper with figures.
 
-Guards: `tests/utils/flowDocColumns.test.ts` (11 cases in the row 44 block — title + two columns; caption between two column
+Guards: `tests/utils/flowDocColumns.test.ts` (13 cases in the row 44 block — title + two columns; caption between two column
 bands; one-column page returned as the same array; a 3-row alignment of 23%-wide cells (only the line count refuses it); a
 6-column number table (only the width/line-span rule refuses it); a names block + three number blocks (only the numeric rule);
 the 8-row key/value text table; a venue footer spanning the gutter; a closing full-width line after two column bands (the
-trailing slab); a spanning line at the bottom of a column band; a 14pt page unchanged) and `tests/browser/flow-bands.browser.test.ts`
+trailing slab); a spanning line at the bottom of a column band; the same line made of PIECES with a 15pt `[12]` over the gutter (a single 454pt item hides the page-cut regression); a four-column page whose LEFT half has a lowest spanning line in pieces, the folio in the middle gutter (a half judges the page's footer cut); a 14pt page unchanged) and `tests/browser/flow-bands.browser.test.ts`
 (2, a pdf-lib page read back through real pdf.js, oracle = typed `T-`/`A-`/`B-`/`CAP-`/`C-`/`D-` markers). Sabotage on the final
 code, each landing checked and restored byte-exact: slabs off → 5 unit cases (title, caption, footer span, trailing slab, the
 BERT-shape stamp case) and both browser cases; numeric rule off → exactly the names + number blocks case; line rule off → exactly
 the 3-row alignment; width/line-span rule off → the 6-column number table and the key/value table; footer exemption unbounded →
-the footer span and the spanning bottom line; trailing slab dropped → the footer span and the trailing-slab case.
+exactly the footer-span case (the spanning bottom line of a band is above the page's footer cut and never in it); the page cut dropped in `splitBySlabs` → exactly the PIECES case; dropped in `splitColumns` → exactly the half-judges-the-page case; trailing slab dropped → the footer span and the trailing-slab case.
 
 ### A rotated margin stamp is no longer glued into a body line — limits row 55 (2026-10-01)
 
@@ -875,11 +875,11 @@ milestone reviewer; the test that should have seen it split on a string with a t
 ResNet p1, 5, 8; Census 27, 28, 29, 43–49 (order only — the sideways table now follows the running header). Attention p13's long
 label paragraph is character-identical to the old output, run-together words included, which was already there and is not a
 rotated-item defect. **Bounds:** a rotated paragraph sits AFTER the page's upright paragraphs in the array whatever its position (a sideways table
-on a portrait page, a margin stamp), but carries a real PAGE `y` — the highest baseline on its first line (round 2: it first kept the turned frame's `-x`/`+x`, which the running-footer step read as a position, so an up-reading label on three pages was hoisted as the footer and the real footer stayed in every body; `tests/utils/flowDocRotatedStamp.test.ts` pins it through `applyRepeatedBands`); `assignHeadings` ranks by font size, so a 20pt stamp paragraph outranks the title as Heading
+on a portrait page, a margin stamp), but carries a real PAGE `y` — the MIDDLE of its first line's extent along the page (round 2: it first kept the turned frame's `-x`/`+x`, which the running-footer step read as a position, so an up-reading label on three pages was hoisted as the footer and the real footer stayed in every body; round 3: the highest baseline, the fix's first form, is an END of the run, so a banner starting at the bottom edge was still "in the footer band" — the middle is where the text is; the same `y` feeds the table interleave, the overlay merge and `resolveLinkAnchors`, which can now pick a stamp as an internal link's target paragraph when its middle is the nearest at or below the view's top). A turned line that repeats on every page can now be hoisted as the running header or footer when its middle lies in a band (a short vertical `Downloaded from … day N` stamp in the margin band), which the Markdown and TXT writers then drop — the same B5 rule as any running line, and better than the old glue, which hoisted a real body line; two labels at the SAME x on one page (stacked subplots) cluster into one paragraph, bottom label first, because the turned frame has no break for a gap along the text; alignment is measured along the text (the turned frame is `pageHeight` wide, `pageHeight - y` going down, so a label centred on the page height is 'center' in both directions); `assignHeadings` ranks by font size, so a 20pt stamp paragraph outranks the title as Heading
 1 — it did before too, glued to the body line — logged as row 56; the stamp is still in the DOCX, and some readers may prefer it
-dropped. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (9) — the stamp as its own paragraph beside a body line sharing its
+dropped. Guards: `tests/utils/flowDocRotatedStamp.test.ts` (14) — the stamp as its own paragraph beside a body line sharing its
 baseline, nothing lost, a slanted-run control, an unrotated-page control, a stamp and an axis label on one baseline, one rotated
-line reading up and one reading down, a page of only rotated text, and a BERT page-1 shape (title, two columns, stamp). Sabotage,
+line reading up and one reading down, a page of only rotated text, a BERT page-1 shape (title, two columns, stamp), and five on the page `y`: the middle of an up- and a down-reading label (a left-margin one at x 30 must not land in the footer band), a banner from the bottom edge and one from the top edge both leaving the real footer and header detection alone through `applyRepeatedBands`, and the alignment of a label centred on the page height in both directions. Sabotage,
 each landing checked and restored byte-exact: rotated words kept in the columns → the glue case and the exactly-once cases;
 rotated words dropped → the same; italics counted as rotated → exactly the slanted control; clustering by baseline again → the
-four cases about lines; reading direction ignored → exactly the reading-down case.
+four cases about lines; reading direction ignored → exactly the reading-down case; the `y` restoration off → all 4 of the `y` cases; the highest baseline instead of the middle (the round-2 form) → 3 of them; the turned frame's width taken as `pageWidth` → exactly the alignment case.

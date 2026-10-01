@@ -95,27 +95,47 @@ describe('rotated items group by their own vertical line (limits row 55 review)'
   });
 });
 
-describe('a rotated paragraph carries a PAGE y, so the running footer is still found (milestone round 2, e779ad7)', () => {
-  // Three pages, each: body lines, `Page footer` at y 40, and one rotated label up the right margin. A rotated paragraph kept
-  // the turned frame's y (-x going up, +x going down), which the footer step reads as a page position: the label (y -520) was
-  // "the lowest paragraph in the footer band" and was hoisted in place of the real footer, which stayed in every body.
-  const page = (n: number, dir: 'up' | 'down') => {
-    const label = dir === 'up' ? stamp(`Axis label number ${n}`, 520, 300) : { ...stamp(`Axis label number ${n}`, 520, 600), transform: [0, -20, 20, 0, 520, 600] as number[] };
-    return reconstructPage([...[0, 1, 2, 3].map(i => text(`Body line ${i} of page ${n}`, 72, 700 - i * 14)), text('Page footer', 72, 40), label], FONTS, 612, 792);
+describe('a rotated paragraph carries a PAGE y: the middle of its extent (milestone rounds 2-3)', () => {
+  // A rotated paragraph kept the turned frame's y (-x going up, +x going down), which the running-header/footer step read as a
+  // page position. Round 2 put the highest baseline there — an END of the run, so a margin banner that starts at the bottom edge
+  // was still "in the footer band" (round 3). The middle of the extent is where the text is on the page.
+  const down = (str: string, x: number, y: number): RawTextItem => ({ ...stamp(str, x, y), transform: [0, -20, 20, 0, x, y] });
+  const labelY = (items: RawTextItem[]) => {
+    const p = reconstructPage(items, FONTS, 612, 792).paragraphs.find(q => q.runs.map(r => r.text).join('').includes('LABEL'));
+    expect(p).toBeDefined();
+    return p?.y;
   };
-  for (const dir of ['up', 'down'] as const) {
-    it(`reading ${dir}: the label's y is a real page position and the real footer is hoisted`, () => {
-      const doc: FlowDoc = { pages: [1, 2, 3].map(n => page(n, dir)) };
-      for (const p of doc.pages) {
-        const lab = p.paragraphs.find(q => q.runs.map(r => r.text).join('').includes('Axis label'));
-        expect(lab).toBeDefined();
-        expect(lab?.y).toBeGreaterThan(0);
-        expect(lab?.y).toBeLessThanOrEqual(792);
-      }
+
+  it('reading up, from y 300 over 190pt: y is the middle, 395', () => {
+    expect(labelY([text('Body', 72, 700), stamp('LABEL 0123456789abcd', 520, 300)])).toBeCloseTo(300 + 100, 5); // 20 chars x 10 = 200pt
+  });
+  it('reading down, from y 600 over 200pt: y is the middle, 500 — and a left-margin label (x 30) is not in the footer band', () => {
+    // without the fix this paragraph's y was +x = 30: inside the footer band (<= 0.12 x 792)
+    expect(labelY([text('Body', 72, 700), down('LABEL 0123456789abcd', 30, 600)])).toBeCloseTo(600 - 100, 5);
+  });
+
+  it('alignment is measured along the text: a label centred on the page HEIGHT is centred, whichever way it reads', () => {
+    // 20 chars x 10pt = 200pt: from 296 to 496 is centred on 396 = 792 / 2. In the old frame (pageWidth 306 as the centre) up was
+    // "right" and down, at a negative x, could never be centred.
+    const al = (it: RawTextItem) => reconstructPage([text('Body', 72, 700), it], FONTS, 612, 792).paragraphs.find(q => q.runs.map(r => r.text).join('').includes('LABEL'))?.alignment;
+    expect(al(stamp('LABEL 0123456789abcd', 520, 296))).toBe('center');
+    expect(al(down('LABEL 0123456789abcd', 520, 496))).toBe('center');
+  });
+
+  const page = (n: number, label: RawTextItem) =>
+    reconstructPage([...[0, 1, 2, 3].map(i => text(`Body line ${i} of page ${n}`, 72, 650 - i * 14)), text(`Page ${n}`, 72, 40), label], FONTS, 612, 792);
+  const bodyText = (d: FlowDoc, i: number) => d.pages[i].paragraphs.map(q => q.runs.map(r => r.text).join('')).join(' | ');
+
+  for (const [name, mk] of [
+    ['reading up from the bottom edge (x 590, y 30 over 380pt)', () => stamp('CONFIDENTIAL DRAFT - DO NOT DISTRIBUTE', 590, 30)],
+    ['reading down from the top edge (x 20, y 770 over 380pt)', () => down('CONFIDENTIAL DRAFT - DO NOT DISTRIBUTE', 20, 770)],
+  ] as const) {
+    it(`${name}: the running footer is still the folio, and the banner is not hoisted`, () => {
+      const doc: FlowDoc = { pages: [1, 2, 3].map(n => page(n, mk())) };
       applyRepeatedBands(doc);
-      expect(doc.footer).toBe('Page footer');
-      // the labels differ by page number only; they are body text and must all survive
-      for (const [i, p] of doc.pages.entries()) expect(p.paragraphs.map(q => q.runs.map(r => r.text).join('')).join(' ')).toContain(`Axis label number ${i + 1}`);
+      expect(doc.footer).toBe('Page 1');
+      expect(doc.header).toBeUndefined();
+      for (let i = 0; i < 3; i++) expect(bodyText(doc, i)).toContain('CONFIDENTIAL DRAFT');
     });
   }
 });

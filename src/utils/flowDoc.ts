@@ -616,14 +616,14 @@ const MIN_BODY_WIDTH = 0.25;
  *      {@link MIN_GUTTER_PT} (10 pt, or 5% of the region when that is smaller) — or, down to {@link NARROW_GUTTER_PT}
  *      (6 pt), when BOTH sides are body blocks (row 46). Of several, the one nearest the region's centre is cut (row 21).
  * Words in the bottom band of the word set narrower than {@link FOOTER_PIECE} of the page (a page number) are left out of the
- * gutter search (row 45); wider ones stay in it. The band is the lowest 5% of `words` unless `footerCut` names it: a caller
+ * gutter search (row 45); wider ones stay in it. The band is the lowest 5% of the BASELINE SPAN of `words` unless `footerCut` names it: a caller
  * that passes a SLAB of the page must pass the PAGE's cut, or the lowest line of every slab counts as a footer.
  */
 export function detectColumnSplit(
   words: ReadonlyArray<{ x: number; width: number; y?: number }>,
   pageWidth: number,
   // B6: restrict the gutter search to a sub-column region [min,max]. Default
-  // {0,pageWidth} → byte-identical to the original full-page single cut. The
+  // {0,pageWidth} → the full-page single cut. The
   // inner-20–80% zone and the 5%-min-gap threshold are taken relative to the
   // region width, so recursion on a narrower column scales correctly.
   bounds: { min: number; max: number } = { min: 0, max: pageWidth },
@@ -638,7 +638,7 @@ export function detectColumnSplit(
   const BIN = 2; // 2pt bins — fine enough for column detection
   const bins = Math.ceil(pageWidth / BIN);
   const covered = new Uint8Array(bins);
-  // Limits row 45: a page number or footer sits in the gutter of a two-column paper (ResNet: a centred `2` 14pt into a
+  // Limits row 45: a page number or footer sits in the gutter of a two-column paper (ResNet: a centred `2` 9pt into a
   // 22.5pt gutter, one item of 175) and one item left a clean gap under the floor. The gutter is looked for without the
   // page's BOTTOM edge band; those words still go to a column by their centre (`sides`, `splitColumns`). The TOP band is
   // not excluded: a title block lives there and is row 44's problem, and dropping it would put a centred title in the
@@ -702,11 +702,12 @@ function pageFooterCut(words: ReadonlyArray<{ y?: number }>): number {
 
 /** Depth cap for recursive column splitting: three levels of central cuts → up to 8 column groups (limits row 21 —
  * it was 2, which with first-found gutters topped out at 3 in practice). Each level still needs a clean gutter of
- * 5% of its region (or 6–10pt between two body blocks, row 46) with words on both sides, so a depth that finds none adds nothing. */
+ * the smaller of 5% of its region and 10pt (or 6–10pt between two body blocks, row 46) with words on both sides, so a depth that finds none adds nothing. */
 const COLUMN_MAX_DEPTH = 3;
 
 type SplitWord = { x: number; width: number; y?: number; size?: number; text?: string };
 
+/** Recursive vertical cut. `footerCut` is the page's footer cut, forwarded to every region; undefined → each region works out its own. */
 function splitVertical<T extends SplitWord>(
   words: T[],
   pageWidth: number,
@@ -724,14 +725,16 @@ function splitVertical<T extends SplitWord>(
   ];
 }
 
+/** A white band is at least this many median-em tall (margin, not measurement). */
 const BAND_MIN_EM = 1.5;
+/** Every group of a split slab has at least this many baselines (a two-line alignment or an equation is not a column). */
 const SLAB_MIN_LINES = 6;
-/** …and the MEDIAN LINE of each of its groups spans at least this share of the page: a number table's columns (GPT-3 Table
+/** The MEDIAN LINE of each group of a split slab spans at least this share of the page: a number table's columns (GPT-3 Table
  * H.1: ~7%) and a key/value table's key column (~13%) are not text columns, whose lines run to the column edge (a 4-column
  * page: 21%, a 3-column one: 28%, a two-column one: 37%). The bounding box of the group is no measure — one long cell sets it. */
 const SLAB_MIN_WIDTH = 0.18;
 /** A slab whose words are at least this share numbers is a table, not prose (GPT-3 Table H.1 is ~85%; the papers' body text
- * under 15%), and its blocks are read ROW by row as they always were. Words without text count as non-numeric. */
+ * under 15%), and its blocks are read ROW by row as they always were. Words without text add no tokens, so they leave the ratio's denominator. */
 const SLAB_MAX_NUMERIC = 0.5;
 const NUMERIC_TOKEN = /^[(+\-−]?\d[\d.,%/)]*$/;
 /**
@@ -795,8 +798,7 @@ function splitBySlabs<T extends SplitWord>(words: T[], pageWidth: number, bounds
  * B6 — recursively split words into columns in left-to-right reading order.
  * Applies {@link detectColumnSplit} to each region; a region that yields no
  * clean gutter (or the depth cap) becomes one column group. A 1- or 2-column
- * page returns exactly what the prior single-cut path did (the depth-0 cut is
- * byte-identical with the default bounds), so output is unchanged unless a
+ * page returns what the single-cut path did (the depth-0 cut with the default bounds), so output is unchanged unless a
  * genuine additional gutter exists or a full-width band cuts the page into slabs (row 44). Pure → jsdom-testable.
  * Row 44: a page the vertical cut leaves whole is tried band by band ({@link splitBySlabs}).
  */
@@ -806,7 +808,8 @@ export function splitColumns<T extends SplitWord>(
   bounds: { min: number; max: number } = { min: 0, max: pageWidth },
   depth = 0,
 ): T[][] {
-  const groups = splitVertical(words, pageWidth, bounds, depth);
+  // The footer band is the PAGE's: every region below the first cut is judged against it, not against its own lowest line.
+  const groups = splitVertical(words, pageWidth, bounds, depth, pageFooterCut(words));
   if (groups.length > 1 || depth > 0) return groups;
   return splitBySlabs(words, pageWidth, bounds) ?? groups;
 }
@@ -2248,16 +2251,22 @@ export function reconstructPage(
   const turnedLines = (dir: 1 | -1) => {
     const ws = flowWords.filter(w => w.rotated && (w.rotDir ?? 1) === dir);
     // up: the next line lies to the RIGHT, so a larger x is later; down: to the LEFT. Reading position runs with y (up) or
-    // against it (down).
+    // against it (down); the turned frame is `pageHeight` wide, and x stays positive (`pageHeight - y` going down) so the
+    // alignment tests of `reconstructColumn` (centred, right) measure along the text, as they do for an upright line.
     if (!ws.length) return [];
-    const paras = reconstructColumn(ws.map(w => ({ ...w, x: dir === 1 ? w.y : -w.y, y: dir === 1 ? -w.x : w.x })), fonts, pageWidth);
-    // A paragraph's `y` is read as a PAGE y by the running-header/footer step, the table interleave and the overlay merge; here it
-    // is the turned frame's (-x going up, +x going down — never a position on the page; up-reading text read as the footer
-    // band's lowest paragraph and took a page's real footer with it). Restore it: the highest baseline of the words on the
-    // paragraph's first line (every cluster's `y` is one of those words' turned y, so the match is exact).
+    const paras = reconstructColumn(ws.map(w => ({ ...w, x: dir === 1 ? w.y : pageHeight - w.y, y: dir === 1 ? -w.x : w.x })), fonts, pageHeight);
+    // A paragraph's `y` is read as a PAGE y by the running-header/footer step, the table interleave, the overlay merge and the
+    // link anchors; here it is the turned frame's (-x going up, +x going down — never a position on the page; up-reading text
+    // read as the footer band's lowest paragraph and took a page's real footer with it). Restore it as the MIDDLE of the
+    // first line's extent along the page: an end of the run would put a margin banner that starts at the bottom edge inside the
+    // footer band, and one that starts at the top inside the header band, though it spans the page. Every cluster's `y` is one
+    // of its words' turned y, so the match is exact.
     return paras.map(par => {
-      const ys = ws.filter(w => (dir === 1 ? -w.x : w.x) === par.y).map(w => w.y);
-      return ys.length ? { ...par, y: Math.max(...ys) } : par;
+      const first = ws.filter(w => (dir === 1 ? -w.x : w.x) === par.y);
+      if (!first.length) return par;
+      const lo = Math.min(...first.map(w => (dir === 1 ? w.y : w.y - w.width)));
+      const hi = Math.max(...first.map(w => (dir === 1 ? w.y + w.width : w.y)));
+      return { ...par, y: (lo + hi) / 2 };
     });
   };
   const columns = splitColumns(upright, pageWidth);
