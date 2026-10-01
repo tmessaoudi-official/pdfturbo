@@ -590,6 +590,8 @@ export function extractPsName(internalId: string): string {
 const MIN_GUTTER_PT = 10;
 /** The share of the page's text height, from its lowest baseline, taken as the footer band for gutter search (row 45). */
 const FOOTER_BAND = 0.05;
+/** Baselines this close (points) are one line when a footer piece's run is judged (round 5); adjacent lines are 9pt or more apart. */
+const SAME_LINE_PT = 4;
 /** A bottom-band word at least this share of the page wide is not a page number and stays in the gutter search (row 44 review). */
 const FOOTER_PIECE = 0.04;
 /**
@@ -616,7 +618,8 @@ const MIN_BODY_WIDTH = 0.25;
  *      {@link MIN_GUTTER_PT} (10 pt, or 5% of the region when that is smaller) — or, down to {@link NARROW_GUTTER_PT}
  *      (6 pt), when BOTH sides are body blocks (row 46). Of several, the one nearest the region's centre is cut (row 21).
  * Words in the bottom band of the word set narrower than {@link FOOTER_PIECE} of the page (a page number) are left out of the
- * gutter search (row 45); wider ones stay in it. The band is the lowest 5% of the BASELINE SPAN of `words` unless `footerCut` names it: a caller
+ * gutter search (row 45); wider ones stay in it, and so does a narrow one inside a same-line run a quarter of the page wide
+ * ({@link bridgesRun} — a `[12]` between two roman runs). The band is the lowest 5% of the BASELINE SPAN of `words` unless `footerCut` names it: a caller
  * that passes a SLAB of the page must pass the PAGE's cut, or the lowest line of every slab counts as a footer.
  */
 export function detectColumnSplit(
@@ -702,8 +705,10 @@ export function detectColumnSplit(
  * least {@link MIN_BODY_WIDTH} of the page wide. A folio — `7`, `Page 2 of 9` — is a run of tens of points; a sentence is not.
  */
 function bridgesRun(w: { x: number; width: number; y?: number }, words: ReadonlyArray<{ x: number; width: number; y?: number }>, pageWidth: number): boolean {
-  const y = Math.round(w.y ?? 0);
-  const line = words.filter(o => Math.round(o.y ?? 0) === y).sort((a, b) => a.x - b.x);
+  // One line is words whose baselines lie within {@link SAME_LINE_PT}: a raised piece (a superscript, a citation) or a y that
+  // jitters across a .5 boundary is on the line; comparing rounded integers split it off as a one-word run (round 5, P2).
+  const y = w.y ?? 0;
+  const line = words.filter(o => Math.abs((o.y ?? 0) - y) <= SAME_LINE_PT);
   let lo = w.x, hi = w.x + w.width;
   // Grow the run outward from `w` until the next word is a gutter's distance away.
   for (let grew = true; grew;) {

@@ -362,6 +362,17 @@ describe('splitColumns — a spanning block cuts the page into bands first (limi
     expect(ids(splitColumns(words, 612))).toEqual(['L', 'R', 'CAP']);
   });
 
+  it('a piece raised off the baseline (a superscript, y jitter across a .5 boundary) is still part of its line (round 5, P2)', () => {
+    // `bridgesRun` first grouped a line by rounded y equality, so a `[12]` at y 380.6 or 383 was a one-word run of its own, left
+    // the gutter search and the sentence was halved. A baseline is within a few points, not the same integer.
+    for (const dy of [0.4, 0.6, 3]) {
+      const y = 380;
+      const cap = [{ x: 72, width: 226, y, size: 10, c: 'CAP' }, { x: 299, width: 16, y: y + dy, size: 10, c: 'CAP' }, { x: 316, width: 224, y, size: 10, c: 'CAP' }];
+      const words = [...block(72, 226, 24, 700, 'L'), ...block(316, 224, 24, 700, 'R'), ...cap];
+      expect(ids(splitColumns(words, 612)), `piece raised by ${dy}`).toEqual(['L', 'R', 'CAP']);
+    }
+  });
+
   it('the same pieced caption 22-30pt above a folio (inside the footer band) still keeps the sentence whole', () => {
     for (const y of [62, 55]) {
       const cap = [{ x: 72, width: 226, y, size: 10, c: 'CAP' }, { x: 299, width: 16, y, size: 10, c: 'CAP' }, { x: 316, width: 224, y, size: 10, c: 'CAP' }];
