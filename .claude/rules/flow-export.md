@@ -820,14 +820,20 @@ which the old output had interleaved ("Generated Poem 1 … Generated Poem 3" in
 p5 was counted, not read.** **The census caught a regression the fixtures did not:** GPT-3 Table H.1 (four wide blocks of
 tight numeric columns) was split block by block on the first cut — rows broken apart, 16 paragraphs → 54 — and the width
 rule did not catch it (each block is 20–28% of the page). The numeric-token rule did; both fixtures that pin it carry the
-measured shape. **Not changed by the census, by design:** every page the vertical cut already split.
+measured shape. **Not changed by the census, by design:** every page the vertical cut already split. **The unchanged pages were compared by
+TEXT, not counts:** a SHA-1 of each page's paragraph text, old code (`a9365c7`) against new, over all 118 pages of the four
+untagged papers plus the two untagged pages of otherwise tagged files — the decision is PER PAGE (`_extractFlowDoc` reads
+`getStructTree()` for each page), and the inventory's 66/67 and 3/4 leave Census p66 and budget p4 on the splitter. Text
+differs on exactly the 11 pages above and on neither of those two; the rotated-word filter, which runs on every page, changed
+nothing else. Row 46's claim stands: Census p8, its one changed page, is tagged.
 
 **Bounds, stated.** (1) Horizontal cuts only at depth 0 and only across the whole page width: a figure in ONE column of a
 two-column page is not cut. (2) A number-heavy two-column TEXT page (a statistics appendix of prose) is refused as a table
 and keeps the old reading. (3) The 1.5 em band height is margin, not measurement — no fixture is sensitive to it (a lower
-value changes nothing on the corpus), so it is unpinned. (4) The stamp glued to a body line that shares its baseline
-("…24 May 2019be effective for…") is PRE-EXISTING — the old code produced the same string — and still there; it is more
-visible now that the page reads in order. (5) A rotated item is still assigned to a column by its projected centre. (6) The
+value changes nothing on the corpus), so it is unpinned. (4) The stamp is glued to whichever left-column line shares its baseline —
+PRE-EXISTING on both papers, checked against the old code: BERT p1 "…24 May 2019be effective for…" (identical before and
+after), ResNet p1 "…Dec 2015Deep convolutional…" before and "…Dec 20151. IntroductionDe…" after (the neighbouring line
+changed because the column order did, the glue did not). Still there, and more visible now that the page reads in order. (5) A rotated item is still assigned to a column by its projected centre. (6) The
 census probe passes no rules, no vRules and no struct tree: it measures the splitter, not the full export.
 
 Guards: `tests/utils/flowDocColumns.test.ts` (10 cases in the row 44 block — title + two columns; caption between two column
