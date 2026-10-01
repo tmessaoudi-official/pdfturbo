@@ -210,3 +210,99 @@ describe('detectColumnSplit — a narrow gutter between body blocks (limits row 
     expect(splitColumns([...block(36, 250, 5, 0), ...block(300, 250, 5, 1)], W)).toHaveLength(2);
   });
 });
+
+// Limits row 44: a title, abstract, figure or table spanning both columns blocks the vertical cut, so the page stays one
+// column and interleaves (measured on BERT p1, 3, 5, 6 and ResNet p1, 5, 8, 11 — untagged, so the product reads them
+// through this splitter). A full-width WHITE BAND (no word's extent in it, at least 1.5 em) cuts the page into slabs, and
+// the slabs are tried for a vertical split — but only when one of them really splits, so every other page returns exactly
+// what it did before.
+describe('splitColumns — a spanning block cuts the page into bands first (limits row 44)', () => {
+  const W = 595;
+  // `n` lines at 12pt leading from `y0` down; `c` tags the column / block so reading order can be asserted.
+  const block = (x: number, w: number, n: number, y0: number, c: string, size = 10) =>
+    Array.from({ length: n }, (_, i) => ({ x, width: w, y: y0 - i * 12, size, c }));
+  const ids = (groups: { c: string }[][]) => groups.map(g => [...new Set(g.map(w => w.c))].join('+'));
+
+  it('a centred title above two columns: title, then left, then right (BERT p1 shape)', () => {
+    const words = [...block(150, 300, 3, 760, 'T', 14), ...block(72, 218, 30, 650, 'L'), ...block(307, 219, 30, 650, 'R')];
+    expect(ids(splitColumns(words, W))).toEqual(['T', 'L', 'R']);
+  });
+
+  it('a full-width figure caption between two column bands: top L, top R, caption, bottom L, bottom R (BERT p3 shape)', () => {
+    const words = [
+      ...block(72, 218, 15, 740, 'L1'), ...block(307, 219, 15, 740, 'R1'),
+      ...block(72, 454, 2, 480, 'CAP'),
+      ...block(72, 218, 15, 430, 'L2'), ...block(307, 219, 15, 430, 'R2'),
+    ];
+    expect(ids(splitColumns(words, W))).toEqual(['L1', 'R1', 'CAP', 'L2', 'R2']);
+  });
+
+  it('control: a one-column page with paragraph gaps is returned exactly as before (one group, same array contents)', () => {
+    const words = [...block(72, 454, 8, 740, 'P1'), ...block(72, 454, 8, 600, 'P2'), ...block(72, 454, 8, 460, 'P3')];
+    const groups = splitColumns(words, W);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toEqual(words);
+  });
+
+  it('control: a short table-like alignment inside a one-column page is not a column split (fewer than 6 lines a side)', () => {
+    // 140pt cells are 23% of the page each, so the WIDTH rule passes them and only the line count can refuse the slab.
+    const cell = (x: number, y: number) => ({ x, width: 140, y, size: 10, c: 'tbl' });
+    const table = [0, 1, 2].flatMap(r => [72, 232, 392].map(x => cell(x, 600 - r * 12)));
+    const words = [...block(72, 454, 8, 740, 'P1'), ...table, ...block(72, 454, 8, 500, 'P2')];
+    expect(splitColumns(words, W)).toHaveLength(1);
+  });
+
+  it('control: sections of a many-column NUMBER table are not read column by column (GPT-3 Table H.1 shape)', () => {
+    // A title, then three sections of 8 rows x 6 numeric columns ~8% of the page wide each, a white band between sections.
+    // Every section has a clean gutter and 8 lines, so only the WIDTH of the resulting groups can tell it from a text page.
+    const cells = (y0: number, tag: string) =>
+      Array.from({ length: 8 }, (_, r) => Array.from({ length: 6 }, (_, c) => ({ x: 120 + c * 62, width: 40, y: y0 - r * 12, size: 10, c: `${tag}${c}` }))).flat();
+    const words = [...block(150, 300, 1, 780, 'T', 14), ...cells(740, 'a'), ...cells(600, 'b'), ...cells(460, 'c')];
+    expect(splitColumns(words, W)).toHaveLength(1);
+  });
+
+  it('control: a table of four wide NUMBER blocks is not read block by block (GPT-3 Table H.1, measured: every block 20-28% of the page)', () => {
+    // A names block, then three blocks of 8 tight numeric columns (gaps under the 10pt floor inside a block, 14pt between
+    // blocks), 12 rows. Each block has a clean gutter, 12 lines and well over 15% of the page: geometry alone cannot refuse it.
+    const row = (y: number) => [
+      { x: 40, width: 100, y, size: 10, text: 'HellaSwag acc dev', c: 'names' },
+      ...[0, 1, 2].flatMap(b => Array.from({ length: 8 }, (_, k) => ({ x: 154 + b * 150 + k * 18, width: 16, y, size: 10, text: `${(k * 7.3 + b).toFixed(1)}`, c: `blk${b}` }))),
+    ];
+    const words = [...block(150, 300, 1, 780, 'T', 14), ...Array.from({ length: 12 }, (_, r) => row(740 - r * 12)).flat()];
+    expect(splitColumns(words, W)).toHaveLength(1);
+  });
+
+  it('a rotated margin stamp whose projected width crosses the gutter does not block the split (the arXiv stamp, BERT/ResNet p1)', () => {
+    // pdf.js reports a 90-degree item with its advance as `width`, drawn along x from the margin: x 32-385 here, over the
+    // gutter at 290-307, though the ink is a 20pt-wide strip at x=32.
+    const stamp = { x: 32, width: 353, y: 400, size: 20, c: 'STAMP', rotated: true };
+    const words = [...block(150, 300, 3, 760, 'T', 14), ...block(72, 218, 30, 650, 'L'), ...block(307, 219, 30, 650, 'R'), stamp];
+    const groups = splitColumns(words, W);
+    expect(ids(groups).filter(g => g !== 'STAMP')).toEqual(expect.arrayContaining(['T']));
+    expect(groups.length).toBeGreaterThanOrEqual(3);
+    expect(groups.flat()).toHaveLength(words.length);
+  });
+
+  it('control: the same stamp NOT marked rotated is a real spanning item and still blocks', () => {
+    const stamp = { x: 32, width: 353, y: 400, size: 20, c: 'STAMP' };
+    const words = [...block(72, 218, 30, 650, 'L'), ...block(307, 219, 30, 650, 'R'), stamp];
+    expect(splitColumns(words, W)).toHaveLength(1);
+  });
+
+  it('control: a spanning line at the bottom of a column band still blocks that band (the footer cut is the PAGE\'s, not the band\'s)', () => {
+    // title, band, two columns whose last line spans the page at normal leading, band, a closing paragraph. Judged against
+    // its own bottom edge the band would drop that spanning line from the gutter search and cut through it.
+    const words = [
+      ...block(150, 300, 2, 760, 'T', 14),
+      ...block(72, 218, 12, 650, 'L'), ...block(307, 219, 12, 650, 'R'),
+      ...block(72, 454, 1, 650 - 12 * 12, 'SPAN'),
+      ...block(72, 454, 3, 400, 'END'),
+    ];
+    expect(splitColumns(words, W)).toHaveLength(1);
+  });
+
+  it('control: a 14pt gutter page with no spanning block is unchanged (vertical cut first, no bands)', () => {
+    const words = [...block(72, 218, 20, 740, 'L'), ...block(307, 219, 20, 740, 'R')];
+    expect(ids(splitColumns(words, W))).toEqual(['L', 'R']);
+  });
+});
