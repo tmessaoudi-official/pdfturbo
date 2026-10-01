@@ -120,3 +120,45 @@ describe('limits row 21 (D10) — 4+ columns and narrow gutters', () => {
   });
 });
 
+
+// Limits row 45: ResNet (and any CVPR-style paper) never split, on any page — the centred PAGE NUMBER sits 14pt into the
+// 22.5pt gutter (measured: `2` at x 295.1–300.1, y 51; the columns end at 286.4 and start at 308.9). One item of 175
+// left a clean gap of ~9pt, under the 10pt floor. The gutter is now looked for WITHOUT the page's bottom edge band, where
+// a page number or a footer lives; those words are still assigned to a column by their centre, never dropped.
+describe('detectColumnSplit — a page number in the gutter (limits row 45)', () => {
+  const W = 612;
+  // A two-column body: 40 lines each, left 58.5–286.5, right 308.9–544.9, y 700 down to 232.
+  const ys = Array.from({ length: 40 }, (_, i) => 700 - i * 12);
+  const body = [...ys.map(y => ({ x: 58.5, width: 228, y })), ...ys.map(y => ({ x: 308.9, width: 236, y }))];
+  const folio = (y: number) => ({ x: 295.1, width: 5, y });
+
+  it('splits a two-column page whose centred page number (bottom edge) sits in the gutter', () => {
+    const cut = detectColumnSplit([...body, folio(51)], W);
+    expect(cut).not.toBeNull();
+    expect(cut).toBeGreaterThan(286.5);
+    expect(cut).toBeLessThan(308.9);
+  });
+
+  it('control: the same item in the MIDDLE of the body still blocks the cut', () => {
+    expect(detectColumnSplit([...body, folio(500)], W)).toBeNull();
+  });
+
+  it('control: a running title in the TOP band still blocks it (a title block is not a footer — row 44)', () => {
+    expect(detectColumnSplit([...body, { x: 153, width: 289, y: 775 }], W)).toBeNull();
+  });
+
+  it('control: without the footer item the page splits exactly as before', () => {
+    const cut = detectColumnSplit(body, W);
+    expect(cut).not.toBeNull();
+    expect(cut).toBeGreaterThan(286.5);
+    expect(cut).toBeLessThan(308.9);
+  });
+
+  it('splitColumns keeps every word: the page number lands in one column, none is lost', () => {
+    const words = [...body, folio(51)];
+    const groups = splitColumns(words, W);
+    expect(groups).toHaveLength(2);
+    expect(groups.flat()).toHaveLength(words.length);
+    expect(groups.some(g => g.some(w => w.y === 51))).toBe(true);
+  });
+});

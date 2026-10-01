@@ -592,6 +592,8 @@ export function extractPsName(internalId: string): string {
  * measured on 2 pt bins, which loses 2–4 pt: a DRAWN gutter of 14 pt or more always splits, 11 pt or less never.
  */
 const MIN_GUTTER_PT = 10;
+/** The share of the page's text height, from its lowest baseline, taken as the footer band for gutter search (row 45). */
+const FOOTER_BAND = 0.05;
 
 export function detectColumnSplit(
   words: ReadonlyArray<{ x: number; width: number; y?: number }>,
@@ -611,7 +613,16 @@ export function detectColumnSplit(
   const BIN = 2; // 2pt bins — fine enough for column detection
   const bins = Math.ceil(pageWidth / BIN);
   const covered = new Uint8Array(bins);
-  for (const w of words) {
+  // Limits row 45: a page number or footer sits in the gutter of a two-column paper (ResNet: a centred `2` 14pt into a
+  // 22.5pt gutter, one item of 175) and one item left a clean gap under the floor. The gutter is looked for without the
+  // page's BOTTOM edge band; those words still go to a column by their centre (`sides`, `splitColumns`). The TOP band is
+  // not excluded: a title block lives there and is row 44's problem, and dropping it would put a centred title in the
+  // wrong column. Skipped when it would leave fewer than two baselines, or when no word is in the body.
+  const yLo = Math.min(...words.map(w => w.y ?? 0)), yHi = Math.max(...words.map(w => w.y ?? 0));
+  const footerCut = yLo + FOOTER_BAND * (yHi - yLo);
+  const body = words.filter(w => (w.y ?? 0) > footerCut);
+  const gutterWords = new Set(body.map(w => Math.round(w.y ?? 0))).size >= 2 ? body : words;
+  for (const w of gutterWords) {
     const s = Math.max(0, Math.floor(w.x / BIN));
     const e = Math.min(bins - 1, Math.ceil((w.x + w.width) / BIN));
     for (let i = s; i <= e; i++) covered[i] = 1;

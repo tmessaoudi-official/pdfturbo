@@ -695,6 +695,42 @@ exports as ONE paragraph equal to the typed text). Sabotage, each restored byte-
 controls; fullness off → 2; column-gap off → 1; list-marker off → 1; page-width floor off → 2; consecutive off → 1; loose
 acceptance → 1; page width ignored → 1; the browser case red with the uniform evidence off. **Bounds.** A wrapped paragraph
 whose lines are under 85% of the widest line in its column (a narrow column beside a wide figure caption) still splits; a list
-of single-line, full-width, column-gap-free items at a uniform 1.6–1.75 leading on a wide page would join (none in the corpus);
+of single-line, full-width, column-gap-free items at a uniform 1.6–1.75 leading on a wide page would join (none in the corpus — a
+table of contents with dot leaders is the concrete instance: its lines fill the measure and have no column gap);
 the constants come from one measured target and the false-positive classes above, not a wider corpus; a page-level fixture
 for the class (a Chrome page at `line-height: 1.6` with a short list, an address block and a date column) was not built.
+
+### A page number in the gutter no longer blocks the column split — limits row 45 (2026-10-01)
+
+ResNet (`article-resnet-2col.pdf`) never split into columns, on any of its 12 pages, so every page interleaved the two columns
+line by line (census-income p23 read `…poverty rate in ENDNOTES the United St…`). **Traced, then fixed at the origin.** The
+columns end at 286.4 and start at 308.9 — a 22.5pt gutter — but the page number `2` is drawn at x 295.1–300.1, y 51, centred
+IN the gutter: one item of 175 left a clean gap of ~9pt (4pt on the 2pt bins), under `MIN_GUTTER_PT` (10). `detectColumnSplit`
+now looks for the gutter without the page's BOTTOM edge band (`FOOTER_BAND`, the lowest 5% of the text's own baseline span —
+where a page number or a footer lives); those words still go to a column by their centre and none is dropped. The TOP band is
+deliberately NOT excluded: a title block lives there (row 44), and dropping it would put a centred title in whichever column
+its centre falls in. Skipped when it would leave fewer than two baselines.
+
+**`arxiv-multicol-japanese.pdf` needed no fix** — the row listed it with ResNet, but it is a single-column layout: on all 17
+pages the body lines span 134.8–480.6 and no word lies left of x = 132, so the one gap in the 20–80% zone is the left margin
+and `detectColumnSplit` is right to refuse (the `sides` test: no words on both sides). The filename names its subject, not its
+layout.
+
+**Measured blast (real `reconstructPage`, 23 files / 5,105 → 5,231 paragraphs, 24 pages change in 5 files):** ResNet 8 of 12
+pages (2, 3, 4, 6, 7, 9, 10, 12), census-income 12, pub17 2, 1099-MISC 1, sample-tables-lattice 1. Every changed page read was
+INTERLEAVING two columns before (`for 2025 ted tax payments on time. for Form`) and reads column by column after; character
+totals move by at most 1.4% (joins and spacing), so no text is lost. The 1099-MISC form moves from merged label rows
+(`PAYER'S name 1 Rents OMB No. 1545-0115`) to separate fields — a change a form-fidelity reviewer may weigh. The four ResNet pages
+that still do not split (1, 5, 8, 11) are blocked by SPANNING items — the title and authors, a spanning table or figure caption —
+which is row 44's horizontal-cut problem, not this one.
+
+Guards: 5 unit cases in `tests/utils/flowDocColumns.test.ts` (the ResNet shape; controls: the same item mid-body still blocks, a
+top-band title still blocks, no folio splits as before; `splitColumns` keeps every word) and `tests/browser/flow-gutter-folio.browser.test.ts`
+(a pdf-lib two-column page of JUSTIFIED lines read back through real pdf.js, with and without the folio). Sabotage, each restored
+byte-exact: exclusion off → the 2 defect cases and the browser with-folio case; the band also covering the top → the title
+control; the band covering 90% → the mid-body control. **The first version of the browser fixture stayed green with the fix
+removed** — its lines were a third of the column width, so the gutter was ~100pt and no page number could block it; real columns
+are justified, so the fixture now fills the measure from the font's own widths (the fixture-mirrors-detector trap, caught by
+sabotage). **Bounds.** A page number is only the commonest intruder: a centred footer WORD, or a figure label placed in the gutter
+away from the bottom edge, still blocks; and the footer band is a fraction of the text's own span, so a page whose body is
+only a few lines at the bottom is unchanged by the two-baseline guard.
