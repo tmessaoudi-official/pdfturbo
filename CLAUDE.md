@@ -283,7 +283,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **pdfjs** — pdf.js assets (CMaps, JBIG2/JPX decoders, ICC), points viewports, the text layer (4) → `.claude/rules/pdfjs.md` (loads when you read `src/utils/pdfjsParams.ts`, `src/utils/pointViewport.ts` …).
 - **redaction** — redaction burns, the hide-vs-remove audit, coordinate frames, Form XObjects, annotations under a burn (11) → `.claude/rules/redaction.md` (loads when you read `src/export/exportPipeline.ts`, `src/export/exportService.ts` …).
 - **export** — the export pipeline: rotation, text extent, the export frame, links, flatten, XLSX, forms, XFDF, Bates, sanitize, lock, compress (14) → `.claude/rules/export.md` (loads when you read `src/export/**`, `src/utils/pdfSanitizer.ts` …).
-- **flow-export** — PDF→DOCX/MD: flow reconstruction, columns, tables and CSV, the tagged-PDF fast path (12) → `.claude/rules/flow-export.md` (loads when you read `src/utils/flowDoc*.ts`, `src/utils/tableExtract.ts` …).
+- **flow-export** — PDF→DOCX/MD: flow reconstruction, columns, tables and CSV, the tagged-PDF fast path (13) → `.claude/rules/flow-export.md` (loads when you read `src/utils/flowDoc*.ts`, `src/utils/tableExtract.ts` …).
 - **arabic-rtl** — Arabic and RTL: bidi, the Arabic overlay, tashkeel, RTL selection and copy (7) → `.claude/rules/arabic-rtl.md` (loads when you read `src/utils/bidi.ts`, `src/utils/rtlClipboard.ts` …).
 - **true-edit** — true text editing in the content stream: Path 2/3, fonts, nested cm (4) → `.claude/rules/true-edit.md` (loads when you read `src/utils/contentStreamEditor.ts`, `src/utils/glyphNames.ts` …).
 - **docx-edit** — DOCX read + edit and its package garbage collection (2) → `.claude/rules/docx-edit.md` (loads when you read `src/docx/**`, `tests/docx/**`).
@@ -361,6 +361,7 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 - § "Private-method convention" → `conventions.md`
 - § "PDF→DOCX/MD export (beta)" → `flow-export.md`
 - § "Tagged-PDF struct-tree fast path (#B1, 2026-06-25)" → `flow-export.md`
+- § "A rotated stamp never takes a heading rank — limits row 56 (2026-10-02)" → `flow-export.md`
 - § "Arabic support (Sprint Arabic, 2026-06-15)" → `arabic-rtl.md`
 - § "Cornerstone QA 2026-06-17 — RTL text-layer selection/copy/search + multi-language DOCX" → `arabic-rtl.md`
 - § "OCR (Sprint 4, 2026-06-15; CSP/engine fix 2026-06-15)" → `ocr.md`

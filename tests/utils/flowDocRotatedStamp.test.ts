@@ -5,7 +5,7 @@
  * whichever line it landed beside. A rotated item now leaves the line clustering and is a paragraph of its own.
  */
 import { describe, it, expect } from 'vitest';
-import { reconstructPage, applyRepeatedBands, type RawTextItem, type FontInfoMap, type FlowDoc } from '../../src/utils/flowDoc';
+import { reconstructPage, applyRepeatedBands, assignHeadings, type RawTextItem, type FontInfoMap, type FlowDoc } from '../../src/utils/flowDoc';
 
 const FONTS: FontInfoMap = { f1: { name: 'Helvetica', family: 'sans-serif' } };
 const text = (str: string, x: number, y: number): RawTextItem => ({
@@ -156,3 +156,39 @@ describe('a redaction over rotated text removes it from the flow (milestone roun
     expect(out).toContain('Body line one');
   });
 });
+
+describe('a rotated stamp never takes a heading rank (limits row 56)', () => {
+  // `assignHeadings` ranks paragraphs by font size, so the 20pt arXiv stamp outranked the real 16pt title and became Heading 1.
+  const title = (str: string, size: number, y: number): RawTextItem => ({ ...text(str, 72, y), transform: [size, 0, 0, size, 72, y], width: str.length * size * 0.5, height: size });
+  const bodyLines = [700, 686, 672, 658].map((y, i) => text(`Language model pre-training has been shown to be effective, line ${i}`, 72, y));
+  const headings = (items: RawTextItem[]) => {
+    const doc: FlowDoc = { pages: [reconstructPage(items, FONTS, 612, 792)] };
+    assignHeadings(doc);
+    return doc.pages[0].paragraphs.map(p => ({ t: p.runs.map(r => r.text).join('').slice(0, 14), h: p.heading }));
+  };
+
+  it('the upright title is Heading 1 and the stamp is body text', () => {
+    const out = headings([title('A Real Paper Title', 16, 740), ...bodyLines, stamp('arXiv:1810.04805v2 [cs.CL] 24 May 2019', 32, 400)]);
+    expect(out.find(p => p.t.startsWith('A Real Paper'))?.h).toBe(1);
+    expect(out.find(p => p.t.startsWith('arXiv:'))?.h).toBe(0);
+  });
+
+  it('a stamp set at the TITLE\'s own size is still body text (the ranking guard alone, not the size vote)', () => {
+    const same: RawTextItem = { ...stamp('arXiv:1810.04805v2 [cs.CL] 24 May 2019', 32, 400), transform: [0, 16, -16, 0, 32, 400], height: 16 };
+    const out = headings([title('A Real Paper Title', 16, 740), ...bodyLines, same]);
+    expect(out.find(p => p.t.startsWith('A Real Paper'))?.h).toBe(1);
+    expect(out.find(p => p.t.startsWith('arXiv:'))?.h).toBe(0);
+  });
+
+  it('a rotated ALL-CAPS banner at body size is not promoted by the style pass either', () => {
+    const banner: RawTextItem = { ...stamp('CONFIDENTIAL DRAFT', 32, 400), transform: [0, 10, -10, 0, 32, 400], width: 90, height: 10 };
+    expect(headings([...bodyLines, banner]).find(p => p.t.startsWith('CONFIDENTIAL'))?.h).toBe(0);
+  });
+
+  it('control: on a page whose text is ALL rotated, the rotated title still ranks (it is not a stamp)', () => {
+    const turned = (str: string, size: number, x: number, y: number): RawTextItem => ({ ...stamp(str, x, y), transform: [0, size, -size, 0, x, y], width: str.length * size * 0.5, height: size });
+    const out = headings([turned('A Real Paper Title', 16, 500, 100), ...[0, 1, 2, 3].map(i => turned(`Language model pre-training has been shown to be effective, line ${i}`, 10, 470 - i * 14, 100))]);
+    expect(out.find(p => p.t.startsWith('A Real Paper'))?.h).toBe(1);
+  });
+});
+

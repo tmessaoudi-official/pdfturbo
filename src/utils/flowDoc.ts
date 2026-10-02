@@ -120,6 +120,12 @@ export interface FlowParagraph {
   runs: FlowRun[];
   /** 0 = body, 1–6 = heading level (assigned document-wide by assignHeadings). */
   heading: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  /**
+   * Limits row 56 — set on a paragraph read from ROTATED text that is a minority on a page with upright text: a margin stamp (the
+   * arXiv line), an axis label. `assignHeadings` leaves it out of the size vote and the ranking, so a 20pt stamp cannot outrank the
+   * real title. Never set when the page's text is all (or mostly) rotated: that is the page's body, and it keeps its headings.
+   */
+  turned?: true;
   alignment: 'left' | 'center' | 'right' | 'justify';
   rtl: boolean;
   /** Set when the paragraph opens a list item; prefix marker stripped from first run. */
@@ -2284,6 +2290,9 @@ export function reconstructPage(
   // at one x, so they are mapped to the horizontal frame (position along the text → x, across it → y) and clustered there.
   // A page with no rotated item takes the same two calls as before.
   const upright = flowWords.filter(w => !w.rotated);
+  // Row 56: turned text is a STAMP (kept out of the heading ranking) only while it is the minority beside upright text; a page whose
+  // body is rotated (a landscape scan, a content-rotated page) has no upright text to rank against and keeps its own headings.
+  const turnedIsStamp = upright.length > 0 && flowWords.length - upright.length < upright.length;
   const turnedLines = (dir: 1 | -1) => {
     const ws = flowWords.filter(w => w.rotated && (w.rotDir ?? 1) === dir);
     // up: the next line lies to the RIGHT, so a larger x is later; down: to the LEFT. Reading position runs with y (up) or
@@ -2299,10 +2308,11 @@ export function reconstructPage(
     // of its words' turned y, so the match is exact.
     return paras.map(par => {
       const first = ws.filter(w => (dir === 1 ? -w.x : w.x) === par.y);
-      if (!first.length) return par;
+      const mark = turnedIsStamp ? ({ turned: true } as const) : {};
+      if (!first.length) return { ...par, ...mark };
       const lo = Math.min(...first.map(w => (dir === 1 ? w.y : w.y - w.width)));
       const hi = Math.max(...first.map(w => (dir === 1 ? w.y + w.width : w.y)));
-      return { ...par, y: (lo + hi) / 2 };
+      return { ...par, ...mark, y: (lo + hi) / 2 };
     });
   };
   const columns = splitColumns(upright, pageWidth);
@@ -2377,6 +2387,7 @@ export function assignHeadings(doc: FlowDoc): void {
   for (const page of doc.pages) {
     if (page.tagged) continue; // B1: tag-derived headings; don't skew the body-size vote
     for (const p of page.paragraphs) {
+      if (p.turned) continue; // row 56: a stamp's size must not take a heading rank
       for (const r of p.runs) {
         weight.set(r.fontSize, (weight.get(r.fontSize) ?? 0) + r.text.length);
       }
@@ -2392,6 +2403,7 @@ export function assignHeadings(doc: FlowDoc): void {
   for (const page of doc.pages) {
     if (page.tagged) continue; // B1: keep the tag-derived heading levels
     for (const p of page.paragraphs) {
+      if (p.turned) { p.heading = 0; continue; }
       const sizes = p.runs.map(r => r.fontSize);
       const domSize = sizes.length ? Math.max(...sizes) : bodySize;
       const rank = headingSizes.indexOf(domSize);
@@ -2430,7 +2442,7 @@ export function assignHeadings(doc: FlowDoc): void {
   for (const page of doc.pages) {
     if (page.tagged) continue; // B1: tagged pages carry their own heading levels
     for (const p of page.paragraphs) {
-      if (p.heading !== 0 || p.listType || p.runs.length === 0) continue;
+      if (p.heading !== 0 || p.turned || p.listType || p.runs.length === 0) continue;
       const domSize = Math.max(...p.runs.map(r => r.fontSize));
       if (Math.abs(domSize - bodySize) > bodySize * HEADING_SIZE_TOLERANCE) continue;
       if (p.runs.some(r => r.underline || r.strikethrough)) continue;
