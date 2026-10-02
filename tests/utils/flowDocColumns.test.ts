@@ -373,6 +373,16 @@ describe('splitColumns — a spanning block cuts the page into bands first (limi
     }
   });
 
+  it('the raise a piece may have scales with its font size: a citation raised 4.6-5.6pt on 14pt text is still on its line (round 6, P2)', () => {
+    // A superscript rises 0.33-0.4 em: 4.6-5.6pt at 14pt, over the fixed 4pt of round 5.
+    for (const dy of [4.5, 5.6, 6]) {
+      const y = 380;
+      const cap = [{ x: 72, width: 226, y, size: 14, c: 'CAP' }, { x: 299, width: 16, y: y + dy, size: 14, c: 'CAP' }, { x: 316, width: 224, y, size: 14, c: 'CAP' }];
+      const words = [...block(72, 226, 24, 700, 'L'), ...block(316, 224, 24, 700, 'R'), ...cap];
+      expect(ids(splitColumns(words, 612)), `14pt piece raised by ${dy}`).toEqual(['L', 'R', 'CAP']);
+    }
+  });
+
   it('the same pieced caption 22-30pt above a folio (inside the footer band) still keeps the sentence whole', () => {
     for (const y of [62, 55]) {
       const cap = [{ x: 72, width: 226, y, size: 10, c: 'CAP' }, { x: 299, width: 16, y, size: 10, c: 'CAP' }, { x: 316, width: 224, y, size: 10, c: 'CAP' }];

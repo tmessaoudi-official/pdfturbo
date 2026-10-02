@@ -590,8 +590,13 @@ export function extractPsName(internalId: string): string {
 const MIN_GUTTER_PT = 10;
 /** The share of the page's text height, from its lowest baseline, taken as the footer band for gutter search (row 45). */
 const FOOTER_BAND = 0.05;
-/** Baselines this close (points) are one line when a footer piece's run is judged (round 5); adjacent lines are 9pt or more apart. */
+/**
+ * Baselines this close are one line when a footer piece's run is judged (rounds 5-6): at least {@link SAME_LINE_PT} points, or
+ * {@link SAME_LINE_EM} of the piece's font size when that is more — a superscript rises 0.33–0.4 em (4.6–5.6pt at 14pt), and
+ * adjacent lines are at least an em apart (a 4pt floor on 6pt type is still under its 7pt leading).
+ */
 const SAME_LINE_PT = 4;
+const SAME_LINE_EM = 0.45;
 /** A bottom-band word at least this share of the page wide is not a page number and stays in the gutter search (row 44 review). */
 const FOOTER_PIECE = 0.04;
 /**
@@ -623,7 +628,7 @@ const MIN_BODY_WIDTH = 0.25;
  * that passes a SLAB of the page must pass the PAGE's cut, or the lowest line of every slab counts as a footer.
  */
 export function detectColumnSplit(
-  words: ReadonlyArray<{ x: number; width: number; y?: number }>,
+  words: ReadonlyArray<{ x: number; width: number; y?: number; size?: number }>,
   pageWidth: number,
   // B6: restrict the gutter search to a sub-column region [min,max]. Default
   // {0,pageWidth} → the full-page single cut. The
@@ -704,11 +709,13 @@ export function detectColumnSplit(
  * True when `w` belongs to a same-baseline run of text (words closer than {@link MIN_GUTTER_PT} to their neighbour) that is at
  * least {@link MIN_BODY_WIDTH} of the page wide. A folio — `7`, `Page 2 of 9` — is a run of tens of points; a sentence is not.
  */
-function bridgesRun(w: { x: number; width: number; y?: number }, words: ReadonlyArray<{ x: number; width: number; y?: number }>, pageWidth: number): boolean {
-  // One line is words whose baselines lie within {@link SAME_LINE_PT}: a raised piece (a superscript, a citation) or a y that
-  // jitters across a .5 boundary is on the line; comparing rounded integers split it off as a one-word run (round 5, P2).
+function bridgesRun(w: { x: number; width: number; y?: number; size?: number }, words: ReadonlyArray<{ x: number; width: number; y?: number; size?: number }>, pageWidth: number): boolean {
+  // One line is words whose baselines lie within the piece's tolerance: a raised piece (a superscript, a citation) or a y that
+  // jitters across a .5 boundary is on the line; comparing rounded integers split it off as a one-word run (round 5, P2), and a
+  // fixed 4pt missed a superscript on 14pt text (round 6, P2).
   const y = w.y ?? 0;
-  const line = words.filter(o => Math.abs((o.y ?? 0) - y) <= SAME_LINE_PT);
+  const tol = Math.max(SAME_LINE_PT, SAME_LINE_EM * (w.size ?? 0));
+  const line = words.filter(o => Math.abs((o.y ?? 0) - y) <= tol);
   let lo = w.x, hi = w.x + w.width;
   // Grow the run outward from `w` until the next word is a gutter's distance away.
   for (let grew = true; grew;) {
