@@ -23,7 +23,7 @@
    `Claude-Session` trailer, ever** (the harness suggests them; the developer's ruling overrides).
    `master` is the only branch; commit and push autonomously for green, self-contained work.
 4. **The full deploy gate, before every push** (CI runs all of it; a miss goes green-local/red-CI):
-   `npm audit --audit-level=high` → `npm run ocr:assets` → `npm run type-check` → `npm run lint` →
+   `npm run audit:gate` (= `npm audit --audit-level=high` with the one expiring exemption, CLAUDE.md § Git & CI) → `npm run ocr:assets` → `npm run type-check` → `npm run lint` →
    `npm run test` (jsdom) → `npm run test:browser` (real Chrome) → `npm run test:coverage:export`
    (25% branch gate on `pdfElementRenderer.ts`) → `npm run build` → `npm run qa:sweep` against
    `vite preview` on :4173 with `--allow-destructive`.

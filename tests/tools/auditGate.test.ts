@@ -78,6 +78,56 @@ describe('audit gate', () => {
     expect(r.failing).toEqual(['GHSA-mh99-v99m-4gvg (brace-expansion, high)']);
   });
 
+  it('an unknown or missing severity FAILS CLOSED; case does not matter (round 7, P2)', () => {
+    const one = (severity: string | undefined) => evaluate(report({ a: vuln('a', severity as string, [{ ...adv('a', 'GHSA-1111-2222-3333', 'x'), severity }]) }), [], TODAY);
+    expect(one('HIGH').ok, 'HIGH').toBe(false);
+    expect(one('HIGH').failing, 'HIGH').toEqual(['GHSA-1111-2222-3333 (a, high)']);
+    for (const bad of ['banana', undefined, '']) {
+      const r = one(bad as string | undefined);
+      expect(r.ok, String(bad)).toBe(false);
+      expect(r.problems.length, String(bad)).toBeGreaterThan(0);
+    }
+    for (const fine of ['info', 'low', 'moderate']) expect(one(fine).ok, fine).toBe(true);
+  });
+
+  it('a NODE with a bogus severity fails the gate even when its advisory object carries a valid one', () => {
+    for (const nodeSev of ['banana', undefined]) {
+      const r = evaluate(report({ a: vuln('a', nodeSev as string, [adv('a', 'GHSA-1111-2222-3333', 'low')]) }), [], TODAY);
+      expect(r.ok, String(nodeSev)).toBe(false);
+      expect(r.problems.length, String(nodeSev)).toBeGreaterThan(0);
+    }
+  });
+
+  it('a high advisory object with NO usable id is not skipped: it fails, named as unidentified (round 7, P2)', () => {
+    for (const via of [{ name: 'a', severity: 'high' }, { name: 'a', severity: 'high', url: '' }, { name: 'a', severity: 'critical', url: 'https://github.com/advisories/' }]) {
+      const r = evaluate(report({ a: vuln('a', 'high', [via]) }), allow(), TODAY);
+      expect(r.ok, JSON.stringify(via)).toBe(false);
+      expect(r.failing[0], JSON.stringify(via)).toMatch(/^unidentified advisory \(a, (high|critical)\)$/);
+    }
+    // a non-blocking object with no id is harmless
+    expect(evaluate(report({ a: vuln('a', 'low', [{ name: 'a', severity: 'low' }]) }), [], TODAY).ok).toBe(true);
+  });
+
+  it('the same advisory seen at two severities is judged by the WORST (round 7, P3)', () => {
+    const r = evaluate(report({
+      x: vuln('x', 'low', [adv('p', 'GHSA-1111-2222-3333', 'low')]),
+      y: vuln('y', 'high', [adv('p', 'GHSA-1111-2222-3333', 'high')]),
+    }), [], TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.failing).toEqual(['GHSA-1111-2222-3333 (p, high)']);
+  });
+
+  it('a blocking node whose chain never reaches an advisory object FAILS CLOSED (an unresolvable via)', () => {
+    for (const via of [[], ['no-such-node'], [null]]) {
+      const r = evaluate(report({ a: vuln('a', 'high', via as unknown[]) }), [], TODAY);
+      expect(r.ok, JSON.stringify(via)).toBe(false);
+      expect(r.problems.length, JSON.stringify(via)).toBeGreaterThan(0);
+    }
+    // a cycle between names must not hang or pass
+    const cyc = evaluate(report({ a: vuln('a', 'high', ['b']), b: vuln('b', 'high', ['a']) }), [], TODAY);
+    expect(cyc.ok).toBe(false);
+  });
+
   it('an exemption whose advisory no longer appears is reported stale, and does not fail', () => {
     const r = evaluate(report({}), allow(), TODAY);
     expect(r.ok).toBe(true);
