@@ -83,6 +83,11 @@ export function evaluate(report, allowlist, today) {
     const nodeSev = severityOf(node.severity);
     if (!nodeSev) problems.push(`vulnerability ${nodeName} has no usable severity (${JSON.stringify(node.severity)})`);
     if (nodeSev && BLOCKING.has(nodeSev) && !hasAdvisory(key)) problems.push(`vulnerability ${nodeName} (${nodeSev}) has no advisory behind it`);
+    // A node's severity is the worst of the advisories behind it. A blocking node whose via entries are ALL advisory objects and
+    // none of them blocking disagrees with its own evidence: a problem, not a pass (round 8).
+    const vias = Array.isArray(node.via) ? node.via : [];
+    if (nodeSev && BLOCKING.has(nodeSev) && vias.length && vias.every(v => v && typeof v === 'object')
+      && !vias.some(v => BLOCKING.has(severityOf(v.severity)))) problems.push(`vulnerability ${nodeName} is ${nodeSev} but none of its advisories is`);
     for (const via of Array.isArray(node.via) ? node.via : []) {
       if (!via || typeof via !== 'object') continue;
       const name = via.name ?? nodeName;
@@ -95,7 +100,8 @@ export function evaluate(report, allowlist, today) {
       }
       const k = `${id}|${name}`;
       const prev = advisories.get(k);
-      const fixable = Boolean(node.fixAvailable);
+      // Only an explicit `false` means no fix exists; a missing field must not keep the exemption alive (round 8).
+      const fixable = node.fixAvailable !== false;
       if (!prev) advisories.set(k, { id, name, severity, fixable });
       else {
         if (RANK[severity] > RANK[prev.severity]) prev.severity = severity;

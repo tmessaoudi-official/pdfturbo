@@ -28,6 +28,9 @@ Security concerns most relevant to this project:
 - XSS via malicious PDF content
 - Malicious PDF files causing unexpected behavior in pdf.js
 - Privacy: PDFs are processed locally and never uploaded anywhere
+- Dependencies: the deploy fails on any high advisory (`npm run audit:gate`). One advisory without a patched release, node-forge
+  GHSA-86w9-cpqp-85rv (RSA PKCS#1 v1.5 verification), is exempted until 2026-12-31 because the app verifies RSA signatures with WebCrypto, never forge;
+  see `KNOWN_ISSUES.md`.
 
 ## Hiding is not removing — which tool actually deletes content
 

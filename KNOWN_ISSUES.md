@@ -64,6 +64,13 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
+### node-forge advisory GHSA-86w9-cpqp-85rv — exempted in the deploy audit until 2026-12-31 (2026-10-02)
+
+- **No patched release exists** (node-forge 1.4.0 is the latest), so `scripts/audit-gate.mjs` exempts this one advisory by id AND package, with an
+  expiry. The exemption rests on the app never verifying an RSA signature with forge: `src/signing/cmsVerify.ts` verifies with WebCrypto and forge only
+  parses and creates. It voids itself when npm reports a fix or the date passes. Detail: `CLAUDE.md` § Git & CI (fifth occurrence) and
+  `.claude/rules/signing.md`.
+
 ### From limits row 27 — Compress → shrink images (2026-09-27)
 
 - **What "shrink images" leaves alone, on purpose.** It re-saves an embedded JPEG only when it can measure

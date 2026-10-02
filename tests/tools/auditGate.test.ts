@@ -153,4 +153,20 @@ describe('audit gate', () => {
     expect(r.ok).toBe(false);
     expect(r.problems.length).toBeGreaterThan(0);
   });
+
+  it('a MISSING fixAvailable is not read as "no fix exists": the exemption is void (round 8, fail closed)', () => {
+    const { fixAvailable: _drop, ...node } = vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]);
+    const r = evaluate(report({ 'node-forge': node }), allow(), TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.exempted).toEqual([]);
+  });
+
+  it('a high node whose only advisory objects are lower is a problem, but a mixed node with a high one is not (round 8)', () => {
+    const lower = evaluate(report({ x: vuln('x', 'high', [adv('x', 'GHSA-aaaa-bbbb-cccc', 'moderate')]) }), [], TODAY);
+    expect(lower.ok).toBe(false);
+    expect(lower.problems.length).toBeGreaterThan(0);
+    const mixed = evaluate(report({ x: vuln('x', 'high', [adv('x', 'GHSA-aaaa-bbbb-cccc', 'moderate'), adv('x', 'GHSA-dddd-eeee-ffff', 'high')]) }), allow({ id: 'GHSA-dddd-eeee-ffff', package: 'x' }), TODAY);
+    expect(mixed.problems).toEqual([]);
+    expect(mixed.ok).toBe(true);
+  });
 });
