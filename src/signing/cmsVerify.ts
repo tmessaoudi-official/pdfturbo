@@ -7,7 +7,8 @@
  *      bytes the signature's `/ByteRange` covers, AND
  *   2. the authenticated attributes' RSA signature verifies against the public key
  *      of the certificate EMBEDDED IN THAT CMS (so distinct-cert co-signatures each
- *      validate against their own signer).
+ *      validate against their own signer). The RSA check is WebCrypto's, not
+ *      node-forge's own `verify` — see {@link verifyRsaSha256}.
  *
  * node-forge's pkcs7 SignedData has no public `verify()`, so we verify manually
  * from `rawCapture` — the robust path for the inputs this app produces.
@@ -52,6 +53,8 @@ interface ForgeVerifyLike {
   md: { sha256: { create(): ForgeMd } };
   pki: {
     oids: Record<string, string>;
+    /** The key as a SubjectPublicKeyInfo ASN.1 object (what WebCrypto's `spki` import takes once DER-encoded). */
+    publicKeyToAsn1(key: unknown): unknown;
   };
   pkcs7: { messageFromAsn1(obj: unknown): ForgeP7Message };
 }
@@ -73,8 +76,36 @@ interface ForgeP7Message {
   };
 }
 
-interface ForgePublicKey {
-  verify(digest: string, signature: string): boolean;
+/** Opaque: forge's own `verify` is deliberately NOT part of this shape — see {@link verifyRsaSha256}. */
+type ForgePublicKey = unknown;
+
+/**
+ * RSASSA-PKCS1-v1_5 / SHA-256 verification of `signedData` (a node-forge binary string) against a forge RSA public key, done by
+ * WebCrypto and NOT by forge's own `publicKey.verify`. node-forge <= 1.4.0 never checks the element count inside the DigestInfo's
+ * DigestAlgorithm sequence, so it accepts a signature carrying garbage there (GHSA-86w9-cpqp-85rv, forgeable with a low-exponent
+ * key); WebCrypto re-encodes the expected block and compares it whole. Forge still PARSES the CMS and the certificate — only the
+ * RSA check moved. Returns false (never throws) for anything that does not verify, including a key or signature it cannot import.
+ */
+export async function verifyRsaSha256(
+  f: Pick<ForgeVerifyLike, 'asn1' | 'pki'>,
+  publicKey: ForgePublicKey,
+  signedData: string,
+  signature: string,
+): Promise<boolean> {
+  try {
+    const spki = f.asn1.toDer(f.pki.publicKeyToAsn1(publicKey)).getBytes();
+    const key = await crypto.subtle.importKey('spki', binaryStringToBytes(spki), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    return await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, binaryStringToBytes(signature), binaryStringToBytes(signedData));
+  } catch {
+    return false;
+  }
+}
+
+/** node-forge binary string → bytes (1:1 charCode→byte). */
+function binaryStringToBytes(bin: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 0xff;
+  return out;
 }
 
 /** Hex string (any case, may be trailing-zero-padded) → bytes. */
@@ -204,9 +235,7 @@ export async function verifyAllSignatures(pdfBytes: Uint8Array): Promise<Signatu
       if (cert?.publicKey && attrs.length) {
         const set = f.asn1.create(f.asn1.Class.UNIVERSAL, f.asn1.Type.SET, true, attrs);
         const attrDer = f.asn1.toDer(set).getBytes();
-        const attrMd = f.md.sha256.create();
-        attrMd.update(attrDer);
-        signatureValid = cert.publicKey.verify(attrMd.digest().getBytes(), p7.rawCapture.signature);
+        signatureValid = await verifyRsaSha256(f, cert.publicKey, attrDer, p7.rawCapture.signature);
       }
     } catch {
       // Unparseable CMS → both flags stay false (reported, not thrown).

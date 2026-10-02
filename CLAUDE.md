@@ -179,7 +179,7 @@ at the 2026-09-13 round-10 gate — read the report's own summary line rather th
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here
-goes green-local / red-CI (it has happened): `npm audit --audit-level=high` → `npm run ocr:assets`
+goes green-local / red-CI (it has happened): `npm run audit:gate` (= `npm audit --audit-level=high` with the one expiring exemption below) → `npm run ocr:assets`
 → type-check → lint → `npm run test` (jsdom) → `npm run test:browser` (real Chrome) →
 **`npm run test:coverage:export`** (the M1 #14 branch-coverage gate on `src/export/pdfElementRenderer.ts`,
 threshold 25% — adding an uncovered branch to `renderText` can drop below it and FAIL the build even
@@ -287,7 +287,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **arabic-rtl** — Arabic and RTL: bidi, the Arabic overlay, tashkeel, RTL selection and copy (7) → `.claude/rules/arabic-rtl.md` (loads when you read `src/utils/bidi.ts`, `src/utils/rtlClipboard.ts` …).
 - **true-edit** — true text editing in the content stream: Path 2/3, fonts, nested cm (4) → `.claude/rules/true-edit.md` (loads when you read `src/utils/contentStreamEditor.ts`, `src/utils/glyphNames.ts` …).
 - **docx-edit** — DOCX read + edit and its package garbage collection (2) → `.claude/rules/docx-edit.md` (loads when you read `src/docx/**`, `tests/docx/**`).
-- **signing** — e-signing, PAdES and the ByteRange, signature placement, the Signers panel (4) → `.claude/rules/signing.md` (loads when you read `src/signing/**`, `src/handlers/signingHandler.ts` …).
+- **signing** — e-signing, PAdES and the ByteRange, signature placement, the Signers panel, the RSA verify (5) → `.claude/rules/signing.md` (loads when you read `src/signing/**`, `src/handlers/signingHandler.ts` …).
 - **crop** — per-page crop, its handles and numeric margins — and why crop HIDES while redaction REMOVES (4) → `.claude/rules/crop.md` (loads when you read `src/core/pageService.ts`, `src/core/pageRenderPipeline.ts` …).
 - **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep (12) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
 - **ocr** — OCR engine, CSP and assets (1) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
@@ -366,6 +366,7 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 - § "OCR (Sprint 4, 2026-06-15; CSP/engine fix 2026-06-15)" → `ocr.md`
 - § "E-signing (Sprint 4, 2026-06-15)" → `signing.md`
 - § "PAdES-B-B, and the ByteRange hole that failed every signature — limits row 24 (2026-09-27)" → `signing.md`
+- § "The RSA signature check is WebCrypto's, not node-forge's — GHSA-86w9-cpqp-85rv (2026-10-02)" → `signing.md`
 - § "RTL brackets and list markers in the Arabic overlay — limits row 25, D17 (2026-09-27)" → `arabic-rtl.md`
 - § "Tashkeel placed by GPOS in the Arabic overlay — limits row 25, C19 (2026-09-27)" → `arabic-rtl.md`
 - § "Approval caption + guided Signers panel (F-D D1/D2)" → `signing.md`
@@ -380,12 +381,12 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 ## Git & CI
 
 - Single branch `master`; pushing to it triggers `.github/workflows/deploy.yml`:
-  `npm audit --audit-level=high` → type-check → lint → test (jsdom) → `ocr:assets` +
+  `node scripts/audit-gate.mjs` (the audit, see below) → type-check → lint → test (jsdom) → `ocr:assets` +
   `playwright install-deps chromium` → test:browser (real Chrome) → build → GitHub Pages
   deploy. The workflow also declares a `pull_request: [master]` trigger, but the project
   is single-dev/single-branch so in practice every run is a push to `master` — there is
   **no human PR review gate** (the local pre-push hook is the safety net; see below).
-- **Supply chain (#37)**: `npm audit --audit-level=high` runs first and is **deploy-blocking**
+- **Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high` plus one expiring exemption, see the fifth occurrence below) runs first and is **deploy-blocking**
   (a high/critical advisory fails the build before anything deploys). It was briefly disabled
   (`e154540`, 2026-07-28) and **restored the same day** once the blocker was root-caused — keep it on.
   **What the blocker was, so it is recognised next time:** 8 "high" findings that were really ONE
@@ -425,6 +426,8 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   `^5.0.9` pin in scope, and `fast-uri` 3.0.0–3.1.7 (host-case normalisation, moderate) did the same to `^3.1.7`. Bumped
   to `^5.0.12` / `^3.1.8`, one deduped copy each, `found 0 vulnerabilities`. It surfaced as the first step of the deploy
   gate on an unrelated change, which is the normal way this shows up.
+
+  **Fifth occurrence, 2026-10-02 — an advisory with NO patched release.** `node-forge` <= 1.4.0 (GHSA-86w9-cpqp-85rv, high, RSA PKCS#1 v1.5 verification accepts extra nested `DigestAlgorithm` elements; forgery needs a low-exponent RSA key) was in the npm database an hour after a green audit; 1.4.0 is the latest release, so no `overrides` bump exists. The gate is now `scripts/audit-gate.mjs`: the same `npm audit`, failing on any high/critical advisory EXCEPT one named in `scripts/audit-gate-allowlist.json` by id AND package, with a reason and an expiry date (an expired entry fails the gate again by itself; a gone advisory is reported STALE). It fails closed: an audit that produced no verdict, or a malformed allowlist entry, is a failure. The one entry rests on this evidence: the only `.verify(` call in `src/` is `signing/cmsVerify.ts`, which has NO production caller (`multiSign.ts` and tests only, kept out of the signing barrel) — the shipped app uses node-forge to CREATE signatures. Developer ruling 2026-10-02 (a narrow exemption plus the WebCrypto verify swap in `cmsVerify.ts`, so wiring the verifier later is safe). **Do not widen the allowlist for convenience**, and remove the entry when a patched release ships. Guard: `tests/tools/auditGate.test.ts` (12) — the exemption is keyed on id AND package, expires, never covers a different advisory of the same package, a transitive chain is judged by its advisory, and every no-verdict shape fails; each of six sabotages reds exactly its case (the first `error`-branch sabotage stayed green until a report carrying both an `error` and a `vulnerabilities` object was added). The WebCrypto swap is pinned by `tests/signing/rsaVerify.test.ts` (7): a signature whose DigestInfo carries an extra element inside the DigestAlgorithm sequence is built with a REAL private key and the installed forge ACCEPTS it (red first: `expected true to be false`) while WebCrypto rejects it; a source-level guard forbids any `.verify(` call under `src/signing` except WebCrypto's — the only thing that notices a revert to forge, since the behavioural suite stays green with either.
 
   **Never run the audit gate with `--offline`.** It reads the cached advisory database and reported
   `found 0 vulnerabilities` against the very tree that was carrying this high — a false green that

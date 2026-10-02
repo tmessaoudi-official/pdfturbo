@@ -5,7 +5,7 @@
 # and the jsdom suite — so an obviously broken commit never reaches production.
 #
 # It is NOT "the exact CI gate", which this comment used to claim: CI also runs
-# npm audit, ocr:assets, test:browser, test:coverage:export, build and qa:sweep.
+# the audit gate (scripts/audit-gate.mjs), ocr:assets, test:browser, test:coverage:export, build and qa:sweep.
 # Those need a browser, network and several minutes, which is why they are not
 # here — but it means a green hook is NOT a green deploy. Run the full gate from
 # CLAUDE.md § Commands before a push you care about. [WS5 audit, 2026-09-04]

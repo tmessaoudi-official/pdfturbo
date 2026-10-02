@@ -1,0 +1,92 @@
+/**
+ * The deploy gate's audit step (scripts/audit-gate.mjs). `npm audit --audit-level=high` blocks every deploy on a high
+ * advisory, including one with NO patched release (node-forge, 2026-10-02) — so the gate may exempt a named advisory, and the
+ * ways that exemption can go wrong are what these cases pin: it must be keyed on the advisory id AND the package, must
+ * expire, must never cover a different advisory of the same package, and an audit run that did not produce a verdict
+ * (an `error` object, no `vulnerabilities`) must FAIL, not pass.
+ */
+import { describe, it, expect } from 'vitest';
+// @ts-expect-error — plain .mjs script, no type declarations (the same precedent as tests/ocr/ocrAssets.test.ts)
+import { evaluate } from '../../scripts/audit-gate.mjs';
+
+const GHSA = 'GHSA-86w9-cpqp-85rv';
+const adv = (name: string, id: string, severity: string) => ({ source: 1, name, dependency: name, title: 't', url: `https://github.com/advisories/${id}`, severity, range: '*' });
+const report = (vulns: Record<string, unknown>) => ({ auditReportVersion: 2, vulnerabilities: vulns });
+const vuln = (name: string, severity: string, via: unknown[]) => ({ name, severity, via, effects: [], range: '*', nodes: [`node_modules/${name}`], fixAvailable: false });
+const allow = (over: Record<string, unknown> = {}) => [{ id: GHSA, package: 'node-forge', expires: '2026-12-31', reason: 'r', ...over }];
+const TODAY = '2026-10-02';
+
+describe('audit gate', () => {
+  it('a clean report passes', () => {
+    expect(evaluate(report({}), [], TODAY).ok).toBe(true);
+  });
+
+  it('a high advisory that is not exempted FAILS and is named', () => {
+    const r = evaluate(report({ 'node-forge': vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]) }), [], TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.failing).toEqual([`${GHSA} (node-forge, high)`]);
+  });
+
+  it('the same advisory, exempted by id and package, before its expiry, passes and is reported as exempted', () => {
+    const r = evaluate(report({ 'node-forge': vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]) }), allow(), TODAY);
+    expect(r.ok).toBe(true);
+    expect(r.exempted).toEqual([`${GHSA} (node-forge)`]);
+  });
+
+  it('an EXPIRED exemption fails again', () => {
+    const r = evaluate(report({ 'node-forge': vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]) }), allow({ expires: '2026-10-01' }), TODAY);
+    expect(r.ok).toBe(false);
+  });
+
+  it('the exemption does not cover a DIFFERENT advisory of the same package', () => {
+    const r = evaluate(report({ 'node-forge': vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high'), adv('node-forge', 'GHSA-aaaa-bbbb-cccc', 'high')]) }), allow(), TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.failing).toEqual(['GHSA-aaaa-bbbb-cccc (node-forge, high)']);
+  });
+
+  it('the exemption does not cover the same id reported for a DIFFERENT package', () => {
+    const r = evaluate(report({ other: vuln('other', 'high', [adv('other', GHSA, 'high')]) }), allow(), TODAY);
+    expect(r.ok).toBe(false);
+  });
+
+  it('a critical advisory fails like a high one; a moderate one does not (the --audit-level=high contract)', () => {
+    expect(evaluate(report({ a: vuln('a', 'critical', [adv('a', 'GHSA-1111-2222-3333', 'critical')]) }), [], TODAY).ok).toBe(false);
+    expect(evaluate(report({ a: vuln('a', 'moderate', [adv('a', 'GHSA-1111-2222-3333', 'moderate')]) }), [], TODAY).ok).toBe(true);
+  });
+
+  it('a TRANSITIVE chain is judged by its advisory, not hidden behind package names (the brace-expansion shape)', () => {
+    const r = evaluate(report({
+      'brace-expansion': vuln('brace-expansion', 'high', [adv('brace-expansion', 'GHSA-mh99-v99m-4gvg', 'high')]),
+      minimatch: vuln('minimatch', 'high', ['brace-expansion']),
+      jake: vuln('jake', 'high', ['minimatch']),
+    }), [], TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.failing).toEqual(['GHSA-mh99-v99m-4gvg (brace-expansion, high)']);
+  });
+
+  it('an exemption whose advisory no longer appears is reported stale, and does not fail', () => {
+    const r = evaluate(report({}), allow(), TODAY);
+    expect(r.ok).toBe(true);
+    expect(r.stale).toEqual([GHSA]);
+  });
+
+  it('FAILS CLOSED when the audit produced no verdict', () => {
+    for (const bad of [null, undefined, 'text', {}, { error: { code: 'ENOTFOUND', summary: 'no network' } }, { vulnerabilities: 'x' }]) {
+      const r = evaluate(bad, allow(), TODAY);
+      expect(r.ok, JSON.stringify(bad)).toBe(false);
+      expect(r.problems.length, JSON.stringify(bad)).toBeGreaterThan(0);
+    }
+  });
+
+  it('an `error` object FAILS even when the report also carries an empty `vulnerabilities` (the second guard must not be the only one)', () => {
+    const r = evaluate({ error: { code: 'EAUDITNOPJSON', summary: 'x' }, vulnerabilities: {} }, [], TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.problems.length).toBeGreaterThan(0);
+  });
+
+  it('a malformed allowlist entry fails the gate instead of being skipped', () => {
+    const r = evaluate(report({}), [{ id: GHSA, package: 'node-forge', reason: 'no expiry given' }], TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.problems.length).toBeGreaterThan(0);
+  });
+});

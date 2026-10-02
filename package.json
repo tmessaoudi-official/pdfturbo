@@ -24,6 +24,7 @@
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest",
     "qa:sweep": "node scripts/qa-sweep.mjs",
+    "audit:gate": "node scripts/audit-gate.mjs",
     "test:coverage": "vitest run --coverage",
     "test:coverage:export": "vitest run --config vitest.browser.config.ts --coverage tests/browser/pdfElementRenderer.browser.test.ts"
   },

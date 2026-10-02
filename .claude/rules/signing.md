@@ -11,6 +11,28 @@ paths:
 
 Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: e-signing, PAdES and the ByteRange, signature placement, the Signers panel. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
 
+### The RSA signature check is WebCrypto's, not node-forge's — GHSA-86w9-cpqp-85rv (2026-10-02)
+
+node-forge <= 1.4.0 (the latest release; no patched one exists) never checks the element count inside the DigestInfo's
+DigestAlgorithm sequence when it verifies an RSASSA-PKCS1-v1_5 signature, so a signature carrying garbage there is ACCEPTED, which
+lets an attacker forge one for a low-exponent key. **Measured on the installed 1.4.0, not read:** a signature built with a real
+1024-bit private key over `SEQ{ SEQ{ OID sha256, NULL, OCTET 'garbage-element' }, OCTET digest }` with correct padding verified `true`
+through forge (`tests/signing/rsaVerify.test.ts`, red first: `expected true to be false`), and the same signature through WebCrypto is
+`false`. `src/signing/cmsVerify.ts` now exports `verifyRsaSha256`, which DER-encodes the forge key as an SPKI and calls
+`crypto.subtle.verify('RSASSA-PKCS1-v1_5', …)` (SHA-256, as before); forge still PARSES the CMS and the certificate, and still
+CREATES every signature (`cms.ts`, `p12.ts`, `certGen.ts` — the advisory is about verification only). It returns false and never throws.
+
+**Scope, so this is not read as more than it is:** `verifyAllSignatures` has no production caller — `multiSign.ts` and the tests only,
+kept out of the barrel — so the shipped app never verifies a signature with forge; the swap is hardening for the day someone wires
+it. The advisory itself stays in `npm audit`, which is why `scripts/audit-gate.mjs` exempts that one id until a patched release
+(CLAUDE.md § Git & CI, fifth occurrence). Guards: `tests/signing/rsaVerify.test.ts` (7) — correct signature, the hand-built
+DigestInfo without the extra element (the builder is sound), different data, the advisory shape, garbage input, and a source-level
+guard that allows no `.verify(` call under `src/signing` except WebCrypto's. Sabotage, each restored with `cmp`: helper always
+true → 4; hash SHA-1 → 4 (with the two `verifyAllSignatures` cases); wired back to forge's `verify` with a correct digest → exactly the
+source guard (the behavioural suite stays green with either, so the guard is the only thing that notices). Real Chrome:
+`tests/browser/signing.browser.test.ts` still passes (`crypto.subtle` needs a secure context; localhost is one).
+**Bound:** a 1024-bit key was used for speed; 2048 is what the app generates and the existing signing tests cover.
+
 ### The drag-placed signature rect was crop-relative while `/Rect` is absolute (2026-08-29)
 
 > **[Re-checked 2026-09-28]** the `exportPipeline.ts` line citations below have drifted — the render viewport is the `pointViewport(renderPage, …)` call and the page add is `targetPdfDoc.addPage(`.
