@@ -3,6 +3,6 @@
     "id": "GHSA-86w9-cpqp-85rv",
     "package": "node-forge",
     "expires": "2026-12-31",
-    "reason": "node-forge <= 1.4.0: RSA PKCS#1 v1.5 verification accepts extra nested DigestAlgorithm elements (forgery needs a low-exponent RSA key). No patched release exists (1.4.0 is the latest, checked 2026-10-02), so no override can fix it. The only verify call in src/ is signing/cmsVerify.ts:209, which has no production caller (multiSign.ts and tests only, kept out of the signing barrel); the shipped app uses node-forge to CREATE signatures, never to verify one. Developer ruling 2026-10-02. Remove when a patched node-forge ships, or when this date passes (the gate fails again on its own)."
+    "reason": "node-forge <= 1.4.0: RSA PKCS#1 v1.5 verification accepts extra nested DigestAlgorithm elements (forgery needs a low-exponent RSA key). No patched release exists (1.4.0 is the latest, checked 2026-10-02), so no override can fix it. No forge RSA verification remains in src/signing: cmsVerify.ts checks the RSA signature with WebCrypto, forge only parses and CREATES signatures, and a source guard in tests/signing/rsaVerify.test.ts forbids any .verify( call there except WebCrypto's. verifyAllSignatures has no production caller (multiSign.ts and tests only, kept out of the signing barrel). Developer ruling 2026-10-02. The exemption is void by itself once npm audit reports a fix available (fixAvailable) or after the expiry date; remove the entry then."
   }
 ]

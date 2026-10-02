@@ -7,7 +7,8 @@
  * `scripts/audit-gate-allowlist.json` names that advisory id for that package, with a reason and an expiry date.
  *
  * Fails closed: an audit run that produced no verdict (network error, an `error` object, unparseable output) is a failure,
- * as is a malformed allowlist entry. An exemption whose advisory has gone is reported as stale (remove it), never silently kept.
+ * as is a malformed allowlist entry. An exemption is VOID once npm audit reports a fix available (`fixAvailable`), or past its expiry;
+ * one whose advisory has gone is reported as stale (remove it), never silently kept.
  * Never run it with `--offline`: the cached database reported a clean tree against a vulnerable one (2026-09-04).
  *
  * Exit: 0 pass, 1 an unexempted advisory, 2 no verdict (could not run / malformed input).
@@ -74,7 +75,11 @@ export function evaluate(report, allowlist, today) {
       seen.add(key);
       if (!BLOCKING.has(severity)) continue;
       const hit = entries.find(e => e.id === id && e.package === name && today <= e.expires);
-      if (hit) exempted.push(`${id} (${name})`);
+      // The exemption exists because no fix does. npm audit reports `fixAvailable` false until one ships, then true or
+      // `{ name, version, isSemVerMajor }`: from then on the exemption is void, so the bump is prompted by the gate itself.
+      const fixable = Boolean(node.fixAvailable);
+      if (hit && !fixable) exempted.push(`${id} (${name})`);
+      else if (hit) failing.push(`${id} (${name}, ${severity}) — a fix is available: bump the package and remove its allowlist entry`);
       else failing.push(`${id} (${name}, ${severity})`);
     }
   }

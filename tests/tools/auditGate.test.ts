@@ -33,6 +33,20 @@ describe('audit gate', () => {
     expect(r.exempted).toEqual([`${GHSA} (node-forge)`]);
   });
 
+  it('an exemption is VOID once a fix is available: the gate fails and says to bump (the removal trigger is mechanical)', () => {
+    for (const fixAvailable of [true, { name: 'node-forge', version: '1.4.1', isSemVerMajor: false }]) {
+      const node = { ...vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]), fixAvailable };
+      const r = evaluate(report({ 'node-forge': node }), allow(), TODAY);
+      expect(r.ok, JSON.stringify(fixAvailable)).toBe(false);
+      expect(r.failing, JSON.stringify(fixAvailable)).toEqual([`${GHSA} (node-forge, high) — a fix is available: bump the package and remove its allowlist entry`]);
+    }
+  });
+
+  it('control: fixAvailable false keeps the exemption', () => {
+    const node = { ...vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]), fixAvailable: false };
+    expect(evaluate(report({ 'node-forge': node }), allow(), TODAY).ok).toBe(true);
+  });
+
   it('an EXPIRED exemption fails again', () => {
     const r = evaluate(report({ 'node-forge': vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]) }), allow({ expires: '2026-10-01' }), TODAY);
     expect(r.ok).toBe(false);
