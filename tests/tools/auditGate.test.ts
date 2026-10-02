@@ -6,6 +6,10 @@
  * (an `error` object, no `vulnerabilities`) must FAIL, not pass.
  */
 import { describe, it, expect } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 // @ts-expect-error — plain .mjs script, no type declarations (the same precedent as tests/ocr/ocrAssets.test.ts)
 import { evaluate } from '../../scripts/audit-gate.mjs';
 
@@ -168,5 +172,55 @@ describe('audit gate', () => {
     const mixed = evaluate(report({ x: vuln('x', 'high', [adv('x', 'GHSA-aaaa-bbbb-cccc', 'moderate'), adv('x', 'GHSA-dddd-eeee-ffff', 'high')]) }), allow({ id: 'GHSA-dddd-eeee-ffff', package: 'x' }), TODAY);
     expect(mixed.problems).toEqual([]);
     expect(mixed.ok).toBe(true);
+  });
+
+  it('a high node that mixes a lower advisory with an unknown or lower-only chain is a problem (round 9, fail closed)', () => {
+    const lowA = adv('a', 'GHSA-aaaa-bbbb-cccc', 'moderate');
+    const ghost = evaluate(report({ a: vuln('a', 'high', [lowA, 'ghost']) }), [], TODAY);
+    expect(ghost.ok).toBe(false);
+    expect(ghost.problems.length).toBeGreaterThan(0);
+    const lowChain = evaluate(report({ a: vuln('a', 'high', [lowA, 'b']), b: vuln('b', 'moderate', [adv('b', 'GHSA-dddd-eeee-ffff', 'moderate')]) }), [], TODAY);
+    expect(lowChain.ok).toBe(false);
+    expect(lowChain.problems.length).toBeGreaterThan(0);
+  });
+
+  it('a string via that names a package the report does not list is a problem even beside a high advisory (round 9, dangling alone)', () => {
+    const node = vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high'), 'ghost']);
+    const r = evaluate(report({ 'node-forge': node }), allow(), TODAY);
+    expect(r.ok).toBe(false);
+    expect(r.problems.some((p: string) => p.includes('does not list'))).toBe(true);
+  });
+
+  it('control: a mixed node whose chain reaches a high advisory is judged by that advisory, with no problem', () => {
+    const r = evaluate(report({
+      a: vuln('a', 'high', [adv('a', 'GHSA-aaaa-bbbb-cccc', 'moderate'), 'b']),
+      b: vuln('b', 'high', [adv('b', 'GHSA-dddd-eeee-ffff', 'high')]),
+    }), [], TODAY);
+    expect(r.problems).toEqual([]);
+    expect(r.failing).toEqual(['GHSA-dddd-eeee-ffff (b, high)']);
+  });
+
+  it('the report\'s own metadata counts must agree with the vulnerabilities it lists (round 9)', () => {
+    const meta = (high: number) => ({ vulnerabilities: { info: 0, low: 0, moderate: 0, high, critical: 0, total: high } });
+    const hidden = evaluate({ ...report({}), metadata: meta(2) }, [], TODAY);
+    expect(hidden.ok).toBe(false);
+    expect(hidden.problems.length).toBeGreaterThan(0);
+    const node = vuln('node-forge', 'high', [adv('node-forge', GHSA, 'high')]);
+    expect(evaluate({ ...report({ 'node-forge': node }), metadata: meta(1) }, allow(), TODAY).ok).toBe(true);
+  });
+
+  it('launched through a symlink it still runs (and fails closed here: no npm on PATH), never a silent exit 0 (round 9)', () => {
+    const real = resolve(__dirname, '../../scripts/audit-gate.mjs');
+    const dir = mkdtempSync(join(tmpdir(), 'audit-gate-'));
+    try {
+      const link = join(dir, 'link.mjs');
+      symlinkSync(real, link);
+      const viaLink = spawnSync(process.execPath, [link], { env: { PATH: '' }, encoding: 'utf8' });
+      const direct = spawnSync(process.execPath, [real], { env: { PATH: '' }, encoding: 'utf8' });
+      expect(direct.status).toBe(2);
+      expect(viaLink.status).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

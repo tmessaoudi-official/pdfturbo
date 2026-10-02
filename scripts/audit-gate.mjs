@@ -13,10 +13,10 @@
  *
  * Exit: 0 pass, 1 an unexempted advisory, 2 no verdict (could not run / malformed input).
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const RANK = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
 const BLOCKING = new Set(['high', 'critical']);
@@ -70,24 +70,38 @@ export function evaluate(report, allowlist, today) {
   // never reaches an advisory object are failures or problems, never skips.
   const nodes = r.vulnerabilities;
   const advisories = new Map(); // `${id}|${name}` -> { id, name, severity, fixable }
-  const hasAdvisory = (name, visited = new Set()) => {
-    if (visited.has(name)) return false;
+  // What a node's chain reaches: the worst severity among the advisory OBJECTS behind it (-1: none) and whether a string `via`
+  // names a package the report does not list. An advisory object with no usable severity counts as its node's.
+  const reach = (name, visited = new Set()) => {
+    const out = { max: -1, dangling: false };
+    if (visited.has(name)) return out;
     visited.add(name);
     const node = nodes[name];
-    if (!node || typeof node !== 'object') return false;
-    return (Array.isArray(node.via) ? node.via : []).some(v => (v && typeof v === 'object') || (typeof v === 'string' && hasAdvisory(v, visited)));
+    if (!node || typeof node !== 'object') { out.dangling = true; return out; }
+    for (const v of Array.isArray(node.via) ? node.via : []) {
+      if (v && typeof v === 'object') out.max = Math.max(out.max, RANK[severityOf(v.severity) ?? severityOf(node.severity)] ?? -1);
+      else if (typeof v === 'string') {
+        const sub = reach(v, visited);
+        out.max = Math.max(out.max, sub.max);
+        out.dangling ||= sub.dangling;
+      }
+    }
+    return out;
   };
   for (const [key, node] of Object.entries(nodes)) {
     if (!node || typeof node !== 'object') { problems.push(`vulnerability entry ${key} is not an object`); continue; }
     const nodeName = node.name ?? key;
     const nodeSev = severityOf(node.severity);
     if (!nodeSev) problems.push(`vulnerability ${nodeName} has no usable severity (${JSON.stringify(node.severity)})`);
-    if (nodeSev && BLOCKING.has(nodeSev) && !hasAdvisory(key)) problems.push(`vulnerability ${nodeName} (${nodeSev}) has no advisory behind it`);
-    // A node's severity is the worst of the advisories behind it. A blocking node whose via entries are ALL advisory objects and
-    // none of them blocking disagrees with its own evidence: a problem, not a pass (round 8).
-    const vias = Array.isArray(node.via) ? node.via : [];
-    if (nodeSev && BLOCKING.has(nodeSev) && vias.length && vias.every(v => v && typeof v === 'object')
-      && !vias.some(v => BLOCKING.has(severityOf(v.severity)))) problems.push(`vulnerability ${nodeName} is ${nodeSev} but none of its advisories is`);
+    // A blocking node must be explained by a blocking advisory reachable through its chain (round 9: npm's own rule is that a node's
+    // severity is the worst of its advisories, so anything else is corrupt or forged input), and a chain must not end at a package the
+    // report does not list.
+    if (nodeSev && BLOCKING.has(nodeSev)) {
+      const got = reach(key);
+      if (got.max < 0) problems.push(`vulnerability ${nodeName} (${nodeSev}) has no advisory behind it`);
+      else if (!BLOCKING.has(Object.keys(RANK).find(k => RANK[k] === got.max))) problems.push(`vulnerability ${nodeName} is ${nodeSev} but none of its advisories is`);
+      if (got.dangling) problems.push(`vulnerability ${nodeName} refers to a package the report does not list`);
+    }
     for (const via of Array.isArray(node.via) ? node.via : []) {
       if (!via || typeof via !== 'object') continue;
       const name = via.name ?? nodeName;
@@ -107,6 +121,15 @@ export function evaluate(report, allowlist, today) {
         if (RANK[severity] > RANK[prev.severity]) prev.severity = severity;
         prev.fixable = prev.fixable || fixable;
       }
+    }
+  }
+  // The report's own per-severity package counts must agree with the nodes it lists: a truncated report (`vulnerabilities: {}`
+  // beside `metadata.vulnerabilities.high: 2`) is no verdict, not a pass (round 9).
+  const counts = r.metadata && typeof r.metadata === 'object' ? r.metadata.vulnerabilities : undefined;
+  if (counts && typeof counts === 'object') {
+    for (const level of BLOCKING) {
+      const listed = Object.values(nodes).filter(n => n && typeof n === 'object' && severityOf(n.severity) === level).length;
+      if (counts[level] !== undefined && counts[level] !== listed) problems.push(`the report counts ${counts[level]} ${level} vulnerabilities but lists ${listed}`);
     }
   }
   const seen = new Set(advisories.keys());
@@ -152,4 +175,14 @@ function main() {
   console.log(`audit-gate: ok (${res.exempted.length} exempted)`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// Run when launched as a script, also through a symlink: `import.meta.url` is the REAL path while `argv[1]` keeps the link, and a
+// plain comparison made a symlinked launch exit 0 without auditing anything (round 9). A launch that cannot be resolved fails closed.
+function launchedAsScript() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+if (launchedAsScript()) main();
