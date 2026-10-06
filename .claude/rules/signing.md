@@ -25,9 +25,11 @@ CREATES every signature (`cms.ts`, `p12.ts`, `certGen.ts` — the advisory is ab
 **Scope, so this is not read as more than it is:** `verifyAllSignatures` has no production caller — `multiSign.ts` and the tests only,
 kept out of the barrel — so the shipped app never verifies a signature with forge; the swap is hardening for the day someone wires
 it. The advisory itself stays in `npm audit`, which is why `scripts/audit-gate.mjs` exempts that one id until a patched release
-(CLAUDE.md § Git & CI, fifth occurrence). Guards: `tests/signing/rsaVerify.test.ts` (7) — correct signature, the hand-built
+(CLAUDE.md § Git & CI, fifth occurrence). Guards: `tests/signing/rsaVerify.test.ts` (8) — correct signature, the hand-built
 DigestInfo without the extra element (the builder is sound), different data, the advisory shape, garbage input, and a source-level
-guard that allows no `.verify(` call under `src/signing` except WebCrypto's. Sabotage, each restored with `cmp`: helper always
+guard that allows no `.verify(` call except WebCrypto's in what ships: every code file under `src/` at any depth plus `index.html` and
+`public/*.html` (it scanned `src/signing`, flat, until the 2026-10-06 audit), with a fixture control that plants a forge verify in
+`src/handlers/`, in `src/signing/<sub>/` and in a page script and requires all three caught. Sabotage, each restored with `cmp`: helper always
 true → 4; hash SHA-1 → 4 (with the two `verifyAllSignatures` cases); wired back to forge's `verify` with a correct digest → exactly the
 source guard (the behavioural suite stays green with either, so the guard is the only thing that notices). Real Chrome:
 `tests/browser/signing.browser.test.ts` still passes (`crypto.subtle` needs a secure context; localhost is one).
