@@ -336,6 +336,10 @@ below 0.25.
 **Synthetic fixtures must not invent a gap no producer emits.** Three older search tests spaced per-glyph items 0.2 em
 apart (a 2pt gap at height 10); that sits in the band the cap moved (0.15–0.19 em), so they began emitting spaces and
 were respaced to ≤ 0.1 em, order assertions unchanged. That is the one place the old per-glyph behaviour differed.
+**Ratified 2026-10-06, and the band is now pinned rather than hidden** (developer ruling "Ratify + add a control"): one
+control in `textSearchHandler.test.ts` keeps the OLD fixture shape — a Latin run at a 2pt (0.2 em) letter gap inside an
+Arabic line — and asserts it reads `مرحبا M a i n`. Sabotage: the cap removed reddens it (with the two word-level cases),
+and k = 0.2 reddens it ALONE, so a revert of the threshold cannot pass silently.
 
 Guards: 3 cases each in `tests/utils/rtlClipboard.test.ts` and `tests/handlers/textSearchHandler.test.ts` (a 3.6pt space
 between word-level items, a three-word line, a kerning-gap control), and two real-Chrome cases in

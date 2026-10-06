@@ -261,4 +261,20 @@ describe('buildLogicalLines — word space keyed to the font size (limits row 54
     const items = [...'ابحرم'].map((ch, i) => it_(ch, i * 7.5, 6));
     expect(buildLogicalLines(items)[0].text).toBe('مرحبا');
   });
+
+  // The moved band, pinned (developer ruling 2026-10-06, ratifying the row 54 entries): the cap also lowers a per-glyph
+  // page's threshold from 0.4 × 8 = 3.2pt (0.32 em) to 0.15 × 10 = 1.5pt, so the pre-row-54 fixture shape — a Latin run
+  // at a 2pt (0.2 em) letter gap inside an Arabic line — now reads with a space between every letter. That is the
+  // accepted trade-off; this case makes it visible, and goes red if the threshold reverts (cap removed, or k = 0.2).
+  it('control: a 0.2 em per-glyph Latin run inside an Arabic line now reads letter by letter', () => {
+    const g = (str: string, x: number) => ({ str, transform: [1, 0, 0, 1, x, 100], width: 8, height: 10 });
+    // visual L→R: M a i n at a 2pt gap, then the Arabic glyphs touching (0 gap) so only the Latin run is in the band
+    const items = [g('M', 0), g('a', 10), g('i', 20), g('n', 30), g('ا', 60), g('ب', 68), g('ح', 76), g('ر', 84), g('م', 92)];
+    const [line] = buildLogicalLines(items);
+    expect(line.rtl).toBe(true);
+    expect(line.text).toBe('مرحبا M a i n');
+    for (const tk of line.tokens) {
+      expect(line.text.slice(tk.start, tk.end)).toBe(items[tk.itemIndex].str.normalize('NFKC'));
+    }
+  });
 });
