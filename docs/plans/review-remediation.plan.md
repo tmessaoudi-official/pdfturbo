@@ -129,7 +129,10 @@ in those two files. The residue's structural answer is row 11.
 - M1 (SEC-1): nothing pending from the developer — rounds 7 and 8 ruled; after the round-8 fixes M1 is certified with its residue disclosed, then the full deploy gate and the push. Row 11 (allowlist redesign) is the follow-up the residue points to.
 ### Needs research
 ### Fragile
-- SEC-1 cost, round 7 (2026-10-08, load 16–18, warm, five alternating runs): Publication 17 delete-last median 1576 ms
+- SEC-1 cost, round 8 (2026-10-08, load 20–23, warm, five alternating runs, the round-8 commit — output with its
+  SHA in `var/claude/raw/m1r8-cost.jsonl`): Publication 17 delete-last median 2310 ms vs 279 (runs 1171–12315);
+  census 1266 vs 446; GPT-3 300 vs 65. Indistinguishable from round 7 at this noise.
+- SEC-1 cost, round 7 (2026-10-08, load 16–18, no probe output kept — R8-K-8, warm, five alternating runs): Publication 17 delete-last median 1576 ms
   vs 298; census 1135 vs 180; GPT-3 216 vs 45 — single runs up to 7.5 s. Not slower than round 6 at this noise.
 - SEC-1 cost, round 6 (2026-10-08, load ~16, warm, five alternating runs, `copySourcePages` alone): Publication 17
   delete-last median 2559 ms vs 176 ms; census 1393 vs 81; GPT-3 367 vs 126. Profile (one instrumented run,
