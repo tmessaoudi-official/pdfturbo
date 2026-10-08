@@ -76,7 +76,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - **An export can refuse.** When a page you keep shares its resources (images, forms, fonts, graphics states) with a
   page left out — deleted, redacted, outside an extracted range, or simply not the page you download — the export
   keeps only what the kept page draws. If that page's drawing cannot be read (an undecodable stream, a stray
-  delimiter), what it draws is unknown, and the PDF exports refuse (`toast.exportResourcesUnreadable`) rather than
+  delimiter, a stream compressed with a predictor, which pdf-lib's decoder ignores), what it draws is unknown, and the PDF exports refuse (`toast.exportResourcesUnreadable`) rather than
   carry the other page's content. **Compress → flatten to images** still works: it saves every page as a picture.
 - **A link that names its target by a named destination is dead in every export.** The name table (`/Names
   /Dests`) lives on the catalog, which is never copied, so such a link points nowhere — it does not leak, and it
@@ -84,8 +84,14 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - **What the reference cut covers is what was measured.** Links, form fields (siblings, and fields an action names),
   annotation replies, orphan page dictionaries, the catalog and page tree, and resources shared through the page
   (and its content stream's own resources), its forms, patterns, appearances, Type3 fonts (including one set through
-  a graphics state or written inline) and form fields' default resources (`/DR`) — each pinned in `tests/export/copySourcePages.test.ts`. A
-  carrier reached some other way is not ruled out; `SECURITY.md` states the same bound.
+  a graphics state or written inline) and form fields' default resources (`/DR`); since round 6 the page-tree
+  ancestors' resources, field-tree nodes without a field type, the structure tree, application data, thumbnails,
+  document parts and print alternates, resource categories no reader knows and an XObject's layer given by name;
+  since round 7 a structure element or field by its shape, a value written directly inside an object a removed page
+  reaches, metadata, associated files and measurement point data, a field value only a removed box shows, and a
+  note tied to a removed page by `/P` or listed there before Flatten — pinned in `tests/export/copySourcePages.test.ts`,
+  `copySourcePagesInventory.test.ts` and `copySourcePagesRound7.test.ts`. A carrier reached some other way is not
+  ruled out; `SECURITY.md` states the same bound and lists the display-state carriers that are kept.
 - **What a kept page still carries from a left-out one, by design.** A font both pages draw keeps its whole subset
   and its ToUnicode map, so the SET of characters the left-out page used is recoverable from the font (not their
   order or position). The layer settings (`/OCProperties`) are copied whole, so a layer name only the left-out page
@@ -98,12 +104,19 @@ work in a private/incognito window when editing sensitive documents on a shared 
   deleting the last page of a 142-page corpus file took a median 2.6 s against 0.18 s without it, the 67-page census
   report 1.4 s against 0.08 s, a 75-page paper 0.37 s against 0.13 s — `copySourcePages` alone, warmed up, five
   alternating runs, round-6 code, 2026-10-08, machine load ~16 (single runs varied up to 8.6 s; an idle machine was
-  not available). A profile puts ~80% of it in reading content (half of all time in tokenizing it) and ~5% in the
-  reachability walk. Not optimised.
+  not available). A profile puts ~80% of it in pruning resources (reading content, half of all time in tokenizing
+  it) and ~5% in the undrawn-key check (`dropsUndrawn`, a transitive `touches`); the removed pages' reachability walk
+  was not listed in the profile. Not optimised — plan row 10.
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure
   destination (`/SD`) is dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
   every page's marked content.
-- **A widget's icon (`/MK`) is kept with the widget**, even when the removed page draws the same icon form.
+- **A widget's icon (`/MK`) is kept with the widget**, even when the removed page draws the same icon form — and so
+  are a kept annotation's other appearance states (`/AP /D`, `/RO`), a movie poster, a screen icon, a media clip's
+  form and a trap network's fonts (round 7, R7-S-11). A page whose content is split into several streams, one of them
+  marked `/Subtype /Form` that no page draws as a form, keeps what that stream's own resources name (R7-S-7).
+- **A link to a deleted page is removed together with its appearance**, so a link drawn with a visible appearance
+  disappears from the kept page — in the PDF and in a page exported as an image or a thumbnail (R7-C-7, a consequence
+  of the 2026-10-08 ruling).
 - **The catalog and page tree are never copied by reference, even with every page kept.** A signature's
   `/Reference` to the whole document loses that target in every export; the document is rebuilt, never carried.
 

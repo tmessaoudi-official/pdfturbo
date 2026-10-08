@@ -169,13 +169,40 @@ the matrix in `docs/plans/review-remediation.plan.md` § "SEC-1 inventory". Fift
 - Disclosed, not fixed: a widget's `/MK` icon is kept with the widget even when the removed page draws the same form
   (`SECURITY.md`). The cost was re-profiled (`KNOWN_ISSUES.md`; tokenizing is half of it).
 
+**Round 7 (2026-10-08, full panel, then "bound the hunt"):** 11 code defects; the developer ruled to fix them by CLASS,
+disclose what needs a broken file, and run one focused round. The classes, each a rule rather than a shape:
+- **A cut that only catches what its walk found fails open.** The structure cut now takes membership OR shape — typed
+  `StructElem`/`StructTreeRoot`, or an `/S` name whose `/P` chain reaches the tree or a typed node — and the walk
+  follows an indirect `/K` array and keeps walking below a non-name `/S`. The field cut also looks DOWN `/Kids`: a
+  node above a field is a field whether or not `/AcroForm /Fields` lists it.
+- **A direct value has no reference to test.** Inside an object a removed page reaches (by reference), every direct
+  value is that page's too: an undrawn direct entry of a shared resources category, an unknown category, and a direct
+  `UNDRAWN` key in a shared form are dropped, and a reached `/Resources` counts as shared though nothing in it touches.
+- **The annotation's own `/P`, and what `/Annots` listed before Flatten.** An annotation whose `/P` is a page left out
+  is cut unless a kept page lists it; `_assemblePdfDoc` records every page's `/Annots` before any in-place flatten and
+  passes them as `annotsBefore`, so a note Flatten removed (with or without `/P`) is still its page's.
+- **A field value only a removed box shows** (`/V`, `/DV` on a kept-chain field no kept widget inherits it from) is
+  dropped from the copy; `/Metadata`, `/AF` and `/PtData` joined `UNDRAWN`.
+- **Read what pdf.js reads, or refuse:** a `/Predictor` stream is unreadable (pdf-lib ignores it, so the old reading
+  dropped what the page drew), a non-dictionary `/Resources` is empty (it threw), a `%` comment inside an inline
+  dictionary is skipped (it refused); a stream that is two kept pages' single `/Contents` keeps what EITHER draws; two
+  kept widgets sharing one appearance are both noted before any copy; a tiling pattern's own categories keep what the
+  forms it draws from the parent read in its merged view.
+- Disclosed, not fixed: other display-state carriers (`/AP /D`, `/RO`, a movie poster, a screen icon, a media clip's
+  form, trap-network fonts) like `/MK`; an array `/Contents` member marked `/Subtype /Form` but drawn by no page; a
+  link to a deleted page loses its visible appearance (the ruling's consequence, in PDF and raster paths alike).
+
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
 built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and passed against the unfixed code; the
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePagesInventory.test.ts` (35 — round 6: nine leak shapes ×2 modes with a source control
+Guards: `tests/export/copySourcePagesRound7.test.ts` (89 — round 7: 33 leak shapes ×2 modes with a source control
+each, among them the structure shapes typed and untyped and one only the walk can find, two Flatten orders, the
+`annotsBefore` option and Flatten & download through `_assemblePdfDoc`, four keep controls, the six reading cases, and
+a source guard that only the raster-only assembly and the sign-rect box opt out of the prune),
+`tests/export/copySourcePagesInventory.test.ts` (35 — round 6: nine leak shapes ×2 modes with a source control
 each, the `/SD` keep, a structure destination copied when every page is kept (`/SD` and `/Dest`), an unshared `/PieceInfo`/`/Thumb` kept byte-identical, a form drawn by a pattern and by the page
 in both orders, a form's and an image's `/OC` name, the widget `/DA` font indirect, inline and through a shared
 appearance, a stream that is an array member AND a form or a single `/Contents` in both orders, and a deep unshared
@@ -242,7 +269,18 @@ kept → that shape ×2; the `/OC` name ignored → the 2 `/OC` cases; the patte
 pattern-first case; the appearance `/DA` not read → the 3 widget cases; an array member that is a form registered as
 drawing nothing → both orders; an array member overwriting a single `/Contents` → both orders; `/SD` kept → exactly the
 `/SD` keep case; the every-page-kept gate removed (the fix found at 6C) → exactly the two every-page-kept
-cases, the measured red before the gate went in.
+cases, the measured red before the gate went in. Round 7, 21 mutants, each landed, red on exactly its cases, restored
+with `cmp`: the predictor check off → the C-1 case; `Resources()` again for the kept page / the removed page → its 2
+cases each; structure by membership only → 12 (no-root and orphan, typed and untyped); the indirect `/K` not followed →
+GREEN at first, because the `/P` chain catches every element whose chain reaches the typed root — the walk-only shape
+(untyped, `/P` broken, under an indirect `/K`) was added and reds exactly its 2; a non-name `/S` skipped → the untyped
+`docSString` 2; no `/P` chain → the untyped no-root and orphan 4; `isField` not downward → `nodeNotInFields` 2; field
+values kept → the 4 parent-`/V` cases + the `/DV` keep control; the `/P` rule off → 4; `annotsBefore` ignored → its 2;
+direct entries not theirs → 7; `isShared` ignoring reach → exactly the only-direct case ×2; `UNDRAWN` back to four →
+14; direct `UNDRAWN` off → the shared-form `/PieceInfo` 2; the pattern record unused → the C-5 case; last writer wins →
+the C-4 order it breaks; no `/DA` pre-noting → both C-3 orders; cut widgets' `/DA` read → the `/DR` shape 2; comments not
+skipped → the C-6 case; `annotsBefore` not wired → exactly the Flatten & download case; an opt-out added to Flatten &
+download → exactly the source guard.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

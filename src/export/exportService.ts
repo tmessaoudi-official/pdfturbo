@@ -16,7 +16,7 @@ import { FormHiddenTextFinder, type FormTextItem } from './formHiddenText';
 import { encryptPdf } from './encryption';
 import { isPdfLoadRefusal, loadPdfDocument } from '../utils/pdfLoadGuard';
 import { viewerVerdict } from '../utils/viewerVerdict';
-import { carryLayers, copySourcePages, ExportLayersConflictError, resolveStandIns } from './copySourcePages';
+import { carryLayers, copySourcePages, ExportLayersConflictError, listedAnnots, resolveStandIns } from './copySourcePages';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '../utils/tableExtract';
 import { inferBorderlessGrid } from '../utils/borderlessTable';
@@ -813,6 +813,12 @@ export class ExportService {
       for (const [id, src] of documentModel.sourcePdfs) {
         srcDocs.set(id, await loadPdfDocument(src.bytes, { viewerCheck: 'source' }));
       }
+      // SEC-1 round 7 (R7-S-12): flattening below takes annotations out of each page's /Annots in place, so the copy
+      // is told what each page listed BEFORE — a removed page's flattened note, still named by a kept reply, is the
+      // removed page's.
+      const annotsBefore = new Map<string, import('@cantoo/pdf-lib').PDFRef[][]>();
+      const pdfLib = await import('@cantoo/pdf-lib');
+      for (const [id, srcDoc] of srcDocs) annotsBefore.set(id, srcDoc.getPages().map(p => listedAnnots(pdfLib, p)));
 
       // Fill and flatten form fields. By default this only touches sources the
       // user actually typed into (their entries are baked static); with
@@ -894,7 +900,7 @@ export class ExportService {
             .filter(p => p.sourcePdfId === id && pageHasRedaction(p))
             .map(p => p.sourcePageNum - 1)
         )];
-        const { pages, ocProperties, standIns } = await copySourcePages(pdfDoc, srcDoc, indices, { standIns: redacted, pruneSharedResources: !opts?.keepSharedResources });
+        const { pages, ocProperties, standIns } = await copySourcePages(pdfDoc, srcDoc, indices, { standIns: redacted, pruneSharedResources: !opts?.keepSharedResources, annotsBefore: annotsBefore.get(id) });
         indices.forEach((idx: number, i: number) => copiedPages.set(`${id}:${idx}`, pages[i]));
         standIns.forEach((ref, idx) => pendingStandIns.set(`${id}:${idx}`, ref));
         if (ocProperties) layered.push({ id, ocProperties });

@@ -164,6 +164,9 @@ export function tokenizeContentStream(src: string): CsToken[] {
         // `/Span<</ActualText<FEFF0009>>> BDC`, which left a stray `>` (M1 round 3 panel).
         const end = src.indexOf('>', i + 1);
         i = end === -1 ? src.length : end + 1;
+      } else if (src[i] === '%') {
+        // A comment runs to the end of its line; a `>>` inside it closes nothing (M1 round 7, R7-C-6).
+        while (i < src.length && src[i] !== '\n' && src[i] !== '\r') i++;
       } else {
         i++;
       }

@@ -302,6 +302,7 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 - § "pdf.js's JBIG2 / JPEG 2000 decoders are served too — row 36 (2026-09-26)" → `pdfjs.md`
 - § "pdf.js colour management is on — row 37 (2026-09-26)" → `pdfjs.md`
 - § "Links on the redaction raster — re-created, never copied (A4, 2026-09-25)" → `redaction.md`
+- § "A removed page rode back in on a reference — SEC-1 (review 2026-10-07, fixed 2026-10-08)" → `redaction.md`
 - § "On a rotated page, text, pictures, signatures and comments exported turned by the page rotation (A3-pre, 2026-09-26)" → `export.md`
 - § "Typed text overflows its box, and the redaction drop now tests where it is DRAWN (A5, 2026-09-26)" → `export.md`
 - § "The export frame is pdf.js's page VIEW, not pdf-lib's CropBox — B1 (2026-09-26)" → `export.md`

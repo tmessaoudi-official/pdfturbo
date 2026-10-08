@@ -51,8 +51,8 @@ reading the code. Both are said plainly instead of implied to be measured.
 > It reached every PDF output built from copied pages, the signed, sanitized and compressed files included —
 > except **Compress → flatten to images**, whose output holds only pictures of the pages. The export now answers
 > every reference to a source page itself instead of copying it: a link to a **redacted** page opens its image
-> page, a link to a **deleted or out-of-range** page is removed, and a form field keeps only the boxes on exported
-> pages. The same fix repaired internal links by page reference — every one of them used to open page 1 — and
+> page, a link to a **deleted or out-of-range** page is removed (a jump chained behind another action, in `/Next`,
+> stays and goes nowhere), and a form field keeps only the boxes on exported pages. The same fix repaired internal links by page reference — every one of them used to open page 1 — and
 > stopped an annotated page from being stored twice.
 >
 > **The other routes, all closed the same day, and the one way it refuses.** A removed page also reached a kept one
@@ -68,7 +68,8 @@ reading the code. Both are said plainly instead of implied to be measured.
 > stream carries resources of its own. When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
 > message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
 > is pinned by a test that finds the removed page's text in the source and not in the export
-> (`tests/export/copySourcePages.test.ts`, `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
+> (`tests/export/copySourcePages.test.ts`, `copySourcePagesInventory.test.ts` and `copySourcePagesRound7.test.ts` in
+> the same folder, and `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
 > and stated:** a carrier reached some other way than these is not ruled out; a link that names its target by
 > a *named destination* is dead in every export (the name table is not copied) — it does not leak, and it does not
 > work. Three residues are kept by design, because the kept page needs the object they live in: a **font** shared
@@ -82,6 +83,20 @@ reading the code. Both are said plainly instead of implied to be measured.
 > structure destination names the whole tree, every page's marked content included), a **field-tree node** without a
 > field type that holds a value, and data no viewer draws for the kept page — application data (`/PieceInfo`), a
 > thumbnail, a PDF/VT document part, an image's print alternates — which is dropped when it reaches a removed page.
+> Round 7 (2026-10-08) closed two classes rather than single shapes: a structure element or form field is cut by its
+> **shape** as well as by membership, so one the document's own tree does not list (or lists through an array stored
+> on its own) is still cut; and a value written directly inside an object a removed page reaches — a property list's
+> `/ActualText` in a shared resources dictionary, application data in a shared form — is that page's too. Metadata,
+> associated files and measurement point data joined the undrawn list; a field's value only a removed page's box
+> shows is dropped from the copy; a note whose `/P` names a removed page, or that **Flatten** took out of that page's
+> list before the copy, is cut; and a kept page whose content is compressed with a **predictor** cannot be read here,
+> so it refuses where it must be read. **Stated, not fixed — what needs a malformed or contrived file, or keeps a
+> display state:** an annotation on a kept page that points its other appearance states (`/AP /D`, a redaction's
+> `/RO` overlay), a movie's poster, a screen annotation's icon, a media clip's form or a trap network's fonts at an
+> object the removed page draws carries that object, as the form-field icon does; and a page's content split into
+> several streams, one of which is marked as a form though no page draws it as one, keeps what its own resources
+> name. **And one consequence of the ruling:** a link to a deleted page is removed with its visible appearance, if
+> it has one — in the exported PDF and in a page exported as an image.
 > See `KNOWN_ISSUES.md`.
 
 | Tool | Content is… | Notes |

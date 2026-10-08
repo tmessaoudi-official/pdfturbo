@@ -40,6 +40,14 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 09:43] AGREED: M1 cost: ship the prune as is with the cost documented; a separate follow-up step replaces full tokenizing with a name-only scan, with its own gate and panel (developer, 2026-10-08).
 - [2026-10-08 09:43] AGREED: M1 push: stays held until M1 is certified (developer, 2026-10-08).
 - [2026-10-08 09:43] ASSUMED (review): M1 round 7 reviewers run on opus - source override (as-is = the session model, opus).
+- [2026-10-08 10:30] AGREED: M1 after round 7: bound the hunt - fix the spec-valid leaks and regressions by class (shape-based structure/field cut when a page is left out, direct entries of a shared dictionary are the removed page's, fail-closed decoding, tolerant /Resources, removed-page notes known before Flatten, field-parent /V), fix the rendering edges, disclose leaks that need a broken file and other display-state carriers as one named class, then ONE focused review round on the fixes and the two classes, then certify (developer, 2026-10-08).
+- [2026-10-08 10:59] ASSUMED (review): M1 round 7 fix: the structure cut is membership OR shape (typed, or an /S name whose /P chain reaches the tree or a typed node), the field cut looks down /Kids too - because a cut gated on what its walk found fails open (R7-S-1/2/4). Alternative: patch each walk.
+- [2026-10-08 10:59] ASSUMED (review): M1 round 7 fix: a direct value inside an object a removed page reaches (by reference) is that page's - undrawn direct resource entries, unknown categories and direct UNDRAWN keys are dropped, and a reached /Resources counts as shared - because a direct value has no reference for touches() to test (R7-S-10). Alternative: drop only undrawn entries that reference something.
+- [2026-10-08 10:59] ASSUMED (review): M1 round 7 fix: an annotation whose /P is a page left out is cut unless a kept page lists it, and _assemblePdfDoc passes each page's /Annots as listed before any in-place flatten (annotsBefore) - because Flatten removes them from /Annots first (R7-S-8/12). Alternative: flatten only kept pages (would change what a redacted page's raster shows).
+- [2026-10-08 10:59] ASSUMED (review): M1 round 7 fix: /V and /DV on a kept-chain field that no kept widget inherits are dropped from the copy; /Metadata, /AF and /PtData join UNDRAWN (R7-S-3/5).
+- [2026-10-08 10:59] ASSUMED (review): M1 round 7 fix: a /Predictor content stream is unreadable (refuse where it must be read) rather than decoded here - because pdf-lib ignores the predictor and the ruled behaviour is refuse-if-unreadable (R7-C-1). Alternative: implement PNG/TIFF predictors.
+- [2026-10-08 10:59] ASSUMED (review): M1 round 7: S-7 (array member marked /Form), S-11 (display-state carriers) and C-7 (a deleted page's link loses its visible appearance) are disclosed, not fixed, under the bound-the-hunt ruling.
+- [2026-10-08 10:59] ASSUMED (review): M1 round 8 is the three lenses, each scoped to the round-7 fixes and the two classes (fail-open cuts, direct values), not an open hunt - the ruled 'one focused round'. Alternative: one reviewer.
 
 ## Formal Plan
 
@@ -62,8 +70,10 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 
 Round 6 replaced the open-ended hunt with two inventories: Table A, every place pdf.js 6.3.289 resolves a resource
 name or picks a resources dictionary (32 rows), and Table B, every PDF 32000-2 key that leads to resources or to
-something drawn (68 rows). The full tables are in `var/claude/raw/m1r6-table{A,B}.md` (gitignored); the rows that had
-no matching code path, and what now matches them:
+something drawn (68 rows). **Correction (round 7, R7-K-2):** `var/claude/raw/m1r6-table{A,B}.md` (gitignored) hold
+only the unmatched rows and a one-line "clean/modelled" range; the matched rows were checked by the round-6 reviewers
+and exist only in their transcripts — Table A rows 21, 25, 27 and 29–32 are accounted for nowhere on disk. The rows
+that had no matching code path, and what now matches them:
 
 | Row | pdf.js / spec site | Code path | Test |
 |---|---|---|---|
@@ -78,14 +88,18 @@ no matching code path, and what now matches them:
 | B65 | non-standard resources category (spec-invalid) | `pruned` drops it when it touches | inventory `unknownCategory` ×2 |
 | B14 | widget `/MK` icon | kept with the widget — disclosed | — |
 
-Every other row of both tables was already matched (round 1–5 code and tests; see `.claude/rules/redaction.md`).
+The reviewers reported every other row as already matched (round 1–5 code and tests; see `.claude/rules/redaction.md`)
+— a claim with no artefact behind it (R7-K-2).
+
+Round 7 (full three-lens panel, 2026-10-08) found 11 code defects in two classes plus fail-open reading; ruled "bound
+the hunt": fixed by class, pinned in `tests/export/copySourcePagesRound7.test.ts`, the rest disclosed in `SECURITY.md`.
 
 ## Status
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
 | 1 | Qualify the three SECURITY.md rows SEC-1 refutes (Redaction, Delete page, Extract page range) with an open-issue note and a working workaround (KNOWN_ISSUES holds no open defects by its own definition, so no entry there); record the review rulings and the architecture plan | S | done | ea1f0c3 | SECURITY.md, docs/plans/** |
-| 2 | SEC-1 fix: red fixtures first (GoTo /Dest, shared field /Kids) at the copySourcePages seam and through the real export for redaction, delete page and extract range; then cut references to excluded pages (answered in the copier, so nothing is copied and no sweep is needed), byte no-op on clean documents; sabotage; restore the SECURITY.md rows | M | doing | - | src/export/copySourcePages.ts, src/export/exportService.ts, tests/** |
+| 2 | SEC-1 fix: red fixtures first (GoTo /Dest, shared field /Kids) at the copySourcePages seam and through the real export for redaction, delete page and extract range; then cut references to excluded pages (answered in the copier, so nothing is copied and no sweep is needed), byte no-op on clean documents; sabotage; restore the SECURITY.md rows | M | doing | - | src/export/copySourcePages.ts, src/export/exportService.ts, src/utils/contentStreamEditor.ts, src/handlers/signingHandler.ts, src/utils/viewerCheck.ts, locales/*.json, tests/**, SECURITY.md, KNOWN_ISSUES.md, .claude/rules/**, CLAUDE.md |
 | 3 | TEST-1: replace the raw NUL byte in src/core/undoRedoController.ts:45 with the escape, and forbid raw control bytes in src/ with a source-level test | S | todo | - | src/core/undoRedoController.ts, tests/tools/** |
 | 4 | TEST-2: setFormXObjectContent (contentStreamEditor.ts ~1069) swallows every error and its 3 callers report a successful true-edit — surface the failure so the caller falls back honestly | S | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 | 5 | TEST-3: the bare catch at exportService.ts ~832 ("no form fields") also hides form.flatten() failures — narrow it so Flatten & download never ships live fields silently | S | todo | - | src/export/exportService.ts, tests/** |
@@ -97,7 +111,7 @@ Every other row of both tables was already matched (round 1–5 code and tests; 
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- M1 (SEC-1): round 6 (the inventory round, ruled 2026-10-08) is DONE — 15 unmatched rows found, 14 fixed test-first ("SEC-1 round 6" commit), 1 disclosed (`/MK` icon); no reviewer has read the round-6 code, so MAXIMAL's clean-round counter stands at zero. Awaiting the developer's re-ruling on certification (a narrow verification round is recommended) and on the cost (idle machine not available; load-16 profile in § Fragile). Push held until certified; every commit since d44b3a6 is unpushed.
+- M1 (SEC-1): round 7 (full panel) found 11 code defects + docs; ruled "bound the hunt" — fixed by class in the "SEC-1 round 7" commit (`tests/export/copySourcePagesRound7.test.ts`), the broken-file and display-state carriers disclosed. Next: ONE focused review round (round 8) on those fixes and the two classes, then certify. Push held until certified; every commit since d44b3a6 is unpushed. Cost follow-up is row 10.
 ### Needs research
 ### Fragile
 - SEC-1 cost, round 6 (2026-10-08, load ~16, warm, five alternating runs, `copySourcePages` alone): Publication 17

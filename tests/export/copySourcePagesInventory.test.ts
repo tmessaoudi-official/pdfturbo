@@ -160,7 +160,7 @@ describe('SEC-1 round 6 — every unmatched inventory row that carried a left-ou
     expect(dest.lookup(0, PDFDict).lookup(PDFName.of('Type'))).toBe(PDFName.of('StructElem'));
   });
 
-  it('a /PieceInfo, /Thumb or /DPart the kept page does not share is kept (byte-identical to the unpruned copy)', async () => {
+  it('a /PieceInfo or /Thumb the kept page does not share is kept (byte-identical to the unpruned copy)', async () => {
     const src = await shape(({ ctx, p1, p2, form, content, font }) => {
       p1.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Fm1: form(PUB) } }));
       p1.node.set(PDFName.of('Contents'), content('/Fm1 Do'));
