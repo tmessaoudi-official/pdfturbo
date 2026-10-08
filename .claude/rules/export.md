@@ -324,8 +324,8 @@ page canvas — reset to the base transform, clipped to /Rect, through `getTrans
 clickable), Popup (removed only with its flattened parent), **Redact** (a PENDING redaction: its `/AP /N` is normally
 the mark that says one was placed — the black box is `/RO`, applied later — so baking it would put a redaction
 mark into content over text that is still there, the classic hide-not-remove trap; a producer that put `/RO`-like
-content in `/N` is not measured), **Widget** (left to `form.flatten()`; that call sits in a bare catch, and a
-widget it failed on would, drawn here, show its old appearance while `/V` holds the user's value [Inferred: from
+content in `/N` is not measured), **Widget** (left to `form.flatten()`; a form it cannot flatten fails the export
+since TEST-3, and a widget it failed on would, drawn here, show its old appearance while `/V` holds the user's value [Inferred: from
 pdf-lib regenerating appearances inside `flatten()`, not reproduced]), FileAttachment/Sound/Movie/Screen/RichMedia/3D (the icon is not the
 payload), and anything pdf.js does not view (Invisible, Hidden, NoView). **Skipped and counted**: no usable
 appearance, or a zero-size rect — they stay annotations, and `toast.flattenAnnotationsSkipped` says how many.
@@ -455,6 +455,26 @@ covered note/stamp/widget was repainted ON TOP of the burn and baked into the ex
 `(255,0,0)` through an opaque black burn. Fixed by `stripRedactedAnnotations`; see § "A source annotation
 under a redaction was painted OVER the burn". The residual #62b ceiling — an annotation NOT under a redaction
 — was lifted by limits row 23 (2026-09-27).
+**A form that cannot be flattened fails the export — TEST-3 (review 2026-10-07, fixed 2026-10-08).** The
+fill-and-flatten step sat in `catch { /* no form fields in this source */ }`. That case never throws: pdf-lib's
+`getForm()` CREATES an empty form for a source without one (pinned by a control), so the catch only ever caught a
+real failure — and then Flatten & download shipped a copy with every field still live, and a plain download
+shipped typed values never baked. Two shapes reproduce it [Verified: a probe, then the red cases]: an `/AcroForm`
+that is not a dictionary (`getForm()` throws) and a widget with neither `/Rect` nor `/AP` (the field needs a new
+appearance, `updateFieldAppearances` reads the `/Rect` and throws before any field is flattened). The catch is
+gone, so both paths fail through `failureKey` → `toast.pdfExportFailed` and write nothing; `srcDocs` are loaded
+fresh per assembly, so a half-flattened source never reaches the model. **Two choices, logged ASSUMED:** the plain
+download fails too (before, it shipped the user's values unbaked on live fields — silent loss either way, now a
+loud refusal), and the message is the generic one although `failureKey`'s own rule gives a deterministic refusal
+its own (a new key costs three locale lines and the Arabic-pending count). **Bound, measured:** a widget pdf-lib
+CAN give an appearance to but cannot place (no `/Rect` with its `/AP` kept, or on no page) does not throw —
+pdf-lib logs it, draws nothing and still removes the field, so its value leaves the flattened copy; pdf.js shows
+neither shape [Inferred: a widget with no rect or no page has nothing to draw on]. Guard:
+`tests/export/flattenFailure.test.ts` (7 — both shapes on both paths, a healthy form on both, a source with no
+form). Red first: `{ errors: [], files: 1, widgets: [2] }` against the refusal. Sabotage, each landed, restored
+with `cmp`: the bare catch back → the 4 refusal cases; a catch around `getForm()` only → exactly the 2 `/AcroForm`
+cases; around `flatten()` only → exactly the 2 `/Rect` cases.
+
 **Form FILLS are undoable (#QA-2026-06-23 P1 fix):** the form-overlay change callback routes through
 `app.handleFormInput` → `UndoRedoController.handleFormInput`, which sets `_formValues` live AND coalesces a
 burst of edits to one field into a single `SetFormValueCmd` (`src/core/commands/formCmds.ts`) recorded after a

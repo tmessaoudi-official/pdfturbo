@@ -825,24 +825,28 @@ export class ExportService {
       // flattenAllForms (#62 — the "Flatten & download" button) EVERY source's
       // form is flattened regardless, so an opened PDF's untouched interactive
       // fields are baked into static content and the export carries no widgets.
+      //
+      // TEST-3: no catch here. pdf-lib's getForm() CREATES an empty form for a source without one, so nothing
+      // benign throws; what does is a form pdf-lib cannot read or draw (a non-dictionary /AcroForm, a widget with
+      // neither /Rect nor an appearance). Swallowing that shipped "flattened" copies with live fields, and typed
+      // values never baked. The export fails instead — srcDocs are loaded fresh above, so a source half-flattened
+      // before the throw never reaches the model.
       const droppedFields: string[] = [];
       for (const [id, srcDoc] of srcDocs) {
         const vals = formValues[id];
         const hasVals = !!vals && Object.keys(vals).length > 0;
         if (!hasVals && !opts?.flattenAllForms) continue;
-        try {
-          const form = srcDoc.getForm();
-          if (hasVals) {
-            // G14: dispatch on the field's real type (text / checkbox / radio /
-            // dropdown / listbox) so every persisted choice bakes in, not just text.
-            for (const [fieldName, value] of Object.entries(vals)) {
-              // B1: a value that doesn't match a dropdown/radio/listbox option is
-              // skipped (never aborts the export) — collect it so we can warn.
-              if (!applyFormFieldValue(form, fieldName, value)) droppedFields.push(fieldName);
-            }
+        const form = srcDoc.getForm();
+        if (hasVals) {
+          // G14: dispatch on the field's real type (text / checkbox / radio /
+          // dropdown / listbox) so every persisted choice bakes in, not just text.
+          for (const [fieldName, value] of Object.entries(vals)) {
+            // B1: a value that doesn't match a dropdown/radio/listbox option is
+            // skipped (never aborts the export) — collect it so we can warn.
+            if (!applyFormFieldValue(form, fieldName, value)) droppedFields.push(fieldName);
           }
-          form.flatten();
-        } catch { /* no form fields in this source */ }
+        }
+        form.flatten();
       }
       // B1: surface silently-dropped form values once, rather than losing them
       // without a trace. A warn (not an error) — the export still succeeds.
