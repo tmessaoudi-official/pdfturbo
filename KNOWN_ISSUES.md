@@ -71,6 +71,17 @@ work in a private/incognito window when editing sensitive documents on a shared 
   parses and creates. It voids itself when npm reports a fix or the date passes. Detail: `CLAUDE.md` § Git & CI (fifth occurrence) and
   `.claude/rules/signing.md`.
 
+### From QUAL-1 — releasing a closed document (2026-10-08)
+
+- Closing or replacing a document now releases its pdf.js documents. An action still reading the old document at
+  that moment fails instead of finishing on a document you closed: an OCR run or an export shows its failure toast
+  [Inferred: both reach their own catch, not exercised by a test]; a crop, a signature placement or a true-text edit
+  started a few milliseconds before the close can raise an unhandled error in the console [Inferred: each is a single
+  `getPage` with no catch]. Rendering, thumbnails and search settle quietly [Verified: tests below].
+- A document whose last page you delete stays loaded until the document is closed: the delete can be undone, and
+  releasing it needs to know that no undo step still holds it. Detail: `.claude/rules/ui.md` § "Closing a document
+  never released its pdf.js documents — QUAL-1".
+
 ### From TEST-3 — a form field pdf-lib cannot place is dropped by a flatten (2026-10-08)
 
 - A widget pdf-lib can give an appearance to but cannot place — no `/Rect` with its `/AP` kept, or listed on no page —

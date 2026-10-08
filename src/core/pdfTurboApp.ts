@@ -300,8 +300,18 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   get isLoading(): boolean { return this._isLoading; }
   setIsLoading(v: boolean): void { this._isLoading = v; }
   resetDocumentModel(): void {
+    // QUAL-1: release the dropped model's pdf.js documents — one worker transport each, leaked
+    // for the rest of the session before. The epoch advance and the renderer's model switch come
+    // FIRST: they are what let a render or page read still in flight on a released document
+    // settle quietly (`PageRenderPipeline.renderCurrentPage`, `PDFRenderer._isStale`).
+    const dropped = this.documentModel;
+    this.advanceFormFieldGen();
     this.documentModel = new DocumentModel();
     this.renderer.setModel(this.documentModel);
+    // The legacy fallback `computeFitScale` reads when the model is empty — the fit button stays enabled after a
+    // close. Both open paths set it again after this reset.
+    this.renderer.pdfDoc = null;
+    for (const src of dropped.sourcePdfs.values()) _destroyDoc(src.doc);
     this._formattingService.cancelPainter();
     this.ui.formatPainterBtn.classList.remove('btn-active-fmt');
   }

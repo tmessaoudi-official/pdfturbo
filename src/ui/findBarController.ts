@@ -49,12 +49,21 @@ export class FindBarController {
     this.clearMatches();
     this._ctx.searchManager.clear();
     const query = this._ctx.ui.findInput.value;
-    const settled = await this._ctx.searchManager.run(query, {
-      documentModel: this._ctx.documentModel,
-      elements: this._ctx.elements,
-      textSearchHandler: this._ctx.textSearch,
-      zoomScale: this._ctx.zoomScale,
-    });
+    const model = this._ctx.documentModel;
+    let settled: boolean;
+    try {
+      settled = await this._ctx.searchManager.run(query, {
+        documentModel: model,
+        elements: this._ctx.elements,
+        textSearchHandler: this._ctx.textSearch,
+        zoomScale: this._ctx.zoomScale,
+      });
+    } catch (err) {
+      // QUAL-1: closing or replacing the document releases its pdf.js documents, so a page read
+      // still in flight rejects. Dropped only when the document searched is no longer the open one.
+      if (this._ctx.documentModel === model) throw err;
+      return;
+    }
     if (!settled) return;
     if (this._ctx.searchManager.count > 0) this._showMatches();
     this._updateCount();

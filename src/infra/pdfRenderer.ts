@@ -33,6 +33,19 @@ export class PDFRenderer {
     this._model = model;
   }
 
+  /**
+   * QUAL-1: a document is stale once a model is set and none of its sources holds it — the
+   * document was closed or replaced, and `resetDocumentModel` releases it, which cancels whatever
+   * was in flight on it. Only then is a failure dropped; with no model (the legacy path) or on a
+   * document the model still holds, the failure is real and escapes.
+   */
+  private _isStale(doc: PDFDocumentProxy): boolean {
+    const model = this._model;
+    if (!model) return false;
+    for (const src of model.sourcePdfs.values()) if (src.doc === doc) return false;
+    return true;
+  }
+
   get currentPage(): number {
     return (this._model?.currentPageIndex ?? 0) + 1;
   }
@@ -127,6 +140,9 @@ export class PDFRenderer {
       this.canvas.height = viewport.height;
       this.canvas.width = viewport.width;
       await page.render({ canvas: this.canvas, viewport }).promise;
+    } catch (err) {
+      if (!this._isStale(doc)) throw err;
+      // Released mid-render (QUAL-1): nothing to paint; fall through to any queued page.
     } finally {
       this.isRendering = false;  // BUG-05 fix: always release lock
     }
@@ -167,16 +183,21 @@ export class PDFRenderer {
     const src = model.sourcePdfs.get(docPage.sourcePdfId);
     if (!src) return '';
 
-    const page = await src.doc.getPage(docPage.sourcePageNum);
-    const effectiveRotation = (page.rotate + (docPage.rotation ?? 0)) % 360;
-    const vp = pointViewport(page, { scale: thumbScale, rotation: effectiveRotation });
-    const canvas = document.createElement('canvas');
-    canvas.width = vp.width;
-    canvas.height = vp.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return '';
-    await page.render({ canvas, viewport: vp }).promise;
-    return canvas.toDataURL('image/jpeg', 0.7);
+    try {
+      const page = await src.doc.getPage(docPage.sourcePageNum);
+      const effectiveRotation = (page.rotate + (docPage.rotation ?? 0)) % 360;
+      const vp = pointViewport(page, { scale: thumbScale, rotation: effectiveRotation });
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width;
+      canvas.height = vp.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      await page.render({ canvas, viewport: vp }).promise;
+      return canvas.toDataURL('image/jpeg', 0.7);
+    } catch (err) {
+      if (!this._isStale(src.doc)) throw err;
+      return ''; // released mid-thumbnail (QUAL-1): the panel shows no image for a closed document
+    }
   }
 
   private _renderBlankPage(widthPt: number, heightPt: number): void {

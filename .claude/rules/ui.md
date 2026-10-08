@@ -415,3 +415,41 @@ the heavy assembly, to stay within the transient-activation window). Only `expor
 XFDF export stay plain `_downloadBlob`. **Automation note:** the native Save dialog can't be driven by
 Playwright — to capture a download in a browser test, `delete window.showSaveFilePicker` to force the
 anchor-download fallback. Open-via-picker + recent files SHIPPED 2026-09-04 — see § "Open via the native picker + recent files (#54b)".
+
+### Closing a document never released its pdf.js documents — QUAL-1 (review 2026-10-07, fixed 2026-10-08)
+
+`resetDocumentModel()` (close, open, a failed session restore) swapped in a new `DocumentModel` and dropped the old one
+with every source's pdf.js document still loaded — one worker transport per document opened, for the rest of the
+session. It now releases them (`loadingTask.destroy()`; pdf.js v6 has no `PDFDocumentProxy.destroy()`). The release is
+one line; what makes it safe is the order around it and three readers that can still hold a released document.
+
+- **Measured in Chrome first:** a release cancels what is in flight — `page.render` rejects with
+  `RenderingCancelledException: Rendering cancelled, page 1`, and `getPage` on a released document THROWS SYNCHRONOUSLY
+  (`TypeError … reading 'sendWithPromise'`). Before this change none of that could happen, so every reader below was
+  written without a catch, and several are fired with `void`.
+- **The order in `resetDocumentModel`:** advance the render epoch, swap the model, `renderer.setModel`, THEN release.
+  The release comes last because the epoch and the renderer's model are the predicates the readers test.
+- **Each reader drops a failure only when its document is provably gone, and rethrows otherwise** — the controls in the
+  tests are what keep this from being a swallow:
+  - `PDFRenderer._renderPdfPage` / `generateThumbnail` — `_isStale(doc)`: a model is set and none of its sources holds
+    the document. With no model (the legacy path) nothing is stale. A dropped render falls through to a queued page —
+    a `return` in that catch would orphan the queued promise (mutant M9 hangs the queued-render test).
+  - `PageRenderPipeline.renderCurrentPage` — the run was superseded (`isCurrentFormFieldGen(myGen)` is false). Its
+    page reads (form fields, text layer, crop frame) read the CURRENT model, so after a reset they see the empty one;
+    only a read already in flight on the old document can reject, and it rejects before the epoch check after it.
+  - `FindBarController.search` — `this._ctx.documentModel` is no longer the model the search started on. The search
+    manager cannot test this itself: its own generation is not advanced by a close, and it holds the OLD model object,
+    which still lists the released document.
+- **The renderer's legacy `pdfDoc` is cleared too.** Both open paths point it at the live document, and with an empty
+  model `computeFitScale` falls back to it — and the fit button stays enabled after a close [Verified: `uiController.ts`
+  `enableUI` is the only write to `fitBtn.disabled` in `src/`, and it writes `false`]. Left set, a click on it
+  after a close reached the released document and toasted `renderFailed`.
+- **Not guarded, by choice:** a user-started read that is a single `getPage` (crop geometry, signature placement, true
+  edit) would need a close to land inside it. OCR and export in flight at a close fail through their own catches with
+  their failure toast. Disclosed in `KNOWN_ISSUES.md` § "From QUAL-1".
+- **Still leaked:** a source garbage-collected from a live model (its last page deleted) is not released — the
+  `DeletePageCmd` snapshot can still restore it, so releasing it needs ownership counting. Undoable source edits are
+  released by `ReplaceSourcePdfBytesCmd.dispose()` as before.
+- Guards: `tests/core/releasedDocument.test.ts` (11, jsdom), `tests/browser/document-release.browser.test.ts` (4, real
+  pdf.js), two cases in `tests/ui/findBarController.test.ts`. Sabotage: predicate removed / always-stale / epoch advance
+  removed / release removed / release moved before `setModel` / the catch returning / `pdfDoc` kept — each reds its own case.

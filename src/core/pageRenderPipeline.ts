@@ -54,15 +54,22 @@ export class PageRenderPipeline {
     // can start and advance the shared epoch; if that happens this run bails so it
     // never paints a stale text layer / form overlay over the newer page's canvas.
     const myGen = this._ctx.advanceFormFieldGen();
-    await this._ctx.renderer.renderPageAtIndex(this._ctx.documentModel.currentPageIndex);
-    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
-    await this._renderFormFields(myGen);
-    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
-    await this._renderTextLayer(myGen);
-    if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
-    this._ctx.renderInkLayer();
-    await this._renderCropFrame(myGen);
-    this._renderWatermarkOverlay();
+    try {
+      await this._ctx.renderer.renderPageAtIndex(this._ctx.documentModel.currentPageIndex);
+      if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
+      await this._renderFormFields(myGen);
+      if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
+      await this._renderTextLayer(myGen);
+      if (!this._ctx.isCurrentFormFieldGen(myGen)) return;
+      this._ctx.renderInkLayer();
+      await this._renderCropFrame(myGen);
+      this._renderWatermarkOverlay();
+    } catch (err) {
+      // QUAL-1: a read in flight when the document is closed rejects (its pdf.js document is
+      // released) before the epoch check after it can run. `resetDocumentModel` advances the
+      // epoch, so a superseded run's failure is dropped — the current run's still escapes.
+      if (this._ctx.isCurrentFormFieldGen(myGen)) throw err;
+    }
   }
 
   /**

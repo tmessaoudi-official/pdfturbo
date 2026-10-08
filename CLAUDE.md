@@ -285,11 +285,11 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **export** — the export pipeline: rotation, text extent, the export frame, links, flatten, XLSX, forms, XFDF, Bates, sanitize, lock, compress (14) → `.claude/rules/export.md` (loads when you read `src/export/**`, `src/utils/pdfSanitizer.ts` …).
 - **flow-export** — PDF→DOCX/MD: flow reconstruction, columns, tables and CSV, the tagged-PDF fast path (13) → `.claude/rules/flow-export.md` (loads when you read `src/utils/flowDoc*.ts`, `src/utils/tableExtract.ts` …).
 - **arabic-rtl** — Arabic and RTL: bidi, the Arabic overlay, tashkeel, RTL selection and copy (7) → `.claude/rules/arabic-rtl.md` (loads when you read `src/utils/bidi.ts`, `src/utils/rtlClipboard.ts` …).
-- **true-edit** — true text editing in the content stream: Path 2/3, fonts, nested cm (4) → `.claude/rules/true-edit.md` (loads when you read `src/utils/contentStreamEditor.ts`, `src/utils/glyphNames.ts` …).
+- **true-edit** — true text editing in the content stream: Path 2/3, fonts, nested cm, a failed form write (5) → `.claude/rules/true-edit.md` (loads when you read `src/utils/contentStreamEditor.ts`, `src/utils/glyphNames.ts` …).
 - **docx-edit** — DOCX read + edit and its package garbage collection (2) → `.claude/rules/docx-edit.md` (loads when you read `src/docx/**`, `tests/docx/**`).
 - **signing** — e-signing, PAdES and the ByteRange, signature placement, the Signers panel, the RSA verify (5) → `.claude/rules/signing.md` (loads when you read `src/signing/**`, `src/handlers/signingHandler.ts` …).
 - **crop** — per-page crop, its handles and numeric margins — and why crop HIDES while redaction REMOVES (4) → `.claude/rules/crop.md` (loads when you read `src/core/pageService.ts`, `src/core/pageRenderPipeline.ts` …).
-- **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep (12) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
+- **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep, releasing a closed document (13) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
 - **ocr** — OCR engine, CSP and assets (1) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
 - **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle (9) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
 - **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods (4) → `.claude/rules/conventions.md` (loads at session start).
@@ -303,6 +303,8 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 - § "pdf.js colour management is on — row 37 (2026-09-26)" → `pdfjs.md`
 - § "Links on the redaction raster — re-created, never copied (A4, 2026-09-25)" → `redaction.md`
 - § "A removed page rode back in on a reference — SEC-1 (review 2026-10-07, fixed 2026-10-08)" → `redaction.md`
+- § "A failed form write was reported as a successful edit — TEST-2 (review 2026-10-07, fixed 2026-10-08)" → `true-edit.md`
+- § "Closing a document never released its pdf.js documents — QUAL-1 (review 2026-10-07, fixed 2026-10-08)" → `ui.md`
 - § "On a rotated page, text, pictures, signatures and comments exported turned by the page rotation (A3-pre, 2026-09-26)" → `export.md`
 - § "Typed text overflows its box, and the redaction drop now tests where it is DRAWN (A5, 2026-09-26)" → `export.md`
 - § "The export frame is pdf.js's page VIEW, not pdf-lib's CropBox — B1 (2026-09-26)" → `export.md`

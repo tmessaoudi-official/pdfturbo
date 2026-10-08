@@ -119,6 +119,28 @@ describe('FindBarController.search', () => {
     await ctrl.search();
     expect(ctx.ui.container.querySelectorAll('.search-match').length).toBe(0);
   });
+
+  // QUAL-1: closing or replacing the document releases its pdf.js documents, so a multi-page search
+  // still reading pages rejects. That failure belongs to a document that is gone — dropped only then.
+  it('a search whose document is replaced mid-run settles quietly (QUAL-1)', async () => {
+    let fail!: (e: unknown) => void;
+    const sm = makeSearchManager();
+    sm.run = vi.fn(() => new Promise<boolean>((_res, rej) => { fail = rej; }));
+    const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'] });
+    ctx.ui.findInput.value = 'hello';
+    const searching = new FindBarController(ctx).search();
+    (ctx as { documentModel: unknown }).documentModel = { currentPage: null }; // resetDocumentModel
+    fail(new Error('Worker was destroyed'));
+    await expect(searching).resolves.toBeUndefined();
+  });
+
+  it('control: the same failure while the document is still open escapes (QUAL-1)', async () => {
+    const sm = makeSearchManager();
+    sm.run = vi.fn().mockRejectedValue(new Error('Worker was destroyed'));
+    const ctx = makeCtx({ searchManager: sm as unknown as IFindBarContext['searchManager'] });
+    ctx.ui.findInput.value = 'hello';
+    await expect(new FindBarController(ctx).search()).rejects.toThrow('Worker was destroyed');
+  });
 });
 
 describe('FindBarController.nextMatch / prevMatch', () => {
