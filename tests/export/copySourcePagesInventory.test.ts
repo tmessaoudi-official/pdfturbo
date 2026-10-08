@@ -151,6 +151,15 @@ describe('SEC-1 round 6 — every unmatched inventory row that carried a left-ou
     expect(action.lookup(PDFName.of('D'), PDFArray).get(0)).toBe(out.getPage(0).ref);
   });
 
+  // The cut is for a left-out page's content: with every page kept the tree carries nothing the export lacks, so a
+  // structure destination is copied as before round 6 (the ruling keeps clean exports unchanged).
+  it.each(['SD', 'Dest'] as const)('every page kept: a structure destination (%s) is copied, not cut', async (via) => {
+    const out = await PDFDocument.load(await exported(await structShape(via), [0, 1]), { updateMetadata: false });
+    const link = out.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).lookup(0, PDFDict);
+    const dest = via === 'SD' ? link.lookup(PDFName.of('A'), PDFDict).lookup(PDFName.of('SD'), PDFArray) : link.lookup(PDFName.of('Dest'), PDFArray);
+    expect(dest.lookup(0, PDFDict).lookup(PDFName.of('Type'))).toBe(PDFName.of('StructElem'));
+  });
+
   it('a /PieceInfo, /Thumb or /DPart the kept page does not share is kept (byte-identical to the unpruned copy)', async () => {
     const src = await shape(({ ctx, p1, p2, form, content, font }) => {
       p1.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Fm1: form(PUB) } }));

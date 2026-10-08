@@ -149,9 +149,11 @@ The tables live in `var/claude/raw/m1r6-table{A,B}.md` (gitignored); the unmatch
 the matrix in `docs/plans/review-remediation.plan.md` § "SEC-1 inventory". Fifteen findings, fourteen fixed:
 - **A page's resources are merged with EVERY ancestor's** (`reachableFromPages` walks `/Parent`): a form named only by
   the page-tree node and drawn by the kept page was not reached, and its shared resources went unpruned.
-- **The structure tree is cut, always** (`isStructure`: a StructElem or StructTreeRoot, or the S + P shape, that is a
+- **The structure tree is cut whenever a page is left out** (`isStructure`: a StructElem or StructTreeRoot, or the S + P shape, that is a
   member of the catalog's tree): a PDF 2.0 structure destination (`/SD`, or an element as `/Dest`) names an element
   whose `/P` chain is the whole tree. A link keeps its `/D` and loses `/SD`; a link whose only target is an element goes.
+  With every page kept the tree carries nothing the export lacks and is copied as before (the 6C review found the
+  first version cut it always, changing clean exports; pinned by two every-page-kept cases).
 - **A field-tree node is a field by membership**, not by `/FT`: an intermediate node without `/FT` still holds `/V`.
 - **Data no viewer draws for the kept object** — `/PieceInfo`, `/Thumb`, `/DPart`, `/Alternates` — is dropped from a
   kept object when it reaches a removed page (`dropsUndrawn`), kept byte-identical otherwise.
@@ -173,8 +175,8 @@ built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and pas
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePagesInventory.test.ts` (33 — round 6: nine leak shapes ×2 modes with a source control
-each, the `/SD` keep, an unshared `/PieceInfo`/`/Thumb` kept byte-identical, a form drawn by a pattern and by the page
+Guards: `tests/export/copySourcePagesInventory.test.ts` (35 — round 6: nine leak shapes ×2 modes with a source control
+each, the `/SD` keep, a structure destination copied when every page is kept (`/SD` and `/Dest`), an unshared `/PieceInfo`/`/Thumb` kept byte-identical, a form drawn by a pattern and by the page
 in both orders, a form's and an image's `/OC` name, the widget `/DA` font indirect, inline and through a shared
 appearance, a stream that is an array member AND a form or a single `/Contents` in both orders, and a deep unshared
 chain kept byte-identical with its control), `tests/export/copySourcePages.test.ts` (117 — round 5 adds seven route shapes ×2 modes (three undrawn

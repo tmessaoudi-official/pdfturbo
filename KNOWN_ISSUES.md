@@ -100,8 +100,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
   alternating runs, round-6 code, 2026-10-08, machine load ~16 (single runs varied up to 8.6 s; an idle machine was
   not available). A profile puts ~80% of it in reading content (half of all time in tokenizing it) and ~5% in the
   reachability walk. Not optimised.
-- **A link whose target is a structure element (PDF 2.0) is removed, and a structure destination (`/SD`) is
-  dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
+- **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure
+  destination (`/SD`) is dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
   every page's marked content.
 - **A widget's icon (`/MK`) is kept with the widget**, even when the removed page draws the same icon form.
 - **The catalog and page tree are never copied by reference, even with every page kept.** A signature's

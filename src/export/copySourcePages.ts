@@ -106,10 +106,11 @@ export async function copySourcePages(
     || (obj instanceof Dict && obj.lookup(PDFName.of('Type')) === PDFName.of('Pages'));
   // The structure tree is the document's too: a PDF 2.0 structure destination (/SD, or a /Dest whose first element is
   // a structure element) names an element whose /P chain is the whole tree — every page's marked content (/Stm) and
-  // /ActualText (round 6, R6-S-1). A struct-element SHAPE triggers the walk; membership in the tree decides.
+  // /ActualText (round 6, R6-S-1). A struct-element SHAPE triggers the walk; membership in the tree decides. With every
+  // page kept the tree carries nothing the export lacks, so it is copied as before (like the field tree above).
   let structure: Set<PDFRef> | undefined;
   const isStructure = (ref: PDFRef, obj: PDFObject | undefined): boolean => {
-    if (!(obj instanceof Dict)) return false;
+    if (!anyLeftOut || !(obj instanceof Dict)) return false;
     const type = obj.lookup(PDFName.of('Type'));
     const shaped = type === PDFName.of('StructElem') || type === PDFName.of('StructTreeRoot')
       || (obj.lookup(PDFName.of('S')) instanceof lib.PDFName && obj.get(PDFName.of('P')) instanceof lib.PDFRef && !obj.has(PDFName.of('Subtype')));

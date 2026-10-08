@@ -35,6 +35,7 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 08:53] ASSUMED (review): M1 round 6: a field-tree node is foreign by membership in the AcroForm field tree (/Fields and /Kids), not only by carrying /FT - because an intermediate node without /FT still holds /V and /Kids of the removed page (R6-S-2). Alternative: keep the /FT test alone.
 - [2026-10-08 08:53] ASSUMED (review): M1 round 6: a widget's regenerated appearance prunes its /AP /Resources against every /DA seen for that appearance (accumulated across widgets sharing it), and an array /Contents member is registered as drawing nothing only when it is neither a single /Contents nor a form, registered before any copy - because pdf.js regenerates from /DR + /AP resources by the /DA font, and the copy order decided the result (R6-C-3/4/5). Alternative: refuse such pages.
 - [2026-10-08 08:53] ASSUMED (review): M1 round 6: a resources category outside the standard eight is dropped from a kept owner when it reaches a removed page - because no conforming reader draws through it and keeping it carries the removed page's objects (R6-S-8). Alternative: keep it (spec-invalid key, leak).
+- [2026-10-08 09:32] ASSUMED (review): M1 round 6 (6C): the structure-tree cut runs only when a page is left out, superseding the earlier 'always' entry - because with every page kept the tree carries nothing the export lacks, and cutting it changed clean PDF 2.0 exports (a link lost its /SD, a link to an element lost its target). Alternative: cut always, like the catalog.
 
 ## Formal Plan
 
@@ -68,7 +69,7 @@ no matching code path, and what now matches them:
 | A26 | regenerated widget appearance: `/DA` font in `/DR` + AP `/Resources` | `noteAppearances` / `appearance` | inventory `widget's appearance` ×3 |
 | B3 | array `/Contents` member also a form / a single `/Contents` | pre-registration before any copy | inventory `array member AND …` ×4 |
 | B23/31/33/62 | `/Alternates`, `/Thumb`, `/PieceInfo`, `/DPart` | `dropsUndrawn` (`UNDRAWN`) | inventory 4 shapes ×2 + unshared kept |
-| B36/40 | structure tree via `/SD` or a `/Dest` element | `isStructure` / `structureTree` cut; `/SD` deleted | inventory `structDest*` ×2 ×2 + link keeps `/D` |
+| B36/40 | structure tree via `/SD` or a `/Dest` element | `isStructure` / `structureTree` cut when a page is left out; `/SD` deleted | inventory `structDest*` ×2 ×2 + link keeps `/D` + every-page-kept ×2 |
 | B44/45 | field-tree node without `/FT` holding `/V` | `fieldTreeRefs` in `foreignField` | inventory `ftlessFieldNode` ×2 |
 | B65 | non-standard resources category (spec-invalid) | `pruned` drops it when it touches | inventory `unknownCategory` ×2 |
 | B14 | widget `/MK` icon | kept with the widget — disclosed | — |
@@ -91,7 +92,7 @@ Every other row of both tables was already matched (round 1–5 code and tests; 
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- M1 (SEC-1) milestone panel reached its 5-round cap: rounds 3/4/5 found 3/4/3 P0-P1, all in the pdf.js name-resolution model (`collect`) or where owners live (`pruneNested`). Round-5 fixes are in the round-5 commit ("SEC-1 round 5") and are UNREVIEWED by a panel; the commits since d44b3a6 unpushed. Ruled 2026-10-08: round 6 with the inventory method, idle-machine cost measurement before any cost decision, push held until certified.
+- M1 (SEC-1): round 6 (the inventory round, ruled 2026-10-08) is DONE — 15 unmatched rows found, 14 fixed test-first ("SEC-1 round 6" commit), 1 disclosed (`/MK` icon); no reviewer has read the round-6 code, so MAXIMAL's clean-round counter stands at zero. Awaiting the developer's re-ruling on certification (a narrow verification round is recommended) and on the cost (idle machine not available; load-16 profile in § Fragile). Push held until certified; every commit since d44b3a6 is unpushed.
 ### Needs research
 ### Fragile
 - SEC-1 cost, round 6 (2026-10-08, load ~16, warm, five alternating runs, `copySourcePages` alone): Publication 17
