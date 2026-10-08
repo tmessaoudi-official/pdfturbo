@@ -36,6 +36,10 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 08:53] ASSUMED (review): M1 round 6: a widget's regenerated appearance prunes its /AP /Resources against every /DA seen for that appearance (accumulated across widgets sharing it), and an array /Contents member is registered as drawing nothing only when it is neither a single /Contents nor a form, registered before any copy - because pdf.js regenerates from /DR + /AP resources by the /DA font, and the copy order decided the result (R6-C-3/4/5). Alternative: refuse such pages.
 - [2026-10-08 08:53] ASSUMED (review): M1 round 6: a resources category outside the standard eight is dropped from a kept owner when it reaches a removed page - because no conforming reader draws through it and keeping it carries the removed page's objects (R6-S-8). Alternative: keep it (spec-invalid key, leak).
 - [2026-10-08 09:32] ASSUMED (review): M1 round 6 (6C): the structure-tree cut runs only when a page is left out, superseding the earlier 'always' entry - because with every page kept the tree carries nothing the export lacks, and cutting it changed clean PDF 2.0 exports (a link lost its /SD, a link to an element lost its target). Alternative: cut always, like the catalog.
+- [2026-10-08 09:43] AGREED: M1 after round 6: certify with a full three-lens panel round 7 on the frozen commit (developer, 2026-10-08).
+- [2026-10-08 09:43] AGREED: M1 cost: ship the prune as is with the cost documented; a separate follow-up step replaces full tokenizing with a name-only scan, with its own gate and panel (developer, 2026-10-08).
+- [2026-10-08 09:43] AGREED: M1 push: stays held until M1 is certified (developer, 2026-10-08).
+- [2026-10-08 09:43] ASSUMED (review): M1 round 7 reviewers run on opus - source override (as-is = the session model, opus).
 
 ## Formal Plan
 
@@ -89,6 +93,7 @@ Every other row of both tables was already matched (round 1–5 code and tests; 
 | 7 | Docs and config drift in one docs-only pass (rulings 2026-10-08: batch-of-10 push, one panel per milestone, author casing MESSAOUDI, re-sign only after cloud sessions; SYNC-1 the three reviewer agents and pdf-qa-sweep say advisor() does not exist here while CLAUDE.md makes it rung 1; SYNC-3 CLAUDE.md names /converge as the panel runner where /certify runs it, and the repo agents have no Write tool for the raw-file contract; SYNC-6 the agents pin model: opus and pdf-qa-sweep asks for a model in autonomous mode, against model policy v2; README/FEATURES/VISION form fill + recent files; CHANGELOG; archive master.plan.md; rules-file caps; undici pin; stale memory notes; container-era wording; settings .bak leftovers) | M | todo | - | CLAUDE.md, .claude/**, README.md, FEATURES.md, VISION.md, CHANGELOG.md, docs/** |
 | 8 | Architecture steps 0–3 (see docs/plans/architecture.plan.md) | L | todo | - | src/**, tests/tools/** |
 | 9 | Remaining P2 findings as plan rows; P3 findings fixed when their file is touched (list in § Known issues) | M | todo | - | - |
+| 10 | SEC-1 cost follow-up (ruled 2026-10-08): replace the prune's full content tokenizing with a name-only scan; measure against the § Fragile figures, own gate and panel | M | todo | - | src/export/copySourcePages.ts, src/utils/contentStreamEditor.ts, tests/** |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
