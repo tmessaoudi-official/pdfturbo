@@ -55,11 +55,10 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   per OWNER and per ENTRY, not per dictionary:** `ResourcePruner` replaces the resources of every owner the copy
   reaches — the page (before the copy) and, inside the copier hook, any form, pattern, appearance or Type3 font
   with resources of its own — with a clone that drops an entry of `/XObject`, `/Pattern`, `/Shading`,
-  `/ExtGState`, `/Font`, `/Properties` or `/ColorSpace` only when the owner does not draw it AND a left-out page
+  `/ExtGState`, `/Font` or `/Properties` (`/ColorSpace` too until round 3) only when the owner does not draw it AND a left-out page
   reaches it (`reachableFromPages`, which never crosses into another page or up its tree). So an owner that shares
   nothing with a left-out page is copied exactly as before and is never even read, and the refusal fires only
-  where pruning matters. "Draws" follows pdf.js: `Do`, `Tf`, `gs`, `scn`/`SCN`, `sh`, `cs`/`CS`, `BDC`/`DP`, any
-  colour space for an inline image, recursing into a form, Type3 font or soft-mask group whose own `/Resources` is
+  where pruning matters. "Draws" follows pdf.js: `Do`, `Tf`, `gs`, `scn`/`SCN`, `sh`, `BDC`/`DP`, recursing into a form, Type3 font or soft-mask group whose own `/Resources` is
   not a dictionary, and into a tiling pattern ALWAYS (pdf.js merges a pattern's resources with its parent's). A
   stream pdf-lib built after the load (a typed value's flatten) is read unencoded, not refused. Unreadable →
   `ExportResourcesUnreadableError` (`toast.exportResourcesUnreadable`). Opt-in (`pruneSharedResources`) for the PDF
@@ -84,13 +83,34 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
 - **Housekeeping**: an indirect `/Kids` array is recognised as one (it held a null); dropped links are deleted
   after every page has dropped them, and a reference to one (an `/IRT` reply, a `/Popup` `/Parent`) is cut too.
 
+**Round 3 (2026-10-08) — four more, and one reversal:**
+- **Colour spaces are no longer pruned.** pdf.js resolves a colour-space NAME outside `cs`/`CS` — a shading's own
+  `/ColorSpace`, an Indexed or Separation base, an alias — so dropping an entry the kept content "did not draw"
+  recoloured kept pages. A colour space draws no content, so it is copied whole; disclosed in `SECURITY.md`.
+- **An inline owner** — a Type3 font or form written as a direct dictionary inside a shared `/Font` or `/XObject`
+  sub-dictionary — was copied with its own resources unpruned. `pruned()` now prunes an inline owner in place. A
+  Type3 glyph that draws with the font itself would recurse forever, so the guard is per OWNER (`inProgress` in
+  `prunedOwner`) and it REFUSES; a guard keyed on the resources dictionary falsely refused a legal font whose own
+  resources sit inside the shared dictionary.
+- **A field whose `/FT` is inherited** from its parent slipped the action-named cut (`isField` walks `/Parent`,
+  bounded at 64), and an **inline widget** on a kept page lost its field value when another page was left out
+  (`keptFieldChain` now counts inline annotations).
+- **InDesign's `/Span<</ActualText<FEFF…>>> BDC` refused the export.** `readUntilBalanced` read the hex string's
+  `>` as a dictionary close; it skips `<hex>` now. Found on the census report: 51 of its 67 pages refused.
+- **`reachableFromPages` is iterative** (a 20 000-object chain overflowed the stack), and the catalog / page-tree cut
+  applies with every page kept too — a copy never carries the document.
+- Measured cost: deleting the last of Publication 17's 142 pages took 3706 ms pruned vs 150 ms (load ~19);
+  recorded in the plan's § Fragile and `KNOWN_ISSUES.md`.
+
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
 built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and passed against the unfixed code; the
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePages.test.ts` (70 — round 1: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept
+Guards: `tests/export/copySourcePages.test.ts` (83 — round 3 adds the inline Type3 shapes, the inherited-`/FT`
+action field and the InDesign ActualText page to the route table, plus five cases: colour spaces kept, a 20 000-chain,
+the catalog cut with every page kept, an inline widget's value kept, a self-drawing Type3 font refused; round 1: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept
 links through real pdf.js, self-`/P`, stand-in resolved and unresolved, byte-identity ×3, two through
 `_assemblePdfDoc`; round 2: shared and inherited resources, the refusal, every page kept byte-identical, a form drawn
 through a form kept, the sibling-field `/V`, `/IRT` to a removed note, an orphan page dictionary, a non-link GoTo
@@ -102,7 +122,7 @@ fields), a kept page drawing through a shared Type3 font, ExtGState and soft-mas
 refused, the catalog and page-tree cut, a page drawn on after load, a pattern's merged and a form's non-dictionary
 resources, a loose field kept when nothing is left out, an indirect `/Type`/`/Subtype`, unshared resources left
 byte-identical, and two extract-range shapes; plus the scan's own control and "no stand-in for an unreferenced
-page"), `tests/utils/contentStreamEditor.test.ts` (6 stray-delimiter cases) and
+page"), `tests/utils/contentStreamEditor.test.ts` (6 stray-delimiter cases + 3 hex strings inside a dictionary) and
 the SEC-1 block in `tests/browser/redaction-orphan-leak.browser.test.ts` (5: control, link to the redacted page opens
 its image page, shared field, shared-resources control, shared resources under a real redaction). The signer's
 `signErrorKey` maps the new error like the layers conflict and, like it, is not pinned by a test. Sabotage, each landed, red on exactly its cases, restored with `cmp`: excluded page
@@ -124,7 +144,11 @@ exactly its case; no catalog cut → the R2-3 case; no page-tree cut → the sam
 ungated → exactly the R2-7 case; no action-named field cut → the 4 reset/hide cases; built streams unread → exactly
 the R2-4 case; `get` for `/Type` or `/Subtype` → the R2-8 case each; no refusal → the 4 refusal cases; Type3 and
 soft-mask recursion removed → the keep case each (both GREEN until that case checked what the glyph procedure and
-the mask group draw); the tokenizer skipping instead of throwing → the 5 delimiter cases.
+the mask group draw); the tokenizer skipping instead of throwing → the 5 delimiter cases. Round 3: hex skip removed → 4 (2 of the 3
+hex-in-dictionary cases — the one with a space before `>>` balances either way — and the InDesign route ×2); inline owners not pruned → 5; `/FT` not inherited → 2; colour spaces
+pruned again → exactly the colour-space case; inline widgets ignored → exactly that case; the cycle guard removed →
+GREEN, and explained: the recursion's RangeError is caught by `collect`'s tokenizer `try`, which already refuses, so
+the guard is pinned by OUTCOME only (the self-drawing font refuses either way).
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 
@@ -755,7 +779,8 @@ not removing"* (which absorbed and kept the crop § rather than replacing it). *
 the first draft of that table claimed every row was test-pinned, and a reviewer refuted it.
 
 **Verdict: six surfaces genuinely REMOVE** — redaction (rasterises), page delete (never copied — and, since SEC-1
-on 2026-10-08, never carried back by a kept page's reference either; until then it was, see the SEC-1 entry),
+on 2026-10-08, not carried back by a kept page's reference through any shape the SEC-1 entry pins — a carrier
+reached some other way is not ruled out; until then it was, see that entry),
 extract-page-range (same mechanism), compress→**flatten-to-images** (rasterises; the *lossless* setting
 does not), export-page-as-image (rasterises), and **true-edit delete**, which is the only one that removes
 surgically: it blanks the show op, so the string leaves the content stream while *the rest of the page

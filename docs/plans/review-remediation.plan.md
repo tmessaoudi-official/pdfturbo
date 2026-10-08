@@ -20,6 +20,7 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 04:39] ASSUMED (review): M1 round 2 panel: the shared-resources prune covers EVERY resource owner the copy reaches (page, form, tiling pattern, appearance stream, Type3 font) and every category (XObject, Pattern, Shading, ExtGState, Font, Properties, ColorSpace), removing an entry only when the owner does not draw it AND a left-out page reaches it - because FPDI templates carry the shared /Resources on their own forms (reviewer read setasign FpdfTplTrait), so a page-only, three-category prune still leaked. Alternatives: refuse every shared-resources export (loses common FPDF files); flatten such pages to images (loses text).
 - [2026-10-08 04:39] ASSUMED (review): M1 round 2: references to the source catalog and to page-tree nodes are cut, and every /AcroForm field node off a kept widget's /Parent chain is cut (only when some page is left out) - because a signature /Reference /Data and ResetForm/Hide actions carried the whole document or a removed page's field value. Alternative: cut only the two measured action shapes.
 - [2026-10-08 04:39] ASSUMED (review): M1 round 2: tokenizeContentStream throws on a stray top-level delimiter instead of looping forever - because the prune put it on every PDF export and a malformed stream froze the tab; true-edit callers already fail closed on a throw. Alternative: skip the byte (silently changes what true-edit reads).
+- [2026-10-08 05:48] ASSUMED (review): M1 round 3: /ColorSpace is NOT pruned (reversing the round-2b entry's category list) - because pdf.js resolves colour-space names outside cs/CS (a shading's /ColorSpace, an Indexed or Separation base, an alias), so pruning recoloured kept pages, while a colour space draws no content; disclosed in SECURITY.md and KNOWN_ISSUES. Alternative: model every pdf.js colour-space lookup.
 
 ## Formal Plan
 
@@ -58,7 +59,9 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 ### Fragile
 - SEC-1 cost (M1-C3, partly fixed): one `@cantoo/pdf-lib` import per copy and a synchronous `/Annots` walk remain;
   when a page is left out, the prune also walks everything the left-out pages reach once and tokenizes the content
-  of every owner that shares resources with them. Not measured on a large document.
+  of every owner that shares resources with them. Measured by the round-3 panel at load ~19 on the 916547c..4b175bc
+  code: Publication 17 (142 pages), last page deleted, 3706 ms pruned vs 150 ms unpruned; one page downloaded 84 vs
+  13 ms; the GPT-3 paper 360 vs 46 ms. Bounded, and nothing is read where nothing is shared; not optimised.
 - `secretsIn` in `tests/export/copySourcePages.test.ts` scans raw streams only (M1-S5): a string leak (`/V`,
   `/Contents`) is invisible to it, which is why every string-shaped case uses `fileHas`. Keep it that way.
 ### Known issues
@@ -112,7 +115,7 @@ rationale is stale).
 - QUAL-15 — The blank page is a string sentinel with its A4 default re-typed 21 times
 - QUAL-16 — Two matrix types and two composition functions — one of them has already composed backwards once → row 8 (step 2)
 - QUAL-17 — The formatting service repeats "mutate → record → rebuild → autosave" 31 times
-- QUAL-21 — The `_underscore` private convention is really three conventions, and the app's "private" members are a public
+- QUAL-21 — The `_underscore` private convention is really three conventions, and the app's "private" members are a public API
 - SEC-2 — Generated `.p12` uses legacy 3DES at forge's default 2048 iterations, and its passphrase has no minimum length
 - SYNC-5 — Mode plumbing: the tree is autonomous only through a global rule; memory names dead sentinels → row 7
 - SYNC-6 — Model policy v2 drift in the repo skill and agents → row 7
@@ -143,7 +146,7 @@ rationale is stale).
 - QUAL-5 — The loadingTask teardown idiom is hand-copied 6× while a helper exists but is module-private
 - QUAL-8 — `any` is concentrated at the pdf-lib boundary, and its lint rule is a warning
 - QUAL-9 — Two `as unknown as` casts are lies rather than boundary assertions
-- QUAL-10 — 287 `getElementById(…) as HTML*` casts erase `/ null`
+- QUAL-10 — 287 `getElementById(…) as HTML*` casts erase `| null`
 - QUAL-11 — tsconfig verdicts
 - QUAL-13 — Three dispatchers are long if/switch chains that want a table
 - QUAL-14 — Long parameter lists and boolean flags
@@ -152,7 +155,7 @@ rationale is stale).
 - QUAL-20 — Three idioms for reading pdf-lib objects
 - QUAL-22 — `PDFElement` mixes the domain record with DOM construction
 - QUAL-23 — `shapeType` is switched on in two places
-- QUAL-24 — `PDFRenderer` keeps a second, legacy document pointer. `infra/pdfRenderer.ts:18 pdfDoc` is written from outside
+- QUAL-24 — `PDFRenderer` keeps a second, legacy document pointer
 - QUAL-25 — Two locals shadow browser globals
 - QUAL-26 — Over-export and test-only surface; real dead code is tiny
 - QUAL-27 — Magic numbers

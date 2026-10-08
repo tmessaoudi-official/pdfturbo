@@ -68,9 +68,12 @@ reading the code. Both are said plainly instead of implied to be measured.
 > message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
 > is pinned by a test that finds the removed page's text in the source and not in the export
 > (`tests/export/copySourcePages.test.ts`, `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
-> and stated:** a carrier reached some other way than these is not ruled out; and a link that names its target by
+> and stated:** a carrier reached some other way than these is not ruled out; a link that names its target by
 > a *named destination* is dead in every export (the name table is not copied) — it does not leak, and it does not
-> work. See `KNOWN_ISSUES.md`.
+> work. Three residues are kept by design, because the kept page needs the object they live in: a **font** shared
+> with a removed page keeps that page's glyph shapes and its character map, so which characters the removed page
+> used (not their order) can be read from the font; the **names of layers** a removed page alone uses stay in the
+> file's layer settings; and **colour spaces** are copied whole. See `KNOWN_ISSUES.md`.
 
 | Tool | Content is… | Notes |
 |---|---|---|

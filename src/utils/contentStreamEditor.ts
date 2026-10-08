@@ -159,6 +159,11 @@ export function tokenizeContentStream(src: string): CsToken[] {
         if (depth === 0) break;
       } else if (src[i] === '(') {
         readLiteralString();
+      } else if (src[i] === '<') {
+        // A hex string, skipped whole: its `>` must not count towards a `>>` close — InDesign writes
+        // `/Span<</ActualText<FEFF0009>>> BDC`, which left a stray `>` (M1 round 3 panel).
+        const end = src.indexOf('>', i + 1);
+        i = end === -1 ? src.length : end + 1;
       } else {
         i++;
       }

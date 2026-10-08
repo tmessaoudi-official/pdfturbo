@@ -2540,6 +2540,18 @@ describe('tokenizeContentStream — a stray delimiter fails loudly instead of lo
   it('control: the same stream without it tokenizes', () => {
     expect(tokenizeContentStream('/Fm0 Do Q').map(t => t.raw)).toEqual(['/Fm0', 'Do', 'Q']);
   });
+  // Adobe InDesign writes a marked-content dictionary whose hex string ends right before the `>>` — the dictionary
+  // reader took the string's `>` as half of the close and left a stray `>` (round 3 panel: 51 of 67 pages of a
+  // corpus report). A hex string inside a dictionary is skipped whole.
+  it.each([
+    '/Span<</ActualText<FEFF00AD>>> BDC (x) Tj EMC',
+    '/Span<</ActualText<FEFF00AD> >> BDC (x) Tj EMC',
+    '/Span<</A<00>/B(x)/C<</D<FF>>>>> BDC EMC',
+  ])('a hex string inside a dictionary: %s', src => {
+    const operators = groupOps(tokenizeContentStream(src)).map(o => o.operator);
+    expect(operators).toContain('BDC');
+    expect(operators).toContain('EMC');
+  });
 });
 
 describe('tokenizeContentStream — inline-image EI boundary (F7)', () => {

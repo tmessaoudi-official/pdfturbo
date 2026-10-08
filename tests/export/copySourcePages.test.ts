@@ -605,6 +605,8 @@ async function routeShape(shape: string): Promise<PDFDocument> {
   const content = (s: string) => ctx.register(ctx.stream(s));
   const im2 = ctx.register(ctx.stream('IMG' + ROUTE_SECRET, { Type: 'XObject', Subtype: 'Image', Width: 1, Height: 1, ColorSpace: 'DeviceGray', BitsPerComponent: 8 }));
   const fm2 = form(ROUTE_SECRET);
+  const t3 = (res: unknown) => ({ Type: 'Font', Subtype: 'Type3', FontBBox: [0,0,1,1], FontMatrix: [1,0,0,1,0,0],
+    CharProcs: { a: ctx.register(ctx.stream('0 0 d0')) }, Encoding: { Differences: [97, 'a'] }, FirstChar: 97, LastChar: 97, Widths: [1], Resources: res });
   if (shape === 'control') {          // kept page DRAWS the secret: the scan must see it
     const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
     p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
@@ -676,6 +678,33 @@ async function routeShape(shape: string): Promise<PDFDocument> {
     const btn = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Btn', Ff: 65536, T: PDFString.of('toggle'), Rect: [10, 60, 100, 90], P: p1.ref,
       A: { S: 'Hide', T: ssn, H: false } }));
     p1.node.set(PDFName.of('Annots'), ctx.obj([btn])); p2.node.set(PDFName.of('Annots'), ctx.obj([w2]));
+  } else if (shape === 'directType3SharedRes') {   // round 3: an INLINE Type3 font whose /Resources is the shared dict
+    const S = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font, T3: t3(S) }, XObject: { Fm1: (ctx.lookup(S) as PDFDict).lookup(PDFName.of('XObject'), PDFDict).get(PDFName.of('Fm1')) } }));
+    p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do BT /T3 12 Tf (a) Tj ET')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'directType3InShared') {    // round 3: ONE shared dict; the inline Type3 inside it points back at it
+    const S = ctx.nextRef();
+    ctx.assign(S, ctx.obj({ Font: { F1: font, T3: t3(S) }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do BT /T3 12 Tf (a) Tj ET')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'inheritedFTActionField') {  // round 3: a reset button names a field whose /FT its parent carries
+    for (const [p, t] of [[p1, ROUTE_PUBLIC], [p2, 'other']] as const) {
+      p.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font } }));
+      p.node.set(PDFName.of('Contents'), content(`BT /F1 12 Tf 20 200 Td (${t}) Tj ET`));
+    }
+    const root = ctx.nextRef(); const ssn = ctx.nextRef();
+    const w2 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], Parent: ssn, P: p2.ref }));
+    ctx.assign(ssn, ctx.obj({ T: PDFString.of('ssn'), V: PDFString.of(ROUTE_SECRET), Parent: root, Kids: [w2] }));
+    ctx.assign(root, ctx.obj({ FT: 'Tx', T: PDFString.of('person'), Kids: [ssn] }));
+    const btn = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Btn', Ff: 65536, T: PDFString.of('clear'), Rect: [10, 60, 100, 90], P: p1.ref,
+      A: { S: 'ResetForm', Fields: [ssn] } }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([btn])); p2.node.set(PDFName.of('Annots'), ctx.obj([w2]));
+    src.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [btn, root] }));
+  } else if (shape === 'inDesignActualText') {     // round 3: InDesign's marked-content dictionary on a kept page that shares
+    const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Span<</ActualText<FEFF0009>>> BDC /Fm1 Do EMC')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
   } else if (shape === 'brokenFormOwner') {      // as formOwnResIsShared, but the kept form cannot be decoded
     const res = ctx.nextRef();
     const fm1 = ctx.register(ctx.stream(new Uint8Array([1, 2, 3, 4, 5]), { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Filter: 'FlateDecode', Resources: res }));
@@ -715,7 +744,10 @@ describe('every resource owner, every category: nothing only a removed page draw
   it.each([
     'roundOneShared', 'formOwnResIsShared', 'annotApSharedRes', 'xobjectSubdictShared', 'extGStateSMask', 'type3Font',
     'parentResPlusOwnPartial', 'patternOwnResIsShared', 'resetFormFields', 'hideActionField',
+    'directType3SharedRes', 'directType3InShared', 'inheritedFTActionField', 'inDesignActualText',
   ].flatMap(shape => (['cut', 'standIn'] as const).map(mode => [shape, mode] as const)))('%s (%s)', async (shape, mode) => {
+    const original = Buffer.from(await (await routeShape(shape)).save({ useObjectStreams: false })).toString('latin1');
+    expect(original.includes(ROUTE_SECRET), 'control: the source carries the removed page\'s content').toBe(true);
     const out = await copyRoute(shape, mode);
     expect(out.includes(ROUTE_SECRET), 'the removed page\'s content').toBe(false);
     expect(out.includes(ROUTE_PUBLIC), 'the kept page\'s own content').toBe(true);
@@ -876,5 +908,85 @@ describe('M1 round 2 — correctness lens (R2-3, R2-4, R2-6, R2-7, R2-8)', () =>
     expect(secretsIn(out, 2)).toEqual([]);
     const annots = out.getPage(0).node.lookup(PDFName.of('Annots'));
     expect(annots instanceof PDFArray ? annots.size() : 0).toBe(0);
+  });
+});
+
+describe('M1 round 3 — the remaining review findings', () => {
+  it('a shading or Indexed base that names a colour space keeps it — colour spaces are not pruned (round 3, C-F2)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const ctx = d.context;
+    const shading = ctx.register(ctx.obj({ ShadingType: 2, ColorSpace: 'CS0', Coords: [0, 0, 1, 0], Function: { FunctionType: 2, Domain: [0, 1], C0: [0], C1: [1], N: 1 } }));
+    const res = ctx.register(ctx.obj({
+      ColorSpace: { CS0: ctx.obj(['ICCBased', ctx.register(ctx.stream('ICC', { N: 1 }))]), CS1: ctx.obj(['Indexed', 'CS0', 1, PDFString.of('ab')]) },
+      Shading: { Sh0: shading },
+    }));
+    [0, 1].forEach(i => {
+      const p = d.addPage([300, 300]);
+      p.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(i === 0 ? '/Sh0 sh /CS1 cs 0 sc' : '/CS0 cs 0.5 sc 0 0 9 9 re f')));
+      p.node.set(PDFName.of('Resources'), res);
+    });
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    const out = await copyPruned(src, [0]);
+    const cs = (out.getPage(0).node.Resources() as PDFDict).lookup(PDFName.of('ColorSpace'), PDFDict);
+    expect(cs.keys().map(k => k.decodeText()).sort()).toEqual(['CS0', 'CS1']);
+  });
+
+  it('a long chain a left-out page reaches does not overflow the stack (round 3, C-F3)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const ctx = d.context;
+    const [p0, p1] = [d.addPage([300, 300]), d.addPage([300, 300])];
+    const shared = ctx.register(ctx.obj({ XObject: {} }));
+    p0.node.set(PDFName.of('Resources'), shared); p1.node.set(PDFName.of('Resources'), shared);
+    p0.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('0 0 9 9 re f')));
+    let next: PDFRef | undefined;
+    for (let k = 0; k < 20000; k++) next = ctx.register(ctx.obj(next ? { Next: next } : {}));
+    p1.node.set(PDFName.of('Chain'), next as PDFRef);
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    await expect(copyPruned(src, [0])).resolves.toBeDefined();
+  });
+
+  it('with every page kept, a reference to the catalog is still cut — a copy never carries the document (round 3, R3-3)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const ctx = d.context;
+    const p0 = d.addPage([300, 300]);
+    d.catalog.set(PDFName.of('Lang'), PDFString.of('CATALOGMARK'));
+    const sig = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Sig', T: PDFString.of('s'), Rect: [1, 1, 9, 9], P: p0.ref,
+      V: { Type: 'Sig', Reference: [{ Type: 'SigRef', Data: ctx.trailerInfo.Root }] } }));
+    p0.node.set(PDFName.of('Annots'), ctx.obj([sig]));
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    const out = await copyAndSave(src, [0]);
+    expect(fileHas(await out.save({ useObjectStreams: false }), 'CATALOGMARK')).toBe(false);
+  });
+
+  it('an inline Type3 font whose glyph draws with the font itself refuses instead of looping (round 3)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const ctx = d.context;
+    const S = ctx.nextRef();
+    const proc = ctx.register(ctx.stream('0 0 d0 BT /T3 1 Tf (a) Tj ET'));
+    ctx.assign(S, ctx.obj({
+      Font: { T3: { Type: 'Font', Subtype: 'Type3', FontBBox: [0, 0, 1, 1], FontMatrix: [1, 0, 0, 1, 0, 0], CharProcs: { a: proc },
+        Encoding: { Differences: [97, 'a'] }, FirstChar: 97, LastChar: 97, Widths: [1], Resources: S } },
+      XObject: { Fm2: ctx.register(ctx.stream('0 0 9 9 re f', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 9, 9] })) },
+    }));
+    [0, 1].forEach(i => {
+      const p = d.addPage([300, 300]);
+      p.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(i === 0 ? 'BT /T3 12 Tf (a) Tj ET' : '/Fm2 Do')));
+      p.node.set(PDFName.of('Resources'), S);
+    });
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    await expect(copyPruned(src, [0])).rejects.toMatchObject({ name: 'ExportResourcesUnreadableError' });
+  });
+
+  it('an inline widget on a kept page keeps its field value when another page is left out (round 3, R3-6)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const ctx = d.context;
+    const [p0] = [d.addPage([300, 300]), d.addPage([300, 300])];
+    const field = ctx.nextRef();
+    const inlineWidget = ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], Parent: field, P: p0.ref });
+    ctx.assign(field, ctx.obj({ FT: 'Tx', T: PDFString.of('name'), V: PDFString.of('KEPTPAGEVALUE') }));
+    p0.node.set(PDFName.of('Annots'), ctx.obj([inlineWidget]));
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    const out = await copyAndSave(src, [0]);
+    expect(fileHas(await out.save({ useObjectStreams: false }), 'KEPTPAGEVALUE')).toBe(true);
   });
 });
