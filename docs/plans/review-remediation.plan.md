@@ -26,6 +26,9 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 06:54] ASSUMED (review): M1 round 4: the sign-rect box (assembledPageBox) assembles without the shared-resource prune - because it only reads the crop box, saves nothing, and the prune's refusal turned a pick into a fallback (R4-K-3). Alternative: keep it and disclose the cost.
 - [2026-10-08 07:37] ASSUMED (review): M1 round 5: resource 'sharing' is transitive (an entry counts as reaching a removed page when anything below it does) - because an undrawn wrapper only the kept page reached carried the removed page's form (R5-S-1); cost accepted and measured (Publication 17 delete-last median 11 s at load ~24). Alternative: keep shallow and prune each owner only where drawn (needs a drawn-owner graph).
 - [2026-10-08 07:37] ASSUMED (review): M1 round 5: a member of an array /Contents is treated as drawing nothing from its own /Resources (pdf.js never reads them), so shared entries there are dropped. Alternative: refuse such pages.
+- [2026-10-08 08:09] AGREED: M1 cap: run a sixth panel round on e74b863 with the inventory method - two tables (every pdf.js name-resolution/inheritance site from pdf.worker.mjs; every spec key holding a resources dictionary or owner), each row matched to its code path, every unmatched row a finding.
+- [2026-10-08 08:09] AGREED: M1 prune cost: re-measure on an idle machine and profile where the time goes before deciding; docs keep the loaded figure marked as such until then.
+- [2026-10-08 08:09] AGREED: M1 push: hold all unpushed commits until milestone 1 is certified (or the developer accepts the risk).
 
 ## Formal Plan
 
@@ -60,7 +63,7 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- M1 (SEC-1) milestone panel reached its 5-round cap: rounds 3/4/5 found 3/4/3 P0-P1, all in the pdf.js name-resolution model (`collect`) or where owners live (`pruneNested`). Round-5 fixes are in the round-5 commit ("SEC-1 round 5") and are UNREVIEWED by a panel; 7 commits unpushed. Awaiting the developer's ruling on certification, the prune's cost and the push — do not start a sixth round without it.
+- M1 (SEC-1) milestone panel reached its 5-round cap: rounds 3/4/5 found 3/4/3 P0-P1, all in the pdf.js name-resolution model (`collect`) or where owners live (`pruneNested`). Round-5 fixes are in the round-5 commit ("SEC-1 round 5") and are UNREVIEWED by a panel; 7 commits unpushed. Ruled 2026-10-08: round 6 with the inventory method, idle-machine cost measurement before any cost decision, push held until certified.
 ### Needs research
 ### Fragile
 - SEC-1 cost (M1-C3, partly fixed): one `@cantoo/pdf-lib` import per copy and a synchronous `/Annots` walk remain;
