@@ -7,7 +7,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { deflateSync } from 'node:zlib';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFString } from '@cantoo/pdf-lib';
 import { copySourcePages, resolveStandIns } from '../../src/export/copySourcePages';
 
@@ -111,6 +112,20 @@ const CUTS: Record<string, () => Promise<PDFDocument>> = {
       A: { S: 'ResetForm', Fields: [node] } }));
     p1.node.set(PDFName.of('Annots'), ctx.obj([btn])); p2.node.set(PDFName.of('Annots'), ctx.obj([w2]));
     d.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [btn, w2] }));
+  }),
+  // An FT-less branch below a /Fields root that a typed field also hangs from: the walk down /Kids must still reach it
+  // (the 6C check found the round-8 upward walk marking the root first, so the walk down skipped its kids).
+  'FT-less branch under a typed sibling': () => plain(({ d, ctx, p1, p2 }) => {
+    const R = ctx.nextRef(); const K = ctx.nextRef(); const K2 = ctx.nextRef();
+    const w = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Parent: K, Rect: [10, 10, 100, 40], P: p2.ref }));
+    const K3 = ctx.register(ctx.obj({ T: PDFString.of('k3'), Parent: K2 }));
+    ctx.assign(K, ctx.obj({ FT: 'Tx', T: PDFString.of('k'), Parent: R, Kids: [w] }));
+    ctx.assign(K2, ctx.obj({ T: PDFString.of('k2'), V: PDFString.of(SEC), Parent: R, Kids: [K3] }));
+    ctx.assign(R, ctx.obj({ T: PDFString.of('root'), Kids: [K, K2] }));
+    const btn = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Btn', Ff: 65536, T: PDFString.of('clear'), Rect: [10, 60, 100, 90], P: p1.ref,
+      A: { S: 'ResetForm', Fields: [K2] } }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([btn])); p2.node.set(PDFName.of('Annots'), ctx.obj([w]));
+    d.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [R, btn] }));
   }),
   // A structure element written inline where a reference belongs (R8-S-4).
   'inline structure element in /SD': () => inlineElement('SD'),
@@ -247,7 +262,7 @@ describe('SEC-1 round 8 — the cuts keep what the kept pages show', () => {
     expect(latin(await exported(src, [0])).includes('KEPTNOTE')).toBe(true);
   });
 
-  it('control: a structure element given by REFERENCE in /SD is still cut, with every page kept nothing is', async () => {
+  it('control: with every page kept, an inline structure element is copied (nothing is cut)', async () => {
     const src = await inlineElement('SD');
     expect(latin(await exported(src, [0, 1])).includes(SEC + 'AT')).toBe(true);
   });
@@ -305,11 +320,15 @@ describe('SEC-1 round 8 — the prune reads only what decides, and what pdf.js r
 });
 
 describe('SEC-1 round 8 — every PDF download prunes (R8-K-4)', () => {
-  // The raster-only opt-out has two spellings: the assembly's own flag, and the caller's `rasterOnly: true`. Each may
-  // appear at its one site only — lossy Compress, whose bytes are only ever rendered to pixels.
-  it('rasterOnly: true is passed only by lossy Compress', () => {
+  // The raster-only opt-out has two spellings: the assembly's own flag, and the caller's `rasterOnly: true` — which any
+  // file can pass, the app's delegator to the signer included. It may appear at ONE site in src/: lossy Compress, whose
+  // bytes are only ever rendered to pixels.
+  it('rasterOnly: true is passed only by lossy Compress, anywhere in src/', () => {
+    const files = readdirSync('src', { recursive: true, encoding: 'utf8' }).filter(f => f.endsWith('.ts')).map(f => join('src', f));
+    expect(files.length).toBeGreaterThan(50);
+    const hits = files.flatMap(f => [...readFileSync(f, 'utf8').matchAll(/rasterOnly: true/g)].map(() => f));
+    expect(hits).toEqual(['src/export/exportService.ts']);
     const src = readFileSync('src/export/exportService.ts', 'utf8');
-    expect([...src.matchAll(/rasterOnly: true/g)].length).toBe(1);
     expect(src).toMatch(/assemblePdfBytes\(opts\.mode === 'lossy' \? \{ rasterOnly: true \} : undefined\)/);
     expect([...src.matchAll(/assemblePdfBytes\(([^)]*)\)/g)].map(m => m[1]).filter(a => a && !a.startsWith("opts.mode === 'lossy'") && !a.startsWith('opts?'))).toEqual([]);
   });

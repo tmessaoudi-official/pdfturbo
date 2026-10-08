@@ -227,11 +227,19 @@ regressions of round 7's own fixes, and 8 doc items; fixed by class, then M1 cer
   page outside the tree (R8-S-7/8).
 - Stated, not fixed: a radio group's `/V` names the state chosen on a removed page (N-3); `/OCProperties` carries every
   layer name (N-1). The class-2 claim in `SECURITY.md` is now the drop list, not the headline (N-2).
-Guards: `tests/export/copySourcePagesRound8.test.ts` (46 — 7 cut shapes ×3 modes, the prune OFF included, since a
+The 6C check after the round-8 commit found one regression of round 8's own: the upward field walk ran first and
+marked every `/Fields` root, so the walk down skipped their kids and an FT-less branch holding a value under a typed
+sibling was copied (the round-7 class again). The ancestors are now a SEPARATE set, built LAZILY — only when a
+dictionary that could hold a value (`/T`, `/V`, `/DV`, `/RV`, no `/Subtype`) is copied and is no field otherwise —
+because reading every object cost 350 ms and more on Publication 17 (71 413 objects, no fields), on every single-page
+copy. The same check widened the `rasterOnly: true` guard to all of `src/` (the app's delegator to the signer can pass
+it too) and renamed a control to what it tests.
+
+Guards: `tests/export/copySourcePagesRound8.test.ts` (49 — 8 cut shapes ×3 modes, the prune OFF included, since a
 class-1 cut does not depend on it; 4 prune shapes ×2 modes; 4 refusals with 3 controls; 2 structure-`/K` keeps, a kept
 unlisted note, an every-page-kept control; the lazy read, the two aliases, the pattern in both orders; and a source guard
-that `rasterOnly: true` is passed by lossy Compress alone). Red first: 39 of the 46 against the round-7 code, each for
-its stated reason — the `/DR` refusal was added after its fix and is proven by its sabotage instead. Sabotage, 17
+that `rasterOnly: true` is passed by lossy Compress alone). Red first: 39 of the first 46 against the round-7 code, each for
+its stated reason (the FT-less branch, ×3, red against the round-8 commit) — the `/DR` refusal was added after its fix and is proven by its sabotage instead. Sabotage, 17
 mutants over the four SEC-1 files (293 cases), each landed, red on exactly its cases, restored with `cmp`: `/Subtype`
 required again → the no-`/Subtype` note ×3; an orphan `/P` page not left out → the orphan note ×3; the structure cut
 without the kept exemption → both structure-`/K` keeps; the inline structure element not intercepted → its 6; inline
@@ -239,7 +247,10 @@ kids kept → 3; `/RV` not dropped → 3; no upward field walk → 3; direct `/R
 shapes; the page / form / `/DR` refusal skipped → 2 / 1 / 1; a non-dictionary category kept → 2; an eager read when
 reached or shared → exactly the lazy-read case; `/F` and `/DP` not refused → 2, `/DP` alone → 1; each page copied as
 soon as it is pruned → the pattern case in both orders, plus round 1's every-page-kept byte-identity case (the mutant's
-extra copy writes an extra page object); Sanitize assembling raster-only → exactly the source guard.
+extra copy writes an extra page object); Sanitize assembling raster-only → exactly the source guard. After 6C, 4 more:
+the ancestors seeded into the walk down → exactly the FT-less branch ×3; the value gate never true → exactly the
+`/Parent`-only node ×3; the app delegator passing `rasterOnly: true` → exactly the widened guard; and the walk order
+swapped back (written before the sets were split) → exactly the FT-less branch ×3.
 
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"

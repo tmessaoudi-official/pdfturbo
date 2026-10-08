@@ -116,7 +116,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
   machine load 20–23; the probe's output, with the commit it ran on, is kept in `var/claude/raw/m1r8-cost.jsonl`
   (gitignored). Single runs varied from 1.2 s to 12.3 s on the 142-page file, so no difference from round 7 (1.6 s /
   1.1 s / 0.22 s at load 16–18, no output kept — R8-K-8) or round 6 (2.6 s / 1.4 s / 0.37 s) can be told apart at this
-  noise; an idle machine was not available. The profile below is round 6's. A profile puts ~80% of it in pruning resources (reading content, half of all time in tokenizing
+  noise; an idle machine was not available. A single-page copy (the thumbnail and page-as-image path) of the
+  same file: 287 ms against 252 ms on the round-7 code with no prune, 300 against 389 with it (load 17–20, same file). The profile below is round 6's. A profile puts ~80% of it in pruning resources (reading content, half of all time in tokenizing
   it) and ~5% in the undrawn-key check (`dropsUndrawn`, a transitive `touches`); the removed pages' reachability walk
   was not listed in the profile. Not optimised — plan row 10.
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure

@@ -109,8 +109,16 @@ export async function copySourcePages(
   // A node of the AcroForm field tree counts even without /FT of its own or above it: a parent holding the
   // inheritable /V of a kid that does carry /FT (round 6, R6-S-2).
   const fieldTree = anyLeftOut ? fieldTreeRefs(lib, src) : new Set<PDFRef>();
+  // A node holding a value whose kid names it by /Parent alone (no /Kids, against the spec) is that kid's field too,
+  // and pdf.js reads the value through the /Parent (round 8, R8-S-3). Finding who points up means reading every object
+  // (350 ms and more on a 71 000-object file, paid by every single-page copy), so it is done only when a dictionary
+  // that could hold a value — /T, /V, /DV or /RV, and no /Subtype — is about to be copied and is no field otherwise.
+  let fieldAncestors: Set<PDFRef> | undefined;
+  const mayHoldValue = (obj: PDFObject | undefined): boolean => obj instanceof Dict && !obj.has(PDFName.of('Subtype'))
+    && ['T', 'V', 'DV', 'RV'].some(k => obj.has(PDFName.of(k)));
   const foreignField = (ref: PDFRef, obj: PDFObject | undefined): boolean => anyLeftOut
-    && (fieldTree.has(ref) || isField(lib, src, obj)) && !fieldChain.has(ref) && !keptAnnots.has(ref);
+    && !fieldChain.has(ref) && !keptAnnots.has(ref)
+    && (fieldTree.has(ref) || isField(lib, src, obj) || (mayHoldValue(obj) && (fieldAncestors ??= fieldAncestorRefs(lib, src)).has(ref)));
   // An annotation whose /P is a page left out is that page's, listed in its /Annots or not — Flatten takes the
   // removed page's notes out of /Annots before the copy, and a reply's /IRT still names them (round 7, R7-S-8/12).
   // Whatever its /Subtype says (it is required, and met missing), and when /P is a page dictionary outside the tree —
@@ -905,24 +913,10 @@ class ResourcePruner {
   }
 }
 
-/**
- * Every node of the AcroForm field tree, by reference — down from `/Fields`, and up from every field and widget in the
- * file: a node holding a value whose kid names it by `/Parent` alone (no `/Kids`, against the spec) is the kid's field
- * too, and pdf.js reads the value through that `/Parent` (round 8, R8-S-3).
- */
+/** Every node of the AcroForm field tree, by reference, down from `/Fields`. */
 function fieldTreeRefs(lib: Lib, src: PDFDocument): Set<PDFRef> {
   const { PDFName, PDFDict, PDFArray, PDFRef: Ref } = lib;
   const out = new Set<PDFRef>();
-  for (const [, obj] of src.context.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict) || !(obj.has(PDFName.of('FT')) || obj.lookup(PDFName.of('Subtype')) === PDFName.of('Widget'))) continue;
-    let up = obj.get(PDFName.of('Parent'));
-    for (let depth = 0; up instanceof Ref && !out.has(up) && depth < 64; depth++) {
-      const parent = src.context.lookup(up);
-      if (!(parent instanceof PDFDict) || isPageDict(lib, parent) || parent.lookup(PDFName.of('Type')) === PDFName.of('Pages')) break;
-      out.add(up);
-      up = parent.get(PDFName.of('Parent'));
-    }
-  }
   const form = src.catalog.lookup(PDFName.of('AcroForm'));
   const fields = form instanceof PDFDict ? form.lookup(PDFName.of('Fields')) : undefined;
   const stack: PDFObject[] = fields instanceof PDFArray ? fields.asArray() : [];
@@ -933,6 +927,26 @@ function fieldTreeRefs(lib: Lib, src: PDFDocument): Set<PDFRef> {
     const node = src.context.lookup(v);
     const kids = node instanceof PDFDict ? node.lookup(PDFName.of('Kids')) : undefined;
     if (kids instanceof PDFArray) stack.push(...kids.asArray());
+  }
+  return out;
+}
+
+/**
+ * Every `/Parent` ancestor of a field or widget anywhere in the file (round 8, R8-S-3). A set of its own: added to the
+ * walk down's set first, it marked every `/Fields` root and that walk never expanded their kids (the 6C check).
+ */
+function fieldAncestorRefs(lib: Lib, src: PDFDocument): Set<PDFRef> {
+  const { PDFName, PDFDict, PDFRef: Ref } = lib;
+  const out = new Set<PDFRef>();
+  for (const [, obj] of src.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict) || !(obj.has(PDFName.of('FT')) || obj.lookup(PDFName.of('Subtype')) === PDFName.of('Widget'))) continue;
+    let up = obj.get(PDFName.of('Parent'));
+    for (let depth = 0; up instanceof Ref && !out.has(up) && depth < 64; depth++) {
+      const parent = src.context.lookup(up);
+      if (!(parent instanceof PDFDict) || isPageDict(lib, parent) || parent.lookup(PDFName.of('Type')) === PDFName.of('Pages')) break;
+      out.add(up);
+      up = parent.get(PDFName.of('Parent'));
+    }
   }
   return out;
 }
