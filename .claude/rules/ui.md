@@ -428,15 +428,24 @@ one line; what makes it safe is the order around it and three readers that can s
   (`TypeError … reading 'sendWithPromise'`). Before this change none of that could happen, so every reader below was
   written without a catch, and several are fired with `void`.
 - **The order in `resetDocumentModel`:** advance the render epoch, swap the model, `renderer.setModel`, THEN release.
-  The release comes last because the epoch and the renderer's model are the predicates the readers test.
+  The release comes last because the model swap is the predicate the readers test; the epoch advance makes an
+  in-flight pipeline run stop painting at its next check.
+- **What is released:** `DocumentModel.heldDocuments()` — the live sources AND every source garbage-collected from
+  `sourcePdfs` when its last page was deleted (`_collected`, the pdf.js document only, not the bytes). Walking only
+  the live sources missed those for good: `DeletePageCmd` keeps the source for undo and has no `dispose()`, so not
+  even a close reached it (M2 panel round 1). A set, so a source restored by undo is released once.
 - **Each reader drops a failure only when its document is provably gone, and rethrows otherwise** — the controls in the
   tests are what keep this from being a swallow:
   - `PDFRenderer._renderPdfPage` / `generateThumbnail` — `_isStale(doc)`: a model is set and none of its sources holds
     the document. With no model (the legacy path) nothing is stale. A dropped render falls through to a queued page —
-    a `return` in that catch would orphan the queued promise (mutant M9 hangs the queued-render test).
-  - `PageRenderPipeline.renderCurrentPage` — the run was superseded (`isCurrentFormFieldGen(myGen)` is false). Its
-    page reads (form fields, text layer, crop frame) read the CURRENT model, so after a reset they see the empty one;
-    only a read already in flight on the old document can reject, and it rejects before the epoch check after it.
+    a `return` in that catch would orphan the queued promise (mutant M9 hangs the queued-render test). A REAL failure
+    is held until the queued page has run, then rethrown: rethrowing straight out of the catch skipped the queue, so
+    the queued render never ran and its promise never settled (pre-existing, found by the M2 panel).
+  - `PageRenderPipeline.renderCurrentPage` — `this._ctx.documentModel` is no longer the model the run started on.
+    **Not "the run was superseded"** (round 0 used the epoch, and the M2 panel's P1 refuted it): every page flip and
+    zoom advances the same epoch, so that predicate swallowed a real render failure on a document still open whenever
+    the user moved on. Its page reads (form fields, text layer, crop frame) read the CURRENT model, so after a reset
+    they see the empty one; only a read already in flight on the old document can reject.
   - `FindBarController.search` — `this._ctx.documentModel` is no longer the model the search started on. The search
     manager cannot test this itself: its own generation is not advanced by a close, and it holds the OLD model object,
     which still lists the released document.
@@ -444,12 +453,25 @@ one line; what makes it safe is the order around it and three readers that can s
   model `computeFitScale` falls back to it — and the fit button stays enabled after a close [Verified: `uiController.ts`
   `enableUI` is the only write to `fitBtn.disabled` in `src/`, and it writes `false`]. Left set, a click on it
   after a close reached the released document and toasted `renderFailed`.
-- **Not guarded, by choice:** a user-started read that is a single `getPage` (crop geometry, signature placement, true
-  edit) would need a close to land inside it. OCR and export in flight at a close fail through their own catches with
-  their failure toast. Disclosed in `KNOWN_ISSUES.md` § "From QUAL-1".
-- **Still leaked:** a source garbage-collected from a live model (its last page deleted) is not released — the
-  `DeletePageCmd` snapshot can still restore it, so releasing it needs ownership counting. Undoable source edits are
-  released by `ReplaceSourcePdfBytesCmd.dispose()` as before.
-- Guards: `tests/core/releasedDocument.test.ts` (11, jsdom), `tests/browser/document-release.browser.test.ts` (4, real
+- **Not guarded, by choice:** a user-started read that is a single `getPage` (crop geometry, signature placement, page
+  rotation, true edit) would need a close to land inside it. Text exports and OCR in flight at a close fail through
+  their own catches; a PDF export reads the bytes, not pdf.js, so it finishes and saves the closed document. Disclosed
+  in `KNOWN_ISSUES.md` § "From QUAL-1".
+- **Released at close, not at delete:** a source whose last page is deleted is kept (the delete can be undone, and
+  releasing it at once needs ownership counting across the model and the history) and released by the reset.
+  Undoable source edits are released by `ReplaceSourcePdfBytesCmd.dispose()` as before.
+- **Certified in two halves — not end to end.** `tests/core/releasedDocument.test.ts` drives `resetDocumentModel`
+  with FAKE documents (a spy `loadingTask.destroy`); `tests/browser/document-release.browser.test.ts` releases REAL
+  pdf.js documents by calling `loadingTask.destroy()` itself, never through `resetDocumentModel`, the pipeline or
+  the find bar. The halves meet at one interface. The QA sweep does not reach File › Close (`fileMenuClose` is in its
+  "not exercised" list), so it is no witness either. **End-to-end evidence is a throwaway Playwright drive, not a
+  test** (2026-10-08): the real app under `vite`, a 3-page 12000-op PDF, eight open → act → File › Close cycles, the
+  action (zoom, page flip, a running search, nothing) and the close confirm fired in ONE tick so the release lands
+  mid-work, then fit-to-width with nothing open. Fixed tree: 0 page errors, 0 console errors, live Web Workers flat
+  at 2. The same drive on the pre-QUAL-1 commit: 0 errors, workers 3 → 10 — one more per document opened, the leak
+  itself [Verified: both runs, `page.workers().length` after each cycle].
+- Guards: `tests/core/releasedDocument.test.ts` (15, jsdom), `tests/browser/document-release.browser.test.ts` (4, real
   pdf.js), two cases in `tests/ui/findBarController.test.ts`. Sabotage: predicate removed / always-stale / epoch advance
-  removed / release removed / release moved before `setModel` / the catch returning / `pdfDoc` kept — each reds its own case.
+  removed / release removed / release moved before `setModel` / the catch returning / `pdfDoc` kept; round 1: the
+  pipeline back on the epoch / always swallowing / the renderer rethrowing from the catch / the collected documents
+  left out / the live ones released twice — each reds its own case.

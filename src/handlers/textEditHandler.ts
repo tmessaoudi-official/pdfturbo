@@ -673,14 +673,18 @@ export class TextEditHandler {
       if (!textChanged && !styleChanged && !decoAdded) return;
 
       // B2: append the standalone decoration(s) to the (already-edited) doc, keeping the
-      // original font — no Path-3 substitution. Non-fatal: a refused add (tilted text)
-      // just leaves the line off. Returns whether any decoration was actually applied.
-      const applyDecorations = async (): Promise<boolean> => {
-        if (!decoAdded) return false;
-        let any = false;
-        if (newUnderline && await addDecorationAt(opts.libDoc, opts.pageIndex, opts.origin, 'underline', TRUE_EDIT_TOLERANCE)) any = true;
-        if (newStrike && await addDecorationAt(opts.libDoc, opts.pageIndex, opts.origin, 'strikethrough', TRUE_EDIT_TOLERANCE)) any = true;
-        return any;
+      // original font — no Path-3 substitution. Non-fatal: a refused add leaves the line off.
+      // `addDecorationAt` is false for a refused line (tilted text) AND for a failed Form XObject
+      // write (TEST-2), so `missed` — a requested line that did not land — is reported, never dropped.
+      const applyDecorations = async (): Promise<{ applied: boolean; missed: boolean }> => {
+        let applied = false, missed = false;
+        if (!decoAdded) return { applied, missed };
+        const kinds = [...(newUnderline ? ['underline' as const] : []), ...(newStrike ? ['strikethrough' as const] : [])];
+        for (const kind of kinds) {
+          if (await addDecorationAt(opts.libDoc, opts.pageIndex, opts.origin, kind, TRUE_EDIT_TOLERANCE)) applied = true;
+          else missed = true;
+        }
+        return { applied, missed };
       };
 
       // Delete: user cleared the text field.
@@ -722,13 +726,17 @@ export class TextEditHandler {
           }
         }
         if (allHandled) {
-          const decoApplied = await applyDecorations();
+          const deco = await applyDecorations();
           // Nothing actually changed (decoration-only commit that the engine refused,
-          // e.g. tilted text) → don't write a no-op revision.
-          if (!sizeChanged && !colorChanged && !decoApplied) return;
+          // e.g. tilted text) → don't write a no-op revision, and say the edit did not apply.
+          if (!sizeChanged && !colorChanged && !deco.applied) {
+            if (deco.missed) app.reportError.warn('toast.trueEditFailed');
+            return;
+          }
           const newBytes = await opts.libDoc.save();
           if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
             app.reportError.info('toast.trueTextEdited');
+            if (deco.missed) app.reportError.warn('toast.trueEditDecorationSkipped');
           }
           return;
         }
@@ -760,13 +768,14 @@ export class TextEditHandler {
         return;
       }
 
-      await applyDecorations();
+      const deco = await applyDecorations();
       const newBytes = await opts.libDoc.save();
       if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
         // Slice B: 'substituted' means a non-standard embedded font was redrawn in
         // a base-14 substitute — tell the user honestly. Path 1/2 (font kept) → the
         // plain edited toast.
         app.reportError.info(result === 'substituted' ? 'toast.trueEditFontSubstituted' : 'toast.trueTextEdited');
+        if (deco.missed) app.reportError.warn('toast.trueEditDecorationSkipped');
       }
     };
 

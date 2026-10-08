@@ -469,7 +469,13 @@ loud refusal), and the message is the generic one although `failureKey`'s own ru
 its own (a new key costs three locale lines and the Arabic-pending count). **Bound, measured:** a widget pdf-lib
 CAN give an appearance to but cannot place (no `/Rect` with its `/AP` kept, or on no page) does not throw —
 pdf-lib logs it, draws nothing and still removes the field, so its value leaves the flattened copy; pdf.js shows
-neither shape [Inferred: a widget with no rect or no page has nothing to draw on]. Guard:
+neither shape [Inferred: a widget with no rect or no page has nothing to draw on]. **A third throwing shape** (M2
+panel round 1): a combed text field (`/MaxLen`) whose `/V` is longer than its cells, with no `/AP` — `flatten()`
+throws `Failed to layout combed text as lineLength=7 is greater than cellCount=3` [Verified by the reviewer's probe
+on the real `@cantoo/pdf-lib`; not pinned by a test]. **Reach** — every `_assemblePdfDoc` caller with typed values
+or flatten-all refuses, not only the two named above: Sign (`assemblePdfBytes` → `_showSignError`), Sanitize and
+Compress (their own toast), the page range, and `assembledPageBox`, whose caller `_rectOnAssembledPage` turns the
+throw into `null` — the drawn signature rect then fills no fields, and pressing Sign reports the failure. Guard:
 `tests/export/flattenFailure.test.ts` (7 — both shapes on both paths, a healthy form on both, a source with no
 form). Red first: `{ errors: [], files: 1, widgets: [2] }` against the refusal. Sabotage, each landed, restored
 with `cmp`: the bare catch back → the 4 refusal cases; a catch around `getForm()` only → exactly the 2 `/AcroForm`

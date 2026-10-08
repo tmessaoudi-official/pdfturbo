@@ -133,6 +133,9 @@ export class PDFRenderer {
       });
     }
     this.isRendering = true;
+    // A failure is held until the queued page has run: rethrowing straight out of the catch skipped
+    // the queue below, so the queued render never ran and its promise never settled.
+    let failure: { err: unknown } | null = null;
     try {
       const page = await doc.getPage(pageNum);
       const effectiveRotation = (page.rotate + userRotation) % 360;
@@ -141,8 +144,8 @@ export class PDFRenderer {
       this.canvas.width = viewport.width;
       await page.render({ canvas: this.canvas, viewport }).promise;
     } catch (err) {
-      if (!this._isStale(doc)) throw err;
-      // Released mid-render (QUAL-1): nothing to paint; fall through to any queued page.
+      // Released mid-render (QUAL-1): nothing to paint, nothing to report.
+      if (!this._isStale(doc)) failure = { err };
     } finally {
       this.isRendering = false;  // BUG-05 fix: always release lock
     }
@@ -157,6 +160,7 @@ export class PDFRenderer {
         if (pendingResolve) pendingResolve();
       }
     }
+    if (failure) throw failure.err;
   }
 
   /** Generate a thumbnail data URL for a page at a given document index */

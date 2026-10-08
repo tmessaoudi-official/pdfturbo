@@ -45,6 +45,13 @@ export interface WatermarkSettings {
 
 export class DocumentModel {
   sourcePdfs: Map<string, SourcePdf> = new Map();
+  /**
+   * The pdf.js documents of sources garbage-collected from `sourcePdfs` (their last page deleted). An
+   * undo can put one back, so it cannot be released here; this keeps it reachable so the model's
+   * reset releases it (QUAL-1, panel round 1). The document only — not the source's bytes, which
+   * the undo history alone decides to keep. Not persisted.
+   */
+  private _collected = new Set<PDFDocumentProxy>();
   pages: DocumentPage[] = [];
   currentPageIndex = 0;
   watermark: WatermarkSettings = {
@@ -144,7 +151,21 @@ export class DocumentModel {
 
   private _gcSourcePdf(sourcePdfId: string): void {
     const stillUsed = this.pages.some(p => p.sourcePdfId === sourcePdfId);
-    if (!stillUsed) this.sourcePdfs.delete(sourcePdfId);
+    if (stillUsed) return;
+    const src = this.sourcePdfs.get(sourcePdfId);
+    if (src) this._collected.add(src.doc);
+    this.sourcePdfs.delete(sourcePdfId);
+  }
+
+  /**
+   * Every pdf.js document this model has held — the live sources and the garbage-collected ones —
+   * once each. What `resetDocumentModel` releases when the model is dropped.
+   */
+  heldDocuments(): Set<PDFDocumentProxy> {
+    const docs = new Set<PDFDocumentProxy>();
+    for (const src of this.sourcePdfs.values()) docs.add(src.doc);
+    for (const doc of this._collected) docs.add(doc);
+    return docs;
   }
 
   toJSON(): object {

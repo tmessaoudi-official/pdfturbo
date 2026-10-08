@@ -183,7 +183,14 @@ unchanged. Stated by reading: the fixture is opaque, and no test asserts either 
 a toast there was once reverted). That proof covered `findTarget` only; with a second source of `false` the branch
 now warns `toast.trueEditFailed` (an existing key, all three locales) and persists nothing. It still takes no
 overlay fallback: a cover over text that is still in the file would hide it, not remove it, and delete is graded
-removal-grade in `SECURITY.md`. The replace and style paths already routed `false` to the overlay.
+removal-grade in `SECURITY.md`. The replace and style paths already routed `false` to the overlay — but the
+**decoration** calls did not (M2 panel round 1): `addDecorationAt` is false for a refused line (tilted text) AND for
+a failed form write, and the handler dropped it — a decoration-only commit returned with no toast, and after a
+successful text, size or colour change the toast said "edited" with the underline missing. A requested line that
+does not land is now `missed`: a decoration-only commit warns `toast.trueEditFailed` (nothing is saved), and a
+commit that saved something else adds `toast.trueEditDecorationSkipped` (new key, three locales; the Arabic is
+[Unverified] until a native review). Guards: four cases in `tests/handlers/textEditHandler.test.ts` (decoration-only,
+replace branch, size branch, and a control where the line lands).
 
 Guards: `tests/utils/formWriteFailure.test.ts` (14: each of the seven sites returns `false` with the stream
 untouched, and a control that each returns exactly `true` and writes the stream — `true`, not truthy, so the

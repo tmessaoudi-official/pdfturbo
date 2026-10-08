@@ -311,7 +311,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
     // The legacy fallback `computeFitScale` reads when the model is empty — the fit button stays enabled after a
     // close. Both open paths set it again after this reset.
     this.renderer.pdfDoc = null;
-    for (const src of dropped.sourcePdfs.values()) _destroyDoc(src.doc);
+    for (const doc of dropped.heldDocuments()) _destroyDoc(doc);
     this._formattingService.cancelPainter();
     this.ui.formatPainterBtn.classList.remove('btn-active-fmt');
   }

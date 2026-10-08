@@ -73,21 +73,39 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ### From QUAL-1 — releasing a closed document (2026-10-08)
 
-- Closing or replacing a document now releases its pdf.js documents. An action still reading the old document at
-  that moment fails instead of finishing on a document you closed: an OCR run or an export shows its failure toast
-  [Inferred: both reach their own catch, not exercised by a test]; a crop, a signature placement or a true-text edit
-  started a few milliseconds before the close can raise an unhandled error in the console [Inferred: each is a single
-  `getPage` with no catch]. Rendering, thumbnails and search settle quietly [Verified: tests below].
-- A document whose last page you delete stays loaded until the document is closed: the delete can be undone, and
-  releasing it needs to know that no undo step still holds it. Detail: `.claude/rules/ui.md` § "Closing a document
-  never released its pdf.js documents — QUAL-1".
+- Closing or replacing a document now releases its pdf.js documents. What happens to an action still running at
+  that moment depends on what it reads:
+  - **A PDF export** (Download, Flatten, Sanitize, Compress, Sign) is built from the file's bytes, not from pdf.js, so
+    it **finishes and saves the document you just closed** [Inferred: `_assemblePdfDoc` reads no pdf.js document; not
+    reproduced].
+  - **A text export** (DOCX, Markdown, CSV, XLSX, XFDF) and **an OCR run** read pages through pdf.js and fail with
+    their own failure toast [Inferred: each reaches its own catch; not exercised by a test].
+  - **A crop, a signature placement, a page rotation or a true-text edit** started a few milliseconds before the close
+    can raise an unhandled error in the console [Inferred: each is a single `getPage` with no catch].
+  - **Rendering and thumbnails** settle quietly [Verified: `tests/core/releasedDocument.test.ts` and
+    `tests/browser/document-release.browser.test.ts`]. **Search** settles quietly too [Inferred: tested only with a
+    simulated rejection; pdf.js's own error on a released document was measured for `getPage` and `render`, not for
+    the text-content read search uses].
+- A document whose last page you delete stays loaded until the document is closed — then it is released. Not at the
+  delete: the delete can be undone, and releasing it then needs to know that no undo step still holds it. Detail:
+  `.claude/rules/ui.md` § "Closing a document never released its pdf.js documents — QUAL-1".
+
+### From the milestone-2 review — "Download page" ignores typed form values (2026-10-08)
+
+- **"Download page"** (the page thumbnail's ⋮ menu) copies the source page as it is in the file: it never applies the
+  values you typed into form fields and never flattens. A field you cleared on screen still carries its original
+  value in that one-page file, while Download of the whole document carries your edit [Verified by the reviewer's
+  probe: a field holding `SECRET-ORIG-123`, cleared on screen — the page download kept it, the full download did
+  not]. Use Download or Extract pages for a page whose form you edited. Not introduced by this change; tracked as
+  SEC-3 in `docs/plans/review-remediation.plan.md`.
 
 ### From TEST-3 — a form field pdf-lib cannot place is dropped by a flatten (2026-10-08)
 
 - A widget pdf-lib can give an appearance to but cannot place — no `/Rect` with its `/AP` kept, or listed on no page —
   does not make `form.flatten()` throw: pdf-lib logs it, draws nothing and still removes the field, so its value
   leaves the flattened copy [measured by a probe; not pinned by a test]. pdf.js shows neither shape [Inferred: such a
-  widget has no rect or no page to draw on]. A form pdf-lib cannot flatten at all now fails the export instead. Detail:
+  widget has no rect or no page to draw on]. A form pdf-lib cannot flatten at all now fails the export instead —
+  including a combed field (`/MaxLen`) holding a longer value than it has cells, with no appearance. Detail:
   `.claude/rules/export.md` § "Form flattening (#62)", the TEST-3 paragraph.
 
 ### From SEC-1 — pages left out of an export (2026-10-08)

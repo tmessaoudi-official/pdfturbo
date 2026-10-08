@@ -501,6 +501,69 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect((app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat()).toContain('toast.trueTextEdited');
   });
 
+  // Panel round 1 (TEST-2 follow-up): `addDecorationAt` returns false for a refused line (tilted text) AND for a
+  // failed Form XObject write. A requested decoration that did not land is a dropped user action — say so.
+  async function commitWithUnderline(decoOk: boolean, newText: string | null, newSize?: string) {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({ save: vi.fn().mockResolvedValue(new Uint8Array([1])) });
+    const item = makeItem('Hello', 100, 600);
+    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
+      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
+    mockAddDecorationAt.mockReset();
+    mockAddDecorationAt.mockResolvedValue(decoOk);
+    mockReplaceTextAt.mockResolvedValue(true);
+    const app = makeApp(makeCanvas(), makeFakePage([item], 841));
+    (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+    app.ui.underlineBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    if (newSize !== undefined) {
+      const { changeSizeAt } = await import('../../src/utils/contentStreamEditor');
+      (changeSizeAt as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+      app.ui.fontSizeInput.value = newSize;
+    }
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    if (newText !== null) input.value = newText;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise<void>(r => { setTimeout(r, 0); });
+    if (newSize !== undefined) {
+      const { changeSizeAt } = await import('../../src/utils/contentStreamEditor');
+      (changeSizeAt as ReturnType<typeof vi.fn>).mockReset(); // the factory's vi.fn() is shared by the whole file
+    }
+    return {
+      warns: (app.reportError.warn as ReturnType<typeof vi.fn>).mock.calls.flat(),
+      infos: (app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat(),
+      saved: (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mock.calls.length,
+    };
+  }
+
+  it('a decoration-only edit whose underline does not land says the edit failed and saves nothing', async () => {
+    const r = await commitWithUnderline(false, null);
+    expect(r).toMatchObject({ saved: 0 });
+    expect(r.warns).toContain('toast.trueEditFailed');
+    expect(r.infos).not.toContain('toast.trueTextEdited');
+  });
+
+  it('a text edit whose underline does not land keeps the text edit and says the underline was skipped', async () => {
+    const r = await commitWithUnderline(false, 'Changed');
+    expect(r.saved).toBe(1);
+    expect(r.infos).toContain('toast.trueTextEdited');
+    expect(r.warns).toContain('toast.trueEditDecorationSkipped');
+  });
+
+  it('a size change whose underline does not land keeps the size and says the underline was skipped', async () => {
+    const r = await commitWithUnderline(false, null, '20');
+    expect(r.saved).toBe(1);
+    expect(r.infos).toContain('toast.trueTextEdited');
+    expect(r.warns).toContain('toast.trueEditDecorationSkipped');
+  });
+
+  it('control: a text edit whose underline lands raises no skipped warning', async () => {
+    const r = await commitWithUnderline(true, 'Changed');
+    expect(r.saved).toBe(1);
+    expect(r.infos).toContain('toast.trueTextEdited');
+    expect(r.warns).not.toContain('toast.trueEditDecorationSkipped');
+  });
+
   // B2: with no decoration toggled and no text/style change, addDecorationAt must
   // NOT be called and no revision is written (no silent no-op edit).
   it('does not add a decoration when neither underline nor strike is toggled', async () => {

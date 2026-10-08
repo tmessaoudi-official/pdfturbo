@@ -95,6 +95,23 @@ describe('the renderer drops a failure on a document its model no longer holds (
     expect(next.getPage).toHaveBeenCalledTimes(1);
   });
 
+  // Panel round 1: a rethrown failure skipped the queued-page block, so the queued render never ran and its promise
+  // never settled (pre-existing; the escaping rejection was the only sign of it).
+  it('a render queued behind a failed one still runs and settles, and the failure still escapes', async () => {
+    const r = new PDFRenderer(canvas());
+    const { doc, d } = pendingDoc();
+    const next = goodDoc();
+    const m = modelOf(doc);
+    m.addPagesFrom(m.addSourcePdf(next, new Uint8Array(), 'b.pdf').id);
+    r.setModel(m);
+    const first = r.renderPageAtIndex(0);
+    const queued = r.renderPageAtIndex(1);
+    d.reject(cancelled());
+    await expect(first).rejects.toThrow('Rendering cancelled');
+    await expect(queued).resolves.toBeUndefined();
+    expect(next.getPage).toHaveBeenCalledTimes(1);
+  });
+
   it('a thumbnail in flight when the document is replaced and released returns no image', async () => {
     const r = new PDFRenderer(canvas());
     const { doc, d } = pendingDoc();
@@ -157,9 +174,21 @@ describe('the page pipeline drops a failure from a superseded run (QUAL-1)', () 
     const { ctx, supersede } = pipelineCtx(doc);
     const run = new PageRenderPipeline(ctx).renderCurrentPage();
     await vi.waitFor(() => expect(doc.getPage).toHaveBeenCalled());
-    supersede(); // resetDocumentModel advances the render epoch
+    supersede(); // resetDocumentModel advances the render epoch…
+    (ctx as { documentModel: unknown }).documentModel = { currentPageIndex: 0, currentPage: undefined, sourcePdfs: new Map(), watermark: { enabled: false } }; // …and replaces the model
     d.reject(cancelled());
     await expect(run).resolves.toBeUndefined();
+  });
+
+  // Panel round 1 (P1): every page flip and zoom advances the same epoch, so "superseded" alone is not "gone".
+  it('control: a failure in a run superseded by navigation, the document still open, escapes', async () => {
+    const { doc, d } = pendingDoc();
+    const { ctx, supersede } = pipelineCtx(doc);
+    const run = new PageRenderPipeline(ctx).renderCurrentPage();
+    await vi.waitFor(() => expect(doc.getPage).toHaveBeenCalled());
+    supersede(); // a newer renderCurrentPage — page flip or zoom
+    d.reject(cancelled());
+    await expect(run).rejects.toThrow('Rendering cancelled');
   });
 
   it('control: the same failure in the current run escapes', async () => {
@@ -197,6 +226,30 @@ describe('resetDocumentModel releases the documents it drops (QUAL-1)', () => {
     expect(app.documentModel).not.toBe(old);
     for (const doc of docs) expect(destroyOf(doc)).toHaveBeenCalledTimes(1);
     expect(log).toEqual(['setModel new', 'destroy a', 'destroy b']);
+  });
+
+  // Panel round 1 (P2): deleting a source's last page garbage-collects it from `sourcePdfs`, so a reset that walked
+  // only the live sources never released it — not even at close (DeletePageCmd holds it for undo and has no dispose).
+  it('a source whose last page was deleted is released at the reset too', () => {
+    const { app, old, log } = fakeApp();
+    const gone = { numPages: 1, loadingTask: { destroy: vi.fn(() => { log.push('destroy gone'); return Promise.resolve(); }) } } as unknown as PDFDocumentProxy;
+    const [page] = old.addPagesFrom(old.addSourcePdf(gone, new Uint8Array(), 'gone.pdf').id);
+    old.deletePage(page.id);
+    expect([...old.sourcePdfs.values()].some(s => s.doc === gone)).toBe(false); // garbage-collected
+    reset(app);
+    expect(destroyOf(gone)).toHaveBeenCalledTimes(1);
+  });
+
+  it('a source restored by undo after its garbage collection is released once, not twice', () => {
+    const { app, old } = fakeApp();
+    const back = { numPages: 1, loadingTask: { destroy: vi.fn(() => Promise.resolve()) } } as unknown as PDFDocumentProxy;
+    const src = old.addSourcePdf(back, new Uint8Array(), 'back.pdf');
+    const [page] = old.addPagesFrom(src.id);
+    const removed = old.deletePage(page.id);
+    old.sourcePdfs.set(src.id, src); // DeletePageCmd.undo puts the snapshot back…
+    if (removed) old.restorePage(removed, 0); // …and the page
+    reset(app);
+    expect(destroyOf(back)).toHaveBeenCalledTimes(1);
   });
 
   it('fit-to-width after a close does not reach the released document (the legacy pdfDoc)', async () => {

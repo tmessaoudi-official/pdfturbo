@@ -493,6 +493,7 @@
     "trueTextEdited": "Text edited in the PDF — Ctrl+Z to undo",
     "trueEditOverlay": "Couldn't edit this text in place — added an editable overlay instead",
     "trueEditFailed": "Couldn't apply the text edit — the document is unchanged",
+    "trueEditDecorationSkipped": "Couldn't add the underline or strikethrough to this text — the rest of the edit was kept",
     "trueTextDeleted": "Text deleted from the PDF — Ctrl+Z to undo",
     "trueEditFontSubstituted": "Font substituted — the original font couldn't be kept in place; the text was redrawn in a standard font. Ctrl+Z to undo.",
     "ocrDone": "Text recognized — {{count}} words added (Ctrl+Z to undo)",
