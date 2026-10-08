@@ -60,6 +60,7 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
+- M1 (SEC-1) milestone panel reached its 5-round cap: rounds 3/4/5 found 3/4/3 P0-P1, all in the pdf.js name-resolution model (`collect`) or where owners live (`pruneNested`). Round-5 fixes are in the round-5 commit ("SEC-1 round 5") and are UNREVIEWED by a panel; 7 commits unpushed. Awaiting the developer's ruling on certification, the prune's cost and the push — do not start a sixth round without it.
 ### Needs research
 ### Fragile
 - SEC-1 cost (M1-C3, partly fixed): one `@cantoo/pdf-lib` import per copy and a synchronous `/Annots` walk remain;
