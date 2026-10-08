@@ -440,7 +440,11 @@ one line; what makes it safe is the order around it and three readers that can s
     the document. With no model (the legacy path) nothing is stale. A dropped render falls through to a queued page —
     a `return` in that catch would orphan the queued promise (mutant M9 hangs the queued-render test). A REAL failure
     is held until the queued page has run, then rethrown: rethrowing straight out of the catch skipped the queue, so
-    the queued render never ran and its promise never settled (pre-existing, found by the M2 panel).
+    the queued render never ran and its promise never settled (pre-existing, found by the M2 panel). And the queued
+    render settles ITS OWN caller (`_pendingSettle`, resolve AND reject): with only a resolve kept, a queued render's
+    failure was thrown out of the earlier caller's frame while the queued caller was told it succeeded — and the
+    pipeline, seeing the earlier run's model replaced, dropped it, so a newly opened document's failed first render
+    painted its text layer over a canvas that never rendered, with no error (round 2).
   - `PageRenderPipeline.renderCurrentPage` — `this._ctx.documentModel` is no longer the model the run started on.
     **Not "the run was superseded"** (round 0 used the epoch, and the M2 panel's P1 refuted it): every page flip and
     zoom advances the same epoch, so that predicate swallowed a real render failure on a document still open whenever
@@ -468,10 +472,22 @@ one line; what makes it safe is the order around it and three readers that can s
   test** (2026-10-08): the real app under `vite`, a 3-page 12000-op PDF, eight open → act → File › Close cycles, the
   action (zoom, page flip, a running search, nothing) and the close confirm fired in ONE tick so the release lands
   mid-work, then fit-to-width with nothing open. Fixed tree: 0 page errors, 0 console errors, live Web Workers flat
-  at 2. The same drive on the pre-QUAL-1 commit: 0 errors, workers 3 → 10 — one more per document opened, the leak
-  itself [Verified: both runs, `page.workers().length` after each cycle].
-- Guards: `tests/core/releasedDocument.test.ts` (15, jsdom), `tests/browser/document-release.browser.test.ts` (4, real
+  at 2. The same drive on the pre-QUAL-1 commit: 0 errors, workers growing over the eight cycles (3, 6, 5, 6, 7, 8,
+  9, 10, then 8 after the fit) — the leak itself [Verified: both runs, `page.workers().length` after each cycle; the
+  drive records the commit and a clean `src/` it ran against].
+- Guards: `tests/core/releasedDocument.test.ts` (17, jsdom), `tests/browser/document-release.browser.test.ts` (4, real
   pdf.js), two cases in `tests/ui/findBarController.test.ts`. Sabotage: predicate removed / always-stale / epoch advance
   removed / release removed / release moved before `setModel` / the catch returning / `pdfDoc` kept; round 1: the
   pipeline back on the epoch / always swallowing / the renderer rethrowing from the catch / the collected documents
-  left out / the live ones released twice — each reds its own case.
+  left out / the live ones released twice; round 2: the queued render's failure sent to the earlier caller — each
+  reds its own case.
+
+### Undoing an Insert pages and redoing it added nothing — AddPagesCmd (M2 review, fixed 2026-10-08)
+
+`AddPagesCmd.undo` deletes the pages it added, and deleting the last page of a source garbage-collects the source
+from `sourcePdfs`. The redo re-ran `addPagesFrom`, which returns `[]` for a missing source — so Insert pages → Ctrl+Z
+→ Ctrl+Y silently added nothing (reproduced by the milestone-2 completeness reviewer on the real model; pre-existing).
+The redo now puts the source back and restores the SAME page objects at the same positions: a later command on the
+redo stack (an annotation placed on an inserted page) names those page ids, so re-adding fresh pages would orphan it.
+Guards: two cases in `tests/core/historyManagerCommands.test.ts` (the same ids and the same source document come back;
+the order is kept behind a page that was there before). Red first: `[]` and the blank page alone.

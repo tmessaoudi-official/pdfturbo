@@ -1048,7 +1048,7 @@ The three Arabic edits are single-verb substitutions (`للإبقاء على` �
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified. **The pending set is
 CLOSED as of 2026-09-13 by developer ruling** ("consider the arabic review done") — accepted by ruling, not
-by a second native read — **and the pending count is 15**: `toast.exportResourcesUnreadable` (new, SEC-1 round 2 on 2026-10-08), `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` and the re-worded `toast.flattenDone` (limits row 23, 2026-09-27), `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
+by a second native read — **and the pending count is 17**: `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone-2 panel rounds 1–2 on 2026-10-08), `toast.exportResourcesUnreadable` (new, SEC-1 round 2 on 2026-10-08), `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` and the re-worded `toast.flattenDone` (limits row 23, 2026-09-27), `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
 en/fr parity by the session, which makes it a new value, and the two keys WS7 round 10 added the same day
 (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), both session-written. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
 keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,
@@ -1191,3 +1191,25 @@ with `.slice(0)` at every `getDocument` and a hard throw in `leaks()` on an empt
 `Expected instance of PDFDict, but got instance of undefined` when the key is absent — so asserting a key
 was stripped must use `.get(key)`. And a fixture built with `page.drawText` needs a save→load round-trip
 before `findTarget` can see it: `drawText` buffers operators and only flushes them at save.
+
+### A close mid-export shipped a redacted page in clear — the export read the element list live (M2 review, fixed 2026-10-08)
+
+`_assemblePdfDoc` destructured `elements` from the context and read it after its awaits (the source loads, the
+copies). That array is the app's LIVE list: `closeDocument` empties it in place (`elements.splice(0)`) and an undo
+splices it. A close landing while the sources loaded left the export seeing no redaction, so `pageIsRasterised`
+was false, the page was copied as vector text and the file shipped with the secret — under `toast.pdfDownloaded`.
+Pre-existing (not QUAL-1: PDF exports read the bytes, not pdf.js), found by the milestone-2 safety reviewer's probe
+(`{ rasterCalls: 0, secretInBytes: true }`). Reachable by keyboard: the progress overlay blocks the pointer only
+[Inferred: `keyboardBinder.ts` has no busy gate; not driven in a browser].
+
+Fix: every export takes the list once, at its start — `ExportService._elementsNow()` (a copy) — and
+`_assemblePdfDoc` copies its page list too, so a page an undo puts back mid-export is not exported. Applied to every
+entry that read the list: `_assemblePdfDoc`, `downloadPage`, `downloadPageAsImage`, `exportXfdf`, `_extractFlowDoc`,
+`renderThumbnailWithOverlays`. Left live: `_extractPageTableData` (CSV/XLSX) reads it per page, after a `getPage` on
+the pdf.js document — and since QUAL-1 a close releases that document, so a close fails the table export instead of
+shipping it. An element MUTATED in place mid-export (an undo of a move) is still read as it is then [Inferred: no
+test; the copy is shallow].
+
+Guard: `tests/export/exportSnapshot.test.ts` (6 — the probe can see the secret in the plain source; Download and
+Download page each with and without a close during the source load; a page added mid-export is not exported). Red
+first: `rasterCalls: 0, secretInBytes: true` on both paths, `pages: 2` for the added page.

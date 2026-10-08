@@ -9,7 +9,7 @@
  * readers that can still hold it settle quietly: the canvas render and the thumbnail (the
  * renderer) and the text-layer / form / crop reads (the page pipeline). Each one drops an error
  * only when the document is provably no longer current — the renderer's model no longer holds it,
- * or the pipeline run was superseded — and rethrows otherwise. The controls are what keep that
+ * or the model the pipeline run read was replaced — and rethrows otherwise. The controls are what keep that
  * from being a swallow: the same error on a document that is still current still escapes.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -112,6 +112,42 @@ describe('the renderer drops a failure on a document its model no longer holds (
     expect(next.getPage).toHaveBeenCalledTimes(1);
   });
 
+  // Panel round 2 (P1): the queue kept only a resolve callback, so a queued render's failure was thrown out of the
+  // EARLIER caller's frame while the queued caller was told it succeeded — and the pipeline, seeing its own model
+  // replaced, dropped it: a page painted over a canvas that never rendered, with no error anywhere.
+  it("a queued render's own failure rejects its own caller, not the earlier one", async () => {
+    const r = new PDFRenderer(canvas());
+    const a = pendingDoc();
+    const b = pendingDoc();
+    const m = modelOf(a.doc);
+    m.addPagesFrom(m.addSourcePdf(b.doc, new Uint8Array(), 'b.pdf').id);
+    r.setModel(m);
+    const first = r.renderPageAtIndex(0);
+    const queued = r.renderPageAtIndex(1);
+    a.d.resolve(fakePage);
+    await vi.waitFor(() => expect(b.doc.getPage).toHaveBeenCalled());
+    b.d.reject(new Error('page B corrupt'));
+    await expect(first).resolves.toBeUndefined();
+    await expect(queued).rejects.toThrow('page B corrupt');
+  });
+
+  it('when both fail, each caller gets its own failure', async () => {
+    const r = new PDFRenderer(canvas());
+    const a = pendingDoc();
+    const b = pendingDoc();
+    const m = modelOf(a.doc);
+    m.addPagesFrom(m.addSourcePdf(b.doc, new Uint8Array(), 'b.pdf').id);
+    r.setModel(m);
+    const first = r.renderPageAtIndex(0);
+    const queued = r.renderPageAtIndex(1);
+    a.d.reject(new Error('page A corrupt'));
+    await vi.waitFor(() => expect(b.doc.getPage).toHaveBeenCalled());
+    b.d.reject(new Error('page B corrupt'));
+    await expect(first).rejects.toThrow('page A corrupt');
+    await expect(queued).rejects.toThrow('page B corrupt');
+    expect((r as unknown as Renderable).isRendering).toBe(false);
+  });
+
   it('a thumbnail in flight when the document is replaced and released returns no image', async () => {
     const r = new PDFRenderer(canvas());
     const { doc, d } = pendingDoc();
@@ -168,8 +204,8 @@ function pipelineCtx(doc: PDFDocumentProxy) {
   return { ctx: ctx as unknown as IPageRenderContext, supersede: () => ++gen };
 }
 
-describe('the page pipeline drops a failure from a superseded run (QUAL-1)', () => {
-  it('a page read in flight when the document is closed (the run superseded) settles quietly', async () => {
+describe('the page pipeline drops a failure only when the model it read was replaced (QUAL-1)', () => {
+  it('a page read in flight when the document is closed (the model replaced) settles quietly', async () => {
     const { doc, d } = pendingDoc();
     const { ctx, supersede } = pipelineCtx(doc);
     const run = new PageRenderPipeline(ctx).renderCurrentPage();

@@ -269,6 +269,14 @@ export class ExportService {
 
   // ── Public export entry points ───────────────────────────────────────────
 
+  /**
+   * The element list as it is NOW, copied. The app's array is live: `closeDocument` empties that very array
+   * (`elements.splice(0)`) and an undo splices it, so an export that read it across its awaits could see a redaction
+   * vanish mid-export and copy the redacted page as vector text (M2 panel round 2). Every export takes it once, at
+   * its start, with the page list.
+   */
+  private _elementsNow(): PDFElement[] { return this._ctx.elements.slice(); }
+
   async downloadPDF(): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
     if (!documentModel.pageCount) return;
@@ -553,7 +561,8 @@ export class ExportService {
    * document with nothing to export warns rather than emitting an empty file.
    */
   async exportXfdf(): Promise<void> {
-    const { documentModel, elements, reportError, formValues } = this._ctx;
+    const { documentModel, reportError, formValues } = this._ctx;
+    const elements = this._elementsNow();
     if (!documentModel.pageCount) return;
     try {
       const annots: XfdfAnnot[] = [];
@@ -796,8 +805,9 @@ export class ExportService {
     pagesSubset?: import('../core/documentModel').DocumentPage[],
     opts?: { flattenAllForms?: boolean; cleanMetadata?: boolean; keepSharedResources?: boolean },
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
-    const { documentModel, elements, reportError, formValues } = this._ctx;
-    const docPages = pagesSubset ?? documentModel.pages;
+    const { documentModel, reportError, formValues } = this._ctx;
+    const elements = this._elementsNow();
+    const docPages = (pagesSubset ?? documentModel.pages).slice();
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     {
       // P3 (QA sweep 2026-06-19): with opts.cleanMetadata, build the doc with
@@ -983,7 +993,8 @@ export class ExportService {
   }
 
   async downloadPage(pageIdx: number): Promise<void> {
-    const { documentModel, elements, reportError, progress } = this._ctx;
+    const { documentModel, reportError, progress } = this._ctx;
+    const elements = this._elementsNow();
     const docPage = documentModel.pages[pageIdx];
     if (!docPage) return;
     const filename = `${this._exportBaseName()}-page${pageIdx + 1}.pdf`;
@@ -1031,7 +1042,8 @@ export class ExportService {
    * target is acquired BEFORE the async raster (#54 transient-activation).
    */
   async downloadPageAsImage(pageIdx?: number, opts?: ImageExportOptions): Promise<void> {
-    const { documentModel, elements, reportError, progress } = this._ctx;
+    const { documentModel, reportError, progress } = this._ctx;
+    const elements = this._elementsNow();
     const idx = pageIdx ?? documentModel.currentPageIndex;
     const docPage = documentModel.pages[idx];
     if (!docPage) return;
@@ -1120,7 +1132,8 @@ export class ExportService {
    * not leak.
    */
   async renderThumbnailWithOverlays(pageIdx: number, thumbScale = 0.15): Promise<string | null> {
-    const { documentModel, elements, inkLayer, reportError } = this._ctx;
+    const { documentModel, inkLayer, reportError } = this._ctx;
+    const elements = this._elementsNow();
     const docPage = documentModel.pages[pageIdx];
     if (!docPage) return null;
 
@@ -1408,7 +1421,8 @@ export class ExportService {
    * Blank pages and pages without a source are skipped.
    */
   private async _extractFlowDoc(): Promise<FlowDoc> {
-    const { documentModel, elements } = this._ctx;
+    const { documentModel } = this._ctx;
+    const elements = this._elementsNow();
     const flowDoc: FlowDoc = { pages: [] };
     const formHidden = new FormHiddenTextFinder();
     // Limits row 22 (D11): internal links resolve after every page is built — a link may point forward. `goTo` holds

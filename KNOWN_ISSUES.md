@@ -75,9 +75,11 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 - Closing or replacing a document now releases its pdf.js documents. What happens to an action still running at
   that moment depends on what it reads:
-  - **A PDF export** (Download, Flatten, Sanitize, Compress, Sign) is built from the file's bytes, not from pdf.js, so
-    it **finishes and saves the document you just closed** [Inferred: `_assemblePdfDoc` reads no pdf.js document; not
-    reproduced].
+  - **A PDF or image export** (Download, Download page, Export page as image, Flatten, Sanitize, Compress, Sign) is
+    built from the file's bytes, not from pdf.js, so it **finishes and saves the document as it was when you started
+    the export** — its redactions, annotations and pages included [Verified: `tests/export/exportSnapshot.test.ts`, a
+    close while the sources load]. Until the milestone-2 review it read the annotation list live, so a close mid-export
+    shipped a redacted page unredacted.
   - **A text export** (DOCX, Markdown, CSV, XLSX, XFDF) and **an OCR run** read pages through pdf.js and fail with
     their own failure toast [Inferred: each reaches its own catch; not exercised by a test].
   - **A crop, a signature placement, a page rotation or a true-text edit** started a few milliseconds before the close
@@ -89,15 +91,6 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - A document whose last page you delete stays loaded until the document is closed — then it is released. Not at the
   delete: the delete can be undone, and releasing it then needs to know that no undo step still holds it. Detail:
   `.claude/rules/ui.md` § "Closing a document never released its pdf.js documents — QUAL-1".
-
-### From the milestone-2 review — "Download page" ignores typed form values (2026-10-08)
-
-- **"Download page"** (the page thumbnail's ⋮ menu) copies the source page as it is in the file: it never applies the
-  values you typed into form fields and never flattens. A field you cleared on screen still carries its original
-  value in that one-page file, while Download of the whole document carries your edit [Verified by the reviewer's
-  probe: a field holding `SECRET-ORIG-123`, cleared on screen — the page download kept it, the full download did
-  not]. Use Download or Extract pages for a page whose form you edited. Not introduced by this change; tracked as
-  SEC-3 in `docs/plans/review-remediation.plan.md`.
 
 ### From TEST-3 — a form field pdf-lib cannot place is dropped by a flatten (2026-10-08)
 
@@ -515,7 +508,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **Fifteen values are pending** — `toast.exportResourcesUnreadable` (new, SEC-1,
+  read, and it is recorded as one. **Seventeen values are pending** — `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone 2), `toast.exportResourcesUnreadable` (new, SEC-1,
   2026-10-08) and the fourteen below (this line said three from WS7 round 10 on and
   missed five later keys: `toast.pdfLoadRefused` (WS7 round 15), `toast.exportLayersConflict` (WS8),
   `thumbnail.previewUnavailable` (A6), `toolbar.clearRecentFiles` and `progress.ocrLoadingModel` (limits rows

@@ -188,9 +188,12 @@ removal-grade in `SECURITY.md`. The replace and style paths already routed `fals
 a failed form write, and the handler dropped it — a decoration-only commit returned with no toast, and after a
 successful text, size or colour change the toast said "edited" with the underline missing. A requested line that
 does not land is now `missed`: a decoration-only commit warns `toast.trueEditFailed` (nothing is saved), and a
-commit that saved something else adds `toast.trueEditDecorationSkipped` (new key, three locales; the Arabic is
-[Unverified] until a native review). Guards: four cases in `tests/handlers/textEditHandler.test.ts` (decoration-only,
-replace branch, size branch, and a control where the line lands).
+commit that saved something else warns `toast.trueEditDecorationSkipped` — or, after a font substitution,
+`toast.trueEditFontSubstitutedDecorationSkipped` — INSTEAD of its success toast, never after it: `ToastQueue`
+replaces an info/warn on screen at once, so a second toast hid the first, the substitution notice included (round
+2). Both keys are new (three locales; the Arabic is [Unverified] until a native review). Guards: five cases in
+`tests/handlers/textEditHandler.test.ts` (decoration-only; replace, size and substituted branches, each asserting
+exactly one toast; a control where the line lands).
 
 Guards: `tests/utils/formWriteFailure.test.ts` (14: each of the seven sites returns `false` with the stream
 untouched, and a control that each returns exactly `true` and writes the stream — `true`, not truthy, so the

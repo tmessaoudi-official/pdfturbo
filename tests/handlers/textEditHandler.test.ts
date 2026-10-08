@@ -503,7 +503,9 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
 
   // Panel round 1 (TEST-2 follow-up): `addDecorationAt` returns false for a refused line (tilted text) AND for a
   // failed Form XObject write. A requested decoration that did not land is a dropped user action — say so.
-  async function commitWithUnderline(decoOk: boolean, newText: string | null, newSize?: string) {
+  // ONE toast per commit: ToastQueue replaces an info/warn on screen at once, so a second toast hides the first
+  // (M2 panel round 2) — a missed line replaces the success toast with one that says both.
+  async function commitWithUnderline(decoOk: boolean, newText: string | null, newSize?: string, replaced: true | 'substituted' = true) {
     const { PDFDocument } = await import('@cantoo/pdf-lib');
     (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({ save: vi.fn().mockResolvedValue(new Uint8Array([1])) });
     const item = makeItem('Hello', 100, 600);
@@ -511,7 +513,7 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
       Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
     mockAddDecorationAt.mockReset();
     mockAddDecorationAt.mockResolvedValue(decoOk);
-    mockReplaceTextAt.mockResolvedValue(true);
+    mockReplaceTextAt.mockResolvedValue(replaced);
     const app = makeApp(makeCanvas(), makeFakePage([item], 841));
     (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
     await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
@@ -543,25 +545,24 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect(r.infos).not.toContain('toast.trueTextEdited');
   });
 
-  it('a text edit whose underline does not land keeps the text edit and says the underline was skipped', async () => {
+  it('a text edit whose underline does not land keeps the text edit and says so in one toast', async () => {
     const r = await commitWithUnderline(false, 'Changed');
-    expect(r.saved).toBe(1);
-    expect(r.infos).toContain('toast.trueTextEdited');
-    expect(r.warns).toContain('toast.trueEditDecorationSkipped');
+    expect(r).toMatchObject({ saved: 1, infos: [], warns: ['toast.trueEditDecorationSkipped'] });
   });
 
-  it('a size change whose underline does not land keeps the size and says the underline was skipped', async () => {
+  it('a size change whose underline does not land keeps the size and says so in one toast', async () => {
     const r = await commitWithUnderline(false, null, '20');
-    expect(r.saved).toBe(1);
-    expect(r.infos).toContain('toast.trueTextEdited');
-    expect(r.warns).toContain('toast.trueEditDecorationSkipped');
+    expect(r).toMatchObject({ saved: 1, infos: [], warns: ['toast.trueEditDecorationSkipped'] });
   });
 
-  it('control: a text edit whose underline lands raises no skipped warning', async () => {
+  it('a substituted-font edit whose underline does not land keeps the substitution notice in its one toast', async () => {
+    const r = await commitWithUnderline(false, 'Changed', undefined, 'substituted');
+    expect(r).toMatchObject({ saved: 1, infos: [], warns: ['toast.trueEditFontSubstitutedDecorationSkipped'] });
+  });
+
+  it('control: a text edit whose underline lands says only that it was edited', async () => {
     const r = await commitWithUnderline(true, 'Changed');
-    expect(r.saved).toBe(1);
-    expect(r.infos).toContain('toast.trueTextEdited');
-    expect(r.warns).not.toContain('toast.trueEditDecorationSkipped');
+    expect(r).toMatchObject({ saved: 1, infos: ['toast.trueTextEdited'], warns: [] });
   });
 
   // B2: with no decoration toggled and no text/style change, addDecorationAt must

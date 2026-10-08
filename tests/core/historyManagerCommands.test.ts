@@ -607,6 +607,34 @@ describe('AddPagesCmd', () => {
     expect(onUpdate).toHaveBeenCalledTimes(2);
   });
 
+  // M2 panel round 2 (reproduced, pre-existing): the undo deleted the added pages, which garbage-collected the
+  // source with the last of them, so the redo's `addPagesFrom` found no source and silently added nothing.
+  it('redo after undo brings back the same pages and their source', () => {
+    const model = new DocumentModel();
+    const doc = { numPages: 2, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy;
+    const src = model.addSourcePdf(doc, new Uint8Array(), 'test.pdf');
+    const mgr = mkMgr();
+    mgr.execute(new AddPagesCmd(model, src.id, undefined, vi.fn()));
+    const ids = model.pages.map(p => p.id);
+    mgr.undo();
+    expect(model.sourcePdfs.has(src.id)).toBe(false); // garbage-collected with its last page
+    mgr.redo();
+    expect(model.pages.map(p => p.id)).toEqual(ids); // the SAME pages — a later command may name them
+    expect(model.sourcePdfs.get(src.id)?.doc).toBe(doc);
+  });
+
+  it('redo puts the pages back where they were, after pages that were there before', () => {
+    const model = new DocumentModel();
+    model.addBlankPage(595, 842);
+    const src = model.addSourcePdf({ numPages: 2, getPage: () => Promise.resolve({}) } as unknown as PDFDocumentProxy, new Uint8Array(), 'b.pdf');
+    const mgr = mkMgr();
+    mgr.execute(new AddPagesCmd(model, src.id, undefined, vi.fn()));
+    const order = model.pages.map(p => p.id);
+    mgr.undo();
+    mgr.redo();
+    expect(model.pages.map(p => p.id)).toEqual(order);
+  });
+
   it('adds only specified page numbers when pageNums is provided', () => {
     const model = new DocumentModel();
     const src = model.addSourcePdf(

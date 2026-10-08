@@ -117,7 +117,7 @@ reading the code. Both are said plainly instead of implied to be measured.
 | **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied, a link or form field on a kept page that points to it is cut rather than followed, and resources a kept page shares with it keep only what the kept page draws (since 2026-10-08 — the shapes pinned are listed in the note above, with when the export refuses and what is not ruled out). |
 | **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. Unlike *replacing* text — which can decline on fonts it cannot redraw — deleting is font-agnostic: it blanks the operator that draws the text, so nothing needs drawing. |
 | **Compress → flatten to images** | **removed** | The **flatten-to-images** setting only; "lossless optimise" and "shrink images" keep all text, and "shrink images" re-saves each photo whole, including any part a crop hides. Rasterises every page, so it is redaction's grade applied document-wide. |
-| **Export page as image** (PNG/JPEG) | **removed** | Rasterises the page, so only what you can see survives. |
+| **Export page as image** (PNG/JPEG) | **removed** | Rasterises the page, so only what you can see survives. **Open issue (SEC-3, 2026-10-08):** form values are the exception — the page image is drawn from the page as it is in the file, so a form field you changed or cleared shows its ORIGINAL value in the image [Verified by a pdf.js operator-list probe, not by pixels]. Workaround: Flatten & download (or Download), then export the image from the flattened copy. |
 | **Extract page range** | **removed** | **[pinned]** Like deleting pages: the new file is built from copied pages, so pages outside the range are never in it — a reference to one is cut, not followed, and resources shared with one keep only what the extracted pages draw (since 2026-10-08; pinned through the real assembly of a range, with the same bounds as Delete page). |
 | **Crop** | *hidden only* | A view setting. See below. |
 | **Shape / rectangle over text** | ***not even hidden*** | **[pinned]** See below — this is the one that catches people. |
@@ -415,6 +415,14 @@ overlay, and the export or signature built afterwards refuses. The Word, Markdow
 table (CSV, XLSX) and XFDF exports, and OCR's text, Word and editable-box modes do not refuse: they read the
 document through pdf.js, the same reader that draws it, so they export what is on screen. Opening and
 viewing the file are unaffected.
+
+> **Open issue (SEC-3, found 2026-10-08) — typed form values in "Download page" and "Export page as image".**
+> These two single-page exports (the page thumbnail's ⋮ menu) copy the page as it is in the file: they never apply
+> the values you typed into form fields and never flatten. A field you changed or cleared on screen therefore keeps
+> its ORIGINAL value in that file or image, while Download, a page range (Extract pages) and Flatten & download carry
+> your edit [Verified by the milestone-2 review's probes: a field holding `SECRET-ORIG-123`, cleared on screen, was
+> kept by Download page and by the page image's drawing, and absent from Download]. Workaround: use Extract pages
+> with that one page, or Flatten & download. Tracked in `docs/plans/review-remediation.plan.md`.
 
 - **pdf-lib dropped part of the file.** A damaged object that never closes is skipped by pdf-lib while
   pdf.js still draws it, so the export would lose it. A file is refused when anything it uses was dropped

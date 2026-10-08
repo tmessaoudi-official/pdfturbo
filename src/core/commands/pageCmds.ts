@@ -55,6 +55,8 @@ export class DeletePageCmd implements Command {
 // Add pages from a source PDF (undo removes them and GCs source if unused)
 export class AddPagesCmd implements Command {
   private addedPages: DocumentPage[] = [];
+  private addedAt = 0;
+  private src: SourcePdf | undefined;
 
   constructor(
     private model: DocumentModel,
@@ -64,7 +66,17 @@ export class AddPagesCmd implements Command {
   ) {}
 
   execute() {
-    this.addedPages = this.model.addPagesFrom(this.sourcePdfId, this.pageNums);
+    if (!this.addedPages.length) {
+      this.src = this.model.sourcePdfs.get(this.sourcePdfId);
+      this.addedAt = this.model.pages.length; // addPagesFrom appends
+      this.addedPages = this.model.addPagesFrom(this.sourcePdfId, this.pageNums);
+    } else {
+      // Redo. The undo deleted these pages, and the last of them garbage-collected the source: put the source back
+      // and restore the SAME pages (a later command on the redo stack may name them) where they were. Before this,
+      // `addPagesFrom` found no source and the redo silently added nothing (M2 panel round 2).
+      if (this.src && !this.model.sourcePdfs.has(this.src.id)) this.model.sourcePdfs.set(this.src.id, this.src);
+      this.addedPages.forEach((p, i) => this.model.restorePage(p, this.addedAt + i));
+    }
     this.onUpdate();
   }
 

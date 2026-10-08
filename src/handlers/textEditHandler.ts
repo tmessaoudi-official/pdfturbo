@@ -735,8 +735,9 @@ export class TextEditHandler {
           }
           const newBytes = await opts.libDoc.save();
           if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
-            app.reportError.info('toast.trueTextEdited');
+            // One toast per commit: ToastQueue replaces an info/warn on screen at once, so a second one hides the first.
             if (deco.missed) app.reportError.warn('toast.trueEditDecorationSkipped');
+            else app.reportError.info('toast.trueTextEdited');
           }
           return;
         }
@@ -774,8 +775,9 @@ export class TextEditHandler {
         // Slice B: 'substituted' means a non-standard embedded font was redrawn in
         // a base-14 substitute — tell the user honestly. Path 1/2 (font kept) → the
         // plain edited toast.
-        app.reportError.info(result === 'substituted' ? 'toast.trueEditFontSubstituted' : 'toast.trueTextEdited');
-        if (deco.missed) app.reportError.warn('toast.trueEditDecorationSkipped');
+        // One toast per commit (a second hides the first); a missed line keeps the substitution notice in its own.
+        if (deco.missed) app.reportError.warn(result === 'substituted' ? 'toast.trueEditFontSubstitutedDecorationSkipped' : 'toast.trueEditDecorationSkipped');
+        else app.reportError.info(result === 'substituted' ? 'toast.trueEditFontSubstituted' : 'toast.trueTextEdited');
       }
     };
 

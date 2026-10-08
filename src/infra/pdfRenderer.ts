@@ -19,7 +19,8 @@ export class PDFRenderer {
   scale = 1.0;
   private isRendering = false;
   private pendingPage: { doc: PDFDocumentProxy; pageNum: number; userRotation: number } | null = null;
-  private _pendingResolve: (() => void) | null = null;
+  /** The queued render's own settlement: its outcome goes to ITS caller, never to the render it queued behind. */
+  private _pendingSettle: { resolve: () => void; reject: (err: unknown) => void } | null = null;
   private _model: DocumentModel | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -125,11 +126,11 @@ export class PDFRenderer {
   /** Render a specific page from a specific pdf.js document */
   private async _renderPdfPage(doc: PDFDocumentProxy, pageNum: number, userRotation = 0): Promise<void> {
     if (this.isRendering) {
-      return new Promise<void>((resolve) => {
+      return new Promise<void>((resolve, reject) => {
         // Resolve any previously queued Promise before overwriting (BUG-08 fix)
-        if (this._pendingResolve) this._pendingResolve();
+        if (this._pendingSettle) this._pendingSettle.resolve();
         this.pendingPage = { doc, pageNum, userRotation };
-        this._pendingResolve = resolve;
+        this._pendingSettle = { resolve, reject };
       });
     }
     this.isRendering = true;
@@ -151,13 +152,16 @@ export class PDFRenderer {
     }
     if (this.pendingPage !== null) {
       const { doc: pendingDoc, pageNum: pending, userRotation: pendingRot } = this.pendingPage;
-      const pendingResolve = this._pendingResolve;
+      const settle = this._pendingSettle;
       this.pendingPage = null;
-      this._pendingResolve = null;
+      this._pendingSettle = null;
+      // The queued render's failure is ITS caller's (M2 panel round 2): thrown from here it reached the caller this
+      // render queued behind, while the queued caller was told it succeeded.
       try {
         await this._renderPdfPage(pendingDoc, pending, pendingRot);
-      } finally {
-        if (pendingResolve) pendingResolve();
+        settle?.resolve();
+      } catch (err) {
+        settle?.reject(err);
       }
     }
     if (failure) throw failure.err;
