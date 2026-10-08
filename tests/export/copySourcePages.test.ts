@@ -574,6 +574,12 @@ describe('the export entry points prune shared resources, and the refusal has a 
     else expect(assemble.mock.calls[0][0]?.rasterOnly).toBeFalsy();
   });
 
+  it('the sign-rect box is read without the prune: an unreadable shared page still gives its box (R4-K-3)', async () => {
+    const src = await sharedResourcesSource('shared', true);
+    const svc = assembler(await src.save({ useObjectStreams: false }), [0]);
+    await expect(svc.assembledPageBox(0)).resolves.toMatchObject({ width: expect.any(Number), height: expect.any(Number) });
+  });
+
   it('single-page download carries no form only a removed page draws', async () => {
     const src = await sharedResourcesSource('shared');
     const svc = assembler(await src.save({ useObjectStreams: false }), [0]);
@@ -705,6 +711,46 @@ async function routeShape(shape: string): Promise<PDFDocument> {
     const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
     p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
     p1.node.set(PDFName.of('Contents'), content('/Span<</ActualText<FEFF0009>>> BDC /Fm1 Do EMC')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'inlineT3IndirectRes') {   // round 4: an inline Type3 whose INDIRECT /Resources only the kept page reaches lists the removed form
+    const R = ctx.register(ctx.obj({ XObject: { Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font, T3: t3(R) }, XObject: { Fm1: form(ROUTE_PUBLIC) } }));
+    p2.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do BT /T3 12 Tf (a) Tj ET')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'extGStateInlineT3') {     // round 4: an inline Type3 in a drawn ExtGState's /Font array, resources = the shared dict
+    const S = ctx.nextRef();
+    ctx.assign(S, ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 }, ExtGState: { GS1: { Type: 'ExtGState', Font: [t3(S), 12] } } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/GS1 gs /Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'extGStateInlineT3Indirect') { // round 4: the same, in an INDIRECT ExtGState — reached by the copier hook
+    const S = ctx.nextRef();
+    const gs1 = ctx.register(ctx.obj({ Type: 'ExtGState', Font: [t3(S), 12] }));
+    ctx.assign(S, ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 }, ExtGState: { GS1: gs1 } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/GS1 gs /Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'contentResShadows') { // round 4: the content stream's /Fm1 shadows the page's — pdf.js draws the local one
+    const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('/Fm1 Do', { Resources: { XObject: { Fm1: form(ROUTE_PUBLIC) } } })));
+    p2.node.set(PDFName.of('Contents'), content('/Fm1 Do'));
+  } else if (shape === 'fieldDRKidDA') { // round 4 keep shape: the field holds /DR, only its widget holds the /DA naming /F1
+    const S = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+    const field = ctx.nextRef();
+    const w = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], P: p1.ref, Parent: field, DA: PDFString.of('/F1 9 Tf 0 g') }));
+    ctx.assign(field, ctx.obj({ FT: 'Tx', T: PDFString.of('name'), Kids: [w], DR: S }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([w]));
+    src.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [field] }));
+  } else if (shape === 'widgetDR' || shape === 'fieldDR') { // round 4: a kept widget's (or its field's) /DR IS the shared dict
+    const S = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+    const dr = { DR: S, DA: PDFString.of('/F1 0 Tf 0 g') };
+    const field = ctx.nextRef();
+    const w = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], P: p1.ref, Parent: field, ...(shape === 'widgetDR' ? dr : {}) }));
+    ctx.assign(field, ctx.obj({ FT: 'Tx', T: PDFString.of('name'), Kids: [w], ...(shape === 'fieldDR' ? dr : {}) }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([w]));
+    src.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [field] }));
   } else if (shape === 'brokenFormOwner') {      // as formOwnResIsShared, but the kept form cannot be decoded
     const res = ctx.nextRef();
     const fm1 = ctx.register(ctx.stream(new Uint8Array([1, 2, 3, 4, 5]), { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Filter: 'FlateDecode', Resources: res }));
@@ -745,6 +791,7 @@ describe('every resource owner, every category: nothing only a removed page draw
     'roundOneShared', 'formOwnResIsShared', 'annotApSharedRes', 'xobjectSubdictShared', 'extGStateSMask', 'type3Font',
     'parentResPlusOwnPartial', 'patternOwnResIsShared', 'resetFormFields', 'hideActionField',
     'directType3SharedRes', 'directType3InShared', 'inheritedFTActionField', 'inDesignActualText',
+    'inlineT3IndirectRes', 'extGStateInlineT3', 'extGStateInlineT3Indirect', 'contentResShadows', 'widgetDR', 'fieldDR',
   ].flatMap(shape => (['cut', 'standIn'] as const).map(mode => [shape, mode] as const)))('%s (%s)', async (shape, mode) => {
     const original = Buffer.from(await (await routeShape(shape)).save({ useObjectStreams: false })).toString('latin1');
     expect(original.includes(ROUTE_SECRET), 'control: the source carries the removed page\'s content').toBe(true);
@@ -988,5 +1035,63 @@ describe('M1 round 3 — the remaining review findings', () => {
     const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
     const out = await copyAndSave(src, [0]);
     expect(fileHas(await out.save({ useObjectStreams: false }), 'KEPTPAGEVALUE')).toBe(true);
+  });
+});
+
+describe('M1 round 4 — what a kept page draws through, the way pdf.js resolves it', () => {
+  const shared = async (build: (ctx: PDFDocument['context'], S: PDFRef, pages: PDFPage[]) => void) => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const pages = [d.addPage([300, 300]), d.addPage([300, 300])];
+    const S = d.context.nextRef();
+    pages.forEach(p => p.node.set(PDFName.of('Resources'), S)); // addPage gives each page a dictionary of its own
+    build(d.context, S, pages);
+    return PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+  };
+  const form = (ctx: PDFDocument['context'], body: string) => ctx.register(ctx.stream(body, { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300] }));
+  const saveOf = async (src: PDFDocument) => Buffer.from(await (await copyPruned(src, [0])).save({ useObjectStreams: false })).toString('latin1');
+
+  it('a Type3 font set by an ExtGState /Font draws from the page\'s resources, and what its glyph draws is kept (R4-C-1)', async () => {
+    const src = await shared((ctx, S, [p1, p2]) => {
+      const proc = ctx.register(ctx.stream('1000 0 d0 /ImK Do'));
+      const t3 = ctx.register(ctx.obj({ Type: 'Font', Subtype: 'Type3', FontBBox: [0, 0, 1, 1], FontMatrix: [0.001, 0, 0, 0.001, 0, 0], CharProcs: { a: proc },
+        Encoding: { Differences: [97, 'a'] }, FirstChar: 97, LastChar: 97, Widths: [1000] }));
+      ctx.assign(S, ctx.obj({ Font: { T3: t3 }, XObject: { ImK: form(ctx, '0 0 9 9 re f % GLYPHKEPT'), Fm2: form(ctx, '0 0 9 9 re f % SECRETFORM') },
+        ExtGState: { GS1: { Type: 'ExtGState', Font: [t3, 12] } } }));
+      p1.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('/GS1 gs BT 10 10 Td (a) Tj ET')));
+      p2.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('/Fm2 Do /ImK Do')));
+    });
+    const out = await saveOf(src);
+    expect(out.includes('GLYPHKEPT'), 'the form the glyph draws').toBe(true);
+    expect(out.includes('SECRETFORM')).toBe(false);
+  });
+
+  it('a content stream\'s own /Resources is merged over the page\'s, as pdf.js reads it — what it draws is kept (R4-C-2)', async () => {
+    const src = await shared((ctx, S, [p1, p2]) => {
+      const im1 = form(ctx, '0 0 9 9 re f % KEPTVIACS');
+      ctx.assign(S, ctx.obj({ XObject: { Im1: im1, Fm2: form(ctx, '0 0 9 9 re f % SECRETFORM') } }));
+      const fm0 = form(ctx, '/Im1 Do');
+      p1.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('/Fm0 Do', { Resources: { XObject: { Fm0: fm0 } } })));
+      p2.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('/Fm2 Do /Im1 Do')));
+    });
+    const out = await saveOf(src);
+    expect(out.includes('KEPTVIACS'), 'the form drawn through the content stream\'s resources').toBe(true);
+    expect(out.includes('SECRETFORM')).toBe(false);
+  });
+
+  it('a kept widget\'s /DR keeps the font its /DA names and drops what only the removed page draws (R4-S-2)', async () => {
+    const src = await routeShape('widgetDR');
+    const out = await copyPruned(src, [0]);
+    const widget = out.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).lookup(0, PDFDict);
+    const dr = widget.lookup(PDFName.of('DR'), PDFDict);
+    expect(dr.lookup(PDFName.of('Font'), PDFDict).has(PDFName.of('F1')), 'the font /DA names').toBe(true);
+    expect(dr.lookup(PDFName.of('XObject'), PDFDict).has(PDFName.of('Fm2')), 'the removed page\'s form').toBe(false);
+  });
+
+  it('a field\'s /DR keeps the font only its widget\'s /DA names — the /DA of every descendant counts', async () => {
+    const out = await copyPruned(await routeShape('fieldDRKidDA'), [0]);
+    const widget = out.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).lookup(0, PDFDict);
+    const dr = widget.lookup(PDFName.of('Parent'), PDFDict).lookup(PDFName.of('DR'), PDFDict);
+    expect(dr.lookup(PDFName.of('Font'), PDFDict).has(PDFName.of('F1'))).toBe(true);
+    expect(dr.lookup(PDFName.of('XObject'), PDFDict).has(PDFName.of('Fm2'))).toBe(false);
   });
 });

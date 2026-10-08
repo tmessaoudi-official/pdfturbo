@@ -779,7 +779,8 @@ export class ExportService {
   async assembledPageBox(pageIndex: number): Promise<{ x: number; y: number; width: number; height: number }> {
     const docPage = this._ctx.documentModel.pages[pageIndex];
     if (!docPage) throw new Error(`No page ${pageIndex} to assemble.`);
-    const pdfDoc = await this._assemblePdfDoc(undefined, [docPage]);
+    // Only the box is read, and nothing is saved, so the shared-resource prune (and its refusal) is not paid here.
+    const pdfDoc = await this._assemblePdfDoc(undefined, [docPage], { keepSharedResources: true });
     return pdfDoc.getPage(0).getCropBox();
   }
 

@@ -97,10 +97,33 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   (`keptFieldChain` now counts inline annotations).
 - **InDesign's `/Span<</ActualText<FEFF…>>> BDC` refused the export.** `readUntilBalanced` read the hex string's
   `>` as a dictionary close; it skips `<hex>` now. Found on the census report: 51 of its 67 pages refused.
-- **`reachableFromPages` is iterative** (a 20 000-object chain overflowed the stack), and the catalog / page-tree cut
-  applies with every page kept too — a copy never carries the document.
-- Measured cost: deleting the last of Publication 17's 142 pages took 3706 ms pruned vs 150 ms (load ~19);
-  recorded in the plan's § Fragile and `KNOWN_ISSUES.md`.
+- **`reachableFromPages` is iterative** (a 20 000-object chain overflowed the stack) and stops at the catalog and
+  the page-tree nodes. (The catalog / page-tree cut itself was already ungated before round 3 — this line said round 3
+  made it so, corrected at round 4.)
+- Measured cost: deleting the last of Publication 17's 142 pages took 3706 ms pruned vs 150 ms (load ~19, round-3
+  code); re-measured on the round-4 code, 6510 vs 1278 ms at load ~25 — the plan's § Fragile and `KNOWN_ISSUES.md`
+  carry the current figures.
+
+**Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
+- **An ExtGState `/Font [font size]`** sets the font like `Tf`; a Type3 font set that way with no resources of its own
+  draws from the current ones (`handleSetFont` passes them), so its glyphs' forms were dropped from a kept page. The
+  `gs` case now recurses into it.
+- **A content stream's own `/Resources`** (a PDF 1.1 shape) is merged over the page's by pdf.js
+  (`#getMergedResources`, `Dict.merge` with `mergeSubDicts`: the stream wins, and only two DIRECT sub-dictionaries
+  merge) — for a single stream only: an array `/Contents` becomes a `StreamsSequenceStream`, which has no dict. The
+  page's drawing is collected in that merged view (`mergeResources`), the stream's own dictionary is pruned against
+  the same drawing (`pageContent`), and a page entry counts as drawn only when the merged view resolves the name to
+  THAT entry — a stream's `/Fm1` shadows the page's, and keeping the page's by name leaked it.
+- **Inline owners anywhere**, not one level deep: `pruneNested` prunes every owner written inline inside a resources
+  entry (a Type3 font in an inline ExtGState's `/Font` array) and, in the copier hook, inside any object copied. And
+  an inline owner is pruned even when nothing else in the dictionary is shared — the early exit skipped an inline
+  Type3 font whose INDIRECT `/Resources` only the kept page reached but which listed the removed page's form.
+- **A field's or widget's `/DR`** names a resources dictionary (FPDF-style, the shared one) and was copied whole. It is
+  an owner now: it keeps what the `/DA` strings it serves name — its own (inherited through `/Parent`, then the
+  form's) and every descendant's. ASSUMED, not ruled.
+- What a direct dictionary with a `/Resources` key can be, besides a Type3 font: a page or a page-tree node (both cut
+  before the pruner runs). Anything else that shares resources with a left-out page cannot be read, and refuses.
+- The sign-rect box (`assembledPageBox`) assembles without the prune: it only reads the crop box (R4-K-3).
 
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
@@ -108,7 +131,10 @@ built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and pas
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePages.test.ts` (83 — round 3 adds the inline Type3 shapes, the inherited-`/FT`
+Guards: `tests/export/copySourcePages.test.ts` (100 — round 4 adds six route shapes ×2 modes (an inline Type3 with an
+indirect `/Resources`, one in an inline and one in an indirect ExtGState `/Font`, a shadowing content-stream
+`/Fm1`, a widget's and a field's `/DR`) and five cases (the ExtGState Type3 keep, the content-stream merge keep, the
+`/DR` keep for a widget and for a field whose `/DA` sits on its widget, and the sign-rect box); round 3 adds the inline Type3 shapes, the inherited-`/FT`
 action field and the InDesign ActualText page to the route table, plus five cases: colour spaces kept, a 20 000-chain,
 the catalog cut with every page kept, an inline widget's value kept, a self-drawing Type3 font refused; round 1: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept
 links through real pdf.js, self-`/P`, stand-in resolved and unresolved, byte-identity ×3, two through
@@ -148,7 +174,13 @@ the mask group draw); the tokenizer skipping instead of throwing → the 5 delim
 hex-in-dictionary cases — the one with a space before `>>` balances either way — and the InDesign route ×2); inline owners not pruned → 5; `/FT` not inherited → 2; colour spaces
 pruned again → exactly the colour-space case; inline widgets ignored → exactly that case; the cycle guard removed →
 GREEN, and explained: the recursion's RangeError is caught by `collect`'s tokenizer `try`, which already refuses, so
-the guard is pinned by OUTCOME only (the self-drawing font refuses either way).
+the guard is pinned by OUTCOME only (the self-drawing font refuses either way). Round 4, each landed, red on exactly
+its cases, restored with `cmp`: the ExtGState `/Font` recursion off → exactly the R4-C-1 keep case; the merge
+bypassed → the shadowing shape ×2 + the merge keep case; `/DR` not an owner → the 2 `/DR` shapes ×2 + both `/DR`
+keep cases; the early exit restored → exactly the indirect-`/Resources` Type3 shape ×2; the hook's `pruneNested` off →
+exactly the indirect-ExtGState shape ×2; the shadowing guard off → exactly the shadowing shape ×2; descendants' `/DA`
+not read → exactly the field keep case; arrays not walked → both ExtGState shapes ×2. The `assembledPageBox` opt-out
+reds its case when removed (the box call refuses).
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

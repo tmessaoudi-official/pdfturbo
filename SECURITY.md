@@ -63,8 +63,9 @@ reading the code. Both are said plainly instead of implied to be measured.
 > states. FPDF writes one such dictionary for the whole file, and FPDI's templates carry it on their own forms
 > [Verified: setasign FPDI `FpdfTplTrait` writes `/Resources 2 0 R`], so it reaches a kept page through the page,
 > a form or pattern it draws, an annotation's appearance or a Type3 font. Wherever a kept page, form, pattern,
-> appearance or font shares resources with a removed page, the export keeps only the entries it draws — the way
-> pdf.js reads it. When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
+> appearance, font or form field's default resources shares resources with a removed page, the export keeps only the
+> entries it draws — the way pdf.js reads it, including a font set through a graphics state and a page whose content
+> stream carries resources of its own. When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
 > message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
 > is pinned by a test that finds the removed page's text in the source and not in the export
 > (`tests/export/copySourcePages.test.ts`, `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
@@ -73,7 +74,8 @@ reading the code. Both are said plainly instead of implied to be measured.
 > work. Three residues are kept by design, because the kept page needs the object they live in: a **font** shared
 > with a removed page keeps that page's glyph shapes and its character map, so which characters the removed page
 > used (not their order) can be read from the font; the **names of layers** a removed page alone uses stay in the
-> file's layer settings; and **colour spaces** are copied whole. See `KNOWN_ISSUES.md`.
+> file's layer settings; and **colour spaces** are copied whole, with whatever they reference — a valid colour space
+> references nothing that draws, but a malformed one carrying another key can carry what that key names. See `KNOWN_ISSUES.md`.
 
 | Tool | Content is… | Notes |
 |---|---|---|

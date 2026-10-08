@@ -82,17 +82,20 @@ work in a private/incognito window when editing sensitive documents on a shared 
   /Dests`) lives on the catalog, which is never copied, so such a link points nowhere — it does not leak, and it
   does not work. Links by page reference land on the right export page.
 - **What the reference cut covers is what was measured.** Links, form fields (siblings, and fields an action names),
-  annotation replies, orphan page dictionaries, the catalog and page tree, and resources shared through the page,
-  its forms, patterns, appearances and Type3 fonts — each pinned in `tests/export/copySourcePages.test.ts`. A
+  annotation replies, orphan page dictionaries, the catalog and page tree, and resources shared through the page
+  (and its content stream's own resources), its forms, patterns, appearances, Type3 fonts (including one set through
+  a graphics state or written inline) and form fields' default resources (`/DR`) — each pinned in `tests/export/copySourcePages.test.ts`. A
   carrier reached some other way is not ruled out; `SECURITY.md` states the same bound.
 - **What a kept page still carries from a left-out one, by design.** A font both pages draw keeps its whole subset
   and its ToUnicode map, so the SET of characters the left-out page used is recoverable from the font (not their
   order or position). The layer settings (`/OCProperties`) are copied whole, so a layer name only the left-out page
-  uses is in the file. Colour spaces are never pruned: pdf.js resolves a colour-space name outside `cs`/`CS` (a
+  uses is in the file. Colour spaces are never pruned, and are copied with whatever they reference (a malformed one
+  with an extra key can carry what it names): pdf.js resolves a colour-space name outside `cs`/`CS` (a
   shading's own `/ColorSpace`, an Indexed or Separation base), so pruning one recoloured kept pages, while a colour
   space draws nothing.
 - **Leaving a page out costs time.** The prune reads every owner that shares resources with a left-out page:
-  deleting the last page of a 142-page corpus file took 3.7 s against 0.15 s without it (measured at load ~19).
+  deleting the last page of a 142-page corpus file took 6.5 s against 1.3 s without it, the 67-page census report
+  1.3 s against 0.3 s (round-4 code, 2026-10-08, machine load ~25 — absolute times scale with load, the ratio less).
 - **The catalog and page tree are never copied by reference, even with every page kept.** A signature's
   `/Reference` to the whole document loses that target in every export; the document is rebuilt, never carried.
 

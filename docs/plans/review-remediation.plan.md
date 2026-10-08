@@ -21,6 +21,9 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 04:39] ASSUMED (review): M1 round 2: references to the source catalog and to page-tree nodes are cut, and every /AcroForm field node off a kept widget's /Parent chain is cut (only when some page is left out) - because a signature /Reference /Data and ResetForm/Hide actions carried the whole document or a removed page's field value. Alternative: cut only the two measured action shapes.
 - [2026-10-08 04:39] ASSUMED (review): M1 round 2: tokenizeContentStream throws on a stray top-level delimiter instead of looping forever - because the prune put it on every PDF export and a malformed stream froze the tab; true-edit callers already fail closed on a throw. Alternative: skip the byte (silently changes what true-edit reads).
 - [2026-10-08 05:48] ASSUMED (review): M1 round 3: /ColorSpace is NOT pruned (reversing the round-2b entry's category list) - because pdf.js resolves colour-space names outside cs/CS (a shading's /ColorSpace, an Indexed or Separation base, an alias), so pruning recoloured kept pages, while a colour space draws no content; disclosed in SECURITY.md and KNOWN_ISSUES. Alternative: model every pdf.js colour-space lookup.
+- [2026-10-08 06:54] ASSUMED (review): M1 round 4: a field's or widget's /DR is pruned like any owner, keeping what the /DA strings it serves name (its own, inherited through /Parent then the AcroForm's, and every descendant's) - because /DR named the FPDF shared dictionary and carried a removed page's forms (R4-S-2), and a viewer only builds appearances from fonts /DA names. Alternatives: drop /DR entirely (breaks appearance regeneration); disclose as uncovered.
+- [2026-10-08 06:54] ASSUMED (review): M1 round 4: a single content stream's own /Resources is read the way pdf.js merges it (stream wins, only two direct sub-dictionaries merge; an array /Contents is not merged) and a page entry shadowed by the stream's counts as not drawn - because pruning against page resources alone blanked a kept page (R4-C-2) and keeping by name leaked the shadowed entry. Alternative: refuse any page whose content stream has /Resources.
+- [2026-10-08 06:54] ASSUMED (review): M1 round 4: the sign-rect box (assembledPageBox) assembles without the shared-resource prune - because it only reads the crop box, saves nothing, and the prune's refusal turned a pick into a fallback (R4-K-3). Alternative: keep it and disclose the cost.
 
 ## Formal Plan
 
@@ -44,7 +47,7 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
 | 1 | Qualify the three SECURITY.md rows SEC-1 refutes (Redaction, Delete page, Extract page range) with an open-issue note and a working workaround (KNOWN_ISSUES holds no open defects by its own definition, so no entry there); record the review rulings and the architecture plan | S | done | ea1f0c3 | SECURITY.md, docs/plans/** |
-| 2 | SEC-1 fix: red fixtures first (GoTo /Dest, shared field /Kids) at the copySourcePages seam and through the real export for redaction, delete page and extract range; then cut references to excluded pages, sweep, byte no-op on clean documents; sabotage; restore the SECURITY.md rows | M | doing | - | src/export/copySourcePages.ts, src/export/exportService.ts, tests/** |
+| 2 | SEC-1 fix: red fixtures first (GoTo /Dest, shared field /Kids) at the copySourcePages seam and through the real export for redaction, delete page and extract range; then cut references to excluded pages (answered in the copier, so nothing is copied and no sweep is needed), byte no-op on clean documents; sabotage; restore the SECURITY.md rows | M | doing | - | src/export/copySourcePages.ts, src/export/exportService.ts, tests/** |
 | 3 | TEST-1: replace the raw NUL byte in src/core/undoRedoController.ts:45 with the escape, and forbid raw control bytes in src/ with a source-level test | S | todo | - | src/core/undoRedoController.ts, tests/tools/** |
 | 4 | TEST-2: setFormXObjectContent (contentStreamEditor.ts ~1069) swallows every error and its 3 callers report a successful true-edit — surface the failure so the caller falls back honestly | S | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 | 5 | TEST-3: the bare catch at exportService.ts ~832 ("no form fields") also hides form.flatten() failures — narrow it so Flatten & download never ships live fields silently | S | todo | - | src/export/exportService.ts, tests/** |
@@ -61,7 +64,11 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
   when a page is left out, the prune also walks everything the left-out pages reach once and tokenizes the content
   of every owner that shares resources with them. Measured by the round-3 panel at load ~19 on the 916547c..4b175bc
   code: Publication 17 (142 pages), last page deleted, 3706 ms pruned vs 150 ms unpruned; one page downloaded 84 vs
-  13 ms; the GPT-3 paper 360 vs 46 ms. Bounded, and nothing is read where nothing is shared; not optimised.
+  13 ms; the GPT-3 paper 360 vs 46 ms. Re-measured on the round-4 code at load ~25 (corpus probe, one file per
+  process): Publication 17 delete-last 6510 vs 1278 ms, the census report 1291 vs 292 ms, GPT-3 476 vs 1209 ms; on all
+  15 corpus files the pruned and unpruned outputs are the same size and every compared kept page's pdf.js operator
+  list is identical (the corpus shares nothing with a deleted last page or with the pages a single-page download
+  leaves out, so this proves the prune neutral there, not the collector right on real sharing). Bounded; not optimised.
 - `secretsIn` in `tests/export/copySourcePages.test.ts` scans raw streams only (M1-S5): a string leak (`/V`,
   `/Contents`) is invisible to it, which is why every string-shaped case uses `fileHas`. Keep it that way.
 ### Known issues
