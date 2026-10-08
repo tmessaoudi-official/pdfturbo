@@ -230,8 +230,8 @@ regressions of round 7's own fixes, and 8 doc items; fixed by class, then M1 cer
 The 6C check after the round-8 commit found one regression of round 8's own: the upward field walk ran first and
 marked every `/Fields` root, so the walk down skipped their kids and an FT-less branch holding a value under a typed
 sibling was copied (the round-7 class again). The ancestors are now a SEPARATE set, built LAZILY — only when a
-dictionary carrying a field key (Tables 220/222: `/T`, `/TU`, `/TM`, `/Ff`, `/V`, `/DV`, `/RV`, `/DA`, `/Q`, `/Opt`,
-`/MaxLen`, `/AA`, `/DR`) and no `/Subtype` is copied and is no field otherwise (`foreignField` runs last in the hook, so
+dictionary carrying a field key (Tables 220/222: `/T`, `/TU`, `/TM`, `/Ff`, `/V`, `/DV`, `/RV`, `/DA`, `/DS`, `/Q`,
+`/Opt`, `/TI`, `/I`, `/MaxLen`, `/AA`, `/DR`, `/Lock`, `/SV`) and no `/Subtype` is copied and is no field otherwise (`foreignField` runs last in the hook, so
 the catalog's `/AA` never triggers it) —
 because reading every object cost 350 ms and more on Publication 17 (71 413 objects, no fields), on every single-page
 copy. The same check widened the `rasterOnly: true` guard to all of `src/` (the app's delegator to the signer can pass

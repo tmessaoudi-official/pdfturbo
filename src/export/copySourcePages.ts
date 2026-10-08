@@ -518,7 +518,7 @@ function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): { ref
 const PRUNED = ['XObject', 'Pattern', 'Shading', 'ExtGState', 'Font', 'Properties'] as const;
 type Category = (typeof PRUNED)[number];
 const STANDARD_CATEGORIES = new Set<string>([...PRUNED, 'ColorSpace', 'ProcSet']);
-const FIELD_KEYS = ['T', 'TU', 'TM', 'Ff', 'V', 'DV', 'RV', 'DA', 'Q', 'Opt', 'MaxLen', 'AA', 'DR'];
+const FIELD_KEYS = ['T', 'TU', 'TM', 'Ff', 'V', 'DV', 'RV', 'DA', 'DS', 'Q', 'Opt', 'TI', 'I', 'MaxLen', 'AA', 'DR', 'Lock', 'SV'];
 const UNDRAWN = new Set(['PieceInfo', 'Thumb', 'DPart', 'Alternates', 'Metadata', 'AF', 'PtData']);
 type Drawn = Record<Category, Set<string>>;
 const noneDrawn = (): Drawn => ({ XObject: new Set(), Pattern: new Set(), Shading: new Set(), ExtGState: new Set(), Font: new Set(), Properties: new Set() });
