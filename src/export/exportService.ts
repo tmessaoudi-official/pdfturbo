@@ -260,6 +260,7 @@ const SAVE_DOCX: SaveFileType = {
  * retry that can never succeed (WS7 round 15). Any other failure keeps the caller's key. */
 function failureKey(err: unknown, fallback: string): string {
   if (err instanceof Error && err.name === 'ExportLayersConflictError') return 'toast.exportLayersConflict';
+  if (err instanceof Error && err.name === 'ExportResourcesUnreadableError') return 'toast.exportResourcesUnreadable';
   return isPdfLoadRefusal(err) ? 'toast.pdfLoadRefused' : fallback;
 }
 
@@ -445,7 +446,8 @@ export class ExportService {
     if (target === 'cancelled') return;
     const _prog = progress.begin('progress.compressing');
     try {
-      const assembled = await this.assemblePdfBytes();
+      // Flatten to images writes only renders, so it assembles without the prune — the way out of its refusal.
+      const assembled = await this.assemblePdfBytes(opts.mode === 'lossy' ? { rasterOnly: true } : undefined);
       const onStep = (d: number, t: number) => _prog.setFraction(t ? d / t : null);
       const out = opts.mode === 'lossy'
         ? await this._compressLossy(assembled, opts, onStep)
@@ -752,14 +754,18 @@ export class ExportService {
    * Encryption is intentionally NOT applied: the signer needs a plain byte
    * stream to compute its /ByteRange, and encrypt-then-sign is out of v1 scope.
    *
+   * `rasterOnly` is for a caller that only ever RENDERS these bytes and writes the pixels (Compress → flatten to
+   * images): it skips the shared-resources prune, which can refuse (M1-S1), because a render shows only what a page
+   * draws. Never pass it for bytes that leave the app.
+   *
    * @throws {Error} when no document is loaded.
    */
-  async assemblePdfBytes(): Promise<Uint8Array> {
+  async assemblePdfBytes(opts?: { rasterOnly?: boolean }): Promise<Uint8Array> {
     if (!this._ctx.documentModel.pageCount) {
       throw new Error('No document loaded to assemble.');
     }
     this._ctx.cleanEmptyTextElements();
-    const pdfDoc = await this._assemblePdfDoc();
+    const pdfDoc = await this._assemblePdfDoc(undefined, undefined, { keepSharedResources: opts?.rasterOnly });
     return pdfDoc.save({ useObjectStreams: false });
   }
 
@@ -787,7 +793,7 @@ export class ExportService {
   private async _assemblePdfDoc(
     onPage?: (done: number, total: number) => void,
     pagesSubset?: import('../core/documentModel').DocumentPage[],
-    opts?: { flattenAllForms?: boolean; cleanMetadata?: boolean },
+    opts?: { flattenAllForms?: boolean; cleanMetadata?: boolean; keepSharedResources?: boolean },
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     const { documentModel, elements, reportError, formValues } = this._ctx;
     const docPages = pagesSubset ?? documentModel.pages;
@@ -846,7 +852,7 @@ export class ExportService {
         if (skipped) this._ctx.reportError.warn('toast.flattenAnnotationsSkipped', { count: skipped });
       }
 
-      // Pre-copy all needed pages from each source (one copyPages call per source).
+      // Pre-copy all needed pages from each source (one copySourcePages call per source).
       //
       // REDACTION LEAK FIX (P0) — do NOT remove this filter. A redaction-bearing page must not be
       // pre-copied: it takes the rasterise branch below and its copy is never `addPage`d, but pdf-lib
@@ -860,6 +866,9 @@ export class ExportService {
       // end-to-end" — that was wrong, and wrong because the test's own scan was inert: pdf.js's
       // `getDocument({ data })` TRANSFERS the buffer, so scanning the same `Uint8Array` afterwards reads
       // zero bytes and always answers "clean". The scan now slices, and refuses an empty buffer.
+      //
+      // The filter alone is not enough: a COPIED page that references the redacted one carried it back through
+      // the reference (SEC-1, 2026-10-08), which `copySourcePages` now answers instead of following.
       //
       // Keyed on the DOC PAGE, not the source index, so a source page used twice — once redacted,
       // once not — is still copied for the clean instance: the filter keeps any index that at least
@@ -884,7 +893,7 @@ export class ExportService {
             .filter(p => p.sourcePdfId === id && pageHasRedaction(p))
             .map(p => p.sourcePageNum - 1)
         )];
-        const { pages, ocProperties, standIns } = await copySourcePages(pdfDoc, srcDoc, indices, { standIns: redacted });
+        const { pages, ocProperties, standIns } = await copySourcePages(pdfDoc, srcDoc, indices, { standIns: redacted, pruneSharedResources: !opts?.keepSharedResources });
         indices.forEach((idx: number, i: number) => copiedPages.set(`${id}:${idx}`, pages[i]));
         standIns.forEach((ref, idx) => pendingStandIns.set(`${id}:${idx}`, ref));
         if (ocProperties) layered.push({ id, ocProperties });
@@ -984,7 +993,7 @@ export class ExportService {
       if (hasRedaction) {
         await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageIdx + 1, documentModel.pageCount);
       } else {
-        const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDocLib, [docPage.sourcePageNum - 1]);
+        const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDocLib, [docPage.sourcePageNum - 1], { pruneSharedResources: true });
         pdfDoc.addPage(page);
         if (ocProperties) await carryLayers(pdfDoc, ocProperties);
         await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageIdx + 1, documentModel.pageCount);

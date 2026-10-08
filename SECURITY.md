@@ -36,11 +36,13 @@ Security concerns most relevant to this project:
 
 Several tools make content *stop being visible*. Only some make it *stop being in the file*. If you are
 removing something confidential, the difference is the only thing that matters — so here is every
-surface, graded. Rows marked **[pinned]** have a test in `tests/browser/hide-vs-remove.browser.test.ts`
-that builds a file, performs the operation, and tries to recover the content with pdf.js. Two of those
-(shape, redaction) drive the real export bake; the others exercise the underlying operation directly, so
-they prove the mechanism behaves as described rather than that every export path invokes it. Unmarked
-rows were established by reading the code. Both are said plainly instead of implied to be measured.
+surface, graded. Rows marked **[pinned]** have a test that builds a file, performs the operation, and tries to
+recover the content — with pdf.js in `tests/browser/hide-vs-remove.browser.test.ts`, or, for the cross-page shapes
+in the note below, by scanning the exported file's bytes in `tests/export/copySourcePages.test.ts` and
+`tests/browser/redaction-orphan-leak.browser.test.ts`. Some of those drive the real export assembly (shape,
+redaction, and the cross-page shapes); the others exercise the underlying operation directly, so they prove the
+mechanism behaves as described rather than that every export path invokes it. Unmarked rows were established by
+reading the code. Both are said plainly instead of implied to be measured.
 
 > **A page that linked to a removed page used to carry it back (found 2026-10-07, fixed 2026-10-08).** When a page
 > you kept referred to a page you removed — redacted, deleted, or left outside an extracted range — through an
@@ -52,15 +54,26 @@ rows were established by reading the code. Both are said plainly instead of impl
 > exported pages. The same fix repaired internal links in general — every one of them used to open page 1 — and
 > stopped an annotated page from being stored twice. The cross-page shapes are pinned in
 > `tests/export/copySourcePages.test.ts` and `tests/browser/redaction-orphan-leak.browser.test.ts`.
+>
+> **The shapes it covers, and the one way it refuses.** Besides links and form-field boxes, a removed page reached a
+> kept one three more ways, all closed the same day: a form field whose *sibling* field (same parent, boxes only on
+> the removed page) held a typed value; a page dictionary left outside the page tree by an export made before the
+> fix; and — common in files produced by FPDF/FPDI-style tools — a `/Resources` dictionary that both pages share or
+> inherit, which lists the removed page's images and forms. For that last shape the export keeps only what the kept
+> pages actually draw. When a kept page's drawing cannot be read, so what it draws is unknown, the PDF exports
+> **refuse** with a message rather than guess; **Compress → flatten to images** still works on such a document,
+> because its output holds only pictures of the pages. Not covered, and stated: a link that names its target by a
+> *named destination* is not carried into any export (the name table is not copied), so it is dead rather than
+> leaking; and the scan pins only the shapes listed here.
 
 | Tool | Content is… | Notes |
 |---|---|---|
 | **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Web links on that page (`http`, `https`, `mailto`) that meet no redaction are re-created on the image page, where they were drawn (since 2026-09-25); a link that meets a redaction, a link with any other scheme, and a link to another page are not. Applies to a page from a real PDF; see the note below on **blank** pages, on the CSV/Excel and OCR exports, on **vertical (top-to-bottom) text**, and on **source annotations** (a note, stamp or form field under a redaction is now removed with it). |
-| **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied, and a link or form field on a kept page that points to it is cut rather than followed (since 2026-10-08). |
+| **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied, a link or form field on a kept page that points to it is cut rather than followed, and a resources dictionary a kept page shares with it keeps only what the kept page draws (since 2026-10-08 — see the note above, including when the export refuses). |
 | **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. Unlike *replacing* text — which can decline on fonts it cannot redraw — deleting is font-agnostic: it blanks the operator that draws the text, so nothing needs drawing. |
 | **Compress → flatten to images** | **removed** | The **flatten-to-images** setting only; "lossless optimise" and "shrink images" keep all text, and "shrink images" re-saves each photo whole, including any part a crop hides. Rasterises every page, so it is redaction's grade applied document-wide. |
 | **Export page as image** (PNG/JPEG) | **removed** | Rasterises the page, so only what you can see survives. |
-| **Extract page range** | **removed** | Like deleting pages: the new file is built from copied pages, so pages outside the range are never in it — a reference to one is cut, not followed (since 2026-10-08; pinned through the same assembly as Delete page). |
+| **Extract page range** | **removed** | **[pinned]** Like deleting pages: the new file is built from copied pages, so pages outside the range are never in it — a reference to one is cut, not followed, and a resources dictionary shared with one keeps only what the extracted pages draw (since 2026-10-08; pinned through the same assembly as Delete page). |
 | **Crop** | *hidden only* | A view setting. See below. |
 | **Shape / rectangle over text** | ***not even hidden*** | **[pinned]** See below — this is the one that catches people. |
 | **Highlight** | *not hidden* | A semi-transparent annotation drawn over the text. |

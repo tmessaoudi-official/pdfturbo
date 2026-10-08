@@ -1,13 +1,15 @@
 /**
  * The redaction promise, checked at the BYTE level — because every other way of checking it lies.
  *
- * TWO confirmed leaks, both live, both proven by reverting the fix and watching this file fail:
+ * THREE confirmed leaks, each proven by reverting its fix and watching this file fail (the third added 2026-10-08):
  *
  *  1. A redaction on a BLANK page never reached the rasteriser (the `blank` branch is checked before
  *     `hasRedaction`), so it was an opaque vector rect drawn over live, fully extractable overlay text.
  *  2. `_assemblePdfDoc` pre-copied every needed page, including redaction-bearing ones whose copy is
  *     never `addPage`d. pdf-lib does not garbage-collect, so the un-redacted page still got serialised —
  *     invisible to `getTextContent()` (not in `/Pages`), recoverable from the raw bytes.
+ *  3. SEC-1: a page that WAS copied carried the redacted page back through a reference — a link, a form field
+ *     spanning both pages, or a `/Resources` dictionary the two pages share (see the SEC-1 block below).
  *
  * #2 was briefly recorded as "could not reproduce end-to-end". That conclusion was an artefact of THIS
  * FILE: `getDocument({ data })` transfers the buffer to the pdf.js worker, so the scan ran over zero
@@ -227,10 +229,25 @@ describe('AUDIT — a redaction on a BLANK page removes the overlay text under i
  * holds, so a contents-page link (`/Dest`) or a form field whose widgets span both pages carried the un-redacted page
  * in whole. Ruled 2026-10-08: the link lands on the redacted page's IMAGE page instead; a widget of that page is cut.
  */
-async function linkedSource(via: 'link' | 'field'): Promise<Uint8Array> {
+async function linkedSource(via: 'link' | 'field' | 'shared'): Promise<Uint8Array> {
   const { PDFDocument, PDFName, PDFString, StandardFonts, rgb } = await import('@cantoo/pdf-lib');
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
+  if (via === 'shared') {
+    // M1-S1 (FPDF/FPDI style): both pages draw a Form XObject from ONE /Resources dictionary, so copying page 1
+    // as it is would carry page 2's form — and the secret under page 2's redaction — in that shared dictionary.
+    const ctx = doc.context;
+    const form = (text: string) => ctx.register(ctx.stream(`BT /F1 9 Tf 20 ${H - 60} Td (${text}) Tj ET`, {
+      Type: 'XObject', Subtype: 'Form', BBox: [0, 0, W, H],
+    }));
+    const resources = ctx.register(ctx.obj({ Font: { F1: font.ref }, XObject: { Fm0: form('Contents: see page 2'), Fm1: form(SECRET) } }));
+    [0, 1].forEach(i => {
+      const p = doc.addPage([W, H]);
+      p.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(`/Fm${i} Do`)));
+      p.node.set(PDFName.of('Resources'), resources);
+    });
+    return doc.save({ useObjectStreams: false });
+  }
   const p1 = doc.addPage([W, H]);
   p1.drawText('Contents: see page 2', { x: 20, y: H - 60, size: 9, font });
   const p2 = doc.addPage([W, H]);
@@ -305,5 +322,17 @@ describe('SEC-1 — a page that references the redacted page does not carry it b
 
   it('a form field with a widget on the redacted page: no copy of it in the bytes', async () => {
     expect(leaks(await assembleTwoPages(await linkedSource('field'), redactPage2()))).toBe(false);
+  });
+
+  it('control: a resources dictionary shared with the redacted page holds its text when nothing is redacted', async () => {
+    expect(leaks(await assembleTwoPages(await linkedSource('shared'), []))).toBe(true);
+  });
+
+  it('a /Resources dictionary shared with the redacted page: no copy of its form in the bytes (M1-S1)', async () => {
+    const out = await assembleTwoPages(await linkedSource('shared'), redactPage2());
+    expect(leaks(out), 'the redacted page\'s form must not ride in on the shared dictionary').toBe(false);
+    const pdf = await pdfjsLib.getDocument({ data: out.slice(0) }).promise;
+    const kept = (await (await pdf.getPage(1)).getTextContent()).items.map(i => ('str' in i ? i.str : '')).join('');
+    expect(kept, 'the kept page still draws its own form').toContain('Contents: see page 2');
   });
 });

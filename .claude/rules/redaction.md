@@ -5,6 +5,8 @@ paths:
   - "src/export/opStreamWalker.ts"
   - "src/export/pdfElementRenderer.ts"
   - "src/export/formHiddenText.ts"
+  - "src/export/copySourcePages.ts"
+  - "tests/export/copySourcePages.test.ts"
   - "src/utils/geometry.ts"
   - "src/utils/flowDoc.ts"
   - "tests/browser/*redaction*"
@@ -16,7 +18,7 @@ paths:
 
 # pdfturbo gotchas — redaction
 
-Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: redaction burns, the hide-vs-remove audit, coordinate frames, Form XObjects, annotations under a burn. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
+Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: redaction burns, the hide-vs-remove audit, coordinate frames, Form XObjects, annotations under a burn, references to removed pages. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
 
 ### A removed page rode back in on a reference — SEC-1 (review 2026-10-07, fixed 2026-10-08)
 
@@ -42,16 +44,52 @@ listed only on an excluded page → one cut marker that `rewritePageRefs` remove
 page and the file, a `/Kids` entry is removed, an array element becomes null, a key is deleted). Ruled by the
 developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
 
-**Fixture trap, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js sends
-an orphan link there too. Aim every link assertion at a page other than the first.
+**Round 2 — the milestone panel found five more routes to the same leak (2026-10-08):**
+- **Shared or inherited `/Resources`** (FPDF/FPDI): the kept page's resources dictionary lists the removed page's
+  forms and images. Ruled: prune `/XObject`, `/Pattern`, `/Shading` to what the kept users of that dictionary DRAW
+  (`Do`, a pattern name before `scn`/`SCN`, `sh`), recursing into every form they draw that has no `/Resources` of
+  its own; the pruned clone is built before the copy and the source is never mutated. A kept page whose content
+  cannot be decoded or tokenised → `ExportResourcesUnreadableError` (`toast.exportResourcesUnreadable`), fail
+  closed. Opt-in (`pruneSharedResources`) for the PDF outputs only — `_assemblePdfDoc` and `downloadPage`; a
+  render shows only what a page draws. **Compress → flatten to images** assembles with `assemblePdfBytes({
+  rasterOnly: true })`, which skips the prune, so the refusal's suggested way out cannot itself refuse — it was
+  going to, because Compress assembles first. Byte-identical unless a page is left out AND something undrawn is
+  carried.
+- **Sibling fields**: a kept widget's `/Parent` chain brings its ancestors, whose `/Kids` name a sibling field
+  holding the removed page's typed `/V`. Every child of a chain field that is neither on a kept chain nor a kept
+  widget is cut.
+- **Orphan page dictionaries** (what a pre-fix export left behind, outside `/Pages`): any `/Type /Page` reached by a
+  reference is cut, not only those in the source page tree.
+- **Step 1 removed every annotation whose GoTo pointed at a cut page**, not only links — a button with a GoTo action
+  vanished. It is `/Subtype /Link` only now; other annotations keep their place and lose the key.
+- **Housekeeping**: an indirect `/Kids` array is recognised as one (it held a null); dropped links are deleted
+  after every page has dropped them, and a reference to one (an `/IRT` reply, a `/Popup` `/Parent`) is cut too.
 
-Guards: `tests/export/copySourcePages.test.ts` (16: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept links through
-real pdf.js, self-`/P`, stand-in resolved and unresolved, byte-identity ×3, and two through `_assemblePdfDoc`) and the
-SEC-1 block in `tests/browser/redaction-orphan-leak.browser.test.ts` (3: control, link to the redacted page opens its
-image page, shared field). Sabotage, each landed, red on exactly its cases, restored with `cmp`: excluded page
+**Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
+sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
+built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and passed against the unfixed code; the
+raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
+(`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
+
+Guards: `tests/export/copySourcePages.test.ts` (37 — round 1: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept
+links through real pdf.js, self-`/P`, stand-in resolved and unresolved, byte-identity ×3, two through
+`_assemblePdfDoc`; round 2: shared and inherited resources, the refusal, every page kept byte-identical, a form drawn
+through a form kept, the sibling-field `/V`, `/IRT` to a removed note, an orphan page dictionary, a non-link GoTo
+kept, a link on two kept pages, an indirect `/Kids`, an extract range, a reply to a dropped link, and the entry-point
+wiring — Download, its refusal, the raster-only assembly, Compress ×3 modes, single-page download and its toast) and
+the SEC-1 block in `tests/browser/redaction-orphan-leak.browser.test.ts` (5: control, link to the redacted page opens
+its image page, shared field, shared-resources control, shared resources under a real redaction). The signer's
+`signErrorKey` maps the new error like the layers conflict and, like it, is not pinned by a test. Sabotage, each landed, red on exactly its cases, restored with `cmp`: excluded page
 followed → the 4 link/chain/assembled cases; excluded annotations followed → exactly the field case; kept page
 re-copied → the 4 kept-link and self-`/P` cases; stand-ins never resolved → exactly the browser link case; redacted
-pages not passed as stand-ins → exactly the browser link case (link dropped instead of retargeted).
+pages not passed as stand-ins → exactly the browser link case (link dropped instead of retargeted). Round 2: prune
+off → 8 jsdom + exactly the browser shared case; no recursion into drawn forms → exactly the form-through-a-form
+case; no refusal → the 3 refusal cases; sharing never detected → the same 8 as prune off; no field cut → exactly the
+sibling case; orphan page dictionaries copied → exactly that case (`tsc` rejects the unused helper, vitest runs it);
+step 1 on any subtype → exactly the button case; indirect `/Kids` unrecognised → exactly that case; dropped links
+not cut → exactly the `/IRT` reply case (green until that case existed); `_assemblePdfDoc` unwired, or always raster-
+only → the 2 Download cases; `downloadPage` unwired → its 2 cases; lossy Compress not raster-only → exactly its case;
+the toast mapping removed → exactly the single-page refusal case.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 
@@ -681,7 +719,8 @@ remaining rows come from code reading. The grades are a user-facing table in `SE
 not removing"* (which absorbed and kept the crop § rather than replacing it). **Say which is which** —
 the first draft of that table claimed every row was test-pinned, and a reviewer refuted it.
 
-**Verdict: six surfaces genuinely REMOVE** — redaction (rasterises), page delete (never copied),
+**Verdict: six surfaces genuinely REMOVE** — redaction (rasterises), page delete (never copied — and, since SEC-1
+on 2026-10-08, never carried back by a kept page's reference either; until then it was, see the SEC-1 entry),
 extract-page-range (same mechanism), compress→**flatten-to-images** (rasterises; the *lossless* setting
 does not), export-page-as-image (rasterises), and **true-edit delete**, which is the only one that removes
 surgically: it blanks the show op, so the string leaves the content stream while *the rest of the page

@@ -318,8 +318,10 @@ describe('AUDIT — deleting a page removes its bytes', () => {
       const pg = src.addPage([W, H]);
       pg.drawText(label, { x: 32, y: 200, size: 12, font });
     }
-    // The export assembles from COPIED pages, so a page the user deleted is simply never copied —
-    // this is the one surface where "removed" is structurally true rather than a promise to check.
+    // The export assembles from COPIED pages, so a page the user deleted is never copied ON ITS OWN. This pins
+    // the mechanism with `copyPages` and an unreferenced page only: a kept page that REFERENCES the deleted one
+    // (a link, a shared form field or resources dictionary) carried it back until SEC-1 (2026-10-08) — those
+    // shapes are pinned through `copySourcePages` in tests/export/copySourcePages.test.ts.
     const target = await PDFDocument.create();
     const [keep] = await target.copyPages(src, [0]);
     target.addPage(keep);
