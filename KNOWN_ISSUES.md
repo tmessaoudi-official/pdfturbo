@@ -71,6 +71,14 @@ work in a private/incognito window when editing sensitive documents on a shared 
   parses and creates. It voids itself when npm reports a fix or the date passes. Detail: `CLAUDE.md` § Git & CI (fifth occurrence) and
   `.claude/rules/signing.md`.
 
+### From TEST-3 — a form field pdf-lib cannot place is dropped by a flatten (2026-10-08)
+
+- A widget pdf-lib can give an appearance to but cannot place — no `/Rect` with its `/AP` kept, or listed on no page —
+  does not make `form.flatten()` throw: pdf-lib logs it, draws nothing and still removes the field, so its value
+  leaves the flattened copy [measured by a probe; not pinned by a test]. pdf.js shows neither shape [Inferred: such a
+  widget has no rect or no page to draw on]. A form pdf-lib cannot flatten at all now fails the export instead. Detail:
+  `.claude/rules/export.md` § "Form flattening (#62)", the TEST-3 paragraph.
+
 ### From SEC-1 — pages left out of an export (2026-10-08)
 
 - **An export can refuse.** When a page you keep shares its resources (images, forms, fonts, graphics states) with a
