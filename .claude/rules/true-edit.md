@@ -165,7 +165,8 @@ An edit whose target lives inside a Form XObject is written by `setFormXObjectCo
 `catch { /* silently ignore — falls through to overlay */ }` and returned nothing — and none of its seven call
 sites (`deleteTextAt`, `changeSizeAt`, `changeColorAt`, `addDecorationAt`, Path 1, Path 2, Path 3 of
 `replaceTextAt`) could fall through to anything: each returned `true` after it. So a write that threw left the
-file unchanged while the editor saved it as a new revision and toasted "edited". The comment described the
+file unchanged while the editor saved it as a new revision and toasted "edited" [Inferred: by reading
+`textEditHandler.commit`, not reproduced]. The comment described the
 intended contract and nothing implemented it. It now returns whether the stream was written (its early returns
 included); `writeBack` passes that through, and every site returns it. `setPageContent` was left as it is: it
 does not swallow, so a page-stream failure already propagates.
@@ -174,8 +175,9 @@ does not swallow, so a page-stream failure already propagates.
 `findTarget` resolved it, and `stringToContentBytes` does not throw, so only pdf-lib itself throwing reaches the
 `false` [Inferred: by reading; no real file was found that does it]. The guard injects it at the one call that
 replaces the stream, `doc.context.assign`, and restores it before reading back, because pdf-lib's own save goes
-through `assign` too. **A Path-3 `false` leaves one harmless residue:** the redraw's font was already added to the
-form's `/Resources`, so it stays there unused; the stream itself is unchanged.
+through `assign` too. **A Path-3 `false` leaves a harmless residue:** the redraw's font — and, for translucent text,
+its ExtGState — was already added to the form's `/Resources`, so it stays there unused; the stream itself is
+unchanged. Stated by reading: the fixture is opaque, and no test asserts either entry.
 
 **The handler's delete branch had a proof that `false` was unreachable** (§ "The hide-vs-remove audit" records why
 a toast there was once reverted). That proof covered `findTarget` only; with a second source of `false` the branch

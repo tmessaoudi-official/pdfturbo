@@ -2171,8 +2171,9 @@ export async function replaceTextAt(
   // `redraw` already starts with '\n'. A3b: write the XObject's own stream when the
   // target lives in one (origin/textMatrix are XObject-local + the font was added to
   // the XObject's /Resources); otherwise the page stream.
-  // TEST-2: a failed form write is reported, never claimed. The font named by the redraw was already added to the
-  // form's /Resources above; on this false it stays there, unused — harmless, and the stream itself is unchanged.
+  // TEST-2: a failed form write is reported, never claimed. The redraw's font (and, for translucent text, its
+  // ExtGState) was already added to the form's /Resources above; on this false it stays there, unused — harmless,
+  // and the stream itself is unchanged.
   const newContent = buildStreamContent(found, redraw);
   if (found.xObjectName) {
     if (!setFormXObjectContent(doc, pageIndex, found.xObjectName, newContent)) return false;
