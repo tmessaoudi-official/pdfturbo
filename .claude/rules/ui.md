@@ -471,8 +471,10 @@ one line; what makes it safe is the order around it and three readers that can s
   "not exercised" list), so it is no witness either. **End-to-end evidence is a throwaway Playwright drive, not a
   test** (2026-10-08): the real app under `vite`, a 3-page 12000-op PDF, eight open → act → File › Close cycles, the
   action (zoom, page flip, a running search, nothing) and the close confirm fired in ONE tick so the release lands
-  mid-work, then fit-to-width with nothing open. Fixed tree: 0 page errors, 0 console errors, live Web Workers flat
-  at 2. The same drive on the pre-QUAL-1 commit: 0 errors, workers growing over the eight cycles (3, 6, 5, 6, 7, 8,
+  mid-work, then fit-to-width with nothing open. Fixed tree (M2 frozen commit, `src/` clean, both recorded in the
+  drive's output): 0 page errors, 0 console errors, live Web Workers 2, 2, 2, 2, 4, 4, 2, 2, 2 — a brief 4 in the
+  two search cycles that is gone by the next, no growth (an earlier run on the round-1 tree was flat at 2; the bump
+  is most likely a release finishing late at load 28 [Inferred]). The same drive on the pre-QUAL-1 commit: 0 errors, workers growing over the eight cycles (3, 6, 5, 6, 7, 8,
   9, 10, then 8 after the fit) — the leak itself [Verified: both runs, `page.workers().length` after each cycle; the
   drive records the commit and a clean `src/` it ran against].
 - Guards: `tests/core/releasedDocument.test.ts` (17, jsdom), `tests/browser/document-release.browser.test.ts` (4, real
