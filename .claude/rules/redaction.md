@@ -45,16 +45,35 @@ page and the file, a `/Kids` entry is removed, an array element becomes null, a 
 developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
 
 **Round 2 — the milestone panel found five more routes to the same leak (2026-10-08):**
-- **Shared or inherited `/Resources`** (FPDF/FPDI): the kept page's resources dictionary lists the removed page's
-  forms and images. Ruled: prune `/XObject`, `/Pattern`, `/Shading` to what the kept users of that dictionary DRAW
-  (`Do`, a pattern name before `scn`/`SCN`, `sh`), recursing into every form they draw that has no `/Resources` of
-  its own; the pruned clone is built before the copy and the source is never mutated. A kept page whose content
-  cannot be decoded or tokenised → `ExportResourcesUnreadableError` (`toast.exportResourcesUnreadable`), fail
-  closed. Opt-in (`pruneSharedResources`) for the PDF outputs only — `_assemblePdfDoc` and `downloadPage`; a
-  render shows only what a page draws. **Compress → flatten to images** assembles with `assemblePdfBytes({
-  rasterOnly: true })`, which skips the prune, so the refusal's suggested way out cannot itself refuse — it was
-  going to, because Compress assembles first. Byte-identical unless a page is left out AND something undrawn is
-  carried.
+- **Shared resources** (FPDF/FPDI): a resources dictionary lists every page's forms, images, fonts and graphics
+  states. Ruled: keep only what the kept content DRAWS; refuse when it cannot be read. The first version pruned
+  only the PAGE's dictionary and only `/XObject`, `/Pattern`, `/Shading` — and the round-2 panel leaked past it
+  five ways, the decisive one from real producer source: FPDI's templates are forms whose own `/Resources` IS the
+  shared dictionary (`FpdfTplTrait` writes `/Resources 2 0 R`), so the copier reached the unpruned original through
+  the form. Also an appearance stream or tiling pattern carrying it, one shared `/XObject` SUB-dictionary under
+  separate page dictionaries, and a removed page's ExtGState soft-mask group or Type3 glyph procedure. **The fix is
+  per OWNER and per ENTRY, not per dictionary:** `ResourcePruner` replaces the resources of every owner the copy
+  reaches — the page (before the copy) and, inside the copier hook, any form, pattern, appearance or Type3 font
+  with resources of its own — with a clone that drops an entry of `/XObject`, `/Pattern`, `/Shading`,
+  `/ExtGState`, `/Font`, `/Properties` or `/ColorSpace` only when the owner does not draw it AND a left-out page
+  reaches it (`reachableFromPages`, which never crosses into another page or up its tree). So an owner that shares
+  nothing with a left-out page is copied exactly as before and is never even read, and the refusal fires only
+  where pruning matters. "Draws" follows pdf.js: `Do`, `Tf`, `gs`, `scn`/`SCN`, `sh`, `cs`/`CS`, `BDC`/`DP`, any
+  colour space for an inline image, recursing into a form, Type3 font or soft-mask group whose own `/Resources` is
+  not a dictionary, and into a tiling pattern ALWAYS (pdf.js merges a pattern's resources with its parent's). A
+  stream pdf-lib built after the load (a typed value's flatten) is read unencoded, not refused. Unreadable →
+  `ExportResourcesUnreadableError` (`toast.exportResourcesUnreadable`). Opt-in (`pruneSharedResources`) for the PDF
+  outputs only — `_assemblePdfDoc` and `downloadPage`; a render shows only what a page draws. **Compress → flatten
+  to images** assembles with `assemblePdfBytes({ rasterOnly: true })`, which skips the prune, so the refusal's way
+  out cannot itself refuse — it was going to, because Compress assembles first.
+- **Fields named by an action** (`/ResetForm /Fields`, `/Hide /T`): any dictionary with its own `/FT` that is not on
+  a kept widget's chain is cut in the copier hook — only when some page is left out, so a full copy keeps a loose
+  field's value as pdf-lib's own copy does (R2-7).
+- **The catalog and the page tree**: a signature's `/Reference /Data` names the catalog; a reference to it or to a
+  `/Pages` node is cut, since copying either carries every page, field, outline and inherited resource (R2-3).
+- **A stray delimiter froze the tab**: `tokenizeContentStream` looped forever on a top-level `)` `]` `>` `{` `}`;
+  the prune put it on every PDF export. It throws now, and every caller already fails closed on a throw (R2-5).
+- **`/Type` and `/Subtype` are read with `lookup`**, so an indirect name is recognised (R2-8).
 - **Sibling fields**: a kept widget's `/Parent` chain brings its ancestors, whose `/Kids` name a sibling field
   holding the removed page's typed `/V`. Every child of a chain field that is neither on a kept chain nor a kept
   widget is cut.
@@ -71,12 +90,19 @@ built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and pas
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePages.test.ts` (37 — round 1: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept
+Guards: `tests/export/copySourcePages.test.ts` (70 — round 1: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept
 links through real pdf.js, self-`/P`, stand-in resolved and unresolved, byte-identity ×3, two through
 `_assemblePdfDoc`; round 2: shared and inherited resources, the refusal, every page kept byte-identical, a form drawn
 through a form kept, the sibling-field `/V`, `/IRT` to a removed note, an orphan page dictionary, a non-link GoTo
 kept, a link on two kept pages, an indirect `/Kids`, an extract range, a reply to a dropped link, and the entry-point
-wiring — Download, its refusal, the raster-only assembly, Compress ×3 modes, single-page download and its toast) and
+wiring — Download, its refusal, the raster-only assembly, Compress ×3 modes, single-page download and its toast;
+round 2b: the safety lens's eleven probe shapes verbatim ×2 modes (the control plus ten leaks: form, appearance and
+pattern owners, a shared sub-dictionary, ExtGState soft mask, Type3 font, inherited plus partial, and two action-named
+fields), a kept page drawing through a shared Type3 font, ExtGState and soft-mask group, an unreadable form owner
+refused, the catalog and page-tree cut, a page drawn on after load, a pattern's merged and a form's non-dictionary
+resources, a loose field kept when nothing is left out, an indirect `/Type`/`/Subtype`, unshared resources left
+byte-identical, and two extract-range shapes; plus the scan's own control and "no stand-in for an unreferenced
+page"), `tests/utils/contentStreamEditor.test.ts` (6 stray-delimiter cases) and
 the SEC-1 block in `tests/browser/redaction-orphan-leak.browser.test.ts` (5: control, link to the redacted page opens
 its image page, shared field, shared-resources control, shared resources under a real redaction). The signer's
 `signErrorKey` maps the new error like the layers conflict and, like it, is not pinned by a test. Sabotage, each landed, red on exactly its cases, restored with `cmp`: excluded page
@@ -89,7 +115,16 @@ sibling case; orphan page dictionaries copied → exactly that case (`tsc` rejec
 step 1 on any subtype → exactly the button case; indirect `/Kids` unrecognised → exactly that case; dropped links
 not cut → exactly the `/IRT` reply case (green until that case existed); `_assemblePdfDoc` unwired, or always raster-
 only → the 2 Download cases; `downloadPage` unwired → its 2 cases; lossy Compress not raster-only → exactly its case;
-the toast mapping removed → exactly the single-page refusal case.
+the toast mapping removed → exactly the single-page refusal case. (Those round-2 figures were measured on the
+first, page-only prune; the round-2b rewrite superseded "prune off" and "sharing never detected".) Round 2b, on the
+final code: owner prune off → the 6 owner-shape cases + the unreadable-owner refusal; categories cut back to three →
+exactly the 4 ExtGState/Type3 cases; `touches` never true → 28; `touches` always true → exactly the
+unshared-byte-identical case; pattern not merged → exactly its case; a non-dictionary `/Resources` treated as own →
+exactly its case; no catalog cut → the R2-3 case; no page-tree cut → the same case (`PAGESROOTSECRET`); field cut
+ungated → exactly the R2-7 case; no action-named field cut → the 4 reset/hide cases; built streams unread → exactly
+the R2-4 case; `get` for `/Type` or `/Subtype` → the R2-8 case each; no refusal → the 4 refusal cases; Type3 and
+soft-mask recursion removed → the keep case each (both GREEN until that case checked what the glyph procedure and
+the mask group draw); the tokenizer skipping instead of throwing → the 5 delimiter cases.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 
@@ -785,7 +820,7 @@ The three Arabic edits are single-verb substitutions (`للإبقاء على` �
 `إظهارها`, `يُخفى` → `يُزال`). **They are the FIRST changes to Arabic values since the 2026-07-30 native
 sign-off**, so § i18n's "no Arabic value was changed" no longer holds unqualified. **The pending set is
 CLOSED as of 2026-09-13 by developer ruling** ("consider the arabic review done") — accepted by ruling, not
-by a second native read — **and the pending count is 14**: `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` and the re-worded `toast.flattenDone` (limits row 23, 2026-09-27), `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
+by a second native read — **and the pending count is 15**: `toast.exportResourcesUnreadable` (new, SEC-1 round 2 on 2026-10-08), `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` and the re-worded `toast.flattenDone` (limits row 23, 2026-09-27), `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, plus `toolbar.sanitizeTitle`, re-worded on the closure day to
 en/fr parity by the session, which makes it a new value, and the two keys WS7 round 10 added the same day
 (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), both session-written. Before the closure the set had grown to **15**: these 3, plus `toolbar.exportXlsxTitle`, `badge.signRect`, the 6 `toolbar.cropMargin*`
 keys, `toast.cropMarginsTooLarge`, the two #54b keys added 2026-09-04 (`toolbar.recentFiles`,

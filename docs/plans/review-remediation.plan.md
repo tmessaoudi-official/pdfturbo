@@ -17,6 +17,9 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 01:56] AGREED: SEC-1 links: kept pages link to their real export pages (fixes the measured jump-to-page-1 of every internal link); a link to a REDACTED page is retargeted to its image page; a link to a DELETED or out-of-range page is removed; a multi-page form field keeps only the widgets of exported pages; nothing from an excluded page is copied (developer, 2026-10-08).
 - [2026-10-08 02:22] ASSUMED (review): Milestone 1 panel reviewers (export-fidelity, safety-promises, completeness) run on opus - source override (agent reviewer = as-is, session opus); reviewers return findings and the orchestrator writes var/claude/raw/m1-<lens>.md because the repo agents have no Write tool.
 - [2026-10-08 03:11] AGREED: M1-S1 shared resources: for a copied page whose /Resources is shared or inherited, keep only the XObjects, patterns and shadings its content (and the forms it draws) uses; if that content cannot be parsed the export refuses and points to Compress -> flatten to images (fail closed); clean files stay byte-identical (developer, 2026-10-08).
+- [2026-10-08 04:39] ASSUMED (review): M1 round 2 panel: the shared-resources prune covers EVERY resource owner the copy reaches (page, form, tiling pattern, appearance stream, Type3 font) and every category (XObject, Pattern, Shading, ExtGState, Font, Properties, ColorSpace), removing an entry only when the owner does not draw it AND a left-out page reaches it - because FPDI templates carry the shared /Resources on their own forms (reviewer read setasign FpdfTplTrait), so a page-only, three-category prune still leaked. Alternatives: refuse every shared-resources export (loses common FPDF files); flatten such pages to images (loses text).
+- [2026-10-08 04:39] ASSUMED (review): M1 round 2: references to the source catalog and to page-tree nodes are cut, and every /AcroForm field node off a kept widget's /Parent chain is cut (only when some page is left out) - because a signature /Reference /Data and ResetForm/Hide actions carried the whole document or a removed page's field value. Alternative: cut only the two measured action shapes.
+- [2026-10-08 04:39] ASSUMED (review): M1 round 2: tokenizeContentStream throws on a stray top-level delimiter instead of looping forever - because the prune put it on every PDF export and a malformed stream froze the tab; true-edit callers already fail closed on a throw. Alternative: skip the byte (silently changes what true-edit reads).
 
 ## Formal Plan
 
@@ -53,10 +56,16 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 ### Needs input
 ### Needs research
 ### Fragile
+- SEC-1 cost (M1-C3, partly fixed): one `@cantoo/pdf-lib` import per copy and a synchronous `/Annots` walk remain;
+  when a page is left out, the prune also walks everything the left-out pages reach once and tokenizes the content
+  of every owner that shares resources with them. Not measured on a large document.
+- `secretsIn` in `tests/export/copySourcePages.test.ts` scans raw streams only (M1-S5): a string leak (`/V`,
+  `/Contents`) is invisible to it, which is why every string-shaped case uses `fileHas`. Keep it that way.
 ### Known issues
 The review's findings, so this plan stands without the gitignored lens reports
 (`var/claude/review-20261007/`, five files). An arrow names the row that absorbs a finding; the rest are open.
 Per the 2026-10-08 ruling a P2 becomes a plan row when it is taken up, and a P3 is fixed when its file is touched.
+Each line is the finding's own heading; its evidence (file:line, measurements) stayed in the lens report.
 DOC-4 was triaged from P2 to P3 (SendUserFile does exist in local sessions; only its "container is reclaimed"
 rationale is stale).
 
@@ -99,7 +108,7 @@ rationale is stale).
 - QUAL-2 — `pdfSanitizer` reads untrusted structure with the throwing `lookupMaybe(key, Type)`, unguarded
 - QUAL-6 — `PDFElement.type` is not a discriminant, so the code downcasts 70 times
 - QUAL-7 — `MoveResizeCmd` mutates an element through an untyped bag, and is used for everything
-- QUAL-12 — 43 functions exceed 100 lines, 25 exceed 150. [Verified: AST metrics.] The 20 longest:
+- QUAL-12 — 43 functions exceed 100 lines, 25 exceed 150
 - QUAL-15 — The blank page is a string sentinel with its A4 default re-typed 21 times
 - QUAL-16 — Two matrix types and two composition functions — one of them has already composed backwards once → row 8 (step 2)
 - QUAL-17 — The formatting service repeats "mutate → record → rebuild → autosave" 31 times
@@ -130,24 +139,24 @@ rationale is stale).
 - DOC-14 — The expertise index omits two declared overrides → row 7
 - DOC-15 — SECURITY "Supported Versions" vs package version → row 7
 - QUAL-3 — The `IErrorReporter` contract gives argument 2 two different meanings
-- QUAL-4 — A cancelled crop-handle gesture commits the crop. `src/core/pageRenderPipeline.ts:246-257` registers the same
+- QUAL-4 — A cancelled crop-handle gesture commits the crop
 - QUAL-5 — The loadingTask teardown idiom is hand-copied 6× while a helper exists but is module-private
 - QUAL-8 — `any` is concentrated at the pdf-lib boundary, and its lint rule is a warning
-- QUAL-9 — Two `as unknown as` casts are lies rather than boundary assertions. Of 40 (`pdfSanitizer.ts` 11,
-- QUAL-10 — 287 `getElementById(…) as HTML*` casts erase `
+- QUAL-9 — Two `as unknown as` casts are lies rather than boundary assertions
+- QUAL-10 — 287 `getElementById(…) as HTML*` casts erase `/ null`
 - QUAL-11 — tsconfig verdicts
 - QUAL-13 — Three dispatchers are long if/switch chains that want a table
-- QUAL-14 — Long parameter lists and boolean flags. 30 functions take ≥ 6 parameters: `reconstructPage` 12
-- QUAL-18 — Colour conversion exists in 4–5 versions with different rules. `utils/geometry.ts:342 hexToRgbValues` (6-digit
-- QUAL-19 — Rotation normalisation is inlined 7× with no helper. `((x % 360) + 360) % 360` in `geometry.ts` (3),
-- QUAL-20 — Three idioms for reading pdf-lib objects. `lookupMaybe(key, Type)` — throws on a type mismatch (23 sites,
-- QUAL-22 — `PDFElement` mixes the domain record with DOM construction. `annotationElement.ts:38-77`: `createControls()`,
-- QUAL-23 — `shapeType` is switched on in two places. `elements/shapeElement.ts:53` (DOM) and
+- QUAL-14 — Long parameter lists and boolean flags
+- QUAL-18 — Colour conversion exists in 4–5 versions with different rules
+- QUAL-19 — Rotation normalisation is inlined 7× with no helper
+- QUAL-20 — Three idioms for reading pdf-lib objects
+- QUAL-22 — `PDFElement` mixes the domain record with DOM construction
+- QUAL-23 — `shapeType` is switched on in two places
 - QUAL-24 — `PDFRenderer` keeps a second, legacy document pointer. `infra/pdfRenderer.ts:18 pdfDoc` is written from outside
-- QUAL-25 — Two locals shadow browser globals. `const window = …` (`core/pdfTurboApp.ts:879`, a crop rectangle) and
+- QUAL-25 — Two locals shadow browser globals
 - QUAL-26 — Over-export and test-only surface; real dead code is tiny
-- QUAL-27 — Magic numbers. 376 numeric literals outside named constants (excluding 0/1/2/10/16/90/100/180/255/270/360/1000
-- QUAL-28 — 11 permanent kill switches, asymmetric gating, no sunset. `src/config/features.ts:13` — `trueEdit, searchableOcr,
+- QUAL-27 — Magic numbers
+- QUAL-28 — 11 permanent kill switches, asymmetric gating, no sunset
 - QUAL-29 — Full element-layer rebuild for single-element property changes, with a forced layout per element
 - QUAL-30 — Three quadratic loops in export/reconstruction
 - SEC-3 — The signer finds its `/Contents` slot and `/ByteRange` token by FIRST occurrence in the whole file

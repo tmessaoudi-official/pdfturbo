@@ -488,7 +488,7 @@ grades (see that § for why). They are single-verb substitutions and were pendin
 pending count before assuming a key is reviewed.
 **AMENDED 2026-09-13 — WS3 CLOSED by developer ruling** ("consider the arabic review done"): the 15
 values that had accumulated since, and the two UNRECONCILED sets, are accepted as reviewed. That is a
-RULING, not a second native read — say so whenever citing it. **Pending count: 14** — `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), 
+RULING, not a second native read — say so whenever citing it. **Pending count: 15** — `toast.exportResourcesUnreadable` (new, SEC-1 round 2 on 2026-10-08), `toolbar.compressTitle` and `toast.ocrRotatedUnsupported` (re-worded, limits row 30 on 2026-09-27), 
 `modal.compress.modeImages` and `modal.compress.hintImages` (new, limits row 27 on 2026-09-27), `toast.flattenAnnotationsSkipped` (new) and `toast.flattenDone` (re-worded), limits row 23 on 2026-09-27,
 `progress.ocrLoadingModel` (row 12) and `toolbar.clearRecentFiles` (row 11), added by the limits walkthrough on 2026-09-26, `thumbnail.previewUnavailable`, added by the limits walkthrough (A6) on 2026-09-26, `toast.exportLayersConflict`, added by WS8 on 2026-09-24, `toast.pdfLoadRefused`, added by WS7 round 15 on 2026-09-14, and `toolbar.sanitizeTitle`, re-worded on the closure day to en/fr parity by the session, so it is a new value and
 starts unverified, plus the two keys WS7 round 10 added that day (`docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`), also

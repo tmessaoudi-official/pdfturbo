@@ -48,32 +48,38 @@ reading the code. Both are said plainly instead of implied to be measured.
 > you kept referred to a page you removed — redacted, deleted, or left outside an extracted range — through an
 > internal link (a contents page, "see page 5") or a form field with boxes on both pages, the exported file
 > contained the removed page whole, as an object no viewer showed but whose text was readable from the file's bytes.
-> It reached every output built from copied pages, the signed, sanitized and compressed files included. The export
-> now answers every reference to a source page itself instead of copying it: a link to a **redacted** page opens its
-> image page, a link to a **deleted or out-of-range** page is removed, and a form field keeps only the boxes on
-> exported pages. The same fix repaired internal links in general — every one of them used to open page 1 — and
-> stopped an annotated page from being stored twice. The cross-page shapes are pinned in
-> `tests/export/copySourcePages.test.ts` and `tests/browser/redaction-orphan-leak.browser.test.ts`.
+> It reached every PDF output built from copied pages, the signed, sanitized and compressed files included —
+> except **Compress → flatten to images**, whose output holds only pictures of the pages. The export now answers
+> every reference to a source page itself instead of copying it: a link to a **redacted** page opens its image
+> page, a link to a **deleted or out-of-range** page is removed, and a form field keeps only the boxes on exported
+> pages. The same fix repaired internal links by page reference — every one of them used to open page 1 — and
+> stopped an annotated page from being stored twice.
 >
-> **The shapes it covers, and the one way it refuses.** Besides links and form-field boxes, a removed page reached a
-> kept one three more ways, all closed the same day: a form field whose *sibling* field (same parent, boxes only on
-> the removed page) held a typed value; a page dictionary left outside the page tree by an export made before the
-> fix; and — common in files produced by FPDF/FPDI-style tools — a `/Resources` dictionary that both pages share or
-> inherit, which lists the removed page's images and forms. For that last shape the export keeps only what the kept
-> pages actually draw. When a kept page's drawing cannot be read, so what it draws is unknown, the PDF exports
-> **refuse** with a message rather than guess; **Compress → flatten to images** still works on such a document,
-> because its output holds only pictures of the pages. Not covered, and stated: a link that names its target by a
-> *named destination* is not carried into any export (the name table is not copied), so it is dead rather than
-> leaking; and the scan pins only the shapes listed here.
+> **The other routes, all closed the same day, and the one way it refuses.** A removed page also reached a kept one
+> through: a form field whose *sibling* (same parent, boxes only on the removed page) held a typed value; a field an
+> action on a kept page names (a reset or hide button); a signature's reference to the whole document; a page
+> dictionary left outside the page tree by an export made before the fix; and **shared resources** — one
+> resources dictionary, or one of its sub-dictionaries, listing every page's images, forms, fonts and graphics
+> states. FPDF writes one such dictionary for the whole file, and FPDI's templates carry it on their own forms
+> [Verified: setasign FPDI `FpdfTplTrait` writes `/Resources 2 0 R`], so it reaches a kept page through the page,
+> a form or pattern it draws, an annotation's appearance or a Type3 font. Wherever a kept page, form, pattern,
+> appearance or font shares resources with a removed page, the export keeps only the entries it draws — the way
+> pdf.js reads it. When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
+> message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
+> is pinned by a test that finds the removed page's text in the source and not in the export
+> (`tests/export/copySourcePages.test.ts`, `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
+> and stated:** a carrier reached some other way than these is not ruled out; and a link that names its target by
+> a *named destination* is dead in every export (the name table is not copied) — it does not leak, and it does not
+> work. See `KNOWN_ISSUES.md`.
 
 | Tool | Content is… | Notes |
 |---|---|---|
 | **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Web links on that page (`http`, `https`, `mailto`) that meet no redaction are re-created on the image page, where they were drawn (since 2026-09-25); a link that meets a redaction, a link with any other scheme, and a link to another page are not. Applies to a page from a real PDF; see the note below on **blank** pages, on the CSV/Excel and OCR exports, on **vertical (top-to-bottom) text**, and on **source annotations** (a note, stamp or form field under a redaction is now removed with it). |
-| **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied, a link or form field on a kept page that points to it is cut rather than followed, and a resources dictionary a kept page shares with it keeps only what the kept page draws (since 2026-10-08 — see the note above, including when the export refuses). |
+| **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied, a link or form field on a kept page that points to it is cut rather than followed, and resources a kept page shares with it keep only what the kept page draws (since 2026-10-08 — the shapes pinned are listed in the note above, with when the export refuses and what is not ruled out). |
 | **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. Unlike *replacing* text — which can decline on fonts it cannot redraw — deleting is font-agnostic: it blanks the operator that draws the text, so nothing needs drawing. |
 | **Compress → flatten to images** | **removed** | The **flatten-to-images** setting only; "lossless optimise" and "shrink images" keep all text, and "shrink images" re-saves each photo whole, including any part a crop hides. Rasterises every page, so it is redaction's grade applied document-wide. |
 | **Export page as image** (PNG/JPEG) | **removed** | Rasterises the page, so only what you can see survives. |
-| **Extract page range** | **removed** | **[pinned]** Like deleting pages: the new file is built from copied pages, so pages outside the range are never in it — a reference to one is cut, not followed, and a resources dictionary shared with one keeps only what the extracted pages draw (since 2026-10-08; pinned through the same assembly as Delete page). |
+| **Extract page range** | **removed** | **[pinned]** Like deleting pages: the new file is built from copied pages, so pages outside the range are never in it — a reference to one is cut, not followed, and resources shared with one keep only what the extracted pages draw (since 2026-10-08; pinned through the real assembly of a range, with the same bounds as Delete page). |
 | **Crop** | *hidden only* | A view setting. See below. |
 | **Shape / rectangle over text** | ***not even hidden*** | **[pinned]** See below — this is the one that catches people. |
 | **Highlight** | *not hidden* | A semi-transparent annotation drawn over the text. |

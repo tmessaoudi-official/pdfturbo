@@ -177,8 +177,9 @@ export async function viewerMismatch(
 ): Promise<ViewerCheckResult> {
   const { PDFDocument: Doc } = await import('@cantoo/pdf-lib');
   const fresh = await Doc.create({ updateMetadata: false });
-  // Built exactly as the export builds its pages, layer settings included (WS8 step 5): the operand hash sees a
-  // layer's state, so a copy without them would mismatch every page that uses one.
+  // Built as the export builds its pages, layer settings included (WS8 step 5): the operand hash sees a layer's
+  // state, so a copy without them would mismatch every page that uses one. Every page is kept here, so the export's
+  // shared-resources prune (which runs only when a page is left out) never applies — this checks the plain copy.
   const { pages: copied, ocProperties } = await copySourcePages(fresh, libDoc, libDoc.getPageIndices());
   for (const page of copied) fresh.addPage(page);
   if (ocProperties) await carryLayers(fresh, ocProperties);

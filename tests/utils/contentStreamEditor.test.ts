@@ -2531,6 +2531,17 @@ async function makeSuperscriptUnderlinedPdf(): Promise<Uint8Array> {
   return doc.save();
 }
 
+describe('tokenizeContentStream — a stray delimiter fails loudly instead of looping (M1 round 2, R2-5)', () => {
+  // Each of these spun forever pushing empty tokens until the heap ran out (reviewer probe, 256 MB cap → OOM):
+  // the copy prune put this tokenizer on every PDF export, so a malformed stream froze the tab.
+  it.each([')', ']', '>', '{', '}'])('a top-level %s throws', ch => {
+    expect(() => tokenizeContentStream(`/Fm0 Do ${ch} Q`)).toThrow(/stray/);
+  });
+  it('control: the same stream without it tokenizes', () => {
+    expect(tokenizeContentStream('/Fm0 Do Q').map(t => t.raw)).toEqual(['/Fm0', 'Do', 'Q']);
+  });
+});
+
 describe('tokenizeContentStream — inline-image EI boundary (F7)', () => {
   it('terminates at the whitespace-delimited EI, not an "EI" inside binary data', () => {
     // Data "aEIb" contains the bytes E,I but NOT whitespace-delimited; the real

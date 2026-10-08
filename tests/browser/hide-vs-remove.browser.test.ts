@@ -262,10 +262,11 @@ describe('AUDIT — sanitize strips what it claims to strip', () => {
  * SCOPE NOTE for the two tests below. Both exercise the pdf-lib MECHANISM the product relies on
  * (`form.flatten()`, `copyPages`) rather than `ExportService` itself, which needs the whole app wired up.
  * So they pin that the mechanism behaves as the docs describe — they do NOT prove the export path calls
- * it correctly. That separate claim rests on the index-scoping in `_assemblePdfDoc`
- * (`src/export/exportService.ts`, `docPages.filter(...)` feeding every `copyPages`), which is covered by
- * the export-service tests. Stated here rather than left implied, because an over-claimed pin is the
- * exact failure this file was written to stop.
+ * it correctly. That separate claim rests on `_assemblePdfDoc` (`src/export/exportService.ts`): its index
+ * filter keeps a left-out page from being COPIED, and `copySourcePages` keeps a kept page's references from
+ * carrying it back (SEC-1, 2026-10-08 — the filter alone was refuted), both pinned through the real assembly
+ * in tests/export/copySourcePages.test.ts. Stated here rather than left implied, because an over-claimed pin
+ * is the exact failure this file was written to stop.
  */
 describe('AUDIT — form flatten bakes the VALUE into page text (not a leak, but a trap)', () => {
   it('a flattened field value is extractable page text afterwards', async () => {

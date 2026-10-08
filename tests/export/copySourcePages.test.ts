@@ -19,6 +19,7 @@ import {
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { copySourcePages, resolveStandIns } from '../../src/export/copySourcePages';
 import { ExportService, type IExportContext } from '../../src/export/exportService';
+import { RedactionElement } from '../../src/elements/redactionElement';
 
 const SECRET = (i: number) => `TOPSECRETNEEDLE${i}X`;
 
@@ -450,6 +451,34 @@ describe('the assembled export — an extracted range (pagesSubset) cuts the pag
     expect(secretsIn(out, 3)).toEqual([0]);
     expect(linksOf(out.getPage(0))).toHaveLength(0);
   });
+
+  /** `_assemblePdfDoc` over the first page of a 2-page source, with `elements` on the document model. */
+  async function extractFirst(srcBytes: Uint8Array, elements: unknown[] = []): Promise<PDFDocument> {
+    const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
+    const pages = [0, 1].map(i => ({ id: `p${i}`, sourcePdfId: 's', sourcePageNum: i + 1, rotation: 0 }));
+    const svc = new ExportService({
+      documentModel: { pageCount: 2, currentPageIndex: 0, pages, sourcePdfs: new Map([['s', { bytes: srcBytes }]]), watermark: { enabled: false }, bates: { enabled: false } },
+      elements, formValues: {}, currentFilename: 'r.pdf', exportPassword: null,
+      inkLayer: { getStrokes: () => [] }, reportError: { info() {}, warn() {}, error() {} },
+      progress: { begin: () => handle }, cleanEmptyTextElements() {}, renderCurrentPage: () => Promise.resolve(), rebuildElementLayer() {},
+    } as unknown as IExportContext);
+    const assemble = (svc as unknown as { _assemblePdfDoc(o: undefined, s: typeof pages): Promise<PDFDocument> })._assemblePdfDoc.bind(svc);
+    const doc = await assemble(undefined, [pages[0]]);
+    return PDFDocument.load(await doc.save({ useObjectStreams: false }), { updateMetadata: false });
+  }
+
+  it('a resources dictionary the extracted page shares with a page outside the range carries only what it draws', async () => {
+    const src = await sharedResourcesSource('shared');
+    expect(secretsIn(await extractFirst(await src.save({ useObjectStreams: false })), 2)).toEqual([0]);
+  });
+
+  it('a REDACTED page outside the range is cut, not held as a stand-in: the link to it goes', async () => {
+    const src = await source(2, [{ from: 0, to: 1 }]);
+    const redaction = new RedactionElement(10, 10, 100, 30, 'p1', '#000000');
+    const out = await extractFirst(await src.save({ useObjectStreams: false }), [redaction]);
+    expect(secretsIn(out, 2)).toEqual([0]);
+    expect(linksOf(out.getPage(0))).toHaveLength(0);
+  });
 });
 
 it('a form the kept page draws THROUGH another form is kept — pruning must not blank the page', async () => {
@@ -562,5 +591,290 @@ describe('the export entry points prune shared resources, and the refusal has a 
     (svc as unknown as { _ctx: { reportError: { error: (k: string) => void } } })._ctx.reportError.error = k => { errors.push(k); };
     await svc.downloadPage(0);
     expect(errors).toEqual(['toast.exportResourcesUnreadable']);
+  });
+});
+
+const ROUTE_PUBLIC = 'PUBLICP1NEEDLE';
+const ROUTE_SECRET = 'SECRETP2NEEDLE';
+/** The safety lens's round-2 probe shapes (panel 2026-10-08), verbatim; page index 1 is the one left out. */
+async function routeShape(shape: string): Promise<PDFDocument> {
+  const src = await PDFDocument.create(); const ctx = src.context;
+  const p1 = src.addPage([300, 300]); const p2 = src.addPage([300, 300]);
+  const font = ctx.register(ctx.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica' }));
+  const form = (t: string, extra: Record<string, unknown> = {}) => ctx.register(ctx.stream(`BT /F1 12 Tf 20 200 Td (${t}) Tj ET`, { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], ...extra }));
+  const content = (s: string) => ctx.register(ctx.stream(s));
+  const im2 = ctx.register(ctx.stream('IMG' + ROUTE_SECRET, { Type: 'XObject', Subtype: 'Image', Width: 1, Height: 1, ColorSpace: 'DeviceGray', BitsPerComponent: 8 }));
+  const fm2 = form(ROUTE_SECRET);
+  if (shape === 'control') {          // kept page DRAWS the secret: the scan must see it
+    const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Fm2 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'roundOneShared') {   // round-1 shape, should be clean now
+    const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2, Im2: im2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do /Im2 Do'));
+  } else if (shape === 'formOwnResIsShared') {  // TCPDF/FPDI: a drawn form whose /Resources IS the shared dict
+    const res = ctx.nextRef();
+    const fm1 = form(ROUTE_PUBLIC, { Resources: res });
+    ctx.assign(res, ctx.obj({ Font: { F1: font }, XObject: { Fm1: fm1, Fm2: fm2, Im2: im2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do /Im2 Do'));
+  } else if (shape === 'annotApSharedRes') {    // TCPDF _putAPXObject: an annotation appearance with /Resources 2 0 R
+    const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2, Im2: im2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do /Im2 Do'));
+    const ap = ctx.register(ctx.stream('', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 90, 30], Resources: res }));
+    const w = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Tx', T: PDFString.of('f'), Rect: [10, 10, 100, 40], P: p1.ref, AP: { N: ap } }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([w]));
+  } else if (shape === 'xobjectSubdictShared') { // distinct /Resources dicts, ONE shared /XObject subdict
+    const xo = ctx.register(ctx.obj({ Fm1: form(ROUTE_PUBLIC), Fm2: fm2, Im2: im2 }));
+    p1.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font }, XObject: xo }));
+    p2.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font }, XObject: xo }));
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do /Im2 Do'));
+  } else if (shape === 'extGStateSMask') {      // shared dict, removed page's ExtGState soft-mask group draws text
+    const res = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC) },
+      ExtGState: { GS2: { Type: 'ExtGState', SMask: { Type: 'Mask', S: 'Luminosity', G: form(ROUTE_SECRET, { Group: { S: 'Transparency', CS: 'DeviceGray' } }) } } } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/GS2 gs 0 0 300 300 re f'));
+  } else if (shape === 'type3Font') {           // shared dict, removed page's Type3 font, glyph proc carries text
+    const proc = ctx.register(ctx.stream(`0 0 d0 BT /F1 1 Tf (${ROUTE_SECRET}) Tj ET`));
+    const res = ctx.register(ctx.obj({ Font: { F1: font, T3: { Type: 'Font', Subtype: 'Type3', FontBBox: [0,0,1,1], FontMatrix: [1,0,0,1,0,0], CharProcs: { a: proc }, Encoding: { Differences: [97, 'a'] }, FirstChar: 97, LastChar: 97, Widths: [1], Resources: { Font: { F1: font } } } }, XObject: { Fm1: form(ROUTE_PUBLIC) } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('BT /T3 12 Tf (a) Tj ET'));
+  } else if (shape === 'parentResPlusOwnPartial') { // /Pages carries Fm2; kept page has its own partial /Resources
+    const pagesNode = src.catalog.lookup(PDFName.of('Pages')) as PDFDict;
+    pagesNode.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font }, XObject: { Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC) } }));
+    p2.node.delete(PDFName.of('Resources'));
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'patternOwnResIsShared') { // kept page paints a tiling pattern whose /Resources IS the shared dict
+    const res = ctx.nextRef();
+    const pat = ctx.register(ctx.stream(`BT /F1 4 Tf 0 0 Td (${ROUTE_PUBLIC}) Tj ET`, { Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1, BBox: [0,0,10,10], XStep: 10, YStep: 10, Resources: res }));
+    ctx.assign(res, ctx.obj({ Font: { F1: font }, Pattern: { P1: pat }, XObject: { Fm2: fm2, Im2: im2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Pattern cs /P1 scn 0 0 300 300 re f')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do /Im2 Do'));
+  } else if (shape === 'resetFormFields') {      // a kept button's ResetForm /Fields names the removed page's field
+    for (const [p, t] of [[p1, ROUTE_PUBLIC], [p2, 'other']] as const) {
+      p.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font } }));
+      p.node.set(PDFName.of('Contents'), content(`BT /F1 12 Tf 20 200 Td (${t}) Tj ET`));
+    }
+    const ssn = ctx.nextRef();
+    const w2 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], Parent: ssn, P: p2.ref }));
+    ctx.assign(ssn, ctx.obj({ FT: 'Tx', T: PDFString.of('ssn'), V: PDFString.of(ROUTE_SECRET), Kids: [w2] }));
+    const btn = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Btn', Ff: 65536, T: PDFString.of('clear'), Rect: [10, 60, 100, 90], P: p1.ref,
+      A: { S: 'ResetForm', Fields: [ssn] } }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([btn])); p2.node.set(PDFName.of('Annots'), ctx.obj([w2]));
+    src.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [btn, ssn] }));
+  } else if (shape === 'hideActionField') {      // a kept button's /Hide action /T names the removed page's FIELD
+    for (const [p, t] of [[p1, ROUTE_PUBLIC], [p2, 'other']] as const) {
+      p.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font } }));
+      p.node.set(PDFName.of('Contents'), content(`BT /F1 12 Tf 20 200 Td (${t}) Tj ET`));
+    }
+    const ssn = ctx.nextRef();
+    const w2 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], Parent: ssn, P: p2.ref }));
+    ctx.assign(ssn, ctx.obj({ FT: 'Tx', T: PDFString.of('ssn'), V: PDFString.of(ROUTE_SECRET), Kids: [w2] }));
+    const btn = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Btn', Ff: 65536, T: PDFString.of('toggle'), Rect: [10, 60, 100, 90], P: p1.ref,
+      A: { S: 'Hide', T: ssn, H: false } }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([btn])); p2.node.set(PDFName.of('Annots'), ctx.obj([w2]));
+  } else if (shape === 'brokenFormOwner') {      // as formOwnResIsShared, but the kept form cannot be decoded
+    const res = ctx.nextRef();
+    const fm1 = ctx.register(ctx.stream(new Uint8Array([1, 2, 3, 4, 5]), { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Filter: 'FlateDecode', Resources: res }));
+    ctx.assign(res, ctx.obj({ Font: { F1: font }, XObject: { Fm1: fm1, Fm2: fm2, Im2: im2 } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do /Im2 Do'));
+  } else if (shape === 'keptUsesType3AndGs') {   // the kept page DRAWS through the shared Type3 font and ExtGState
+    // The glyph procedure draws the shared /GlyphFont, and the soft-mask group the shared /MaskForm — neither has
+    // resources of its own, so both draw from the page's dictionary and must keep what they name there.
+    const glyphFont = ctx.register(ctx.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Courier' }));
+    const maskForm = form('SMASKKEPT');
+    const proc = ctx.register(ctx.stream(`0 0 d0 BT /GlyphFont 1 Tf (${ROUTE_PUBLIC}) Tj ET`));
+    const group = ctx.register(ctx.stream('/MaskForm Do', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Group: { S: 'Transparency' } }));
+    const res = ctx.register(ctx.obj({ Font: { F1: font, GlyphFont: glyphFont, T3: { Type: 'Font', Subtype: 'Type3', FontBBox: [0,0,1,1], FontMatrix: [1,0,0,1,0,0], CharProcs: { a: proc }, Encoding: { Differences: [97, 'a'] }, FirstChar: 97, LastChar: 97, Widths: [1] } },
+      ExtGState: { GS1: { Type: 'ExtGState', CA: 0.5, SMask: { Type: 'Mask', S: 'Luminosity', G: group } } }, XObject: { Fm2: fm2, MaskForm: maskForm } }));
+    p1.node.set(PDFName.of('Resources'), res); p2.node.set(PDFName.of('Resources'), res);
+    p1.node.set(PDFName.of('Contents'), content('/GS1 gs BT /T3 12 Tf (a) Tj ET')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  }
+  return PDFDocument.load(await src.save({ useObjectStreams: false }), { updateMetadata: false });
+}
+
+
+async function copyRoute(shape: string, mode: 'cut' | 'standIn'): Promise<string> {
+  const src = await routeShape(shape);
+  const dest = await PDFDocument.create({ updateMetadata: false });
+  const { pages, standIns } = await copySourcePages(dest, src, [0], { pruneSharedResources: true, ...(mode === 'standIn' ? { standIns: [1] } : {}) });
+  dest.addPage(pages[0]);
+  if (standIns.size) await resolveStandIns(dest, new Map([...standIns.values()].map(r => [r, undefined])));
+  return Buffer.from(await dest.save({ useObjectStreams: false })).toString('latin1');
+}
+
+describe('every resource owner, every category: nothing only a removed page draws is carried (M1 round 2, R2-S1..S4)', () => {
+  it.each(['cut', 'standIn'] as const)('control (%s): a kept page that DRAWS the secret keeps it — the scan can see it', async mode => {
+    expect((await copyRoute('control', mode)).includes(ROUTE_SECRET)).toBe(true);
+  });
+
+  it.each([
+    'roundOneShared', 'formOwnResIsShared', 'annotApSharedRes', 'xobjectSubdictShared', 'extGStateSMask', 'type3Font',
+    'parentResPlusOwnPartial', 'patternOwnResIsShared', 'resetFormFields', 'hideActionField',
+  ].flatMap(shape => (['cut', 'standIn'] as const).map(mode => [shape, mode] as const)))('%s (%s)', async (shape, mode) => {
+    const out = await copyRoute(shape, mode);
+    expect(out.includes(ROUTE_SECRET), 'the removed page\'s content').toBe(false);
+    expect(out.includes(ROUTE_PUBLIC), 'the kept page\'s own content').toBe(true);
+  });
+
+  it('a kept page that draws through the shared Type3 font and ExtGState keeps both', async () => {
+    const out = await copyRoute('keptUsesType3AndGs', 'cut');
+    expect(out.includes(ROUTE_PUBLIC)).toBe(true);
+    expect(out.includes('/GS1')).toBe(true);
+    expect(out.includes('/Courier'), 'the font the glyph procedure draws').toBe(true);
+    expect(out.includes('SMASKKEPT'), 'the form the soft-mask group draws').toBe(true);
+    expect(out.includes(ROUTE_SECRET)).toBe(false);
+  });
+
+  it('a kept FORM that shares the removed page\'s dictionary and cannot be read refuses the export', async () => {
+    await expect(copyRoute('brokenFormOwner', 'cut')).rejects.toMatchObject({ name: 'ExportResourcesUnreadableError' });
+  });
+});
+
+describe('M1 round 2 — correctness lens (R2-3, R2-4, R2-6, R2-7, R2-8)', () => {
+  it('a signature value whose /Reference /Data names the catalog does not drag the document in (R2-3)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const ctx = d.context;
+    const [p0, p1] = [d.addPage([300, 300]), d.addPage([300, 300])];
+    p0.drawText(SECRET(0), { x: 20, y: 200, size: 12, font });
+    p1.drawText(SECRET(1), { x: 20, y: 200, size: 12, font });
+    const ssn = ctx.nextRef();
+    const w1 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], Parent: ssn, P: p1.ref }));
+    ctx.assign(ssn, ctx.obj({ FT: 'Tx', T: PDFString.of('ssn'), V: PDFString.of('SIGDATASECRET'), Kids: [w1] }));
+    const catalogRef = ctx.trailerInfo.Root as PDFRef;
+    // The page-tree root too: it carries inherited /Resources, here a form only page 2 could draw.
+    const pagesRoot = d.catalog.get(PDFName.of('Pages')) as PDFRef;
+    const rootForm = ctx.register(ctx.stream('BT /F1 9 Tf (PAGESROOTSECRET) Tj ET', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 9, 9] }));
+    d.catalog.Pages().set(PDFName.of('Resources'), ctx.obj({ XObject: { Root: rootForm } }));
+    const sig = ctx.register(ctx.obj({
+      Type: 'Annot', Subtype: 'Widget', FT: 'Sig', T: PDFString.of('sig'), Rect: [10, 60, 100, 90], P: p0.ref, Tree: pagesRoot,
+      V: { Type: 'Sig', Reference: [{ Type: 'SigRef', TransformMethod: 'FieldMDP', Data: catalogRef }] },
+    }));
+    p0.node.set(PDFName.of('Annots'), ctx.obj([sig]));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([w1]));
+    d.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [sig, ssn] }));
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    expect(fileHas(await src.save({ useObjectStreams: false }), 'SIGDATASECRET')).toBe(true); // control
+    const out = await copyAndSave(src, [0]);
+    const bytes = await out.save({ useObjectStreams: false });
+    expect(fileHas(bytes, 'SIGDATASECRET')).toBe(false);
+    expect(fileHas(bytes, 'PAGESROOTSECRET')).toBe(false);
+    expect(secretsIn(out, 2)).toEqual([0]);
+    const catalogs = out.context.enumerateIndirectObjects()
+      .filter(([, o]) => o instanceof PDFDict && o.get(PDFName.of('Type')) === PDFName.of('Catalog'));
+    expect(catalogs, 'only the export\'s own catalog').toHaveLength(1);
+  });
+
+  it('a resource no left-out page reaches is left exactly as it was, drawn or not — the prune is not a cleanup', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const ctx = d.context;
+    const form = (t: string) => ctx.register(ctx.stream(`BT /F1 12 Tf 20 200 Td (${t}) Tj ET`, { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300] }));
+    [0, 1].forEach(i => {
+      const p = d.addPage([300, 300]);
+      p.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('/Fm0 Do')));
+      // Each page its own dictionary; page 0's also lists a form nothing draws.
+      p.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font.ref }, XObject: i === 0 ? { Fm0: form(SECRET(0)), Unused: form('UNUSEDOWN') } : { Fm0: form(SECRET(1)) } }));
+    });
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    const plain = await PDFDocument.create({ updateMetadata: false });
+    plain.addPage((await copySourcePages(plain, src, [0])).pages[0]);
+    const pruned = await PDFDocument.create({ updateMetadata: false });
+    pruned.addPage((await copySourcePages(pruned, src, [0], { pruneSharedResources: true })).pages[0]);
+    const prunedBytes = await pruned.save({ useObjectStreams: false });
+    expect(fileHas(prunedBytes, 'UNUSEDOWN')).toBe(true);
+    expect(Buffer.from(prunedBytes).equals(Buffer.from(await plain.save({ useObjectStreams: false })))).toBe(true);
+  });
+
+  it('a kept page drawn on after load (flatten, a typed value) is still read, not refused (R2-4)', async () => {
+    const src = await sharedResourcesSource('shared');
+    src.getPage(0).drawRectangle({ x: 1, y: 1, width: 5, height: 5 }); // appends a PDFContentStream, as form.flatten() does
+    const out = await copyPruned(src, [0]);
+    expect(secretsIn(out, 2)).toEqual([0]);
+  });
+
+  it('a tiling pattern with resources of its own still draws from the page\'s, as pdf.js merges them (R2-6)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const ctx = d.context;
+    const text = (i: number) => ctx.register(ctx.stream(`BT /F1 12 Tf 20 200 Td (${SECRET(i)}) Tj ET`, {
+      Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300],
+    }));
+    const pattern = ctx.register(ctx.stream('/Fm0 Do', {
+      Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1, BBox: [0, 0, 300, 300], XStep: 300, YStep: 300,
+      Resources: { ProcSet: ['PDF'] },
+    }));
+    const resources = ctx.register(ctx.obj({ Font: { F1: font.ref }, XObject: { Fm0: text(0), Fm1: text(1) }, Pattern: { P0: pattern } }));
+    [0, 1].forEach(i => {
+      const p = d.addPage([300, 300]);
+      p.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(i === 0 ? '/Pattern cs /P0 scn 0 0 300 300 re f' : '/Fm1 Do')));
+      p.node.set(PDFName.of('Resources'), resources);
+    });
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    expect(secretsIn(await copyPruned(src, [0]), 2)).toEqual([0]);
+  });
+
+  it('a form whose /Resources is not a dictionary draws from its parent\'s, as pdf.js does (R2-6)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const ctx = d.context;
+    const text = (i: number) => ctx.register(ctx.stream(`BT /F1 12 Tf 20 200 Td (${SECRET(i)}) Tj ET`, {
+      Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300],
+    }));
+    const outer = ctx.register(ctx.stream('/Fm0 Do', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Resources: 0 }));
+    const resources = ctx.register(ctx.obj({ Font: { F1: font.ref }, XObject: { Outer: outer, Fm0: text(0), Fm1: text(1) } }));
+    [0, 1].forEach(i => {
+      const p = d.addPage([300, 300]);
+      p.node.set(PDFName.of('Contents'), ctx.register(ctx.stream(i === 0 ? '/Outer Do' : '/Fm1 Do')));
+      p.node.set(PDFName.of('Resources'), resources);
+    });
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    expect(secretsIn(await copyPruned(src, [0]), 2)).toEqual([0]);
+  });
+
+  it('with every page kept, a field no widget belongs to is copied as before, value and all (R2-7)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const ctx = d.context;
+    const p0 = d.addPage([300, 300]);
+    const parent = ctx.nextRef();
+    const w0 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [10, 10, 100, 40], Parent: parent, P: p0.ref }));
+    const loose = ctx.register(ctx.obj({ FT: 'Tx', T: PDFString.of('loose'), V: PDFString.of('LOOSEVALUE'), Parent: parent }));
+    ctx.assign(parent, ctx.obj({ FT: 'Tx', T: PDFString.of('p'), Kids: [w0, loose] }));
+    p0.node.set(PDFName.of('Annots'), ctx.obj([w0]));
+    d.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [parent] }));
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    // Not a byte comparison: the widget's /P is a page reference, which renumbers objects by design (lazy refs).
+    const legacyDoc = await PDFDocument.create({ updateMetadata: false });
+    legacyDoc.addPage((await legacyDoc.copyPages(src, [0]))[0]);
+    expect(fileHas(await legacyDoc.save({ useObjectStreams: false }), 'LOOSEVALUE')).toBe(true); // control
+    const ours = await PDFDocument.create({ updateMetadata: false });
+    ours.addPage((await copySourcePages(ours, src, [0])).pages[0]);
+    expect(fileHas(await ours.save({ useObjectStreams: false }), 'LOOSEVALUE')).toBe(true);
+  });
+
+  it('an indirect /Type /Page and an indirect /Subtype /Link are recognised (R2-8)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const ctx = d.context;
+    const p0 = d.addPage([300, 300]);
+    const pageName = ctx.register(PDFName.of('Page'));
+    const linkName = ctx.register(PDFName.of('Link'));
+    const orphan = ctx.register(ctx.obj({
+      Type: pageName, MediaBox: [0, 0, 300, 300], Resources: { Font: { F1: font.ref } },
+      Contents: ctx.register(ctx.stream(`BT /F1 12 Tf 20 200 Td (${SECRET(1)}) Tj ET`)),
+    }));
+    const link = ctx.register(ctx.obj({ Type: 'Annot', Subtype: linkName, Rect: [10, 10, 100, 40], Dest: [orphan, PDFName.of('Fit')] }));
+    p0.node.set(PDFName.of('Annots'), ctx.obj([link]));
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    expect(secretsIn(src, 2)).toEqual([1]); // control
+    const out = await copyAndSave(src, [0]);
+    expect(secretsIn(out, 2)).toEqual([]);
+    const annots = out.getPage(0).node.lookup(PDFName.of('Annots'));
+    expect(annots instanceof PDFArray ? annots.size() : 0).toBe(0);
   });
 });

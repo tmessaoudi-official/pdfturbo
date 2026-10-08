@@ -592,7 +592,7 @@
     "sanitizeRefusedInvalidObject": "Sanitize refused — this PDF contains a damaged object that can’t be inspected and could hide active content",
     "pdfLoadRefused": "This PDF can’t be used for that: its internal structure is damaged or ambiguous, so the saved copy could differ from what’s on screen. Re-save it from another PDF app first",
     "exportLayersConflict": "These documents can’t be saved together: one of them hides a layer, and their layer settings can’t be combined into one file. Export them separately",
-    "exportResourcesUnreadable": "A page you kept shares images with a page you removed, and its content can't be read to tell them apart. Use Compress → flatten to images to export it",
+    "exportResourcesUnreadable": "A page in this export shares images or fonts with a page that isn't in it, and its content can't be read to tell them apart, so nothing was saved. Compress → flatten to images still works (it saves every page as a picture)",
     "pageDownloaded": "Page {{page}} downloaded!",
     "pageExportFailed": "Page export failed",
     "exportSourceNotFound": "Export failed — source PDF not found",

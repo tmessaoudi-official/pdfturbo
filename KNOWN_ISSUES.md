@@ -9,7 +9,7 @@ The items below are **not defects and not on a fix list** — they are the hones
 client-side editor. Each notes the "escape hatch" that *would* lift it and the trade-off of taking
 it, so the limit is understood rather than mistaken for a bug.
 
-_Last updated: 2026-09-27._
+_Last updated: 2026-10-08._
 
 ---
 
@@ -70,6 +70,21 @@ work in a private/incognito window when editing sensitive documents on a shared 
   expiry. The exemption rests on the app never verifying an RSA signature with forge: `src/signing/cmsVerify.ts` verifies with WebCrypto and forge only
   parses and creates. It voids itself when npm reports a fix or the date passes. Detail: `CLAUDE.md` § Git & CI (fifth occurrence) and
   `.claude/rules/signing.md`.
+
+### From SEC-1 — pages left out of an export (2026-10-08)
+
+- **An export can refuse.** When a page you keep shares its resources (images, forms, fonts, graphics states) with a
+  page left out — deleted, redacted, outside an extracted range, or simply not the page you download — the export
+  keeps only what the kept page draws. If that page's drawing cannot be read (an undecodable stream, a stray
+  delimiter), what it draws is unknown, and the PDF exports refuse (`toast.exportResourcesUnreadable`) rather than
+  carry the other page's content. **Compress → flatten to images** still works: it saves every page as a picture.
+- **A link that names its target by a named destination is dead in every export.** The name table (`/Names
+  /Dests`) lives on the catalog, which is never copied, so such a link points nowhere — it does not leak, and it
+  does not work. Links by page reference land on the right export page.
+- **What the reference cut covers is what was measured.** Links, form fields (siblings, and fields an action names),
+  annotation replies, orphan page dictionaries, the catalog and page tree, and resources shared through the page,
+  its forms, patterns, appearances and Type3 fonts — each pinned in `tests/export/copySourcePages.test.ts`. A
+  carrier reached some other way is not ruled out; `SECURITY.md` states the same bound.
 
 ### From limits row 27 — Compress → shrink images (2026-09-27)
 

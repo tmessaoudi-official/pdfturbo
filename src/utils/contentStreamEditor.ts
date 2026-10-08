@@ -245,6 +245,9 @@ export function tokenizeContentStream(src: string): CsToken[] {
     const start = i;
     while (i < src.length && isRegular(src[i])) i++;
     const word = src.slice(start, i);
+    // A delimiter no branch above consumes (a top-level `)` `]` `>` `{` `}`) would leave `i` where it is and loop
+    // forever pushing empty tokens — a frozen tab on any export that reads the page (M1 round 2, R2-5).
+    if (word === '') throw new Error(`Content stream: stray '${src[i]}' at byte ${i}`);
     if (word === 'BI') {
       // Inline image: pass through raw up to and including the whitespace-delimited
       // 'EI' terminator (F7 — a bare indexOf would match "EI" inside binary data).

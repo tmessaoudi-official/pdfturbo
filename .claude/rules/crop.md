@@ -132,7 +132,7 @@ this class twice over.
 
 i18n: 6 new `toolbar.cropMargin*` keys + `toast.cropMarginsTooLarge` (ar accepted by the 2026-09-13 WS3
 closure ruling, alongside `toolbar.exportXlsxTitle`, `badge.signRect`, the 3 re-worded crop/redaction strings,
-the 2 #54b keys and the old `toolbar.sanitizeTitle` — 14 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
+the 2 #54b keys and the old `toolbar.sanitizeTitle` — 15 values pending, enumerated in § The hide-vs-remove audit). The inputs use `role="group"` +
 `aria-labelledby` so a short field name is announced with its group label, the same pattern as
 `signX/Y/W/H` (§ A CRITICAL a11y rule). Guards: `tests/utils/marginsToRect.test.ts` (8 pure —
 zero margins, negatives, NaN from an empty input, refusal when nothing is left) +

@@ -86,10 +86,21 @@ export async function copySourcePages(
     if (keep.has(i)) continue;
     for (const r of annotRefs(lib, srcPages[i])) if (!keptAnnots.has(r)) cutRefs.add(r);
   }
-  for (const r of fieldsNoKeptWidgetReaches(lib, src, keptAnnots)) cutRefs.add(r);
-  const ownResources = opts.pruneSharedResources && keep.size < srcPages.length
-    ? prunedSharedResources(lib, src, srcPages, keep)
-    : new Map<number, PDFDict>();
+  // With every page kept nothing is left out, so nothing is cut and the copy is pdf-lib's own (R2-7).
+  const anyLeftOut = keep.size < srcPages.length;
+  const fieldChain = keptFieldChain(lib, src, keptAnnots);
+  if (anyLeftOut) for (const r of fieldsNoKeptWidgetReaches(lib, src, keptAnnots, fieldChain)) cutRefs.add(r);
+  // Any other form field — reached through an action's /Fields or /T, say — is one no kept widget belongs to.
+  const foreignField = (ref: PDFRef, obj: PDFObject | undefined): boolean => anyLeftOut
+    && obj instanceof Dict && obj.has(PDFName.of('FT')) && !fieldChain.has(ref) && !keptAnnots.has(ref);
+  // The catalog and the page-tree nodes are the whole document: a signature's /Reference /Data, say, names the
+  // catalog, and copying it would carry every page, field and outline (R2-3).
+  const catalogRef = src.context.trailerInfo.Root;
+  const isDocument = (ref: PDFRef, obj: PDFObject | undefined): boolean => ref === catalogRef
+    || (obj instanceof Dict && obj.lookup(PDFName.of('Type')) === PDFName.of('Pages'));
+  const pruner = opts.pruneSharedResources && anyLeftOut
+    ? new ResourcePruner(lib, src, reachableFromPages(lib, src, srcPages.filter((_, i) => !keep.has(i))))
+    : undefined;
 
   const destRefOf = new Map<number, PDFRef>();
   const standIns = new Map<number, PDFRef>();
@@ -101,7 +112,9 @@ export async function copySourcePages(
   };
   // `copyPDFIndirectObject` is private in pdf-lib's typings, but `copy` reaches it through the property at call
   // time, so replacing it routes every reference through here. Pinned by tests/export/copySourcePages.test.ts.
-  const internals = copier as unknown as { copyPDFIndirectObject: (ref: PDFRef) => PDFRef };
+  const internals = copier as unknown as {
+    copyPDFIndirectObject: (ref: PDFRef) => PDFRef; traversedObjects: Map<unknown, PDFObject>;
+  };
   const copyRef = internals.copyPDFIndirectObject;
   internals.copyPDFIndirectObject = (ref: PDFRef): PDFRef => {
     const i = pageIndexOf.get(ref);
@@ -110,15 +123,27 @@ export async function copySourcePages(
       if (standInIndices.has(i)) return lazy(standIns, i);
       return (cut ??= dest.context.nextRef());
     }
+    const obj = src.context.lookup(ref);
     // A page dictionary outside the page tree — what a pre-fix export left behind — is a page left out too.
-    if (cutRefs.has(ref) || isPageDict(lib, src.context.lookup(ref))) return (cut ??= dest.context.nextRef());
+    if (cutRefs.has(ref) || isPageDict(lib, obj) || foreignField(ref, obj) || isDocument(ref, obj)) return (cut ??= dest.context.nextRef());
+    // A form, pattern, appearance or Type3 font with resources of its own carries only what it draws of them (M1-S1).
+    if (pruner && !internals.traversedObjects.has(ref)) {
+      const owner = pruner.prunedOwner(obj);
+      if (owner) {
+        const newRef = dest.context.nextRef();
+        internals.traversedObjects.set(ref, newRef);
+        dest.context.assign(newRef, copier.copy(owner));
+        return newRef;
+      }
+    }
     return copyRef(ref);
   };
 
   const assigned = new Set<number>();
   const pages = indices.map(i => {
     let node = srcPages[i].node;
-    const resources = ownResources.get(i);
+    const resources = pruner?.pruned(
+      () => [contentOf(lib, src, node.get(PDFName.of('Contents')))], node.Resources());
     if (resources) {
       node = node.clone();
       node.set(PDFName.of('Resources'), resources);
@@ -157,16 +182,12 @@ function annotRefs(lib: Lib, page: PDFPage): PDFRef[] {
 }
 
 function isPageDict(lib: Lib, obj: PDFObject | undefined): boolean {
-  return obj instanceof lib.PDFDict && obj.get(lib.PDFName.of('Type')) === lib.PDFName.of('Page');
+  return obj instanceof lib.PDFDict && obj.lookup(lib.PDFName.of('Type')) === lib.PDFName.of('Page');
 }
 
-/**
- * M1-C1: the form fields a copy would carry although no kept widget belongs to them. A kept widget's `/Parent` chain
- * brings its ancestors, and their `/Kids` name the SIBLING fields — whose `/V` holds a value typed on a page left
- * out. Every child of a chain field that is neither on a kept chain nor a kept widget is cut.
- */
-function fieldsNoKeptWidgetReaches(lib: Lib, src: PDFDocument, keptAnnots: Set<PDFRef>): PDFRef[] {
-  const { PDFName, PDFDict, PDFArray, PDFRef: Ref } = lib;
+/** Every field on a kept widget's `/Parent` chain: the fields the kept pages show. */
+function keptFieldChain(lib: Lib, src: PDFDocument, keptAnnots: Set<PDFRef>): Set<PDFRef> {
+  const { PDFName, PDFDict, PDFRef: Ref } = lib;
   const chain = new Set<PDFRef>();
   for (const widget of keptAnnots) {
     let node = src.context.lookup(widget);
@@ -177,106 +198,229 @@ function fieldsNoKeptWidgetReaches(lib: Lib, src: PDFDocument, keptAnnots: Set<P
       node = src.context.lookup(parent);
     }
   }
+  return chain;
+}
+
+/**
+ * M1-C1: the form fields a copy would carry although no kept widget belongs to them. A kept widget's `/Parent` chain
+ * brings its ancestors, and their `/Kids` name the SIBLING fields — whose `/V` holds a value typed on a page left
+ * out. Every child of a chain field that is neither on a kept chain nor a kept widget is cut — such a child may
+ * inherit `/FT`, so the copier's own `/FT` check (which catches a field an action names, R2-S4) would not see it.
+ */
+function fieldsNoKeptWidgetReaches(lib: Lib, src: PDFDocument, keptAnnots: Set<PDFRef>, chain: Set<PDFRef>): PDFRef[] {
+  const { PDFName, PDFDict, PDFArray, PDFRef: Ref } = lib;
   const cut: PDFRef[] = [];
+  const seen = new Set<PDFRef>();
   for (const field of chain) {
     const node = src.context.lookup(field);
     const kids = node instanceof PDFDict ? node.lookup(PDFName.of('Kids')) : undefined;
     if (!(kids instanceof PDFArray)) continue;
-    for (const kid of kids.asArray()) if (kid instanceof Ref && !chain.has(kid) && !keptAnnots.has(kid)) cut.push(kid);
+    for (const kid of kids.asArray()) {
+      if (!(kid instanceof Ref) || seen.has(kid)) continue;
+      seen.add(kid);
+      if (!chain.has(kid) && !keptAnnots.has(kid)) cut.push(kid);
+    }
   }
   return cut;
 }
 
-const PRUNED = ['XObject', 'Pattern', 'Shading'] as const;
-type Drawn = Record<(typeof PRUNED)[number], Set<string>>;
+/**
+ * Every object a page left out reaches, not crossing into another page or up its page tree. A resource entry is
+ * pruned only when it is in here AND nothing kept draws it — so a document whose kept pages share nothing with the
+ * removed ones is copied exactly as before, and content is read only where pruning can matter.
+ */
+function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): Set<PDFRef> {
+  const { PDFDict, PDFArray, PDFRef: Ref, PDFStream, PDFName } = lib;
+  const reach = new Set<PDFRef>();
+  const parent = PDFName.of('Parent');
+  const visit = (obj: PDFObject | undefined, fromPage: boolean): void => {
+    if (obj instanceof Ref) {
+      if (reach.has(obj)) return;
+      const target = src.context.lookup(obj);
+      if (isPageDict(lib, target)) return;
+      reach.add(obj);
+      return visit(target, false);
+    }
+    if (obj instanceof PDFStream) return visit(obj.dict, false);
+    if (obj instanceof PDFArray) return obj.asArray().forEach(v => visit(v, false));
+    if (obj instanceof PDFDict) for (const [k, v] of obj.entries()) if (!(fromPage && k === parent)) visit(v, false);
+  };
+  for (const page of pages) {
+    visit(page.node, true);
+    visit(page.node.Resources(), false);
+  }
+  return reach;
+}
+
+const PRUNED = ['XObject', 'Pattern', 'Shading', 'ExtGState', 'Font', 'Properties', 'ColorSpace'] as const;
+type Category = (typeof PRUNED)[number];
+type Drawn = Record<Category, Set<string>> & { anyColorSpace: boolean };
 
 /**
- * M1-S1: for each kept page whose resources dictionary is also a removed page's — by reference or inherited from the
- * same tree node — the replacement dictionary holding only what the KEPT users of it draw. A dictionary whose every
- * entry is drawn is left alone, so the output changes only where something would have been carried.
+ * M1-S1, round 2. A `/Resources` dictionary a kept page shares with a removed one — by reference, through the page
+ * tree, through a shared sub-dictionary, or as the resources of a form, pattern, appearance or Type3 font the kept
+ * page reaches (FPDI's templates carry `/Resources 2 0 R`, FPDF's one dictionary) — is replaced, per OWNER, by a copy
+ * holding only what that owner draws. An entry stays when the owner draws it or no removed page reaches it.
  */
-function prunedSharedResources(lib: Lib, src: PDFDocument, srcPages: PDFPage[], keep: Set<number>): Map<number, PDFDict> {
-  const { PDFName, PDFDict } = lib;
-  const effective = srcPages.map(p => {
-    const r = p.node.Resources();
-    return r instanceof PDFDict ? r : undefined;
-  });
-  const out = new Map<number, PDFDict>();
-  const groups = new Map<PDFDict, number[]>();
-  effective.forEach((dict, i) => {
-    if (!dict || !keep.has(i)) return;
-    const shared = effective.some((other, j) => other === dict && !keep.has(j));
-    if (!shared) return;
-    groups.set(dict, [...(groups.get(dict) ?? []), i]);
-  });
-  for (const [dict, users] of groups) {
-    const drawn: Drawn = { XObject: new Set(), Pattern: new Set(), Shading: new Set() };
-    for (const i of users) {
-      const content = contentOf(lib, src, srcPages[i].node.get(PDFName.of('Contents')));
-      if (content === null || !collectDrawn(lib, src, content, dict, drawn, new Set(), 0)) throw new ExportResourcesUnreadableError();
+class ResourcePruner {
+  constructor(private readonly lib: Lib, private readonly src: PDFDocument, private readonly excluded: Set<PDFRef>) {}
+
+  /** A clone of a form / pattern / appearance stream or Type3 font with its resources pruned, or undefined. */
+  prunedOwner(obj: PDFObject | undefined): PDFObject | undefined {
+    const { PDFName, PDFDict, PDFStream } = this.lib;
+    const key = PDFName.of('Resources');
+    if (obj instanceof PDFStream) {
+      const resources = obj.dict.lookup(key);
+      if (!(resources instanceof PDFDict)) return undefined;
+      const pruned = this.pruned(() => [contentOf(this.lib, this.src, obj)], resources);
+      if (!pruned) return undefined;
+      const clone = obj.clone();
+      clone.dict.set(key, pruned);
+      return clone;
+    }
+    if (obj instanceof PDFDict && !isPageDict(this.lib, obj)) {
+      const resources = obj.lookup(key);
+      if (!(resources instanceof PDFDict)) return undefined;
+      // Only a Type3 font draws from resources of its own; any other owner cannot be read, so it refuses if it must.
+      const contents = () => (obj.lookup(PDFName.of('Subtype')) === PDFName.of('Type3') ? charProcs(this.lib, this.src, obj) : [null]);
+      const pruned = this.pruned(contents, resources);
+      if (!pruned) return undefined;
+      const clone = obj.clone();
+      clone.set(key, pruned);
+      return clone;
+    }
+    return undefined;
+  }
+
+  /** `resources` holding only what `contents` draws of the entries a removed page reaches; undefined when unchanged. */
+  pruned(contents: () => (string | null)[], resources: PDFDict | undefined): PDFDict | undefined {
+    const { PDFName, PDFDict } = this.lib;
+    if (!resources || !PRUNED.some(cat => {
+      const sub = resources.lookup(PDFName.of(cat));
+      return this.touches(resources.get(PDFName.of(cat))) || (sub instanceof PDFDict && sub.values().some(v => this.touches(v)));
+    })) return undefined;
+    const drawn: Drawn = { XObject: new Set(), Pattern: new Set(), Shading: new Set(), ExtGState: new Set(), Font: new Set(),
+      Properties: new Set(), ColorSpace: new Set(), anyColorSpace: false };
+    for (const content of contents()) {
+      if (content === null || !this.collect(content, resources, drawn, new Set(), 0)) throw new ExportResourcesUnreadableError();
     }
     let changed = false;
-    const pruned = dict.clone(src.context);
+    const out = resources.clone(this.src.context);
     for (const cat of PRUNED) {
-      const sub = dict.lookup(PDFName.of(cat));
+      const sub = resources.lookup(PDFName.of(cat));
       if (!(sub instanceof PDFDict)) continue;
-      const kept = src.context.obj({});
+      const kept = this.src.context.obj({});
       for (const [name, value] of sub.entries()) {
-        if (drawn[cat].has(name.decodeText())) kept.set(name, value);
+        const used = drawn[cat].has(name.decodeText()) || (cat === 'ColorSpace' && drawn.anyColorSpace);
+        if (used || !this.touches(value)) kept.set(name, value);
         else changed = true;
       }
-      pruned.set(PDFName.of(cat), kept);
+      if (kept.entries().length !== sub.entries().length) out.set(PDFName.of(cat), kept);
     }
-    if (changed) for (const i of users) out.set(i, pruned);
+    return changed ? out : undefined;
   }
-  return out;
+
+  /** Whether a value is, or directly contains, a reference a removed page reaches. */
+  private touches(value: PDFObject | undefined): boolean {
+    const { PDFRef: Ref, PDFDict, PDFArray } = this.lib;
+    if (value instanceof Ref) return this.excluded.has(value);
+    if (value instanceof PDFDict) return value.values().some(v => this.touches(v));
+    if (value instanceof PDFArray) return value.asArray().some(v => this.touches(v));
+    return false;
+  }
+
+  /**
+   * The names `content` draws from `resources` — `Do`, `Tf`, `gs`, `scn`/`SCN`, `sh`, `cs`/`CS`, `BDC`/`DP`; an inline
+   * image may name any colour space — through every form, Type3 font, soft-mask group and tiling pattern it draws that
+   * has no resources of its own, since that draws from the same dictionary. False when anything cannot be read.
+   */
+  private collect(content: string, resources: PDFDict, drawn: Drawn, seen: Set<unknown>, depth: number): boolean {
+    const { PDFName, PDFDict, PDFStream } = this.lib;
+    if (depth > 12) return false;
+    let ops;
+    try { ops = groupOps(tokenizeContentStream(content)); } catch { return false; }
+    const entry = (cat: Category, name: string) => {
+      const sub = resources.lookup(PDFName.of(cat));
+      return sub instanceof PDFDict ? this.src.context.lookup(sub.get(PDFName.of(name))) : undefined;
+    };
+    // A drawn object draws from `resources` too, the way pdf.js reads it: a form, Type3 font or soft-mask group whose
+    // own `/Resources` is not a dictionary, and a tiling pattern always (pdf.js merges its resources with these).
+    const inherit = (obj: PDFObject | undefined, read: () => (string | null)[], always = false): boolean => {
+      if (!obj || seen.has(obj)) return true;
+      const own = obj instanceof PDFStream ? obj.dict : obj;
+      if (!(own instanceof PDFDict) || (!always && own.lookup(PDFName.of('Resources')) instanceof PDFDict)) return true;
+      seen.add(obj);
+      return read().every(c => c !== null && this.collect(c, resources, drawn, seen, depth + 1));
+    };
+    for (const op of ops) {
+      if (op.operator === 'INLINE_IMAGE') { drawn.anyColorSpace = true; continue; }
+      const first = op.operands[0];
+      const last = op.operands[op.operands.length - 1];
+      const nameOf = (t: typeof first) => (t?.type === 'name' ? decodeName(t.raw) : undefined);
+      const name = op.operator === 'Tf' ? nameOf(first) : nameOf(last);
+      if (!name) continue;
+      switch (op.operator) {
+        case 'Do': {
+          drawn.XObject.add(name);
+          const form = entry('XObject', name);
+          if (form instanceof PDFStream && form.dict.lookup(PDFName.of('Subtype')) === PDFName.of('Form')
+            && !inherit(form, () => [contentOf(this.lib, this.src, form)])) return false;
+          break;
+        }
+        case 'Tf': {
+          drawn.Font.add(name);
+          const font = entry('Font', name);
+          if (font instanceof PDFDict && font.lookup(PDFName.of('Subtype')) === PDFName.of('Type3')
+            && !inherit(font, () => charProcs(this.lib, this.src, font))) return false;
+          break;
+        }
+        case 'gs': {
+          drawn.ExtGState.add(name);
+          const gs = entry('ExtGState', name);
+          const mask = gs instanceof PDFDict ? gs.lookup(PDFName.of('SMask')) : undefined;
+          const group = mask instanceof PDFDict ? this.src.context.lookup(mask.get(PDFName.of('G'))) : undefined;
+          if (group instanceof PDFStream && !inherit(group, () => [contentOf(this.lib, this.src, group)])) return false;
+          break;
+        }
+        case 'scn': case 'SCN': {
+          drawn.Pattern.add(name);
+          const pattern = entry('Pattern', name);
+          if (pattern instanceof PDFStream && !inherit(pattern, () => [contentOf(this.lib, this.src, pattern)], true)) return false;
+          break;
+        }
+        case 'sh': drawn.Shading.add(name); break;
+        case 'cs': case 'CS': drawn.ColorSpace.add(name); break;
+        case 'BDC': case 'DP': if (op.operands.length === 2) drawn.Properties.add(name); break;
+      }
+    }
+    return true;
+  }
+}
+
+/** A Type3 font's glyph procedures, each as content text (null when one cannot be decoded). */
+function charProcs(lib: Lib, src: PDFDocument, font: PDFDict): (string | null)[] {
+  const procs = font.lookup(lib.PDFName.of('CharProcs'));
+  return procs instanceof lib.PDFDict ? procs.values().map(v => contentOf(lib, src, v)) : [];
 }
 
 /** A page's or form's content as text, or null when a stream cannot be decoded. */
 function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): string | null {
-  const { PDFRawStream, PDFArray, decodePDFRawStream } = lib;
+  const { PDFRawStream, PDFStream, PDFArray, decodePDFRawStream } = lib;
   const obj = value !== undefined ? src.context.lookup(value) : undefined;
   const streams = obj instanceof PDFArray ? obj.asArray().map(v => src.context.lookup(v)) : obj === undefined ? [] : [obj];
   let text = '';
   for (const s of streams) {
-    if (!(s instanceof PDFRawStream)) return null;
+    // A raw stream is decoded; one pdf-lib built since the load (a flatten, a typed value) holds its bytes unencoded.
     let bytes: Uint8Array;
-    try { bytes = decodePDFRawStream(s).decode(); } catch { return null; }
+    try {
+      if (s instanceof PDFRawStream) bytes = decodePDFRawStream(s).decode();
+      else if (s instanceof PDFStream && 'getUnencodedContents' in s) bytes = (s as unknown as { getUnencodedContents(): Uint8Array }).getUnencodedContents();
+      else return null;
+    } catch { return null; }
     for (let k = 0; k < bytes.length; k++) text += String.fromCharCode(bytes[k]);
     text += '\n';
   }
   return text;
-}
-
-/**
- * Names `content` draws from `resources`: `Do` (XObject), a name operand of `scn`/`SCN` (Pattern), `sh` (Shading) —
- * through every form it draws that has no `/Resources` of its own, since that form draws from the same dictionary.
- * False when anything on the way cannot be read.
- */
-function collectDrawn(
-  lib: Lib, src: PDFDocument, content: string, resources: PDFDict, drawn: Drawn, seen: Set<unknown>, depth: number,
-): boolean {
-  const { PDFName, PDFDict, PDFRawStream } = lib;
-  if (depth > 12) return false;
-  let ops;
-  try { ops = groupOps(tokenizeContentStream(content)); } catch { return false; }
-  const xobjects = resources.lookup(PDFName.of('XObject'));
-  for (const op of ops) {
-    const last = op.operands[op.operands.length - 1];
-    const name = last?.type === 'name' ? decodeName(last.raw) : undefined;
-    if (!name) continue;
-    if (op.operator === 'Do') {
-      drawn.XObject.add(name);
-      const form = xobjects instanceof PDFDict ? src.context.lookup(xobjects.get(PDFName.of(name))) : undefined;
-      if (!(form instanceof PDFRawStream) || seen.has(form)) continue;
-      if (form.dict.lookup(PDFName.of('Subtype')) !== PDFName.of('Form') || form.dict.get(PDFName.of('Resources'))) continue;
-      seen.add(form);
-      const inner = contentOf(lib, src, form);
-      if (inner === null || !collectDrawn(lib, src, inner, resources, drawn, seen, depth + 1)) return false;
-    } else if (op.operator === 'scn' || op.operator === 'SCN') drawn.Pattern.add(name);
-    else if (op.operator === 'sh') drawn.Shading.add(name);
-  }
-  return true;
 }
 
 /** A content-stream name token (`/Fm#201`) as the dictionary key text it names (`Fm 1`). */
@@ -294,7 +438,7 @@ function rewritePageRefs(lib: Lib, dest: PDFDocument, map: (ref: PDFRef) => PDFR
   const { PDFName, PDFArray: Arr, PDFDict, PDFRef: Ref, PDFStream, PDFNull } = lib;
   const ctx = dest.context;
   const targetOf = (annot: PDFObject | undefined): PDFObject | undefined => {
-    if (!(annot instanceof PDFDict) || annot.get(PDFName.of('Subtype')) !== PDFName.of('Link')) return undefined;
+    if (!(annot instanceof PDFDict) || annot.lookup(PDFName.of('Subtype')) !== PDFName.of('Link')) return undefined;
     const destArr = annot.lookup(PDFName.of('Dest'));
     if (destArr instanceof Arr) return destArr.get(0);
     const action = annot.lookup(PDFName.of('A'));
@@ -311,7 +455,7 @@ function rewritePageRefs(lib: Lib, dest: PDFDocument, map: (ref: PDFRef) => PDFR
     if (!(obj instanceof PDFDict)) continue;
     const kids = obj.lookup(PDFName.of('Kids'));
     if (kids instanceof Arr) kidsArrays.add(kids);
-    if (obj.get(PDFName.of('Type')) !== PDFName.of('Page')) continue;
+    if (obj.lookup(PDFName.of('Type')) !== PDFName.of('Page')) continue;
     const annots = obj.lookup(PDFName.of('Annots'));
     if (!(annots instanceof Arr)) continue;
     for (let k = annots.size() - 1; k >= 0; k--) {
