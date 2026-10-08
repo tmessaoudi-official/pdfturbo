@@ -89,13 +89,15 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - **What a kept page still carries from a left-out one, by design.** A font both pages draw keeps its whole subset
   and its ToUnicode map, so the SET of characters the left-out page used is recoverable from the font (not their
   order or position). The layer settings (`/OCProperties`) are copied whole, so a layer name only the left-out page
-  uses is in the file. Colour spaces are never pruned, and are copied with whatever they reference (a malformed one
-  with an extra key can carry what it names): pdf.js resolves a colour-space name outside `cs`/`CS` (a
+  uses is in the file. Every object a kept page keeps is copied with whatever it references — a malformed one with
+  an extra key (on a colour space, a function, a shading, a graphics state) carries what that key names. Colour
+  spaces are never pruned: pdf.js resolves a colour-space name outside `cs`/`CS` (a
   shading's own `/ColorSpace`, an Indexed or Separation base), so pruning one recoloured kept pages, while a colour
   space draws nothing.
 - **Leaving a page out costs time.** The prune reads every owner that shares resources with a left-out page:
-  deleting the last page of a 142-page corpus file took 6.5 s against 1.3 s without it, the 67-page census report
-  1.3 s against 0.3 s (round-4 code, 2026-10-08, machine load ~25 — absolute times scale with load, the ratio less).
+  deleting the last page of a 142-page corpus file took a median 11 s (3.3–13.8 s over three runs) against 0.13 s
+  without it, the 67-page census report 0.9 s against 0.1 s — `copySourcePages` alone, warmed up, alternating runs,
+  round-5 code, 2026-10-08, machine load ~24. Not measured on an idle machine; not optimised.
 - **The catalog and page tree are never copied by reference, even with every page kept.** A signature's
   `/Reference` to the whole document loses that target in every export; the document is rebuilt, never carried.
 

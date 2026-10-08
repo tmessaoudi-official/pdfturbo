@@ -74,8 +74,9 @@ reading the code. Both are said plainly instead of implied to be measured.
 > work. Three residues are kept by design, because the kept page needs the object they live in: a **font** shared
 > with a removed page keeps that page's glyph shapes and its character map, so which characters the removed page
 > used (not their order) can be read from the font; the **names of layers** a removed page alone uses stay in the
-> file's layer settings; and **colour spaces** are copied whole, with whatever they reference — a valid colour space
-> references nothing that draws, but a malformed one carrying another key can carry what that key names. See `KNOWN_ISSUES.md`.
+> file's layer settings; and **colour spaces** are copied whole. Every object a kept page keeps comes with whatever
+> it references: no key the PDF standard defines on a colour space, function, shading or graphics state names
+> something that draws, but a malformed one carrying an extra key carries what that key names. See `KNOWN_ISSUES.md`.
 
 | Tool | Content is… | Notes |
 |---|---|---|

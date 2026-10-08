@@ -101,7 +101,7 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   the page-tree nodes. (The catalog / page-tree cut itself was already ungated before round 3 — this line said round 3
   made it so, corrected at round 4.)
 - Measured cost: deleting the last of Publication 17's 142 pages took 3706 ms pruned vs 150 ms (load ~19, round-3
-  code); re-measured on the round-4 code, 6510 vs 1278 ms at load ~25 — the plan's § Fragile and `KNOWN_ISSUES.md`
+  code); the round-4 re-measure (6510 vs 1278 ms) was an order artefact; round 5's warm median is 11061 vs 127 ms at load ~24 — the plan's § Fragile and `KNOWN_ISSUES.md`
   carry the current figures.
 
 **Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
@@ -125,13 +125,32 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   before the pruner runs). Anything else that shares resources with a left-out page cannot be read, and refuses.
 - The sign-rect box (`assembledPageBox`) assembles without the prune: it only reads the crop box (R4-K-3).
 
+**Round 5 (2026-10-08, the cap round) — "is this owner drawn", not only "what does it draw":**
+- **`touches` is transitive** (memoised, stopping at pages, the catalog and the page tree). An entry only the kept
+  page reaches but never draws — a wrapper form, pattern or soft-mask group whose own resources name the removed
+  page's form — was kept (shallow `touches` said "not shared") and then pruned against its OWN content, which draws
+  that form. It is dropped now, being undrawn.
+- **A tiling pattern's own categories hide the parent's whole** (pdf.js merges without `mergeSubDicts`): its content
+  is collected in that overlay, and only names in the categories it lacks count as drawn from the parent.
+- **An array `/Contents` member's own `/Resources` draws nothing** (pdf.js never reads it): pruned against no content.
+- **Owners inside a stream's dictionary and in the page node's other entries** (an inline widget's `/DR`) are pruned:
+  `pruneNested` walks stream dictionaries, and the page loop runs it over every page entry but `/Resources`,
+  `/Parent` and `/Contents`.
+- **A self-listing inline Type3 font refuses only where its resources are shared**; unshared, it is kept as it is —
+  round 4 had made a legal, unshared font refuse every export that left a page out.
+- Not fixed, inferred only: a content stream shared by two kept pages, one as the single `/Contents` and one inside
+  an array, is pruned by whichever page reaches it first.
+
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
 built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and passed against the unfixed code; the
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePages.test.ts` (100 — round 4 adds six route shapes ×2 modes (an inline Type3 with an
+Guards: `tests/export/copySourcePages.test.ts` (117 — round 5 adds seven route shapes ×2 modes (three undrawn
+wrappers, a shadowing pattern, an array-member `/Resources`, an owner in a stream dictionary, an inline widget's
+`/DR`) and three cases (the unshared self-listing Type3 exports, and two controls the scan can see: a DRAWN wrapper and
+a pattern without its own `/XObject` keep the removed page's form); round 4 adds six route shapes ×2 modes (an inline Type3 with an
 indirect `/Resources`, one in an inline and one in an indirect ExtGState `/Font`, a shadowing content-stream
 `/Fm1`, a widget's and a field's `/DR`) and five cases (the ExtGState Type3 keep, the content-stream merge keep, the
 `/DR` keep for a widget and for a field whose `/DA` sits on its widget, and the sign-rect box); round 3 adds the inline Type3 shapes, the inherited-`/FT`
@@ -180,7 +199,11 @@ bypassed → the shadowing shape ×2 + the merge keep case; `/DR` not an owner �
 keep cases; the early exit restored → exactly the indirect-`/Resources` Type3 shape ×2; the hook's `pruneNested` off →
 exactly the indirect-ExtGState shape ×2; the shadowing guard off → exactly the shadowing shape ×2; descendants' `/DA`
 not read → exactly the field keep case; arrays not walked → both ExtGState shapes ×2. The `assembledPageBox` opt-out
-reds its case when removed (the box call refuses).
+reds its case when removed (the box call refuses). Round 5, each landed, red on exactly its cases, restored with
+`cmp`: `touches` shallow again → the 3 wrapper shapes ×2; re-entry always refusing → exactly the unshared Type3
+case; re-entry never refusing → exactly the round-3 self-drawing refusal; the page-node walk off → the inline-widget
+shape ×2; array members unregistered → the array shape ×2; the pattern filter off → the shadowing-pattern shape ×2;
+stream dictionaries not walked → the stream-dictionary shape ×2.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

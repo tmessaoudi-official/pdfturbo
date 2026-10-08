@@ -24,6 +24,8 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 06:54] ASSUMED (review): M1 round 4: a field's or widget's /DR is pruned like any owner, keeping what the /DA strings it serves name (its own, inherited through /Parent then the AcroForm's, and every descendant's) - because /DR named the FPDF shared dictionary and carried a removed page's forms (R4-S-2), and a viewer only builds appearances from fonts /DA names. Alternatives: drop /DR entirely (breaks appearance regeneration); disclose as uncovered.
 - [2026-10-08 06:54] ASSUMED (review): M1 round 4: a single content stream's own /Resources is read the way pdf.js merges it (stream wins, only two direct sub-dictionaries merge; an array /Contents is not merged) and a page entry shadowed by the stream's counts as not drawn - because pruning against page resources alone blanked a kept page (R4-C-2) and keeping by name leaked the shadowed entry. Alternative: refuse any page whose content stream has /Resources.
 - [2026-10-08 06:54] ASSUMED (review): M1 round 4: the sign-rect box (assembledPageBox) assembles without the shared-resource prune - because it only reads the crop box, saves nothing, and the prune's refusal turned a pick into a fallback (R4-K-3). Alternative: keep it and disclose the cost.
+- [2026-10-08 07:37] ASSUMED (review): M1 round 5: resource 'sharing' is transitive (an entry counts as reaching a removed page when anything below it does) - because an undrawn wrapper only the kept page reached carried the removed page's form (R5-S-1); cost accepted and measured (Publication 17 delete-last median 11 s at load ~24). Alternative: keep shallow and prune each owner only where drawn (needs a drawn-owner graph).
+- [2026-10-08 07:37] ASSUMED (review): M1 round 5: a member of an array /Contents is treated as drawing nothing from its own /Resources (pdf.js never reads them), so shared entries there are dropped. Alternative: refuse such pages.
 
 ## Formal Plan
 
@@ -68,7 +70,11 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
   process): Publication 17 delete-last 6510 vs 1278 ms, the census report 1291 vs 292 ms, GPT-3 476 vs 1209 ms; on all
   15 corpus files the pruned and unpruned outputs are the same size and every compared kept page's pdf.js operator
   list is identical (the corpus shares nothing with a deleted last page or with the pages a single-page download
-  leaves out, so this proves the prune neutral there, not the collector right on real sharing). Bounded; not optimised.
+  leaves out, so this proves the prune neutral there, not the collector right on real sharing). Those round-4 timings
+  were an order artefact (the unpruned copy ran first, cold — R5-K-1). Round 5, warmed up, alternating, three runs,
+  load ~24: Publication 17 delete-last median 11061 ms (3281–13838) vs 127 ms; GPT-3 904 vs 108; census 902 vs 111;
+  BERT 374 vs 43. Every kept page's content is tokenized whenever its resources share anything (a font) with the
+  removed page, and `touches` is transitive since round 5. Bounded; not optimised; idle-machine cost unmeasured.
 - `secretsIn` in `tests/export/copySourcePages.test.ts` scans raw streams only (M1-S5): a string leak (`/V`,
   `/Contents`) is invisible to it, which is why every string-shaped case uses `fileHas`. Keep it that way.
 ### Known issues

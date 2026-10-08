@@ -741,6 +741,42 @@ async function routeShape(shape: string): Promise<PDFDocument> {
     ctx.assign(field, ctx.obj({ FT: 'Tx', T: PDFString.of('name'), Kids: [w], DR: S }));
     p1.node.set(PDFName.of('Annots'), ctx.obj([w]));
     src.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [field] }));
+  } else if (shape === 'unusedWrapperForm' || shape === 'unusedWrapperPattern' || shape === 'unusedWrapperGs') {
+    // round 5 (R5-S-1): the kept page LISTS but never draws a form / pattern / soft-mask group that only it reaches,
+    // whose own resources name the removed page's form
+    const own = { XObject: { Fm2: fm2 } };
+    const wrapper = shape === 'unusedWrapperPattern'
+      ? { Pattern: { Pk: ctx.register(ctx.stream('/Fm2 Do', { Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1, BBox: [0, 0, 300, 300], XStep: 300, YStep: 300, Resources: own })) } }
+      : shape === 'unusedWrapperGs'
+        ? { ExtGState: { GSk: ctx.register(ctx.obj({ Type: 'ExtGState', SMask: { Type: 'Mask', S: 'Luminosity',
+          G: ctx.register(ctx.stream('/Fm2 Do', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Group: { S: 'Transparency' }, Resources: own })) } })) } }
+        : { XObject: { FmA: ctx.register(ctx.stream('/Fm2 Do', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Resources: own })) } };
+    const fm1 = form(ROUTE_PUBLIC);
+    p1.node.set(PDFName.of('Resources'), ctx.obj({ ...wrapper, XObject: { Fm1: fm1, ...(wrapper.XObject ?? {}) } }));
+    p2.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'patternShadow') { // round 5 (R5-S-2): a tiling pattern's own /XObject HIDES the parent's (no sub-dict merge)
+    const pat = ctx.register(ctx.stream('/Fm2 Do', { Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1, BBox: [0, 0, 300, 300], XStep: 300, YStep: 300,
+      Resources: { XObject: { Fm2: form('PATTERNOWNFORM') } } }));
+    const S = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm2: fm2, Fm1: form(ROUTE_PUBLIC) }, Pattern: { P1: pat } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Pattern cs /P1 scn 0 0 300 300 re f /Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'arrayContentsLocalRes') { // round 5 (R5-S-3): an ARRAY /Contents — pdf.js never reads a member's /Resources
+    const S = ctx.register(ctx.obj({ XObject: { Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: font }, XObject: { Fm2: form(ROUTE_PUBLIC) } }));
+    p1.node.set(PDFName.of('Contents'), ctx.obj([ctx.register(ctx.stream('/Fm2 Do', { Resources: S }))]));
+    p2.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'inlineOwnerInStreamDict') { // round 5 (R5-S-4): an inline Type3 under a drawn form's /PieceInfo, resources = p2's
+    const S = ctx.register(ctx.obj({ XObject: { Fm2: fm2 } }));
+    const fmK = form(ROUTE_PUBLIC, { Resources: { Font: { F1: font } }, PieceInfo: { X: { Private: t3(S) } } });
+    p1.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Fm1: fmK } }));
+    p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  } else if (shape === 'inlineWidgetDR') { // round 5 (R5-C-1): an INLINE widget in the kept page's /Annots whose /DR is the shared dict
+    const S = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Tx', T: PDFString.of('n'), Rect: [10, 10, 100, 40], DR: S, DA: PDFString.of('/F1 0 Tf 0 g') })]));
   } else if (shape === 'widgetDR' || shape === 'fieldDR') { // round 4: a kept widget's (or its field's) /DR IS the shared dict
     const S = ctx.register(ctx.obj({ Font: { F1: font }, XObject: { Fm1: form(ROUTE_PUBLIC), Fm2: fm2 } }));
     p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
@@ -792,6 +828,8 @@ describe('every resource owner, every category: nothing only a removed page draw
     'parentResPlusOwnPartial', 'patternOwnResIsShared', 'resetFormFields', 'hideActionField',
     'directType3SharedRes', 'directType3InShared', 'inheritedFTActionField', 'inDesignActualText',
     'inlineT3IndirectRes', 'extGStateInlineT3', 'extGStateInlineT3Indirect', 'contentResShadows', 'widgetDR', 'fieldDR',
+    'unusedWrapperForm', 'unusedWrapperPattern', 'unusedWrapperGs', 'patternShadow', 'arrayContentsLocalRes', 'inlineOwnerInStreamDict',
+    'inlineWidgetDR',
   ].flatMap(shape => (['cut', 'standIn'] as const).map(mode => [shape, mode] as const)))('%s (%s)', async (shape, mode) => {
     const original = Buffer.from(await (await routeShape(shape)).save({ useObjectStreams: false })).toString('latin1');
     expect(original.includes(ROUTE_SECRET), 'control: the source carries the removed page\'s content').toBe(true);
@@ -1093,5 +1131,45 @@ describe('M1 round 4 — what a kept page draws through, the way pdf.js resolves
     const dr = widget.lookup(PDFName.of('Parent'), PDFDict).lookup(PDFName.of('DR'), PDFDict);
     expect(dr.lookup(PDFName.of('Font'), PDFDict).has(PDFName.of('F1'))).toBe(true);
     expect(dr.lookup(PDFName.of('XObject'), PDFDict).has(PDFName.of('Fm2'))).toBe(false);
+  });
+});
+
+describe('M1 round 5 — an owner is pruned only where it is drawn, and a legal font never refuses', () => {
+  it('an inline Type3 font listed in its own UNSHARED resources exports and keeps what its glyph draws (R5-C-2)', async () => {
+    const d = await PDFDocument.create({ updateMetadata: false });
+    const ctx = d.context;
+    const R = ctx.nextRef();
+    const proc = ctx.register(ctx.stream('1000 0 d0 /G Do'));
+    ctx.assign(R, ctx.obj({
+      Font: { T3: { Type: 'Font', Subtype: 'Type3', FontBBox: [0, 0, 1, 1], FontMatrix: [0.001, 0, 0, 0.001, 0, 0], CharProcs: { a: proc },
+        Encoding: { Differences: [97, 'a'] }, FirstChar: 97, LastChar: 97, Widths: [1000], Resources: R } },
+      XObject: { G: ctx.register(ctx.stream('0 0 9 9 re f % GLYPHFORM', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 9, 9] })) },
+    }));
+    const [p1, p2] = [d.addPage([300, 300]), d.addPage([300, 300])];
+    p1.node.set(PDFName.of('Resources'), R);
+    p1.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('BT /T3 12 Tf 10 10 Td (a) Tj ET')));
+    p2.node.set(PDFName.of('Contents'), ctx.register(ctx.stream('0 0 9 9 re f')));
+    const src = await PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
+    const out = await copyPruned(src, [0]);
+    expect(fileHas(await out.save({ useObjectStreams: false }), 'GLYPHFORM')).toBe(true);
+  });
+
+  it('a wrapper form the kept page DOES draw keeps the removed page\'s form it draws — the scan can see it (R5-S-1 control)', async () => {
+    const src = await routeShape('unusedWrapperForm');
+    src.getPage(0).node.set(PDFName.of('Contents'), src.context.register(src.context.stream('/Fm1 Do /FmA Do')));
+    const dest = await PDFDocument.create({ updateMetadata: false });
+    const { pages } = await copySourcePages(dest, src, [0], { pruneSharedResources: true });
+    dest.addPage(pages[0]);
+    expect(Buffer.from(await dest.save({ useObjectStreams: false })).toString('latin1').includes(ROUTE_SECRET)).toBe(true);
+  });
+
+  it('a pattern with no /XObject of its own draws the parent\'s /Fm2 — kept (R5-S-2 control)', async () => {
+    const src = await routeShape('patternShadow');
+    const pat = src.getPage(0).node.lookup(PDFName.of('Resources'), PDFDict).lookup(PDFName.of('Pattern'), PDFDict).lookup(PDFName.of('P1')) as unknown as { dict: PDFDict };
+    pat.dict.set(PDFName.of('Resources'), src.context.obj({ Font: {} }));
+    const dest = await PDFDocument.create({ updateMetadata: false });
+    const { pages } = await copySourcePages(dest, src, [0], { pruneSharedResources: true });
+    dest.addPage(pages[0]);
+    expect(Buffer.from(await dest.save({ useObjectStreams: false })).toString('latin1').includes(ROUTE_SECRET)).toBe(true);
   });
 });

@@ -130,10 +130,10 @@ export async function copySourcePages(
     // A page dictionary outside the page tree — what a pre-fix export left behind — is a page left out too.
     if (cutRefs.has(ref) || isPageDict(lib, obj) || foreignField(ref, obj) || isDocument(ref, obj)) return (cut ??= dest.context.nextRef());
     // A form, pattern, appearance or Type3 font with resources of its own carries only what it draws of them (M1-S1),
-    // and so does an owner written inline anywhere inside what is copied — a widget's /DR, a Type3 font in an
-    // ExtGState's /Font array (round 4).
+    // and so does an owner written inline inside what is copied, through dictionaries, arrays and stream dictionaries
+    // — a widget's /DR, a Type3 font in an ExtGState's /Font array (rounds 4 and 5).
     if (pruner && !internals.traversedObjects.has(ref)) {
-      const owner = pruner.prunedOwner(obj, pruner.pageContent.get(ref)) ?? pruner.pruneNested(obj);
+      const owner = pruner.pruneNested(obj, pruner.pageContent.get(ref));
       if (owner) {
         const newRef = dest.context.nextRef();
         internals.traversedObjects.set(ref, newRef);
@@ -155,10 +155,25 @@ export async function copySourcePages(
     const local = stream instanceof lib.PDFStream ? stream.dict.lookup(PDFName.of('Resources')) : undefined;
     const from = pruner && local instanceof Dict && local.keys().length > 0 ? mergeResources(lib, src, local, node.Resources()) : undefined;
     if (from && contents instanceof lib.PDFRef) pruner?.pageContent.set(contents, { contents: read, from });
+    // A member of an ARRAY /Contents is read as part of a sequence with no dictionary, so its own /Resources is never
+    // read by pdf.js: it draws nothing from them (round 5, R5-S-3).
+    if (pruner && stream instanceof lib.PDFArray) {
+      for (const member of stream.asArray()) if (member instanceof lib.PDFRef) pruner.pageContent.set(member, { contents: () => [] });
+    }
     const resources = pruner?.pruned(read, node.Resources(), from);
     if (resources) {
       node = node.clone();
       node.set(PDFName.of('Resources'), resources);
+    }
+    // The page's other direct entries — an inline widget in /Annots with a /DR — hold owners too (round 5, R5-C-1).
+    if (pruner) {
+      for (const [key, value] of node.entries()) {
+        if (key === PDFName.of('Resources') || key === PDFName.of('Parent') || key === PDFName.of('Contents')) continue;
+        const nested = pruner.pruneNested(value);
+        if (!nested) continue;
+        if (node === srcPages[i].node) node = node.clone();
+        node.set(key, nested);
+      }
     }
     const copied = copier.copy(node);
     let ref = assigned.has(i) ? undefined : destRefOf.get(i);
@@ -296,7 +311,9 @@ type Drawn = Record<Category, Set<string>>;
 class ResourcePruner {
   private readonly inProgress = new Set<PDFObject>();
   /** A page's single content stream → the page's whole content and the merged resources pdf.js reads it with. */
-  readonly pageContent = new Map<PDFRef, { contents: () => (string | null)[]; from: PDFDict }>();
+  readonly pageContent = new Map<PDFRef, { contents: () => (string | null)[]; from?: PDFDict }>();
+  /** References known not to reach anything a removed page reaches (a memo for `touches`). */
+  private readonly clean = new Set<PDFRef>();
 
   constructor(private readonly lib: Lib, private readonly src: PDFDocument, private readonly excluded: Set<PDFRef>) {}
 
@@ -304,7 +321,7 @@ class ResourcePruner {
    * A clone of a form / pattern / appearance stream, Type3 font or field (`/DR`) with its resources pruned, or
    * undefined. `page` is given for a page's content stream: it draws the page's whole content, read the way pdf.js does.
    */
-  prunedOwner(obj: PDFObject | undefined, page?: { contents: () => (string | null)[]; from: PDFDict }): PDFObject | undefined {
+  prunedOwner(obj: PDFObject | undefined, page?: { contents: () => (string | null)[]; from?: PDFDict }): PDFObject | undefined {
     const { PDFName, PDFDict, PDFStream } = this.lib;
     let key = PDFName.of('Resources');
     if (obj instanceof PDFStream) {
@@ -331,9 +348,13 @@ class ResourcePruner {
         clone.set(key, pruned);
         return clone;
       }
-      // An inline owner reached again while it is being pruned draws itself (a Type3 glyph using its own font):
-      // refused rather than guessed at.
-      if (this.inProgress.has(obj)) throw new ExportResourcesUnreadableError();
+      // An inline owner reached again while it is being pruned draws itself (a Type3 glyph using its own font). Where
+      // its resources share nothing with a removed page it is kept as it is (round 5, R5-C-2); where they do, the
+      // inner copy would carry them unpruned, so it is refused rather than guessed at.
+      if (this.inProgress.has(obj)) {
+        if (this.isShared(resources)) throw new ExportResourcesUnreadableError();
+        return undefined;
+      }
       // Only a Type3 font draws from resources of its own; any other owner cannot be read, so it refuses if it must.
       const contents = () => (obj.lookup(PDFName.of('Subtype')) === PDFName.of('Type3') ? charProcs(this.lib, this.src, obj) : [null]);
       this.inProgress.add(obj);
@@ -354,10 +375,7 @@ class ResourcePruner {
   pruned(contents: () => (string | null)[], resources: PDFDict | undefined, from: PDFDict = resources as PDFDict): PDFDict | undefined {
     const { PDFName, PDFDict } = this.lib;
     if (!resources) return undefined;
-    const shared = PRUNED.some(cat => {
-      const sub = resources.lookup(PDFName.of(cat));
-      return this.touches(resources.get(PDFName.of(cat))) || (sub instanceof PDFDict && sub.values().some(v => this.touches(v)));
-    });
+    const shared = this.isShared(resources);
     // Nothing shared: only an inline owner deeper in may still carry something (an indirect /Resources of its own).
     let drawn: Drawn | undefined;
     if (shared) {
@@ -393,14 +411,36 @@ class ResourcePruner {
     return changed ? out : undefined;
   }
 
-  /** A clone of a direct value with every inline owner inside it pruned (not crossing references), or undefined. */
-  pruneNested(value: PDFObject | undefined): PDFObject | undefined {
-    const { PDFDict, PDFArray } = this.lib;
+  /** Whether any category of `resources` reaches something a removed page reaches. */
+  isShared(resources: PDFDict): boolean {
+    const { PDFName, PDFDict } = this.lib;
+    return PRUNED.some(cat => {
+      const sub = resources.lookup(PDFName.of(cat));
+      return this.touches(resources.get(PDFName.of(cat))) || (sub instanceof PDFDict && sub.values().some(v => this.touches(v)));
+    });
+  }
+
+  /**
+   * A clone of `value` — an owner pruned, and every owner written inline inside it (through dictionaries, arrays and a
+   * stream's dictionary, not crossing references) pruned in turn — or undefined when nothing changed.
+   */
+  pruneNested(value: PDFObject | undefined, page?: { contents: () => (string | null)[]; from?: PDFDict }): PDFObject | undefined {
+    const { PDFDict, PDFArray, PDFStream, PDFName } = this.lib;
+    // The owner's resources were pruned by `prunedOwner`, with every inline owner in them.
+    const skip = (k: PDFName) => k === PDFName.of('Resources') || k === PDFName.of('DR');
+    if (value instanceof PDFStream) {
+      let out = this.prunedOwner(value, page) as InstanceType<typeof PDFStream> | undefined;
+      for (const [k, v] of value.dict.entries()) {
+        if (skip(k)) continue;
+        const n = this.pruneNested(v);
+        if (n) { out ??= value.clone(); out.dict.set(k, n); }
+      }
+      return out;
+    }
     if (value instanceof PDFDict) {
-      const own = this.prunedOwner(value);
-      if (own) return own;
-      let out: PDFDict | undefined;
+      let out = this.prunedOwner(value) as PDFDict | undefined;
       for (const [k, v] of value.entries()) {
+        if (skip(k)) continue;
         const n = this.pruneNested(v);
         if (n) { out ??= value.clone(); out.set(k, n); }
       }
@@ -417,12 +457,30 @@ class ResourcePruner {
     return undefined;
   }
 
-  /** Whether a value is, or directly contains, a reference a removed page reaches. */
+  /**
+   * Whether a value reaches — at any depth, not crossing into a page, the catalog or the page tree — something a
+   * removed page reaches. Transitive since round 5 (R5-S-1): an entry only the kept page reaches, but whose own
+   * resources name the removed page's form, carries that form when kept undrawn.
+   */
   private touches(value: PDFObject | undefined): boolean {
-    const { PDFRef: Ref, PDFDict, PDFArray } = this.lib;
-    if (value instanceof Ref) return this.excluded.has(value);
-    if (value instanceof PDFDict) return value.values().some(v => this.touches(v));
-    if (value instanceof PDFArray) return value.asArray().some(v => this.touches(v));
+    const { PDFRef: Ref, PDFDict, PDFArray, PDFStream, PDFName } = this.lib;
+    const catalog = this.src.context.trailerInfo.Root;
+    const visited = new Set<PDFRef>();
+    const stack: (PDFObject | undefined)[] = [value];
+    while (stack.length) {
+      const v = stack.pop();
+      if (v instanceof Ref) {
+        if (this.excluded.has(v)) return true;
+        if (this.clean.has(v) || visited.has(v) || v === catalog) continue;
+        visited.add(v);
+        const target = this.src.context.lookup(v);
+        if (isPageDict(this.lib, target) || (target instanceof PDFDict && target.lookup(PDFName.of('Type')) === PDFName.of('Pages'))) continue;
+        stack.push(target);
+      } else if (v instanceof PDFStream) stack.push(v.dict);
+      else if (v instanceof PDFDict) stack.push(...v.values());
+      else if (v instanceof PDFArray) stack.push(...v.asArray());
+    }
+    for (const r of visited) this.clean.add(r);
     return false;
   }
 
@@ -487,7 +545,23 @@ class ResourcePruner {
         case 'scn': case 'SCN': {
           drawn.Pattern.add(name);
           const pattern = entry('Pattern', name);
-          if (pattern instanceof PDFStream && !inherit(pattern, () => [contentOf(this.lib, this.src, pattern)], true)) return false;
+          if (!(pattern instanceof PDFStream)) break;
+          const own = pattern.dict.lookup(PDFName.of('Resources'));
+          if (!(own instanceof PDFDict)) {
+            if (!inherit(pattern, () => [contentOf(this.lib, this.src, pattern)], true)) return false;
+            break;
+          }
+          // pdf.js merges a tiling pattern's resources over these WITHOUT merging sub-dictionaries: a category the
+          // pattern has hides this one's whole, so only names in the categories it lacks are drawn from here (R5-S-2).
+          if (seen.has(pattern)) break;
+          seen.add(pattern);
+          const mine: Drawn = { XObject: new Set(), Pattern: new Set(), Shading: new Set(), ExtGState: new Set(), Font: new Set(), Properties: new Set() };
+          const view = this.src.context.obj({});
+          for (const [k, v] of resources.entries()) view.set(k, v);
+          for (const [k, v] of own.entries()) view.set(k, v);
+          const text = contentOf(this.lib, this.src, pattern);
+          if (text === null || !this.collect(text, view, mine, seen, depth + 1)) return false;
+          for (const cat of PRUNED) if (!own.has(PDFName.of(cat))) for (const n of mine[cat]) drawn[cat].add(n);
           break;
         }
         case 'sh': drawn.Shading.add(name); break;
