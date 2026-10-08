@@ -48,6 +48,12 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 10:59] ASSUMED (review): M1 round 7 fix: a /Predictor content stream is unreadable (refuse where it must be read) rather than decoded here - because pdf-lib ignores the predictor and the ruled behaviour is refuse-if-unreadable (R7-C-1). Alternative: implement PNG/TIFF predictors.
 - [2026-10-08 10:59] ASSUMED (review): M1 round 7: S-7 (array member marked /Form), S-11 (display-state carriers) and C-7 (a deleted page's link loses its visible appearance) are disclosed, not fixed, under the bound-the-hunt ruling.
 - [2026-10-08 10:59] ASSUMED (review): M1 round 8 is the three lenses, each scoped to the round-7 fixes and the two classes (fail-open cuts, direct values), not an open hunt - the ruled 'one focused round'. Alternative: one reviewer.
+- [2026-10-08 12:05] AGREED: M1 after round 8: fix all 14 round-8 code defects test-first (regressions first) and the 8 doc items, then certify M1 as fixed with its residue disclosed - no further panel round, which waives MAXIMAL's two consecutive clean rounds for M1 - then the full deploy gate and the push; the allowlist redesign becomes a plan row (developer, 2026-10-08).
+- [2026-10-08 12:36] ASSUMED (review): M1 round 8 fix: a /Resources or /DR that is not a dictionary but reaches what a removed page reaches refuses the export (page, form, field); a pruned category that is not a dictionary is dropped where it is the removed page's - the ruled 'refuse instead of leaking' (R8-S-9/10/11). Alternative: replace with an empty dictionary (faithful to pdf.js for a page, not for a form, which inherits).
+- [2026-10-08 12:36] ASSUMED (review): M1 round 8 fix: the /Resources a removed page draws from that are written DIRECTLY (its own, or inherited from a /Pages node) count as reached, so their direct entries are the removed page's (R8-S-1). Alternative: copy every inherited direct dictionary onto each kept page before pruning.
+- [2026-10-08 12:36] ASSUMED (review): M1 round 8 fix: the prune reads an owner's content only when an entry is the removed page's (lazy), so a reached dictionary with nothing to prune never refuses (R8-C-4); the isShared reach term is kept, not deleted, and its doc claim corrected (R8-K-3, advisor 3C). Alternative: delete the term.
+- [2026-10-08 12:36] ASSUMED (review): M1 round 8 fix: every kept page is pruned before any page is copied (R8-C-2); a pattern drawn by a form with own resources or an appearance is read during the copy and stays disclosed. Alternative: a full dry-run before the copy (doubles the cost).
+- [2026-10-08 12:36] ASSUMED (review): M1 round 8 fix: a structure element written inline is cut by overriding the copier's dictionary path (cut marker, then rewritePageRefs as for a reference); kept annotations and the kept field chain are exempt from the structure cut; leftOutAnnot needs no /Subtype and counts a /P page outside the tree; /RV joins /V and /DV; every /Parent ancestor of a field or widget is a field-tree node; a kept chain field's inline /Kids are dropped unless their /P is a kept page (R8-C-3, R8-S-2..8). Alternative: per-shape patches.
 
 ## Formal Plan
 
@@ -91,8 +97,16 @@ that had no matching code path, and what now matches them:
 The reviewers reported every other row as already matched (round 1–5 code and tests; see `.claude/rules/redaction.md`)
 — a claim with no artefact behind it (R7-K-2).
 
-Round 7 (full three-lens panel, 2026-10-08) found 11 code defects in two classes plus fail-open reading; ruled "bound
-the hunt": fixed by class, pinned in `tests/export/copySourcePagesRound7.test.ts`, the rest disclosed in `SECURITY.md`.
+Round 7 (full three-lens panel, 2026-10-08) found 17 code-shaped findings in two classes plus fail-open reading (the
+"11 code defects" first stated here was a de-duplicated count no file records — R8-K-7); ruled "bound the hunt": 15
+fixed by class, pinned in `tests/export/copySourcePagesRound7.test.ts`, 2 disclosed in `SECURITY.md`.
+
+Round 8 (the focused round, 2026-10-08) found 14 code defects (three of them regressions of the round-7 fixes:
+R8-S-9, R8-C-3, R8-C-4) and 8 doc items; ruled "fix round 8, then ship" — all 14 fixed by class test-first in
+`tests/export/copySourcePagesRound8.test.ts`, each fix sabotaged, the doc items corrected, and M1 certified with its
+residue disclosed (`SECURITY.md`, `KNOWN_ISSUES.md`), without another panel round. Notes N-1 (layer names travel in
+`/OCProperties`), N-2 (the class-2 claim worded as the drop list) and N-3 (a radio value naming a removed state) are
+in those two files. The residue's structural answer is row 11.
 
 ## Status
 <!-- progress-block v1 -->
@@ -108,10 +122,11 @@ the hunt": fixed by class, pinned in `tests/export/copySourcePagesRound7.test.ts
 | 8 | Architecture steps 0–3 (see docs/plans/architecture.plan.md) | L | todo | - | src/**, tests/tools/** |
 | 9 | Remaining P2 findings as plan rows; P3 findings fixed when their file is touched (list in § Known issues) | M | todo | - | - |
 | 10 | SEC-1 cost follow-up (ruled 2026-10-08): replace the prune's full content tokenizing with a name-only scan; measure against the § Fragile figures, own gate and panel | M | todo | - | src/export/copySourcePages.ts, src/utils/contentStreamEditor.ts, tests/** |
+| 11 | SEC-1 allowlist redesign (ruled 2026-10-08 as the follow-up to M1's disclosed residue): when a page is left out, rebuild each kept page and what it draws from known keys only, so an unknown path is dropped instead of hunted; own plan and panel | L | todo | - | src/export/copySourcePages.ts, tests/** |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- M1 (SEC-1): round 7 (full panel) found 11 code defects + docs; ruled "bound the hunt" — fixed by class in the "SEC-1 round 7" commit (`tests/export/copySourcePagesRound7.test.ts`), the broken-file and display-state carriers disclosed. Next: ONE focused review round (round 8) on those fixes and the two classes, then certify. Push held until certified; every commit since d44b3a6 is unpushed. Cost follow-up is row 10.
+- M1 (SEC-1): nothing pending from the developer — rounds 7 and 8 ruled; after the round-8 fixes M1 is certified with its residue disclosed, then the full deploy gate and the push. Row 11 (allowlist redesign) is the follow-up the residue points to.
 ### Needs research
 ### Fragile
 - SEC-1 cost, round 7 (2026-10-08, load 16–18, warm, five alternating runs): Publication 17 delete-last median 1576 ms

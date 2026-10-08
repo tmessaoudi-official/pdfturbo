@@ -113,11 +113,14 @@ export async function copySourcePages(
     && (fieldTree.has(ref) || isField(lib, src, obj)) && !fieldChain.has(ref) && !keptAnnots.has(ref);
   // An annotation whose /P is a page left out is that page's, listed in its /Annots or not — Flatten takes the
   // removed page's notes out of /Annots before the copy, and a reply's /IRT still names them (round 7, R7-S-8/12).
+  // Whatever its /Subtype says (it is required, and met missing), and when /P is a page dictionary outside the tree —
+  // a page left out too (round 8, R8-S-7/8).
   const leftOutAnnot = (ref: PDFRef, obj: PDFObject | undefined): boolean => {
-    if (!anyLeftOut || !(obj instanceof Dict) || keptAnnots.has(ref) || !obj.has(PDFName.of('Subtype'))) return false;
+    if (!anyLeftOut || !(obj instanceof Dict) || keptAnnots.has(ref)) return false;
     const page = obj.get(PDFName.of('P'));
-    const i = page instanceof lib.PDFRef ? pageIndexOf.get(page) : undefined;
-    return i !== undefined && !keep.has(i);
+    if (!(page instanceof lib.PDFRef)) return false;
+    const i = pageIndexOf.get(page);
+    return i === undefined ? isPageDict(lib, src.context.lookup(page)) : !keep.has(i);
   };
   const isCut = (ref: PDFRef): boolean => cutRefs.has(ref) || leftOutAnnot(ref, src.context.lookup(ref));
   // A field on a kept widget's chain carries the /V (and /DV) only a removed page's widget inherits from it: those
@@ -134,15 +137,30 @@ export async function copySourcePages(
   // before (like the field tree above). Membership in the tree OR the shape of an element decides — a cut that only
   // catches what its walk found fails open, and an element the walk cannot reach (no root, listed under no /K) is
   // still the tree's (round 7, R7-S-1/2).
+  // A kept page's own annotation or field written in a structure /K (no OBJR — against the spec, pdf.js renders it)
+  // is the kept page's: it holds no reference into the tree (round 8, R8-C-3, a round-7 regression).
   let structure: Set<PDFRef> | undefined;
   const isStructure = (ref: PDFRef, obj: PDFObject | undefined): boolean => {
-    if (!anyLeftOut || !(obj instanceof Dict)) return false;
+    if (!anyLeftOut || !(obj instanceof Dict) || keptAnnots.has(ref) || fieldChain.has(ref)) return false;
     structure ??= structureTree(lib, src);
     return structure.has(ref) || isStructElement(lib, src, obj, structure);
   };
-  const pruner = opts.pruneSharedResources && anyLeftOut
-    ? new ResourcePruner(lib, src, reachableFromPages(lib, src, srcPages.filter((_, i) => !keep.has(i))), isCut)
-    : undefined;
+  // An element written DIRECTLY where a reference belongs — the first element of an /SD or /Dest — never reaches the
+  // reference hook: the copier's dictionary path answers it with the cut marker (round 8, R8-S-4).
+  const isInlineStructure = (obj: PDFDict): boolean => {
+    if (!anyLeftOut || obj instanceof lib.PDFPageLeaf) return false;
+    structure ??= structureTree(lib, src);
+    return isStructElement(lib, src, obj, structure);
+  };
+  // An inline kid of a kept chain field is no kept widget (a kept widget is listed by reference, or inline in its own
+  // page's /Annots, never here): unless its /P is a kept page it is dropped (round 8, R8-S-5).
+  const onKeptPage = (d: PDFDict): boolean => {
+    const page = d.get(PDFName.of('P'));
+    const i = page instanceof lib.PDFRef ? pageIndexOf.get(page) : undefined;
+    return i !== undefined && keep.has(i);
+  };
+  const reached = opts.pruneSharedResources && anyLeftOut ? reachableFromPages(lib, src, srcPages.filter((_, i) => !keep.has(i))) : undefined;
+  const pruner = reached ? new ResourcePruner(lib, src, reached.refs, reached.direct, isCut) : undefined;
 
   const destRefOf = new Map<number, PDFRef>();
   const standIns = new Map<number, PDFRef>();
@@ -175,6 +193,13 @@ export async function copySourcePages(
       replacement = obj.clone();
       for (const key of drop) (replacement as PDFDict).delete(PDFName.of(key));
     }
+    const kids = anyLeftOut && fieldChain.has(ref) && obj instanceof Dict ? obj.lookup(PDFName.of('Kids')) : undefined;
+    if (kids instanceof lib.PDFArray && kids.asArray().some(k => k instanceof Dict && !onKeptPage(k))) {
+      replacement ??= (obj as PDFDict).clone();
+      const left = lib.PDFArray.withContext(src.context);
+      for (const k of kids.asArray()) if (!(k instanceof Dict) || onKeptPage(k)) left.push(k);
+      (replacement as PDFDict).set(PDFName.of('Kids'), left);
+    }
     // A form, pattern, appearance or Type3 font with resources of its own carries only what it draws of them (M1-S1),
     // and so does an owner written inline inside what is copied, through dictionaries, arrays and stream dictionaries
     // — a widget's /DR, a Type3 font in an ExtGState's /Font array (rounds 4 and 5).
@@ -190,6 +215,9 @@ export async function copySourcePages(
     }
     return copyRef(ref);
   };
+  const copyDict = (copier as unknown as { copyPDFDict: (d: PDFDict) => PDFObject }).copyPDFDict;
+  (copier as unknown as { copyPDFDict: (d: PDFDict) => PDFObject }).copyPDFDict = (d: PDFDict): PDFObject =>
+    (isInlineStructure(d) ? (cut ??= dest.context.nextRef()) : copyDict(d));
 
   // Every kept page's content is registered BEFORE any copy, so how a shared stream is pruned never depends on which
   // page reaches it first (round 6, R6-K-1).
@@ -228,9 +256,13 @@ export async function copySourcePages(
     }
   }
 
-  const assigned = new Set<number>();
-  const pages = indices.map(i => {
+  // Every kept page is pruned before ANY page is copied: a pattern two kept pages draw records what each draws through
+  // it, and is copied once — with the first page, which must already hold the second page's record (round 8, R8-C-2).
+  const prepared = indices.map(i => {
     let node = srcPages[i].node;
+    // pdf.js reads a /Resources that is not a dictionary as empty; one that HOLDS the dictionary a removed page draws
+    // from — an array [R], a stream — would be copied whole with it, so it is refused (round 8, R8-S-9).
+    pruner?.refuseIfNotADict(node.getInheritableAttribute(PDFName.of('Resources')));
     const resources = pruner?.pruned([reading.get(i) as Reading], pageResources(lib, src, node));
     if (resources) {
       node = node.clone();
@@ -251,7 +283,11 @@ export async function copySourcePages(
         node.set(key, nested);
       }
     }
-    const copied = copier.copy(node);
+    return node;
+  });
+  const assigned = new Set<number>();
+  const pages = indices.map((i, k) => {
+    const copied = copier.copy(prepared[k]);
     let ref = assigned.has(i) ? undefined : destRefOf.get(i);
     if (ref) dest.context.assign(ref, copied);
     else ref = dest.context.register(copied);
@@ -318,13 +354,14 @@ function isField(lib: Lib, src: PDFDocument, obj: PDFObject | undefined): boolea
 }
 
 /**
- * The inheritable values (`/V`, `/DV`) held by a field on a kept widget's chain that no kept widget inherits — the
+ * The inheritable values (`/V`, `/DV`, `/RV`) held by a field on a kept widget's chain that no kept widget inherits — the
  * nearest holder up its own chain is another node — so only a removed page's widget shows them (round 7, R7-S-3).
  */
 function valuesNoKeptWidgetShows(lib: Lib, src: PDFDocument, chain: Set<PDFRef>, keptAnnots: Set<PDFRef>, keptInline: PDFDict[]): Map<PDFRef, string[]> {
   const { PDFName, PDFDict, PDFRef: Ref } = lib;
   const out = new Map<PDFRef, string[]>();
-  for (const key of ['V', 'DV']) {
+  // /RV, the rich-text value, is inheritable like /V (PDF 32000-1 Table 228; round 8, R8-S-2).
+  for (const key of ['V', 'DV', 'RV']) {
     const shown = new Set<PDFRef>();
     for (const widget of [...keptAnnots, ...keptInline]) {
       let ref: PDFRef | undefined = widget instanceof Ref ? widget : undefined;
@@ -428,20 +465,28 @@ function fieldsNoKeptWidgetReaches(lib: Lib, src: PDFDocument, keptAnnots: Set<P
  * pruned only when it is in here AND nothing kept draws it — so a document whose kept pages share nothing with the
  * removed ones is copied exactly as before, and content is read only where pruning can matter.
  */
-function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): Set<PDFRef> {
+function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): { refs: Set<PDFRef>; direct: Set<PDFObject> } {
   const { PDFDict, PDFArray, PDFRef: Ref, PDFStream, PDFName } = lib;
   const reach = new Set<PDFRef>();
+  // The /Resources a removed page draws from that are written DIRECTLY — its own, or a /Pages node's it inherits: no
+  // reference names them, so they are returned as objects (round 8, R8-S-1).
+  const direct = new Set<PDFObject>();
   const parent = PDFName.of('Parent');
   const catalog = src.context.trailerInfo.Root;
   // Iterative: a chain of 20 000 outline items overflowed the stack recursively (round 3). It stops where the copy
   // stops — at another page, the catalog and the page tree, which the copier hook cuts.
   const stack: Array<[PDFObject | undefined, boolean]> = [];
+  const start = (resources: PDFObject | undefined) => {
+    if (resources instanceof PDFDict) direct.add(resources);
+    stack.push([resources, false]);
+  };
   for (const page of pages) {
-    stack.push([page.node, true], [page.node.getInheritableAttribute(PDFName.of('Resources')), false]);
+    stack.push([page.node, true]);
+    start(page.node.getInheritableAttribute(PDFName.of('Resources')));
     // pdf.js merges the page's /Resources with every ancestor's (first category found wins), so a removed page draws
     // through a /Pages node's categories its own dictionary lacks (round 6, R6-C-1). The values, never the nodes.
     let up = page.node.lookup(PDFName.of('Parent'));
-    for (let k = 0; k < 64 && up instanceof PDFDict; k++, up = up.lookup(PDFName.of('Parent'))) stack.push([up.get(PDFName.of('Resources')), false]);
+    for (let k = 0; k < 64 && up instanceof PDFDict; k++, up = up.lookup(PDFName.of('Parent'))) start(up.get(PDFName.of('Resources')));
   }
   while (stack.length) {
     const [obj, fromPage] = stack.pop() as [PDFObject | undefined, boolean];
@@ -455,7 +500,7 @@ function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): Set<P
     else if (obj instanceof PDFArray) for (const v of obj.asArray()) stack.push([v, false]);
     else if (obj instanceof PDFDict) for (const [k, v] of obj.entries()) if (!(fromPage && k === parent)) stack.push([v, false]);
   }
-  return reach;
+  return { refs: reach, direct };
 }
 
 // `/ColorSpace` is not pruned: a colour space draws nothing, and pdf.js resolves its names in places no operator shows
@@ -493,13 +538,27 @@ class ResourcePruner {
   private readonly appearanceDA = new Map<PDFRef, string[]>();
 
   constructor(private readonly lib: Lib, private readonly src: PDFDocument, private readonly excluded: Set<PDFRef>,
-    private readonly isCut: (ref: PDFRef) => boolean) {}
+    private readonly direct: Set<PDFObject>, private readonly isCut: (ref: PDFRef) => boolean) {}
 
-  /** Whether a removed page reaches this very object (by reference), so its direct values are the removed page's too. */
+  /**
+   * Whether a removed page reaches this very object — by reference, or as a DIRECT /Resources it draws from (its own,
+   * or a /Pages ancestor's it inherits, round 8, R8-S-1) — so its direct values are the removed page's too.
+   */
   isReached(obj: PDFObject | undefined): boolean {
     if (obj === undefined) return false;
-    this.reachedObjects ??= new Set([...this.excluded].map(r => this.src.context.lookup(r)).filter((o): o is PDFObject => o !== undefined));
+    this.reachedObjects ??= new Set([...this.direct, ...[...this.excluded].map(r => this.src.context.lookup(r)).filter((o): o is PDFObject => o !== undefined)]);
     return this.reachedObjects.has(obj) || (obj instanceof this.lib.PDFStream && this.reachedObjects.has(obj.dict));
+  }
+
+  /**
+   * A `/Resources` (or `/DR`) that is not a dictionary draws nothing in pdf.js, but the copy would carry what it holds.
+   * Where that reaches what a removed page reaches — an array `[R]`, a stream whose dictionary is `R` — the export is
+   * refused rather than guessed at (round 8, R8-S-9/10). One that holds nothing a removed page reaches (`5`, `[1]`)
+   * is copied as it is (R7-C-2).
+   */
+  refuseIfNotADict(value: PDFObject | undefined): void {
+    if (value === undefined || this.src.context.lookup(value) instanceof this.lib.PDFDict) return;
+    if (this.touches(value)) throw new ExportResourcesUnreadableError();
   }
 
   /**
@@ -511,7 +570,7 @@ class ResourcePruner {
     let key = PDFName.of('Resources');
     if (obj instanceof PDFStream) {
       const resources = obj.dict.lookup(key);
-      if (!(resources instanceof PDFDict)) return undefined;
+      if (!(resources instanceof PDFDict)) { this.refuseIfNotADict(obj.dict.get(key)); return undefined; }
       const readings: Reading[] = page ?? [{ contents: () => [contentOf(this.lib, this.src, obj)] }];
       const recorded = this.patternDrawn.get(obj);
       const pruned = this.pruned(recorded ? [...readings, { contents: () => [], drawn: recorded }] : readings, resources, reached);
@@ -525,9 +584,10 @@ class ResourcePruner {
       // A field's or widget's /DR is the resources its /DA draws from when a viewer builds the appearance (pdf.js
       // inherits both through /Parent): it carries what those default appearances name (round 4, R4-S-2).
       if (!(resources instanceof PDFDict)) {
+        this.refuseIfNotADict(obj.get(key));
         key = PDFName.of('DR');
         resources = obj.lookup(key);
-        if (!(resources instanceof PDFDict)) return undefined;
+        if (!(resources instanceof PDFDict)) { this.refuseIfNotADict(obj.get(key)); return undefined; }
         // A widget a removed page holds is cut, and so is what only its /DA names (round 7, R7-S-6).
         const das = defaultAppearances(this.lib, this.src, obj, this.isCut);
         const pruned = this.pruned([{ contents: () => das }], resources, reached);
@@ -566,39 +626,43 @@ class ResourcePruner {
     // A direct value has no reference to test: inside a dictionary a removed page reaches — itself, or the owner it is
     // written in (`inReached`, a form's direct /Resources) — it is that page's too (round 7, R7-S-10 and its 6C check).
     const reached = inReached || this.isReached(resources);
-    const shared = reached || this.isShared(resources);
     const theirs = (value: PDFObject, container: PDFObject) => this.touches(value)
       || (!(value instanceof Ref) && (reached || this.isReached(container)));
-    // Nothing shared: only an inline owner deeper in may still carry something (an indirect /Resources of its own).
+    // The readings are read the first time an entry is the removed page's — never otherwise: a reached dictionary
+    // holding nothing to prune refused a predicted page it had no need to read (round 8, R8-C-4).
     let drawn: { set: Drawn; from: PDFDict }[] | undefined;
-    if (shared) {
-      drawn = readings.map(reading => {
-        const from = reading.from ?? resources;
-        if (reading.drawn) return { set: reading.drawn, from };
-        const set = noneDrawn();
-        for (const content of reading.contents()) {
-          if (content === null || !this.collect(content, from, set, new Set(), 0)) throw new ExportResourcesUnreadableError();
-        }
-        return { set, from };
-      });
-    }
+    const read = () => (drawn ??= readings.map(reading => {
+      const from = reading.from ?? resources;
+      if (reading.drawn) return { set: reading.drawn, from };
+      const set = noneDrawn();
+      for (const content of reading.contents()) {
+        if (content === null || !this.collect(content, from, set, new Set(), 0)) throw new ExportResourcesUnreadableError();
+      }
+      return { set, from };
+    }));
     let changed = false;
     const out = resources.clone(this.src.context);
     {
       for (const cat of PRUNED) {
         const sub = resources.lookup(PDFName.of(cat));
-        if (!(sub instanceof PDFDict)) continue;
+        if (!(sub instanceof PDFDict)) {
+          // pdf.js resolves no name through a category that is not a dictionary, so nothing draws it: dropped where
+          // it is the removed page's, like a category no viewer reads (round 8, R8-S-11).
+          const raw = resources.get(PDFName.of(cat));
+          if (raw !== undefined && theirs(raw, resources)) { out.delete(PDFName.of(cat)); changed = true; }
+          continue;
+        }
         let catChanged = false;
         const kept = this.src.context.obj({});
         for (const [name, value] of sub.entries()) {
           // Drawn by name, and — when names resolve in a merged view — only if that view resolves this name to THIS
           // entry: a content stream's own /Fm1 shadows the page's, and pdf.js draws the stream's (round 4).
-          const isDrawn = drawn?.some(({ set, from }) => {
+          const isDrawn = () => read().some(({ set, from }) => {
             if (!set[cat].has(name.decodeText())) return false;
             const fromSub = from === resources ? undefined : from.lookup(PDFName.of(cat));
             return from === resources || (fromSub instanceof PDFDict && fromSub.get(name) === value);
           });
-          if (drawn && !isDrawn && theirs(value, sub)) { catChanged = true; continue; }
+          if (theirs(value, sub) && !isDrawn()) { catChanged = true; continue; }
           // An inline owner (a Type3 font written in the dictionary, or one inside an inline ExtGState's /Font array)
           // never reaches the copier hook: prune it here.
           const inline = this.pruneNested(value, undefined, reached || this.isReached(sub));
@@ -657,7 +721,11 @@ class ResourcePruner {
     return UNDRAWN.has(key.decodeText()) && (this.touches(value) || (reached && value !== undefined && !(value instanceof this.lib.PDFRef)));
   }
 
-  /** Whether any category of `resources` reaches something a removed page reaches. */
+  /**
+   * Whether any category of `resources` reaches something a removed page reaches — for the self-drawing inline owner
+   * alone since round 8 (`pruned` decides reach entry by entry). There the reached term is implied by the owner's own
+   * `/Resources` reference back to the dictionary, which `touches` already sees; kept as the direct statement of it.
+   */
   isShared(resources: PDFDict): boolean {
     const { PDFName, PDFDict } = this.lib;
     return this.isReached(resources) || PRUNED.some(cat => {
@@ -837,10 +905,24 @@ class ResourcePruner {
   }
 }
 
-/** Every node of the AcroForm field tree, by reference. */
+/**
+ * Every node of the AcroForm field tree, by reference — down from `/Fields`, and up from every field and widget in the
+ * file: a node holding a value whose kid names it by `/Parent` alone (no `/Kids`, against the spec) is the kid's field
+ * too, and pdf.js reads the value through that `/Parent` (round 8, R8-S-3).
+ */
 function fieldTreeRefs(lib: Lib, src: PDFDocument): Set<PDFRef> {
   const { PDFName, PDFDict, PDFArray, PDFRef: Ref } = lib;
   const out = new Set<PDFRef>();
+  for (const [, obj] of src.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict) || !(obj.has(PDFName.of('FT')) || obj.lookup(PDFName.of('Subtype')) === PDFName.of('Widget'))) continue;
+    let up = obj.get(PDFName.of('Parent'));
+    for (let depth = 0; up instanceof Ref && !out.has(up) && depth < 64; depth++) {
+      const parent = src.context.lookup(up);
+      if (!(parent instanceof PDFDict) || isPageDict(lib, parent) || parent.lookup(PDFName.of('Type')) === PDFName.of('Pages')) break;
+      out.add(up);
+      up = parent.get(PDFName.of('Parent'));
+    }
+  }
   const form = src.catalog.lookup(PDFName.of('AcroForm'));
   const fields = form instanceof PDFDict ? form.lookup(PDFName.of('Fields')) : undefined;
   const stack: PDFObject[] = fields instanceof PDFArray ? fields.asArray() : [];
@@ -970,6 +1052,9 @@ function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): st
     let bytes: Uint8Array;
     try {
       if (s instanceof PDFRawStream && predicted(s.dict.get(PDFName.of('DecodeParms')))) return null;
+      // pdf.js reads `/F` before `/Filter` and `/DP` before `/DecodeParms` (the inline-image abbreviations); pdf-lib reads
+      // neither, so a stream carrying one is decoded differently by the two (round 8, R8-C-1).
+      if (s instanceof PDFRawStream && (s.dict.has(PDFName.of('F')) || s.dict.has(PDFName.of('DP')))) return null;
       if (s instanceof PDFRawStream) bytes = decodePDFRawStream(s).decode();
       else if (s instanceof PDFStream && 'getUnencodedContents' in s) bytes = (s as unknown as { getUnencodedContents(): Uint8Array }).getUnencodedContents();
       else return null;

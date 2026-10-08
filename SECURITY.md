@@ -68,8 +68,8 @@ reading the code. Both are said plainly instead of implied to be measured.
 > stream carries resources of its own. When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
 > message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
 > is pinned by a test that finds the removed page's text in the source and not in the export
-> (`tests/export/copySourcePages.test.ts`, `copySourcePagesInventory.test.ts` and `copySourcePagesRound7.test.ts` in
-> the same folder, and `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
+> (`tests/export/copySourcePages.test.ts`, `copySourcePagesInventory.test.ts`, `copySourcePagesRound7.test.ts` and
+> `copySourcePagesRound8.test.ts` in the same folder, and `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
 > and stated:** a carrier reached some other way than these is not ruled out; a link that names its target by
 > a *named destination* is dead in every export (the name table is not copied) — it does not leak, and it does not
 > work. Three residues are kept by design, because the kept page needs the object they live in: a **font** shared
@@ -85,8 +85,10 @@ reading the code. Both are said plainly instead of implied to be measured.
 > thumbnail, a PDF/VT document part, an image's print alternates — which is dropped when it reaches a removed page.
 > Round 7 (2026-10-08) closed two classes rather than single shapes: a structure element or form field is cut by its
 > **shape** as well as by membership, so one the document's own tree does not list (or lists through an array stored
-> on its own) is still cut; and a value written directly inside an object a removed page reaches — a property list's
-> `/ActualText` in a shared resources dictionary, application data in a shared form — is that page's too. Metadata,
+> on its own) is still cut; and inside an object a removed page reaches, the values written directly in it are dropped
+> where nothing kept draws them — an undrawn resource entry (a property list's `/ActualText` in a shared resources
+> dictionary), a resource category no viewer reads, and the keys no viewer draws (application data, metadata, associated
+> files, measurement data) — while what a kept object shows, such as a shared field's name, stays with it. Metadata,
 > associated files and measurement point data joined the undrawn list; a field's value only a removed page's box
 > shows is dropped from the copy; a note whose `/P` names a removed page, or that **Flatten** took out of that page's
 > list before the copy, is cut; and a kept page whose content is compressed with a **predictor** cannot be read here,
@@ -95,8 +97,18 @@ reading the code. Both are said plainly instead of implied to be measured.
 > `/RO` overlay), a movie's poster, a screen annotation's icon, a media clip's form or a trap network's fonts at an
 > object the removed page draws carries that object, as the form-field icon does; and a page's content split into
 > several streams, one of which is marked as a form though no page draws it as one, keeps what its own resources
-> name. **And one consequence of the ruling:** a link to a deleted page is removed with its visible appearance, if
-> it has one — in the exported PDF and in a page exported as an image.
+> name. Round 8 (2026-10-08, the last round before certification) closed: a resources dictionary written directly on
+> the page tree and inherited, which is the removed page's like a shared one; a resources value that is not a
+> dictionary but holds the removed page's (an array, a stream), which now **refuses** — pdf.js draws nothing from it,
+> and the copy would carry it whole; a stream that names its filter or parameters by their short keys (`/F`, `/DP`),
+> which refuses where it must be read; a rich-text value (`/RV`) only a removed box shows; a field node only its
+> kid's `/Parent` names; a structure element written inline in a link's `/SD` or `/Dest`; a widget written inline in
+> a field's `/Kids`; and a note whose page is outside the tree or which lacks its type. **Also stated:** a radio
+> group's value names the button state chosen on a removed page (`/V /Yes`), because the kept button inherits the
+> value, though it cannot show that state. **And one consequence of the ruling:** a link to a page outside the export
+> is removed with its visible appearance, if it has one — a deleted page or one outside an extracted range in the
+> exported PDF, and EVERY other page in a single-page download, a page exported as an image, a thumbnail and a
+> redacted page's image, which each copy one page alone.
 > See `KNOWN_ISSUES.md`.
 
 | Tool | Content is… | Notes |

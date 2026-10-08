@@ -145,8 +145,10 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
 **Round 6 (2026-10-08, by inventory, not by hunt):** the developer ruled the sixth round a different method — two
 tables, every pdf.js 6.3.289 site that resolves a resource name or picks a resources dictionary (A, 32 rows), and
 every PDF 32000-2 key that leads to resources or to something drawn (B, 68 rows); an unmatched row is a finding.
-The tables live in `var/claude/raw/m1r6-table{A,B}.md` (gitignored); the unmatched rows and what now matches them are
-the matrix in `docs/plans/review-remediation.plan.md` § "SEC-1 inventory". Fifteen findings, fourteen fixed:
+`var/claude/raw/m1r6-table{A,B}.md` (gitignored) hold only the unmatched rows and a one-line "clean/modelled" range —
+the matched rows exist only in the round-6 reviewers' transcripts, and Table A rows 21, 25, 27 and 29–32 are accounted
+for nowhere on disk (R7-K-2, corrected here by R8-K-6); the unmatched rows and what now matches them are the matrix in
+`docs/plans/review-remediation.plan.md` § "SEC-1 inventory". Fifteen findings, fourteen fixed:
 - **A page's resources are merged with EVERY ancestor's** (`reachableFromPages` walks `/Parent`): a form named only by
   the page-tree node and drawn by the kept page was not reached, and its shared resources went unpruned.
 - **The structure tree is cut whenever a page is left out** (`isStructure`: a StructElem or StructTreeRoot, or the S + P shape, that is a
@@ -169,7 +171,9 @@ the matrix in `docs/plans/review-remediation.plan.md` § "SEC-1 inventory". Fift
 - Disclosed, not fixed: a widget's `/MK` icon is kept with the widget even when the removed page draws the same form
   (`SECURITY.md`). The cost was re-profiled (`KNOWN_ISSUES.md`; tokenizing is half of it).
 
-**Round 7 (2026-10-08, full panel, then "bound the hunt"):** 11 code defects; the developer ruled to fix them by CLASS,
+**Round 7 (2026-10-08, full panel, then "bound the hunt"):** 17 code-shaped findings in the raw files (R7-C-1..7,
+R7-S-1..8, -10, -12), 15 fixed and 2 disclosed (S-7, C-7) — the "11 code defects" this line and the developer's
+question carried was a de-duplicated count no file records (R8-K-7); the developer ruled to fix them by CLASS,
 disclose what needs a broken file, and run one focused round. The classes, each a rule rather than a shape:
 - **A cut that only catches what its walk found fails open.** The structure cut now takes membership OR shape — typed
   `StructElem`/`StructTreeRoot`, or an `/S` name whose `/P` chain reaches the tree or a typed node — and the walk
@@ -194,16 +198,61 @@ disclose what needs a broken file, and run one focused round. The classes, each 
   form, trap-network fonts) like `/MK`; an array `/Contents` member marked `/Subtype /Form` but drawn by no page; a
   link to a deleted page loses its visible appearance (the ruling's consequence, in PDF and raster paths alike).
 
+**Round 8 (2026-10-08, the focused round, then "fix round 8, then ship"):** 14 code defects, three of them
+regressions of round 7's own fixes, and 8 doc items; fixed by class, then M1 certified without another round. The rules:
+- **A value that is not the dictionary the prune expects is refused or dropped, never copied whole.** Round 7 read a
+  non-dictionary `/Resources` as empty (pdf.js does) — and the copy then carried an array `[R]` or a stream whose
+  dictionary is `R` whole, with the removed page's forms: a refusal had become a leak (R8-S-9). Now a page's, a form's
+  or a field's `/Resources`/`/DR` that is not a dictionary but `touches` what a removed page reaches refuses
+  (`refuseIfNotADict`); `5` and `[1]` still export (R7-C-2). A pruned category that is not a dictionary is dropped like
+  an unknown one (R8-S-11).
+- **A DIRECT dictionary a removed page draws from is reached.** `reachableFromPages` returns the direct `/Resources`
+  it starts from — the page's own and every `/Pages` ancestor's — and `isReached` counts them, so an inherited direct
+  dictionary's undrawn direct entries are dropped like a shared one's (R8-S-1).
+- **Read only when a read can decide.** `pruned` reads its owner the first time an entry is the removed page's: a
+  reached dictionary holding only colour spaces refused a predicted page it never needed to read (R8-C-4, a round-7
+  regression). Laziness is not leniency — the predictor refusal (R7-C-1) still reds when read.
+- **Read what pdf.js reads:** a raw stream carrying `/F` or `/DP` — pdf.js reads them before `/Filter` and
+  `/DecodeParms`, pdf-lib not at all — is unreadable (R8-C-1).
+- **Every kept page is pruned before any page is copied**, so a pattern two kept pages draw carries both pages'
+  records (R8-C-2). A pattern drawn by a form with its own resources or by an appearance is read during the copy and
+  stays disclosed (`KNOWN_ISSUES.md`).
+- **The class-1 cuts:** kept annotations and the kept field chain are exempt from the structure cut (R8-C-3, a round-7
+  regression: a kept Link written directly in a structure `/K` was nulled out of its own page in both modes); a
+  structure element written INLINE (the first element of an `/SD` or `/Dest`) is answered with the cut marker by an
+  override of the copier's `copyPDFDict` — pdf-lib's `copy` reaches it through the property, like the reference hook —
+  so `rewritePageRefs` removes it as it removes a referenced one (R8-S-4); `/RV` joins `/V` and `/DV` (R8-S-2); every
+  `/Parent` ancestor of a field or widget in the file is a field-tree node (R8-S-3); a kept chain field's inline
+  `/Kids` are dropped unless their `/P` is a kept page (R8-S-5); `leftOutAnnot` needs no `/Subtype` and counts a `/P`
+  page outside the tree (R8-S-7/8).
+- Stated, not fixed: a radio group's `/V` names the state chosen on a removed page (N-3); `/OCProperties` carries every
+  layer name (N-1). The class-2 claim in `SECURITY.md` is now the drop list, not the headline (N-2).
+Guards: `tests/export/copySourcePagesRound8.test.ts` (46 — 7 cut shapes ×3 modes, the prune OFF included, since a
+class-1 cut does not depend on it; 4 prune shapes ×2 modes; 4 refusals with 3 controls; 2 structure-`/K` keeps, a kept
+unlisted note, an every-page-kept control; the lazy read, the two aliases, the pattern in both orders; and a source guard
+that `rasterOnly: true` is passed by lossy Compress alone). Red first: 39 of the 46 against the round-7 code, each for
+its stated reason — the `/DR` refusal was added after its fix and is proven by its sabotage instead. Sabotage, 17
+mutants over the four SEC-1 files (293 cases), each landed, red on exactly its cases, restored with `cmp`: `/Subtype`
+required again → the no-`/Subtype` note ×3; an orphan `/P` page not left out → the orphan note ×3; the structure cut
+without the kept exemption → both structure-`/K` keeps; the inline structure element not intercepted → its 6; inline
+kids kept → 3; `/RV` not dropped → 3; no upward field walk → 3; direct `/Resources` not reached → the 6 inherited
+shapes; the page / form / `/DR` refusal skipped → 2 / 1 / 1; a non-dictionary category kept → 2; an eager read when
+reached or shared → exactly the lazy-read case; `/F` and `/DP` not refused → 2, `/DP` alone → 1; each page copied as
+soon as it is pruned → the pattern case in both orders, plus round 1's every-page-kept byte-identity case (the mutant's
+extra copy writes an extra page object); Sanitize assembling raster-only → exactly the source guard.
+
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
 built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and passed against the unfixed code; the
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePagesRound7.test.ts` (95 — round 7: 36 leak shapes ×2 modes with a source control
-each, among them the structure shapes typed and untyped and one only the walk can find, two Flatten orders, the
-`annotsBefore` option and Flatten & download through `_assemblePdfDoc`, four keep controls, the six reading cases, and
-a source guard that only the raster-only assembly and the sign-rect box opt out of the prune),
+Guards: `tests/export/copySourcePagesRound8.test.ts` (see the round-8 paragraph),
+`tests/export/copySourcePagesRound7.test.ts` (95 = 74 + 2 + 2 + 5 + 11 + 1 — round 7: 37 leak shapes ×2 modes with a
+source control each, among them the structure shapes typed and untyped and one only the walk can find; two Flatten
+orders; the `annotsBefore` option and Flatten & download through `_assemblePdfDoc`; five keep controls; eleven reading
+cases (C-2 alone is four); and a source guard that only the raster-only assembly and the sign-rect box opt out of the
+prune — recounted by R8-K-1, the earlier "36 … four … six" summed to 87),
 `tests/export/copySourcePagesInventory.test.ts` (35 — round 6: nine leak shapes ×2 modes with a source control
 each, the `/SD` keep, a structure destination copied when every page is kept (`/SD` and `/Dest`), an unshared `/PieceInfo`/`/Thumb` kept byte-identical, a form drawn by a pattern and by the page
 in both orders, a form's and an image's `/OC` name, the widget `/DA` font indirect, inline and through a shared
@@ -278,11 +327,15 @@ GREEN at first, because the `/P` chain catches every element whose chain reaches
 (untyped, `/P` broken, under an indirect `/K`) was added and reds exactly its 2; a non-name `/S` skipped → the untyped
 `docSString` 2; no `/P` chain → the untyped no-root and orphan 4; `isField` not downward → `nodeNotInFields` 2; field
 values kept → the 4 parent-`/V` cases + the `/DV` keep control; the `/P` rule off → 4; `annotsBefore` ignored → its 2;
-direct entries not theirs → 7; `isShared` ignoring reach → exactly the only-direct case ×2; `UNDRAWN` back to four →
+direct entries not theirs → 7 at the round-7 commit, 11 once the 6C cases joined (R8-K-2 re-ran it); `isShared`
+ignoring reach → exactly the only-direct case ×2 at the round-7 commit, GREEN since the 6C follow-up made `pruned`
+decide reach itself — its one remaining use, the self-drawing inline owner, sees the same reach through the owner's
+own reference back to the dictionary, so the term is kept as a statement, not pinned (R8-K-3); `UNDRAWN` back to four →
 14; direct `UNDRAWN` off → the shared-form `/PieceInfo` 2; the pattern record unused → the C-5 case; last writer wins →
 the C-4 order it breaks; no `/DA` pre-noting → both C-3 orders; cut widgets' `/DA` read → the `/DR` shape 2; comments not
 skipped → the C-6 case; `annotsBefore` not wired → exactly the Flatten & download case; an opt-out added to Flatten &
-download → exactly the source guard. The 6C follow-up, 4 more: `inReached` ignored → the two shared-form shapes ×2;
+download → exactly the source guard (for that literal spelling only; the second spelling,
+`assemblePdfBytes({ rasterOnly: true })`, was green over 730 tests until the round-8 guard, R8-K-4). The 6C follow-up, 4 more: `inReached` ignored → the two shared-form shapes ×2;
 the inline owner not threaded → the inline Type3 ×2; a reached `/Resources` not counted as shared → the direct-only
 form ×2; the stream owner not threaded → the two shared-form shapes ×2.
 

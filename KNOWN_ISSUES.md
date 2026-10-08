@@ -76,8 +76,12 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - **An export can refuse.** When a page you keep shares its resources (images, forms, fonts, graphics states) with a
   page left out — deleted, redacted, outside an extracted range, or simply not the page you download — the export
   keeps only what the kept page draws. If that page's drawing cannot be read (an undecodable stream, a stray
-  delimiter, a stream compressed with a predictor, which pdf-lib's decoder ignores), what it draws is unknown, and the PDF exports refuse (`toast.exportResourcesUnreadable`) rather than
-  carry the other page's content. **Compress → flatten to images** still works: it saves every page as a picture.
+  delimiter, a stream compressed with a predictor, which pdf-lib's decoder ignores, or one naming its filter by the
+  short keys `/F` or `/DP`, which pdf.js reads and pdf-lib does not), what it draws is unknown, and the PDF exports
+  refuse (`toast.exportResourcesUnreadable`) rather than carry the other page's content. They also refuse when a
+  kept page, form or field holds its resources in something that is not a dictionary (an array, a stream) that
+  reaches the left-out page's: pdf.js draws nothing from it, and the copy would carry it whole (round 8). Only a
+  dictionary that holds something to prune is read, so one holding only colour spaces never refuses. **Compress → flatten to images** still works: it saves every page as a picture.
 - **A link that names its target by a named destination is dead in every export.** The name table (`/Names
   /Dests`) lives on the catalog, which is never copied, so such a link points nowhere — it does not leak, and it
   does not work. Links by page reference land on the right export page.
@@ -89,13 +93,18 @@ work in a private/incognito window when editing sensitive documents on a shared 
   document parts and print alternates, resource categories no reader knows and an XObject's layer given by name;
   since round 7 a structure element or field by its shape, a value written directly inside an object a removed page
   reaches, metadata, associated files and measurement point data, a field value only a removed box shows, and a
-  note tied to a removed page by `/P` or listed there before Flatten — pinned in `tests/export/copySourcePages.test.ts`,
-  `copySourcePagesInventory.test.ts` and `copySourcePagesRound7.test.ts`. A carrier reached some other way is not
+  note tied to a removed page by `/P` or listed there before Flatten; since round 8 a resources dictionary written
+  directly on the page tree, a resource category that is not a dictionary, a rich-text value (`/RV`), a field node
+  only a `/Parent` names, a structure element or a widget written inline, and a note whose page is outside the tree
+  or which has no `/Subtype` — pinned in `tests/export/copySourcePages.test.ts`, `copySourcePagesInventory.test.ts`,
+  `copySourcePagesRound7.test.ts` and `copySourcePagesRound8.test.ts`. A carrier reached some other way is not
   ruled out; `SECURITY.md` states the same bound and lists the display-state carriers that are kept.
 - **What a kept page still carries from a left-out one, by design.** A font both pages draw keeps its whole subset
   and its ToUnicode map, so the SET of characters the left-out page used is recoverable from the font (not their
   order or position). The layer settings (`/OCProperties`) are copied whole, so a layer name only the left-out page
-  uses is in the file. Every object a kept page keeps is copied with whatever it references — a malformed one with
+  uses is in the file — even from a call that does not carry the layers, since pdf-lib saves the unlinked copy too.
+  A radio group's value can name the button state chosen on the left-out page: the kept button inherits the value,
+  though it has no such state and shows Off. Every object a kept page keeps is copied with whatever it references — a malformed one with
   an extra key (on a colour space, a function, a shading, a graphics state) carries what that key names. Colour
   spaces are never pruned: pdf.js resolves a colour-space name outside `cs`/`CS` (a
   shading's own `/ColorSpace`, an Indexed or Separation base), so pruning one recoloured kept pages, while a colour
@@ -115,9 +124,15 @@ work in a private/incognito window when editing sensitive documents on a shared 
   are a kept annotation's other appearance states (`/AP /D`, `/RO`), a movie poster, a screen icon, a media clip's
   form and a trap network's fonts (round 7, R7-S-11). A page whose content is split into several streams, one of them
   marked `/Subtype /Form` that no page draws as a form, keeps what that stream's own resources name (R7-S-7).
-- **A link to a deleted page is removed together with its appearance**, so a link drawn with a visible appearance
-  disappears from the kept page — in the PDF and in a page exported as an image or a thumbnail (R7-C-7, a consequence
-  of the 2026-10-08 ruling).
+- **A link to a page outside the export is removed together with its appearance**, so a link drawn with a visible
+  appearance disappears from the kept page (R7-C-7, a consequence of the 2026-10-08 ruling). In a PDF that is a link
+  to a deleted page or one outside an extracted range. A single-page download, a page exported as an image, a
+  thumbnail and a redacted page's image each copy ONE page, so there a link to ANY other page loses its appearance
+  (R8-K-5).
+- **A tiling pattern two kept pages draw keeps what both draw through it** (every kept page is read before any is
+  copied, R8-C-2) — but when a form with resources of its own or an annotation appearance is what draws the pattern,
+  that drawing is read during the copy, after the pattern may already be copied, so a font only it uses through the
+  pattern can be missing (a substitute font is drawn; nothing leaks). Not measured on a real file.
 - **The catalog and page tree are never copied by reference, even with every page kept.** A signature's
   `/Reference` to the whole document loses that target in every export; the document is rebuilt, never carried.
 
