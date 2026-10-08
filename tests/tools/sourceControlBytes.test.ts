@@ -1,8 +1,9 @@
 /**
  * TEST-1 (review 2026-10-07). A raw control byte in a source file makes git treat the file as binary: every diff of
  * `src/core/undoRedoController.ts` read "Binary files differ" because of one literal NUL in a template string, so no
- * review could see a change to undo/redo. Source text spells such a character as an escape (`\u0000`). Binary assets
- * under `src/` (a font) are exempt by extension, so a new TEXT extension is scanned without anyone adding it here.
+ * review could see a change to undo/redo. Source text spells such a character as an escape (`\u0000`, `\x01`) —
+ * tests too: two fixtures carried raw `\x01`–`\x04` bytes, invisible in an editor. Binary assets (a font) are exempt
+ * by extension, so a new TEXT extension is scanned without anyone adding it here.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -19,11 +20,13 @@ function controlBytes(file: string, text: string): string[] {
 }
 
 describe('no raw control bytes in source text (TEST-1)', () => {
-  it('src/ holds none outside binary assets', () => {
-    const files = readdirSync('src', { recursive: true, encoding: 'utf8' })
-      .map(f => join('src', f)).filter(f => extname(f) !== '' && !BINARY.has(extname(f).toLowerCase()));
-    expect(files.length, 'the walk reached the sources').toBeGreaterThan(150);
-    expect(files.flatMap(f => controlBytes(f, readFileSync(f, 'latin1')))).toEqual([]);
+  it.each([['src', 150], ['tests', 250]] as const)('%s/ holds none outside binary assets', (dir, floor) => {
+    const files = readdirSync(dir, { recursive: true, encoding: 'utf8' })
+      .map(f => join(dir, f)).filter(f => extname(f) !== '' && !BINARY.has(extname(f).toLowerCase()));
+    expect(files.length, 'the walk reached the sources').toBeGreaterThan(floor);
+    // A new binary extension reds here with every byte it holds: the first 20 say which file, the count how many.
+    const found = files.flatMap(f => controlBytes(f, readFileSync(f, 'latin1')));
+    expect({ count: found.length, first: found.slice(0, 20) }).toEqual({ count: 0, first: [] });
   });
 
   it('control: the scan reports a NUL and a DEL by file and line, and lets tab, LF and CR pass', () => {

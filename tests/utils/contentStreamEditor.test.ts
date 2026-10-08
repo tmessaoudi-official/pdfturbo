@@ -2929,7 +2929,7 @@ describe('byte offsets + serializeOp', () => {
   });
 
   it('an inline-image token slices back to its raw and serializeOp round-trips it', () => {
-    const src = 'BI /W 2 /H 2 /CS /G /BPC 8 ID  EI';
+    const src = 'BI /W 2 /H 2 /CS /G /BPC 8 ID \x01\x02\x03\x04 EI';
     const tokens = tokenizeContentStream(src);
     const img = tokens.find(t => t.type === 'inline-image');
     expect(img).toBeDefined();

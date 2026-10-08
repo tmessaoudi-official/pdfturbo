@@ -28,7 +28,7 @@ describe('isAllowedUrlScheme', () => {
   it('blocks control-char / whitespace obfuscated schemes (browsers strip those before parsing)', () => {
     expect(isAllowedUrlScheme('java\tscript:alert(1)')).toBe(false);
     expect(isAllowedUrlScheme('java\nscript:alert(1)')).toBe(false);
-    expect(isAllowedUrlScheme('javascript:alert(1)')).toBe(false);
+    expect(isAllowedUrlScheme('\x01javascript:alert(1)')).toBe(false);
     expect(isAllowedUrlScheme('  javascript:alert(1)')).toBe(false);
   });
 });
