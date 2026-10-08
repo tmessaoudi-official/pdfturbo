@@ -75,8 +75,14 @@ reading the code. Both are said plainly instead of implied to be measured.
 > with a removed page keeps that page's glyph shapes and its character map, so which characters the removed page
 > used (not their order) can be read from the font; the **names of layers** a removed page alone uses stay in the
 > file's layer settings; and **colour spaces** are copied whole. Every object a kept page keeps comes with whatever
-> it references: no key the PDF standard defines on a colour space, function, shading or graphics state names
-> something that draws, but a malformed one carrying an extra key carries what that key names. See `KNOWN_ISSUES.md`.
+> it references: no key the PDF standard defines on a colour space, function or shading names something that draws
+> (a graphics state's soft mask and font do, and are pruned like any other owner), but a malformed object carrying an
+> extra key carries what that key names. A form field's **icon** (`/MK`) is kept with its widget even when the
+> removed page draws the same form. Since 2026-10-08 (round 6) the cut also covers the **structure tree** (a
+> structure destination names the whole tree, every page's marked content included), a **field-tree node** without a
+> field type that holds a value, and data no viewer draws for the kept page — application data (`/PieceInfo`), a
+> thumbnail, a PDF/VT document part, an image's print alternates — which is dropped when it reaches a removed page.
+> See `KNOWN_ISSUES.md`.
 
 | Tool | Content is… | Notes |
 |---|---|---|

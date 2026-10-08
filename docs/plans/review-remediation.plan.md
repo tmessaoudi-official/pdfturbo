@@ -29,6 +29,12 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 08:09] AGREED: M1 cap: run a sixth panel round on e74b863 with the inventory method - two tables (every pdf.js name-resolution/inheritance site from pdf.worker.mjs; every spec key holding a resources dictionary or owner), each row matched to its code path, every unmatched row a finding.
 - [2026-10-08 08:09] AGREED: M1 prune cost: re-measure on an idle machine and profile where the time goes before deciding; docs keep the loaded figure marked as such until then.
 - [2026-10-08 08:09] AGREED: M1 push: hold all unpushed commits until milestone 1 is certified (or the developer accepts the risk).
+- [2026-10-08 08:51] ASSUMED (review): M1 round 6: the structure tree is cut like the catalog, always (not only when a page is left out) - because a structure destination names an element whose /P chain is the whole tree with every page's marked content, and the export never carries the tree. Alternative: cut only when a page is left out.
+- [2026-10-08 08:51] ASSUMED (review): M1 round 6: /PieceInfo, /Thumb, /DPart and /Alternates are dropped from a kept object when they reach a removed page, kept otherwise - because no viewer draws them for that object (R6-S-3/4/6/7). Alternative: always drop them (a sanitizer-like change of every PDF export).
+- [2026-10-08 08:51] ASSUMED (review): M1 round 6: a widget's /MK icon is kept with the widget and disclosed - because it is the kept widget's own appearance source (R6-S-5). Alternative: drop /MK entries that reach a removed page (icon lost on appearance rebuild).
+- [2026-10-08 08:53] ASSUMED (review): M1 round 6: a field-tree node is foreign by membership in the AcroForm field tree (/Fields and /Kids), not only by carrying /FT - because an intermediate node without /FT still holds /V and /Kids of the removed page (R6-S-2). Alternative: keep the /FT test alone.
+- [2026-10-08 08:53] ASSUMED (review): M1 round 6: a widget's regenerated appearance prunes its /AP /Resources against every /DA seen for that appearance (accumulated across widgets sharing it), and an array /Contents member is registered as drawing nothing only when it is neither a single /Contents nor a form, registered before any copy - because pdf.js regenerates from /DR + /AP resources by the /DA font, and the copy order decided the result (R6-C-3/4/5). Alternative: refuse such pages.
+- [2026-10-08 08:53] ASSUMED (review): M1 round 6: a resources category outside the standard eight is dropped from a kept owner when it reaches a removed page - because no conforming reader draws through it and keeping it carries the removed page's objects (R6-S-8). Alternative: keep it (spec-invalid key, leak).
 
 ## Formal Plan
 
@@ -47,6 +53,28 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 
 **Milestone 2 — correctness P1s, docs batch, architecture steps 0–3 (rows 3–9).**
 
+## SEC-1 inventory — the certification matrix (panel round 6, 2026-10-08)
+
+Round 6 replaced the open-ended hunt with two inventories: Table A, every place pdf.js 6.3.289 resolves a resource
+name or picks a resources dictionary (32 rows), and Table B, every PDF 32000-2 key that leads to resources or to
+something drawn (68 rows). The full tables are in `var/claude/raw/m1r6-table{A,B}.md` (gitignored); the rows that had
+no matching code path, and what now matches them:
+
+| Row | pdf.js / spec site | Code path | Test |
+|---|---|---|---|
+| A1 | page `/Resources` merged with every ancestor's | `reachableFromPages` walks the `/Parent` chain | inventory `ancestorResources` |
+| A6/A7 | XObject `/OC` given as a name → caller's `/Properties` | `collect` `Do` | inventory `/OC is a name` ×2 |
+| A17 | tiling pattern overlay, separate `seen` | `collect` `scn` (`inner`) | inventory `pattern and by the page` ×2 orders |
+| A26 | regenerated widget appearance: `/DA` font in `/DR` + AP `/Resources` | `noteAppearances` / `appearance` | inventory `widget's appearance` ×3 |
+| B3 | array `/Contents` member also a form / a single `/Contents` | pre-registration before any copy | inventory `array member AND …` ×4 |
+| B23/31/33/62 | `/Alternates`, `/Thumb`, `/PieceInfo`, `/DPart` | `dropsUndrawn` (`UNDRAWN`) | inventory 4 shapes ×2 + unshared kept |
+| B36/40 | structure tree via `/SD` or a `/Dest` element | `isStructure` / `structureTree` cut; `/SD` deleted | inventory `structDest*` ×2 ×2 + link keeps `/D` |
+| B44/45 | field-tree node without `/FT` holding `/V` | `fieldTreeRefs` in `foreignField` | inventory `ftlessFieldNode` ×2 |
+| B65 | non-standard resources category (spec-invalid) | `pruned` drops it when it touches | inventory `unknownCategory` ×2 |
+| B14 | widget `/MK` icon | kept with the widget — disclosed | — |
+
+Every other row of both tables was already matched (round 1–5 code and tests; see `.claude/rules/redaction.md`).
+
 ## Status
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
@@ -63,9 +91,14 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- M1 (SEC-1) milestone panel reached its 5-round cap: rounds 3/4/5 found 3/4/3 P0-P1, all in the pdf.js name-resolution model (`collect`) or where owners live (`pruneNested`). Round-5 fixes are in the round-5 commit ("SEC-1 round 5") and are UNREVIEWED by a panel; 7 commits unpushed. Ruled 2026-10-08: round 6 with the inventory method, idle-machine cost measurement before any cost decision, push held until certified.
+- M1 (SEC-1) milestone panel reached its 5-round cap: rounds 3/4/5 found 3/4/3 P0-P1, all in the pdf.js name-resolution model (`collect`) or where owners live (`pruneNested`). Round-5 fixes are in the round-5 commit ("SEC-1 round 5") and are UNREVIEWED by a panel; the commits since d44b3a6 unpushed. Ruled 2026-10-08: round 6 with the inventory method, idle-machine cost measurement before any cost decision, push held until certified.
 ### Needs research
 ### Fragile
+- SEC-1 cost, round 6 (2026-10-08, load ~16, warm, five alternating runs, `copySourcePages` alone): Publication 17
+  delete-last median 2559 ms vs 176 ms; census 1393 vs 81; GPT-3 367 vs 126. Profile (one instrumented run,
+  Publication 17): `pruned` 80%, `collect` 67%, `tokenizeContentStream` 52%, the copier hook 18%, `dropsUndrawn`
+  (transitive `touches`) 5%. An idle machine was not available; single runs swung 0.8–8.6 s. The lever, if one is
+  wanted, is a name-only scan instead of the full tokenizer.
 - SEC-1 cost (M1-C3, partly fixed): one `@cantoo/pdf-lib` import per copy and a synchronous `/Annots` walk remain;
   when a page is left out, the prune also walks everything the left-out pages reach once and tokenizes the content
   of every owner that shares resources with them. Measured by the round-3 panel at load ~19 on the 916547c..4b175bc

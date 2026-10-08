@@ -132,14 +132,40 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   that form. It is dropped now, being undrawn.
 - **A tiling pattern's own categories hide the parent's whole** (pdf.js merges without `mergeSubDicts`): its content
   is collected in that overlay, and only names in the categories it lacks count as drawn from the parent.
-- **An array `/Contents` member's own `/Resources` draws nothing** (pdf.js never reads it): pruned against no content.
+- **An array `/Contents` member's own `/Resources` draws nothing** (pdf.js never reads it): pruned against no content
+  — unless the same stream is ALSO a page's single `/Contents` or a form, which round 6 registers first (below).
 - **Owners inside a stream's dictionary and in the page node's other entries** (an inline widget's `/DR`) are pruned:
   `pruneNested` walks stream dictionaries, and the page loop runs it over every page entry but `/Resources`,
   `/Parent` and `/Contents`.
 - **A self-listing inline Type3 font refuses only where its resources are shared**; unshared, it is kept as it is —
   round 4 had made a legal, unshared font refuse every export that left a page out.
-- Not fixed, inferred only: a content stream shared by two kept pages, one as the single `/Contents` and one inside
-  an array, is pruned by whichever page reaches it first.
+- (Round 5 left one shape "not fixed, inferred only": a stream that is one page's single `/Contents` and another's
+  array member, pruned by whichever page was copied first. Round 6 measured it red in both orders and fixed it.)
+
+**Round 6 (2026-10-08, by inventory, not by hunt):** the developer ruled the sixth round a different method — two
+tables, every pdf.js 6.3.289 site that resolves a resource name or picks a resources dictionary (A, 32 rows), and
+every PDF 32000-2 key that leads to resources or to something drawn (B, 68 rows); an unmatched row is a finding.
+The tables live in `var/claude/raw/m1r6-table{A,B}.md` (gitignored); the unmatched rows and what now matches them are
+the matrix in `docs/plans/review-remediation.plan.md` § "SEC-1 inventory". Fifteen findings, fourteen fixed:
+- **A page's resources are merged with EVERY ancestor's** (`reachableFromPages` walks `/Parent`): a form named only by
+  the page-tree node and drawn by the kept page was not reached, and its shared resources went unpruned.
+- **The structure tree is cut, always** (`isStructure`: a StructElem or StructTreeRoot, or the S + P shape, that is a
+  member of the catalog's tree): a PDF 2.0 structure destination (`/SD`, or an element as `/Dest`) names an element
+  whose `/P` chain is the whole tree. A link keeps its `/D` and loses `/SD`; a link whose only target is an element goes.
+- **A field-tree node is a field by membership**, not by `/FT`: an intermediate node without `/FT` still holds `/V`.
+- **Data no viewer draws for the kept object** — `/PieceInfo`, `/Thumb`, `/DPart`, `/Alternates` — is dropped from a
+  kept object when it reaches a removed page (`dropsUndrawn`), kept byte-identical otherwise.
+- **A resources category outside the standard eight** is dropped when it reaches a removed page.
+- **An XObject's `/OC` given as a NAME** resolves in the caller's `/Properties`, which therefore counts as drawn.
+- **A tiling pattern is collected with its own copy of `seen`**: a form drawn first by the pattern and then by the
+  page was skipped the second time, and the page's draw was missed (and the reverse order).
+- **A widget appearance pdf.js regenerates** (merge of `/DR`, the appearance's `/Resources`, the AcroForm `/DR`)
+  draws the `/DA` font: every `/DA` seen for an appearance is accumulated (`appearanceDA`), whether the widget is
+  inline, indirect, or shares its appearance with another.
+- **Every kept page's content is registered before any object is copied**, so the copy order no longer decides how
+  a shared stream is pruned; an array member is "draws nothing" only when it is neither a single `/Contents` nor a form.
+- Disclosed, not fixed: a widget's `/MK` icon is kept with the widget even when the removed page draws the same form
+  (`SECURITY.md`). The cost was re-profiled (`KNOWN_ISSUES.md`; tokenizing is half of it).
 
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
@@ -147,7 +173,11 @@ built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and pas
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePages.test.ts` (117 — round 5 adds seven route shapes ×2 modes (three undrawn
+Guards: `tests/export/copySourcePagesInventory.test.ts` (33 — round 6: nine leak shapes ×2 modes with a source control
+each, the `/SD` keep, an unshared `/PieceInfo`/`/Thumb` kept byte-identical, a form drawn by a pattern and by the page
+in both orders, a form's and an image's `/OC` name, the widget `/DA` font indirect, inline and through a shared
+appearance, a stream that is an array member AND a form or a single `/Contents` in both orders, and a deep unshared
+chain kept byte-identical with its control), `tests/export/copySourcePages.test.ts` (117 — round 5 adds seven route shapes ×2 modes (three undrawn
 wrappers, a shadowing pattern, an array-member `/Resources`, an owner in a stream dictionary, an inline widget's
 `/DR`) and three cases (the unshared self-listing Type3 exports, and two controls the scan can see: a DRAWN wrapper and
 a pattern without its own `/XObject` keep the removed page's form); round 4 adds six route shapes ×2 modes (an inline Type3 with an
@@ -203,7 +233,13 @@ reds its case when removed (the box call refuses). Round 5, each landed, red on 
 `cmp`: `touches` shallow again → the 3 wrapper shapes ×2; re-entry always refusing → exactly the unshared Type3
 case; re-entry never refusing → exactly the round-3 self-drawing refusal; the page-node walk off → the inline-widget
 shape ×2; array members unregistered → the array shape ×2; the pattern filter off → the shadowing-pattern shape ×2;
-stream dictionaries not walked → the stream-dictionary shape ×2.
+stream dictionaries not walked → the stream-dictionary shape ×2. Round 6, each landed, red on exactly its cases, restored
+with `cmp`: ancestors' resources not reached → the ancestor shape ×2; the structure cut off → its 4 shapes + the `/SD`
+keep; the field-tree membership off → the FT-less shape ×2; `UNDRAWN` emptied → its 8 shapes; unknown categories
+kept → that shape ×2; the `/OC` name ignored → the 2 `/OC` cases; the pattern sharing `seen` → exactly the
+pattern-first case; the appearance `/DA` not read → the 3 widget cases; an array member that is a form registered as
+drawing nothing → both orders; an array member overwriting a single `/Contents` → both orders; `/SD` kept → exactly the
+`/SD` keep case.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

@@ -94,13 +94,29 @@ export async function copySourcePages(
   const fieldChain = keptFieldChain(lib, src, keptAnnots, keptInline);
   if (anyLeftOut) for (const r of fieldsNoKeptWidgetReaches(lib, src, keptAnnots, fieldChain)) cutRefs.add(r);
   // Any other form field — reached through an action's /Fields or /T, say — is one no kept widget belongs to.
+  // A node of the AcroForm field tree counts even without /FT of its own or above it: a parent holding the
+  // inheritable /V of a kid that does carry /FT (round 6, R6-S-2).
+  const fieldTree = anyLeftOut ? fieldTreeRefs(lib, src) : new Set<PDFRef>();
   const foreignField = (ref: PDFRef, obj: PDFObject | undefined): boolean => anyLeftOut
-    && isField(lib, src, obj) && !fieldChain.has(ref) && !keptAnnots.has(ref);
+    && (fieldTree.has(ref) || isField(lib, src, obj)) && !fieldChain.has(ref) && !keptAnnots.has(ref);
   // The catalog and the page-tree nodes are the whole document: a signature's /Reference /Data, say, names the
   // catalog, and copying it would carry every page, field and outline (R2-3).
   const catalogRef = src.context.trailerInfo.Root;
   const isDocument = (ref: PDFRef, obj: PDFObject | undefined): boolean => ref === catalogRef
     || (obj instanceof Dict && obj.lookup(PDFName.of('Type')) === PDFName.of('Pages'));
+  // The structure tree is the document's too: a PDF 2.0 structure destination (/SD, or a /Dest whose first element is
+  // a structure element) names an element whose /P chain is the whole tree — every page's marked content (/Stm) and
+  // /ActualText (round 6, R6-S-1). A struct-element SHAPE triggers the walk; membership in the tree decides.
+  let structure: Set<PDFRef> | undefined;
+  const isStructure = (ref: PDFRef, obj: PDFObject | undefined): boolean => {
+    if (!(obj instanceof Dict)) return false;
+    const type = obj.lookup(PDFName.of('Type'));
+    const shaped = type === PDFName.of('StructElem') || type === PDFName.of('StructTreeRoot')
+      || (obj.lookup(PDFName.of('S')) instanceof lib.PDFName && obj.get(PDFName.of('P')) instanceof lib.PDFRef && !obj.has(PDFName.of('Subtype')));
+    if (!shaped) return false;
+    structure ??= structureTree(lib, src);
+    return structure.has(ref);
+  };
   const pruner = opts.pruneSharedResources && anyLeftOut
     ? new ResourcePruner(lib, src, reachableFromPages(lib, src, srcPages.filter((_, i) => !keep.has(i))))
     : undefined;
@@ -128,12 +144,12 @@ export async function copySourcePages(
     }
     const obj = src.context.lookup(ref);
     // A page dictionary outside the page tree — what a pre-fix export left behind — is a page left out too.
-    if (cutRefs.has(ref) || isPageDict(lib, obj) || foreignField(ref, obj) || isDocument(ref, obj)) return (cut ??= dest.context.nextRef());
+    if (cutRefs.has(ref) || isPageDict(lib, obj) || foreignField(ref, obj) || isDocument(ref, obj) || isStructure(ref, obj)) return (cut ??= dest.context.nextRef());
     // A form, pattern, appearance or Type3 font with resources of its own carries only what it draws of them (M1-S1),
     // and so does an owner written inline inside what is copied, through dictionaries, arrays and stream dictionaries
     // — a widget's /DR, a Type3 font in an ExtGState's /Font array (rounds 4 and 5).
     if (pruner && !internals.traversedObjects.has(ref)) {
-      const owner = pruner.pruneNested(obj, pruner.pageContent.get(ref));
+      const owner = pruner.pruneNested(obj, pruner.pageContent.get(ref) ?? pruner.appearance(ref, obj));
       if (owner) {
         const newRef = dest.context.nextRef();
         internals.traversedObjects.set(ref, newRef);
@@ -144,9 +160,11 @@ export async function copySourcePages(
     return copyRef(ref);
   };
 
-  const assigned = new Set<number>();
-  const pages = indices.map(i => {
-    let node = srcPages[i].node;
+  // Every kept page's content is registered BEFORE any copy, so how a shared stream is pruned never depends on which
+  // page reaches it first (round 6, R6-K-1).
+  const reading = new Map<number, { read: () => (string | null)[]; from?: PDFDict }>();
+  for (const i of indices) {
+    const node = srcPages[i].node;
     const contents = node.get(PDFName.of('Contents'));
     const read = () => [contentOf(lib, src, contents)];
     // pdf.js reads a single content stream through its own /Resources merged over the page's (round 4, R4-C-2): what
@@ -155,11 +173,28 @@ export async function copySourcePages(
     const local = stream instanceof lib.PDFStream ? stream.dict.lookup(PDFName.of('Resources')) : undefined;
     const from = pruner && local instanceof Dict && local.keys().length > 0 ? mergeResources(lib, src, local, node.Resources()) : undefined;
     if (from && contents instanceof lib.PDFRef) pruner?.pageContent.set(contents, { contents: read, from });
-    // A member of an ARRAY /Contents is read as part of a sequence with no dictionary, so its own /Resources is never
-    // read by pdf.js: it draws nothing from them (round 5, R5-S-3).
-    if (pruner && stream instanceof lib.PDFArray) {
-      for (const member of stream.asArray()) if (member instanceof lib.PDFRef) pruner.pageContent.set(member, { contents: () => [] });
+    reading.set(i, { read, from });
+  }
+  // A member of an ARRAY /Contents is read as part of a sequence with no dictionary, so its own /Resources is never
+  // read by pdf.js: it draws nothing from them (round 5, R5-S-3) — unless the same stream is also a form (pdf.js draws
+  // only a /Subtype /Form) or another kept page's single /Contents, whose drawing then decides (round 6, R6-K-1).
+  if (pruner) {
+    for (const i of indices) {
+      const stream = src.context.lookup(srcPages[i].node.get(PDFName.of('Contents')));
+      if (!(stream instanceof lib.PDFArray)) continue;
+      for (const member of stream.asArray()) {
+        if (!(member instanceof lib.PDFRef) || pruner.pageContent.has(member)) continue;
+        const target = src.context.lookup(member);
+        if (target instanceof lib.PDFStream && target.dict.lookup(PDFName.of('Subtype')) === PDFName.of('Form')) continue;
+        pruner.pageContent.set(member, { contents: () => [] });
+      }
     }
+  }
+
+  const assigned = new Set<number>();
+  const pages = indices.map(i => {
+    let node = srcPages[i].node;
+    const { read, from } = reading.get(i) as { read: () => (string | null)[]; from?: PDFDict };
     const resources = pruner?.pruned(read, node.Resources(), from);
     if (resources) {
       node = node.clone();
@@ -169,6 +204,11 @@ export async function copySourcePages(
     if (pruner) {
       for (const [key, value] of node.entries()) {
         if (key === PDFName.of('Resources') || key === PDFName.of('Parent') || key === PDFName.of('Contents')) continue;
+        if (pruner.dropsUndrawn(key, value)) {
+          if (node === srcPages[i].node) node = node.clone();
+          node.delete(key);
+          continue;
+        }
         const nested = pruner.pruneNested(value);
         if (!nested) continue;
         if (node === srcPages[i].node) node = node.clone();
@@ -280,7 +320,13 @@ function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): Set<P
   // Iterative: a chain of 20 000 outline items overflowed the stack recursively (round 3). It stops where the copy
   // stops — at another page, the catalog and the page tree, which the copier hook cuts.
   const stack: Array<[PDFObject | undefined, boolean]> = [];
-  for (const page of pages) stack.push([page.node, true], [page.node.Resources(), false]);
+  for (const page of pages) {
+    stack.push([page.node, true], [page.node.Resources(), false]);
+    // pdf.js merges the page's /Resources with every ancestor's (first category found wins), so a removed page draws
+    // through a /Pages node's categories its own dictionary lacks (round 6, R6-C-1). The values, never the nodes.
+    let up = page.node.lookup(PDFName.of('Parent'));
+    for (let k = 0; k < 64 && up instanceof PDFDict; k++, up = up.lookup(PDFName.of('Parent'))) stack.push([up.get(PDFName.of('Resources')), false]);
+  }
   while (stack.length) {
     const [obj, fromPage] = stack.pop() as [PDFObject | undefined, boolean];
     if (obj instanceof Ref) {
@@ -300,6 +346,8 @@ function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): Set<P
 // (a shading's `/ColorSpace`, an Indexed or Separation base, an alias entry) — round 3 found pruning it recoloured pages.
 const PRUNED = ['XObject', 'Pattern', 'Shading', 'ExtGState', 'Font', 'Properties'] as const;
 type Category = (typeof PRUNED)[number];
+const STANDARD_CATEGORIES = new Set<string>([...PRUNED, 'ColorSpace', 'ProcSet']);
+const UNDRAWN = new Set(['PieceInfo', 'Thumb', 'DPart', 'Alternates']);
 type Drawn = Record<Category, Set<string>>;
 
 /**
@@ -314,6 +362,8 @@ class ResourcePruner {
   readonly pageContent = new Map<PDFRef, { contents: () => (string | null)[]; from?: PDFDict }>();
   /** References known not to reach anything a removed page reaches (a memo for `touches`). */
   private readonly clean = new Set<PDFRef>();
+  /** An annotation appearance → the /DA strings of the kept annotations it serves (accumulated, never overwritten). */
+  private readonly appearanceDA = new Map<PDFRef, string[]>();
 
   constructor(private readonly lib: Lib, private readonly src: PDFDocument, private readonly excluded: Set<PDFRef>) {}
 
@@ -408,7 +458,52 @@ class ResourcePruner {
         if (catChanged) { out.set(PDFName.of(cat), kept); changed = true; }
       }
     }
+    // A category no viewer reads (spec-invalid) draws nothing: dropped wherever it reaches a removed page (R6-S-8).
+    for (const [key, value] of resources.entries()) {
+      if (STANDARD_CATEGORIES.has(key.decodeText()) || !this.touches(value)) continue;
+      out.delete(key);
+      changed = true;
+    }
     return changed ? out : undefined;
+  }
+
+  /**
+   * A kept widget's or free-text annotation's appearance also serves the /DA a viewer regenerates it with, and pdf.js
+   * resolves that font in the merge of /DR and the appearance's own /Resources — the only place it is left once the
+   * AcroForm is not copied (round 6, R6-C-4). Registered when the annotation is pruned, read when its stream is.
+   */
+  appearance(ref: PDFRef, obj: PDFObject | undefined): { contents: () => (string | null)[] } | undefined {
+    const das = this.appearanceDA.get(ref);
+    if (!das || !(obj instanceof this.lib.PDFStream)) return undefined;
+    return { contents: () => [contentOf(this.lib, this.src, obj), ...das] };
+  }
+
+  private noteAppearances(annot: PDFDict): void {
+    const { PDFName, PDFDict, PDFRef: Ref } = this.lib;
+    const ap = annot.lookup(PDFName.of('AP'));
+    if (!(ap instanceof PDFDict)) return;
+    const [da] = defaultAppearances(this.lib, this.src, annot);
+    if (da === undefined) return;
+    for (const key of ['N', 'R', 'D']) {
+      const v = ap.get(PDFName.of(key));
+      const states = v instanceof Ref ? this.src.context.lookup(v) : v;
+      const refs = states instanceof PDFDict && !(v instanceof Ref && states instanceof this.lib.PDFStream) ? states.values() : [v];
+      for (const r of refs) {
+        if (!(r instanceof Ref)) continue;
+        const list = this.appearanceDA.get(r) ?? [];
+        if (!list.includes(da)) list.push(da);
+        this.appearanceDA.set(r, list);
+      }
+    }
+  }
+
+  /**
+   * Keys a viewer never draws for the object that holds them — application data, a thumbnail, a PDF/VT document part,
+   * an image's print alternates — are dropped from a kept object when they reach anything a removed page reaches
+   * (round 6, R6-S-3/4/6/7). Unshared, they are kept as they are.
+   */
+  dropsUndrawn(key: PDFName, value: PDFObject | undefined): boolean {
+    return UNDRAWN.has(key.decodeText()) && this.touches(value);
   }
 
   /** Whether any category of `resources` reaches something a removed page reaches. */
@@ -432,15 +527,18 @@ class ResourcePruner {
       let out = this.prunedOwner(value, page) as InstanceType<typeof PDFStream> | undefined;
       for (const [k, v] of value.dict.entries()) {
         if (skip(k)) continue;
+        if (this.dropsUndrawn(k, v)) { out ??= value.clone(); out.dict.delete(k); continue; }
         const n = this.pruneNested(v);
         if (n) { out ??= value.clone(); out.dict.set(k, n); }
       }
       return out;
     }
     if (value instanceof PDFDict) {
+      if (value.has(PDFName.of('AP'))) this.noteAppearances(value);
       let out = this.prunedOwner(value) as PDFDict | undefined;
       for (const [k, v] of value.entries()) {
         if (skip(k)) continue;
+        if (this.dropsUndrawn(k, v)) { out ??= value.clone(); out.delete(k); continue; }
         const n = this.pruneNested(v);
         if (n) { out ??= value.clone(); out.set(k, n); }
       }
@@ -517,6 +615,10 @@ class ResourcePruner {
         case 'Do': {
           drawn.XObject.add(name);
           const form = entry('XObject', name);
+          // An XObject whose /OC is a NAME (against the spec, but pdf.js renders it) is resolved in these /Properties
+          // (round 6, R6-C-3).
+          const oc = form instanceof PDFStream ? form.dict.get(PDFName.of('OC')) : undefined;
+          if (oc instanceof PDFName) drawn.Properties.add(oc.decodeText());
           if (form instanceof PDFStream && form.dict.lookup(PDFName.of('Subtype')) === PDFName.of('Form')
             && !inherit(form, () => [contentOf(this.lib, this.src, form)])) return false;
           break;
@@ -555,12 +657,17 @@ class ResourcePruner {
           // pattern has hides this one's whole, so only names in the categories it lacks are drawn from here (R5-S-2).
           if (seen.has(pattern)) break;
           seen.add(pattern);
+          // Its own `seen`: a form reached first through the pattern (in the pattern's view) must still be followed
+          // when the page draws it directly (round 6, R6-C-2, a round-5 regression). A form the page reached first is
+          // skipped inside the pattern — its names already count for the page, and the pattern's own categories would
+          // hide them anyway: over-keeping, the safe direction.
+          const inner = new Set(seen);
           const mine: Drawn = { XObject: new Set(), Pattern: new Set(), Shading: new Set(), ExtGState: new Set(), Font: new Set(), Properties: new Set() };
           const view = this.src.context.obj({});
           for (const [k, v] of resources.entries()) view.set(k, v);
           for (const [k, v] of own.entries()) view.set(k, v);
           const text = contentOf(this.lib, this.src, pattern);
-          if (text === null || !this.collect(text, view, mine, seen, depth + 1)) return false;
+          if (text === null || !this.collect(text, view, mine, inner, depth + 1)) return false;
           for (const cat of PRUNED) if (!own.has(PDFName.of(cat))) for (const n of mine[cat]) drawn[cat].add(n);
           break;
         }
@@ -570,6 +677,49 @@ class ResourcePruner {
     }
     return true;
   }
+}
+
+/** Every node of the AcroForm field tree, by reference. */
+function fieldTreeRefs(lib: Lib, src: PDFDocument): Set<PDFRef> {
+  const { PDFName, PDFDict, PDFArray, PDFRef: Ref } = lib;
+  const out = new Set<PDFRef>();
+  const form = src.catalog.lookup(PDFName.of('AcroForm'));
+  const fields = form instanceof PDFDict ? form.lookup(PDFName.of('Fields')) : undefined;
+  const stack: PDFObject[] = fields instanceof PDFArray ? fields.asArray() : [];
+  while (stack.length) {
+    const v = stack.pop();
+    if (!(v instanceof Ref) || out.has(v)) continue;
+    out.add(v);
+    const node = src.context.lookup(v);
+    const kids = node instanceof PDFDict ? node.lookup(PDFName.of('Kids')) : undefined;
+    if (kids instanceof PDFArray) stack.push(...kids.asArray());
+  }
+  return out;
+}
+
+/** The structure tree root and every structure element below it, by reference — never the content they mark. */
+function structureTree(lib: Lib, src: PDFDocument): Set<PDFRef> {
+  const { PDFName, PDFDict, PDFArray, PDFRef: Ref } = lib;
+  const out = new Set<PDFRef>();
+  const root = src.catalog.get(PDFName.of('StructTreeRoot'));
+  const stack: PDFObject[] = root ? [root] : [];
+  while (stack.length) {
+    const v = stack.pop();
+    if (v instanceof PDFArray) { stack.push(...v.asArray()); continue; }
+    const node = v instanceof Ref ? src.context.lookup(v) : v;
+    if (!(node instanceof PDFDict)) continue;
+    const type = node.lookup(PDFName.of('Type'));
+    // A marked-content or object reference names a page's content or an annotation, which are not the tree's.
+    if (type === PDFName.of('MCR') || type === PDFName.of('OBJR')) continue;
+    if (v instanceof Ref) {
+      if (out.has(v)) continue;
+      if (v !== root && !(node.lookup(PDFName.of('S')) instanceof PDFName)) continue;
+      out.add(v);
+    }
+    const kids = node.get(PDFName.of('K'));
+    if (kids) stack.push(kids);
+  }
+  return out;
 }
 
 /** A Type3 font's glyph procedures, each as content text (null when one cannot be decoded). */
@@ -723,6 +873,11 @@ function rewritePageRefs(lib: Lib, dest: PDFDocument, map: (ref: PDFRef) => PDFR
       return;
     }
     for (const [name, v] of obj.entries()) {
+      // A structure destination whose element is cut goes whole: [null /Fit] would name nothing (round 6).
+      if (name === PDFName.of('SD') && v instanceof Arr && v.get(0) instanceof Ref && answer(v.get(0) as PDFRef) === null) {
+        obj.delete(name);
+        continue;
+      }
       if (v instanceof Ref) {
         const to = answer(v);
         if (to === null) obj.delete(name); else if (to) obj.set(name, to);

@@ -95,9 +95,15 @@ work in a private/incognito window when editing sensitive documents on a shared 
   shading's own `/ColorSpace`, an Indexed or Separation base), so pruning one recoloured kept pages, while a colour
   space draws nothing.
 - **Leaving a page out costs time.** The prune reads every owner that shares resources with a left-out page:
-  deleting the last page of a 142-page corpus file took a median 11 s (3.3–13.8 s over three runs) against 0.13 s
-  without it, the 67-page census report 0.9 s against 0.1 s — `copySourcePages` alone, warmed up, alternating runs,
-  round-5 code, 2026-10-08, machine load ~24. Not measured on an idle machine; not optimised.
+  deleting the last page of a 142-page corpus file took a median 2.6 s against 0.18 s without it, the 67-page census
+  report 1.4 s against 0.08 s, a 75-page paper 0.37 s against 0.13 s — `copySourcePages` alone, warmed up, five
+  alternating runs, round-6 code, 2026-10-08, machine load ~16 (single runs varied up to 8.6 s; an idle machine was
+  not available). A profile puts ~80% of it in reading content (half of all time in tokenizing it) and ~5% in the
+  reachability walk. Not optimised.
+- **A link whose target is a structure element (PDF 2.0) is removed, and a structure destination (`/SD`) is
+  dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
+  every page's marked content.
+- **A widget's icon (`/MK`) is kept with the widget**, even when the removed page draws the same icon form.
 - **The catalog and page tree are never copied by reference, even with every page kept.** A signature's
   `/Reference` to the whole document loses that target in every export; the document is rebuilt, never carried.
 
