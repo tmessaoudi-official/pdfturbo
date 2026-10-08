@@ -42,25 +42,25 @@ that builds a file, performs the operation, and tries to recover the content wit
 they prove the mechanism behaves as described rather than that every export path invokes it. Unmarked
 rows were established by reading the code. Both are said plainly instead of implied to be measured.
 
-> **Open issue (found 2026-10-07, fix in progress): a page that links to a removed page can carry it back.**
-> When a page you **keep** refers to a page you **removed** — redacted, deleted, or left outside an extracted range —
-> the exported file can still contain that removed page, whole, as an object no viewer shows but whose text is
-> readable from the file's bytes. The references that do this are an internal link to that page (a contents page,
-> "see page 5"), and a form field with boxes on both pages. A document without such references is not affected, and
-> that is the only kind of document the **[pinned]** tests below use, which is why they stayed green. It reaches
-> every output built from the copied pages: Download, Extract page range, single-page download, Flatten, and the
-> signed, sanitized and compressed files. Until the fix ships, for a confidential page in a document with internal
-> links or multi-page forms, use **Compress → flatten to images** (it builds a new file from page images and copies
-> nothing) or **Export page as image**.
+> **A page that linked to a removed page used to carry it back (found 2026-10-07, fixed 2026-10-08).** When a page
+> you kept referred to a page you removed — redacted, deleted, or left outside an extracted range — through an
+> internal link (a contents page, "see page 5") or a form field with boxes on both pages, the exported file
+> contained the removed page whole, as an object no viewer showed but whose text was readable from the file's bytes.
+> It reached every output built from copied pages, the signed, sanitized and compressed files included. The export
+> now answers every reference to a source page itself instead of copying it: a link to a **redacted** page opens its
+> image page, a link to a **deleted or out-of-range** page is removed, and a form field keeps only the boxes on
+> exported pages. The same fix repaired internal links in general — every one of them used to open page 1 — and
+> stopped an annotated page from being stored twice. The cross-page shapes are pinned in
+> `tests/export/copySourcePages.test.ts` and `tests/browser/redaction-orphan-leak.browser.test.ts`.
 
 | Tool | Content is… | Notes |
 |---|---|---|
-| **Redaction** | **removed** — *except the open issue above* | **[pinned]** (on documents without cross-page references) The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Web links on that page (`http`, `https`, `mailto`) that meet no redaction are re-created on the image page, where they were drawn (since 2026-09-25); a link that meets a redaction, a link with any other scheme, and a link to another page are not. Applies to a page from a real PDF; see the note below on **blank** pages, on the CSV/Excel and OCR exports, on **vertical (top-to-bottom) text**, and on **source annotations** (a note, stamp or form field under a redaction is now removed with it). |
-| **Delete page** | **removed** — *except the open issue above* | **[pinned]** (on documents without cross-page references) The export is assembled from copied pages; a deleted page is not copied on its own, but a kept page that links to it can carry it in (see the open issue above). |
+| **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Web links on that page (`http`, `https`, `mailto`) that meet no redaction are re-created on the image page, where they were drawn (since 2026-09-25); a link that meets a redaction, a link with any other scheme, and a link to another page are not. Applies to a page from a real PDF; see the note below on **blank** pages, on the CSV/Excel and OCR exports, on **vertical (top-to-bottom) text**, and on **source annotations** (a note, stamp or form field under a redaction is now removed with it). |
+| **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied, and a link or form field on a kept page that points to it is cut rather than followed (since 2026-10-08). |
 | **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. Unlike *replacing* text — which can decline on fonts it cannot redraw — deleting is font-agnostic: it blanks the operator that draws the text, so nothing needs drawing. |
 | **Compress → flatten to images** | **removed** | The **flatten-to-images** setting only; "lossless optimise" and "shrink images" keep all text, and "shrink images" re-saves each photo whole, including any part a crop hides. Rasterises every page, so it is redaction's grade applied document-wide. |
 | **Export page as image** (PNG/JPEG) | **removed** | Rasterises the page, so only what you can see survives. |
-| **Extract page range** | **removed** — *except the open issue above* | Like deleting pages: the new file is built from copied pages, so a page outside the range is not copied on its own — but a kept page that links to it can carry it in (see the open issue above). |
+| **Extract page range** | **removed** | Like deleting pages: the new file is built from copied pages, so pages outside the range are never in it — a reference to one is cut, not followed (since 2026-10-08; pinned through the same assembly as Delete page). |
 | **Crop** | *hidden only* | A view setting. See below. |
 | **Shape / rectangle over text** | ***not even hidden*** | **[pinned]** See below — this is the one that catches people. |
 | **Highlight** | *not hidden* | A semi-transparent annotation drawn over the text. |

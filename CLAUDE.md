@@ -281,7 +281,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 **The entries now live in path-scoped rules files** (moved verbatim 2026-09-28). A scoped file loads when you read a matching file — read it yourself before working in that area when no file read comes first (running a command reads no file):
 
 - **pdfjs** — pdf.js assets (CMaps, JBIG2/JPX decoders, ICC), points viewports, the text layer (4) → `.claude/rules/pdfjs.md` (loads when you read `src/utils/pdfjsParams.ts`, `src/utils/pointViewport.ts` …).
-- **redaction** — redaction burns, the hide-vs-remove audit, coordinate frames, Form XObjects, annotations under a burn (11) → `.claude/rules/redaction.md` (loads when you read `src/export/exportPipeline.ts`, `src/export/exportService.ts` …).
+- **redaction** — redaction burns, the hide-vs-remove audit, coordinate frames, Form XObjects, annotations under a burn, references to removed pages (12) → `.claude/rules/redaction.md` (loads when you read `src/export/exportPipeline.ts`, `src/export/exportService.ts` …).
 - **export** — the export pipeline: rotation, text extent, the export frame, links, flatten, XLSX, forms, XFDF, Bates, sanitize, lock, compress (14) → `.claude/rules/export.md` (loads when you read `src/export/**`, `src/utils/pdfSanitizer.ts` …).
 - **flow-export** — PDF→DOCX/MD: flow reconstruction, columns, tables and CSV, the tagged-PDF fast path (13) → `.claude/rules/flow-export.md` (loads when you read `src/utils/flowDoc*.ts`, `src/utils/tableExtract.ts` …).
 - **arabic-rtl** — Arabic and RTL: bidi, the Arabic overlay, tashkeel, RTL selection and copy (7) → `.claude/rules/arabic-rtl.md` (loads when you read `src/utils/bidi.ts`, `src/utils/rtlClipboard.ts` …).

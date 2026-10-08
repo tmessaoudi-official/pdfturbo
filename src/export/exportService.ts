@@ -16,7 +16,7 @@ import { FormHiddenTextFinder, type FormTextItem } from './formHiddenText';
 import { encryptPdf } from './encryption';
 import { isPdfLoadRefusal, loadPdfDocument } from '../utils/pdfLoadGuard';
 import { viewerVerdict } from '../utils/viewerVerdict';
-import { carryLayers, copySourcePages, ExportLayersConflictError } from './copySourcePages';
+import { carryLayers, copySourcePages, ExportLayersConflictError, resolveStandIns } from './copySourcePages';
 import { pickSaveTarget, writeToHandle, type SaveTarget, type SaveFileType } from '../utils/fileSystemAccess';
 import { buildTableGrid, gridToCsv, type TableGrid, type TableTextItem } from '../utils/tableExtract';
 import { inferBorderlessGrid } from '../utils/borderlessTable';
@@ -866,6 +866,8 @@ export class ExportService {
       // one non-redacted doc page needs.
       const pageHasRedaction = (p: typeof docPages[number]): boolean => pageIsRasterised(p, elements);
       const copiedPages = new Map<string, import('@cantoo/pdf-lib').PDFPage>();
+      const pendingStandIns = new Map<string, import('@cantoo/pdf-lib').PDFRef>();
+      const imagePageOf = new Map<string, import('@cantoo/pdf-lib').PDFRef>();
       // WS8 step 5: each source's layer settings travel with its pages (see `copySourcePages`).
       const layered: Array<{ id: string; ocProperties: import('@cantoo/pdf-lib').PDFDict }> = [];
       for (const [id, srcDoc] of srcDocs) {
@@ -875,8 +877,16 @@ export class ExportService {
             .map(p => p.sourcePageNum - 1)
         )].sort((a, b) => a - b);
         if (indices.length === 0) continue;
-        const { pages, ocProperties } = await copySourcePages(pdfDoc, srcDoc, indices);
+        // SEC-1: a redacted page is replaced by its image page, so a link to it from a copied page is held on a
+        // stand-in and pointed at that image once it exists (below); every other page not copied is cut.
+        const redacted = [...new Set(
+          docPages
+            .filter(p => p.sourcePdfId === id && pageHasRedaction(p))
+            .map(p => p.sourcePageNum - 1)
+        )];
+        const { pages, ocProperties, standIns } = await copySourcePages(pdfDoc, srcDoc, indices, { standIns: redacted });
         indices.forEach((idx: number, i: number) => copiedPages.set(`${id}:${idx}`, pages[i]));
+        standIns.forEach((ref, idx) => pendingStandIns.set(`${id}:${idx}`, ref));
         if (ocProperties) layered.push({ id, ocProperties });
       }
       if (layered.length === 1) {
@@ -930,7 +940,10 @@ export class ExportService {
         } else if (hasRedaction) {
           const srcDoc = srcDocs.get(docPage.sourcePdfId);
           if (srcDoc) {
+            const before = pdfDoc.getPageCount();
             await rasterizePageWithRedactions(srcDoc, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageNumber, docTotal);
+            const key = `${docPage.sourcePdfId}:${docPage.sourcePageNum - 1}`;
+            if (pdfDoc.getPageCount() > before && !imagePageOf.has(key)) imagePageOf.set(key, pdfDoc.getPage(before).ref);
           }
         } else {
           const key = `${docPage.sourcePdfId}:${docPage.sourcePageNum - 1}`;
@@ -942,6 +955,8 @@ export class ExportService {
         }
         onPage?.(++pagesDone, totalPages);
       }
+      // SEC-1: every stand-in now names its image page, or — its page never rasterised — is cut.
+      await resolveStandIns(pdfDoc, new Map([...pendingStandIns].map(([key, ref]) => [ref, imagePageOf.get(key)])));
 
       return pdfDoc;
     }

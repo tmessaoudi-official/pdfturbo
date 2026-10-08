@@ -220,3 +220,90 @@ describe('AUDIT — a redaction on a BLANK page removes the overlay text under i
     expect(leaks(out), 'nor anywhere in the raw bytes').toBe(false);
   });
 });
+
+/**
+ * SEC-1 (review 2026-10-07, P0): the redacted page came back through a REFERENCE. The index filter above keeps the
+ * assembler from copying a redaction-bearing page — but pdf-lib's copier follows every reference a COPIED page
+ * holds, so a contents-page link (`/Dest`) or a form field whose widgets span both pages carried the un-redacted page
+ * in whole. Ruled 2026-10-08: the link lands on the redacted page's IMAGE page instead; a widget of that page is cut.
+ */
+async function linkedSource(via: 'link' | 'field'): Promise<Uint8Array> {
+  const { PDFDocument, PDFName, PDFString, StandardFonts, rgb } = await import('@cantoo/pdf-lib');
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const p1 = doc.addPage([W, H]);
+  p1.drawText('Contents: see page 2', { x: 20, y: H - 60, size: 9, font });
+  const p2 = doc.addPage([W, H]);
+  p2.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(1, 1, 1) });
+  p2.drawText(SECRET, { x: 20, y: H - 60, size: 9, font });
+  const ctx = doc.context;
+  if (via === 'link') {
+    const link = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Link', Rect: [20, H - 70, 200, H - 50], Border: [0, 0, 0], Dest: [p2.ref, PDFName.of('Fit')] }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([link]));
+  } else {
+    const field = ctx.nextRef();
+    const w1 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [20, 20, 120, 40], Parent: field, P: p1.ref }));
+    const w2 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', Rect: [20, 20, 120, 40], Parent: field, P: p2.ref }));
+    ctx.assign(field, ctx.obj({ FT: 'Tx', T: PDFString.of('name'), Kids: [w1, w2] }));
+    p1.node.set(PDFName.of('Annots'), ctx.obj([w1]));
+    p2.node.set(PDFName.of('Annots'), ctx.obj([w2]));
+  }
+  return doc.save({ useObjectStreams: false });
+}
+
+async function assembleTwoPages(bytes: Uint8Array, elements: PDFElement[]): Promise<Uint8Array> {
+  const { ExportService } = await import('../../src/export/exportService');
+  const { InkLayer } = await import('../../src/infra/inkLayer');
+  const doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+  const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
+  const ctx = {
+    documentModel: {
+      pageCount: 2,
+      currentPageIndex: 0,
+      pages: [
+        { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 },
+        { id: 'p2', sourcePdfId: 's1', sourcePageNum: 2, rotation: 0 },
+      ],
+      sourcePdfs: new Map([['s1', { bytes, doc }]]),
+      watermark: { enabled: false },
+      bates: { enabled: false },
+    } as unknown as import('../../src/core/documentModel').DocumentModel,
+    elements,
+    formValues: {},
+    currentFilename: 'case.pdf',
+    exportPassword: null,
+    inkLayer: new InkLayer(),
+    reportError: {
+      info() {},
+      warn(k: string, params?: Record<string, string | number>) { throw new Error(`export warned: ${k} ${JSON.stringify(params ?? {})}`); },
+      error(k: string, err?: unknown) { throw new Error(`export errored: ${k}${err === undefined ? '' : ` — ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`}`); },
+      silent() {},
+    },
+    progress: { begin: () => handle },
+    cleanEmptyTextElements() {},
+    renderCurrentPage: () => Promise.resolve(),
+    rebuildElementLayer() {},
+  };
+  return new ExportService(ctx).assemblePdfBytes();
+}
+
+describe('SEC-1 — a page that references the redacted page does not carry it back', () => {
+  const redactPage2 = () => [new RedactionElement(15, 50, 320, 30, 'p2', '#000000') as unknown as PDFElement];
+
+  it('control: without the redaction, page 2\'s text is in the export (the scan can see it)', async () => {
+    expect(leaks(await assembleTwoPages(await linkedSource('link'), []))).toBe(true);
+  });
+
+  it('a contents link to the redacted page: no copy of it in the bytes, and the link opens its image page', async () => {
+    const out = await assembleTwoPages(await linkedSource('link'), redactPage2());
+    expect(leaks(out), 'the un-redacted page must not ride in on the link').toBe(false);
+    const pdf = await pdfjsLib.getDocument({ data: out.slice(0) }).promise;
+    const link = (await (await pdf.getPage(1)).getAnnotations()).find(a => a.subtype === 'Link');
+    if (!link) throw new Error('the contents link must survive the export');
+    expect(await pdf.getPageIndex(link.dest[0])).toBe(1);
+  });
+
+  it('a form field with a widget on the redacted page: no copy of it in the bytes', async () => {
+    expect(leaks(await assembleTwoPages(await linkedSource('field'), redactPage2()))).toBe(false);
+  });
+});

@@ -18,6 +18,41 @@ paths:
 
 Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: redaction burns, the hide-vs-remove audit, coordinate frames, Form XObjects, annotations under a burn. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
 
+### A removed page rode back in on a reference — SEC-1 (review 2026-10-07, fixed 2026-10-08)
+
+The index filter in `_assemblePdfDoc` ("do NOT remove this filter") stops a redacted page from being COPIED, but
+pdf-lib's `PDFObjectCopier` deep-copies everything a copied page reaches. A GoTo `/Dest` or `/A /GoTo` link to a
+removed page (redacted, deleted, outside an extracted range), or a form field whose `/Kids` holds that page's widget
+(→ its `/P`), carried the page in whole: absent from `/Pages`, text in the bytes. Transitive — a chain of links
+carries every page on it. A nested page goes through `copyPDFPage`, which drops `/Parent`, so it is never the whole
+page tree [Verified: read `PDFObjectCopier.js`]. Every SECURITY.md "removed" row relied on documents with no
+cross-page reference, which is all the pins used.
+
+**The same root cause broke every internal link in every PDF export.** `copyPDFPage` memoises on a CLONE of the page,
+so a page reached first through a reference and then copied as a kept page was copied twice; links pointed at the
+orphan copy, and pdf.js's `getPageIndex` resolves a page outside the tree to **0** — every contents link opened page
+1, and an annotation whose `/P` names its own page stored the page twice [Verified: pdf.js probe, 2026-10-08].
+
+**Fix (`copySourcePages`):** the copier's `copyPDFIndirectObject` is wrapped (it is private in the typings, but `copy`
+reaches it through the property at call time), so every reference to a source page is answered, never copied — a
+kept page → its own destination object, allocated LAZILY so a document without page references keeps its exact object
+numbering (byte-identical, pinned against the old four-line copy); a redacted page → a stand-in that
+`resolveStandIns` points at its image page after `rasterizePageWithRedactions`; anything else, and any annotation
+listed only on an excluded page → one cut marker that `rewritePageRefs` removes by meaning (a link to it leaves the
+page and the file, a `/Kids` entry is removed, an array element becomes null, a key is deleted). Ruled by the
+developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
+
+**Fixture trap, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js sends
+an orphan link there too. Aim every link assertion at a page other than the first.
+
+Guards: `tests/export/copySourcePages.test.ts` (16: GoTo `/Dest`, `/A /GoTo`, shared field, chain, kept links through
+real pdf.js, self-`/P`, stand-in resolved and unresolved, byte-identity ×3, and two through `_assemblePdfDoc`) and the
+SEC-1 block in `tests/browser/redaction-orphan-leak.browser.test.ts` (3: control, link to the redacted page opens its
+image page, shared field). Sabotage, each landed, red on exactly its cases, restored with `cmp`: excluded page
+followed → the 4 link/chain/assembled cases; excluded annotations followed → exactly the field case; kept page
+re-copied → the 4 kept-link and self-`/P` cases; stand-ins never resolved → exactly the browser link case; redacted
+pages not passed as stand-ins → exactly the browser link case (link dropped instead of retargeted).
+
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 
 A redaction-bearing page is exported as ONE image, so every `/Link` on it used to vanish.

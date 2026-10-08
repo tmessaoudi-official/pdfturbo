@@ -14,6 +14,7 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-08 01:34] AGREED: Author casing: 'Takieddine MESSAOUDI' is canonical (git config and every commit since 2026-08-18); CLAUDE.md drops the false 'matches 100% of history' claim (developer, review session 2026-10-08).
 - [2026-10-08 01:34] AGREED: Re-sign + force-push happens only after CLOUD sessions (no GPG keys there); local commits are signed at creation. Keep the fetch-first rule, scoped to after a cloud session (developer, review session 2026-10-08).
 - [2026-10-08 01:34] AGREED: Docs and config drift: all of it in one docs-only pass; P2 code findings fold into the roadmap or become plan rows, P3s are fixed when their file is touched; work starts in this session in the order of the Status block (developer, review session 2026-10-08).
+- [2026-10-08 01:56] AGREED: SEC-1 links: kept pages link to their real export pages (fixes the measured jump-to-page-1 of every internal link); a link to a REDACTED page is retargeted to its image page; a link to a DELETED or out-of-range page is removed; a multi-page form field keeps only the widgets of exported pages; nothing from an excluded page is copied (developer, 2026-10-08).
 
 ## Formal Plan
 
@@ -36,8 +37,8 @@ shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 <!-- progress-block v1 -->
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
-| 1 | Qualify the three SECURITY.md rows SEC-1 refutes (Redaction, Delete page, Extract page range) with an open-issue note and a working workaround (KNOWN_ISSUES holds no open defects by its own definition, so no entry there); record the review rulings and the architecture plan | S | doing | - | SECURITY.md, docs/plans/** |
-| 2 | SEC-1 fix: red fixtures first (GoTo /Dest, shared field /Kids) at the copySourcePages seam and through the real export for redaction, delete page and extract range; then cut references to excluded pages, sweep, byte no-op on clean documents; sabotage; restore the SECURITY.md rows | M | todo | - | src/export/copySourcePages.ts, src/export/exportService.ts, tests/** |
+| 1 | Qualify the three SECURITY.md rows SEC-1 refutes (Redaction, Delete page, Extract page range) with an open-issue note and a working workaround (KNOWN_ISSUES holds no open defects by its own definition, so no entry there); record the review rulings and the architecture plan | S | done | ea1f0c3 | SECURITY.md, docs/plans/** |
+| 2 | SEC-1 fix: red fixtures first (GoTo /Dest, shared field /Kids) at the copySourcePages seam and through the real export for redaction, delete page and extract range; then cut references to excluded pages, sweep, byte no-op on clean documents; sabotage; restore the SECURITY.md rows | M | doing | - | src/export/copySourcePages.ts, src/export/exportService.ts, tests/** |
 | 3 | TEST-1: replace the raw NUL byte in src/core/undoRedoController.ts:45 with the escape, and forbid raw control bytes in src/ with a source-level test | S | todo | - | src/core/undoRedoController.ts, tests/tools/** |
 | 4 | TEST-2: setFormXObjectContent (contentStreamEditor.ts ~1069) swallows every error and its 3 callers report a successful true-edit — surface the failure so the caller falls back honestly | S | todo | - | src/utils/contentStreamEditor.ts, tests/** |
 | 5 | TEST-3: the bare catch at exportService.ts ~832 ("no form fields") also hides form.flatten() failures — narrow it so Flatten & download never ships live fields silently | S | todo | - | src/export/exportService.ts, tests/** |
