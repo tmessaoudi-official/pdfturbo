@@ -241,7 +241,8 @@ keep; the field-tree membership off → the FT-less shape ×2; `UNDRAWN` emptied
 kept → that shape ×2; the `/OC` name ignored → the 2 `/OC` cases; the pattern sharing `seen` → exactly the
 pattern-first case; the appearance `/DA` not read → the 3 widget cases; an array member that is a form registered as
 drawing nothing → both orders; an array member overwriting a single `/Contents` → both orders; `/SD` kept → exactly the
-`/SD` keep case.
+`/SD` keep case; the every-page-kept gate removed (the fix found at 6C) → exactly the two every-page-kept
+cases, the measured red before the gate went in.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 
