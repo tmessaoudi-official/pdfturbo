@@ -432,6 +432,44 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect(infos).not.toContain('toast.trueEditFontSubstituted');
   });
 
+  // TEST-2: a delete inside a Form XObject whose write fails returns false. Nothing reached the file, so the
+  // handler says so — no overlay (a cover over text still in the file would hide, not remove) and no deleted toast.
+  it.each([
+    [false, 'warns that the edit failed and persists nothing'],
+    [true, 'control: a delete that succeeded persists and says so'],
+  ])('a cleared text field whose delete returns %s %s', async (ok) => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({
+      save: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    });
+    const item = makeItem('Heading', 100, 600);
+    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
+      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
+    mockDeleteTextAt.mockResolvedValue(ok);
+
+    const canvas = makeCanvas();
+    const app = makeApp(canvas, makeFakePage([item], 841));
+    (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    input.value = '';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise<void>(r => { setTimeout(r, 0); });
+
+    const warns = (app.reportError.warn as ReturnType<typeof vi.fn>).mock.calls.flat();
+    const infos = (app.reportError.info as ReturnType<typeof vi.fn>).mock.calls.flat();
+    expect((app.historyManager.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    if (ok) {
+      expect(infos).toContain('toast.trueTextDeleted');
+      expect(warns).not.toContain('toast.trueEditFailed');
+    } else {
+      expect(warns).toContain('toast.trueEditFailed');
+      expect(infos).not.toContain('toast.trueTextDeleted');
+      expect((app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    }
+  });
+
   // B2: toggling Underline during a true edit (no text change) must APPEND a
   // standalone decoration via addDecorationAt — keeping the original font — and
   // still save, even though nothing else changed.

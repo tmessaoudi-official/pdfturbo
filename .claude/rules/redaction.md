@@ -1076,6 +1076,10 @@ unreachable and the caveat was invented:**
   (`:1248`), which had to succeed on the same `libDoc`/`pageIndex`/`origin`/tolerance for the editor to
   open. Nothing mutates `libDoc` in between (the delete branch is the first mutating branch in
   `commit`), so a deterministic function cannot now miss.
+- [superseded 2026-10-08, TEST-2: a target inside a Form XObject is written by `setFormXObjectContent`,
+  which now reports a failed write as `false` instead of swallowing it, so `deleteTextAt` has a second
+  `false`. The branch warns `toast.trueEditFailed` on it — still no overlay, which would hide text that
+  is still in the file — see `true-edit.md` § "A failed form write was reported as a successful edit"]
 
 Reverted; the branch keeps a comment stating the proof. **The lesson: an asymmetry between two sibling
 code paths is not evidence of a bug** — the sibling may need the guard for a reason that does not apply.

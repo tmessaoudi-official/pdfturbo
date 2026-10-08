@@ -1038,27 +1038,29 @@ function setPageContent(doc: PDFDocument, pageIndex: number, content: string): v
 /**
  * Replace a Form XObject's content stream with new uncompressed content.
  * Preserves the XObject's /BBox, /Resources, /Matrix, and other metadata.
+ * Returns whether the stream was written: every caller reports this as the edit's outcome, so a write that fails
+ * sends the editor to its overlay fallback instead of recording an edit the file never received (TEST-2).
  */
 function setFormXObjectContent(
   doc: PDFDocument,
   pageIndex: number,
   xobjName: string,
   content: string,
-): void {
+): boolean {
   try {
     const page = doc.getPage(pageIndex);
     const name = xobjName.replace(/^\//, '');
     // oxlint-disable-next-line typescript/no-explicit-any -- pdf-lib internals (PDFDocument/PDFRef/dict objects) are untyped here
     const resources = doc.context.lookup((page.node as any).Resources()) as any;
-    if (!resources?.get) return;
+    if (!resources?.get) return false;
     const xobjDictRaw = resources.get(PDFName.of('XObject'));
-    if (!xobjDictRaw) return;
+    if (!xobjDictRaw) return false;
     const xobjDict = doc.context.lookup(xobjDictRaw) as PDFDict;
-    if (!xobjDict?.get) return;
+    if (!xobjDict?.get) return false;
     const streamRef = xobjDict.get(PDFName.of(name));
-    if (!streamRef) return;
+    if (!streamRef) return false;
     const oldStream = doc.context.lookup(streamRef);
-    if (!(oldStream instanceof PDFRawStream)) return;
+    if (!(oldStream instanceof PDFRawStream)) return false;
 
     const bytes = stringToContentBytes(content);
 
@@ -1077,7 +1079,10 @@ function setFormXObjectContent(
       const newRef = doc.context.register(newStream);
       xobjDict.set(PDFName.of(name), newRef);
     }
-  } catch { /* silently ignore — falls through to overlay */ }
+    return true;
+  } catch {
+    return false; // the caller reports false → overlay fallback, original text untouched
+  }
 }
 
 /** Blank the string payload of a show op in place (keeps state side-effects like T*). */
@@ -1184,14 +1189,12 @@ export function buildStreamContent(found: EditTarget, appendedTail = ''): string
   return serializeOps(ops) + appendedTail;
 }
 
-/** Write modified ops back to either the page stream or an XObject stream. */
-function writeBack(doc: PDFDocument, pageIndex: number, found: EditTarget): void {
+/** Write modified ops back to either the page stream or an XObject stream; false when the form write failed. */
+function writeBack(doc: PDFDocument, pageIndex: number, found: EditTarget): boolean {
   const content = buildStreamContent(found, '');
-  if (found.xObjectName) {
-    setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
-  } else {
-    setPageContent(doc, pageIndex, content);
-  }
+  if (found.xObjectName) return setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
+  setPageContent(doc, pageIndex, content);
+  return true;
 }
 
 function findTarget(
@@ -1466,8 +1469,7 @@ export function deleteTextAt(
   // Remove the orphaned underline/strike rule, if exactly one belongs to this text
   // (matched by its own width — no font metrics needed since we only neutralise it).
   if (opts?.adjustDecorations) removeDecorationForText(found.ops, found.target);
-  writeBack(doc, pageIndex, found);
-  return true;
+  return writeBack(doc, pageIndex, found);
 }
 
 /**
@@ -1843,8 +1845,7 @@ export function changeSizeAt(
   if (!sizeToken) return false;
   sizeToken.raw = String(newSize);
   sizeToken.value = newSize;
-  writeBack(doc, pageIndex, found);
-  return true;
+  return writeBack(doc, pageIndex, found);
 }
 
 function fmtColorComponent(v: number): string {
@@ -1878,8 +1879,7 @@ export function changeColorAt(
     { type: 'number', raw: g, value: color.g },
     { type: 'number', raw: b, value: color.b },
   ];
-  writeBack(doc, pageIndex, found);
-  return true;
+  return writeBack(doc, pageIndex, found);
 }
 
 /**
@@ -1972,11 +1972,8 @@ export async function addDecorationAt(
   // F3: no op is mutated (pure append) → buildStreamContent keeps the source verbatim
   // and appends the decoration (fast path B). `block` already starts with '\n'.
   const content = buildStreamContent(found, block);
-  if (found.xObjectName) {
-    setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
-  } else {
-    setPageContent(doc, pageIndex, content);
-  }
+  if (found.xObjectName) return setFormXObjectContent(doc, pageIndex, found.xObjectName, content);
+  setPageContent(doc, pageIndex, content);
   return true;
 }
 
@@ -2048,8 +2045,7 @@ export async function replaceTextAt(
   if (!wantsRestyle && !byteSwapUnsafe && replaceShowOpInPlace(ops[target.opIndex], newText)) {
     blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
     if (applyDeco) await applyDeco(newText, ops);
-    writeBack(doc, pageIndex, found);
-    return true;
+    return writeBack(doc, pageIndex, found);
   }
 
   // Path 2: Subset glyph reuse via the ToUnicode CMap — or, for an embedded simple font without one, its
@@ -2071,8 +2067,7 @@ export async function replaceTextAt(
     if (hexEncoded !== null && replaceShowOpHex(ops[target.opIndex], hexEncoded)) {
       blankAllNearby(ops, textOps, target, target.opIndex, targetPayload);
       if (applyDeco) await applyDeco(newText, ops);
-      writeBack(doc, pageIndex, found);
-      return true;
+      return writeBack(doc, pageIndex, found);
     }
   }
 
@@ -2176,9 +2171,12 @@ export async function replaceTextAt(
   // `redraw` already starts with '\n'. A3b: write the XObject's own stream when the
   // target lives in one (origin/textMatrix are XObject-local + the font was added to
   // the XObject's /Resources); otherwise the page stream.
+  // TEST-2: a failed form write is reported, never claimed. The font named by the redraw was already added to the
+  // form's /Resources above; on this false it stays there, unused — harmless, and the stream itself is unchanged.
   const newContent = buildStreamContent(found, redraw);
-  if (found.xObjectName) setFormXObjectContent(doc, pageIndex, found.xObjectName, newContent);
-  else setPageContent(doc, pageIndex, newContent);
+  if (found.xObjectName) {
+    if (!setFormXObjectContent(doc, pageIndex, found.xObjectName, newContent)) return false;
+  } else setPageContent(doc, pageIndex, newContent);
 
   // Slice B — honest substitution signal. Path 3 redraws in a base-14 standard
   // font. That is a genuine, lossy substitution ONLY when the ORIGINAL font was

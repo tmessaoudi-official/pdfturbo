@@ -688,15 +688,18 @@ export class TextEditHandler {
         const ok = await deleteTextAt(opts.libDoc, opts.pageIndex, opts.origin, TRUE_EDIT_TOLERANCE, {
           adjustDecorations: isEnabled('textDecor'),
         });
-        // Unlike the replace path below, this needs no overlay fallback and no failure toast, and that
-        // is provable rather than hopeful: `deleteTextAt` returns false ONLY when its internal
-        // `findTarget` misses, and `findTextOpAt` — which is literally `findTarget(...)?.target` — had
-        // to succeed on this same `libDoc`, `pageIndex`, `origin` and tolerance for the editor to open
-        // at all. Nothing mutates `libDoc` in between (this is the first mutating branch in commit), so
-        // the miss cannot recur. `deleteTextAt` also carries none of `replaceTextAt`'s Type3 / invisible
-        // / vertical font gates, because blanking a show op draws nothing and is font-agnostic.
-        // Adding a toast here was tried and reverted: it guarded an unreachable branch.
-        if (!ok) return;
+        // Unlike the replace path below, this needs no overlay fallback: a cover over text still in the
+        // file would hide it, not remove it. `deleteTextAt` returns false in two cases. Its `findTarget`
+        // cannot miss here — `findTextOpAt` is literally `findTarget(...)?.target` and had to succeed on
+        // this same `libDoc`, `pageIndex`, `origin` and tolerance for the editor to open, and nothing
+        // mutates `libDoc` in between (the first mutating branch in commit). Nor does it carry
+        // `replaceTextAt`'s Type3 / invisible / vertical font gates: blanking a show op draws nothing.
+        // But a target inside a Form XObject is written by `setFormXObjectContent`, which reports a
+        // failed write as false (TEST-2) — nothing reached the file, so say so.
+        if (!ok) {
+          app.reportError.warn('toast.trueEditFailed');
+          return;
+        }
         const newBytes = await opts.libDoc.save();
         if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
           app.reportError.info('toast.trueTextDeleted');

@@ -5,7 +5,8 @@
  * Options (limits row 48): `pageDo` replaces the page's `q /Fx0 Do Q` (to place the form with a `cm`, or draw it
  * twice); `matrix` sets the form's /Matrix; `secondPage` adds a page naming the same form stream, whose content is
  * `secondPageContent` (default: it draws the form); `inheritResources` moves page 0's /Resources onto the Pages
- * node so every page inherits it; `alias` also registers the form as /Fx1 on page 0.
+ * node so every page inherits it; `alias` also registers the form as /Fx1 on page 0. `fill` (e.g. `'0 0 1'`) sets the
+ * text's colour with an `rg` before the text object, so a colour edit has an operator to change.
  */
 import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, StandardFonts } from '@cantoo/pdf-lib';
 
@@ -16,6 +17,7 @@ export interface XObjectFixtureOptions {
   secondPageContent?: string;
   inheritResources?: boolean;
   alias?: boolean;
+  fill?: string;
 }
 
 export async function makeXObjectTextPdf(opts: XObjectFixtureOptions = {}): Promise<Uint8Array> {
@@ -27,7 +29,7 @@ export async function makeXObjectTextPdf(opts: XObjectFixtureOptions = {}): Prom
 
   const ctx = doc.context;
   // Form XObject content: draw "InsideXObj" at (50,300) in the XObject's space.
-  const xContent = 'q BT /F1 12 Tf 1 0 0 1 50 300 Tm (InsideXObj) Tj ET Q';
+  const xContent = `q ${opts.fill ? `${opts.fill} rg ` : ''}BT /F1 12 Tf 1 0 0 1 50 300 Tm (InsideXObj) Tj ET Q`;
   const xBytes = new Uint8Array(xContent.length);
   for (let i = 0; i < xContent.length; i++) xBytes[i] = xContent.charCodeAt(i) & 0xff;
 

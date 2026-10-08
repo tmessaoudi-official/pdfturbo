@@ -159,6 +159,41 @@ puts the old order's origin of run A exactly on run B, so the old code edited A 
 predicted first, each restored with `cmp`: the text site reverted → 2 unit + 4 browser; the rule site reverted →
 exactly its unit case. The doc comment has no guard.
 
+### A failed form write was reported as a successful edit — TEST-2 (review 2026-10-07, fixed 2026-10-08)
+
+An edit whose target lives inside a Form XObject is written by `setFormXObjectContent`, which ended in
+`catch { /* silently ignore — falls through to overlay */ }` and returned nothing — and none of its seven call
+sites (`deleteTextAt`, `changeSizeAt`, `changeColorAt`, `addDecorationAt`, Path 1, Path 2, Path 3 of
+`replaceTextAt`) could fall through to anything: each returned `true` after it. So a write that threw left the
+file unchanged while the editor saved it as a new revision and toasted "edited". The comment described the
+intended contract and nothing implemented it. It now returns whether the stream was written (its early returns
+included); `writeBack` passes that through, and every site returns it. `setPageContent` was left as it is: it
+does not swallow, so a page-stream failure already propagates.
+
+**How it can fail is narrow, and that is stated rather than inflated:** the stream is resolved the way
+`findTarget` resolved it, and `stringToContentBytes` does not throw, so only pdf-lib itself throwing reaches the
+`false` [Inferred: by reading; no real file was found that does it]. The guard injects it at the one call that
+replaces the stream, `doc.context.assign`, and restores it before reading back, because pdf-lib's own save goes
+through `assign` too. **A Path-3 `false` leaves one harmless residue:** the redraw's font was already added to the
+form's `/Resources`, so it stays there unused; the stream itself is unchanged.
+
+**The handler's delete branch had a proof that `false` was unreachable** (§ "The hide-vs-remove audit" records why
+a toast there was once reverted). That proof covered `findTarget` only; with a second source of `false` the branch
+now warns `toast.trueEditFailed` (an existing key, all three locales) and persists nothing. It still takes no
+overlay fallback: a cover over text that is still in the file would hide it, not remove it, and delete is graded
+removal-grade in `SECURITY.md`. The replace and style paths already routed `false` to the overlay.
+
+Guards: `tests/utils/formWriteFailure.test.ts` (14: each of the seven sites returns `false` with the stream
+untouched, and a control that each returns exactly `true` and writes the stream — `true`, not truthy, so the
+Path-2 case cannot pass as a Path-3 `'substituted'`), and a pair in `tests/handlers/textEditHandler.test.ts`
+(the delete warns and persists nothing; its control toasts the delete). `_xobjectFixture.ts` gained `fill`, an
+`rg` before the text, so a colour edit has an operator to change; the Path-2 case builds its own form with a
+subset LiberationSans. Red first: the seven cases `expected true to be false`, the handler case `expected [] to
+include 'toast.trueEditFailed'`. Sabotage, each landed, red on exactly its cases, restored with `cmp`: the swallow
+answering `true` → the 7 failure cases; each site alone reverted to `return true` → exactly its own case (7
+mutants, Path 1 and Path 2 separately); a successful write answering `false` → exactly the 7 controls; the handler
+branch back to a bare `return` → exactly its case.
+
 ### True text editing engine
 
 `src/utils/contentStreamEditor.ts` can genuinely delete/
