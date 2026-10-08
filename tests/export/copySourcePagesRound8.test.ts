@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { deflateSync } from 'node:zlib';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFString } from '@cantoo/pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNull, PDFString } from '@cantoo/pdf-lib';
 import { copySourcePages, resolveStandIns } from '../../src/export/copySourcePages';
 
 const PUB = 'PUBLICKEPTNEEDLE';
@@ -252,6 +252,22 @@ describe('SEC-1 round 8 — the cuts keep what the kept pages show', () => {
     const annots = (await PDFDocument.load(bytes, { updateMetadata: false })).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray);
     expect(annots.lookup(0, PDFDict).lookup(PDFName.of('Subtype'))).toBe(PDFName.of('Link'));
     expect(latin(bytes).includes('example.com/kept')).toBe(true);
+  });
+
+  it("a nameless, valueless field node only a removed widget's /Parent names is cut from a kept /ResetForm", async () => {
+    const src = await plain(({ d, ctx, p1, p2 }) => {
+      const node = ctx.nextRef();
+      const w2 = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Tx', T: PDFString.of('last4'), Parent: node, Rect: [10, 10, 100, 40], P: p2.ref }));
+      ctx.assign(node, ctx.obj({ Ff: 4096 }));
+      const btn = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Btn', Ff: 65536, T: PDFString.of('clear'), Rect: [10, 60, 100, 90], P: p1.ref,
+        A: { S: 'ResetForm', Fields: [node] } }));
+      p1.node.set(PDFName.of('Annots'), ctx.obj([btn])); p2.node.set(PDFName.of('Annots'), ctx.obj([w2]));
+      d.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [btn, w2] }));
+    });
+    const out = await PDFDocument.load(await exported(src, [0]), { updateMetadata: false });
+    const btn = out.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).lookup(0, PDFDict);
+    const fields = btn.lookup(PDFName.of('A'), PDFDict).lookup(PDFName.of('Fields'), PDFArray);
+    expect(fields.get(0)).toBe(PDFNull);
   });
 
   it('an unlisted note whose /P is the KEPT page stays when a kept reply names it', async () => {

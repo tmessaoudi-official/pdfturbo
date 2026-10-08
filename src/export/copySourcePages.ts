@@ -112,10 +112,11 @@ export async function copySourcePages(
   // A node holding a value whose kid names it by /Parent alone (no /Kids, against the spec) is that kid's field too,
   // and pdf.js reads the value through the /Parent (round 8, R8-S-3). Finding who points up means reading every object
   // (350 ms and more on a 71 000-object file, paid by every single-page copy), so it is done only when a dictionary
-  // that could hold a value — /T, /V, /DV or /RV, and no /Subtype — is about to be copied and is no field otherwise.
+  // carrying a field key (PDF 32000-1 Tables 220 and 222) and no /Subtype is about to be copied and is no field
+  // otherwise. A page-tree node carries none of them.
   let fieldAncestors: Set<PDFRef> | undefined;
   const mayHoldValue = (obj: PDFObject | undefined): boolean => obj instanceof Dict && !obj.has(PDFName.of('Subtype'))
-    && ['T', 'V', 'DV', 'RV'].some(k => obj.has(PDFName.of(k)));
+    && FIELD_KEYS.some(k => obj.has(PDFName.of(k)));
   const foreignField = (ref: PDFRef, obj: PDFObject | undefined): boolean => anyLeftOut
     && !fieldChain.has(ref) && !keptAnnots.has(ref)
     && (fieldTree.has(ref) || isField(lib, src, obj) || (mayHoldValue(obj) && (fieldAncestors ??= fieldAncestorRefs(lib, src)).has(ref)));
@@ -193,7 +194,8 @@ export async function copySourcePages(
     }
     const obj = src.context.lookup(ref);
     // A page dictionary outside the page tree — what a pre-fix export left behind — is a page left out too.
-    if (isCut(ref) || isPageDict(lib, obj) || foreignField(ref, obj) || isDocument(ref, obj) || isStructure(ref, obj)) return (cut ??= dest.context.nextRef());
+    // foreignField last: its one costly read (every object) never runs for the catalog or a structure element.
+    if (isCut(ref) || isPageDict(lib, obj) || isDocument(ref, obj) || isStructure(ref, obj) || foreignField(ref, obj)) return (cut ??= dest.context.nextRef());
     if (internals.traversedObjects.has(ref)) return copyRef(ref);
     let replacement: PDFObject | undefined;
     const drop = unshown.get(ref);
@@ -516,6 +518,7 @@ function reachableFromPages(lib: Lib, src: PDFDocument, pages: PDFPage[]): { ref
 const PRUNED = ['XObject', 'Pattern', 'Shading', 'ExtGState', 'Font', 'Properties'] as const;
 type Category = (typeof PRUNED)[number];
 const STANDARD_CATEGORIES = new Set<string>([...PRUNED, 'ColorSpace', 'ProcSet']);
+const FIELD_KEYS = ['T', 'TU', 'TM', 'Ff', 'V', 'DV', 'RV', 'DA', 'Q', 'Opt', 'MaxLen', 'AA', 'DR'];
 const UNDRAWN = new Set(['PieceInfo', 'Thumb', 'DPart', 'Alternates', 'Metadata', 'AF', 'PtData']);
 type Drawn = Record<Category, Set<string>>;
 const noneDrawn = (): Drawn => ({ XObject: new Set(), Pattern: new Set(), Shading: new Set(), ExtGState: new Set(), Font: new Set(), Properties: new Set() });

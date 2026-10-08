@@ -230,12 +230,14 @@ regressions of round 7's own fixes, and 8 doc items; fixed by class, then M1 cer
 The 6C check after the round-8 commit found one regression of round 8's own: the upward field walk ran first and
 marked every `/Fields` root, so the walk down skipped their kids and an FT-less branch holding a value under a typed
 sibling was copied (the round-7 class again). The ancestors are now a SEPARATE set, built LAZILY — only when a
-dictionary that could hold a value (`/T`, `/V`, `/DV`, `/RV`, no `/Subtype`) is copied and is no field otherwise —
+dictionary carrying a field key (Tables 220/222: `/T`, `/TU`, `/TM`, `/Ff`, `/V`, `/DV`, `/RV`, `/DA`, `/Q`, `/Opt`,
+`/MaxLen`, `/AA`, `/DR`) and no `/Subtype` is copied and is no field otherwise (`foreignField` runs last in the hook, so
+the catalog's `/AA` never triggers it) —
 because reading every object cost 350 ms and more on Publication 17 (71 413 objects, no fields), on every single-page
 copy. The same check widened the `rasterOnly: true` guard to all of `src/` (the app's delegator to the signer can pass
 it too) and renamed a control to what it tests.
 
-Guards: `tests/export/copySourcePagesRound8.test.ts` (49 — 8 cut shapes ×3 modes, the prune OFF included, since a
+Guards: `tests/export/copySourcePagesRound8.test.ts` (50 — 8 cut shapes ×3 modes, a nameless `/Parent`-only node named by a kept `/ResetForm`, the prune OFF included, since a
 class-1 cut does not depend on it; 4 prune shapes ×2 modes; 4 refusals with 3 controls; 2 structure-`/K` keeps, a kept
 unlisted note, an every-page-kept control; the lazy read, the two aliases, the pattern in both orders; and a source guard
 that `rasterOnly: true` is passed by lossy Compress alone). Red first: 39 of the first 46 against the round-7 code, each for
@@ -250,7 +252,8 @@ soon as it is pruned → the pattern case in both orders, plus round 1's every-p
 extra copy writes an extra page object); Sanitize assembling raster-only → exactly the source guard. After 6C, 4 more:
 the ancestors seeded into the walk down → exactly the FT-less branch ×3; the value gate never true → exactly the
 `/Parent`-only node ×3; the app delegator passing `rasterOnly: true` → exactly the widened guard; and the walk order
-swapped back (written before the sets were split) → exactly the FT-less branch ×3.
+swapped back (written before the sets were split) → exactly the FT-less branch ×3; `/Ff` dropped from the field keys
+→ exactly the nameless-node case (the gate first read only `/T` `/V` `/DV` `/RV`, which left that node copied — 6C round 2).
 
 **Fixture traps, found by sabotage:** a test asserting a link opens output page index **0** cannot fail — pdf.js
 sends an orphan link there too; aim every link assertion at a page other than the first. A "page outside the tree"
