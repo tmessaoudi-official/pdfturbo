@@ -188,6 +188,27 @@ const LEAKS: Record<string, () => Promise<PDFDocument>> = {
     p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
     p1.node.set(PDFName.of('Contents'), content('/Span /MC1 BDC EMC')); p2.node.set(PDFName.of('Contents'), content('/Span /MC2 BDC EMC'));
   }),
+  // One level down (6C): a form both pages draw, with DIRECT /Resources holding a property list nobody draws.
+  'direct /Resources of a shared form': () => shape(({ ctx, p1, p2, content, font }) => {
+    const fm = ctx.register(ctx.stream(`/Span /MC1 BDC ${txt(PUB)} EMC`, { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300],
+      Resources: { Font: { F1: font }, Properties: { MC1: { ActualText: PDFString.of('k') }, MC2: { ActualText: PDFString.of(SEC) } } } }));
+    for (const p of [p1, p2]) { p.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Fm: fm } })); p.node.set(PDFName.of('Contents'), content('/Fm Do')); }
+  }),
+  // The same with no reference in the form's resources at all: reached through the form, so shared.
+  'direct-only /Resources of a shared form': () => shape(({ ctx, p1, p2, content }) => {
+    const fm = ctx.register(ctx.stream('/Span /MC1 BDC EMC', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300],
+      Resources: { Properties: { MC1: { ActualText: PDFString.of(PUB) }, MC2: { ActualText: PDFString.of(SEC) } } } }));
+    for (const p of [p1, p2]) { p.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Fm: fm } })); p.node.set(PDFName.of('Contents'), content('/Fm Do')); }
+  }),
+  // And an inline Type3 font the kept page DRAWS, inside a shared resources dictionary, with direct application data.
+  'drawn inline Type3 in shared resources, direct /PieceInfo': () => shape(({ ctx, p1, p2, form, content, font }) => {
+    const glyph = ctx.register(ctx.stream('0 0 0 0 0 0 d1 0 0 1 1 re f'));
+    const t3 = ctx.obj({ Type: 'Font', Subtype: 'Type3', FontBBox: [0, 0, 1, 1], FontMatrix: [1, 0, 0, 1, 0, 0], FirstChar: 97, LastChar: 97, Widths: [1],
+      Encoding: { Differences: [97, 'a'] }, CharProcs: { a: glyph }, Resources: {}, PieceInfo: { App: { Private: PDFString.of(SEC) } } });
+    const S = ctx.register(ctx.obj({ Font: { F1: font, T3: t3 }, XObject: { Fm1: form(PUB), Fm2: form('r') } }));
+    p1.node.set(PDFName.of('Resources'), S); p2.node.set(PDFName.of('Resources'), S);
+    p1.node.set(PDFName.of('Contents'), content('/Fm1 Do BT /T3 12 Tf (a) Tj ET')); p2.node.set(PDFName.of('Contents'), content('/Fm2 Do'));
+  }),
   // A direct /PieceInfo inside a form both pages draw: the form is reached, so its direct application data is too.
   'direct /PieceInfo in a shared form': () => shape(({ ctx, p1, p2, form, content, font }) => {
     const fm = form(PUB, { PieceInfo: { App: { Private: PDFString.of(SEC) } } });

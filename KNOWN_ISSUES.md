@@ -101,10 +101,11 @@ work in a private/incognito window when editing sensitive documents on a shared 
   shading's own `/ColorSpace`, an Indexed or Separation base), so pruning one recoloured kept pages, while a colour
   space draws nothing.
 - **Leaving a page out costs time.** The prune reads every owner that shares resources with a left-out page:
-  deleting the last page of a 142-page corpus file took a median 2.6 s against 0.18 s without it, the 67-page census
-  report 1.4 s against 0.08 s, a 75-page paper 0.37 s against 0.13 s — `copySourcePages` alone, warmed up, five
-  alternating runs, round-6 code, 2026-10-08, machine load ~16 (single runs varied up to 8.6 s; an idle machine was
-  not available). A profile puts ~80% of it in pruning resources (reading content, half of all time in tokenizing
+  deleting the last page of a 142-page corpus file took a median 1.6 s against 0.30 s without it, the 67-page census
+  report 1.1 s against 0.18 s, a 75-page paper 0.22 s against 0.05 s — `copySourcePages` alone, warmed up, five
+  alternating runs, round-7 code, 2026-10-08, machine load 16–18 (single runs varied up to 7.5 s; an idle machine was
+  not available; round 6 measured 2.6 s / 1.4 s / 0.37 s the same way, so the round-7 checks cost nothing measurable
+  at this noise). The profile below is round 6's. A profile puts ~80% of it in pruning resources (reading content, half of all time in tokenizing
   it) and ~5% in the undrawn-key check (`dropsUndrawn`, a transitive `touches`); the removed pages' reachability walk
   was not listed in the profile. Not optimised — plan row 10.
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure

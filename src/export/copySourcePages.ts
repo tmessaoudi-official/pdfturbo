@@ -506,7 +506,7 @@ class ResourcePruner {
    * A clone of a form / pattern / appearance stream, Type3 font or field (`/DR`) with its resources pruned, or
    * undefined. `page` is given for a page's content stream: it draws the page's whole content, read the way pdf.js does.
    */
-  prunedOwner(obj: PDFObject | undefined, page?: Reading[]): PDFObject | undefined {
+  prunedOwner(obj: PDFObject | undefined, page?: Reading[], reached = false): PDFObject | undefined {
     const { PDFName, PDFDict, PDFStream } = this.lib;
     let key = PDFName.of('Resources');
     if (obj instanceof PDFStream) {
@@ -514,7 +514,7 @@ class ResourcePruner {
       if (!(resources instanceof PDFDict)) return undefined;
       const readings: Reading[] = page ?? [{ contents: () => [contentOf(this.lib, this.src, obj)] }];
       const recorded = this.patternDrawn.get(obj);
-      const pruned = this.pruned(recorded ? [...readings, { contents: () => [], drawn: recorded }] : readings, resources);
+      const pruned = this.pruned(recorded ? [...readings, { contents: () => [], drawn: recorded }] : readings, resources, reached);
       if (!pruned) return undefined;
       const clone = obj.clone();
       clone.dict.set(key, pruned);
@@ -530,7 +530,7 @@ class ResourcePruner {
         if (!(resources instanceof PDFDict)) return undefined;
         // A widget a removed page holds is cut, and so is what only its /DA names (round 7, R7-S-6).
         const das = defaultAppearances(this.lib, this.src, obj, this.isCut);
-        const pruned = this.pruned([{ contents: () => das }], resources);
+        const pruned = this.pruned([{ contents: () => das }], resources, reached);
         if (!pruned) return undefined;
         const clone = obj.clone();
         clone.set(key, pruned);
@@ -547,7 +547,7 @@ class ResourcePruner {
       const contents = () => (obj.lookup(PDFName.of('Subtype')) === PDFName.of('Type3') ? charProcs(this.lib, this.src, obj) : [null]);
       this.inProgress.add(obj);
       let pruned: PDFDict | undefined;
-      try { pruned = this.pruned([{ contents }], resources); } finally { this.inProgress.delete(obj); }
+      try { pruned = this.pruned([{ contents }], resources, reached); } finally { this.inProgress.delete(obj); }
       if (!pruned) return undefined;
       const clone = obj.clone();
       clone.set(key, pruned);
@@ -560,13 +560,13 @@ class ResourcePruner {
    * `resources` holding only what the readings draw of the entries a removed page reaches, and every inline owner in
    * it pruned in turn; undefined when unchanged. An entry stays when ANY reading draws it.
    */
-  pruned(readings: Reading[], resources: PDFDict | undefined): PDFDict | undefined {
+  pruned(readings: Reading[], resources: PDFDict | undefined, inReached = false): PDFDict | undefined {
     const { PDFName, PDFDict, PDFRef: Ref } = this.lib;
     if (!resources) return undefined;
-    const shared = this.isShared(resources);
-    // A direct value has no reference to test: inside a dictionary a removed page reaches, it is that page's too
-    // (round 7, R7-S-10).
-    const reached = this.isReached(resources);
+    // A direct value has no reference to test: inside a dictionary a removed page reaches — itself, or the owner it is
+    // written in (`inReached`, a form's direct /Resources) — it is that page's too (round 7, R7-S-10 and its 6C check).
+    const reached = inReached || this.isReached(resources);
+    const shared = reached || this.isShared(resources);
     const theirs = (value: PDFObject, container: PDFObject) => this.touches(value)
       || (!(value instanceof Ref) && (reached || this.isReached(container)));
     // Nothing shared: only an inline owner deeper in may still carry something (an indirect /Resources of its own).
@@ -601,7 +601,7 @@ class ResourcePruner {
           if (drawn && !isDrawn && theirs(value, sub)) { catChanged = true; continue; }
           // An inline owner (a Type3 font written in the dictionary, or one inside an inline ExtGState's /Font array)
           // never reaches the copier hook: prune it here.
-          const inline = this.pruneNested(value);
+          const inline = this.pruneNested(value, undefined, reached || this.isReached(sub));
           if (inline) catChanged = true;
           kept.set(name, inline ?? value);
         }
@@ -677,7 +677,7 @@ class ResourcePruner {
     // The owner's resources were pruned by `prunedOwner`, with every inline owner in them.
     const skip = (k: PDFName) => k === PDFName.of('Resources') || k === PDFName.of('DR');
     if (value instanceof PDFStream) {
-      let out = this.prunedOwner(value, page) as InstanceType<typeof PDFStream> | undefined;
+      let out = this.prunedOwner(value, page, here) as InstanceType<typeof PDFStream> | undefined;
       for (const [k, v] of value.dict.entries()) {
         if (skip(k)) continue;
         if (this.dropsUndrawn(k, v, here)) { out ??= value.clone(); out.dict.delete(k); continue; }
@@ -688,7 +688,7 @@ class ResourcePruner {
     }
     if (value instanceof PDFDict) {
       if (value.has(PDFName.of('AP'))) this.noteAppearances(value);
-      let out = this.prunedOwner(value) as PDFDict | undefined;
+      let out = this.prunedOwner(value, undefined, here) as PDFDict | undefined;
       for (const [k, v] of value.entries()) {
         if (skip(k)) continue;
         if (this.dropsUndrawn(k, v, here)) { out ??= value.clone(); out.delete(k); continue; }

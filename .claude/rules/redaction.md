@@ -178,6 +178,8 @@ disclose what needs a broken file, and run one focused round. The classes, each 
 - **A direct value has no reference to test.** Inside an object a removed page reaches (by reference), every direct
   value is that page's too: an undrawn direct entry of a shared resources category, an unknown category, and a direct
   `UNDRAWN` key in a shared form are dropped, and a reached `/Resources` counts as shared though nothing in it touches.
+  "Reached" is carried DOWN into an owner written inside a reached object — a shared form's direct `/Resources`, an
+  inline Type3 in a shared dictionary (found by the 6C check after the round-7 commit, one level below the first fix).
 - **The annotation's own `/P`, and what `/Annots` listed before Flatten.** An annotation whose `/P` is a page left out
   is cut unless a kept page lists it; `_assemblePdfDoc` records every page's `/Annots` before any in-place flatten and
   passes them as `annotsBefore`, so a note Flatten removed (with or without `/P`) is still its page's.
@@ -198,7 +200,7 @@ built with `removePage` is not the reviewer's shape (it keeps `/Parent`) and pas
 raw page dictionary with no `/Parent` fails it. And a drop-the-dropped-link mutation stayed green until a reply
 (`/IRT`) pointed at the link — a page's `/Annots` alone never shows the difference.
 
-Guards: `tests/export/copySourcePagesRound7.test.ts` (89 — round 7: 33 leak shapes ×2 modes with a source control
+Guards: `tests/export/copySourcePagesRound7.test.ts` (95 — round 7: 36 leak shapes ×2 modes with a source control
 each, among them the structure shapes typed and untyped and one only the walk can find, two Flatten orders, the
 `annotsBefore` option and Flatten & download through `_assemblePdfDoc`, four keep controls, the six reading cases, and
 a source guard that only the raster-only assembly and the sign-rect box opt out of the prune),
@@ -280,7 +282,9 @@ direct entries not theirs → 7; `isShared` ignoring reach → exactly the only-
 14; direct `UNDRAWN` off → the shared-form `/PieceInfo` 2; the pattern record unused → the C-5 case; last writer wins →
 the C-4 order it breaks; no `/DA` pre-noting → both C-3 orders; cut widgets' `/DA` read → the `/DR` shape 2; comments not
 skipped → the C-6 case; `annotsBefore` not wired → exactly the Flatten & download case; an opt-out added to Flatten &
-download → exactly the source guard.
+download → exactly the source guard. The 6C follow-up, 4 more: `inReached` ignored → the two shared-form shapes ×2;
+the inline owner not threaded → the inline Type3 ×2; a reached `/Resources` not counted as shared → the direct-only
+form ×2; the stream owner not threaded → the two shared-form shapes ×2.
 
 ### Links on the redaction raster — re-created, never copied (A4, 2026-09-25)
 

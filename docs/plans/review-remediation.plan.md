@@ -114,6 +114,8 @@ the hunt": fixed by class, pinned in `tests/export/copySourcePagesRound7.test.ts
 - M1 (SEC-1): round 7 (full panel) found 11 code defects + docs; ruled "bound the hunt" — fixed by class in the "SEC-1 round 7" commit (`tests/export/copySourcePagesRound7.test.ts`), the broken-file and display-state carriers disclosed. Next: ONE focused review round (round 8) on those fixes and the two classes, then certify. Push held until certified; every commit since d44b3a6 is unpushed. Cost follow-up is row 10.
 ### Needs research
 ### Fragile
+- SEC-1 cost, round 7 (2026-10-08, load 16–18, warm, five alternating runs): Publication 17 delete-last median 1576 ms
+  vs 298; census 1135 vs 180; GPT-3 216 vs 45 — single runs up to 7.5 s. Not slower than round 6 at this noise.
 - SEC-1 cost, round 6 (2026-10-08, load ~16, warm, five alternating runs, `copySourcePages` alone): Publication 17
   delete-last median 2559 ms vs 176 ms; census 1393 vs 81; GPT-3 367 vs 126. Profile (one instrumented run,
   Publication 17): `pruned` 80%, `collect` 67%, `tokenizeContentStream` 52%, the copier hook 18%, `dropsUndrawn`
