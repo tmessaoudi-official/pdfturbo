@@ -20,12 +20,10 @@ promise and the dependency-size budget.
 
 | Idea | Notes |
 |------|-------|
-| **More form-widget types** | Detect & fill checkboxes, radio groups, dropdowns, list boxes (today: text fields) |
 | **Stamps** | Pre-defined image overlays (Approved / Draft / Confidential / custom) |
 | **Date field** | One-click "today's date" text element |
 | **Batch export** | All pages as separate PDFs or a ZIP of PNGs |
 | **Page background** | Solid-colour background (useful for blank PDFs) |
-| **Open-via-picker + recent files** | Use the File System Access API for opening, not just saving |
 
 ## Things deliberately *not* pursued
 

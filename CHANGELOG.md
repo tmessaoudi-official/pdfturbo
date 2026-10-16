@@ -3,13 +3,87 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-09-24)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-10-08)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
 most of the work went into proving that what the product claims to remove is actually removed.
 
-### Added
+### 2026-09-25 → 2026-10-08 — the limits walkthrough and the review remediation
+
+Two pieces of work: a walkthrough of the documented limits (the "limits rows"), each one fixed or kept as a
+measured ceiling, and the fixes from a whole-repo review of 2026-10-07. Again, mostly safety.
+
+#### Added
+- **Internal links survive conversion** — a jump inside the PDF becomes a Word bookmark or a Markdown anchor, and a
+  link tags only the words it covers.
+- **Flatten draws the file's own annotations** (sticky notes, stamps, shapes, highlights) into the page, as the
+  editor shows them.
+- **XFDF** follows the page the viewer shows, keeps every highlight quad, and carries form field values.
+- **Compress can shrink embedded JPEGs in place** and keep the text.
+- **Borderless tables reach Word, Markdown and text**, behind a gate that refuses indexes and contents pages.
+- **DOCX export keeps the PDF's real font names**, the East Asian slot included.
+- **Arabic overlay text** — brackets mirrored, the characters the bundled Noto font lacks drawn, the list gutter on
+  the right, and tashkeel placed where the font's GPOS puts it. The Arabic font is cached on first use, so export
+  works offline.
+- **True edit** keeps an embedded font written as literal strings, and edits an embedded simple font with no
+  ToUnicode through its `/Encoding`.
+- **Clear recent files** in the File menu; OCR progress names its phase (loading the model, then recognizing).
+- **PAdES-B-B** in the signing engine (`ETSI.CAdES.detached`); the app keeps signing `adbe.pkcs7.detached` until
+  the profile is checked in Adobe Reader.
+
+#### Fixed — redaction and export safety
+- **A page left out of an export could ride back in on a reference** (SEC-1). Deleting or redacting a page, or
+  extracting a range, removed the page from the list, but a link, a shared form field or a shared resource on a
+  kept page could still copy it into the file. Kept pages now link to their real export pages, a link to a
+  redacted page goes to its image page, a link to a removed page is dropped, and what only a removed page uses is
+  pruned. The cases that remain are listed in `KNOWN_ISSUES.md` § "From SEC-1".
+- **Closing the document during an export could ship a redacted page in clear** — the export read the live
+  element list; it now works from a snapshot taken when it starts.
+- **Redaction burns land on the secret** whatever the page's CropBox says, on `/UserUnit` pages, over
+  vertical-writing text, and over a kerned Latin run inside an Arabic line; the drop test uses where typed text is
+  drawn, not its stored box.
+- A redacted page keeps its safe web links; a redacted page whose thumbnail fails shows "Preview unavailable",
+  never the plain page.
+- Text a form's `/BBox` hides no longer exports to Word, Markdown, text, CSV or XLSX.
+- Lock PDF encrypts annotations written inline in a page.
+- A form that cannot be flattened fails the export instead of shipping live fields.
+- **Every signature's byte range was wrong**: it covered the `/Contents` delimiters, so an independent validator
+  rejected every signature the app had produced. Fixed.
+
+#### Fixed — rendering
+- CJK text encoded with an Adobe CMap shows, selects and exports; JBIG2 and JPEG 2000 scans draw; CMYK and ICC
+  colour is drawn colour-managed, as pdf.js's own viewer does; on a `/UserUnit` page the rasters keep the chosen
+  physical DPI.
+
+#### Fixed — conversion to Word, Markdown and text
+- Arabic words are no longer written backwards, Arabic from a second producer and Arabic table cells come out in
+  typed order, and brackets in an Arabic line copy and search as typed, with real spaces between words.
+- Multi-column pages export column by column: narrow gutters, a central cut, a title or figure spanning both
+  columns, a page number in the gutter, and a rotated margin stamp (its own paragraph, never a heading) are all
+  handled.
+- A paragraph set at uniform 1.6 leading stays one paragraph; a wrapped line whose box grew stays in its paragraph.
+
+#### Fixed — editing and correctness
+- Text, pictures, signatures and comments export upright on a rotated page, and OCR "visible" words land on their
+  text there.
+- Times New Roman in bold or italic exports instead of failing.
+- True edit finds the run pdf.js draws under the click when a page nests transforms or draws text inside a form,
+  falls back to the overlay for a form another page shares, and reports a failed form write instead of claiming
+  the edit.
+- The Arabic edit-text prefill reads in logical order with its word spaces; the signature prefill lands on the
+  page being signed; Bates settings are checked, and a stamp too wide for the page shrinks to fit.
+- Closing a document releases its pdf.js documents and workers; undoing an Insert pages and redoing it adds the
+  pages again.
+
+#### Fixed — supply chain
+- RSA signatures are verified with WebCrypto, not node-forge (GHSA-86w9-cpqp-85rv has no patched forge release).
+  The audit gate is now a script with one narrow, expiring exemption, and it fails closed. `source-map-js` is
+  pinned past GHSA-68fv-2mgg-jv7q.
+
+### 2026-06-27 → 2026-09-24
+
+#### Added
 - **Open from the native file picker, with a Recent-files list** (#54b) — the open side now mirrors
   the Save-dialog support that shipped in #54. Chromium offers the OS picker; Firefox and Safari keep
   the ordinary file input, unchanged. Recently-opened files are remembered so you can reopen one in a
@@ -29,7 +103,7 @@ most of the work went into proving that what the product claims to remove is act
   Chromium, exercises every reachable control, and fails on a console error, a failed request,
   or a critical/serious axe violation.
 
-### Fixed — redaction and export safety
+#### Fixed — redaction and export safety
 - **Sanitize did not remove every script it promised to.** A JavaScript action survived when it was
   written as an indirect reference, when it was chained behind a legitimate link (`/Next`), when it
   was listed in an array, when it sat on a bookmark, and when it rode a `/Rendition` action — and in
@@ -132,7 +206,7 @@ most of the work went into proving that what the product claims to remove is act
   They now keep them. Combining two documents that both carry layers, where one hides a layer, is refused with a
   message saying why, rather than publishing the hidden layer.
 
-### Fixed — accessibility, correctness, supply chain
+#### Fixed — accessibility, correctness, supply chain
 - Three serious and one critical WCAG 2.1 AA rules cleared; 24 controls given explicit
   programmatic names. The live gate now carries **zero accepted exceptions**.
 - **Desktop click-to-select was dead for two months** — destroying a node on `pointerup`
@@ -144,7 +218,7 @@ most of the work went into proving that what the product claims to remove is act
   rather than pinning back or embedding whole fonts.
 - Transitive `npm audit` advisories pinned via `overrides` (`brace-expansion`, `fast-uri`).
 
-### Changed
+#### Changed
 - **Every dependency and CI action upgraded to its latest release** (2026-09-13). Two behaviour
   changes it brought were caught before release and handled: the PDF library became stricter about
   damaged PNG images (DOCX→PDF would have dropped them silently and opening one would have failed —
@@ -153,7 +227,7 @@ most of the work went into proving that what the product claims to remove is act
   with an error rather than exported without the object).
 - **CI and the local gate moved to Node 26** (2026-09-24; `.nvmrc`, `engines` and the workflow together).
 
-### Fixed — cropped-page export
+#### Fixed — cropped-page export
 - **Word/Markdown/text export on a cropped page** (closing ceiling **C22**) — on a PDF whose
   CropBox has a non-zero origin, every position in the reconstructed document was offset by that
   origin: wrong page margins, misplaced images, and typed notes interleaved at the wrong point in
@@ -161,7 +235,7 @@ most of the work went into proving that what the product claims to remove is act
   frame before reconstructing, so a cropped source exports like any other. Pages with an ordinary
   CropBox are byte-identical.
 
-### Documented
+#### Documented
 - **`SECURITY.md` § "Hiding is not removing"** — every surface graded: six genuinely remove
   content, the rest hide it. Crop, a filled shape over text, and form flattening are each called
   out, because each reads as removal and is not.

@@ -47,7 +47,8 @@ _Last updated: 2026-09-27 · Version 1.0.0_
 - **Bates / page numbering** — prefix + zero-padded counter (start number capped at twelve digits) or "N / total", six anchor positions; a stamp wider than the page is drawn smaller to fit
 
 ## Forms
-- Auto-detect and fill AcroForm text fields (undoable)
+- Auto-detect and fill AcroForm fields — text, checkboxes, radio groups, dropdowns and list boxes (undoable);
+  push-buttons and signature fields carry no fillable value and are not rendered
 - **Flatten forms** on export (bake field values into page content). Note this *exposes* the value rather
   than concealing it: it stops being an editable field and becomes selectable page text
 - The same **Flatten** also draws the file's own annotations (sticky notes, stamps, shapes, highlights) into the
@@ -80,6 +81,10 @@ _Last updated: 2026-09-27 · Version 1.0.0_
 - **Visible digital signature** — PKCS#12 / CMS (node-forge); upload a `.p12` or **generate a
   self-signed certificate in-browser**
 - **Approval signatures** — drawn signature with caption ("read & approved"), guided multi-signer panel
+- **Signature byte range per the standard** — the signed range excludes the whole `/Contents` string, delimiters
+  included (fixed 2026-09-27; before it, an independent validator rejected every signature the app produced). The
+  signing engine can also write a **PAdES-B-B** (`ETSI.CAdES.detached`) signature; the app still signs as
+  `adbe.pkcs7.detached` until that profile has been checked in Adobe Reader
 
 ## Conversion & export
 - **PDF → DOCX / Markdown / TXT** — reconstructs a flow document (headings, lists, columns, tables ruled or laid out with whitespace alone,
