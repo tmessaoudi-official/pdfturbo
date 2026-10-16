@@ -77,6 +77,7 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-17 00:43] AGREED: DOC-9: the repo settings.json deny list stays empty; CLAUDE.md restates the reason (the global firewall and permission engine carry the deny floor; a repo deny would duplicate it) instead of the dead no-terminal premise (developer, 2026-10-17).
 - [2026-10-17 00:43] AGREED: SYNC-5: CLAUDE.md stops asserting this tree's mode; it defers to the global resolver as shown by the SessionStart banner and /next, which is true under either /gates-bypass setting (developer, 2026-10-17).
 - [2026-10-17 00:43] AGREED: Row 7 runs as five themed docs-only commits (A certification sync, B git autonomy, C hygiene, D product docs, E memory outside the repo); per-gate certification is advisor() only, STANDARD carve-out (developer, 2026-10-17).
+- [2026-10-17 00:54] ASSUMED (review): Push count: CLAUDE.md § Git autonomy defers to global Rule 10's batch count instead of hard-coding the ruling's 10 — basis: the 2026-10-08 ruling says 'adopt global Rule 10's batch' and the global count moved 10 -> 30 the same day; advisor() agreed (confident pick). Alternative: write 10 as a repo count.
 
 ## Formal Plan
 

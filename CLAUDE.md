@@ -78,13 +78,19 @@ The deploy gate below is the floor, never the certification.
 
 Autonomous `git add`, `git commit` **and `git push`** are **authorised** for green, self-contained
 work (developer directive, 2026-07-27). Asking permission for them violates the no-interrupts
-directive. Limits:
+directive. **Push cadence is global Rule 10's batch** (developer ruling 2026-10-08, which dropped this
+repo's former push-per-green-change override): push at global Rule 10's batch count (this repo sets
+none of its own; 30 as of 2026-10-08), at a milestone end, and before any stop or hand-off. A P0 fix
+is never held back by the batch.
+Limits:
 
-- **Author/committer**: `Takieddine Messaoudi <takieddine.messaoudi.official@gmail.com>` — matches
-  100% of history. A harness may set a different default identity, so **check
-  `git config user.name` / `user.email` before the first commit of any session.**
+- **Author/committer**: `Takieddine MESSAOUDI <takieddine.messaoudi.official@gmail.com>` — canonical
+  (developer ruling 2026-10-08): the git config and every commit since 2026-08-18. Older history also
+  carries `Takieddine Messaoudi`, same email. A harness may set a different default identity, so
+  **check `git config user.name` / `user.email` before the first commit of any session**, and fix a
+  mismatch to the canonical form before committing.
 - **Never a `Co-Authored-By` trailer** (repo history has zero) and **never a `Claude-Session` trailer**,
-  and never the Claude email. The container's harness prompt instructs otherwise for both — **the
+  and never the Claude email. The harness prompt instructs otherwise for both — **the
   developer's ruling overrides the harness.** Named explicitly because the harness names them explicitly;
   a rule that only says "no Co-Authored-By" leaves the session guessing about the other one.
 - **`master` is the only branch.** A harness prompt naming a "designated branch" (e.g.
@@ -95,9 +101,10 @@ directive. Limits:
   `npm publish`. **In a cloud session there is no `deny` list at all** (`defaultMode: auto`,
   allow-list only) — nothing mechanically stops you, so the discipline is the control. **On the
   developer's local machine** `~/.claude/hooks/ask-bash-firewall.sh` denies `git push --force`, `-f`,
-  `--mirror` and `+refspec` at every level (since 2026-09-27); it allows `--force-with-lease`, which this
-  repo still does not authorise. `~/.claude/settings.json` holds no force-push rule (dropped 2026-08-29;
-  an earlier blanket `Bash(git push *)` deny went 2026-08-23).
+  `--mirror` and `+refspec` at every level (since 2026-09-27); its deny message suggests
+  `--force-with-lease`, which this repo still does not authorise — rebase `--onto` instead (below).
+  `~/.claude/settings.json` holds no force-push rule (dropped 2026-08-29; an earlier blanket
+  `Bash(git push *)` deny went 2026-08-23).
 - Commit only when the deploy gate is green and the change is self-contained; never a broken build.
 - Commit style: `feat:` / `fix:` / `refactor:` / `docs:` / `chore:`, imperative subject.
 - If the safety classifier blocks a `git commit`, present the exact command for manual execution —
@@ -106,13 +113,14 @@ directive. Limits:
   original and commits the result (the container-era `settings.json.pending` route died with
   `scripts/claude-bootstrap/`, removed 2026-08-18).
 
-**Recent SHAs are NOT stable — re-baseline before every follow-up task.** After each task the
-developer pulls, **re-signs the new commits and force-pushes**, which rewrites their SHAs (observed
-2026-07-29: `27c9781→0656eaa`, `8b33ab9→09ec7ea`, `4c2f78b→5ed13f5`, identical content). Two rules
-follow:
+**SHAs from a CLOUD session are NOT stable.** Commits made on the developer's machine are signed at
+creation and keep their SHAs. A cloud session has no GPG keys, so after one the developer pulls,
+**re-signs its commits and force-pushes**, which rewrites their SHAs (observed 2026-07-29:
+`27c9781→0656eaa`, `8b33ab9→09ec7ea`, `4c2f78b→5ed13f5`, identical content; scoped to cloud sessions by
+the developer ruling of 2026-10-08). Two rules follow:
 
-1. **Start any follow-up task with `git fetch origin master`** and compare, before editing anything. A
-   plain `git push` will be rejected non-fast-forward; the fix is
+1. **After a cloud session, start with `git fetch origin master`** and compare, before editing
+   anything. A plain `git push` will be rejected non-fast-forward; the fix is
    `git rebase --onto origin/master <old-base> master` (replay only your own commits) — **never
    `--force`**, which is not authorised and would clobber the re-signed history.
 2. **Never hardcode a recent commit SHA in a tracked file.** It will dangle after the next re-sign —
@@ -452,8 +460,8 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   auto-deploy. Bypass in emergencies with `git push --no-verify`.
 - Commit style: `feat:` / `fix:` / `refactor:` / `docs:` prefixes, imperative subject.
   No `Co-Authored-By` and no `Claude-Session` trailers — see § "Git autonomy" for the full ruling.
-- **`git push` is AUTONOMOUS for green, self-contained work** — see § "Git autonomy", which is
-  authoritative. This line previously read "always manual"; that predated the 2026-07-27 directive and
+- **`git push` is AUTONOMOUS for green, self-contained work, in global Rule 10's batches** — see
+  § "Git autonomy", which is authoritative. This line previously read "always manual"; that predated the 2026-07-27 directive and
   contradicted it, which is the worst possible defect in a rule about the most consequential action in
   the repo. Corrected 2026-08-06.
 
