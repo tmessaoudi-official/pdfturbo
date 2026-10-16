@@ -4,7 +4,7 @@
 # The corpus is NOT committed — these are third-party documents, and the repo should not carry
 # megabytes of them. This script makes the measurement reproducible instead: the same 15 public
 # documents, fetched from their canonical URLs. See KNOWN_ISSUES.md C9 for what was measured and
-# docs/plans/master.plan.md's Decisions Log for the ruling.
+# docs/archive/plans/master.plan.md's Decisions Log for the ruling.
 #
 # Shapes covered: forms (IRS, GSA, USPTO), articles (arXiv, 1- and 2-column), reports (Census,
 # US budget, IRS Pub 17). NOT covered: real invoices and bank statements — genuine ones are private

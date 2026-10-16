@@ -2,7 +2,7 @@
 
 **Status: NOT CERTIFIED.** Sixteen MAXIMAL panel rounds were run against this range and the
 two-consecutive-clean counter never rose above **0 of 2**. No `WS7: 2/2 clean at <sha>` entry exists
-in `docs/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
+in `docs/archive/plans/master.plan.md`, deliberately: on this evidence it would be a false record.
 
 This file is committed because the per-round reports live under `var/claude/ws7/`, which
 `.gitignore` excludes — so they do not reach a clone, and for four of the sixteen rounds no report file
@@ -137,7 +137,7 @@ open after `2a19552` claimed to clear it):
    re-worded to the same scope the same day (session-authored; one of the 3 values pending, since round 10 added two more).
 3. ~~`src/export/exportService.ts:351` — same claim on `sanitizeAndDownload`'s docstring.~~ Fixed in
    `2a19552`, widened again by the round-9 fix.
-4. `docs/plans/master.plan.md:489` and `:266` — the Decisions Log rules that the `/BBox` clip covers
+4. `docs/archive/plans/master.plan.md:489` and `:266` — the Decisions Log rules that the `/BBox` clip covers
    the **colorMap** channel, which round 7 reverted. SUPERSEDED, not edited: the plan's
    `[2026-09-04 21:55]` entry declares them history and states the live two-channel rule. (An earlier
    version of this item also cited `:70`, and the plan entry cites `:52`; both of those lines are TRUE
@@ -151,7 +151,7 @@ open after `2a19552` claimed to clear it):
 8. ~~`vitest.browser.config.ts:70-74` — 10 vs 14 browser files with hooks.~~ Fixed in `2a19552`.
 9. ~~`tests/utils/pdfSanitizer.test.ts:330` — a `SECURITY.md` promise `git grep` cannot find.~~ Fixed
    in `2a19552`.
-10. ~~`docs/plans/master.plan.md:104` vs this file — "three of the six" vs "seven".~~ Fixed in `2a19552`.
+10. ~~`docs/archive/plans/master.plan.md:104` vs this file — "three of the six" vs "seven".~~ Fixed in `2a19552`.
 11. ~~This file's own round-6/7 counts~~ — reconciled 2026-09-05 in `2a19552`; round 9 then found that
     reconciliation had itself introduced two false sentences (the surviving-reports list and the
     opcGc round list), corrected above.

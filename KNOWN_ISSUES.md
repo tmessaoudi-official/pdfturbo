@@ -68,7 +68,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 - **No patched release exists** (node-forge 1.4.0 is the latest), so `scripts/audit-gate.mjs` exempts this one advisory by id AND package, with an
   expiry. The exemption rests on the app never verifying an RSA signature with forge: `src/signing/cmsVerify.ts` verifies with WebCrypto and forge only
-  parses and creates. It voids itself when npm reports a fix or the date passes. Detail: `CLAUDE.md` § Git & CI (fifth occurrence) and
+  parses and creates. It voids itself when npm reports a fix or the date passes. Detail: `.claude/rules/audit-gate.md` § "Supply chain (#37)" (fifth occurrence) and
   `.claude/rules/signing.md`.
 
 ### From QUAL-1 — releasing a closed document (2026-10-08)

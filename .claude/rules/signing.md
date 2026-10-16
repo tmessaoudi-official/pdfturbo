@@ -25,7 +25,7 @@ CREATES every signature (`cms.ts`, `p12.ts`, `certGen.ts` — the advisory is ab
 **Scope, so this is not read as more than it is:** `verifyAllSignatures` has no production caller — `multiSign.ts` and the tests only,
 kept out of the barrel — so the shipped app never verifies a signature with forge; the swap is hardening for the day someone wires
 it. The advisory itself stays in `npm audit`, which is why `scripts/audit-gate.mjs` exempts that one id until a patched release
-(CLAUDE.md § Git & CI, fifth occurrence). Guards: `tests/signing/rsaVerify.test.ts` (8) — correct signature, the hand-built
+(`.claude/rules/audit-gate.md` § "Supply chain (#37)", fifth occurrence). Guards: `tests/signing/rsaVerify.test.ts` (8) — correct signature, the hand-built
 DigestInfo without the extra element (the builder is sound), different data, the advisory shape, garbage input, and a source-level
 guard that allows no `.verify(` call except WebCrypto's in what ships: every code file under `src/` at any depth plus `index.html` and
 `public/*.html` (it scanned `src/signing`, flat, until the 2026-10-06 audit), with a fixture control that plants a forge verify in

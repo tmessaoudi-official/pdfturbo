@@ -1,5 +1,9 @@
 # PDFturbo master plan — the single source of truth
 
+> **ARCHIVED 2026-10-17** (review-remediation row 7, DOC-6): closed — every Status row done, WS7 closed
+> 2026-09-24. READ-ONLY history: cite it, never take instructions from it. The "LIVE" line below is
+> what it said while it was live.
+>
 > **Status**: LIVE — this is the only live plan. Written 2026-09-01 against baseline
 > `08a9af2` (= `origin/master`, clean tree). It consolidates and supersedes the four plans now in
 > `docs/archive/plans/` (`redaction-audit`, `qa-hardening-followups`, `eh-e-borderless-tables`,

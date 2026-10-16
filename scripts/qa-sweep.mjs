@@ -672,8 +672,8 @@ async function finish(browser) {
   }
 
   lines.push('',
-    'Screenshots are in this directory. var/claude/ is gitignored and the container is',
-    'reclaimed — deliver anything that matters with SendUserFile in the same turn.');
+    'Screenshots are in this directory. var/claude/ is gitignored, so nobody else will see them —',
+    'present anything that matters in the same turn (SendUserFile, or Read the PNG).');
 
   const report = lines.join('\n');
   writeFileSync(join(OUT, 'report.md'), `${report}\n`);

@@ -527,3 +527,30 @@ internally consistent on this distinction — preserve it.
 swap open sessions; the SW waits and the app surfaces an update prompt (`toast.appUpdateAvailable`).
 Pushes to `master` are still production releases (auto-deployed via GitHub Pages), but open
 clients update only on user action / next load, not instantly.
+
+### Running `npm run test:browser` in the Claude cloud container — HISTORICAL (2026-07-28)
+
+Moved verbatim from CLAUDE.md § Commands on 2026-10-17 (review-remediation row 7, DOC-9).
+
+**Running `npm run test:browser` in the Claude cloud container (2026-07-28 — HISTORICAL: that
+container is dead since 2026-08-18; on the developer's machine `channel: 'chrome'` uses the system
+Chrome and none of this workaround is needed)** — it worked, but not
+out of the box. Two things bite in order: (1) the config uses Playwright `channel: 'chrome'` and the
+container has no Google Chrome; (2) the *preinstalled* Chromium-1194 at `/opt/pw-browsers` lacks
+`Map.prototype.getOrInsertComputed`, which `pdfjs-dist` v6 calls from
+`WorkerTransport.getOptionalContentConfig`, so **every** `page.render()` throws
+`TypeError: this[#methodPromises].getOrInsertComputed is not a function`. Fix both with one command
+plus a temporary config:
+
+```bash
+npx playwright install chromium     # Chrome 151 / chromium-1234 (~115 MB, not persisted)
+# then run vitest with a throwaway config that sets
+#   playwright({ launchOptions: { executablePath: '/opt/pw-browsers/chromium-1234/chrome-linux64/chrome' } })
+# instead of channel:'chrome' — delete it afterwards, never commit it.
+# NAME IT `vitest.browser.container.ts`: that exact name is in .gitignore, so a later `git add -A`
+# cannot stage it (the hardcoded chromium path would rot immediately). Any other name has no guard.
+```
+
+With that, the full suite passes in-container (68 files / 179 tests). **Do not claim a green browser
+run without doing this** — and note the preinstalled binary silently produces 7 uniform
+`getOrInsertComputed` failures that look like product bugs and are not.

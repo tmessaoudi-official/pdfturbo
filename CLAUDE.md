@@ -31,13 +31,14 @@ premise"* escape. Protocol: the global `/ask-human` skill, § "Question quality"
 additions (mandatory cases, a worked example): `.claude/skills/pdf-ask-human/SKILL.md`.
 
 **Mode — the global `~/.claude/CLAUDE.md` § Mode decides what stops** (developer rulings 2026-09-27).
-This tree is bypassed for the ask-human gate family (as of 2026-09-28 — the SessionStart banner shows the live
-MODE), so sessions here run **autonomous**: announce the
-task size and the plan, then build it; on an ambiguity take the recommended option and log it as
-`ASSUMED (review)` in the plan's Decisions Log. Phase markers, evidence grades and the Rule 6 table
-still show (output parity). In every mode, still stop for the cases in § "When a question is mandatory
-here" of that skill — a change that would weaken a documented invariant or a declared ceiling, a
-`SCHEMA_VERSION` bump — and for a destructive step.
+This file does not assert which mode this tree is in (developer ruling 2026-10-17): the global
+resolver does, and the SessionStart banner (`▸ MODE: …`) and `/next` show it live — the developer sets
+it with `/gates-bypass`. In autonomous mode: announce the task size and the plan, then build it; an
+ambiguity is settled by the global policy (the recommended option, or the confident-pick rule when
+`cf` is on) and logged as `ASSUMED (review)` in the plan's Decisions Log. Phase markers, evidence
+grades and the Rule 6 table show in both modes (output parity). In every mode, still stop for the
+cases in § "When a question is mandatory here" of that skill — a change that would weaken a documented
+invariant or a declared ceiling, a `SCHEMA_VERSION` bump — and for a destructive step.
 
 ## Certification ladder — per-task gates and the milestone panel
 
@@ -68,7 +69,8 @@ for three reasons, an invisible watermark.
 per-gate tier question — `advisor()` recommended (economize ruling, 2026-08-21).
 
 **The one carve-out is mechanical, not a judgement call:** if `git diff --name-only` touches no
-`src/`, STANDARD is enough — one reviewer, three lenses in a single pass, one clean round. Locale
+`src/`, STANDARD is enough — one reviewer (`completeness-reviewer`), three lenses in a single pass,
+one clean round. Locale
 strings, docs and `CLAUDE.md` edits qualify. Anything touching `src/` does not.
 
 When `advisor()` or subagents are unavailable, the global certification ladder (Phase 3C) applies.
@@ -145,7 +147,7 @@ LIVE plans and a glob of that directory is always the current work. This **super
 framework's Phase 8 delete-the-plan lifecycle for this repo** — there is exactly one lifecycle rule
 here, and it is this one. Archiving is that close: run
 `bash ~/.claude/bin/project-state.sh --append-ledger <plan>` first (so `/progress` velocity survives),
-then `git mv` the plan and clear the session's active-plan pointer. An archived plan is READ-ONLY
+then `git mv` the plan, and clear the session's active-plan pointer if it names that plan. An archived plan is READ-ONLY
 history: cite it, never take instructions from it.
 
 There is no separate roadmap SSOT or decision register: the plan file is the plan, and a ruling that
@@ -177,7 +179,7 @@ moderate/minor are reported only, matching the static gate's policy), 2 if it co
 on :4173 — i.e. the BUILT artifact that actually deploys, not the dev server. It needs no browser
 download: the script prefers a usable build under `PLAYWRIGHT_BROWSERS_PATH` (skipping
 chromium-1194) and otherwise falls back to the same system Chrome `test:browser` uses. Needs `npm run dev` serving and `npx playwright install chromium` (the preinstalled
-chromium-1194 is refused on purpose — see the container note below). It answers "does the product
+chromium-1194 is refused on purpose — see the container note in `toolchain.md`). It answers "does the product
 work?", which **neither** vitest suite does: jsdom has no canvas and the browser suite mounts
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
@@ -207,28 +209,9 @@ extraction, content-stream edits verified by pixels. Uses the system Google Chro
 build, using the runner's system Chrome). Run it locally for any editor/export/DnD change. Guards
 ISSUE-1..5 (see `KNOWN_ISSUES.md`).
 
-**Running `npm run test:browser` in the Claude cloud container (2026-07-28 — HISTORICAL: that
-container is dead since 2026-08-18; on the developer's machine `channel: 'chrome'` uses the system
-Chrome and none of this workaround is needed)** — it worked, but not
-out of the box. Two things bite in order: (1) the config uses Playwright `channel: 'chrome'` and the
-container has no Google Chrome; (2) the *preinstalled* Chromium-1194 at `/opt/pw-browsers` lacks
-`Map.prototype.getOrInsertComputed`, which `pdfjs-dist` v6 calls from
-`WorkerTransport.getOptionalContentConfig`, so **every** `page.render()` throws
-`TypeError: this[#methodPromises].getOrInsertComputed is not a function`. Fix both with one command
-plus a temporary config:
-
-```bash
-npx playwright install chromium     # Chrome 151 / chromium-1234 (~115 MB, not persisted)
-# then run vitest with a throwaway config that sets
-#   playwright({ launchOptions: { executablePath: '/opt/pw-browsers/chromium-1234/chrome-linux64/chrome' } })
-# instead of channel:'chrome' — delete it afterwards, never commit it.
-# NAME IT `vitest.browser.container.ts`: that exact name is in .gitignore, so a later `git add -A`
-# cannot stage it (the hardcoded chromium path would rot immediately). Any other name has no guard.
-```
-
-With that, the full suite passes in-container (68 files / 179 tests). **Do not claim a green browser
-run without doing this** — and note the preinstalled binary silently produces 7 uniform
-`getOrInsertComputed` failures that look like product bugs and are not.
+The 2026-07-28 cloud-container recipe for `test:browser` (no Google Chrome, and a preinstalled
+Chromium-1194 that fails every `page.render()`) is HISTORICAL: `.claude/rules/toolchain.md`
+§ "Running `npm run test:browser` in the Claude cloud container".
 
 **`optimizeDeps.include` is load-bearing** (`vitest.browser.config.ts`): every npm package reached
 by `await import('<pkg>')` in `src/` must be listed — **plus `pdfjs-dist/build/pdf.worker.min.mjs`,
@@ -303,12 +286,13 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **crop** — per-page crop, its handles and numeric margins — and why crop HIDES while redaction REMOVES (4) → `.claude/rules/crop.md` (loads when you read `src/core/pageService.ts`, `src/core/pageRenderPipeline.ts` …).
 - **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep, releasing a closed document, insert-pages redo (14) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
 - **ocr** — OCR engine, CSP and assets (1) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
-- **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle (9) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
+- **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle, the historical cloud-container browser recipe (10) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
+- **audit-gate** — the deploy-blocking `npm audit` gate, its expiring exemption and the six `overrides` occurrences (1) → `.claude/rules/audit-gate.md` (loads when you read `scripts/audit-gate*`, `package.json` …).
 - **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods (4) → `.claude/rules/conventions.md` (loads at session start).
 
-**Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 6 files (`redaction.md`, `export.md`, `flow-export.md`, `docx-edit.md`, `ui.md`, `toolchain.md`) exceed that cap at birth: single entries run 200–400 lines and a verbatim move cannot cut them — they are the first candidates for a prune with the developer.
+**Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 7 files exceed that cap (measured 2026-10-17: `redaction.md` 1215, `flow-export.md` 905, `export.md` 808, `toolchain.md` ~556, `ui.md` 495, `docx-edit.md` 449, `arabic-rtl.md` 373 lines) — six at birth, where single entries ran 200–400 lines and a verbatim move could not cut them, and `arabic-rtl.md` crossed it since. They are the first candidates for a prune with the developer (`/rules-split`).
 
-Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves through this list; one that names a bold paragraph or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`):
+Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves through this list; one that names a bold paragraph or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`). The list maps entries MOVED out of CLAUDE.md only; an entry written straight into a rules file after the split is found by grepping its heading:
 
 - § "pdf.js's CMap files are served by the app — row 32 (2026-09-26)" → `pdfjs.md`
 - § "pdf.js's JBIG2 / JPEG 2000 decoders are served too — row 36 (2026-09-26)" → `pdfjs.md`
@@ -388,6 +372,8 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 - § "RTL brackets and list markers in the Arabic overlay — limits row 25, D17 (2026-09-27)" → `arabic-rtl.md`
 - § "Tashkeel placed by GPOS in the Arabic overlay — limits row 25, C19 (2026-09-27)" → `arabic-rtl.md`
 - § "Approval caption + guided Signers panel (F-D D1/D2)" → `signing.md`
+- § "Git & CI" "Supply chain (#37)" (the six audit occurrences, moved 2026-10-17) → `audit-gate.md`
+- § "Commands" "Running `npm run test:browser` in the Claude cloud container" (moved 2026-10-17) → `toolchain.md`
 - § "Per-page crop (#G23)" → `crop.md`
 - § "Crop HIDES, redaction REMOVES — and the obvious check gives a false negative (2026-08-04)" → `crop.md`
 - § "The hide-vs-remove audit — every surface graded, and two more traps found (2026-08-05)" → `redaction.md`
@@ -404,57 +390,13 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   deploy. The workflow also declares a `pull_request: [master]` trigger, but the project
   is single-dev/single-branch so in practice every run is a push to `master` — there is
   **no human PR review gate** (the local pre-push hook is the safety net; see below).
-- **Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high` plus one expiring exemption, see the fifth occurrence below) runs first and is **deploy-blocking**
-  (a high/critical advisory fails the build before anything deploys). It was briefly disabled
-  (`e154540`, 2026-07-28) and **restored the same day** once the blocker was root-caused — keep it on.
-  **What the blocker was, so it is recognised next time:** 8 "high" findings that were really ONE
-  advisory counted at 8 levels of a single chain — `brace-expansion` (GHSA-mh99-v99m-4gvg, DoS/OOM)
-  ← `minimatch` ← `filelist` ← `jake` ← `ejs` ← `@trickfilm400/rollup-plugin-off-main-thread`
-  ← `workbox-build` ← `vite-plugin-pwa`. Only ONE vulnerable copy was installed
-  (`filelist/node_modules/brace-expansion@2.1.2`; the hoisted copy was already patched), it is
-  **devDependency-only**, and `npm audit fix` could not touch it: ERESOLVE, because
-  `vite-plugin-pwa@1.2.0` peer-requires `vite ^3–^7` while this project is on `vite@8`.
-  **The fix is the `overrides` block in `package.json`** — it pins the transitive dep without touching
-  `vite-plugin-pwa`, so the peer conflict never arises. **Do not remove those overrides** without
-  re-checking the advisories, and reach for the same pattern the next time a transitive dev-dep
-  advisory is unfixable through the dependency that pulls it in.
-
-  **The overrides are a LIVING pin, not a one-off — re-audit before every push.** On 2026-07-31 the
-  gate went from `found 0 vulnerabilities` to **2 high** in a single day, with no dependency change on
-  our side, and one of them was `brace-expansion` **again**: GHSA-rgw5-rvv9-x895 explicitly *bypasses
-  the CVE-2026-14257 mitigation*, so the very version this block pinned to (`^5.0.8`) became the
-  vulnerable one. The second was `fast-uri` (GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
-  authority introducer) via `ajv` ← `workbox-build`. Both were devDependency-only and both were fixed
-  the same way — bump to `^5.0.9` / add `^3.1.5`, one deduped copy each, audit clean, and the PWA
-  precache unchanged at the 22 entries it had then (24 at the 2026-09-13 upgrade build — recount rather
-  than assuming any figure here). Lesson: a pinned version is a snapshot of the advisory database, not a
-  permanent fix, and because `npm audit` is the FIRST CI step a new advisory turns every deploy red
-  before a single test runs — including deploys of changes that have nothing to do with it.
-
-  **Third occurrence, 2026-09-04 — `fast-uri` again, and the pin that fixed it became the
-  vulnerable one.** Four new advisories (GHSA-5jgf-p345-68v8, -f65p-4m7j-42xc, -fph4-wmhf-6fwf,
-  -jqff-g426-hqxp) put the whole `3.0.0 - 3.1.5` range in scope, so the `^3.1.5` pin added on
-  2026-07-31 was itself inside it. Bumped to `^3.1.7`, one deduped copy, audit back to
-  `found 0 vulnerabilities`, build green with 25 precache entries that day (24 at the 2026-09-13 build). **Stay inside the dependent's
-  own range**: `ajv` declares `fast-uri: ^3.0.1`, so 3.1.7 satisfies it natively while the current
-  4.1.4 would force a major past that range — an override can express it, and the PWA build is what
-  pays. Same shape as the `brace-expansion` `^5.0.8` → `^5.0.9` bump.
-
-  **Fourth occurrence, 2026-09-30 — both again.** `brace-expansion` 4.0.0–5.0.11 (three DoS advisories, high) put the
-  `^5.0.9` pin in scope, and `fast-uri` 3.0.0–3.1.7 (host-case normalisation, moderate) did the same to `^3.1.7`. Bumped
-  to `^5.0.12` / `^3.1.8`, one deduped copy each, `found 0 vulnerabilities`. It surfaced as the first step of the deploy
-  gate on an unrelated change, which is the normal way this shows up.
-
-  **Fifth occurrence, 2026-10-02 — an advisory with NO patched release.** `node-forge` <= 1.4.0 (GHSA-86w9-cpqp-85rv, high, RSA PKCS#1 v1.5 verification accepts extra nested `DigestAlgorithm` elements; forgery needs a low-exponent RSA key) was in the npm database an hour after a green audit; 1.4.0 is the latest release, so no `overrides` bump exists. The gate is now `scripts/audit-gate.mjs`: the same `npm audit`, failing on any high/critical advisory EXCEPT one named in `scripts/audit-gate-allowlist.json` by id AND package, with a reason and an expiry date (an expired entry fails the gate again by itself; a gone advisory is reported STALE). It fails closed: an audit that produced no verdict, or a malformed allowlist entry, is a failure. The one entry rests on this evidence: no forge RSA verification ships (`cmsVerify.ts` now checks the RSA signature with WebCrypto, a source guard in `tests/signing/rsaVerify.test.ts` forbids any other `.verify(` call in every code file under `src/` at any depth and in the HTML pages — widened 2026-10-06, it scanned only `src/signing`, flat, so a forge verify in `src/handlers/` would have passed it — and forge only PARSES and CREATES), and `verifyAllSignatures` never had a production caller (`multiSign.ts` and tests only, kept out of the signing barrel). Before the swap the only forge verify call was in that unwired module. Developer ruling 2026-10-02 (a narrow exemption plus the WebCrypto verify swap in `cmsVerify.ts`, so wiring the verifier later is safe). **Do not widen the allowlist for convenience**, and remove the entry when a patched release ships. The exemption is also void by itself once `npm audit` reports `fixAvailable` on the vulnerable node (a patched release shipped), so the bump is prompted by the gate and not by someone remembering the date. Guard: `tests/tools/auditGate.test.ts` (26) — the exemption is keyed on id AND package, expires, never covers a different advisory of the same package, a transitive chain is judged by its advisory, and every no-verdict shape fails; each sabotage reds exactly its case — and two sabotages first stayed GREEN because two guards covered the same input (the `error` branch next to the missing-`vulnerabilities` check; the node-level and the advisory-level 'no usable severity' problem), which is how a redundant guard shows up: the redundant one was deleted and the other pinned alone. **The gate fails closed on every shape a reviewer found:** an unknown, missing or upper-case severity (normalised, a non-npm word is a problem), a high advisory object with no usable id (`unidentified advisory`, including a url that ends at `/advisories/`), the same advisory at two severities (the worst counts), and a blocking node whose chain never reaches an advisory object. Round 8 added two more: a missing `fixAvailable` is not "no fix exists" (only an explicit `false` keeps the exemption), and a blocking node whose chain reaches no blocking advisory is a problem (a mixed node whose chain reaches one is not; a string `via` naming a package the report does not list is a problem too). Round 9 added: a launch through a symlink still runs (the entry guard compares real paths; it used to exit 0 having audited nothing), and the report's own `metadata.vulnerabilities` high/critical counts must equal the nodes it lists (an empty `vulnerabilities` beside a count of 2 is no verdict). The WebCrypto swap is pinned by `tests/signing/rsaVerify.test.ts` (8): a signature whose DigestInfo carries an extra element inside the DigestAlgorithm sequence is built with a REAL private key and the installed forge ACCEPTS it (red first: `expected true to be false`) while WebCrypto rejects it; a source-level guard forbids any `.verify(` call in what ships (all of `src/`, recursively, plus `index.html` and `public/*.html`) except WebCrypto's — the only thing that notices a revert to forge, since the behavioural suite stays green with either — and a fixture control plants one in `src/handlers/`, one in `src/signing/<sub>/` and one in a page script, and requires all three caught (red against the old `src/signing`-only scope; a non-recursive walk and a scan without the HTML pages each red it too).
-
-  **Sixth occurrence, 2026-10-06 — `source-map-js`.** GHSA-68fv-2mgg-jv7q (high, `>=1.0.0 <1.2.2`) reached the one deduped 1.2.1 copy (devDependency-only: `postcss` ← `vite`, `css-tree` ← `jsdom`, `magicast` ← `@vitest/coverage-v8`, all declaring `^1.2.1`). Same shape as the others: `overrides` `"source-map-js": "^1.2.2"` (inside every dependent's own range), one deduped copy, `audit-gate: ok (1 exempted)`, build green with 24 precache entries. Found by the pre-push audit of an unrelated change.
-
-  **Never run the audit gate with `--offline`.** It reads the cached advisory database and reported
-  `found 0 vulnerabilities` against the very tree that was carrying this high — a false green that
-  looks exactly like a real one [measured 2026-09-04].
-
-  OCR traineddata stays SHA-256-pinned (`scripts/prepare-ocr-assets.mjs`); no other remote assets are
-  fetched at build.
+- **Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high`
+  plus one expiring exemption) runs first in CI and is **deploy-blocking**; keep it on. The `overrides`
+  block in `package.json` (`brace-expansion`, `fast-uri`, `source-map-js`, `undici`) is a LIVING pin:
+  re-audit before every push, never with `--offline` (a false green), and never widen
+  `scripts/audit-gate-allowlist.json` for convenience. The six occurrences and the exemption's evidence:
+  `.claude/rules/audit-gate.md`. OCR traineddata stays SHA-256-pinned (`scripts/prepare-ocr-assets.mjs`);
+  no other remote assets are fetched at build.
 - **Pre-push gate**: `.githooks/pre-push` (auto-installed via the `prepare` script →
   `core.hooksPath`) runs type-check + lint + test locally before any push reaches the
   auto-deploy. Bypass in emergencies with `git push --no-verify`.
@@ -468,8 +410,10 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 ## Claude config in this repo
 
 - `.claude/settings.json` — pre-approved commands + hooks. **`deny` is EMPTY and stays empty** (developer
-  ruling, 2026-08-06): in the web container the developer has no terminal, so a command Claude is denied is
-  a command *nobody* can run — a denial is not a safe default there, it is a dead end.
+  ruling 2026-08-06, its reason restated 2026-10-17): on the developer's machine the global Bash firewall
+  and permission engine (`~/.claude/hooks/`) carry the deny floor for every repo, so a repo deny would
+  only duplicate it. (The original reason — in the web container the developer had no terminal, so a
+  denied command was one *nobody* could run — died with that container.)
   **The broad 85-entry allow list is LIVE** ([Verified 2026-08-18: `jq '.permissions.allow | length'`
   → 85]; the container-era `settings.json.pending` staging route is gone). It covers `npm`/`npx`/`node`/`vitest` (`vite` and `playwright` transitively via
   `Bash(npx:*)`, not as their own entries), `scripts/**`, `.githooks/**`, full `git` (commit and push are
@@ -479,9 +423,10 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   `kill`/`pkill`, `curl`, `pip`, and — decisively — `bash:*`, `sh:*`, `env:*`, `xargs:*`, `timeout:*`,
   `command:*` and `nohup:*`. `bash -c '<anything>'` being pre-approved means the granular enumeration
   provides **no containment whatsoever**; it only removes prompts. With `deny: []` and
-  `defaultMode: auto` the real control is the discipline in this file and in `BLAST-RADIUS.md`, plus the
-  harness classifier — nothing else. That is the accepted cost of the no-dead-ends ruling, and it should be
-  stated rather than dressed up. (An earlier version of this bullet called the list "the usual read-only
+  `defaultMode: auto` the real controls are the global firewall and permission engine (on the
+  developer's machine; hook asks fire whatever this list allows), the discipline in this file and in
+  `BLAST-RADIUS.md`, and the harness classifier. In a cloud session only the last two remain. That
+  should be stated rather than dressed up. (An earlier version of this bullet called the list "the usual read-only
   shell tools", which was false of at least 16 entries.)
   **Considered and declined:** a `Read`/`Edit` deny on `.env`, which rent-watch carries and its cross-repo
   audit recommends to all four siblings on the grounds that a path deny has no dead-end failure mode. This

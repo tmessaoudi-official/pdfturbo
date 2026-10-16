@@ -35,22 +35,19 @@
 /public/pdfjs/
 /public/pdfjs
 # Local QA / visual-evidence screenshots — never committed (binary, ad-hoc).
-# NOTE: because these are gitignored AND the cloud container is reclaimed, a screenshot
-# left here is evidence nobody will see — deliver it with SendUserFile in the same turn.
+# NOTE: because these are gitignored, a screenshot left here is evidence nobody will see —
+# present it in the same turn (SendUserFile, or Read the PNG into the transcript).
 /qa-shots/
 # Claude runtime state: var/claude/{handoff,reports,sleuth,inspections,gaps,forge,memory,logs}
-# written by the PreCompact hook and the review skills. Throwaway by design — survives
-# compaction inside a session, dies with the container, never committed.
+# written by the review skills and probes. Throwaway by design — local to this machine,
+# never committed.
 /var
 # Belt-and-braces: never commit a copy of ~/.claude or ~/.claude.json. Those hold the
-# OAuth account, userID and machineID. scripts/claude-bootstrap/install.sh is one-directional
-# (repo → ~/.claude) precisely so this directory is never created; the rule is here anyway.
+# OAuth account, userID and machineID. Nothing in this repo creates this directory (the
+# container-era scripts/claude-bootstrap/ was removed 2026-08-18); the rule stays as defence.
 /claude-bundle/
-# Backups left by scripts/claude-bootstrap/apply-pending-settings.sh — never commit one.
+# Backups of .claude/settings.json (the developer's hand-over scripts make one) — never commit one.
 /.claude/settings.json.bak.*
-# NOT ignored, deliberately: scripts/claude-bootstrap/settings.json.pending. Claude cannot
-# write .claude/settings.json (classifier-blocked), so it commits the change there for the
-# developer to apply locally with apply-pending-settings.sh, which deletes it on success.
 
 # Stray QA artifacts at the repo root. Reviewer probes and screenshots belong in var/claude/** (already
 # ignored); this is the backstop so a `git add -A` on a green run cannot commit one. A root screenshot
