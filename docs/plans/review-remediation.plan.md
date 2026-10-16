@@ -79,6 +79,7 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-17 00:43] AGREED: Row 7 runs as five themed docs-only commits (A certification sync, B git autonomy, C hygiene, D product docs, E memory outside the repo); per-gate certification is advisor() only, STANDARD carve-out (developer, 2026-10-17).
 - [2026-10-17 00:54] ASSUMED (review): Push count: CLAUDE.md § Git autonomy defers to global Rule 10's batch count instead of hard-coding the ruling's 10 — basis: the 2026-10-08 ruling says 'adopt global Rule 10's batch' and the global count moved 10 -> 30 the same day; advisor() agreed (confident pick). Alternative: write 10 as a repo count.
 - [2026-10-17 01:13] ASSUMED (review): Row 7 closed with four repo commits (120158a A, 3a7f7f6 B, c3fc1c7 C, 60901d0 D) plus memory-note edits outside the repo (E); left open on purpose: DOC-13 (P3, hooks untouched — fixed when touched), DOC-14 (global tool), DOC-15 (no release cut); the three settings .bak files were already absent. Evidence cell names the last commit.
+- [2026-10-17 01:19] AGREED: Push: the 12 commits after row 7 (M2/QUAL-1 + row 7) stay local for the Rule 10 batch or the next milestone, instead of a push at this stop; the M2 fixes stay undeployed until then (developer, 2026-10-17).
 
 ## Formal Plan
 
