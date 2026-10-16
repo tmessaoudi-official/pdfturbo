@@ -39,10 +39,10 @@ still show (output parity). In every mode, still stop for the cases in § "When 
 here" of that skill — a change that would weaken a documented invariant or a declared ceiling, a
 `SCHEMA_VERSION` bump — and for a destructive step.
 
-## Certification ladder — governs every 3C/6C gate
+## Certification ladder — per-task gates and the milestone panel
 
 `advisor()` **is available on this machine** and is the FIRST rung: call it
-per the global framework. The panel of record for gate rounds is the set of **fresh-context,
+per the global framework, through `/certify`. The panel of record is the set of **fresh-context,
 read-only, adversarial reviewer subagents** in `.claude/agents/`. Three lenses, one agent each:
 
 | Lens | Agent |
@@ -52,27 +52,27 @@ read-only, adversarial reviewer subagents** in `.claude/agents/`. Three lenses, 
 | completeness + blast-radius | `completeness-reviewer` |
 
 Each reviewer **reads the actual diff, code and tests itself** — never certify from the author's
-narrative — and is chartered to REFUTE, not approve. `/converge` runs the panel mechanically.
+narrative — and is chartered to REFUTE, not approve. `/certify` runs the panel; `/pdf-lenses`
+§ "Panel lenses" names the `subagent_type` per lens and the output contract (the agents return
+findings, the orchestrator writes `var/claude/raw/`).
 
-**Tier: MAXIMAL by default** — all three lenses, **two consecutive fully-clean rounds**, any finding
-resets the counter, cap 5 rounds → then ask via `AskUserQuestion` (never silently proceed). Rationale: this
-repo's severe bugs have not been confined to one subsystem — a destroyed `w:drawing` on DOCX save, an
-Android keyboard loop that made typing impossible, OCR dead in production for three reasons, an
-invisible watermark. A path allowlist would have to cover nearly everything, so a single rule is both
-safer and cheaper to follow.
+**Milestone: one three-lens panel on a frozen commit** (developer ruling 2026-10-08, replacing the
+former MAXIMAL two-consecutive-clean-rounds tier): all three lenses, clean = zero findings; a finding
+→ fix → re-round, cap 5 rounds → then ask via `AskUserQuestion` (never silently proceed). All three
+lenses, always, because this repo's severe bugs have not been confined to one subsystem — a destroyed
+`w:drawing` on DOCX save, an Android keyboard loop that made typing impossible, OCR dead in production
+for three reasons, an invisible watermark.
 
-> **Per task vs milestone (2026-09-27):** MAXIMAL is the milestone ceiling. Per task the global tier
-> applies: in autonomous mode (this tree) the project's certification schedule
-> (`~/.claude/projects/-stack-projects-pdfturbo/certification-schedule`, asked once), in spec mode the
-> per-gate tier question — `advisor()` recommended (economize ruling, 2026-08-21).
+**Per task**, the global tier applies: in autonomous mode the project's certification schedule
+(`~/.claude/projects/-stack-projects-pdfturbo/certification-schedule`, asked once), in spec mode the
+per-gate tier question — `advisor()` recommended (economize ruling, 2026-08-21).
 
 **The one carve-out is mechanical, not a judgement call:** if `git diff --name-only` touches no
 `src/`, STANDARD is enough — one reviewer, three lenses in a single pass, one clean round. Locale
 strings, docs and `CLAUDE.md` edits qualify. Anything touching `src/` does not.
 
-Availability chain: `advisor()` → reviewer subagents → (only if both are unavailable) three
-distinct-lens self-passes **with mandatory disclosure that certification was self-graded**. Never
-silently skip a gate. The deploy gate below is the floor, never the certification.
+When `advisor()` or subagents are unavailable, the global certification ladder (Phase 3C) applies.
+The deploy gate below is the floor, never the certification.
 
 ## Git autonomy — overrides global Rule 10
 
@@ -124,8 +124,10 @@ follow:
 ## Plans live in the repo
 
 Every plan or spec produced here is persisted at **`docs/plans/<topic>.plan.md`**, each carrying its
-own `## Decisions Log` (`- [YYYY-MM-DD HH:MM] AGREED: <one-sentence decision>`), appended in the same
-change as the ruling. A plan in the repo survives any one machine and lands in the same commit as the
+own `## Decisions Log` (`- [YYYY-MM-DD HH:MM] AGREED: <one-sentence decision>`, or `ASSUMED (review):`
+for a pick Claude made on its own), appended in the same change as the ruling — always with
+`bash ~/.claude/bin/project-state.sh --append-decision <plan> <AGREED|ASSUMED> "<text>"`, which stamps
+from the clock (hand-typed stamps have run ahead of their commits). A plan in the repo survives any one machine and lands in the same commit as the
 code it governs — an out-of-repo plan file is never the record of truth. There is no plan-location
 sentinel to ask about.
 
@@ -133,8 +135,10 @@ sentinel to ask about.
 `docs/archive/plans/` (and `docs/archive/specs/` if specs ever exist), so `docs/plans/` holds only
 LIVE plans and a glob of that directory is always the current work. This **supersedes the global
 framework's Phase 8 delete-the-plan lifecycle for this repo** — there is exactly one lifecycle rule
-here, and it is this one. An archived plan is READ-ONLY history: cite it, never take instructions
-from it.
+here, and it is this one. Archiving is that close: run
+`bash ~/.claude/bin/project-state.sh --append-ledger <plan>` first (so `/progress` velocity survives),
+then `git mv` the plan and clear the session's active-plan pointer. An archived plan is READ-ONLY
+history: cite it, never take instructions from it.
 
 There is no separate roadmap SSOT or decision register: the plan file is the plan, and a ruling that
 outlives it graduates into a **§ Gotchas** entry below — which is what makes that section this

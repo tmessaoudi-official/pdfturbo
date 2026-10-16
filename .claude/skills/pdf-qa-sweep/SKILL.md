@@ -130,16 +130,15 @@ The driver reports facts. You decide what they mean.
 ## Visual evidence — CAPTURED IS NOT DELIVERED
 
 `var/claude/` is gitignored. A screenshot left on disk is evidence
-**nobody will ever see**. For anything with a rendered surface, attach the before/after with
-**`SendUserFile` in the same turn** — see `CLAUDE.md` Rule 6 / the pdfturbo amendment. A report that
+**nobody will ever see**. For anything with a rendered surface, present the before/after **in the
+same turn** — `SendUserFile`, or the PNG `Read` into the transcript (global Rule 6, visual evidence). A report that
 says "screenshots saved to var/claude/…" has produced no Coverage evidence at all.
 
 ## Certify before reporting
 
-`advisor()` does not exist here. Run the ladder in `CLAUDE.md` § Certification ladder against your
-findings — the three reviewer agents in `.claude/agents/`, or, if subagents are unavailable, three
-distinct-lens self-passes **with explicit disclosure that certification was self-graded**. The lenses
-that matter for a sweep:
+Certify the findings via `/certify` (the tier comes from the mode and the project's certification
+schedule; the panel agents are named in `/pdf-lenses` § "Panel lenses"). The lenses that matter for a
+sweep:
 
 - **Coverage** — which controls never got clicked, and why? Which feature flags were off, hiding
   surface entirely? (`VITE_FEATURE_*` — a flag-off run silently has less to test.)
@@ -188,6 +187,6 @@ Set by the model-assignment audit (decision D5, 2026-09-29; source table `projec
 
 | Agent | model | why |
 |---|---|---|
-| the three reviewers by name (completeness, export-fidelity, safety-promises) | the reviewer model — `opus` by default (their agent files also pin `opus`) | certification is judgment work |
+| the three reviewers by name (completeness, export-fidelity, safety-promises) | the reviewer model — `opus` by default (their agent files also pin `opus`, as a fallback only: the Agent call's `model:` wins) | certification is judgment work |
 
 Reviewer model: take the pre-selected value exactly as `/certify` § 3 step 1b resolves it (stored value or `opus`) and ask it as this skill's Model ask above — one question, not two — then pass the answer as `model:` on each reviewer Agent call.

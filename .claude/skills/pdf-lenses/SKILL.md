@@ -2,7 +2,7 @@
 name: pdf-lenses
 description: >
   MANDATORY companion to every global review skill run in pdfturbo (/sweep, /sleuth, /inspect, /gaps,
-  /forge, /cross-check, /converge, /pre-commit, /aggregate-findings) — load it first: the pdfturbo
+  /forge, /cross-check, /converge, /certify, /pre-commit, /aggregate-findings) — load it first: the pdfturbo
   review dimensions, sleuth lens K and the repo conventions those skills lack.
 ---
 
@@ -19,11 +19,25 @@ skills: run the global skill for its machinery, with everything below folded int
 - **Non-blocking closes — no interrupts.** End with the findings and a plainly-stated offer
   (`N findings (P0:a P1:b P2:c) — say which to fix`), never a blocking question. The standing
   directive for this repo is no interrupts on routine work.
-- **`/converge` runs autonomous by default here** at the tier CLAUDE.md § "Certification ladder"
-  mandates. The three lenses are the repo agents: `export-fidelity-reviewer`,
-  `safety-promises-reviewer`, `completeness-reviewer`.
-- **Project scope only.** `~/.claude/` is the developer's own persistent install, out of this
-  repo's audit scope — audit it from its own sessions, not from here.
+- **Project scope by default.** `~/.claude/` is the developer's own persistent install. When the
+  developer asks, a read-only sync audit of this repo against `~/.claude` is in scope; never write
+  `~/.claude` from here, and route its fixes to a `~/.claude` session.
+
+## Panel lenses (read by /certify)
+
+`/certify` runs the panel (its § 3); `/converge` is a separate, advisor-certified sweep and does not
+spawn these agents. At a panel gate, spawn one agent per lens with `subagent_type` set to the repo
+agent — never a `general-purpose` agent with a lens prompt:
+
+| Lens | `subagent_type` |
+|---|---|
+| correctness + regression | `export-fidelity-reviewer` |
+| security + safety-promises | `safety-promises-reviewer` |
+| completeness + affected surfaces | `completeness-reviewer` |
+
+Output contract, one owner: the agents have no Write tool and return their findings; the
+orchestrator writes each to `var/claude/raw/<round>-<lens>.md`. The tier (per task, per milestone,
+the no-`src/` carve-out) is CLAUDE.md § Certification ladder.
 
 ## Review dimensions — MANDATORY additions to any sweep/review of this repo
 
@@ -52,18 +66,17 @@ Run these **in addition to** the global skill's own dimensions, on every review:
   three hold; otherwise it silently discards saved sessions.
 - **Visual surface ⇒ pixel evidence.** jsdom exercises no canvas, no rasterization, no pointer
   gestures. A change to a rendered surface needs a `tests/browser/*.browser.test.ts` guard AND a
-  before/after screenshot **delivered via `SendUserFile`** — `/qa-shots/` is gitignored, so a
-  screenshot left on disk is evidence the developer never sees.
+  before/after screenshot **presented in the same turn** (`SendUserFile`, or the PNG `Read` into the
+  transcript — global Rule 6) — `/qa-shots/` is gitignored, so a screenshot left on disk is evidence
+  the developer never sees.
 - **DOCX cardinal rule (P0).** `src/docx/**` edits `word/document.xml` IN PLACE and re-zips. Never
   rebuild via the `docx` writer (it drops every unmodeled part: tables, styles, numbering, headers).
   Anchor `w:p` (containing `w:drawing`, or an internal-only `w:hyperlink`) are immutable boundaries —
   never passed to `setRunsOn`.
 - **3-locale key identity.** `locales/{en,fr,ar}.json` must stay key-identical (a PostToolUse hook
   checks this). New Arabic values are `[Unverified]` until natively reviewed — say so.
-- **Anti-bandaid gate.** For every `||` fallback, `2>/dev/null`, `|| true`, error trap, retry loop,
-  timeout bump or default-value assignment introduced: state the exact failure mode, the *physical*
-  evidence that confirmed it (log, measurement, trace, test output), and whether the root cause is
-  fixed. No evidence ⇒ **P0**, replace it with a root-cause fix.
+- **Anti-bandaid gate.** Global Phase 6's anti-bandaid gate applies — an unevidenced fallback is a
+  **P0** here.
 
 ## Sleuth lens K — MANDATORY additional agent for /sleuth
 
