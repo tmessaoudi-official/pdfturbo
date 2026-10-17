@@ -79,7 +79,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
     built from the file's bytes, not from pdf.js, so it **finishes and saves the document as it was when you started
     the export** — its redactions, annotations and pages included — except the watermark and Bates stamp, which the
     export reads as it reaches each page: after the close the plain pages carry none while redacted pages keep them
-    (M2 round 5, measured by a reviewer's probe on Download; not fixed — neither decides what a redaction removes)
+    [Inferred for the redacted pages] (M2 round 5, measured by a reviewer's probe on a plain page of Download; not fixed — neither decides what a redaction removes)
     [Verified for Download and Download page:
     `tests/export/exportSnapshot.test.ts`, a close while the sources load; Inferred for Flatten, Sanitize, Compress and
     Sign, which build through the same `_assemblePdfDoc`; Export page as image has its own path and no close-mid-export test]. Until

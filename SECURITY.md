@@ -219,7 +219,7 @@ their physical size and the resolution you chose.
 > values, the watermark and Bates settings, the Lock PDF password and the file name — none decides what a redaction
 > removes, and none but the form values can be undone. One consequence is disclosed in `KNOWN_ISSUES.md`: closing the
 > document during a PDF export drops the watermark and Bates stamp from its plain pages while its redacted pages keep
-> them. The fifth round (2026-10-17) found the same race in the other direction — not an export, a write: a text edit
+> them [Inferred for the redacted pages: measured on a plain page only]. The fifth round (2026-10-17) found the same race in the other direction — not an export, a write: a text edit
 > or an OCR searchable layer is built from the file's bytes over several steps, and an undo or redo landing meanwhile
 > was overwritten when the edit was saved, so a deleted word could come back. An edit now refuses to save over bytes it
 > was not built from **[pinned]**.

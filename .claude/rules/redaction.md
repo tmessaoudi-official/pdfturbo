@@ -1287,8 +1287,8 @@ overwritten, so a redone true-edit delete came back (the safety lens's probe: `a
 they built from (`true-edit.md` § "An edit committed over a newer state"). (R5-2, P3) The list of what an export still
 reads live was incomplete: the watermark and Bates settings, the export password and the file name too — none decides
 a redaction, none but the form values has an undo command; a close mid-export leaves the plain (vector) pages without
-the watermark and Bates stamp while redacted pages keep them (the completeness lens's probe: `bates: false` against a
-`true` control), disclosed in `KNOWN_ISSUES.md`, not fixed. (R5-3/R5-4, P3) The R4-1 `[pinned]` grade is narrowed as
+the watermark and Bates stamp while redacted pages keep them [Inferred for the redacted pages] (the completeness
+lens's probe on a plain page: `bates: false` against a `true` control), disclosed in `KNOWN_ISSUES.md`, not fixed. (R5-3/R5-4, P3) The R4-1 `[pinned]` grade is narrowed as
 above. (R5-5/R5-6, P3) The CLAUDE.md index count for `ocr.md` and row 29's Files cell. The correctness lens also
 MEASURED the `KNOWN_ISSUES.md` disposal bound: a text edit that leaves the history mid-export now fails the export with
 `toast.exportFailed`, where `d8db555` shipped a file mixing two versions.
