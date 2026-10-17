@@ -87,6 +87,7 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-17 09:46] ASSUMED (review): Row 9: open P2s (and P1s) that an architecture-plan step already names get an arrow to that step, not a duplicate row (ARCH-2/3/4/5/6/7/8/9/11/12/14, QUAL-21's app._ half, TEST-10); TEST-11 is informational, no row - basis: advisor() agreed at 3C. Alternative: a row per finding.
 - [2026-10-17 09:46] ASSUMED (review): Row 9: TEST-4 (P1, unowned) promoted to row 12 although row 9 names P2s - an unowned P1 is the worse omission; ARCH-21 is a row (28), not an arrow to arch step 5, which narrows ports and does not name it - basis: advisor() agreed at 3C. Alternative: leave TEST-4 unowned; arrow ARCH-21 to step 5.
 - [2026-10-17 09:47] ASSUMED (review): Row 9: SEC-2 (row 14) and TEST-12 (row 21) are marked ask-first and listed under Needs input - basis: the p12 cipher, the passphrase minimum and CI cost are the developer's (pdf-ask-human mandatory cases); advisor() agreed at 3C. Alternative: pick defaults.
+- [2026-10-17 09:55] ASSUMED (review): M2 close reviewer: completeness-reviewer runs on opus - source: default (no model override, no reviewer-model file); STANDARD tier under the CLAUDE.md no-src/ carve-out (9ba51fa..HEAD touches docs/plans/** only)
 
 ## Formal Plan
 
