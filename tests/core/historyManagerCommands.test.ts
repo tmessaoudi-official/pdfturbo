@@ -20,6 +20,7 @@ import {
   ReorderPagesCmd,
   DeletePageCmd,
   AddPagesCmd,
+  InsertBlankPageCmd,
   RotatePageCmd,
   SetPageCropCmd,
   type ElementTransformSnapshot,
@@ -758,5 +759,26 @@ describe('SetPageCropCmd', () => {
     const cmd = new SetPageCropCmd(model, 'nonexistent', { x: 0, y: 0, width: 1, height: 1 }, vi.fn());
     expect(() => cmd.execute()).not.toThrow();
     expect(() => cmd.undo()).not.toThrow();
+  });
+});
+
+describe('InsertBlankPageCmd', () => {
+  // M2 panel round 3 (M2R3-3): the redo re-ran `addBlankPage`, which mints a new id, so a later command on the redo
+  // stack (an annotation placed on the inserted page) named a page that no longer existed.
+  it('Insert blank page: redo after undo brings back the SAME page, at the same place', () => {
+    const model = new DocumentModel();
+    model.addBlankPage(595, 842);
+    model.addBlankPage(595, 842);
+    const mgr = mkMgr();
+    const cmd = new InsertBlankPageCmd(model, 300, 400, 1, vi.fn());
+    mgr.execute(cmd);
+    const inserted = cmd.page;
+    const order = model.pages.map(p => p.id);
+    mgr.undo();
+    expect(model.pages.map(p => p.id)).not.toContain(inserted.id);
+    mgr.redo();
+    expect(model.pages.map(p => p.id)).toEqual(order);
+    expect(model.pages[1]).toBe(inserted);
+    expect(model.currentPageIndex).toBe(1);
   });
 });

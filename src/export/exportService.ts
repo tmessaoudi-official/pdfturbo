@@ -40,6 +40,12 @@ import { withPdfjsAssets } from '../utils/pdfjsParams';
 
 // ── Context interface ────────────────────────────────────────────────────────
 
+/** One export's view of the document — see `ExportService._snapshotNow`. */
+interface ExportSnapshot {
+  pages: DocumentPage[];
+  elements: PDFElement[];
+}
+
 export interface IExportContext {
   documentModel: DocumentModel;
   elements: PDFElement[];
@@ -270,12 +276,26 @@ export class ExportService {
   // ── Public export entry points ───────────────────────────────────────────
 
   /**
-   * The element list as it is NOW, copied. The app's array is live: `closeDocument` empties that very array
-   * (`elements.splice(0)`) and an undo splices it, so an export that read it across its awaits could see a redaction
-   * vanish mid-export and copy the redacted page as vector text (M2 panel round 2). Every export takes it once, at
-   * its start, with the page list.
+   * The document as it is NOW: the page list and the element list, copied TOGETHER, and each page and element
+   * copied too. Both arrays are live — `closeDocument` empties the element array in place, an undo splices either —
+   * so an export that read them across its awaits saw a redaction vanish mid-export and copied the redacted page as
+   * vector text (M2 panel round 2). Taking one list and reading the other live was the same leak by another route:
+   * a page delete undone mid-export came back WITHOUT the redaction the element copy never held (M2R3-1). And the
+   * undo commands write the page or element object itself (`RotatePageCmd`, `SetPageCropCmd`, `MoveResizeCmd`,
+   * `RotateElementCmd`, `TransformAnnotationsCmd`), so a copy of the arrays alone still let an in-place undo reach a
+   * running export, pairing one state's page rotation with the other's boxes (M2 panel round 3).
+   *
+   * Every export takes ONE snapshot, synchronously, before any await that follows its last user-visible check, and
+   * reads only it. One level deep is enough: every command REPLACES a nested value (`crop`, `points`) rather than
+   * editing it, and the crop is copied anyway. An element keeps its prototype, so `instanceof` and its methods work.
+   * Not in it: the ink layer and the form values, read live — neither decides what a redaction removes.
    */
-  private _elementsNow(): PDFElement[] { return this._ctx.elements.slice(); }
+  private _snapshotNow(): ExportSnapshot {
+    return {
+      pages: this._ctx.documentModel.pages.map(p => (p.crop ? { ...p, crop: { ...p.crop } } : { ...p })),
+      elements: this._ctx.elements.map(el => Object.assign(Object.create(Object.getPrototypeOf(el) as object) as PDFElement, el)),
+    };
+  }
 
   async downloadPDF(): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
@@ -318,6 +338,8 @@ export class ExportService {
    */
   async downloadPageRange(indices: number[]): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
+    // The SELECTION is fixed here, before the picker; `_assemblePdfDoc` exports each selected page as its snapshot
+    // has it, by id — so a page deleted while the dialog is open drops out rather than the indices retargeting.
     const pages = indices
       .map(i => documentModel.pages[i])
       .filter((p): p is NonNullable<typeof p> => !!p);
@@ -562,12 +584,12 @@ export class ExportService {
    */
   async exportXfdf(): Promise<void> {
     const { documentModel, reportError, formValues } = this._ctx;
-    const elements = this._elementsNow();
-    if (!documentModel.pageCount) return;
+    const { pages, elements } = this._snapshotNow();
+    if (!pages.length) return;
     try {
       const annots: XfdfAnnot[] = [];
-      for (let i = 0; i < documentModel.pages.length; i++) {
-        const docPage = documentModel.pages[i];
+      for (let i = 0; i < pages.length; i++) {
+        const docPage = pages[i];
         // Redacted overlays are dropped here too: an XFDF carries the annotation's TEXT, so exporting a
         // comment or text box the user had covered would hand it back in a plain-text sidecar file.
         const pageEls = await dropElementsUnderRedactions(elements.filter(el => el.pageId === docPage.id));
@@ -578,7 +600,7 @@ export class ExportService {
           if (a) annots.push(a);
         }
       }
-      const fields = fieldsForExport(await collectFormWidgets(documentModel.pages, documentModel.sourcePdfs, elements), formValues);
+      const fields = fieldsForExport(await collectFormWidgets(pages, documentModel.sourcePdfs, elements), formValues);
       if (!annots.length && !fields.length) { reportError.warn('toast.xfdfNoAnnots'); return; }
       const xml = buildXfdf(annots, fields);
       this._downloadBlob(new Blob([xml], { type: 'application/vnd.adobe.xfdf' }), this._exportBaseName() + '.xfdf');
@@ -600,8 +622,8 @@ export class ExportService {
    * the user explicitly asked for a table by invoking them, and is deliberately NOT in the DOCX flow,
    * where a false positive would silently turn prose into a table.
    */
-  private async _resolveTableGrid(docPage: DocumentPage): Promise<TableGrid | null> {
-    const data = await this._extractPageTableData(docPage);
+  private async _resolveTableGrid(docPage: DocumentPage, elements: readonly PDFElement[]): Promise<TableGrid | null> {
+    const data = await this._extractPageTableData(docPage, elements);
     if (!data) return null;
     return buildTableGrid(data.hRules, data.vRules, data.items, undefined, bidiCellText)
       ?? inferBorderlessGrid(data.items, { cellText: bidiCellText });
@@ -624,7 +646,11 @@ export class ExportService {
     if (target === 'cancelled') return;
     const _prog = progress.begin('progress.extractingTable');
     try {
-      const grid = await this._resolveTableGrid(docPage);
+      // The page as it is once the dialog closes, with the elements of that same moment (M2R3-2: the elements were
+      // read after the page text loaded, so an undone redaction there exported the cell it covered).
+      const snap = this._snapshotNow();
+      const page = snap.pages.find(p => p.id === docPage.id);
+      const grid = page ? await this._resolveTableGrid(page, snap.elements) : null;
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
       const { buildXlsxBytes } = await import('./xlsxWriter');
       const bytes = await buildXlsxBytes(grid);
@@ -659,7 +685,11 @@ export class ExportService {
     if (target === 'cancelled') return;
     const _prog = progress.begin('progress.extractingTable');
     try {
-      const grid = await this._resolveTableGrid(docPage);
+      // The page as it is once the dialog closes, with the elements of that same moment (M2R3-2: the elements were
+      // read after the page text loaded, so an undone redaction there exported the cell it covered).
+      const snap = this._snapshotNow();
+      const page = snap.pages.find(p => p.id === docPage.id);
+      const grid = page ? await this._resolveTableGrid(page, snap.elements) : null;
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
       // Prepend a UTF-8 BOM (#QA-2026-06-23 P3 #28) so Excel auto-detects UTF-8 and renders
       // accented/non-ASCII cells correctly instead of mojibake.
@@ -681,6 +711,7 @@ export class ExportService {
    */
   private async _extractPageTableData(
     docPage: import('../core/documentModel').DocumentPage,
+    elements: readonly PDFElement[],
   ): Promise<{ hRules: RuleRect[]; vRules: RuleRect[]; items: TableTextItem[] } | null> {
     const src = this._ctx.documentModel.sourcePdfs.get(docPage.sourcePdfId);
     if (!src) return null;
@@ -711,7 +742,7 @@ export class ExportService {
     // `/Rotate` bug above — see `redactionRectToPageSpace`, which handles both together.
     const vp = pointViewport(page, { scale: 1, rotation: 0 });
     const totalRot = (((page.rotate ?? 0) + (docPage.rotation ?? 0)) % 360 + 360) % 360;
-    const contentRedactions = this._ctx.elements
+    const contentRedactions = elements
       .filter(el => el.pageId === docPage.id && el.type === 'redaction')
       .map(el => redactionRectToPageSpace(
         el, vp.viewBox, totalRot,
@@ -806,8 +837,12 @@ export class ExportService {
     opts?: { flattenAllForms?: boolean; cleanMetadata?: boolean; keepSharedResources?: boolean },
   ): Promise<import('@cantoo/pdf-lib').PDFDocument> {
     const { documentModel, reportError, formValues } = this._ctx;
-    const elements = this._elementsNow();
-    const docPages = (pagesSubset ?? documentModel.pages).slice();
+    const snap = this._snapshotNow();
+    const { elements } = snap;
+    // A subset (an extract range, the sign-rect box) names its pages; each is exported as the snapshot has it.
+    const docPages = pagesSubset
+      ? pagesSubset.flatMap(p => snap.pages.find(s => s.id === p.id) ?? [])
+      : snap.pages;
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     {
       // P3 (QA sweep 2026-06-19): with opts.cleanMetadata, build the doc with
@@ -934,11 +969,12 @@ export class ExportService {
       let pagesDone = 0;
       // Bates / page numbers reflect the page's FULL-document position (not its
       // index within a subset), so a range export still reads "page 5 of 10".
-      const docTotal = documentModel.pages.length;
+      const docTotal = snap.pages.length;
+      const pageNumberOf = new Map(snap.pages.map((p, i) => [p.id, i + 1]));
       for (const docPage of docPages) {
         const pageElements = elements.filter(el => el.pageId === docPage.id);
         const hasRedaction = pageIsRasterised(docPage, pageElements);
-        const pageNumber = documentModel.pages.indexOf(docPage) + 1;
+        const pageNumber = pageNumberOf.get(docPage.id) ?? 0;
 
         // Blank page: create fresh page at specified dimensions
         if (docPage.sourcePdfId === 'blank') {
@@ -994,8 +1030,8 @@ export class ExportService {
 
   async downloadPage(pageIdx: number): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
-    const elements = this._elementsNow();
-    const docPage = documentModel.pages[pageIdx];
+    const { pages, elements } = this._snapshotNow();
+    const docPage = pages[pageIdx];
     if (!docPage) return;
     const filename = `${this._exportBaseName()}-page${pageIdx + 1}.pdf`;
     // #54: pick the save target inside the click's activation window, BEFORE the
@@ -1013,12 +1049,12 @@ export class ExportService {
       const hasRedaction = pageIsRasterised(docPage, pageElements);
 
       if (hasRedaction) {
-        await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageIdx + 1, documentModel.pageCount);
+        await rasterizePageWithRedactions(srcDocLib, docPage, pageElements, pdfDoc, { rgb, StandardFonts, degrees }, documentModel.watermark, this._ctx.inkLayer, reportError, documentModel.bates, pageIdx + 1, pages.length);
       } else {
         const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDocLib, [docPage.sourcePageNum - 1], { pruneSharedResources: true });
         pdfDoc.addPage(page);
         if (ocProperties) await carryLayers(pdfDoc, ocProperties);
-        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageIdx + 1, documentModel.pageCount);
+        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, pageIdx + 1, pages.length);
       }
 
       const bytes = await this._saveForExport(pdfDoc);
@@ -1043,9 +1079,9 @@ export class ExportService {
    */
   async downloadPageAsImage(pageIdx?: number, opts?: ImageExportOptions): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
-    const elements = this._elementsNow();
+    const { pages, elements } = this._snapshotNow();
     const idx = pageIdx ?? documentModel.currentPageIndex;
-    const docPage = documentModel.pages[idx];
+    const docPage = pages[idx];
     if (!docPage) return;
     const scale  = clamp(opts?.scale ?? IMG_DEFAULTS.scale, IMG_SCALE_MIN, IMG_SCALE_MAX);
     const format: ImageExportFormat = opts?.format ?? IMG_DEFAULTS.format;
@@ -1075,7 +1111,7 @@ export class ExportService {
       if (ocProperties) await carryLayers(pdfDoc, ocProperties);
 
       const pageElements = elements.filter(el => el.pageId === docPage.id);
-      await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, idx + 1, documentModel.pageCount);
+      await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, { rgb, degrees, StandardFonts }, idx + 1, pages.length);
 
       const pdfBytes   = await pdfDoc.save({ useObjectStreams: false });
       const renderDoc  = await pdfjsLib.getDocument(withPdfjsAssets({ data: pdfBytes })).promise;
@@ -1133,8 +1169,8 @@ export class ExportService {
    */
   async renderThumbnailWithOverlays(pageIdx: number, thumbScale = 0.15): Promise<string | null> {
     const { documentModel, inkLayer, reportError } = this._ctx;
-    const elements = this._elementsNow();
-    const docPage = documentModel.pages[pageIdx];
+    const { pages, elements } = this._snapshotNow();
+    const docPage = pages[pageIdx];
     if (!docPage) return null;
 
     const pageElements = elements.filter(el => el.pageId === docPage.id);
@@ -1158,7 +1194,7 @@ export class ExportService {
         const H = docPage.blankHeight ?? 842;
         const blankPage = pdfDoc.addPage([W, H]);
         blankPage.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(1, 1, 1), borderWidth: 0 });
-        await this._applyOverlaysToPage(pdfDoc, blankPage, docPage, pageElements, libs, pageNumber, documentModel.pageCount);
+        await this._applyOverlaysToPage(pdfDoc, blankPage, docPage, pageElements, libs, pageNumber, pages.length);
       } else {
         const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
         if (!srcEntry) throw new Error(`source document ${docPage.sourcePdfId} is not loaded`);
@@ -1166,7 +1202,7 @@ export class ExportService {
         const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDoc, [docPage.sourcePageNum - 1]);
         pdfDoc.addPage(page);
         if (ocProperties) await carryLayers(pdfDoc, ocProperties);
-        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, libs, pageNumber, documentModel.pageCount);
+        await this._applyOverlaysToPage(pdfDoc, page, docPage, pageElements, libs, pageNumber, pages.length);
       }
 
       const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
@@ -1422,14 +1458,14 @@ export class ExportService {
    */
   private async _extractFlowDoc(): Promise<FlowDoc> {
     const { documentModel } = this._ctx;
-    const elements = this._elementsNow();
+    const { pages, elements } = this._snapshotNow();
     const flowDoc: FlowDoc = { pages: [] };
     const formHidden = new FormHiddenTextFinder();
     // Limits row 22 (D11): internal links resolve after every page is built — a link may point forward. `goTo` holds
     // each link's target (source page + view top, crop frame); `flowPageOf` the first exported page per source page.
     const goTo = new Map<string, { srcKey: string; top?: number }>();
     const flowPageOf = new Map<string, FlowPage>();
-    for (const docPage of documentModel.pages) {
+    for (const docPage of pages) {
       // Text the user TYPED on this page (overlay TextElements). `el.text` is logical
       // Unicode, so this exports correctly in DOCX/MD — including Arabic (#4).
       // Interleaved into the source text by reading order on a source page (G12);

@@ -414,3 +414,134 @@ describe('dropElementsUnderRedactions', () => {
     expect(await dropElementsUnderRedactions([negative, red])).not.toContain(negative);
   });
 });
+
+/**
+ * M2 panel round 3 (M2R3-1, M2R3-2). An export took the element list once at its start but kept reading the LIVE
+ * page list (Word / Markdown / text, XFDF) — or read the element list live after its awaits (CSV / Excel). An undo
+ * landing mid-export then desynchronised the two: a deleted page restored by Ctrl+Z came back WITHOUT the redaction
+ * the copy never held, and its covered source text or field value exported. And every list was a shallow copy, so an
+ * in-place undo (a box moved back, a page turned back) still reached the export. Each case fires the undo from inside
+ * the fake pdf.js `getPage` — an await every one of these exports makes — and each has a control showing the probe
+ * sees the secret when nothing covers it.
+ */
+describe('an undo mid-export cannot uncover a redaction (M2R3-1, M2R3-2)', () => {
+  type Page = { id: string; sourcePdfId: string; sourcePageNum: number; rotation: number };
+  const P1: Page = { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 };
+  const P2: Page = { id: 'p2', sourcePdfId: 's1', sourcePageNum: 2, rotation: 0 };
+  /** The secret's widget on page 2, at the secret cell's place (user y 270..281). */
+  const SECRET_WIDGET = { subtype: 'Widget', fieldType: 'Tx', fieldName: 'client', fieldValue: SECRET, rect: [140, 268, 220, 284] };
+  const PUBLIC_ITEMS = [{ str: 'Public page', transform: [11, 0, 0, 11, 40, 300], width: 66, height: 11 }];
+
+  /** Two source pages: page 1 is harmless, page 2 carries the secret (text and a form field). `onGetPage` is the undo. */
+  function twoPageSource(onGetPage: (n: number) => void): unknown {
+    const page = (n: number) => ({
+      rotate: 0,
+      // pdf.js's viewport at /Rotate 0 with no CropBox origin: user space is display space flipped about the page top.
+      getViewport: () => ({
+        width: W, height: H, viewBox: [0, 0, W, H],
+        convertToPdfPoint: (x: number, y: number) => [x, H - y],
+        convertToViewportPoint: (x: number, y: number) => [x, H - y],
+      }),
+      getStructTree: () => Promise.resolve(null),
+      getTextContent: () => Promise.resolve({
+        items: (n === 2 ? tableItems() : PUBLIC_ITEMS).map(it => ({ ...(it as object), fontName: 'g_f1' })), styles: {},
+      }),
+      getOperatorList: () => Promise.resolve({ fnArray: [], argsArray: [] }),
+      getAnnotations: () => Promise.resolve(n === 2 ? [SECRET_WIDGET] : []),
+      commonObjs: { get: () => null, has: () => false },
+      objs: { get: () => null, has: () => false },
+    });
+    return { bytes: new Uint8Array(0), doc: { numPages: 2, getPage: (n: number) => { onGetPage(n); return Promise.resolve(page(n)); } } };
+  }
+
+  /** Every error an export reports. `run` fails on one, so a case can never pass on an export that failed. */
+  const errors: string[] = [];
+  function ctxOf(pages: Page[], elements: unknown[], src: unknown): IExportContext {
+    const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
+    return {
+      documentModel: {
+        get pageCount() { return pages.length; },
+        currentPageIndex: 0,
+        pages,
+        sourcePdfs: new Map([['s1', src]]),
+        watermark: { enabled: false },
+        bates: { enabled: false },
+      },
+      elements,
+      formValues: {},
+      currentFilename: 'report.pdf',
+      exportPassword: null,
+      inkLayer: { getStrokes: () => [] },
+      reportError: { info() {}, warn() {}, error: (k: string, e?: unknown) => { errors.push(`${k}: ${String((e as Error)?.stack ?? e)}`); } },
+      progress: { begin: () => handle },
+      cleanEmptyTextElements() {},
+      renderCurrentPage: () => Promise.resolve(),
+      rebuildElementLayer() {},
+    } as unknown as IExportContext;
+  }
+
+  async function run(svc: ExportService, what: 'md' | 'xfdf' | 'csv' | 'xlsx'): Promise<string> {
+    const out: Blob[] = [];
+    (svc as unknown as { _downloadBlob: (b: Blob) => void })._downloadBlob = b => { out.push(b); };
+    if (what === 'md') await svc.exportAsMarkdown();
+    else if (what === 'xfdf') await svc.exportXfdf();
+    else if (what === 'csv') await svc.exportTableCsv(0);
+    else await svc.exportTableXlsx(0);
+    if (errors.length) throw new Error(errors.splice(0).join('\n'));
+    if (!out.length) throw new Error('the export wrote no file');
+    if (what !== 'xlsx') return out[0].text();
+    // A workbook is a zip; its cells are inline strings in the sheet XML.
+    const { unzipSync, strFromU8 } = await import('fflate');
+    return Object.values(unzipSync(new Uint8Array(await out[0].arrayBuffer()))).map(b => strFromU8(b)).join('\n');
+  }
+
+  const redactionOn = (pageId: string) => new RedactionElement(COVER.x, COVER.y, COVER.width, COVER.height, pageId);
+  /** XFDF reaches a page's frame only for a page with an element, so page 1 carries a harmless text box. */
+  const note = () => Object.assign(new TextElement(10, 10, 'p1', { width: 60, height: 20 }), { text: 'note' });
+
+  /** Page 2 (with its redaction) was deleted; the first `getPage` of the export is where Ctrl+Z lands. */
+  function deletedThenRestored(withNote: boolean) {
+    const pages: Page[] = [{ ...P1 }];
+    const elements: unknown[] = withNote ? [note()] : [];
+    let undone = false;
+    const src = twoPageSource(() => {
+      if (undone) return;
+      undone = true;
+      pages.push({ ...P2 });             // DeletePageCmd.undo puts the page back…
+      elements.push(redactionOn('p2'));  // …and the elements it removed with it
+    });
+    return ctxOf(pages, elements, src);
+  }
+
+  it.each(['md', 'xfdf'] as const)('control (%s): page 2 exported with no redaction shows the secret', async what => {
+    const els: unknown[] = what === 'xfdf' ? [note()] : [];
+    expect(await run(new ExportService(ctxOf([{ ...P1 }, { ...P2 }], els, twoPageSource(() => {}))), what)).toContain(SECRET);
+  });
+
+  it.each(['md', 'xfdf'] as const)('control (%s): page 2 exported WITH its redaction hides the secret', async what => {
+    const els: unknown[] = [redactionOn('p2'), ...(what === 'xfdf' ? [note()] : [])];
+    const text = await run(new ExportService(ctxOf([{ ...P1 }, { ...P2 }], els, twoPageSource(() => {}))), what);
+    expect(text).not.toContain(SECRET);
+  });
+
+  it.each(['md', 'xfdf'] as const)('M2R3-1 (%s): a deleted page restored by an undo mid-export does not export its covered secret', async what => {
+    const text = await run(new ExportService(deletedThenRestored(what === 'xfdf')), what);
+    expect(text).not.toContain(SECRET);
+  });
+
+  it.each(['csv', 'xlsx'] as const)('control (%s): the secret cell exports with no redaction', async what => {
+    expect(await run(new ExportService(ctxOf([{ ...P2, id: 'p1' }], [], twoPageSource(() => {}))), what)).toContain(SECRET);
+  });
+
+  it.each(['csv', 'xlsx'] as const)('M2R3-2 (%s): undoing the redaction while the page text loads does not export the secret', async what => {
+    const elements: unknown[] = [redactionOn('p1')];
+    const src = twoPageSource(() => { elements.splice(0); }); // the redaction's AddElementCmd undone
+    expect(await run(new ExportService(ctxOf([{ ...P2, id: 'p1' }], elements, src)), what)).not.toContain(SECRET);
+  });
+
+  it('in place (csv): the redaction moved off the secret while the page text loads does not export it', async () => {
+    const r = redactionOn('p1');
+    const src = twoPageSource(() => { Object.assign(r, { x: 0, y: 0 }); }); // MoveResizeCmd.undo writes the live object
+    expect(await run(new ExportService(ctxOf([{ ...P2, id: 'p1' }], [r], src)), 'csv')).not.toContain(SECRET);
+  });
+});
