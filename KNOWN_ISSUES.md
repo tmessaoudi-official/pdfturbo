@@ -148,8 +148,9 @@ work in a private/incognito window when editing sensitive documents on a shared 
   spaces are never pruned: pdf.js resolves a colour-space name outside `cs`/`CS` (a
   shading's own `/ColorSpace`, an Indexed or Separation base), so pruning one recoloured kept pages, while a colour
   space draws nothing.
-- **Leaving a page out costs time.** The prune reads every owner that shares resources with a left-out page:
-  deleting the last page of a 142-page corpus file took a median 2.3 s against 0.28 s without it, the 67-page census
+- **Leaving a page out costs time.** The prune reads every owner that shares resources with a left-out page.
+  Current figures, idle machine (row 10, below): about 0.55–0.6 s against 0.1 s for the 142-page file. Historical,
+  before row 10 and at load 20–23: deleting the last page of a 142-page corpus file took a median 2.3 s against 0.28 s without it, the 67-page census
   report 1.3 s against 0.45 s, a 75-page paper 0.30 s against 0.07 s — `copySourcePages` alone, warmed up, five
   alternating runs, measured on the round-8 code (the commit that adds `copySourcePagesRound8.test.ts`, before the
   field-ancestor walk was made lazy), 2026-10-08,
@@ -160,7 +161,12 @@ work in a private/incognito window when editing sensitive documents on a shared 
   same file, after that walk was made lazy: 287 ms against 252 ms on the round-7 code with no prune, 300 against 389 with it (load 17–20),
   and on the final field-key gate 297 against 500 and 422 against 598 (load 24–33) — no slowdown that this noise can show. The profile below is round 6's. A profile puts ~80% of it in pruning resources (reading content, half of all time in tokenizing
   it) and ~5% in the undrawn-key check (`dropsUndrawn`, a transitive `touches`); the removed pages' reachability walk
-  was not listed in the profile. Not optimised — plan row 10.
+  was not listed in the profile. **Row 10 (2026-10-17) replaced the tokenizer in that read with a name-only scan**
+  (`scanNamedOps`), measured on an idle machine for the first time (load ~2; `copySourcePages` alone, warm, five
+  alternating runs, two repetitions, the old code in a worktree at `fffe15f`): the 142-page file 902 / 876 → 612 / 543
+  ms (about 100 ms with no prune), the census report 268 / 271 → 187 / 173 (about 60), the paper 76 / 85 → 58 / 66
+  (about 16). The pruned output is byte-identical before and after on all 15 corpus files, each in three page
+  selections. The rest — pruning the resources, the reachability walk, the copier hook — is not optimised.
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure
   destination (`/SD`) is dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
   every page's marked content.

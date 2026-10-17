@@ -338,6 +338,127 @@ export function groupOps(tokens: CsToken[]): CsOp[] {
   return ops;
 }
 
+/** One operator `scanNamedOps` reports: its first and last operands where they are names (raw, slash included). */
+export interface NamedOp { operator: string; first?: string; last?: string; operands: number }
+
+/** Character classes of `isRegular`, by code: 0 regular, 1 whitespace, 2 delimiter. */
+const CHAR_CLASS = (() => {
+  const t = new Uint8Array(256);
+  for (const c of WHITESPACE) t[c.charCodeAt(0)] = 1;
+  for (const c of DELIMITERS) t[c.charCodeAt(0)] = 2;
+  return t;
+})();
+
+/**
+ * The operators of `src` that are in `wanted`, each with its name operands and operand count — what
+ * `groupOps(tokenizeContentStream(src))` gives for them, token boundaries and the throw on a stray delimiter included,
+ * without building a token for every number, string and array. The SEC-1 prune reads every kept page that shares a
+ * resource with a removed one, and the full tokenizer was half its time (review-remediation row 10). Any lexing
+ * change goes into both: `tests/utils/scanNamedOps.test.ts` compares them.
+ */
+export function scanNamedOps(src: string, wanted: ReadonlySet<string>): NamedOp[] {
+  const out: NamedOp[] = [];
+  const n = src.length;
+  let longest = 2;
+  for (const w of wanted) longest = Math.max(longest, w.length);
+  const cls =(k: number): number => { const c = src.charCodeAt(k); return c > 255 ? 0 : CHAR_CLASS[c]; };
+  const isNumberStart = (c: number): boolean => (c >= 48 && c <= 57) || c === 43 || c === 45 || c === 46;
+  const isDigitOrDot = (c: number): boolean => (c >= 48 && c <= 57) || c === 46;
+  let i = 0;
+  let count = 0;
+  let firstAt = -1, firstEnd = -1, lastAt = -1, lastEnd = -1;
+  const operand = (start: number, isName: boolean): void => {
+    if (count === 0) { firstAt = isName ? start : -1; firstEnd = i; }
+    lastAt = isName ? start : -1; lastEnd = i;
+    count++;
+  };
+  const reset = (): void => { count = 0; firstAt = lastAt = -1; };
+  const skipNumber = (): void => {
+    i++;
+    while (i < n && isDigitOrDot(src.charCodeAt(i))) i++;
+    const e = src.charCodeAt(i);
+    if (e === 101 || e === 69) {
+      let j = i + 1;
+      if (src[j] === '+' || src[j] === '-') j++;
+      const d = src.charCodeAt(j);
+      if (j < n && d >= 48 && d <= 57) {
+        j++;
+        while (j < n && src.charCodeAt(j) >= 48 && src.charCodeAt(j) <= 57) j++;
+        i = j;
+      }
+    }
+  };
+  const skipLiteral = (): void => {
+    i++;
+    let depth = 1;
+    while (i < n && depth > 0) {
+      const ch = src[i];
+      if (ch === '\\') i += 2;
+      else { if (ch === '(') depth++; else if (ch === ')') depth--; i++; }
+    }
+  };
+  const skipHex = (): void => { while (i < n && src[i] !== '>') i++; i++; };
+  const skipRegular = (): void => { while (i < n && cls(i) === 0) i++; };
+  const skipToEol = (): void => { while (i < n && src[i] !== '\n' && src[i] !== '\r') i++; };
+  const skipDict = (): void => {
+    let depth = 0;
+    while (i < n) {
+      if (src.startsWith('<<', i)) { depth++; i += 2; }
+      else if (src.startsWith('>>', i)) { depth--; i += 2; if (depth === 0) break; }
+      else if (src[i] === '(') skipLiteral();
+      else if (src[i] === '<') { const end = src.indexOf('>', i + 1); i = end === -1 ? n : end + 1; }
+      else if (src[i] === '%') skipToEol();
+      else i++;
+    }
+  };
+
+  while (i < n) {
+    const k = cls(i);
+    const ch = src[i];
+    const start = i;
+    if (k === 1) { i++; continue; }
+    if (ch === '%') { skipToEol(); continue; }
+    if (ch === '(') { skipLiteral(); operand(start, false); continue; }
+    if (ch === '<') {
+      if (src[i + 1] === '<') skipDict(); else skipHex();
+      operand(start, false);
+      continue;
+    }
+    if (ch === '[') {
+      // The tokenizer's array parse, item by item, up to the first `]` at any depth.
+      i++;
+      while (i < n && src[i] !== ']') {
+        const c = src[i];
+        if (cls(i) === 1) i++;
+        else if (c === '(') skipLiteral();
+        else if (c === '<') skipHex();
+        else if (c === '/') { i++; skipRegular(); }
+        else if (isNumberStart(src.charCodeAt(i))) skipNumber();
+        else { i++; skipRegular(); }
+      }
+      i++;
+      operand(start, false);
+      continue;
+    }
+    if (ch === '/') { i++; skipRegular(); operand(start, true); continue; }
+    if (isNumberStart(src.charCodeAt(i))) { skipNumber(); operand(start, false); continue; }
+    skipRegular();
+    if (i === start) throw new Error(`Content stream: stray '${src[i]}' at byte ${i}`);
+    // A word longer than every wanted operator (and than `BI`) only ends the operands: not sliced.
+    const word = i - start <= longest ? src.slice(start, i) : '';
+    if (word === 'BI') { i = findInlineImageEnd(src, i); reset(); continue; }
+    if (wanted.has(word)) {
+      out.push({
+        operator: word, operands: count,
+        first: firstAt >= 0 ? src.slice(firstAt, firstEnd) : undefined,
+        last: lastAt >= 0 ? src.slice(lastAt, lastEnd) : undefined,
+      });
+    }
+    reset();
+  }
+  return out;
+}
+
 /** Serialize a single grouped op back to a content-stream fragment. */
 export function serializeOp(op: CsOp): string {
   return op.operator === 'INLINE_IMAGE'

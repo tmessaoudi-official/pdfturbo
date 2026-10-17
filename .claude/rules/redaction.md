@@ -104,6 +104,18 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
 - Measured cost: deleting the last of Publication 17's 142 pages took 3706 ms pruned vs 150 ms (load ~19, round-3
   code); the round-4 re-measure (6510 vs 1278 ms) was an order artefact; round 5's warm median is 11061 vs 127 ms at load ~24 — the plan's § Fragile and `KNOWN_ISSUES.md`
   carry the current figures.
+- **The prune reads a page with `scanNamedOps`, not the full tokenizer (plan row 10, 2026-10-17).** It reports the
+  eight drawing operators (`Do`, `Tf`, `gs`, `scn`, `SCN`, `sh`, `BDC`, `DP`) with their name operands and operand
+  count, lexing exactly as `tokenizeContentStream` does — strings, comments, `<<…>>` with hex and comments inside,
+  arrays up to the first `]`, inline images, the throw on a stray delimiter — so **a lexing change goes into both**:
+  `tests/utils/scanNamedOps.test.ts` compares them on edge cases, 4000 seeded random streams and every stream of the
+  tracked fixtures (0 mismatches on the 5,974 streams of the 15-file corpus, by a probe). A divergence is a leak in one
+  direction (a name in a string counted as drawn keeps the removed page's resource) and a missing resource in the
+  other. Sabotage on `scanNamedOps.test.ts` + the four `copySourcePages*.test.ts` files (329 cases then), each restored with
+  `cmp`: strings not skipped → 210 red; comments → 5; hex inside a dictionary →
+  exactly the InDesign `/ActualText` cases + its edge case; inline images → its edge case + the fuzz; stray delimiter
+  not thrown → 7; `Tf` reading its last operand → 14; `scn` dropped → 7; a one-operand `BDC` naming properties → the
+  case added for it in `copySourcePagesScan.test.ts` (that rule predates row 10 and had no test).
 
 **Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
 - **An ExtGState `/Font [font size]`** sets the font like `Tf`; a Type3 font set that way with no resources of its own

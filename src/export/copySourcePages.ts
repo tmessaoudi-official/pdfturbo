@@ -15,7 +15,7 @@
  * `copySourcePages`.
  */
 import type { PDFArray, PDFDict, PDFDocument, PDFName, PDFObject, PDFPage, PDFRef } from '@cantoo/pdf-lib';
-import { groupOps, tokenizeContentStream } from '../utils/contentStreamEditor';
+import { scanNamedOps } from '../utils/contentStreamEditor';
 
 type Lib = typeof import('@cantoo/pdf-lib');
 
@@ -521,6 +521,8 @@ const STANDARD_CATEGORIES = new Set<string>([...PRUNED, 'ColorSpace', 'ProcSet']
 const FIELD_KEYS = ['T', 'TU', 'TM', 'Ff', 'V', 'DV', 'RV', 'DA', 'DS', 'Q', 'Opt', 'TI', 'I', 'MaxLen', 'AA', 'DR', 'Lock', 'SV'];
 const UNDRAWN = new Set(['PieceInfo', 'Thumb', 'DPart', 'Alternates', 'Metadata', 'AF', 'PtData']);
 type Drawn = Record<Category, Set<string>>;
+/** The operators that draw from resources by name — the only ones `collect` reads. */
+const DRAWING_OPS: ReadonlySet<string> = new Set(['Do', 'Tf', 'gs', 'scn', 'SCN', 'sh', 'BDC', 'DP']);
 const noneDrawn = (): Drawn => ({ XObject: new Set(), Pattern: new Set(), Shading: new Set(), ExtGState: new Set(), Font: new Set(), Properties: new Set() });
 /**
  * One way an owner's resources are read: its content (or a page's whole content) with names resolving in `from`
@@ -823,7 +825,7 @@ class ResourcePruner {
     const { PDFName, PDFDict, PDFStream } = this.lib;
     if (depth > 12) return false;
     let ops;
-    try { ops = groupOps(tokenizeContentStream(content)); } catch { return false; }
+    try { ops = scanNamedOps(content, DRAWING_OPS); } catch { return false; }
     const entry = (cat: Category, name: string) => {
       const sub = resources.lookup(PDFName.of(cat));
       return sub instanceof PDFDict ? this.src.context.lookup(sub.get(PDFName.of(name))) : undefined;
@@ -838,10 +840,8 @@ class ResourcePruner {
       return read().every(c => c !== null && this.collect(c, resources, drawn, seen, depth + 1));
     };
     for (const op of ops) {
-      const first = op.operands[0];
-      const last = op.operands[op.operands.length - 1];
-      const nameOf = (t: typeof first) => (t?.type === 'name' ? decodeName(t.raw) : undefined);
-      const name = op.operator === 'Tf' ? nameOf(first) : nameOf(last);
+      const raw = op.operator === 'Tf' ? op.first : op.last;
+      const name = raw === undefined ? undefined : decodeName(raw);
       if (!name) continue;
       switch (op.operator) {
         case 'Do': {
@@ -909,7 +909,7 @@ class ResourcePruner {
           break;
         }
         case 'sh': drawn.Shading.add(name); break;
-        case 'BDC': case 'DP': if (op.operands.length === 2) drawn.Properties.add(name); break;
+        case 'BDC': case 'DP': if (op.operands === 2) drawn.Properties.add(name); break;
       }
     }
     return true;
