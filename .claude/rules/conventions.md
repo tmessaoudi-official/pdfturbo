@@ -48,3 +48,16 @@ or `contentStreamEditor.ts` as the home of `isArabicText`, `reverseRtlText`, `le
 `src/shared-kernel/text/bidi.ts` and `src/shared-kernel/geometry/matrix.ts`; the old paths re-export them. The
 walker's `Matrix6` and its local `composeCtm` are gone — it composes with `multiplyMatrix(M_cm, ctm)`, pinned
 bit-identical to the old formula by `tests/shared-kernel/geometry/matrix.test.ts`.
+
+### Rect frames are soft brands — `shared-kernel/geometry/frames.ts` (architecture step 3, 2026-10-17)
+
+Every rect converter in `src/utils/geometry.ts` names its frame: `DisplayRect` (editor, rotated, y down),
+`ContentRect` (unrotated, y down, crop-relative), `CropRect` (y up, crop-relative), `AbsRect` (absolute user space)
+and `PageSpaceRect` (x absolute, y down from the crop top — the frame `isItemRedacted` compares in). The brand is an
+OPTIONAL phantom `__frame`, so a plain literal fits any frame and a converter's output passed to a parameter of
+another frame does not compile; nothing exists at run time (comment-stripped JS identical). Bound: a brand lives only
+as far as a typed value flows — a rect stored in a plain-typed model field (a page crop, an element) is unbranded
+again, so tsc checks converter-to-converter chains, not the model. When it landed tsc found 0 wrong-frame callers;
+the shipped frame bugs were already fixed, so this is a fence, not a catch. A new converter takes a brand, never an
+anonymous `{ x: number; y: number; … }` — `tests/shared-kernel/geometry/frames.test.ts` fails on one, and its
+`@ts-expect-error` line is what reds if the brands ever collapse into one.

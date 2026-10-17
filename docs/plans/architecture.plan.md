@@ -14,6 +14,7 @@ pdf-lib coupling.
 - [2026-10-17 01:28] AGREED: PageFrame lands with step 4, its first user, not as an unused type in step 3 (developer, 2026-10-17).
 - [2026-10-17 01:28] AGREED: Certification for steps 0-3: advisor() at each 3C/6C gate, one three-lens panel at the end of step 3 on a frozen commit (developer, 2026-10-17).
 - [2026-10-17 04:03] ASSUMED (review): Step 1 repoints every whole-statement type-only src importer of IErrorReporter, IProgressManager, ToolMode, AppDOMRefs and RuleRect to its vocabulary home (contracts/, types/), not only the plan's named sites; mixed value+type statements and the re-export shims stay — full-set coverage, advisor agreed at 3C round 1.
+- [2026-10-17 04:39] ASSUMED (review): Step 3 adds a fifth soft brand, PageSpaceRect, for redactionRectToPageSpace's hybrid frame (x absolute user space, y down from the crop top - the frame isItemRedacted compares in); the plan row names four, but an unbranded return is the one converter output tsc could never catch, and it is the frame the crop-origin and C22 leaks lived in - basis: advisor agreed at 3C round 1. Alternative: return plain Rect.
 
 ## Target
 
@@ -81,7 +82,7 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 |---|------|------|-------|----------|-------|
 | 0 | Architecture ratchet test | M | done | c1d70fa | tests/tools/** |
 | 1 | Type-only edge fixes | S | done | 34323cb | src/export/**, src/contracts/**, src/core/appContext.ts, src/utils/flowDoc.ts |
-| 2 | Shared kernel part 1 (one Matrix, text-script primitives) | M | doing | - | src/shared-kernel/**, src/utils/** |
+| 2 | Shared kernel part 1 (one Matrix, text-script primitives) | M | done | d1b1a86 | src/shared-kernel/**, src/utils/** |
 | 3 | Coordinate-frame brands (types only) | M | todo | - | src/shared-kernel/**, src/utils/geometry.ts |
 <!-- /progress-block -->
 ### Blocked

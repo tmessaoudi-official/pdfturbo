@@ -3,6 +3,7 @@
  * PDF content space (bottom-left origin, Y-up) and canvas space
  * (top-left origin, Y-down) across page rotation angles.
  */
+import type { AbsRect, ContentRect, CropRect, DisplayRect, InFrame, PageSpaceRect } from '../shared-kernel/geometry/frames';
 
 /** Canvas space → PDF content space for a given rotation (0/90/180/270). */
 export function transformPoint(px: number, py: number, W: number, H: number, totalRot: number): { x: number; y: number } {
@@ -30,8 +31,8 @@ export function transformCanvasPoint(cx: number, cy: number, W: number, H: numbe
   return inverseTransformPoint(pdf.x, pdf.y, W, H, toRot);
 }
 
-/** A rect that may carry the element's own rotation, in degrees about its centre. */
-export interface RotatableRect { x: number; y: number; width: number; height: number; rotation?: number }
+/** A display-space rect that may carry the element's own rotation, in degrees about its centre. */
+export type RotatableRect = DisplayRect & { rotation?: number };
 
 /**
  * The upright box that is guaranteed to contain everything a (possibly rotated) element covers —
@@ -54,8 +55,11 @@ export interface RotatableRect { x: number; y: number; width: number; height: nu
  *
  * Exact identity when `rotation` is absent, 0, or a multiple of 360, so the ~all of pages that
  * never rotate an element are byte-for-byte unaffected. Pure; exported for direct testing.
+ *
+ * It converts no frame — the arithmetic is the same in any — and is typed display → display because every caller
+ * passes an element's rect.
  */
-export function rotatedElementFootprint(rect: RotatableRect): { x: number; y: number; width: number; height: number } {
+export function rotatedElementFootprint(rect: RotatableRect): DisplayRect {
   const x0 = Math.min(rect.x, rect.x + rect.width), x1 = Math.max(rect.x, rect.x + rect.width);
   const y0 = Math.min(rect.y, rect.y + rect.height), y1 = Math.max(rect.y, rect.y + rect.height);
   const upright = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
@@ -90,7 +94,7 @@ export function rotatedElementFootprint(rect: RotatableRect): { x: number; y: nu
 export function redactionRectToContent(
   rect: RotatableRect,
   W: number, H: number, totalRot: number,
-): { x: number; y: number; width: number; height: number } {
+): ContentRect {
   // WS4-B — take the element's OWN rotation into account first, then the page's. Doing it here
   // rather than at each caller is the point: five of the six sites that turn a redaction element
   // into a filter rect reach this function (`redactionRectToPageSpace` delegates to it), so a
@@ -143,7 +147,7 @@ export function redactionRectToPageSpace(
   rect: RotatableRect,
   viewBox: readonly number[],
   totalRot: number,
-): { x: number; y: number; width: number; height: number } {
+): PageSpaceRect {
   const x0 = viewBox[0], y0 = viewBox[1], x1 = viewBox[2], y1 = viewBox[3];
   // Rotation acts on the RENDERED box, so un-rotate within the crop dimensions first, then
   // translate. Composing the other way round would rotate the origin offset too.
@@ -161,9 +165,9 @@ export function redactionRectToPageSpace(
  * `W`/`H` are the UNROTATED content dimensions; `totalRot` is `(page.rotate + userRotation) % 360`.
  */
 export function contentRectToDisplay(
-  rect: { x: number; y: number; width: number; height: number },
+  rect: ContentRect,
   W: number, H: number, totalRot: number,
-): { x: number; y: number; width: number; height: number } {
+): DisplayRect {
   const corners: Array<[number, number]> = [
     [rect.x, rect.y],
     [rect.x + rect.width, rect.y],
@@ -189,9 +193,9 @@ export function contentRectToDisplay(
  * rotates the view around this box — so no rotation term is needed here.
  */
 export function contentCropToPdfCropBox(
-  crop: { x: number; y: number; width: number; height: number },
-  srcCropBox: { x: number; y: number; width: number; height: number },
-): { x: number; y: number; width: number; height: number } {
+  crop: ContentRect,
+  srcCropBox: AbsRect,
+): AbsRect {
   return {
     x: srcCropBox.x + crop.x,
     y: srcCropBox.y + (srcCropBox.height - (crop.y + crop.height)),
@@ -212,9 +216,9 @@ export function contentCropToPdfCropBox(
  * `W`/`H` are the UNROTATED page point dimensions; `totalRot = (page.rotate + userRotation) % 360`.
  */
 export function displayRectToUserSpaceRect(
-  rect: { x: number; y: number; width: number; height: number },
+  rect: DisplayRect,
   W: number, H: number, totalRot: number,
-): { x: number; y: number; width: number; height: number } {
+): CropRect {
   const c = clampContentRect(redactionRectToContent(rect, W, H, totalRot), W, H);
   return { x: c.x, y: H - (c.y + c.height), width: c.width, height: c.height };
 }
@@ -234,10 +238,10 @@ export function displayRectToUserSpaceRect(
  * `(page.rotate + userRotation) % 360`.
  */
 export function displayRectToPageUserSpaceRect(
-  rect: { x: number; y: number; width: number; height: number },
+  rect: DisplayRect,
   viewBox: readonly number[],
   totalRot: number,
-): { x: number; y: number; width: number; height: number } {
+): AbsRect {
   const x0 = viewBox[0], y0 = viewBox[1], x1 = viewBox[2], y1 = viewBox[3];
   // Un-rotate and flip within the CROP dimensions first, then translate — composing the other
   // way round would rotate the origin offset too. Same ordering as redactionRectToPageSpace.
@@ -265,7 +269,7 @@ export function marginsToRect(
   margins: { top: number; right: number; bottom: number; left: number },
   W: number,
   H: number,
-): { x: number; y: number; width: number; height: number } | null {
+): DisplayRect | null {
   const nn = (v: number) => (Number.isNaN(v) ? 0 : Math.max(0, v));
   const left = nn(margins.left);
   const top = nn(margins.top);
@@ -279,11 +283,14 @@ export function marginsToRect(
   return clampContentRect(rect, W, H);
 }
 
-/** Clamp a content-space rect into the `[0,0,W,H]` content box (keeps width/height ≥ 0). */
-export function clampContentRect(
-  rect: { x: number; y: number; width: number; height: number },
+/**
+ * Clamp a content-space rect into the `[0,0,W,H]` content box (keeps width/height ≥ 0). The arithmetic is
+ * frame-agnostic, so the result keeps the input's frame — `marginsToRect` clamps a display rect with it.
+ */
+export function clampContentRect<F extends string>(
+  rect: InFrame<F>,
   W: number, H: number,
-): { x: number; y: number; width: number; height: number } {
+): InFrame<F> {
   const x = Math.max(0, Math.min(rect.x, W));
   const y = Math.max(0, Math.min(rect.y, H));
   const width = Math.max(0, Math.min(rect.width, W - x));
@@ -314,10 +321,10 @@ export function clampContentRect(
  * is asserted rather than reasoned about.
  */
 export function scaleCropToPageBox(
-  crop: { x: number; y: number; width: number; height: number },
+  crop: ContentRect,
   from: { W: number; H: number },
   to: { W: number; H: number },
-): { x: number; y: number; width: number; height: number } {
+): ContentRect {
   if (from.W <= 0 || from.H <= 0) return clampContentRect(crop, to.W, to.H);
   // EXACT identity for equal boxes, short-circuited rather than left to the arithmetic. The centre
   // round-trip `((y + h/2) / H) * H - h/2` is not exact in floating point — it returned
@@ -373,10 +380,10 @@ export function cosSinDeg(deg: number): { c: number; s: number } {
  * `box` is in PDF user space (y up); the result is too.
  */
 export function displayRectOntoBox(
-  rect: { x: number; y: number; width: number; height: number },
-  window: { x: number; y: number; width: number; height: number },
-  box: { x: number; y: number; width: number; height: number },
-): { x: number; y: number; width: number; height: number } {
+  rect: DisplayRect,
+  window: DisplayRect,
+  box: AbsRect,
+): AbsRect {
   const sx = box.width / window.width, sy = box.height / window.height;
   return {
     x: box.x + (rect.x - window.x) * sx,
