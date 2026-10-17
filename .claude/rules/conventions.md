@@ -59,5 +59,6 @@ another frame does not compile; nothing exists at run time (comment-stripped JS 
 as far as a typed value flows — a rect stored in a plain-typed model field (a page crop, an element) is unbranded
 again, so tsc checks converter-to-converter chains, not the model. When it landed tsc found 0 wrong-frame callers;
 the shipped frame bugs were already fixed, so this is a fence, not a catch. A new converter takes a brand, never an
-anonymous `{ x: number; y: number; … }` — `tests/shared-kernel/geometry/frames.test.ts` fails on one, and its
-`@ts-expect-error` line is what reds if the brands ever collapse into one.
+anonymous `{ x: number; y: number; … }` — `tests/shared-kernel/geometry/frames.test.ts` fails on one. Its
+`@ts-expect-error` lines sit on the converter CALLS, with no annotated variable between: one on a variable typed with
+the brand pins the brand type but stays green when a converter's signature goes back to a plain `Rect` (measured).
