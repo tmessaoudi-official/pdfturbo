@@ -207,6 +207,23 @@ answering `true` → the 7 failure cases; each site alone reverted to `return tr
 mutants, Path 1 and Path 2 separately); a successful write answering `false` → exactly the 7 controls; the handler
 branch back to a bare `return` → exactly its case.
 
+### An edit committed over a newer state — R5-1 (M2 round 5, 2026-10-17)
+
+`_applySourcePdfEdit` guarded only its OWN parse (M0 #5: `before` taken at its start, rechecked after `getDocument`).
+Its callers build `newBytes` from `src.bytes` over their own awaits — `textEditHandler` loads `libDoc` when the editor
+OPENS and commits on Enter, seconds later; the OCR searchable layer loads, embeds a font and saves first — so an undo
+or redo in that window left the source on other bytes, and the commit replaced them with an edit of the old base and
+recorded the newer state as `before`. A true-edit delete redone in that window came back (the safety lens's probe,
+real `HistoryManager` + `ReplaceSourcePdfBytesCmd`: `liveAfterCommit: "V1-SECRET-ON-PAGE-3+OCRLAYER"`). The commit now
+takes a REQUIRED `base` — the bytes the caller built from — and discards (silently, like the mid-parse case; the
+callers' success toasts are gated on the result) when `src.bytes !== base`. Required, not optional, so a new caller
+cannot forget it: `tsc` names every call site. The editor carries it as `opts.baseBytes`, read where `libDoc` is loaded.
+Bound: a discarded text edit says nothing — the same as the mid-parse supersession it joins. Guards: the R5-1 case in
+`tests/core/applySourcePdfEdit.test.ts`, one in `tests/handlers/ocrContext.test.ts` and one in
+`tests/handlers/textEditHandler.test.ts`. Sabotage, predicted first, each restored with `cmp`: the base check removed →
+exactly the commit case; OCR passing the source's bytes at commit → exactly the OCR case; the editor passing them at
+Enter → exactly the text-edit case.
+
 ### True text editing engine
 
 `src/utils/contentStreamEditor.ts` can genuinely delete/

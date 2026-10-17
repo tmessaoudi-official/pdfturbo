@@ -44,10 +44,11 @@ function makeApp(): { app: FakeApp; src: SourcePdf } {
   return { app, src };
 }
 
-const run = (app: FakeApp, src: SourcePdf, bytes: Uint8Array) =>
+/** `base` is the bytes the edit was computed from — by default the source's bytes when the commit starts. */
+const run = (app: FakeApp, src: SourcePdf, bytes: Uint8Array, base: Uint8Array = src.bytes) =>
   (PDFTurboApp.prototype as unknown as {
-    _applySourcePdfEdit: (s: SourcePdf, b: Uint8Array, p: string) => Promise<void>;
-  })._applySourcePdfEdit.call(app, src, bytes, 'p1');
+    _applySourcePdfEdit: (s: SourcePdf, b: Uint8Array, p: string, base: Uint8Array) => Promise<boolean>;
+  })._applySourcePdfEdit.call(app, src, bytes, 'p1', base);
 
 describe('_applySourcePdfEdit — TOCTOU / identity guard (M0 #5)', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -97,6 +98,25 @@ describe('_applySourcePdfEdit — TOCTOU / identity guard (M0 #5)', () => {
 
     expect(app.historyManager.canUndo()).toBe(false);
     expect(newDoc.loadingTask.destroy).toHaveBeenCalled();
+  });
+
+  // M2 round 5 (R5-1): the identity check covered only the commit's own parse. A caller builds its new bytes from the
+  // source over its own awaits (the OCR searchable layer, a text edit open while the user types), so an undo or redo
+  // landing THEN was committed over: the edit's old base replaced the user's newer state — a true-edit delete redone
+  // in that window came back. Measured first by the safety lens: `afterUndoOfOcr: "V2-SECRET-DELETED"`.
+  it('discards an edit computed from bytes the source no longer holds (R5-1)', async () => {
+    const { app, src } = makeApp();
+    const base = src.bytes;                                         // what the edit was built from
+    const redone = new Uint8Array([4, 4]);
+    (src as unknown as { bytes: Uint8Array }).bytes = redone;       // a redo landed while it was being built
+    const newDoc = { loadingTask: { destroy: vi.fn().mockResolvedValue(undefined) } };
+    (pdfjsLib.getDocument as unknown as Mock).mockReturnValue({ promise: Promise.resolve(newDoc) });
+
+    expect(await run(app, src, new Uint8Array([9, 9]), base)).toBe(false);
+
+    expect(src.bytes).toBe(redone);                    // the user's newer state stands
+    expect(app.historyManager.canUndo()).toBe(false);  // nothing committed
+    expect(app.reportError.silent).toHaveBeenCalled();
   });
 
   it('auto-undoes and toasts when the post-commit render throws', async () => {

@@ -204,8 +204,10 @@ their physical size and the resolution you chose.
 > the cell it covered. Every export now works from one copy of the pages, the annotations and the source PDFs taken
 > when it starts — each page and annotation copied as well. The milestone-2 review's fourth round (2026-10-17) found two
 > more of the same: the source PDFs were still read live, so undoing a text edit that deleted words, while an export
-> ran, put the deleted words back into a file whose copy no longer held the redaction removed after the edit (Word,
-> Markdown, text, XFDF, and the PDF of a document assembled from several files) **[pinned]**; and **OCR → "Copy text" /
+> ran, put the deleted words back into a file whose copy no longer held the redaction removed after the edit —
+> **[pinned]** for Markdown and for the PDF of a document assembled from several files; Word reads the same text through
+> the same function, protected by construction; XFDF reads the source too and now reads the copy, though no text edit
+> changes what it exports (a form field's value is not page text); and **OCR → "Copy text" /
 > "Export to Word"** burned the redactions only after rendering the page, so undoing one meanwhile left the text under
 > it to be recognised **[pinned]** — the OCR now copies the page's turn and its redactions before rendering. An undo
 > that moves, turns or crops a page or a box in place does not reach a running export either: **[pinned]** for the PDF
@@ -213,8 +215,14 @@ their physical size and the resolution you chose.
 > moved, the page turned); every other export reads the same copy, which is what protects it, without its own test.
 > Whether such an in-place undo ever misplaced a burn in a PDF export before the fix was not measured [Inferred: the
 > rasteriser read the page's rotation, its crop and the boxes at different moments, with awaits between them]; the
-> copy removes the question. Still read as they are when the export reaches them: your handwriting (ink) and the form
-> values — neither decides what a redaction removes.
+> copy removes the question. Still read as they are when the export reaches them: your handwriting (ink), the form
+> values, the watermark and Bates settings, the Lock PDF password and the file name — none decides what a redaction
+> removes, and none but the form values can be undone. One consequence is disclosed in `KNOWN_ISSUES.md`: closing the
+> document during a PDF export drops the watermark and Bates stamp from its plain pages while its redacted pages keep
+> them. The fifth round (2026-10-17) found the same race in the other direction — not an export, a write: a text edit
+> or an OCR searchable layer is built from the file's bytes over several steps, and an undo or redo landing meanwhile
+> was overwritten when the edit was saved, so a deleted word could come back. An edit now refuses to save over bytes it
+> was not built from **[pinned]**.
 
 Redaction rasterises the page, which is what makes it removal-grade — but several exports do not go
 through that path, and until 2026-08-05 each handed the redacted text back:

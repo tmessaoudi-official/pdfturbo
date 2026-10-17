@@ -1258,8 +1258,9 @@ mid-export is now still in the copy, so its page is exported rather than silentl
 (`ocrHandler.ts` `_recognize`) read `app.elements` and the page's rotation AFTER `await pdfPage.render`, so a redaction
 undone during the render left nothing to burn and "Copy text" / "Export to Word" handed back the covered text (the
 safety lens's probe: fills `[]`). It now copies the page's turn and its redactions (prototype kept) before the first
-await, locally — the handler imports nothing new, so the architecture ratchet is untouched. Not covered by that copy:
-`run()`'s searchable mode reads `src.bytes` after `_recognize` — a document write, not an export. (R4-5, P3) The range
+await, locally — the handler imports nothing new, so the architecture ratchet is untouched. `run()`'s searchable mode
+reads `src.bytes` after `_recognize` — a document write, not an export; round 5 found it overwrote a newer state (next
+paragraph). (R4-5, P3) The range
 export's toast counted the selection; it now counts the pages exported and writes nothing when none are left. A table
 export whose page was deleted during the dialog still says "no table found" — no file, wrong cause, a stated bound (the
 native picker is modal).
@@ -1267,9 +1268,27 @@ native picker is modal).
 Guards added: `exportSnapshot.test.ts` (10 — a true-edit undone while the first of two sources loads; the in-place case
 now also edits the crop in place and the mock records `crop`), the M2R3 block (15 — R4-1 for Markdown and XFDF with an
 edited-source control each), the OCR burn block (4 — R4-2 undone, R4-2 moved and turned) and `downloadPageRange.test.ts`
-(5 — the count, the all-deleted refusal). Red first: all five R4 cases and both range cases. Sabotage, predicted
+(5 — the count, the all-deleted refusal). Red first: all five R4 cases and both range cases. **Two R4-1 claims were
+graded past their reach and narrowed in round 5:** the XFDF case is a guard without a product path (a true-edit
+changes page text, never a form field's value — the fixture deletes both), and "Word" is covered by construction
+(`exportAsDocx` reads the same `_extractFlowDoc` the Markdown case drives); there is no document text export. Sabotage, predicted
 first, each landed and restored with `cmp`: flow on live sources → exactly R4-1 Markdown; XFDF widgets on live sources →
 exactly R4-1 XFDF; the PDF source loop on live sources → exactly the two-source case; sources not copied → the 3 R4-1
 cases; the crop not copied → the 3 in-place cases; OCR redactions read after the render → both R4-2 cases; OCR rotation
 read after → exactly the move-and-turn case; the count from the selection → exactly the count case; the empty refusal
 removed → exactly the all-deleted case.
+
+**Round 5 (raw `m2r5-*.md`, frozen `f2f2279`, the 5-round cap) — correctness clean; safety and completeness six.** The
+cap was ruled by the developer: fix all, close on one `advisor()` call. (R5-1, P2, pre-existing) A WRITE had the same
+race: the OCR searchable layer and a text edit build their new bytes from `src.bytes` over their own awaits, and
+`_applySourcePdfEdit` took its `before` only when the commit began — an undo or redo landing in between was
+overwritten, so a redone true-edit delete came back (the safety lens's probe: `afterUndoOfOcr: "V2-SECRET-DELETED"`).
+`_applySourcePdfEdit` now takes a REQUIRED `base` and refuses when `src.bytes !== base`; both callers pass the bytes
+they built from (`true-edit.md` § "An edit committed over a newer state"). (R5-2, P3) The list of what an export still
+reads live was incomplete: the watermark and Bates settings, the export password and the file name too — none decides
+a redaction, none but the form values has an undo command; a close mid-export leaves the plain (vector) pages without
+the watermark and Bates stamp while redacted pages keep them (the completeness lens's probe: `bates: false` against a
+`true` control), disclosed in `KNOWN_ISSUES.md`, not fixed. (R5-3/R5-4, P3) The R4-1 `[pinned]` grade is narrowed as
+above. (R5-5/R5-6, P3) The CLAUDE.md index count for `ocr.md` and row 29's Files cell. The correctness lens also
+MEASURED the `KNOWN_ISSUES.md` disposal bound: a text edit that leaves the history mid-export now fails the export with
+`toast.exportFailed`, where `d8db555` shipped a file mixing two versions.

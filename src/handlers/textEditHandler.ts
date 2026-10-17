@@ -264,7 +264,9 @@ export class TextEditHandler {
 
     // ── True edit first: content-stream surgery on the source PDF ──
     try {
-      const libDoc = await loadPdfDocument(src.bytes, { viewerCheck: 'source' });
+      // The edit is computed from these bytes; the commit refuses it if the source moved on while the user typed (R5-1).
+      const baseBytes = src.bytes;
+      const libDoc = await loadPdfDocument(baseBytes, { viewerCheck: 'source' });
 
       // pdfjs splits a single Tj string at word boundaries, so the clicked item
       // may be a sub-word whose transform[4,5] doesn't match the Tm origin in the
@@ -309,6 +311,7 @@ export class TextEditHandler {
         const editable = getEditableTextAt(libDoc, docPage.sourcePageNum - 1, matchedOrigin, TRUE_EDIT_TOLERANCE);
         this._openTrueEditInput(e, app, {
           libDoc,
+          baseBytes,
           src,
           pageId: docPage.id,
           pageIndex: docPage.sourcePageNum - 1,
@@ -496,6 +499,8 @@ export class TextEditHandler {
     app: IAppContext,
     opts: {
       libDoc: PDFDocument;
+      /** The source bytes `libDoc` was loaded from — the base the commit checks (R5-1). */
+      baseBytes: Uint8Array;
       src: SourcePdf;
       pageId: string;
       pageIndex: number;
@@ -705,7 +710,7 @@ export class TextEditHandler {
           return;
         }
         const newBytes = await opts.libDoc.save();
-        if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
+        if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId, opts.baseBytes)) {
           app.reportError.info('toast.trueTextDeleted');
         }
         return;
@@ -734,7 +739,7 @@ export class TextEditHandler {
             return;
           }
           const newBytes = await opts.libDoc.save();
-          if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
+          if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId, opts.baseBytes)) {
             // One toast per commit: ToastQueue replaces an info/warn on screen at once, so a second one hides the first.
             if (deco.missed) app.reportError.warn('toast.trueEditDecorationSkipped');
             else app.reportError.info('toast.trueTextEdited');
@@ -771,7 +776,7 @@ export class TextEditHandler {
 
       const deco = await applyDecorations();
       const newBytes = await opts.libDoc.save();
-      if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId)) {
+      if (await app._applySourcePdfEdit(opts.src, newBytes, opts.pageId, opts.baseBytes)) {
         // Slice B: 'substituted' means a non-standard embedded font was redrawn in
         // a base-14 substitute — tell the user honestly. Path 1/2 (font kept) → the
         // plain edited toast.

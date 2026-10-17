@@ -407,6 +407,32 @@ describe('TextEditHandler — multi-candidate true-edit fallback', () => {
     expect(infos).not.toContain('toast.trueTextEdited');
   });
 
+  // M2 round 5 (R5-1): the edit is computed from the bytes the editor OPENED on; an undo or redo while the user types
+  // must not be committed over. The commit is told that base and refuses when the source moved on.
+  it('commits against the bytes the editor opened on, not the source at Enter (R5-1)', async () => {
+    const { PDFDocument } = await import('@cantoo/pdf-lib');
+    const edited = new Uint8Array([1]);
+    (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({ save: vi.fn().mockResolvedValue(edited) });
+    const item = makeItem('Heading', 100, 600);
+    mockFindTextOpAt.mockImplementation((_d: unknown, _i: unknown, o: { x: number; y: number }) =>
+      Math.abs(o.x - 100) < 1 && Math.abs(o.y - 600) < 1 ? { fontKey: 'F1', fontSize: 12, fillColor: undefined } : null);
+    mockReplaceTextAt.mockResolvedValue(true);
+
+    const app = makeApp(makeCanvas(), makeFakePage([item], 841));
+    const src = app.documentModel.sourcePdfs.get('src-1') as { bytes: Uint8Array };
+    const opened = src.bytes;
+    (app._applySourcePdfEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    await handler.handleCanvasClick(click(115, 241), app as unknown as Parameters<typeof handler.handleCanvasClick>[1]);
+    src.bytes = new Uint8Array([7]); // an undo while the user types
+
+    const input = document.body.querySelector('.true-edit-input') as HTMLInputElement;
+    input.value = 'Changed';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise<void>(r => { setTimeout(r, 0); });
+
+    expect(app._applySourcePdfEdit).toHaveBeenCalledWith(src, edited, 'page-1', opened);
+  });
+
   it('fires the plain edited toast (not substituted) when the font is kept', async () => {
     const { PDFDocument } = await import('@cantoo/pdf-lib');
     (PDFDocument.load as ReturnType<typeof vi.fn>).mockResolvedValue({

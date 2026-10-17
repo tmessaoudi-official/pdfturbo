@@ -39,8 +39,8 @@ export interface IOcrContext {
   readonly elements: PDFElement[];
   rebuildElementLayer(): void;
   autosave(): void;
-  /** Swap a source PDF's bytes (undoable + persisted); resolves false if discarded. */
-  _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<boolean>;
+  /** Swap a source PDF's bytes (undoable + persisted); resolves false if discarded, or if `base` is no longer its bytes. */
+  _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string, base: Uint8Array): Promise<boolean>;
 }
 
 /**
@@ -204,12 +204,14 @@ export class OcrHandler {
       // inside applySearchableLayerToPdf. It still throws SearchableLayerError(
       // 'ROTATED_PAGE') for a non-cardinal /Rotate — let that propagate so the
       // caller can show the specific "rotated unsupported" message.
-      const newBytes = await applySearchableLayerToPdf(src.bytes, page.sourcePageNum, result.words, scale);
+      // The layer is built from `base`; the commit refuses it if an undo or redo moved the source on meanwhile (R5-1).
+      const base = src.bytes;
+      const newBytes = await applySearchableLayerToPdf(base, page.sourcePageNum, result.words, scale);
       if (!newBytes) return 0;
       // Reuse the true-edit byte-swap: undoable (ReplaceSourcePdfBytesCmd) + persisted.
       // If the swap was discarded (source superseded / error), report no words placed
       // so the caller doesn't falsely claim a searchable layer was added.
-      const committed = await app._applySourcePdfEdit(src, newBytes, page.id);
+      const committed = await app._applySourcePdfEdit(src, newBytes, page.id, base);
       return committed ? placed : 0;
     }
 

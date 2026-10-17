@@ -11,6 +11,10 @@ import type { IErrorReporter } from '../../src/contracts/errorReporter';
 import type { DocumentModel } from '../../src/core/documentModel';
 import type { HistoryManager } from '../../src/core/historyManager';
 
+vi.mock('../../src/ocr/searchableTextLayer', async orig => ({
+  ...(await orig<Record<string, unknown>>()),
+  applySearchableLayerToPdf: vi.fn(),
+}));
 vi.mock('../../src/ocr', () => ({
   recognizePage: vi.fn().mockResolvedValue({ words: [] }),
   resolveLanguage: (l: string) => l,
@@ -42,5 +46,27 @@ describe('OcrHandler depends only on a narrow IOcrContext (M2 #18)', () => {
     const ctx = makeCtx({ sourcePdfId: 'x', sourcePageNum: 0, id: 'p' });
     const h = new OcrHandler(ctx);
     expect(await h.run('eng')).toBe(0);
+  });
+});
+
+describe('the searchable layer commits only over the bytes it was built from (M2 round 5, R5-1)', () => {
+  it('passes the base bytes to the commit, even when the source changed while the layer was built', async () => {
+    const { applySearchableLayerToPdf } = await import('../../src/ocr/searchableTextLayer');
+    const v1 = new Uint8Array([1]);
+    const src = { id: 's', bytes: v1, doc: {} };
+    const ctx = makeCtx({ sourcePdfId: 's', sourcePageNum: 1, id: 'p' }, new Map([['s', src]]));
+    const layered = new Uint8Array([1, 9]);
+    (applySearchableLayerToPdf as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      src.bytes = new Uint8Array([2]); // Ctrl+Y while the layer is built
+      return layered;
+    });
+    const h = new OcrHandler(ctx);
+    (h as unknown as { _recognize: () => Promise<unknown> })._recognize = () => Promise.resolve({
+      result: { words: [{ text: 'Hello', bbox: { x0: 0, y0: 0, x1: 10, y1: 10 }, confidence: 90 }] },
+      scale: 2, userRot: 0, toDisplay: (x: number, y: number) => [x, y],
+    });
+    await h.run('eng', 'searchable');
+    expect(applySearchableLayerToPdf).toHaveBeenCalledWith(v1, 1, expect.anything(), 2);
+    expect(ctx._applySourcePdfEdit).toHaveBeenCalledWith(src, layered, 'p', v1);
   });
 });

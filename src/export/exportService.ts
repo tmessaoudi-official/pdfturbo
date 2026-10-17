@@ -292,7 +292,9 @@ export class ExportService {
    * The source PDFs too (M2 round 4, R4-1): `ReplaceSourcePdfBytesCmd` writes `bytes` and `doc` on the live source
    * object, so a true-edit delete undone mid-export put the deleted text back into a file whose element copy no longer
    * held the redaction removed after the edit. A shallow copy holds, because the command REPLACES both fields.
-   * Not in it: the ink layer and the form values, read live — neither decides what a redaction removes.
+   * Not in it, read live: the ink layer, the form values, the watermark and Bates settings, the export password and the
+   * file name — none decides what a redaction removes (M2 round 5; a close mid-export leaves the plain pages without
+   * the watermark and Bates stamp, disclosed in KNOWN_ISSUES.md).
    */
   private _snapshotNow(): ExportSnapshot {
     const { pages, sourcePdfs } = this._ctx.documentModel;

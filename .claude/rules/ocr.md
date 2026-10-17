@@ -94,7 +94,10 @@ redactions onto the OCR canvas. Ctrl+Z during the render — undoing the redacti
 nothing to burn, and "Copy text" / "Export to Word" handed back the covered text under the usual success toast
 (measured by the safety lens: fills `[]`). It now copies the page's user rotation and its redactions (prototype kept,
 one level — the commands replace nested values) BEFORE the first await, the same rule as `ExportService._snapshotNow`;
-the copy is local, so the handler's imports and the architecture ratchet are unchanged. Not covered: `run()`'s
-searchable mode reads `src.bytes` after `_recognize` — a document write, not an export. Guards: the R4-2 pair in
+the copy is local, so the handler's imports and the architecture ratchet are unchanged. `run()`'s searchable mode
+builds its layer from `src.bytes` over several awaits; round 5 (R5-1) found that an undo or redo landing then was
+overwritten when the layer was committed (a deleted word came back) — it now passes those bytes as `base` and
+`_applySourcePdfEdit` refuses a commit whose base is no longer the source's (`true-edit.md` § "An edit committed over
+a newer state"). Guards: the R4-2 pair in
 `tests/export/redactionLeaks.test.ts` (undone; moved and turned). Full record: `redaction.md` § "A close mid-export
 shipped a redacted page in clear", the round-4 paragraph.

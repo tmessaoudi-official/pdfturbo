@@ -77,7 +77,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
   that moment depends on what it reads:
   - **A PDF or image export** (Download, Download page, Export page as image, Flatten, Sanitize, Compress, Sign) is
     built from the file's bytes, not from pdf.js, so it **finishes and saves the document as it was when you started
-    the export** — its redactions, annotations and pages included [Verified for Download and Download page:
+    the export** — its redactions, annotations and pages included — except the watermark and Bates stamp, which the
+    export reads as it reaches each page: after the close the plain pages carry none while redacted pages keep them
+    (M2 round 5, measured by a reviewer's probe on Download; not fixed — neither decides what a redaction removes)
+    [Verified for Download and Download page:
     `tests/export/exportSnapshot.test.ts`, a close while the sources load; Inferred for Flatten, Sanitize, Compress and
     Sign, which build through the same `_assemblePdfDoc`; Export page as image has its own path and no close-mid-export test]. Until
     the milestone-2 review it read the annotation list live, so a close mid-export shipped a redacted page unredacted.
@@ -85,7 +88,9 @@ work in a private/incognito window when editing sensitive documents on a shared 
     their own failure toast [Inferred: each reaches its own catch; not exercised by a test]. Since the export copies
     the source PDFs when it starts (M2 round 4, 2026-10-17), the same holds when a text edit leaves the undo history
     mid-export — a new edit after an undo releases the document the edit replaced, which the running export may still
-    hold [Inferred: `ReplaceSourcePdfBytesCmd.dispose` destroys the document that is no longer live; not driven].
+    hold: the export then fails with `toast.exportFailed` and writes nothing [Verified by the M2 round-5 correctness
+    reviewer's probe on a Markdown export with the real `HistoryManager` and `ReplaceSourcePdfBytesCmd`; not a
+    committed test — before the copy (`d8db555`) the same probe wrote a file mixing the two versions].
   - **A crop, a signature placement, a page rotation or a true-text edit** started a few milliseconds before the close
     can raise an unhandled error in the console [Inferred: each is a single `getPage` with no catch].
   - **Rendering and thumbnails** settle quietly [Verified: `tests/core/releasedDocument.test.ts` and

@@ -561,7 +561,15 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   // Returns true when the edit was committed; false when it was discarded (parse
   // failure, superseded source, or rolled back after a render error). Callers gate
   // their success toast on the result so a discarded edit never reports success.
-  async _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<boolean> {
+  // `base` is the bytes the caller computed `newBytes` FROM (M2 round 5, R5-1): the caller builds them over its own
+  // awaits — the OCR searchable layer, a text edit open while the user types — so an undo or redo landing then left the
+  // source on other bytes, and committing replaced the user's newer state with the edit's old base (a true-edit delete
+  // redone in that window came back). An edit whose base is no longer the source's bytes is discarded.
+  async _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string, base: Uint8Array): Promise<boolean> {
+    if (src.bytes !== base) {
+      this.reportError.silent(undefined, '_applySourcePdfEdit: source changed while the edit was built');
+      return false;
+    }
     // M0 #5 — snapshot the pre-edit state BEFORE the async parse, so undo restores the
     // exact bytes the edit was computed against rather than whatever the source mutated
     // to while pdf.js parsed (the await gap is a TOCTOU window → silent undo-stack

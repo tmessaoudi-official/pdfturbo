@@ -57,7 +57,7 @@ export interface IAppContext {
   _commitPlacement(mode: 'addText' | 'addImage' | 'addComment' | 'addSignature' | 'addCode', x: number, y: number, w: number, h: number): void;
   /** Create a new editable text box centered at the click point (unified text mode). */
   addTextAtPosition(e: MouseEvent): void;
-  _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string): Promise<boolean>;
+  _applySourcePdfEdit(src: SourcePdf, newBytes: Uint8Array, pageId: string, base: Uint8Array): Promise<boolean>;
   /** Crop a page (or every page with applyToAll) from a drawn display-space rect; null clears. Undoable. */
   cropPage(pageId: string, displayRect: PageCrop | null, applyToAll: boolean): Promise<void>;
   /** F-C C2: "Pick on page" for the e-sign box — a drawn display rect (or null) → prefill + reopen the sign modal. */
