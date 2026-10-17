@@ -175,19 +175,26 @@ work in a private/incognito window when editing sensitive documents on a shared 
   three pairs at load 2.1–3.4, medians: the 142-page file 1102 → 793 ms, the census report 282 → 281, the paper
   95 → 91 (`cost.jsonl`, the `-alt` records) — the gain that remains is on the large file. The
   rest — pruning the resources, the reachability walk, the copier hook — is not optimised.
-- **The prune reads a page with pdf.js's own syntax and operator rules (since 2026-10-17), within three bounds.** It
-  ends an inline image by its filter and pdf.js's `EI` rules, reads arrays, dictionaries, comments and references as
-  pdf.js's parser does, applies pdf.js's operator table and operand counts, and reads a page's content streams back to
-  back. Until 2026-10-17 a JPEG inline image, a comment inside an array, or two content streams read with a line break
-  between them could hide a `/Fm2 Do` that the prune counted as drawn, keeping a removed page's form in the file
-  (S10-1, R2S-1, R2C-1). It refuses the export where pdf.js stops reading the page, and where it cannot follow pdf.js
-  (a filter given by reference, an inline image inside an array or dictionary, among others). The bounds: **(1)** a
-  pattern a kept page names with `scn`/`SCN` is kept under any colour space, while a viewer draws one only under a
-  Pattern colour space, so a removed page's pattern can stay in the file's bytes, drawn by nothing (plan row 33);
-  **(2)** a page holding many inline images whose JPEG or ASCII85 data never ends costs time quadratic in its size, on
-  the main thread — 3.6 s for a 248 KB stream (plan row 34); **(3)** the reading follows pdf.js 6.3.289, and only its
-  operator table is re-derived by a test, so a pdf.js upgrade that changes its parser can diverge until the oracle
-  tests catch it. No corpus file has an inline image in a drawn stream.
+- **The prune reads a page with pdf.js's own syntax and operator rules, and refuses an operand of the wrong type
+  (since 2026-10-17), within four bounds.** It ends an inline image by its filter and pdf.js's `EI` rules, reads
+  arrays, dictionaries, comments and references as pdf.js's parser does, applies pdf.js's operator table and operand
+  counts, and reads a page's content streams back to back. Until 2026-10-17 a JPEG inline image, a comment inside an
+  array, two content streams read with a line break between them, or an operand pdf.js's evaluator stops on (`5 TJ`,
+  then the rest of the page is not drawn) could hide a `/Fm2 Do` that the prune counted as drawn, keeping a removed
+  page's form in the file (S10-1, R2S-1, R2C-1, R3S-1). The export now refuses where pdf.js's lexer, parser or operator
+  reader stop reading the page; on any operand that is not of the type the PDF specification gives its operator
+  (pdf.js stops on some of these and skips others — refusing them all is the safe side, and no corpus page or form
+  has one); on a pattern name that names no tiling or shading pattern; and where it cannot follow pdf.js (a filter
+  given by reference, an inline image inside an array or dictionary, among others). The bounds: **(1)** the prune does
+  not track the colour space, so a pattern a kept page names with `scn`/`SCN` is kept under any colour space, while a
+  viewer draws one only under a Pattern colour space — a removed page's pattern can stay in the file's bytes, drawn by
+  nothing — and a numbers-only `scn` under a Pattern colour space, where pdf.js stops reading the page, is read past
+  (plan row 33); **(2)** a page holding many inline images whose JPEG or ASCII85 data never ends costs time quadratic
+  in its size, on the main thread — 3.6 s for a 248 KB stream (plan row 34); **(3)** the reading follows pdf.js
+  6.3.289, and only its operator table is re-derived by a test, so a pdf.js upgrade that changes its parser can diverge
+  until the oracle tests catch it; **(4)** pdf.js's evaluator was audited for where it stops reading the page, not
+  mirrored: a stop on a well-typed operand that this audit missed would be read past. No corpus file has an inline
+  image in a drawn stream.
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure
   destination (`/SD`) is dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
   every page's marked content.

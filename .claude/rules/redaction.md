@@ -104,9 +104,10 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
 - Measured cost: deleting the last of Publication 17's 142 pages took 3706 ms pruned vs 150 ms (load ~19, round-3
   code); the round-4 re-measure (6510 vs 1278 ms) was an order artefact; round 5's warm median is 11061 vs 127 ms at load ~24 — the plan's § Fragile and `KNOWN_ISSUES.md`
   carry the current figures.
-- **The prune reads a page with `scanNamedOps`, not the full tokenizer (plan row 10, 2026-10-17).** It reports the
-  eight drawing operators (`Do`, `Tf`, `gs`, `scn`, `SCN`, `sh`, `BDC`, `DP`) with their name operands and operand
-  count, lexing exactly as `tokenizeContentStream` does — strings, comments, `<<…>>` with hex and comments inside,
+- **Row 10's first step: a name-only scan instead of the full tokenizer (plan row 10, `daa298a`, 2026-10-17) —
+  `scanNamedOps`'s DEFAULT mode, which the prune no longer uses (next item).** It reports the eight drawing operators
+  (`Do`, `Tf`, `gs`, `scn`, `SCN`, `sh`, `BDC`, `DP`) with their name operands and operand count, lexing exactly as
+  `tokenizeContentStream` does — strings, comments, `<<…>>` with hex and comments inside,
   arrays up to the first `]`, inline images, the throw on a stray delimiter — so **a lexing change goes into both**:
   `tests/utils/scanNamedOps.test.ts` compares them on edge cases, 4000 seeded random streams (`Math.imul`: the first
   generator repeated after 179, S10-2) and every stream of the 40 tracked fixture PDFs (`git ls-files`, 196 streams,
@@ -118,9 +119,9 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   exactly the InDesign `/ActualText` cases + its edge case; inline images → its edge case + the fuzz; stray delimiter
   not thrown → 7; `Tf` reading its last operand → 14; `scn` dropped → 7; a one-operand `BDC` naming properties → the
   case added for it in `copySourcePagesScan.test.ts` (that rule predates row 10 and had no test).
-  **This default mode has no production caller since S10-1** (next item): the prune passes `{ pdfjs: true }`. It stays
-  tokenizer-equal for the true-edit migration (plan row 31), and the fuzz and fixture tests above run it only — the
-  pdf.js mode has its own oracle and differential (next item).
+  Since S10-1 the prune passes `{ pdfjs: true }`, so this mode has no production caller; it stays tokenizer-equal for
+  the true-edit migration (plan row 31), and the fuzz and fixture tests above run it only — the pdf.js mode has its
+  own oracle and differential (next item).
 - **The prune reads a page the way pdf.js's parser and preprocessor do — `scanNamedOps(…, { pdfjs: true })` (S10-1,
   row-10 panel rounds 1 and 2, 2026-10-17).** Round 1: the tokenizer ends an inline image at the first `EI` between
   whitespace; pdf.js (`Parser.makeInlineImage`) ends it by its FIRST filter (`/F` before `/Filter`, an array's first
@@ -137,48 +138,78 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   fixed-arity operator sets surplus leading operands aside and takes them back when short. And a page's streams are
   joined BACK TO BACK (`StreamsSequenceStream.readBlock`), while `contentOf` put a newline between them, so a name or
   an inline image split across two streams, or a comment running into the next one, read differently (R2C-1, P0). So
-  the mode is now a structural mirror rather than a set of ported rules: `pdfjsParser` follows `Parser.getObj`
+  the mode became a structural mirror rather than a set of ported rules: `pdfjsParser` follows `Parser.getObj`
   (arrays to their `]`, dictionaries as pairs, `int int R` as a reference, its two-token look-ahead) and `scanPdfjs`
   follows `EvaluatorPreprocessor.read` — the operator table `PDFJS_OPERATORS` (re-derived from the installed
   `pdf.worker.mjs` by a test), arity, the set-aside operands, the limit of 10 invalid path operators and of 33
-  operands. It THROWS — the export refuses — where pdf.js stops reading the page (a lexer error such as `-x` or `.x`,
-  a stray `)`, an array or dictionary cut off by the end of the stream, an 11th path operator short of operands, a
-  34th operand, an operator past 128 bytes) and where the scan cannot follow it: a filter given by reference, `ID` or
+  operands. **Round 3 found the class one layer further up, in pdf.js's evaluator** (R3S-1, P0): `TJ` iterates its
+  operand, so `5 TJ` throws, the evaluator's outer catch drops the rest of the page under `ignoreErrors`, and a
+  `/Fm2 Do` after it — counted by the scan — is never drawn; `[(a)] Tj`, a bare `5 EI` and a dictionary `Tf` size
+  stop the drawing path the same way (the last one empties the whole operator list), and `handleColorN` throws on a
+  pattern name it cannot resolve under a Pattern colour space (R3S-2). A mirror of the evaluator would be one more
+  layer for the next round to find, so the fix is a RULE: every operand must be of the type PDF 32000 gives its
+  operator (`PDFJS_OPERAND_TYPES`: numbers, strings, names, `TJ`'s array of numbers and strings, `d`'s array of
+  numbers, `BDC`/`DP` properties as a name or dictionary, `EI`'s image; a variable-count colour operator takes
+  numbers and, for `scn`/`SCN`, a final name), and `collect` refuses an `scn`/`SCN` name that is not a tiling pattern
+  (a stream) or a shading pattern. pdf.js stops on some wrong types and tolerates others; the scan refuses them all,
+  the safe side, and that costs nothing measurable: 0 refusals on the 3,604 joined pages and forms of the corpus
+  (`var/claude/row10/refusals-r3.jsonl`). The pattern check refuses under any colour space, because the scan does not
+  track it (row 33). The other resource reads in the evaluator (`Do`, `gs`, `sh`, `cs`, marked content, a tiling
+  pattern's own content, `Tf`'s font) are caught there under `ignoreErrors` and do not stop the page. So it THROWS —
+  the export refuses — where pdf.js's lexer, parser or preprocessor stop reading the page (a lexer error such as `-x`
+  or `.x`, a stray `)`, an array or dictionary cut off by the end of the stream, an 11th path operator short of
+  operands, a 34th operand, an operator past 128 bytes), on an operand of the wrong type, and where the scan cannot
+  follow pdf.js: a filter given by reference, `ID` or
   `BI` inside an array or dictionary, a byte after `ID` that is not whitespace (pdf.js lexes it twice), a DCT marker
   as the last byte of the page (pdf.js loops for ever; reachable since the join fix). pdf.js loses up to two tokens
   before a stop — the scan refuses the whole page, the fail-closed side. Without the option the scan stays equal to
   the tokenizer (previous item), which the true-edit engine still uses (plan row 31). Corpus: the pruned bytes are
-  identical to the code before S10-1 on all 15 files (39 runs, `var/claude/row10/bytes-r2.jsonl`). Cost, the three
+  identical to the code before S10-1 on all 15 files (39 runs, `var/claude/row10/bytes-r2.jsonl`, re-run on the
+  round-3 code as `r3`: 0 of 45 exports refused). Cost, the three
   scans alternating in one process at load ~2.5 (`var/claude/row10/scancost.jsonl`, `r2-final`), plain / pdf.js
   mode / tokenizer: Publication 17's 1,001 streams 184 / 426 / 499 ms, the census report 78 / 123 / 218, the GPT-3
-  paper 8 / 20 / 23 — the mirror still reads faster than the tokenizer did, at about 2.3× the plain scan. **Bounds,
-  stated:** a `scn`/`SCN` name counts as a drawn pattern under any colour space, while pdf.js draws one only under a
+  paper 8 / 20 / 23 — the mirror still reads faster than the tokenizer did, at about 2.3× the plain scan (round 3's
+  type check: Publication 17 439 ms, `r3`). **Bounds, stated:** a numbers-only `scn`/`SCN` under a Pattern colour
+  space stops pdf.js too (`handleColorN` pops a name that is not there), and the scan, which does not track the colour
+  space, keeps reading (row 33); a `scn`/`SCN` name counts as a drawn pattern under any colour space, while pdf.js draws one only under a
   Pattern colour space — an over-keep of the removed page's pattern, which no viewer draws but the bytes carry
   (R2S-3, plan row 33); the DCT and ASCII85 end searches start again after every rejected candidate, so a stream of
   many unterminated images costs quadratic time on the main thread (248 KB took 3.6 s; R2C-2, plan row 34); and the
   mirror follows pdf.js 6.3.289 — only the operator table is re-derived by a test, so a pdf.js upgrade that changes
   `Parser` or the preprocessor diverges silently until the oracle tests below catch it. Guards:
-  `tests/export/inlineImagePdfjs.test.ts` (42, the oracle is pdf.js's own text on the kept page: each case checks what
-  pdf.js draws, what the scan reports and whether the export carries the removed page's form — leak shapes, controls,
-  two-stream joins and the stops), `tests/utils/scanNamedOpsPdfjs.test.ts` (86: the table, every operator run into
-  letters with exactly its operand count, the word rules and the refusals the oracle cannot drive) and
-  `tests/export/prunePdfjsDifferential.test.ts` (1000 seeded streams built from the shapes that have diverged, half
-  split into two streams, pdf.js the oracle: 559 read and equal, 441 refused, 210 drawing a form — all pinned). The
-  differential calls the scan directly, so it cannot see `contentOf`: the stream join is pinned by the oracle's
-  two-stream cases alone. Sabotage, predicted first, each landed and restored with `cmp`, re-measured on the final
-  code (oracle file, unit file; [red] marks a mutant the differential also caught): `collect` without the option → 36 + 0;
-  the DCT finder off → 2 + 2 [red]; ASCII85 off → 1 + 0 [red]; ASCIIHex off → 3 + 0 (its case, `/F` over
-  `/Filter`, the first-filter case) [red]; the binary check off → 4 + 0 [red]; the look-ahead always true → 2 + 0
-  (predicted 3: `-x` after an `EI` is now refused by the parser before the look-ahead) [red]; the NUL rule removed →
-  1 + 0; the greedy split off → 3 + 76 (predicted 75: the `IDx` refusal case also needs the split) [red]; the
-  128-byte throw removed → 0 + 1; `BD` dropped from the table → 0 + 2; the DCT hang guard answering the end → 0 + 1;
-  the whitespace-after-`ID` check removed → 0 + 1 [red]; the reference refusal removed → 0 + 2; `/Filter` read before
-  `/F` → 1 + 0; an array's last filter → 1 + 0; a value-position `>>` closing the dictionary → 1 + 0; a key-position
-  `<<` nesting → 2 + 0 (predicted 1: the value-position case also holds one); `null` kept as an operand → 2 + 0 [red];
-  an unknown operator dropping the operands → 1 + 1 [red]; set-aside operands never taken back → 2 + 0 [red]; no
-  invalid-path limit → 1 + 0; no 33-operand limit → 1 + 0; the end of the stream inside an array tolerated → 1 + 0
-  [red]; the streams joined with a newline again → 3 + 0; references not read → 0 + 2 [red]. Record: `var/claude/row10/sabotage-r2.json`
-  (round 1's, on the ported rules: `sabotage.json`).
+  `tests/export/inlineImagePdfjs.test.ts` (52, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
+  its operator list, the forms told apart by their BBox width — because the two part where the evaluator stops on one
+  path only (R3C-2: the text-only oracle passed shapes pdf.js never paints); each case checks what pdf.js reads, what
+  the scan reports and whether the export carries the removed page's form — leak shapes, controls, two-stream joins,
+  the parser and evaluator stops, a DCT marker ending the page through `contentOf` (R2C-4, R3K-2) and the
+  pattern-name refusal with its control), `tests/utils/scanNamedOpsPdfjs.test.ts` (100: the table, every operator run
+  into letters with exactly its operand count and types — the types written out independently of the scan's table —
+  the word rules, the type refusals and the refusals the oracle cannot drive) and
+  `tests/export/prunePdfjsDifferential.test.ts` (3000 seeded streams built from the shapes that have diverged, half
+  split into two streams; the scan must equal both what pdf.js paints and what its text layer reads: 715 read and
+  equal, 2285 refused, 232 painting a form — all pinned; 1000 seeds before round 3's refusals took most of them, and
+  on the round-2 code the new oracle reds on the type shapes). The differential calls the scan directly, so it cannot
+  see `contentOf` or the pattern check in `collect`: the stream join and the pattern name are pinned by the oracle's
+  cases alone. Sabotage, predicted first, each landed and restored with `cmp`, re-measured on the round-3
+  code (oracle file, unit file; [red] marks a mutant the differential also caught). Round 3's five: the operand types
+  unchecked → 7 + 13 [red]; an unresolved pattern name accepted in `collect` → 1 + 0 (the differential calls the scan
+  directly and cannot see it); `TJ`'s array elements unchecked → 0 + 1 [red]; a dictionary passing as a number → 1 + 1
+  [red] (its first version also let a number pass as properties and reded 34 + 2 — the mutant was wrong, not the guard;
+  corrected and re-run); `EI` taking any operand → 1 + 1 [red]. The round-2 mutants, re-measured: `collect` without the
+  option → 44 + 0 (36 in round 2, plus the seven evaluator stops and the pattern case); the DCT finder off → 3 + 2 [red]
+  (plus the DCT-marker-ending-the-page case); ASCII85 off → 1 + 0 [red]; ASCIIHex off → 3 + 0 [red]; the binary check
+  off → 4 + 0 [red]; the look-ahead always true → 2 + 0 [red] (predicted 3 in round 2: `-x` after an `EI` is refused by the parser before
+  the look-ahead); the NUL rule removed → 1 + 0; the greedy split off →
+  3 + 75 [red] (76 in round 2: `EI` left the per-operator case, which now needs an image operand); the 128-byte throw
+  removed → 0 + 1; `BD` dropped from the table → 0 + 2; the DCT hang guard answering the end → 1 + 1 (plus the
+  DCT-marker-ending-the-page case); the whitespace-after-`ID` check removed → 0 + 1 [red]; the reference refusal
+  removed → 0 + 2; `/Filter` read before `/F` → 1 + 0; an array's last filter → 1 + 0; a value-position `>>` closing
+  the dictionary → 1 + 0; a key-position `<<` nesting → 2 + 0 (predicted 1 in round 2: the value-position case also holds one); `null` kept as an operand → 2 + 0 [red]; an unknown
+  operator dropping the operands → 1 + 1 [red]; set-aside operands never taken back → 2 + 0 [red]; no invalid-path
+  limit → 1 + 0; no 33-operand limit → 1 + 0; the end of the stream inside an array tolerated → 1 + 0 [red]; the
+  streams joined with a newline again → 5 + 0 (3 in round 2, plus the two DCT-marker cases, one stream and split);
+  references not read → 0 + 2 [red]. Record: `var/claude/row10/sabotage-r3.json` (round 2's: `sabotage-r2.json`;
+  round 1's, on the ported rules: `sabotage.json`).
 
 **Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
 - **An ExtGState `/Font [font size]`** sets the font like `Tf`; a Type3 font set that way with no resources of its own

@@ -29,9 +29,14 @@ async function build(page0: Content): Promise<PDFDocument> {
   const d = await PDFDocument.create({ updateMetadata: false });
   const ctx = d.context;
   const font = ctx.register(ctx.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica' }));
-  const form = (t: string) => ctx.register(ctx.stream(`BT /F1 12 Tf 20 200 Td (${t}) Tj ET`,
-    { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 300, 300], Resources: { Font: { F1: font } } }));
-  const resources = ctx.register(ctx.obj({ XObject: { Fm1: form(PUB), Fm2: form(SEC) }, Font: { F1: font } }));
+  // The BBox width tells the two forms apart in pdf.js's operator list: 300 for Fm1, 301 for Fm2.
+  const form = (t: string, w: number) => ctx.register(ctx.stream(`BT /F1 12 Tf 20 200 Td (${t}) Tj ET`,
+    { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, w, 300], Resources: { Font: { F1: font } } }));
+  // A tiling pattern, for the pattern-name cases (round 3, R3S-2).
+  const tile = ctx.register(ctx.stream('0 0 5 5 re f', { Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1,
+    BBox: [0, 0, 10, 10], XStep: 10, YStep: 10, Resources: {} }));
+  const resources = ctx.register(ctx.obj({ XObject: { Fm1: form(PUB, 300), Fm2: form(SEC, 301) }, Font: { F1: font },
+    Pattern: { P1: tile } }));
   const stream = (content: string) => ctx.register(ctx.stream(Uint8Array.from(content, c => c.charCodeAt(0))));
   for (const content of [page0, '/Fm2 Do']) {
     const p = d.addPage([300, 300]);
@@ -41,13 +46,29 @@ async function build(page0: Content): Promise<PDFDocument> {
   return PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
 }
 
-async function pdfjsDraws(page0: Content): Promise<string[]> {
+/**
+ * The forms pdf.js reads on the kept page, by its text layer and by its operator list (what it paints). They part where
+ * pdf.js's evaluator stops on one path only (round 3, R3C-2), so a case pins both.
+ */
+async function pdfjsReads(page0: Content): Promise<{ text: string[]; painted: string[] }> {
   const bytes = await (await build(page0)).save({ useObjectStreams: false });
   const doc = await pdfjs.getDocument({ data: bytes.slice(0), verbosity: 0 }).promise;
-  const text = (await (await doc.getPage(1)).getTextContent()).items.map(i => ('str' in i ? i.str : '')).join('|');
-  await doc.loadingTask.destroy();
-  return [text.includes(PUB) && 'Fm1', text.includes(SEC) && 'Fm2'].filter((x): x is string => !!x);
+  try {
+    const page = await doc.getPage(1);
+    const text = (await page.getTextContent()).items.map(i => ('str' in i ? i.str : '')).join('|');
+    const list = await page.getOperatorList();
+    const painted = new Set<string>();
+    list.fnArray.forEach((fn, k) => {
+      if (fn === pdfjs.OPS.paintFormXObjectBegin) painted.add((list.argsArray[k][1] as number[])[2] === 301 ? 'Fm2' : 'Fm1');
+    });
+    return { text: [text.includes(PUB) && 'Fm1', text.includes(SEC) && 'Fm2'].filter((x): x is string => !!x), painted: [...painted].sort() };
+  } finally { await doc.loadingTask.destroy(); }
 }
+const pdfjsDraws = async (page0: Content): Promise<string[]> => {
+  const { text, painted } = await pdfjsReads(page0);
+  expect(painted, 'pdf.js paints what its text layer reads').toEqual(text);
+  return text;
+};
 
 async function exported(page0: Content): Promise<string> {
   const dest = await PDFDocument.create({ updateMetadata: false });
@@ -121,20 +142,29 @@ const SHAPES: [string, Content, string[]][] = [
 ];
 
 /**
- * [label, kept page content, what pdf.js draws before it stops reading the page]. pdf.js reads two objects ahead, so
- * an error can also cost it the draw just before (round 2, R2S-4).
+ * [label, kept page content, the forms pdf.js's text layer reads, the forms it paints] where pdf.js stops reading the
+ * page. pdf.js reads two objects ahead, so an error can also cost it the draw just before (round 2, R2S-4). The first
+ * ten stop in the lexer, parser or preprocessor; the rest in the evaluator, on an operand of the wrong type, and some on
+ * one of the two paths only (round 3, R3S-1, R3C-1).
  */
-const STOPS: [string, string, string[]][] = [
-  ['a key that is not a name', `/Fm1 Do BI 5 /H 1 ID x EI /Fm2 Do`, ['Fm1']],
-  ['a number pdf.js cannot read after an EI', `/Fm1 Do ${IMG} ID x EI -x /Fm2 Do EI Q`, ['Fm1']],
-  ['a filter array holding a number', `/Fm1 Do ${IMG} /F [/AHx 5] ID 00 > EI /Fm2 Do`, ['Fm1']],
-  ['a number pdf.js cannot read', `/Fm1 Do -x /Fm2 Do`, []],
-  ['a lone dot', `/Fm1 Do .x /Fm2 Do`, []],
-  ['a ) inside an array', `/Fm1 Do [ ) ] /Fm2 Do`, []],
-  ['a ) inside a dictionary', `/Fm1 Do << /A ) >> /Fm2 Do`, ['Fm1']],
-  ['eleven path operators short of operands', `/Fm1 Do l l l l l l l l l l l /Fm2 Do`, ['Fm1']],
-  ['the end of the stream inside an array', `/Fm1 Do [ % ]\n/Fm2 Do`, ['Fm1']],
-  ['more than 33 operands', `/Fm1 Do ${'1 '.repeat(34)}/Fm2 Do`, ['Fm1']],
+const STOPS: [string, Content, string[], string[]][] = [
+  ['a key that is not a name', `/Fm1 Do BI 5 /H 1 ID x EI /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['a number pdf.js cannot read after an EI', `/Fm1 Do ${IMG} ID x EI -x /Fm2 Do EI Q`, ['Fm1'], ['Fm1']],
+  ['a filter array holding a number', `/Fm1 Do ${IMG} /F [/AHx 5] ID 00 > EI /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['a number pdf.js cannot read', `/Fm1 Do -x /Fm2 Do`, [], []],
+  ['a lone dot', `/Fm1 Do .x /Fm2 Do`, [], []],
+  ['a ) inside an array', `/Fm1 Do [ ) ] /Fm2 Do`, [], []],
+  ['a ) inside a dictionary', `/Fm1 Do << /A ) >> /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['eleven path operators short of operands', `/Fm1 Do l l l l l l l l l l l /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['the end of the stream inside an array', `/Fm1 Do [ % ]\n/Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['more than 33 operands', `/Fm1 Do ${'1 '.repeat(34)}/Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['a number for TJ', `/Fm1 Do BT /F1 12 Tf 5 TJ ET /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['a name for TJ', `/Fm1 Do BT /F1 12 Tf /X TJ ET /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['a reference for TJ', `/Fm1 Do BT /F1 12 Tf 1 0 R TJ ET /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['an array for Tj', `/Fm1 Do BT /F1 12 Tf [(qzqz)] Tj ET /Fm2 Do`, ['Fm1'], ['Fm1']],
+  ['a number for TJ, across two streams', [`/Fm1 Do BT /F1 12 Tf 5 T`, `J ET /Fm2 Do`], ['Fm1'], ['Fm1']],
+  ['a bare EI with an operand', `/Fm1 Do 5 EI /Fm2 Do`, ['Fm1', 'Fm2'], ['Fm1']],
+  ['a dictionary for a Tf size', `/Fm1 Do /F1 << >> Tf Q /Fm2 Do`, ['Fm1', 'Fm2'], []],
 ];
 
 describe('the prune ends an inline image where pdf.js does (row 10, S10-1)', () => {
@@ -148,9 +178,35 @@ describe('the prune ends an inline image where pdf.js does (row 10, S10-1)', () 
 });
 
 describe('where pdf.js stops reading the page, the export refuses rather than guess (row 10, S10-1)', () => {
-  it.each(STOPS)('%s', async (_label, page0, draws) => {
-    expect(await pdfjsDraws(page0), 'what pdf.js draws on the kept page').toEqual(draws);
-    expect(() => scanNamedOps(page0, new Set(['Do']), { pdfjs: true })).toThrow(/Content stream/);
+  it.each(STOPS)('%s', async (_label, page0, text, painted) => {
+    expect(await pdfjsReads(page0), 'what pdf.js reads on the kept page').toEqual({ text, painted });
+    expect(() => scanNamedOps(joined(page0), new Set(['Do']), { pdfjs: true })).toThrow(/Content stream/);
     await expect(exported(page0)).rejects.toThrow(ExportResourcesUnreadableError);
+  });
+
+  // pdf.js loops for ever on this page, so it is not asked; the prune refuses it through `contentOf` (R2C-4, R3K-2).
+  it('a DCT marker as the last byte of the page', async () => {
+    await expect(exported(`/Fm1 Do ${IMG} /F /DCT ID \xFF\xC0`)).rejects.toThrow(ExportResourcesUnreadableError);
+    await expect(exported([`/Fm1 Do ${IMG} /F /DCT `, `ID \xFF\xC0`])).rejects.toThrow(ExportResourcesUnreadableError);
+  });
+});
+
+/**
+ * A pattern name pdf.js cannot resolve under a Pattern colour space stops it on the drawing path (`handleColorN`
+ * throws, round 3, R3S-2); the prune refuses such a name, under any colour space (the colour space is row 33).
+ */
+describe('a pattern name the prune cannot resolve refuses the export (row 10, round 3)', () => {
+  it('an unknown name under a Pattern colour space', async () => {
+    const page0 = `/Fm1 Do /Pattern cs /Nope scn /Fm2 Do`;
+    expect(await pdfjsReads(page0)).toEqual({ text: ['Fm1', 'Fm2'], painted: ['Fm1'] });
+    expect(scannedDraws(page0)).toEqual(['Fm1', 'Fm2']);
+    await expect(exported(page0)).rejects.toThrow(ExportResourcesUnreadableError);
+  });
+  it('control: a known tiling pattern is drawn and the export goes through', async () => {
+    const page0 = `/Pattern cs /P1 scn 0 0 10 10 re f /Fm1 Do`;
+    expect(await pdfjsDraws(page0)).toEqual(['Fm1']);
+    const bytes = await exported(page0);
+    expect(bytes.includes(PUB)).toBe(true);
+    expect(bytes.includes(SEC)).toBe(false);
   });
 });

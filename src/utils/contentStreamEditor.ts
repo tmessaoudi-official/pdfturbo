@@ -705,6 +705,39 @@ function pdfjsInlineImageEnd(src: string, from: number): number {
 /** pdf.js's path-construction and path-painting operators (`OPS.moveTo` … `OPS.endPath`), for its invalid-path limit. */
 const PDFJS_PATH_OPERATORS = new Set(['m', 'l', 'c', 'v', 'y', 'h', 're', 'S', 's', 'f', 'F', 'f*', 'B', 'B*', 'b', 'b*', 'n']);
 
+/**
+ * The operand types PDF 32000 gives each operator (Table A.1 with §8–§9), one letter per operand: `n` number, `s`
+ * string, `m` name, `a` array of numbers and strings (`TJ`), `d` array of numbers (`d`), `p` name or dictionary
+ * (`BDC`/`DP` properties), `i` an inline image. A variable-count operator takes numbers, then (`SCN`/`scn`) an optional
+ * name. pdf.js's evaluator stops reading the page on some operands of the wrong type (`5 TJ`, a bare `EI`, a
+ * dictionary `Tf` size — row 10 round 3, R3S-1) and tolerates others; the scan refuses them all, the safe side.
+ */
+const PDFJS_OPERAND_TYPES: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>();
+  const groups: [string, string][] = [
+    ['n', 'w J j M i Tc Tw Tz TL Tr Ts G g'], ['m', 'ri gs CS cs sh Do MP BMC'], ['s', "Tj '"], ['a', 'TJ'],
+    ['i', 'EI'], ['dn', 'd'], ['nn', 'm l Td TD d0'], ['mn', 'Tf'], ['mp', 'DP BDC'], ['nns', '"'],
+    ['nnn', 'RG rg'], ['nnnn', 'v y re K k'], ['nnnnnn', 'cm c Tm d1'],
+  ];
+  for (const [types, names] of groups) for (const name of names.split(' ')) m.set(name, types);
+  return m;
+})();
+
+/** Whether `v` is of operand type `t` (see `PDFJS_OPERAND_TYPES`). */
+function operandIs(v: PdfjsValue, t: string): boolean {
+  if (Array.isArray(v)) {
+    return (t === 'a' || t === 'd') && v.every(e => !Array.isArray(e) && (e.k === 'num' || (t === 'a' && e.k === 'str')));
+  }
+  switch (t) {
+    case 'n': return v.k === 'num';
+    case 's': return v.k === 'str';
+    case 'm': return v.k === 'name';
+    case 'p': return v.k === 'name' || v.k === 'dict';
+    case 'i': return v.k === 'image';
+    default: return false;
+  }
+}
+
 /** A decoded name as content-stream text that `#hh`-decodes back to it. */
 const nameText = (v: string): string =>
   '/' + v.replace(/[^\x21-\x7e]|[#()<>[\]{}/%]/g, c => '#' + c.charCodeAt(0).toString(16).padStart(2, '0'));
@@ -714,7 +747,10 @@ const nameText = (v: string): string =>
  * object through `pdfjsParser`, an inline image as one operand (then its `EI`), `null` dropped, an unknown operator
  * skipped with its operands kept for the next one, a known one taking exactly its count (the extra ones before them
  * are set aside, and a later operator short of operands takes them back), one short of operands skipped, more than
- * 33 operands or more than 10 invalid path operators in a row a stop. Where pdf.js stops reading the page this throws.
+ * 33 operands or more than 10 invalid path operators in a row a stop. It throws where pdf.js's lexer, parser or
+ * operator reader stop, and on an operand not of its specification type — a superset of where pdf.js's evaluator stops
+ * on a malformed operand (`5 TJ`, a bare `EI`; row 10 round 3), audited, not mirrored. A pattern name pdf.js cannot
+ * resolve is refused by the caller, which has the resources.
  */
 function scanPdfjs(src: string, wanted: ReadonlySet<string>): NamedOp[] {
   const out: NamedOp[] = [];
@@ -739,6 +775,11 @@ function scanPdfjs(src: string, wanted: ReadonlySet<string>): NamedOp[] {
         return;
       }
     }
+    const types = PDFJS_OPERAND_TYPES.get(cmd);
+    const typed = types !== undefined
+      ? args.every((v, k) => operandIs(v, types[k]))
+      : args.every((v, k) => operandIs(v, 'n') || (k === args.length - 1 && (cmd === 'scn' || cmd === 'SCN') && operandIs(v, 'm')));
+    if (!typed) throw new Error(`Content stream: an operand of ${cmd} is not of the type the PDF specification gives it`);
     if (wanted.has(cmd)) out.push({ operator: cmd, operands: args.length, first: textOf(args[0]), last: textOf(args[args.length - 1]) });
     args = [];
   };
@@ -767,10 +808,12 @@ function scanPdfjs(src: string, wanted: ReadonlySet<string>): NamedOp[] {
 /** `scanNamedOps` options. */
 export interface ScanOptions {
   /**
-   * Read the way pdf.js reads where the tokenizer does not (review-remediation row 10, S10-1): a run of letters split
-   * into known operators (`qBI` is `q` then `BI`), and an inline image ended by its filter and pdf.js's `EI` rules
-   * rather than at the first `EI` between whitespace. What the SEC-1 prune counts as drawn must be what pdf.js draws.
-   * Without it the scan stays equal to `groupOps(tokenizeContentStream(src))`.
+   * Read the way pdf.js reads (review-remediation row 10, rounds 1–3): its lexer (a run of letters split into known
+   * operators, `qBI` is `q` then `BI`), its parser (arrays, dictionaries as key/value pairs, references, an inline image
+   * ended by its filter and pdf.js's `EI` rules) and its operator reader (`scanPdfjs`: arity, set-aside operands, `null`
+   * dropped, its stops), and refuse any operand not of its specification type (`PDFJS_OPERAND_TYPES`), on which pdf.js's
+   * evaluator can stop reading the page. What the SEC-1 prune counts as drawn must be what pdf.js draws. Without it the
+   * scan stays equal to `groupOps(tokenizeContentStream(src))`.
    */
   readonly pdfjs?: boolean;
 }
@@ -781,7 +824,8 @@ export interface ScanOptions {
  * without building a token for every number, string and array. The SEC-1 prune reads every kept page that shares a
  * resource with a removed one, and the full tokenizer was half its time (review-remediation row 10). Any lexing
  * change goes into both: `tests/utils/scanNamedOps.test.ts` compares them. `opts.pdfjs` departs from the tokenizer
- * where pdf.js does (see `ScanOptions`), pinned against pdf.js itself by `tests/export/inlineImagePdfjs.test.ts`.
+ * where pdf.js does (see `ScanOptions`), pinned against pdf.js itself by `tests/export/inlineImagePdfjs.test.ts` and
+ * `tests/export/prunePdfjsDifferential.test.ts`.
  */
 export function scanNamedOps(src: string, wanted: ReadonlySet<string>, opts: ScanOptions = {}): NamedOp[] {
   if (opts.pdfjs === true) return scanPdfjs(src, wanted);

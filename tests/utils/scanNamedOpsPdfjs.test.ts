@@ -27,15 +27,50 @@ describe('the pdf.js operator table (row 10, S10-1)', () => {
     expect(Object.fromEntries(PDFJS_OPERATORS)).toEqual(Object.fromEntries(derived));
   });
 
-  // `BI` opens an inline image instead (the oracle file's `qBI` case).
-  it.each([...PDFJS_OPERATORS.keys()].filter(k => PDFJS_OPERATORS.get(k) !== null && k !== 'BI'))(
+  // `BI` opens an inline image instead (the oracle file's `qBI` case), and `EI` takes only the image a `BI` makes.
+  it.each([...PDFJS_OPERATORS.keys()].filter(k => PDFJS_OPERATORS.get(k) !== null && k !== 'BI' && k !== 'EI'))(
     'pdf.js reads %s run into letters as itself, then the letters', op => {
-      // Given exactly the operands pdf.js takes (one for a variable count), so the operator is read and not skipped.
+      // Given exactly the operands pdf.js takes (one for a variable count), each of the type the specification gives
+      // it, so the operator is read and not skipped or refused.
       const [count, variable] = PDFJS_OPERATORS.get(op) as readonly [number, boolean];
-      const operands = variable ? 1 : count;
-      expect(pdfjs(`${'/A '.repeat(operands)}${op}xxxxx`, [op])).toEqual(
-        [{ operator: op, operands, first: operands ? '/A' : undefined, last: operands ? '/A' : undefined }]);
+      const types = variable ? (op === 'scn' || op === 'SCN' ? 'm' : 'n') : OPERAND_TYPES[op] ?? '';
+      expect(types).toHaveLength(variable ? 1 : count);
+      const operands = [...types].map(t => SAMPLE[t]);
+      const name = (k: number) => (operands[k] === '/A' ? '/A' : undefined);
+      expect(pdfjs(`${operands.map(o => `${o} `).join('')}${op}xxxxx`, [op])).toEqual(
+        [{ operator: op, operands: operands.length, first: name(0), last: name(operands.length - 1) }]);
     });
+});
+
+/** PDF 32000's operand types (Table A.1), written out independently of the scan's table, and one sample of each. */
+const OPERAND_TYPES: Record<string, string> = {
+  w: 'n', J: 'n', j: 'n', M: 'n', i: 'n', Tc: 'n', Tw: 'n', Tz: 'n', TL: 'n', Tr: 'n', Ts: 'n', G: 'n', g: 'n',
+  ri: 'm', gs: 'm', CS: 'm', cs: 'm', sh: 'm', Do: 'm', MP: 'm', BMC: 'm', Tj: 's', "'": 's', TJ: 'a',
+  d: 'dn', m: 'nn', l: 'nn', Td: 'nn', TD: 'nn', d0: 'nn', Tf: 'mn', DP: 'mp', BDC: 'mp', '"': 'nns',
+  RG: 'nnn', rg: 'nnn', v: 'nnnn', y: 'nnnn', re: 'nnnn', K: 'nnnn', k: 'nnnn',
+  cm: 'nnnnnn', c: 'nnnnnn', Tm: 'nnnnnn', d1: 'nnnnnn',
+};
+const SAMPLE: Record<string, string> = { n: '1', s: '(a)', m: '/A', a: '[(a) 2]', d: '[1 2]', p: '/A' };
+
+describe('scanNamedOps refuses an operand of the wrong type (row 10, round 3)', () => {
+  // pdf.js's evaluator stops reading the page on some of these (R3S-1: `5 TJ`, `[(a)] Tj`, a bare `EI`, a dictionary
+  // `Tf` size) and skips others; the scan refuses every one, the safe side. The oracle file shows what pdf.js does.
+  it.each([
+    ['a number for TJ', '5 TJ'], ['a name for TJ', '/X TJ'], ['true for TJ', 'true TJ'], ['a reference for TJ', '1 0 R TJ'],
+    ['a name inside a TJ array', '[/A] TJ'], ['an array for Tj', '[(qzqz)] Tj'], ['a dictionary for a Tf size', '/F1 << >> Tf'],
+    ['a bare EI with an operand', '5 EI'], ['a string inside a d array', '[(a)] 0 d'], ['a name for w', '/A w'],
+    ['a name before the last scn operand', '/A 1 scn'], ['a name for sc', '/A sc'], ['a dictionary for Do', '<< >> Do'],
+  ])('%s', (_label, op) => {
+    expect(() => pdfjs(`/Fm1 Do ${op} /Fm2 Do`)).toThrow(/not of the type/);
+  });
+
+  it('a bare EI with no operand is skipped, as pdf.js skips it', () => {
+    expect(pdfjs('EI /Fm1 Do')).toEqual([{ operator: 'Do', operands: 1, first: '/Fm1', last: '/Fm1' }]);
+  });
+
+  it('a properties dictionary and a final pattern name are of their type', () => {
+    expect(pdfjs('/OC << /A 1 >> BDC /Fm1 Do EMC 1 0 0 /P1 scn', ['Do', 'scn'])).toHaveLength(2);
+  });
 });
 
 describe('scanNamedOps reads a word the way pdf.js does (row 10, S10-1)', () => {

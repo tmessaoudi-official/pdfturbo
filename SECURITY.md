@@ -65,14 +65,16 @@ reading the code. Both are said plainly instead of implied to be measured.
 > a form or pattern it draws, an annotation's appearance or a Type3 font. Wherever a kept page, form, pattern,
 > appearance, font or form field's default resources shares resources with a removed page, the export keeps only the
 > entries it draws — the way pdf.js reads it, including a font set through a graphics state, a page whose content
-> stream carries resources of its own, and a page's content read with pdf.js's own syntax and operator rules (since
-> 2026-10-17: a picture's data, a comment inside a list or two content streams read as one could hide a drawing
-> instruction the export counted and no viewer runs; the bounds of that reading are listed in `KNOWN_ISSUES.md`). When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
+> stream carries resources of its own, and a page's content read with pdf.js's own syntax and operator rules, an
+> operand of the wrong type refused (since 2026-10-17: a picture's data, a comment inside a list, two content streams
+> read as one, or a malformed instruction that makes the viewer stop reading the page could hide a drawing instruction
+> the export counted and no viewer runs; the bounds of that reading are listed in `KNOWN_ISSUES.md`). When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
 > message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
 > is pinned by a test that finds the removed page's text in the source and not in the export
 > (`tests/export/copySourcePages.test.ts`, `copySourcePagesInventory.test.ts`, `copySourcePagesRound7.test.ts`,
-> `copySourcePagesRound8.test.ts`, `inlineImagePdfjs.test.ts` and `prunePdfjsDifferential.test.ts` in the same folder,
-> and `tests/browser/redaction-orphan-leak.browser.test.ts`). **Not covered,
+> `copySourcePagesRound8.test.ts` and `inlineImagePdfjs.test.ts` in the same folder, and
+> `tests/browser/redaction-orphan-leak.browser.test.ts`; `prunePdfjsDifferential.test.ts` checks the page reading
+> against pdf.js without exporting). **Not covered,
 > and stated:** a carrier reached some other way than these is not ruled out; a pattern a kept page names with
 > `scn` under a colour space that is not a Pattern one is kept, though no viewer draws it there (plan row 33); a link that names its target by
 > a *named destination* is dead in every export (the name table is not copied) — it does not leak, and it does not

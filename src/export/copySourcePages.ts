@@ -825,7 +825,8 @@ class ResourcePruner {
     const { PDFName, PDFDict, PDFStream } = this.lib;
     if (depth > 12) return false;
     let ops;
-    // Read as pdf.js reads: an inline image's data, ended where pdf.js ends it, draws nothing (S10-1).
+    // Read as pdf.js reads — its lexer, parser and operator reader, an inline image ended where pdf.js ends it, every
+    // operand of its specification type (row 10, rounds 1–3); a refusal (a throw) fails the export closed.
     try { ops = scanNamedOps(content, DRAWING_OPS, { pdfjs: true }); } catch { return false; }
     const entry = (cat: Category, name: string) => {
       const sub = resources.lookup(PDFName.of(cat));
@@ -880,6 +881,13 @@ class ResourcePruner {
         case 'scn': case 'SCN': {
           drawn.Pattern.add(name);
           const pattern = entry('Pattern', name);
+          // Under a Pattern colour space pdf.js stops reading the page at a name that is not a tiling (a stream) or a
+          // shading pattern (`handleColorN` throws), so what the scan counts after it pdf.js never draws (row 10
+          // round 3, R3S-2). Without the colour space (row 33) such a name refuses under any.
+          const type = (pattern instanceof PDFStream ? pattern.dict : pattern instanceof PDFDict ? pattern : undefined)
+            ?.lookup(PDFName.of('PatternType'));
+          const typeNum = type instanceof this.lib.PDFNumber ? type.asNumber() : undefined;
+          if (!(typeNum === 2 || (typeNum === 1 && pattern instanceof PDFStream))) return false;
           if (!(pattern instanceof PDFStream)) break;
           const own = pattern.dict.lookup(PDFName.of('Resources'));
           if (!(own instanceof PDFDict)) {
