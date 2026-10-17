@@ -292,7 +292,7 @@ describe('redaction is burned onto the OCR canvas before recognition', () => {
    * the production code can add that origin back. A fixture hardcoding origin 0 cannot detect a dropped
    * origin term, which is why `ox`/`oy` are parameters.
    */
-  function ocrSource(ox: number, oy: number): unknown {
+  function ocrSource(ox: number, oy: number, onRender: () => void = () => {}): unknown {
     return {
       bytes: new Uint8Array(0),
       doc: {
@@ -304,14 +304,19 @@ describe('redaction is burned onto the OCR canvas before recognition', () => {
             viewBox: [ox, oy, ox + W, oy + H],
             convertToViewportPoint: (x: number, y: number) => [(x - ox) * scale, (oy + H - y) * scale],
           }),
-          render: () => ({ promise: Promise.resolve() }),
+          render: () => ({ promise: Promise.resolve().then(onRender) }),
         }),
       },
     };
   }
 
-  /** Run `_recognize` against `src`, collecting every fillRect the burn performs. */
-  async function burnFills(src: unknown): Promise<number[][]> {
+  type OcrState = { elements: unknown[]; page: { rotation: number }; redaction: RedactionElement };
+
+  /**
+   * Run `_recognize` against a source with CropBox origin (ox, oy), collecting every fillRect the burn performs.
+   * `midRender` is an undo landing while the page renders — the await before the burn.
+   */
+  async function burnFills(ox: number, oy: number, midRender?: (s: OcrState) => void): Promise<number[][]> {
     const { OcrHandler } = await import('../../src/handlers/ocrHandler');
     const fills: number[][] = [];
     const ctx2d = {
@@ -340,6 +345,7 @@ describe('redaction is burned onto the OCR canvas before recognition', () => {
     };
     const handler = new OcrHandler(app as never);
     const page = { id: 'p1', sourcePdfId: 's1', sourcePageNum: 1, rotation: 0 };
+    const src = ocrSource(ox, oy, () => midRender?.({ elements: app.elements, page, redaction }));
     await (handler as unknown as {
       _recognize: (p: unknown, s: unknown, l: string) => Promise<unknown>;
     })._recognize(page, src, 'eng').catch(() => null);   // recognition itself bails in jsdom
@@ -350,7 +356,7 @@ describe('redaction is burned onto the OCR canvas before recognition', () => {
     // RENDER_SCALE is 2, so a 10,20,30x40 box must be filled at 20,40,60x80. Asserting the SCALED values
     // matters: an unscaled fill would cover a quarter of the intended area and leave the bottom-right of
     // the secret legible — a partial burn reads as "it works" in a screenshot.
-    expect(await burnFills(ocrSource(0, 0)), 'the redaction must be burned before recognition')
+    expect(await burnFills(0, 0), 'the redaction must be burned before recognition')
       .toContainEqual([20, 40, 60, 80]);
   });
 
@@ -358,8 +364,20 @@ describe('redaction is burned onto the OCR canvas before recognition', () => {
     // Element coords are relative to the rendered page box; `convertToViewportPoint` consumes ABSOLUTE
     // user space. Dropping the origin term burns 20pt off in both axes on a /CropBox [20 20 ...] page,
     // clipping the wrong strip and leaving part of the secret legible.
-    expect(await burnFills(ocrSource(20, 20)), 'the burn must not shift with the CropBox origin')
+    expect(await burnFills(20, 20), 'the burn must not shift with the CropBox origin')
       .toContainEqual([20, 40, 60, 80]);
+  });
+
+  // M2 round 4 (R4-2): the burn read `app.elements` and the page's rotation AFTER awaiting the render, so an undo
+  // landing there — the redaction's placement undone, or a delete — left nothing to burn, and "Copy text" / "Export to
+  // Word" handed back the covered text. Measured first by the safety lens: fills `[]`.
+  it('R4-2: a redaction undone while the page renders is still burned', async () => {
+    expect(await burnFills(0, 0, s => { s.elements.splice(0); })).toEqual([[20, 40, 60, 80]]);
+  });
+
+  it('R4-2: a redaction moved, or the page turned, while the page renders is burned where it was', async () => {
+    const undo = (s: OcrState) => { Object.assign(s.redaction, { x: 200, y: 300 }); s.page.rotation = 90; };
+    expect(await burnFills(0, 0, undo)).toEqual([[20, 40, 60, 80]]);
   });
 });
 
@@ -432,8 +450,11 @@ describe('an undo mid-export cannot uncover a redaction (M2R3-1, M2R3-2)', () =>
   const SECRET_WIDGET = { subtype: 'Widget', fieldType: 'Tx', fieldName: 'client', fieldValue: SECRET, rect: [140, 268, 220, 284] };
   const PUBLIC_ITEMS = [{ str: 'Public page', transform: [11, 0, 0, 11, 40, 300], width: 66, height: 11 }];
 
-  /** Two source pages: page 1 is harmless, page 2 carries the secret (text and a form field). `onGetPage` is the undo. */
-  function twoPageSource(onGetPage: (n: number) => void): unknown {
+  /**
+   * Two source pages: page 1 is harmless, page 2 carries the secret (text and a form field). `onGetPage` is the undo.
+   * `secret: false` is the same document after a true-edit deleted the secret from page 2 (text and field alike).
+   */
+  function twoPageSource(onGetPage: (n: number) => void, secret = true): unknown {
     const page = (n: number) => ({
       rotate: 0,
       // pdf.js's viewport at /Rotate 0 with no CropBox origin: user space is display space flipped about the page top.
@@ -444,10 +465,10 @@ describe('an undo mid-export cannot uncover a redaction (M2R3-1, M2R3-2)', () =>
       }),
       getStructTree: () => Promise.resolve(null),
       getTextContent: () => Promise.resolve({
-        items: (n === 2 ? tableItems() : PUBLIC_ITEMS).map(it => ({ ...(it as object), fontName: 'g_f1' })), styles: {},
+        items: (n === 2 && secret ? tableItems() : PUBLIC_ITEMS).map(it => ({ ...(it as object), fontName: 'g_f1' })), styles: {},
       }),
       getOperatorList: () => Promise.resolve({ fnArray: [], argsArray: [] }),
-      getAnnotations: () => Promise.resolve(n === 2 ? [SECRET_WIDGET] : []),
+      getAnnotations: () => Promise.resolve(n === 2 && secret ? [SECRET_WIDGET] : []),
       commonObjs: { get: () => null, has: () => false },
       objs: { get: () => null, has: () => false },
     });
@@ -537,6 +558,26 @@ describe('an undo mid-export cannot uncover a redaction (M2R3-1, M2R3-2)', () =>
     const elements: unknown[] = [redactionOn('p1')];
     const src = twoPageSource(() => { elements.splice(0); }); // the redaction's AddElementCmd undone
     expect(await run(new ExportService(ctxOf([{ ...P2, id: 'p1' }], elements, src)), what)).not.toContain(SECRET);
+  });
+
+  // M2 round 4 (R4-1): the source PDFs were read live. `ReplaceSourcePdfBytesCmd` writes `bytes` and `doc` on the live
+  // source object, so a true-edit delete undone mid-export put the deleted text back into a file whose element copy no
+  // longer held the redaction removed after the edit — a state no undo step ever had.
+  it.each(['md', 'xfdf'] as const)('control (%s): the edited source no longer carries the secret', async what => {
+    const els: unknown[] = what === 'xfdf' ? [note()] : [];
+    expect(await run(new ExportService(ctxOf([{ ...P1 }, { ...P2 }], els, twoPageSource(() => {}, false))), what)).not.toContain(SECRET);
+  });
+
+  it.each(['md', 'xfdf'] as const)('R4-1 (%s): a true-edit undone mid-export does not put the deleted secret back', async what => {
+    type Src = { bytes: Uint8Array; doc: unknown };
+    const orig = twoPageSource(() => {}) as Src;
+    const elements: unknown[] = what === 'xfdf' ? [note()] : []; // the redaction was removed once the edit deleted the text
+    const live = twoPageSource(() => {
+      if (live.doc === orig.doc) return;
+      elements.push(redactionOn('p2'));                          // RemoveElementCmd.undo…
+      Object.assign(live, { bytes: orig.bytes, doc: orig.doc }); // …then ReplaceSourcePdfBytesCmd.undo, on the live source
+    }, false) as Src;
+    expect(await run(new ExportService(ctxOf([{ ...P1 }, { ...P2 }], elements, live)), what)).not.toContain(SECRET);
   });
 
   it('in place (csv): the redaction moved off the secret while the page text loads does not export it', async () => {

@@ -21,15 +21,17 @@ interface Probe {
   downloads: { blob: Blob; filename: string }[];
 }
 
-function buildProbe(src: Uint8Array, pageCount: number): Probe {
+/** `afterPicker` runs once the save dialog has closed, before the export snapshots the document. */
+function buildProbe(src: Uint8Array, pageCount: number, afterPicker: (pages: unknown[]) => void = () => {}): Probe {
   const infos: { k: string; p?: Record<string, unknown> }[] = [];
   const warns: string[] = [];
   const downloads: { blob: Blob; filename: string }[] = [];
   const handle = { done() {}, failed() {}, update() {}, setFraction() {} };
+  const pages = Array.from({ length: pageCount }, (_u, i) => ({ id: `p${i + 1}`, sourcePdfId: 's1', sourcePageNum: i + 1, rotation: 0 }));
   const ctx = {
     documentModel: {
       pageCount,
-      pages: Array.from({ length: pageCount }, (_u, i) => ({ id: `p${i + 1}`, sourcePdfId: 's1', sourcePageNum: i + 1, rotation: 0 })),
+      pages,
       sourcePdfs: new Map([['s1', { bytes: src }]]),
       watermark: { enabled: false },
     },
@@ -44,7 +46,7 @@ function buildProbe(src: Uint8Array, pageCount: number): Probe {
       error: () => {},
     },
     progress: { begin: () => handle },
-    cleanEmptyTextElements() {},
+    cleanEmptyTextElements() { afterPicker(pages); },
     renderCurrentPage: () => Promise.resolve(),
     rebuildElementLayer() {},
   } as unknown as IExportContext;
@@ -65,6 +67,24 @@ describe('downloadPageRange', () => {
     const out = await PDFDocument.load(bytes);
     expect(out.getPageCount()).toBe(3);
     expect(probe.infos.find(i => i.k === 'toast.extractDone')?.p).toEqual({ count: 3 });
+  });
+
+  // M2 round 4 (R4-5): the toast counted the SELECTION, but a selected page deleted while the dialog is open drops
+  // out of the export — and with every selected page gone, an empty PDF was saved.
+  it('counts the pages exported, not the pages selected, when one was deleted during the dialog', async () => {
+    const probe = buildProbe(await sourceBytes(5), 5, pages => { pages.splice(2, 1); });
+    await probe.svc.downloadPageRange([0, 2, 4]);
+    const out = await PDFDocument.load(new Uint8Array(await probe.downloads[0].blob.arrayBuffer()));
+    expect(out.getPageCount()).toBe(2);
+    expect(probe.infos.find(i => i.k === 'toast.extractDone')?.p).toEqual({ count: 2 });
+  });
+
+  it('writes nothing and warns when every selected page was deleted during the dialog', async () => {
+    const probe = buildProbe(await sourceBytes(5), 5, pages => { pages.splice(0, 2); });
+    await probe.svc.downloadPageRange([0, 1]);
+    expect(probe.downloads).toHaveLength(0);
+    expect(probe.warns).toContain('toast.extractNoPages');
+    expect(probe.infos.find(i => i.k === 'toast.extractDone')).toBeUndefined();
   });
 
   it('warns and does nothing for an empty selection', async () => {

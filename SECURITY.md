@@ -201,12 +201,20 @@ their physical size and the resolution you chose.
 > list again while they ran: undoing a page delete meanwhile brought the page back without the redaction the delete
 > removed, so its covered text or form field value was written to the file under the usual success message. The CSV
 > and Excel exports read the redactions only after loading the page's text, so undoing a redaction meanwhile exported
-> the cell it covered. Every export now works from one copy of the pages and annotations taken when it starts — each
-> page and annotation copied as well, so an undo that moves, turns or crops one in place does not reach an export
-> already running either **[pinned]**. Whether such an in-place undo ever misplaced a burn in a PDF export before the
-> fix was not measured [Inferred: the rasteriser read the page's rotation, its crop and the boxes at different moments,
-> with awaits between them]; the copy removes the question. Still read as they are when the export reaches them: your
-> handwriting (ink) and the form values — neither decides what a redaction removes.
+> the cell it covered. Every export now works from one copy of the pages, the annotations and the source PDFs taken
+> when it starts — each page and annotation copied as well. The milestone-2 review's fourth round (2026-10-17) found two
+> more of the same: the source PDFs were still read live, so undoing a text edit that deleted words, while an export
+> ran, put the deleted words back into a file whose copy no longer held the redaction removed after the edit (Word,
+> Markdown, text, XFDF, and the PDF of a document assembled from several files) **[pinned]**; and **OCR → "Copy text" /
+> "Export to Word"** burned the redactions only after rendering the page, so undoing one meanwhile left the text under
+> it to be recognised **[pinned]** — the OCR now copies the page's turn and its redactions before rendering. An undo
+> that moves, turns or crops a page or a box in place does not reach a running export either: **[pinned]** for the PDF
+> downloads (whole document, one page, a range — turn, crop and box), the CSV export (a box moved) and the OCR (a box
+> moved, the page turned); every other export reads the same copy, which is what protects it, without its own test.
+> Whether such an in-place undo ever misplaced a burn in a PDF export before the fix was not measured [Inferred: the
+> rasteriser read the page's rotation, its crop and the boxes at different moments, with awaits between them]; the
+> copy removes the question. Still read as they are when the export reaches them: your handwriting (ink) and the form
+> values — neither decides what a redaction removes.
 
 Redaction rasterises the page, which is what makes it removal-grade — but several exports do not go
 through that path, and until 2026-08-05 each handed the redacted text back:

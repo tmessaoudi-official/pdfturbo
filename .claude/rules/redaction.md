@@ -1244,3 +1244,32 @@ exactly M2R3-1 XFDF; the XLSX / CSV table path on the live elements → exactly 
 case); elements copied as an array only → the CSV in-place case + the 3 rasteriser cases; pages copied as an array only
 → the 3 rasteriser cases; the page number by `indexOf` → the Download and range cases; the subset not swapped → exactly
 the range case; the blank-page redo minting a new page → exactly its case.
+
+**Round 4 (raw `m2r4-*.md`, 2026-10-17, frozen `d8db555`) found the snapshot one layer short, twice.** (R4-1, P1) The
+source PDFs were read live: `ReplaceSourcePdfBytesCmd` writes `bytes` and `doc` on the live `SourcePdf`, and
+`_extractFlowDoc` (per page), `exportXfdf` (the frame and `collectFormWidgets`) and `_assemblePdfDoc` (one source load
+after another) read `documentModel.sourcePdfs` after their awaits. Redact a word, true-edit delete it, remove the box,
+export, then Ctrl+Z twice mid-export: the deleted word came back in clear with no redaction — a state no undo step ever
+had (the correctness lens's probe: `"Public page\n\nWolgast"`; two sources: `secretInBytes: true`). The snapshot now
+carries `sources` (each `SourcePdf` copied — shallow holds, the command REPLACES both fields) and every export reads it;
+`documentModel.sourcePdfs` appears in `exportService.ts` only inside `_snapshotNow`. The CSV/XLSX path is safe by
+construction rather than by a test: its source is read in the same tick as the snapshot. A source garbage-collected
+mid-export is now still in the copy, so its page is exported rather than silently omitted. (R4-2, P2) The OCR burn
+(`ocrHandler.ts` `_recognize`) read `app.elements` and the page's rotation AFTER `await pdfPage.render`, so a redaction
+undone during the render left nothing to burn and "Copy text" / "Export to Word" handed back the covered text (the
+safety lens's probe: fills `[]`). It now copies the page's turn and its redactions (prototype kept) before the first
+await, locally — the handler imports nothing new, so the architecture ratchet is untouched. Not covered by that copy:
+`run()`'s searchable mode reads `src.bytes` after `_recognize` — a document write, not an export. (R4-5, P3) The range
+export's toast counted the selection; it now counts the pages exported and writes nothing when none are left. A table
+export whose page was deleted during the dialog still says "no table found" — no file, wrong cause, a stated bound (the
+native picker is modal).
+
+Guards added: `exportSnapshot.test.ts` (10 — a true-edit undone while the first of two sources loads; the in-place case
+now also edits the crop in place and the mock records `crop`), the M2R3 block (15 — R4-1 for Markdown and XFDF with an
+edited-source control each), the OCR burn block (4 — R4-2 undone, R4-2 moved and turned) and `downloadPageRange.test.ts`
+(5 — the count, the all-deleted refusal). Red first: all five R4 cases and both range cases. Sabotage, predicted
+first, each landed and restored with `cmp`: flow on live sources → exactly R4-1 Markdown; XFDF widgets on live sources →
+exactly R4-1 XFDF; the PDF source loop on live sources → exactly the two-source case; sources not copied → the 3 R4-1
+cases; the crop not copied → the 3 in-place cases; OCR redactions read after the render → both R4-2 cases; OCR rotation
+read after → exactly the move-and-turn case; the count from the selection → exactly the count case; the empty refusal
+removed → exactly the all-deleted case.

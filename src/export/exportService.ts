@@ -31,7 +31,7 @@ import type { PDFElement } from '../elements/annotationElement';
 import type { TextElement } from '../elements/textElement';
 import { textDrawnFootprint, type ArabicMeasurer } from './textExtent';
 import { measureArabicLine } from './arabicOverlay';
-import type { DocumentModel, DocumentPage } from '../core/documentModel';
+import type { DocumentModel, DocumentPage, SourcePdf } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import type { IProgressManager } from '../contracts/progressManager';
@@ -44,6 +44,7 @@ import { withPdfjsAssets } from '../utils/pdfjsParams';
 interface ExportSnapshot {
   pages: DocumentPage[];
   elements: PDFElement[];
+  sources: Map<string, SourcePdf>;
 }
 
 export interface IExportContext {
@@ -288,12 +289,17 @@ export class ExportService {
    * Every export takes ONE snapshot, synchronously, before any await that follows its last user-visible check, and
    * reads only it. One level deep is enough: every command REPLACES a nested value (`crop`, `points`) rather than
    * editing it, and the crop is copied anyway. An element keeps its prototype, so `instanceof` and its methods work.
+   * The source PDFs too (M2 round 4, R4-1): `ReplaceSourcePdfBytesCmd` writes `bytes` and `doc` on the live source
+   * object, so a true-edit delete undone mid-export put the deleted text back into a file whose element copy no longer
+   * held the redaction removed after the edit. A shallow copy holds, because the command REPLACES both fields.
    * Not in it: the ink layer and the form values, read live — neither decides what a redaction removes.
    */
   private _snapshotNow(): ExportSnapshot {
+    const { pages, sourcePdfs } = this._ctx.documentModel;
     return {
-      pages: this._ctx.documentModel.pages.map(p => (p.crop ? { ...p, crop: { ...p.crop } } : { ...p })),
+      pages: pages.map(p => (p.crop ? { ...p, crop: { ...p.crop } } : { ...p })),
       elements: this._ctx.elements.map(el => Object.assign(Object.create(Object.getPrototypeOf(el) as object) as PDFElement, el)),
+      sources: new Map([...sourcePdfs].map(([id, src]) => [id, { ...src }])),
     };
   }
 
@@ -356,9 +362,13 @@ export class ExportService {
         { cleanMetadata: true },
       );
       _prog.setFraction(null);
+      // The count is what was EXPORTED (R4-5): a page deleted during the dialog dropped out above, and when every
+      // selected page did, nothing is written — the picked handle is abandoned, as the table exports do on a miss.
+      const exported = pdfDoc.getPageCount();
+      if (!exported) { reportError.warn('toast.extractNoPages'); _prog.done(); return; }
       const bytes = await this._saveForExport(pdfDoc);
       await this._saveBytesTo(target, bytes, filename);
-      if (target === 'download') reportError.info('toast.extractDone', { count: pages.length });
+      if (target === 'download') reportError.info('toast.extractDone', { count: exported });
       else reportError.info('toast.pdfSaved', { name: target.name });
       _prog.done();
     } catch (err) {
@@ -583,8 +593,8 @@ export class ExportService {
    * document with nothing to export warns rather than emitting an empty file.
    */
   async exportXfdf(): Promise<void> {
-    const { documentModel, reportError, formValues } = this._ctx;
-    const { pages, elements } = this._snapshotNow();
+    const { reportError, formValues } = this._ctx;
+    const { pages, elements, sources } = this._snapshotNow();
     if (!pages.length) return;
     try {
       const annots: XfdfAnnot[] = [];
@@ -594,13 +604,13 @@ export class ExportService {
         // comment or text box the user had covered would hand it back in a plain-text sidecar file.
         const pageEls = await dropElementsUnderRedactions(elements.filter(el => el.pageId === docPage.id));
         if (!pageEls.length) continue;
-        const frame = await xfdfPageFrame(docPage, documentModel.sourcePdfs);
+        const frame = await xfdfPageFrame(docPage, sources);
         for (const el of pageEls) {
           const a = elementToXfdfAnnot(el.toJSON(), i, frame);
           if (a) annots.push(a);
         }
       }
-      const fields = fieldsForExport(await collectFormWidgets(pages, documentModel.sourcePdfs, elements), formValues);
+      const fields = fieldsForExport(await collectFormWidgets(pages, sources, elements), formValues);
       if (!annots.length && !fields.length) { reportError.warn('toast.xfdfNoAnnots'); return; }
       const xml = buildXfdf(annots, fields);
       this._downloadBlob(new Blob([xml], { type: 'application/vnd.adobe.xfdf' }), this._exportBaseName() + '.xfdf');
@@ -624,10 +634,10 @@ export class ExportService {
    */
   private async _resolveTableGrid(
     docPage: DocumentPage,
-    // A caller without a snapshot gets one taken here, before any await — never the live list (M2R3-2).
-    elements: readonly PDFElement[] = this._snapshotNow().elements,
+    // A caller without a snapshot gets one taken here, before any await — never the live lists (M2R3-2, R4-1).
+    snap: ExportSnapshot = this._snapshotNow(),
   ): Promise<TableGrid | null> {
-    const data = await this._extractPageTableData(docPage, elements);
+    const data = await this._extractPageTableData(docPage, snap);
     if (!data) return null;
     return buildTableGrid(data.hRules, data.vRules, data.items, undefined, bidiCellText)
       ?? inferBorderlessGrid(data.items, { cellText: bidiCellText });
@@ -653,8 +663,10 @@ export class ExportService {
       // The page as it is once the dialog closes, with the elements of that same moment (M2R3-2: the elements were
       // read after the page text loaded, so an undone redaction there exported the cell it covered).
       const snap = this._snapshotNow();
+      // A page deleted while the dialog was open is not found and reads as "no table found" — no file is written, but
+      // the message names the wrong cause (R4-5, a stated bound: the native picker is modal).
       const page = snap.pages.find(p => p.id === docPage.id);
-      const grid = page ? await this._resolveTableGrid(page, snap.elements) : null;
+      const grid = page ? await this._resolveTableGrid(page, snap) : null;
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
       const { buildXlsxBytes } = await import('./xlsxWriter');
       const bytes = await buildXlsxBytes(grid);
@@ -692,8 +704,10 @@ export class ExportService {
       // The page as it is once the dialog closes, with the elements of that same moment (M2R3-2: the elements were
       // read after the page text loaded, so an undone redaction there exported the cell it covered).
       const snap = this._snapshotNow();
+      // A page deleted while the dialog was open is not found and reads as "no table found" — no file is written, but
+      // the message names the wrong cause (R4-5, a stated bound: the native picker is modal).
       const page = snap.pages.find(p => p.id === docPage.id);
-      const grid = page ? await this._resolveTableGrid(page, snap.elements) : null;
+      const grid = page ? await this._resolveTableGrid(page, snap) : null;
       if (!grid) { reportError.warn('toast.noTableFound'); _prog.done(); return; }
       // Prepend a UTF-8 BOM (#QA-2026-06-23 P3 #28) so Excel auto-detects UTF-8 and renders
       // accented/non-ASCII cells correctly instead of mojibake.
@@ -715,9 +729,10 @@ export class ExportService {
    */
   private async _extractPageTableData(
     docPage: import('../core/documentModel').DocumentPage,
-    elements: readonly PDFElement[] = this._snapshotNow().elements,
+    snap: ExportSnapshot = this._snapshotNow(),
   ): Promise<{ hRules: RuleRect[]; vRules: RuleRect[]; items: TableTextItem[] } | null> {
-    const src = this._ctx.documentModel.sourcePdfs.get(docPage.sourcePdfId);
+    const { elements } = snap;
+    const src = snap.sources.get(docPage.sourcePdfId);
     if (!src) return null;
     const page = await src.doc.getPage(docPage.sourcePageNum);
     const [content, opList] = await Promise.all([
@@ -859,7 +874,7 @@ export class ExportService {
 
       // Load each source PDF once
       const srcDocs = new Map<string, import('@cantoo/pdf-lib').PDFDocument>();
-      for (const [id, src] of documentModel.sourcePdfs) {
+      for (const [id, src] of snap.sources) {
         srcDocs.set(id, await loadPdfDocument(src.bytes, { viewerCheck: 'source' }));
       }
       // SEC-1 round 7 (R7-S-12): flattening below takes annotations out of each page's /Annots in place, so the copy
@@ -963,7 +978,7 @@ export class ExportService {
       } else if (layered.length > 1) {
         // The verdicts are cached: every source was just loaded with the viewer check.
         for (const { id } of layered) {
-          const bytes = documentModel.sourcePdfs.get(id)?.bytes;
+          const bytes = snap.sources.get(id)?.bytes;
           if (bytes && (await viewerVerdict(bytes)).hiddenLayers) throw new ExportLayersConflictError();
         }
       }
@@ -1034,7 +1049,7 @@ export class ExportService {
 
   async downloadPage(pageIdx: number): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
-    const { pages, elements } = this._snapshotNow();
+    const { pages, elements, sources } = this._snapshotNow();
     const docPage = pages[pageIdx];
     if (!docPage) return;
     const filename = `${this._exportBaseName()}-page${pageIdx + 1}.pdf`;
@@ -1045,7 +1060,7 @@ export class ExportService {
     const _prog = progress.begin('progress.exportingPage');
     const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
     try {
-      const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
+      const srcEntry = sources.get(docPage.sourcePdfId);
       if (!srcEntry) { _prog.failed(); return; }
       const srcDocLib = await loadPdfDocument(srcEntry.bytes, { viewerCheck: 'source' });
       const pdfDoc    = await PDFDocument.create();
@@ -1083,7 +1098,7 @@ export class ExportService {
    */
   async downloadPageAsImage(pageIdx?: number, opts?: ImageExportOptions): Promise<void> {
     const { documentModel, reportError, progress } = this._ctx;
-    const { pages, elements } = this._snapshotNow();
+    const { pages, elements, sources } = this._snapshotNow();
     const idx = pageIdx ?? documentModel.currentPageIndex;
     const docPage = pages[idx];
     if (!docPage) return;
@@ -1102,7 +1117,7 @@ export class ExportService {
     const _prog = progress.begin('progress.exportingImage');
     try {
       const { PDFDocument, rgb, StandardFonts, degrees } = await import('@cantoo/pdf-lib');
-      const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
+      const srcEntry = sources.get(docPage.sourcePdfId);
       if (!srcEntry) {
         reportError.error('toast.exportSourceNotFound');
         _prog.failed();
@@ -1172,8 +1187,8 @@ export class ExportService {
    * not leak.
    */
   async renderThumbnailWithOverlays(pageIdx: number, thumbScale = 0.15): Promise<string | null> {
-    const { documentModel, inkLayer, reportError } = this._ctx;
-    const { pages, elements } = this._snapshotNow();
+    const { inkLayer, reportError } = this._ctx;
+    const { pages, elements, sources } = this._snapshotNow();
     const docPage = pages[pageIdx];
     if (!docPage) return null;
 
@@ -1200,7 +1215,7 @@ export class ExportService {
         blankPage.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(1, 1, 1), borderWidth: 0 });
         await this._applyOverlaysToPage(pdfDoc, blankPage, docPage, pageElements, libs, pageNumber, pages.length);
       } else {
-        const srcEntry = documentModel.sourcePdfs.get(docPage.sourcePdfId);
+        const srcEntry = sources.get(docPage.sourcePdfId);
         if (!srcEntry) throw new Error(`source document ${docPage.sourcePdfId} is not loaded`);
         const srcDoc = await loadPdfDocument(srcEntry.bytes, { viewerCheck: 'source' });
         const { pages: [page], ocProperties } = await copySourcePages(pdfDoc, srcDoc, [docPage.sourcePageNum - 1]);
@@ -1461,8 +1476,7 @@ export class ExportService {
    * Blank pages and pages without a source are skipped.
    */
   private async _extractFlowDoc(): Promise<FlowDoc> {
-    const { documentModel } = this._ctx;
-    const { pages, elements } = this._snapshotNow();
+    const { pages, elements, sources } = this._snapshotNow();
     const flowDoc: FlowDoc = { pages: [] };
     const formHidden = new FormHiddenTextFinder();
     // Limits row 22 (D11): internal links resolve after every page is built — a link may point forward. `goTo` holds
@@ -1487,7 +1501,7 @@ export class ExportService {
           text: el.text, x: el.x, y: el.y, fontSize: el.fontSize,
           color: el.color, fontFamily: el.fontFamily, bold: el.bold, italic: el.italic,
         }));
-      const src = documentModel.sourcePdfs.get(docPage.sourcePdfId);
+      const src = sources.get(docPage.sourcePdfId);
       if (!src || !docPage.sourcePageNum) {
         // Blank page (no source) carrying typed text: emit it so the text isn't dropped
         // — this is the "blank page + typed Arabic → empty DOCX" bug. No pageHeight is
@@ -1702,7 +1716,7 @@ export class ExportService {
     // Word TOC field. v1 uses the FIRST source PDF carrying a non-empty outline
     // (multi-source merge = v1b). No outline → field stays unset → byte-identical.
     try {
-      for (const [, src] of documentModel.sourcePdfs) {
+      for (const [, src] of sources) {
         const raw = (await src.doc.getOutline()) as Array<{ title?: string; items?: unknown[] }> | null;
         const items = raw?.length ? flattenOutline(raw as Parameters<typeof flattenOutline>[0]) : [];
         if (items.length) { flowDoc.outline = items; break; }

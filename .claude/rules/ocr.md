@@ -86,3 +86,15 @@ pages ARE supported for a cardinal `/Rotate`; only a non-multiple of 90 warns an
 limits row 30 — this line said "NOT yet supported" long after the remap shipped, and so did the toast). Guards: `tests/ocr/searchableTextLayer.test.ts` (32 jsdom:
 transform/partition/apply/rotation) + `tests/browser/searchable-ocr.browser.test.ts` (Latin exact +
 Arabic honest contract + invisible-ink).
+
+### The OCR burn read the redactions after rendering — an undo meanwhile unburned them (R4-2, M2 round 4, 2026-10-17)
+
+`_recognize` awaited `pdfPage.render` and only then walked `this.app.elements` (and read `page.rotation`) to burn the
+redactions onto the OCR canvas. Ctrl+Z during the render — undoing the redaction's placement, or deleting it — left
+nothing to burn, and "Copy text" / "Export to Word" handed back the covered text under the usual success toast
+(measured by the safety lens: fills `[]`). It now copies the page's user rotation and its redactions (prototype kept,
+one level — the commands replace nested values) BEFORE the first await, the same rule as `ExportService._snapshotNow`;
+the copy is local, so the handler's imports and the architecture ratchet are unchanged. Not covered: `run()`'s
+searchable mode reads `src.bytes` after `_recognize` — a document write, not an export. Guards: the R4-2 pair in
+`tests/export/redactionLeaks.test.ts` (undone; moved and turned). Full record: `redaction.md` § "A close mid-export
+shipped a redacted page in clear", the round-4 paragraph.

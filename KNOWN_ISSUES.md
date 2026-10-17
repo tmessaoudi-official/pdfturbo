@@ -82,7 +82,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
     Sign, which build through the same `_assemblePdfDoc`; Export page as image has its own path and no close-mid-export test]. Until
     the milestone-2 review it read the annotation list live, so a close mid-export shipped a redacted page unredacted.
   - **A text export** (DOCX, Markdown, CSV, XLSX, XFDF) and **an OCR run** read pages through pdf.js and fail with
-    their own failure toast [Inferred: each reaches its own catch; not exercised by a test].
+    their own failure toast [Inferred: each reaches its own catch; not exercised by a test]. Since the export copies
+    the source PDFs when it starts (M2 round 4, 2026-10-17), the same holds when a text edit leaves the undo history
+    mid-export — a new edit after an undo releases the document the edit replaced, which the running export may still
+    hold [Inferred: `ReplaceSourcePdfBytesCmd.dispose` destroys the document that is no longer live; not driven].
   - **A crop, a signature placement, a page rotation or a true-text edit** started a few milliseconds before the close
     can raise an unhandled error in the console [Inferred: each is a single `getPage` with no catch].
   - **Rendering and thumbnails** settle quietly [Verified: `tests/core/releasedDocument.test.ts` and

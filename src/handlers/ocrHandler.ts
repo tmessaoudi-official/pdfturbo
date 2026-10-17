@@ -238,6 +238,15 @@ export class OcrHandler {
     onProgress?: (p: OcrRunProgress) => void,
   ): Promise<{ result: OcrResult; scale: number; userRot: number; toDisplay: OcrCanvasToDisplay } | null> {
     const scale = OcrHandler.RENDER_SCALE;
+    // What the burn reads, taken BEFORE the first await (M2 round 4, R4-2): an undo landing during the render — the
+    // redaction's placement undone, a box moved back, the page turned back — used to reach the burn below, which then
+    // burned nothing and "Copy text" / "Export to Word" handed back the covered text. The page's rotation and its
+    // redactions are copied (one level, prototype kept: the commands replace nested values), the same rule as
+    // `ExportService._snapshotNow`. `src.doc` is read here too, before any await.
+    const userRotation = page.rotation ?? 0;
+    const redactions = this.app.elements
+      .filter(el => el.pageId === page.id && el.type === 'redaction')
+      .map(el => Object.assign(Object.create(Object.getPrototypeOf(el) as object) as RedactionElement, el));
     const pdfPage = await src.doc.getPage(page.sourcePageNum);
     const viewport = pointViewport(pdfPage, { scale });
     const canvas = document.createElement('canvas');
@@ -270,8 +279,8 @@ export class OcrHandler {
     // leaving part of the secret legible. The vector path adds the same offset (`pdfElementRenderer`'s
     // `cropOriginX/Y`), which is the precedent this follows.
     const [ox, oy] = [unrot.viewBox[0] as number, unrot.viewBox[1] as number];
-    const totalRot = ((((pdfPage.rotate as number) ?? 0) + (page.rotation ?? 0)) % 360 + 360) % 360;
-    const userRot = (((page.rotation ?? 0) % 360) + 360) % 360;
+    const totalRot = ((((pdfPage.rotate as number) ?? 0) + userRotation) % 360 + 360) % 360;
+    const userRot = ((userRotation % 360) + 360) % 360;
     // The exact inverse of the burn mapping below: canvas → absolute user space (the viewport's own
     // `convertToPdfPoint`, which undoes `/Rotate` and the scale) → crop-relative content → display.
     // Called only when there is a user rotation, so the user-0 path never touches it.
@@ -279,18 +288,17 @@ export class OcrHandler {
       const [ux, uy] = viewport.convertToPdfPoint(cx, cy) as [number, number];
       return inverseTransformPoint(ux - ox, uy - oy, unrot.width, Hu, totalRot);
     };
-    for (const el of this.app.elements) {
-      // `el.type`, NOT `instanceof`: identity checks fail OPEN across duplicated module instances (this
-      // build already warns about a statically+dynamically imported module), and a silently skipped burn
-      // is a leak with no error and no visual sign. The sibling filter in `exportService` uses `type`
-      // too — one predicate for one safety decision.
-      if (el.pageId !== page.id || el.type !== 'redaction') continue;
+    // `el.type`, NOT `instanceof` (the filter above): identity checks fail OPEN across duplicated module instances
+    // (this build already warns about a statically+dynamically imported module), and a silently skipped burn is a
+    // leak with no error and no visual sign. The sibling filter in `exportService` uses `type` too — one predicate
+    // for one safety decision.
+    for (const el of redactions) {
       const c = redactionRectToContent(
         el, unrot.width, Hu, totalRot,
       );
       const [ax, ay] = viewport.convertToViewportPoint(ox + c.x, oy + Hu - c.y);
       const [bx, by] = viewport.convertToViewportPoint(ox + c.x + c.width, oy + Hu - (c.y + c.height));
-      ctx.fillStyle = (el as RedactionElement).color ?? '#000000';
+      ctx.fillStyle = el.color ?? '#000000';
       ctx.fillRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
     }
 
