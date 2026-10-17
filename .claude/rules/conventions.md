@@ -40,3 +40,11 @@ only each other, `shared-kernel/` only itself plus the npm allowlist `KERNEL_NPM
 `tests/tools/architectureGraph.ts`, not tsc (TypeScript 7 has no JS API): an unmarked import used only as a type is
 a runtime edge — mark it `import type` to move it. Its fixture tree `tests/tools/fixtures/architecture/` is
 type-checked by tsc and never collected by vitest (no `.test.ts` in it).
+
+**Moved homes (architecture step 2, 2026-10-17).** A citation elsewhere in these rules of `flowDoc.ts`, `utils/bidi.ts`
+or `contentStreamEditor.ts` as the home of `isArabicText`, `reverseRtlText`, `letterDirection`, `rowIsRtl`,
+`orderLineWords`, `mirrorShapeBrackets`, `needsWordSpace`, the bidi engine (`mirrorForDisplay`, `visualRuns`, …) or
+`Matrix` / `multiplyMatrix` / `applyMatrixToPoint` resolves to `src/shared-kernel/text/script.ts`,
+`src/shared-kernel/text/bidi.ts` and `src/shared-kernel/geometry/matrix.ts`; the old paths re-export them. The
+walker's `Matrix6` and its local `composeCtm` are gone — it composes with `multiplyMatrix(M_cm, ctm)`, pinned
+bit-identical to the old formula by `tests/shared-kernel/geometry/matrix.test.ts`.

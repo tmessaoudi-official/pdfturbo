@@ -14,6 +14,7 @@
  * content stream, so the result is right at every /Rotate and CropBox by construction.
  */
 import type { PDFDocument, PDFPage, PDFDict as PdfDict, PDFOperator as PdfOperator } from '@cantoo/pdf-lib';
+import type { Matrix } from '../shared-kernel/geometry/matrix';
 
 /** Left as annotations on purpose, never counted: drawing their appearance would lose what they ARE. */
 const KEPT_SUBTYPES = new Set([
@@ -36,7 +37,7 @@ export interface FlattenAnnotationsResult {
 /** pdf.js `getTransformMatrix`: map the appearance's BBox, under its /Matrix, onto /Rect (§12.5.5, steps 1–2). */
 export function appearanceTransform(
   rect: readonly number[], bbox: readonly number[], matrix: readonly number[],
-): [number, number, number, number, number, number] {
+): Matrix {
   const [a, b, c, d, e, f] = matrix;
   const xs: number[] = [], ys: number[] = [];
   for (const [x, y] of [[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]]]) {

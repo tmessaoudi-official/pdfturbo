@@ -291,3 +291,33 @@ describe('walkPageOps — Form XObject /BBox clip (WS4-F)', () => {
     expect(r.rules).toEqual([{ x: -30, y: 10, width: 80, height: 2 }]);
   });
 });
+
+/**
+ * Architecture step 2b: the walker composes every frame with the kernel `multiplyMatrix(M, ctm)` — M applied to a point
+ * FIRST, then the ctm. Translations commute, so every older fixture (a translate-only form `/Matrix`, an annotation at a
+ * pure offset) passes with the order swapped; these use a SCALE then a TRANSLATE, which do not, so a swapped call at
+ * either site places the image at x 10 instead of 20.
+ */
+describe('walkPageOps — composition order at the form and annotation sites (step 2b)', () => {
+  it('a form /Matrix applies before the page ctm (pdf.js paintFormXObjectBegin)', () => {
+    const r = walkPageOps(
+      opList(
+        [OPS.transform, OPS.paintFormXObjectBegin, OPS.paintImageXObject, OPS.paintFormXObjectEnd],
+        [[2, 0, 0, 2, 0, 0], [[1, 0, 0, 1, 10, 0], [0, 0, 1000, 1000]], ['img0'], []],
+      ),
+      OPS,
+    );
+    expect(r.images).toEqual([{ name: 'img0', ctm: [2, 0, 0, 2, 20, 0] }]);
+  });
+
+  it("an annotation's /Matrix applies before its placement transform (pdf.js beginAnnotation)", () => {
+    const r = walkPageOps(
+      opList(
+        [OPS.beginAnnotation, OPS.paintImageXObject, OPS.endAnnotation],
+        [[null, null, [2, 0, 0, 2, 0, 0], [1, 0, 0, 1, 10, 0]], ['img0'], []],
+      ),
+      OPS,
+    );
+    expect(r.images).toEqual([{ name: 'img0', ctm: [2, 0, 0, 2, 20, 0] }]);
+  });
+});

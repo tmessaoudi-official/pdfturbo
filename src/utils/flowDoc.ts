@@ -18,6 +18,7 @@ import { inferBorderlessGridForFlow } from './borderlessTable';
 import { isArabicText, letterCount, letterDirection, needsWordSpace, orderLineWords } from '../shared-kernel/text/script';
 export { isArabicText, letterDirection, mirrorShapeBrackets, needsWordSpace, orderLineWords, reverseRtlText, rowIsRtl } from '../shared-kernel/text/script';
 import type { RuleRect } from '../types/ruleRect';
+import type { Matrix } from '../shared-kernel/geometry/matrix';
 export type { RuleRect } from '../types/ruleRect';
 
 /** Shape of a pdf.js TextItem (subset we consume). */
@@ -198,7 +199,7 @@ export interface DecomposedCtm {
  * pure shear is not modelled (Word can't render it) and collapses into the scales.
  */
 export function decomposeImageCtm(
-  ctm: readonly [number, number, number, number, number, number],
+  ctm: Readonly<Matrix>,
 ): DecomposedCtm {
   const [a, b, c, d] = ctm;
   const scaleX = Math.hypot(a, b);

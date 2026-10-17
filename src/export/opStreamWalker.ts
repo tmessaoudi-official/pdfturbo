@@ -17,14 +17,13 @@
  * stays in the caller. This makes the matrix/color/rule logic unit-testable.
  */
 import { fillOpToHex, type RuleRect } from '../utils/flowDoc';
-
-export type Matrix6 = [number, number, number, number, number, number];
+import { multiplyMatrix, type Matrix } from '../shared-kernel/geometry/matrix';
 
 export interface ImagePlacement {
   /** XObject name — `g_`-prefixed → document `commonObjs`, else page `objs`. */
   name: string;
   /** Draw CTM in effect at the paint op. */
-  ctm: Matrix6;
+  ctm: Matrix;
 }
 
 export interface PageOpsResult {
@@ -75,7 +74,7 @@ export interface ClipBox { x0: number; y0: number; x1: number; y1: number }
  * A transformed box with ZERO extent is kept as such: pdf.js clips that form away entirely, so an
  * empty clip removing every rule inside it is both faithful and the safe direction.
  */
-function bboxToClip(bbox: unknown, m: Matrix6): ClipBox | null {
+function bboxToClip(bbox: unknown, m: Matrix): ClipBox | null {
   const v = bbox as ArrayLike<number> | null | undefined;
   if (v?.length !== 4) return null;
   const n = Array.from(v, Number);
@@ -158,7 +157,7 @@ export function walkPageOps(
   };
   // CTM stack for image position/size extraction (q/Q/cm operators, and the implicit
   // save/transform pairs pdf.js emits for form XObjects and annotation appearance streams).
-  const ctmStack: Matrix6[] = [];
+  const ctmStack: Matrix[] = [];
   /**
    * The BASE transform — pdf.js's own term for the frame a page's ops are placed into.
    *
@@ -169,12 +168,13 @@ export function walkPageOps(
    * words but only some of these channels would fix the layout and silently break all three. Here
    * a partial one is unexpressible rather than merely discouraged.
    *
-   * `composeCtm(m, …)` applies `m` LAST, so this translation stays outermost and is never scaled
-   * or rotated by a later `cm` — read, not assumed (`result[4] = m[0]*e + m[2]*f + m[4]`).
+   * Every `cm` is composed as `multiplyMatrix(M_cm, ctm)`, which applies `ctm` LAST, so this translation
+   * stays outermost and is never scaled or rotated by a later `cm` — read, not assumed
+   * (`result[4] = M_cm[4]*ctm[0] + M_cm[5]*ctm[2] + ctm[4]`).
    * Identity by default → byte-identical output for an omitted origin.
    */
-  const base: Matrix6 = [1, 0, 0, 1, -(origin?.x ?? 0), -(origin?.y ?? 0)];
-  let ctm: Matrix6 = [...base];
+  const base: Matrix = [1, 0, 0, 1, -(origin?.x ?? 0), -(origin?.y ?? 0)];
+  let ctm: Matrix = [...base];
 
   /**
    * How deep we are inside an annotation's appearance stream.
@@ -221,14 +221,6 @@ export function walkPageOps(
     }
   };
 
-  /** `m × [a b c d e f]`, the PDF `cm` composition. Shared so the sites cannot drift. */
-  const composeCtm = (
-    m: Matrix6, a: number, b: number, c: number, d: number, e: number, f: number,
-  ): Matrix6 => [
-    m[0] * a + m[2] * b, m[1] * a + m[3] * b,
-    m[0] * c + m[2] * d, m[1] * c + m[3] * d,
-    m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5],
-  ];
   /**
    * A 6-element finite matrix argument, or null.
    *
@@ -237,24 +229,24 @@ export function walkPageOps(
    * precisely because an earlier comment claimed to "mirror canvas.js's own guard", and this
    * round's own headline lesson is not to assert what a library does without reading it.
    */
-  const asMatrix6 = (v: unknown): Matrix6 | null => {
+  const asMatrix = (v: unknown): Matrix | null => {
     const len = (v as ArrayLike<number> | null)?.length;
     if (len !== 6) return null;
     const a = Array.from(v as ArrayLike<number>, Number);
-    return a.every(Number.isFinite) ? (a as Matrix6) : null;
+    return a.every(Number.isFinite) ? (a as Matrix) : null;
   };
 
   for (let i = 0; i < opList.fnArray.length; i++) {
     const fn = opList.fnArray[i];
     const args = opList.argsArray[i] as number[];
     if (fn === OPS['save']) {
-      ctmStack.push([...ctm] as Matrix6);
+      ctmStack.push([...ctm] as Matrix);
     } else if (fn === OPS['restore']) {
       const prev = ctmStack.pop();
       if (prev) ctm = prev;
     } else if (fn === OPS['transform']) {
       const [a, b, c, d, e, f] = args;
-      ctm = composeCtm(ctm, a, b, c, d, e, f);
+      ctm = multiplyMatrix([a, b, c, d, e, f], ctm);
     } else if (fn === OPS['beginAnnotation']) {
       // An annotation's appearance stream is placed by ops the page content stream never shows.
       // pdf.js's canvas backend (pdf.mjs:12824-12880) resets to the base transform, saves, then
@@ -265,7 +257,7 @@ export function walkPageOps(
       // The strip added for the raster paths does not cover this: `_extractFlowDoc` walks the
       // ORIGINAL source page, not the stripped export copy.
       annotationDepth++;
-      ctmStack.push([...ctm] as Matrix6);
+      ctmStack.push([...ctm] as Matrix);
       // The clip is re-established with the frame, for the same reason the ctm is. UNOBSERVABLE
       // and NOT pinned by a test, said plainly rather than implied: both clipped channels (rules
       // and vRules — colour was un-clipped in WS7 round 7)
@@ -282,8 +274,8 @@ export function walkPageOps(
       // stamped image against redactions expressed in a different frame.
       ctm = [...base];
       for (const idx of [2, 3]) {
-        const m = asMatrix6(args[idx]);
-        if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);
+        const m = asMatrix(args[idx]);
+        if (m) ctm = multiplyMatrix(m, ctm);
       }
     } else if (fn === OPS['endAnnotation']) {
       if (annotationDepth > 0) annotationDepth--;
@@ -313,11 +305,11 @@ export function walkPageOps(
       // MULTIPLICATIVELY, measured as [10000,0,0,2500,2000,1000] for a [100,0,0,50,20,20]
       // placement. Rules and text origins inside forms move to page space too, which is the
       // desired direction: nothing pinned the old form-local values.
-      ctmStack.push([...ctm] as Matrix6);
+      ctmStack.push([...ctm] as Matrix);
       // A form may carry no /Matrix, or a malformed one. pdf.js guards this with a bare
-      // truthiness test; `asMatrix6` is deliberately stricter (see its doc comment).
-      const m = asMatrix6(args[0]);
-      if (m) ctm = composeCtm(ctm, m[0], m[1], m[2], m[3], m[4], m[5]);
+      // truthiness test; `asMatrix` is deliberately stricter (see its doc comment).
+      const m = asMatrix(args[0]);
+      if (m) ctm = multiplyMatrix(m, ctm);
       // AFTER the matrix, never before: the backend issues its clip once the form matrix is on the
       // canvas CTM, so the `/BBox` numbers live in form space. Computing it from the pre-matrix ctm
       // puts the clip at the form's placement offset instead of over the form.
@@ -329,7 +321,7 @@ export function walkPageOps(
       if (prev) ctm = prev;
       popClip();
     } else if (fn === OPS['paintImageXObject']) {
-      images.push({ name: args[0] as unknown as string, ctm: [...ctm] as Matrix6 });
+      images.push({ name: args[0] as unknown as string, ctm: [...ctm] as Matrix });
     } else if (fn === OPS['constructPath']) {
       // (b) underline/strike: a thin horizontal filled/stroked rule. v6 packs
       // paths into constructPath: args = [paintOp, pathData, minMax]. The minMax

@@ -230,6 +230,9 @@ coverage run passes, which is how a wrong fix gets "verified"):
 ```
 src/
 ├── main.ts                 # entry point — instantiates PDFTurboApp
+├── shared-kernel/          # pure vocabulary: geometry/matrix.ts, text/{bidi,script}.ts — imports only
+│                           #   itself + bidi-js (the architecture ratchet enforces it)
+├── contracts/ , types/     # shared interfaces and type vocabulary (IErrorReporter, AppDOMRefs, ToolMode…)
 ├── core/                   # app orchestration + domain
 │   ├── pdfTurboApp.ts      # app orchestration hub (thin delegators over extracted services)
 │   ├── documentModel.ts    # page/element data model

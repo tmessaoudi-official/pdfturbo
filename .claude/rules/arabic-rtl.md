@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/utils/bidi.ts"
+  - "src/shared-kernel/text/**"
   - "src/utils/rtlClipboard.ts"
   - "src/export/arabicOverlay.ts"
   - "locales/ar.json"
