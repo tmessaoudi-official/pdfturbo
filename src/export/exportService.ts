@@ -622,7 +622,11 @@ export class ExportService {
    * the user explicitly asked for a table by invoking them, and is deliberately NOT in the DOCX flow,
    * where a false positive would silently turn prose into a table.
    */
-  private async _resolveTableGrid(docPage: DocumentPage, elements: readonly PDFElement[]): Promise<TableGrid | null> {
+  private async _resolveTableGrid(
+    docPage: DocumentPage,
+    // A caller without a snapshot gets one taken here, before any await — never the live list (M2R3-2).
+    elements: readonly PDFElement[] = this._snapshotNow().elements,
+  ): Promise<TableGrid | null> {
     const data = await this._extractPageTableData(docPage, elements);
     if (!data) return null;
     return buildTableGrid(data.hRules, data.vRules, data.items, undefined, bidiCellText)
@@ -711,7 +715,7 @@ export class ExportService {
    */
   private async _extractPageTableData(
     docPage: import('../core/documentModel').DocumentPage,
-    elements: readonly PDFElement[],
+    elements: readonly PDFElement[] = this._snapshotNow().elements,
   ): Promise<{ hRules: RuleRect[]; vRules: RuleRect[]; items: TableTextItem[] } | null> {
     const src = this._ctx.documentModel.sourcePdfs.get(docPage.sourcePdfId);
     if (!src) return null;
