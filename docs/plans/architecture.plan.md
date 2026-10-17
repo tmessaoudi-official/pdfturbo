@@ -18,6 +18,7 @@ pdf-lib coupling.
 - [2026-10-17 06:25] ASSUMED (review): Milestone panel S3-1: a non-literal import() specifier is FIXED in code (recorded as NON_LITERAL, reported unresolved by buildGraph) rather than documented as a bound - basis: advisor agreed (round 3); fail-loud keeps the kernel rule sound. Alternative: document it as a scanner bound.
 - [2026-10-17 06:25] ASSUMED (review): Milestone panel K3-1: shim fan-in counts src/ importers from buildGraph edges and tracked tests/ importers by git grep of the old path, each filtered by the moved names its statement imports - basis: advisor agreed (round 3); the graph scans src/ only and carries no names. Alternative: unfiltered path-match counts.
 - [2026-10-17 06:53] ASSUMED (review): Milestone panel C4-1 tightening: a construct named import is skipped as a method only in member position (the token before is { } ; , * or a member modifier) with a body { or a return-type : after its ) - basis: advisor agreed; the round-4 ternary ? test dropped c ? await import(x) : y silently. Alternative: keep the ? test and document the await shape as a bound.
+- [2026-10-17 08:56] AGREED: Milestone panel cap (5 rounds, 7 open findings in the import scanner, none in src/): fix all 7 with a test and a red sabotage each, certify with one advisor() call, then close row 8 and push the batch - no sixth panel round (developer, 2026-10-17).
 
 ## Target
 
@@ -39,14 +40,14 @@ pdf-lib coupling.
 ## Formal Plan — roadmap
 
 Rules for every step:
-- Move, then refactor — never both in one commit. A move leaves a re-export shim at the old path (386 test files
-  import `src/` paths); a shim is deleted only when no importer still takes a MOVED name through it, in `src/` and in
+- Move, then refactor — never both in one commit. A move leaves a re-export shim at the old path (387 tracked test files
+  import `src/` paths — `git grep -lE "(from|import\()\s*['\"\`][^'\"\`]*/src/" -- tests`, 2026-10-17); a shim is deleted only when no importer still takes a MOVED name through it, in `src/` and in
   `tests/`. `src/` importers come from the ratchet's graph (`buildGraph` edges into the shim file — a `git grep` of the
   old path misses a same-directory specifier such as `'./bidi'`); `tests/` importers from a `git grep` of the old path
   (tests import `…/src/<path>`, and the graph scans `src/` only). The graph carries no imported names, so EVERY grep hit
   is read for them — a static import, an inline type `import('…').T`, and a `vi.mock` factory's `importOriginal` read
   each count; the ratchet counts none of this itself.
-- Before each move, grep `vi.mock` for the old path (32 test files mock a `src/` path) and update those mocks in the
+- Before each move, grep `vi.mock` for the old path (34 test files mock a `src/` path on 2026-10-17) and update those mocks in the
   same commit — a re-export shim does not carry `vi.mock` interception.
 - The full deploy gate before every push.
 

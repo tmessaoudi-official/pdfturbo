@@ -10,9 +10,11 @@
  * Classification follows TypeScript's own elision rules, since this repo has no `verbatimModuleSyntax`:
  * `import type …`, `export type …` and a brace list whose every specifier carries `type` are TYPE edges; everything
  * else, including an unmarked import that is only ever used as a type, is a RUNTIME edge (an overcount, the safe
- * side). `import('./x')` with a literal specifier is a runtime edge (one with any other specifier, and an `import.meta.glob`, is reported unresolved), except an import TYPE — `import('./x').T` or
- * `typeof import('./x')` — which is a type edge (see `parseImports` for the shapes that stay runtime). A specifier with a Vite `?query` (`?url`,
- * `?worker&url`) is an asset URL, not a module dependency, and is counted apart.
+ * side). `import('./x')` with a literal specifier is a runtime edge (one with any other specifier, and an
+ * `import.meta.glob`, is reported unresolved), except an import TYPE — `import('./x').T` or `typeof import('./x')` —
+ * which is a type edge (see `parseImports` for the shapes that stay runtime). Specifiers are read as their value, escapes
+ * decoded. A specifier with a Vite `?query` (`?url`, `?worker&url`) is counted apart, not as an edge; since a `?worker`
+ * still runs its target's code, shared-kernel/, contracts/ and types/ may hold none.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -23,8 +25,9 @@ export interface Graph {
   files: string[];
   edges: Edge[];
   external: ExternalImport[];
-  assetImports: number;
-  /** Specifiers that resolved to no file or to a `.ts` file outside the scanned root, a package path with a `..` segment, and non-literal `import()`s / `import.meta.glob`s. */
+  /** `?query` specifiers (Vite asset URLs and workers): counted apart from the edges, with their importer. */
+  assets: { from: string; spec: string }[];
+  /** Specifiers that resolved to no file, to a `.d.ts`, or to a `.ts` file outside the scanned root, a package path with a `..` segment, and non-literal `import()`s / `import.meta.glob`s. */
   unresolved: string[];
   appUnderscoreInUi: number;
   getDocumentSites: number;
@@ -55,6 +58,19 @@ function regexAllowed(prev: Tok | undefined): boolean {
   return false;
 }
 
+/**
+ * The value a string or template literal's raw text denotes: escapes decoded (`\u002E`, `\u{2E}`, `\x2e`, `\.`) and
+ * line continuations removed — so `'bidi-js/\u002E\u002E/pdfjs-dist'` is read as the `..` path it is at run time.
+ */
+export function cook(raw: string): string {
+  const named: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', 0: '\0' };
+  return raw.replace(/\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|\r\n|[\s\S])/g, (_m, e: string) => {
+    if (e.length > 1 && (e[0] === 'u' || e[0] === 'x')) return String.fromCodePoint(parseInt(e.replace(/[ux{}]/g, ''), 16));
+    if (e === '\r\n' || e === '\n' || e === '\r' || e === '\u2028' || e === '\u2029') return '';
+    return named[e] ?? e;
+  });
+}
+
 /** Tokens of `src`, and `src` with every comment blanked (newlines kept, so offsets and line numbers survive). */
 export function lex(src: string): { tokens: Tok[]; code: string } {
   const tokens: Tok[] = [];
@@ -77,7 +93,7 @@ export function lex(src: string): { tokens: Tok[]; code: string } {
   };
   const pushTemplate = (start: number): number => {
     const r = readTemplate(start);
-    tokens.push({ t: 'tpl', v: r.text });
+    tokens.push({ t: 'tpl', v: cook(r.text) });
     if (r.open) { templateAt.push(depth); depth++; }
     return r.end;
   };
@@ -89,8 +105,8 @@ export function lex(src: string): { tokens: Tok[]; code: string } {
     if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); const end = e < 0 ? n : e + 2; blank(i, end); i = end; continue; }
     if (c === "'" || c === '"') {
       let j = i + 1;
-      while (j < n && src[j] !== c && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
-      tokens.push({ t: 'str', v: src.slice(i + 1, j) });
+      while (j < n && src[j] !== c && src[j] !== '\n') j += src[j] !== '\\' ? 1 : src[j + 1] === '\r' && src[j + 2] === '\n' ? 3 : 2;
+      tokens.push({ t: 'str', v: cook(src.slice(i + 1, j)) });
       i = j + 1;
       continue;
     }
@@ -184,8 +200,8 @@ export function parseImports(src: string): { spec: string; runtime: boolean }[] 
           let close = k + 1;
           for (let depth = 0; close < T.length; close++) { if (is(close, '(')) depth++; else if (is(close, ')') && --depth === 0) break; }
           const before = T[k - 1];
-          const startsMember = before === undefined || (before.t === 'punct' && '{};,*'.includes(before.v))
-            || (before.t === 'id' && MEMBER_MODIFIERS.has(before.v));
+          const startsMember = (before?.t === 'punct' && '{};,*'.includes(before.v))
+            || (before?.t === 'id' && MEMBER_MODIFIERS.has(before.v));
           if (startsMember && (is(close + 1, '{') || is(close + 1, ':'))) continue;
           found.push({ spec: NON_LITERAL, runtime: true });
           continue;
@@ -288,7 +304,7 @@ export function buildGraph(root: string): Graph {
   const edges = new Map<string, Edge>();
   const external = new Map<string, ExternalImport>();
   const unresolved: string[] = [];
-  let assetImports = 0;
+  const assets: { from: string; spec: string }[] = [];
   let appUnderscoreInUi = 0;
   let getDocumentSites = 0;
   for (const f of abs) {
@@ -297,7 +313,7 @@ export function buildGraph(root: string): Graph {
     for (const { spec, runtime } of parseImports(text)) {
       if (spec === NON_LITERAL || spec === META_GLOB) { unresolved.push(`${from}: ${spec}`); continue; }
       const r = resolveSpec(root, f, spec);
-      if (r.kind === 'asset') { assetImports++; continue; }
+      if (r.kind === 'asset') { assets.push({ from, spec }); continue; }
       if (r.kind === 'unresolved') { unresolved.push(`${from}: '${spec}'`); continue; }
       const map = r.kind === 'file' ? edges : external;
       const to = r.kind === 'file' ? rel(root, r.path) : r.pkg;
@@ -315,7 +331,7 @@ export function buildGraph(root: string): Graph {
     files: abs.map((f) => rel(root, f)),
     edges: [...edges.values()],
     external: [...(external.values() as Iterable<ExternalImport>)],
-    assetImports,
+    assets,
     unresolved,
     appUnderscoreInUi,
     getDocumentSites,
@@ -385,6 +401,12 @@ export function evaluate(graph: Graph, baseline: Baseline): string[] {
     const b = topDir(e.to);
     if (a === 'shared-kernel' && b !== 'shared-kernel') v.push(`${e.from} imports ${e.to}: shared-kernel/ imports only itself`);
     if ((a === 'contracts' || a === 'types') && !EXEMPT_TARGETS.has(b)) v.push(`${e.from} imports ${e.to}: ${a}/ imports only shared-kernel/, contracts/ and types/`);
+  }
+  // A `?query` import is no edge, but it can still run code (`?worker` starts a worker on its target), and pure
+  // vocabulary has no use for an asset: the kernel and the vocabulary directories may hold none.
+  for (const x of graph.assets) {
+    const a = topDir(x.from);
+    if (EXEMPT_TARGETS.has(a)) v.push(`${x.from} imports '${x.spec}': ${a}/ holds no ?query (asset or worker) import`);
   }
   for (const x of graph.external) {
     if (topDir(x.from) === 'shared-kernel' && !KERNEL_NPM_ALLOWLIST.includes(x.pkg)) {

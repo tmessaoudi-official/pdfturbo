@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { META_GLOB, NON_LITERAL, buildGraph, evaluate, parseImports, type Baseline } from './architectureGraph';
+import { META_GLOB, NON_LITERAL, buildGraph, cook, evaluate, parseImports, type Baseline } from './architectureGraph';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -70,6 +70,7 @@ describe('architecture ratchet — the scanner', () => {
       'const ta = c ? await import(spec) : null;',
       'switch (x) { case import(spec): break; }',
       'abstract class A { static async import(s: string): Promise<void> {} }',
+      "const esc = import('./esc\\u0061pe\\x2Ed');",
       "const g = import.meta.glob('./mods/*.ts');",
     ].join('\n');
     expect(parseImports(src)).toEqual([
@@ -114,8 +115,26 @@ describe('architecture ratchet — the scanner', () => {
       { spec: NON_LITERAL, runtime: true },
       { spec: NON_LITERAL, runtime: true },
       { spec: NON_LITERAL, runtime: true },
+      { spec: './escape.d', runtime: true },
       { spec: META_GLOB, runtime: true },
     ]);
+  });
+
+  it('skips a method named import after every token that can start a member', () => {
+    const before = ['}', ';', ',', '*', 'async', 'static', 'public', 'private', 'protected', 'readonly', 'abstract', 'override', 'declare', 'get', 'set'];
+    for (const b of before) expect(parseImports(`class K { a = 1 ${b} import(s: string): void {} }`), b).toEqual([]);
+    // The member's `)` is the one that closes its own `(`: a nested call or group is not its end.
+    expect(parseImports('class D { import(s = f()) {} }')).toEqual([]);
+    expect(parseImports('if (x) { import(c ? (a) : b) }')).toEqual([{ spec: NON_LITERAL, runtime: true }]);
+  });
+
+  it('reads a specifier as the value it denotes: escapes decoded, line continuations removed', () => {
+    expect(cook('bidi-js/\\u002E\\u{2E}/x')).toBe('bidi-js/../x');
+    expect(cook('a\\x2e\\.b\\\nc\\\r\nd')).toBe('a..bcd');
+    expect(cook('C:\\users')).toBe('C:users');
+    expect(parseImports("import a from 'bidi-js/.\\\n./pdfjs-dist';")).toEqual([{ spec: 'bidi-js/../pdfjs-dist', runtime: true }]);
+    expect(parseImports("import a from 'bidi-js/.\\\r\n./pdfjs-dist';")).toEqual([{ spec: 'bidi-js/../pdfjs-dist', runtime: true }]);
+    expect(parseImports('const t = import(`./t\\u0061`);')).toEqual([{ spec: './ta', runtime: true }]);
   });
 
   it('builds the fixture graph exactly: comments and strings ignored, asset URLs set apart, npm packages named, an import leaving the root unresolved', () => {
@@ -142,10 +161,15 @@ describe('architecture ratchet — the scanner', () => {
       'shared-kernel/math.ts -> bidi-js',
       'shared-kernel/math.ts -> fflate',
     ]);
-    expect(g.assetImports).toBe(1);
+    expect(g.assets).toEqual([
+      { from: 'contracts/leak.ts', spec: '../utils/data.txt?url' },
+      { from: 'shared-kernel/dyn.ts', spec: 'pdfjs-dist?worker' },
+      { from: 'utils/asset.ts', spec: './data.txt?url' },
+    ]);
     expect(g.unresolved).toEqual([
       "main.ts: '../outside'",
       "shared-kernel/dyn.ts: 'bidi-js/../pdfjs-dist'",
+      "shared-kernel/dyn.ts: 'bidi-js/../fflate'",
       `shared-kernel/dyn.ts: ${NON_LITERAL}`,
       `shared-kernel/dyn.ts: ${META_GLOB}`,
     ]);
@@ -178,6 +202,9 @@ describe('architecture ratchet — the scanner', () => {
       'runtime import cycle: core/app.ts, ui/panel.ts',
       "unresolved import main.ts: '../outside'",
       "unresolved import shared-kernel/dyn.ts: 'bidi-js/../pdfjs-dist'",
+      "unresolved import shared-kernel/dyn.ts: 'bidi-js/../fflate'",
+      "shared-kernel/dyn.ts imports 'pdfjs-dist?worker': shared-kernel/ holds no ?query (asset or worker) import",
+      "contracts/leak.ts imports '../utils/data.txt?url': contracts/ holds no ?query (asset or worker) import",
       `unresolved import shared-kernel/dyn.ts: ${NON_LITERAL}`,
       `unresolved import shared-kernel/dyn.ts: ${META_GLOB}`,
       "shared-kernel/math.ts imports core/app.ts: shared-kernel/ imports only itself",
