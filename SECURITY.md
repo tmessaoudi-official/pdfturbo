@@ -206,8 +206,8 @@ their physical size and the resolution you chose.
 > exports the cell it covered; there the screen has lost the redaction too (M2R3-2) [Verified: same review, a covered
 > CSV cell]. The PDF exports take both lists before they start building, but an undo that changes an annotation or a page IN PLACE — a
 > box's move, resize or rotation, a page's rotation or crop — is read as it is then. For a redaction's move or resize
-> that is where the screen shows it [Verified: same review, measured]; whether a page-rotation or crop undo landing
-> mid-export can misplace a burn is not measured [Inferred: the rasteriser reads the page's rotation and crop at
+> that is where the screen shows it [Verified: same review, measured]; whether a page-rotation, crop or box-rotation undo
+> landing mid-export can misplace a burn is not measured [Inferred: the rasteriser reads the page's rotation and crop at
 > different moments]. Workaround: do not undo, redo or edit while one of these exports runs. Tracked in
 > `docs/plans/review-remediation.plan.md` (row 29).
 

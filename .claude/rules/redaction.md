@@ -1214,8 +1214,9 @@ review-remediation row 29. Left live: `_extractPageTableData` (CSV/XLSX) reads i
 the pdf.js document — and since QUAL-1 a close releases that document, so a close fails the table export instead of
 shipping it. An element or page MUTATED in place mid-export is still read as it is then — the copies are shallow, and
 `MoveResizeCmd`, `RotateElementCmd`, `TransformAnnotationsCmd`, `RotatePageCmd` and `SetPageCropCmd` all write the live
-object [Verified for `MoveResizeCmd.undo` by the M2 round-3 safety reviewer — the export follows the screen; the page
-rotation and crop cases, which `rasterizePageWithRedactions` reads at different moments, are not measured → row 29].
+object [Verified for `MoveResizeCmd.undo` by the M2 round-3 safety reviewer — the export follows the screen; the box
+rotation, page rotation and crop cases (the last two read by `rasterizePageWithRedactions` at different moments) are not
+measured → row 29].
 
 Guard: `tests/export/exportSnapshot.test.ts` (6 — the probe can see the secret in the plain source; Download and
 Download page each with and without a close during the source load; a page added mid-export is not exported). Red
