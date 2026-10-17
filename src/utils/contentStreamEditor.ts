@@ -350,15 +350,350 @@ const CHAR_CLASS = (() => {
 })();
 
 /**
+ * pdf.js 6.3.289's content-stream operators (`EvaluatorPreprocessor.opMap`): name → [operand count, variable count].
+ * `null` marks a prefix pdf.js lists only so that its lexer reads on to a longer operator (`BD` → `BDC`, `fals` →
+ * `false`). `tests/utils/scanNamedOpsPdfjs.test.ts` re-derives the table from the installed `pdf.worker.mjs`.
+ */
+export const PDFJS_OPERATORS: ReadonlyMap<string, readonly [number, boolean] | null> = (() => {
+  const m = new Map<string, readonly [number, boolean] | null>();
+  const fixed: [number, string][] = [
+    [0, 'q Q h S s f F f* B B* b b* n W W* BT ET T* BI ID EMC BX EX'],
+    [1, "w J j M ri i gs Tc Tw Tz TL Tr Ts Tj TJ ' CS cs G g sh EI Do MP BMC"],
+    [2, 'd m l Tf Td TD d0 DP BDC'],
+    [3, '" RG rg'],
+    [4, 'v y re K k'],
+    [6, 'cm c Tm d1'],
+  ];
+  for (const [count, names] of fixed) for (const name of names.split(' ')) m.set(name, [count, false]);
+  for (const [name, count] of [['SC', 4], ['SCN', 33], ['sc', 4], ['scn', 33]] as const) m.set(name, [count, true]);
+  for (const name of 'BM BD true fa fal fals false nu nul null'.split(' ')) m.set(name, null);
+  return m;
+})();
+
+/** pdf.js's `isWhiteSpace`: four bytes, not NUL or form feed (those are whitespace to its lexer only). */
+const isPdfjsSpace = (c: number): boolean => c === 0x20 || c === 0x09 || c === 0x0d || c === 0x0a;
+const hexValue = (c: number): number =>
+  c >= 48 && c <= 57 ? c - 48 : c >= 65 && c <= 70 ? c - 55 : c >= 97 && c <= 102 ? c - 87 : -1;
+const charClass = (c: number): number => (c < 0 || c > 255 ? 0 : CHAR_CLASS[c]);
+
+/**
+ * Where the operator pdf.js's lexer reads at `p` ends (`Lexer.getObj`): a control or non-ASCII byte followed by a
+ * printable one stands alone; otherwise the run of regular bytes up to `wordEnd`, cut where a known operator would grow
+ * into an unknown one — so `qBI` is `q` then `BI`, and `DoQ` is `Do` then `Q`. `limit` is where the lexer's input ends.
+ * Throws where pdf.js does, on an operator past 128 bytes.
+ */
+function pdfjsWordEnd(src: string, p: number, wordEnd: number, limit: number): number {
+  const c0 = src.charCodeAt(p);
+  if (c0 < 0x20 || c0 > 0x7f) {
+    const c1 = p + 1 < limit ? src.charCodeAt(p + 1) : -1;
+    if (c1 >= 0x20 && c1 <= 0x7f) return p + 1;
+  }
+  let q = p + 1;
+  let known = PDFJS_OPERATORS.has(src[p]);
+  while (q < wordEnd) {
+    if (known && !PDFJS_OPERATORS.has(src.slice(p, q + 1))) break;
+    if (q - p === 128) throw new Error(`Content stream: an operator past 128 bytes at byte ${p}`);
+    q++;
+    known = PDFJS_OPERATORS.has(src.slice(p, q));
+  }
+  return q;
+}
+
+type PdfjsToken =
+  | { k: 'eof' } | { k: 'str' } | { k: 'lit' }
+  | { k: 'num'; v: number } | { k: 'name'; v: string } | { k: 'cmd'; v: string };
+
+/** The next token of pdf.js's `Lexer.getObj` from `p`, with input ending at `end`, and the index after it. */
+function pdfjsToken(src: string, p: number, end: number): { tok: PdfjsToken; at: number } {
+  const code = (k: number): number => (k < end ? src.charCodeAt(k) : -1);
+  let c = code(p);
+  for (let comment = false; ; c = code(++p)) {
+    if (c < 0) return { tok: { k: 'eof' }, at: p };
+    if (comment) { if (c === 0x0a || c === 0x0d) comment = false; }
+    else if (c === 0x25) comment = true;
+    else if (charClass(c) !== 1) break;
+  }
+  if ((c >= 0x30 && c <= 0x39) || c === 0x2b || c === 0x2d || c === 0x2e) {
+    // `Lexer.getNumber`: no exponent, a second leading `-` and line breaks after the sign are skipped, a `-` inside is
+    // read past, and `1.` or `1.0` is the integer 1.
+    let k = p, sign = 1, divideBy = 0;
+    if (c === 0x2d) { sign = -1; c = code(++k); if (c === 0x2d) c = code(++k); }
+    else if (c === 0x2b) c = code(++k);
+    while (c === 0x0a || c === 0x0d) c = code(++k);
+    if (c === 0x2e) { divideBy = 10; c = code(++k); }
+    if (c < 0x30 || c > 0x39) {
+      if (isPdfjsSpace(c) || c === 0x28 || c === 0x3c || c === -1) return { tok: { k: 'num', v: 0 }, at: k };
+      throw new Error(`Content stream: pdf.js reads no number at byte ${p}`);
+    }
+    let base = c - 0x30;
+    for (c = code(++k); c >= 0; c = code(++k)) {
+      if (c >= 0x30 && c <= 0x39) { if (divideBy !== 0) divideBy *= 10; base = base * 10 + c - 0x30; }
+      else if (c === 0x2e) { if (divideBy === 0) divideBy = 1; else break; }
+      else if (c !== 0x2d) break;
+    }
+    return { tok: { k: 'num', v: sign * (divideBy !== 0 ? base / divideBy : base) }, at: k };
+  }
+  switch (c) {
+    case 0x28: {
+      let k = p + 1;
+      for (let depth = 1; k < end; ) {
+        const d = src.charCodeAt(k);
+        if (d === 0x5c) { k += 2; continue; }
+        k++;
+        if (d === 0x28) depth++;
+        else if (d === 0x29 && --depth === 0) break;
+      }
+      return { tok: { k: 'str' }, at: Math.min(k, end) };
+    }
+    case 0x2f: {
+      // `Lexer.getName`: `#hh` is a byte; a `#` without two hex digits stays as written.
+      let k = p + 1, v = '';
+      while (k < end && charClass(code(k)) === 0) {
+        const d = code(k);
+        if (d !== 0x23) { v += src[k]; k++; continue; }
+        const d1 = code(k + 1);
+        if (d1 < 0 || charClass(d1) !== 0) { v += '#'; k++; break; }
+        const x1 = hexValue(d1);
+        if (x1 === -1) { v += '#' + src[k + 1]; k += 2; continue; }
+        const d2 = code(k + 2);
+        const x2 = hexValue(d2);
+        if (x2 !== -1) { v += String.fromCharCode((x1 << 4) | x2); k += 3; continue; }
+        v += '#' + src[k + 1];
+        if (d2 < 0 || charClass(d2) !== 0) { k += 2; break; }
+        v += src[k + 2];
+        k += 3;
+      }
+      return { tok: { k: 'name', v }, at: k };
+    }
+    case 0x5b: case 0x5d: case 0x7b: case 0x7d:
+      return { tok: { k: 'cmd', v: src[p] }, at: p + 1 };
+    case 0x3c: {
+      if (code(p + 1) === 0x3c) return { tok: { k: 'cmd', v: '<<' }, at: p + 2 };
+      let k = p + 1;
+      while (k < end && src.charCodeAt(k) !== 0x3e) k++;
+      return { tok: { k: 'str' }, at: Math.min(k + 1, end) };
+    }
+    case 0x3e:
+      return code(p + 1) === 0x3e ? { tok: { k: 'cmd', v: '>>' }, at: p + 2 } : { tok: { k: 'cmd', v: '>' }, at: p + 1 };
+    case 0x29:
+      throw new Error(`Content stream: stray ')' at byte ${p}`);
+  }
+  let w = p;
+  while (w < end && charClass(code(w)) === 0) w++;
+  const q = pdfjsWordEnd(src, p, w, end);
+  const word = src.slice(p, q);
+  return { tok: word === 'true' || word === 'false' || word === 'null' ? { k: 'lit' } : { k: 'cmd', v: word }, at: q };
+}
+
+/**
+ * Does a known operator with its operand count follow `from`, within `end`? pdf.js's test for an `EI` that ends an
+ * unfiltered inline image (`findDefaultInlineStreamEnd`, a 75-byte look-ahead with a fresh lexer); its throws are ours.
+ */
+function pdfjsOperatorFollows(src: string, from: number, end: number): boolean {
+  let p = from, args = 0;
+  for (;;) {
+    const { tok, at } = pdfjsToken(src, p, end);
+    p = at;
+    if (tok.k === 'eof') return false;
+    if (tok.k !== 'cmd') { args++; continue; }
+    const spec = PDFJS_OPERATORS.get(tok.v);
+    if (!spec) return false;
+    if (spec[1] ? args <= spec[0] : args === spec[0]) return true;
+    args = 0;
+  }
+}
+
+/** The JPEG markers pdf.js's DCT search skips by their length field. */
+const DCT_LENGTH_MARKERS = new Set([
+  0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf, 0xc4, 0xcc,
+  0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec,
+  0xed, 0xee, 0xef, 0xfe,
+]);
+
+/**
+ * Where pdf.js resumes reading after the data of an inline image that starts at `start` (`Parser.makeInlineImage`):
+ * by its first filter — DCT at the JPEG end marker, ASCII85 at `~>` (or `~`, whitespace, `EI`), ASCIIHex at `>`, each
+ * then past the next `EI` and one more byte, and each falling back to the unfiltered rule when its end is missing; the
+ * unfiltered rule takes the first `EI` + whitespace whose next 15 bytes are printable (a NUL alone is allowed) and lex as
+ * a known operator with its operand count, else the last such `EI` once the stream ends.
+ */
+function pdfjsImageDataEnd(src: string, start: number, filter: string | undefined): number {
+  const n = src.length;
+  let pos = start;
+  const getByte = (): number => (pos < n ? src.charCodeAt(pos++) : -1);
+  const at = (k: number): number => (k < n ? src.charCodeAt(k) : -1);
+  const skipEI = (): void => {
+    for (let c = getByte(), state = 0; c !== -1; c = getByte()) {
+      if (state === 2) break;
+      state = state === 0 ? (c === 0x45 ? 1 : 0) : c === 0x49 ? 2 : 0;
+    }
+  };
+  const unfiltered = (): number => {
+    pos = start;
+    let state = 0, c = 0, maybe = -1;
+    while ((c = getByte()) !== -1) {
+      if (state === 0) state = c === 0x45 ? 1 : 0;
+      else if (state === 1) state = c === 0x49 ? 2 : 0;
+      else if (c === 0x20 || c === 0x0a || c === 0x0d) {
+        maybe = pos;
+        const ahead = Math.min(n, pos + 15) - pos;
+        if (ahead <= 0) break;
+        for (let k = 0; k < ahead; k++) {
+          c = at(pos + k);
+          if (c === 0 && (k + 1 < ahead ? at(pos + k + 1) : -1) !== 0) continue;
+          if (c !== 0x0a && c !== 0x0d && (c < 0x20 || c > 0x7f)) { state = 0; break; }
+        }
+        if (state !== 2) continue;
+        if (pdfjsOperatorFollows(src, pos, Math.min(n, pos + 75))) break;
+        state = 0;
+      } else state = 0;
+    }
+    if (c === -1 && maybe >= 0) pos = maybe;
+    return pos;
+  };
+  switch (filter) {
+    case 'DCT': case 'DCTDecode': {
+      for (let b = getByte(); b !== -1; b = getByte()) {
+        if (b !== 0xff) continue;
+        const m = getByte();
+        if (m === 0xd9) { skipEI(); return pos; }
+        if (m === 0xff) pos--;
+        else if (DCT_LENGTH_MARKERS.has(m)) {
+          const afterMarker = pos;
+          const hi = getByte(), lo = getByte();
+          const length = hi === -1 || lo === -1 ? -1 : (hi << 8) + lo;
+          if (length > 2) pos += length - 2;
+          // A marker at the very end: pdf.js steps back onto it and reads it again, for ever.
+          else if (length === -1 && afterMarker >= n) throw new Error('Content stream: pdf.js never ends this inline image');
+          else pos -= 2;
+        }
+      }
+      return unfiltered();
+    }
+    case 'A85': case 'ASCII85Decode': {
+      let c = 0;
+      while ((c = getByte()) !== -1) {
+        if (c !== 0x7e) continue;
+        const tilde = pos;
+        c = at(pos);
+        while (isPdfjsSpace(c)) c = at(++pos);
+        if (c === 0x3e) { pos++; break; }
+        if (pos > tilde && at(pos) === 0x45 && at(pos + 1) === 0x49) break;
+      }
+      if (c === -1) return unfiltered();
+      skipEI();
+      return pos;
+    }
+    case 'AHx': case 'ASCIIHexDecode': {
+      let c = 0;
+      while ((c = getByte()) !== -1 && c !== 0x3e) { /* to the first `>` */ }
+      if (c === -1) return unfiltered();
+      skipEI();
+      return pos;
+    }
+    default:
+      return unfiltered();
+  }
+}
+
+type PdfjsValue = PdfjsToken | PdfjsValue[] | { k: 'ref' } | { k: 'dict' };
+
+/**
+ * Where pdf.js resumes reading after the inline image whose `BI` ends at `from`: its dictionary lexed and parsed the
+ * way `Parser.makeInlineImage` does it (`/F` before `/Filter`, an array's first filter), its data from the byte after
+ * the one following `ID`, its end by `pdfjsImageDataEnd`. Throws where pdf.js stops reading the stream (a key that is
+ * not a name, a non-name filter in an array) and on shapes this cannot follow: `ID` anywhere but in a key's place, a
+ * filter given by reference, and a byte after `ID` that is not whitespace (pdf.js lexes it again after the data).
+ */
+function pdfjsInlineImageEnd(src: string, from: number): number {
+  const n = src.length;
+  let p = from;
+  const queue: { tok: PdfjsToken; at: number }[] = [];
+  const peek = (k: number): PdfjsToken => {
+    while (queue.length <= k) { const r = pdfjsToken(src, p, n); p = r.at; queue.push(r); }
+    return queue[k].tok;
+  };
+  const take = (): { tok: PdfjsToken; at: number } => { peek(0); return queue.shift() as { tok: PdfjsToken; at: number }; };
+  const isCmd = (t: PdfjsToken, v: string): boolean => t.k === 'cmd' && t.v === v;
+  const cannotFollow = (what: string): Error => new Error(`Content stream: an inline image ${what}`);
+  const value = (): PdfjsValue => {
+    const { tok } = take();
+    if (isCmd(tok, 'ID')) throw cannotFollow('dictionary holds ID as a value');
+    if (isCmd(tok, '[')) {
+      const items: PdfjsValue[] = [];
+      for (;;) {
+        const u = peek(0);
+        if (isCmd(u, ']')) { take(); return items; }
+        if (u.k === 'eof') throw cannotFollow('dictionary ends inside an array');
+        items.push(value());
+      }
+    }
+    if (isCmd(tok, '<<')) {
+      for (;;) {
+        const u = peek(0);
+        if (isCmd(u, '>>')) { take(); return { k: 'dict' }; }
+        if (u.k === 'eof') throw cannotFollow('dictionary ends inside a dictionary');
+        if (isCmd(u, 'ID')) throw cannotFollow('dictionary holds ID as a value');
+        take();
+        if (u.k !== 'name') continue;
+        if (peek(0).k === 'eof') throw cannotFollow('dictionary ends inside a dictionary');
+        value();
+      }
+    }
+    if (tok.k === 'num' && Number.isInteger(tok.v)) {
+      const second = peek(0);
+      if (second.k === 'num' && Number.isInteger(second.v) && isCmd(peek(1), 'R')) { take(); take(); return { k: 'ref' }; }
+    }
+    return tok;
+  };
+
+  const dict = new Map<string, PdfjsValue>();
+  let idEnd: number;
+  for (;;) {
+    const { tok, at } = take();
+    if (isCmd(tok, 'ID')) { idEnd = at; break; }
+    if (tok.k === 'eof') return n;
+    if (tok.k !== 'name') throw cannotFollow('key is not a name');
+    if (peek(0).k === 'eof') return n;
+    dict.set(tok.v, value());
+  }
+  if (idEnd >= n) return n;
+  if (charClass(src.charCodeAt(idEnd)) !== 1) throw cannotFollow('data does not start after whitespace');
+
+  const f = dict.has('F') ? dict.get('F') : dict.get('Filter');
+  let filter: string | undefined;
+  const isName = (v: PdfjsValue | undefined): v is { k: 'name'; v: string } => !Array.isArray(v) && v?.k === 'name';
+  if (isName(f)) filter = f.v;
+  else if (Array.isArray(f)) {
+    if (!f.every(isName)) throw cannotFollow('filter array holds something other than a name');
+    filter = f[0]?.v;
+  } else if (!Array.isArray(f) && f?.k === 'ref') throw cannotFollow('filter is given by reference');
+  return pdfjsImageDataEnd(src, idEnd + 1, filter);
+}
+
+/** `scanNamedOps` options. */
+export interface ScanOptions {
+  /**
+   * Read the way pdf.js reads where the tokenizer does not (review-remediation row 10, S10-1): a run of letters split
+   * into known operators (`qBI` is `q` then `BI`), and an inline image ended by its filter and pdf.js's `EI` rules
+   * rather than at the first `EI` between whitespace. What the SEC-1 prune counts as drawn must be what pdf.js draws.
+   * Without it the scan stays equal to `groupOps(tokenizeContentStream(src))`.
+   */
+  readonly pdfjs?: boolean;
+}
+
+/**
  * The operators of `src` that are in `wanted`, each with its name operands and operand count — what
  * `groupOps(tokenizeContentStream(src))` gives for them, token boundaries and the throw on a stray delimiter included,
  * without building a token for every number, string and array. The SEC-1 prune reads every kept page that shares a
  * resource with a removed one, and the full tokenizer was half its time (review-remediation row 10). Any lexing
- * change goes into both: `tests/utils/scanNamedOps.test.ts` compares them.
+ * change goes into both: `tests/utils/scanNamedOps.test.ts` compares them. `opts.pdfjs` departs from the tokenizer
+ * where pdf.js does (see `ScanOptions`), pinned against pdf.js itself by `tests/export/inlineImagePdfjs.test.ts`.
  */
-export function scanNamedOps(src: string, wanted: ReadonlySet<string>): NamedOp[] {
+export function scanNamedOps(src: string, wanted: ReadonlySet<string>, opts: ScanOptions = {}): NamedOp[] {
   const out: NamedOp[] = [];
   const n = src.length;
+  const pdfjs = opts.pdfjs === true;
   let longest = 2;
   for (const w of wanted) longest = Math.max(longest, w.length);
   const cls =(k: number): number => { const c = src.charCodeAt(k); return c > 255 ? 0 : CHAR_CLASS[c]; };
@@ -444,9 +779,27 @@ export function scanNamedOps(src: string, wanted: ReadonlySet<string>): NamedOp[
     if (isNumberStart(src.charCodeAt(i))) { skipNumber(); operand(start, false); continue; }
     skipRegular();
     if (i === start) throw new Error(`Content stream: stray '${src[i]}' at byte ${i}`);
-    // A word longer than every wanted operator (and than `BI`) only ends the operands: not sliced.
-    const word = i - start <= longest ? src.slice(start, i) : '';
-    if (word === 'BI') { i = findInlineImageEnd(src, i); reset(); continue; }
+    if (pdfjs) {
+      // pdf.js reads `qBI` as `q` then `BI`; a known operator is never cut, so it needs no split.
+      let p = start;
+      let image = -1;
+      while (p < i) {
+        const q = i - p <= 5 && PDFJS_OPERATORS.has(src.slice(p, i)) ? i : pdfjsWordEnd(src, p, i, n);
+        if (q - p === 2 && src.startsWith('BI', p)) { image = q; break; }
+        operator(p, q);
+        p = q;
+      }
+      if (image >= 0) { i = pdfjsInlineImageEnd(src, image); reset(); }
+      continue;
+    }
+    if (i - start === 2 && src.startsWith('BI', start)) { i = findInlineImageEnd(src, i); reset(); continue; }
+    operator(start, i);
+  }
+  return out;
+
+  function operator(from: number, to: number): void {
+    // A word longer than every wanted operator only ends the operands: not sliced.
+    const word = to - from <= longest ? src.slice(from, to) : '';
     if (wanted.has(word)) {
       out.push({
         operator: word, operands: count,
@@ -456,7 +809,6 @@ export function scanNamedOps(src: string, wanted: ReadonlySet<string>): NamedOp[
     }
     reset();
   }
-  return out;
 }
 
 /** Serialize a single grouped op back to a content-stream fragment. */

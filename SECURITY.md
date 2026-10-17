@@ -64,8 +64,10 @@ reading the code. Both are said plainly instead of implied to be measured.
 > [Verified: setasign FPDI `FpdfTplTrait` writes `/Resources 2 0 R`], so it reaches a kept page through the page,
 > a form or pattern it draws, an annotation's appearance or a Type3 font. Wherever a kept page, form, pattern,
 > appearance, font or form field's default resources shares resources with a removed page, the export keeps only the
-> entries it draws — the way pdf.js reads it, including a font set through a graphics state and a page whose content
-> stream carries resources of its own. When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
+> entries it draws — the way pdf.js reads it, including a font set through a graphics state, a page whose content
+> stream carries resources of its own, and an inline image ended where pdf.js ends it (since 2026-10-17: a picture's
+> data could hide a drawing instruction the export counted and no viewer runs; the syntax corners this reading does not
+> mirror are listed in `KNOWN_ISSUES.md`). When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
 > message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
 > is pinned by a test that finds the removed page's text in the source and not in the export
 > (`tests/export/copySourcePages.test.ts`, `copySourcePagesInventory.test.ts`, `copySourcePagesRound7.test.ts` and

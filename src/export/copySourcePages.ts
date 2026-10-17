@@ -825,7 +825,8 @@ class ResourcePruner {
     const { PDFName, PDFDict, PDFStream } = this.lib;
     if (depth > 12) return false;
     let ops;
-    try { ops = scanNamedOps(content, DRAWING_OPS); } catch { return false; }
+    // Read as pdf.js reads: an inline image's data, ended where pdf.js ends it, draws nothing (S10-1).
+    try { ops = scanNamedOps(content, DRAWING_OPS, { pdfjs: true }); } catch { return false; }
     const entry = (cat: Category, name: string) => {
       const sub = resources.lookup(PDFName.of(cat));
       return sub instanceof PDFDict ? this.src.context.lookup(sub.get(PDFName.of(name))) : undefined;

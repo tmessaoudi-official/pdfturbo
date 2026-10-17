@@ -165,8 +165,21 @@ work in a private/incognito window when editing sensitive documents on a shared 
   (`scanNamedOps`), measured on an idle machine for the first time (load ~2; `copySourcePages` alone, warm, five
   alternating runs, two repetitions, the old code in a worktree at `fffe15f`): the 142-page file 902 / 876 → 612 / 543
   ms (about 100 ms with no prune), the census report 268 / 271 → 187 / 173 (about 60), the paper 76 / 85 → 58 / 66
-  (about 16). The pruned output is byte-identical before and after on all 15 corpus files, each in three page
-  selections. The rest — pruning the resources, the reachability walk, the copier hook — is not optimised.
+  (about 16). The pruned output is byte-identical before and after on all 15 corpus files in 39 distinct runs (three
+  page selections per file, which coincide on the three two-page forms). Both halves are in
+  `var/claude/row10/cost.jsonl` (gitignored; the "before" medians were copied there from the session that measured
+  them, whose worktree was removed — R10-K-1). Reading inline images the way pdf.js does (next item) costs 5–18% more
+  scanning than the plain name scan, still well under half the tokenizer's time (Publication 17's 1,001 streams: 386 →
+  406 ms against 911, the three timed alternately in one process at load ~11; `var/claude/row10/scancost.jsonl`). The
+  rest — pruning the resources, the reachability walk, the copier hook — is not optimised.
+- **The prune reads a page as pdf.js does for inline images and glued operators, not for every corner of the
+  syntax.** It ends an inline image by its filter and pdf.js's `EI` rules, splits `qBI` into `q` and `BI`, and refuses
+  the export where pdf.js stops reading the page or where it cannot follow pdf.js (a filter given by reference, among
+  others) — until 2026-10-17 a JPEG inline image could hide a `/Fm2 Do` that the prune counted as drawn, keeping a
+  removed page's form in the file (S10-1). Not mirrored: pdf.js keeps the operands of an unknown operator, or of an
+  inline image, for the next known one, and reads a `BI` inside an operand array or dictionary, some number forms and
+  nested arrays differently. On such a content stream the prune can keep a resource no viewer draws, or drop one a
+  viewer would draw. No corpus file has an inline image in a drawn stream; the other shapes were not measured there (plan row 32).
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure
   destination (`/SD`) is dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
   every page's marked content.

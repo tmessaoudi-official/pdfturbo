@@ -3,11 +3,12 @@
  * the operators it is asked about: the SEC-1 prune decides what a kept page DRAWS from it, so a name the scan counts
  * that the tokenizer would not (inside a string, a dictionary, an array) keeps a removed page's resource in the export,
  * and one it misses drops a resource the kept page draws. Compared on hand-written edge cases, seeded fuzz, and every
- * stream of the tracked fixture PDFs.
+ * stream of the tracked fixture PDFs (`git ls-files`, every directory). The prune itself reads with `{ pdfjs: true }`,
+ * which departs from the tokenizer where pdf.js does: `tests/utils/scanNamedOpsPdfjs.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { PDFDocument, PDFRawStream, decodePDFRawStream } from '@cantoo/pdf-lib';
 import { groupOps, scanNamedOps, tokenizeContentStream } from '../../src/utils/contentStreamEditor';
 
@@ -78,26 +79,37 @@ describe('scanNamedOps reports what the full tokenizer gives (row 10)', () => {
       '(\\) /Fm9 Do)', '<', '>', '<<', '>>', '<</K /V>>', '<ab>', '[', ']', '[/A 1 (x)]', '1', '-2.5', '1e-3', '1e', '+', '.',
       'e', 'E', 'Do', 'Tf', 'gs', 'scn', 'SCN', 'sh', 'BDC', 'DP', 'EMC', 'BI /W 1 ID xEI yy EI', 'Tj', 're', 'q', 'Q', '{', '}',
       'abcd', 'BI', 'ID', 'EI', 'Ā'];
+    // `Math.imul`: a plain `*` loses the low bits past 2^53, and the old generator repeated after 179 streams (S10-2).
     let seed = 0x5eed;
-    const rand = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 2 ** 32; };
+    const rand = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 2 ** 32; };
+    const streams: string[] = [];
     const mismatches: string[] = [];
+    const outcomes = { ops: 0, empty: 0, threw: 0 };
     for (let c = 0; c < 4000; c++) {
       let src = '';
       const len = 1 + Math.floor(rand() * 24);
       for (let k = 0; k < len; k++) src += parts[Math.floor(rand() * parts.length)] + (rand() < 0.6 ? ' ' : '');
-      if (JSON.stringify(scanned(src)) !== JSON.stringify(reference(src))) mismatches.push(JSON.stringify(src));
+      streams.push(src);
+      const got = scanned(src);
+      if (JSON.stringify(got) !== JSON.stringify(reference(src))) mismatches.push(JSON.stringify(src));
+      outcomes['threw' in got ? 'threw' : got.ops.length ? 'ops' : 'empty']++;
     }
     expect(mismatches.slice(0, 5)).toEqual([]);
+    // The fuzz exercises every outcome on streams that differ.
+    expect(new Set(streams).size).toBeGreaterThan(3500);
+    expect(outcomes).toEqual({ ops: 684, empty: 1249, threw: 2067 });
   });
 
   it('agrees on every stream of the tracked fixture PDFs', async () => {
-    const dirs = ['tests/fixtures/corpus-public', 'tests/fixtures/annotations'];
-    const files = dirs.flatMap(d => readdirSync(d).filter(f => f.endsWith('.pdf')).map(f => join(d, f)));
+    // Tracked files only, so a local run and CI compare the same inputs (S10-3: a gitignored file was read locally).
+    const files = execFileSync('git', ['ls-files', 'tests/fixtures'], { encoding: 'utf8' }).split('\n').filter(f => f.endsWith('.pdf'));
+    expect(files).toHaveLength(40);
     let streams = 0;
+    const unloadable: string[] = [];
     const mismatches: string[] = [];
     for (const file of files) {
       let doc: PDFDocument;
-      try { doc = await PDFDocument.load(readFileSync(file), { updateMetadata: false, ignoreEncryption: true }); } catch { continue; }
+      try { doc = await PDFDocument.load(readFileSync(file), { updateMetadata: false, ignoreEncryption: true }); } catch { unloadable.push(file); continue; }
       for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
         if (!(obj instanceof PDFRawStream)) continue;
         let text: string;
@@ -107,7 +119,8 @@ describe('scanNamedOps reports what the full tokenizer gives (row 10)', () => {
         if (JSON.stringify(scanned(text)) !== JSON.stringify(reference(text))) mismatches.push(`${file} ${ref.toString()}`);
       }
     }
-    expect(streams).toBeGreaterThan(50);
+    expect(unloadable).toEqual([]);
+    expect(streams).toBe(196);
     expect(mismatches).toEqual([]);
   });
 });
