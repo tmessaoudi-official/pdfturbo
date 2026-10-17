@@ -17,6 +17,7 @@ pdf-lib coupling.
 - [2026-10-17 04:39] ASSUMED (review): Step 3 adds a fifth soft brand, PageSpaceRect, for redactionRectToPageSpace's hybrid frame (x absolute user space, y down from the crop top - the frame isItemRedacted compares in); the plan row names four, but an unbranded return is the one converter output tsc could never catch, and it is the frame the crop-origin and C22 leaks lived in - basis: advisor agreed at 3C round 1. Alternative: return plain Rect.
 - [2026-10-17 06:25] ASSUMED (review): Milestone panel S3-1: a non-literal import() specifier is FIXED in code (recorded as NON_LITERAL, reported unresolved by buildGraph) rather than documented as a bound - basis: advisor agreed (round 3); fail-loud keeps the kernel rule sound. Alternative: document it as a scanner bound.
 - [2026-10-17 06:25] ASSUMED (review): Milestone panel K3-1: shim fan-in counts src/ importers from buildGraph edges and tracked tests/ importers by git grep of the old path, each filtered by the moved names its statement imports - basis: advisor agreed (round 3); the graph scans src/ only and carries no names. Alternative: unfiltered path-match counts.
+- [2026-10-17 06:53] ASSUMED (review): Milestone panel C4-1 tightening: a construct named import is skipped as a method only in member position (the token before is { } ; , * or a member modifier) with a body { or a return-type : after its ) - basis: advisor agreed; the round-4 ternary ? test dropped c ? await import(x) : y silently. Alternative: keep the ? test and document the await shape as a bound.
 
 ## Target
 

@@ -67,6 +67,9 @@ describe('architecture ratchet — the scanner', () => {
       'interface I { import(s: string): Promise<unknown> }',
       'const o = { import(s: string) { return s; } };',
       'const tern = c ? import(spec) : null;',
+      'const ta = c ? await import(spec) : null;',
+      'switch (x) { case import(spec): break; }',
+      'abstract class A { static async import(s: string): Promise<void> {} }',
       "const g = import.meta.glob('./mods/*.ts');",
     ].join('\n');
     expect(parseImports(src)).toEqual([
@@ -105,6 +108,8 @@ describe('architecture ratchet — the scanner', () => {
       { spec: './logicalOr', runtime: true },
       { spec: './logicalAnd', runtime: true },
       { spec: './finallyRead', runtime: true },
+      { spec: NON_LITERAL, runtime: true },
+      { spec: NON_LITERAL, runtime: true },
       { spec: NON_LITERAL, runtime: true },
       { spec: NON_LITERAL, runtime: true },
       { spec: NON_LITERAL, runtime: true },

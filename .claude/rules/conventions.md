@@ -45,7 +45,7 @@ pair; `export->core` value fell 1 → 0 with the fix). The runtime shapes stay r
 `type X =` (so `a || typeof import('x')` is runtime), import attributes, a trailing comma. What the scanner cannot
 follow is reported as an unresolved import, never dropped: a dynamic import whose specifier is not one literal
 (`import(spec)`, a `${}` template, a concatenation), a Vite `import.meta.glob`, and a package path with a `..` segment
-(`'bidi-js/../pdfjs-dist'` names pdfjs-dist). A method named `import` is no import. The lexer cannot see the grammar
+(`'bidi-js/../pdfjs-dist'` names pdfjs-dist). A method named `import` is no import: one in member position (after `{`, `}`, `;`, `,`, `*` or a modifier) with a body `{` or a return-type `:` is skipped, so `c ? await import(x) : y` is still recorded. The lexer cannot see the grammar
 between some shapes; `parseImports`' comment lists those bounds, none in `src/`: read as a type though runtime, a value
 read of a property the promise lacks, and a `typeof import` after a ternary `:`, an object-literal value, a bitwise
 `|`/`&` or a comparison `<`; read as runtime though a type, a `typeof import` in any other type position (`satisfies`,

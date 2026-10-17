@@ -139,6 +139,9 @@ export const NON_LITERAL = '<non-literal import() specifier>';
 /** The spec parseImports records for a Vite `import.meta.glob(…)`, which loads files the scanner does not expand. */
 export const META_GLOB = '<import.meta.glob>';
 
+/** Keywords that may stand before a class or object member's name. */
+const MEMBER_MODIFIERS = new Set(['async', 'static', 'public', 'private', 'protected', 'readonly', 'abstract', 'override', 'declare', 'get', 'set']);
+
 /** Members a dynamic import's PROMISE has at run time: a read of one is a runtime import, never an import type. */
 const RUNTIME_MEMBERS = new Set([
   'then', 'catch', 'finally',
@@ -173,11 +176,17 @@ export function parseImports(src: string): { spec: string; runtime: boolean }[] 
         // no file the scanner can follow: recorded as NON_LITERAL, which buildGraph reports as unresolved, never dropped.
         if (!literal || !(is(k + 3, ')') || is(k + 3, ','))) {
           // A METHOD named `import` (`class L { import(s: string) {…} }`, an interface member, object shorthand) is no
-          // import: its `)` is followed by a body `{` or a return type `:` — the `:` of a ternary `c ? import(x) : y`
-          // has a `?` before the `import`.
+          // import: it starts a member — the token before it is a `{`, `}`, `;`, `,`, `*` or a member modifier — and its
+          // `)` is followed by a body `{` or a return type `:`. In any expression position (`c ? await import(x) : y`,
+          // `case import(x):`) the token before differs, so the import is recorded. Bounds: an interface member with no
+          // return type (`import(s: string);`, TS7010 under strict) is reported; a statement `import(x)` followed with no
+          // semicolon by a block, or a comma operand `case a, import(x):`, is skipped.
           let close = k + 1;
           for (let depth = 0; close < T.length; close++) { if (is(close, '(')) depth++; else if (is(close, ')') && --depth === 0) break; }
-          if (is(close + 1, '{') || (is(close + 1, ':') && !is(k - 1, '?'))) continue;
+          const before = T[k - 1];
+          const startsMember = before === undefined || (before.t === 'punct' && '{};,*'.includes(before.v))
+            || (before.t === 'id' && MEMBER_MODIFIERS.has(before.v));
+          if (startsMember && (is(close + 1, '{') || is(close + 1, ':'))) continue;
           found.push({ spec: NON_LITERAL, runtime: true });
           continue;
         }
