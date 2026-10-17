@@ -1,6 +1,6 @@
 # pdfturbo gotchas — conventions
 
-Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
+Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods, the architecture ratchet, rect frame brands. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
 
 ### Base path is `/pdfturbo/`
 
@@ -41,9 +41,14 @@ only each other, `shared-kernel/` only itself plus the npm allowlist `KERNEL_NPM
 a runtime edge — mark it `import type` to move it. An `import('x').T` or `typeof import('x')` type reference is a type edge
 (milestone panel 2026-10-17: counted as runtime it made its file pair runtime and hid a real runtime import added to that
 pair; `export->core` value fell 1 → 0 with the fix). The runtime shapes stay runtime — a promise member (`.then`,
-`.constructor`, …), a called member, a `typeof` outside a type position, import attributes, a trailing comma — and
-`parseImports`' comment names the one bound (a value-position read of a property the promise lacks). With it the lexer's
-runtime imports match rolldown's oxc parser on all 188 `src/` files (a one-off probe, not a test). The `getDocument(`
+`.constructor`, …), a called member, a `typeof` that does not follow `:`, `<`, a union `|`, an intersection `&` or a
+`type X =` (so `a || typeof import('x')` is runtime), import attributes, a trailing comma — and a dynamic import whose
+specifier is not one literal (`import(spec)`, a `${}` template, a concatenation) is reported as an unresolved import,
+never dropped. The lexer cannot see the grammar between some shapes; `parseImports`' comment lists those bounds, all
+absent from `src/`: read as a type though runtime, a value read of a property the promise lacks, and a `typeof import`
+after a ternary `:`, an object-literal value, a bitwise `|`/`&` or a comparison `<`; read as runtime though a type, one
+after `satisfies`, `keyof`, a generic default, an index or a `,`. The lexer's runtime imports match rolldown's oxc
+parser on all 188 `src/` files (a one-off probe, not a test, re-run when the lexer changes). The `getDocument(`
 pin counted 13 at step 0: 12 calls and one interface method declaration (`viewerCheck.ts`); a comment is blanked. Its fixture tree `tests/tools/fixtures/architecture/` is
 type-checked by tsc and never collected by vitest (no `.test.ts` in it).
 

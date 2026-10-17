@@ -10,7 +10,7 @@
  * Classification follows TypeScript's own elision rules, since this repo has no `verbatimModuleSyntax`:
  * `import type …`, `export type …` and a brace list whose every specifier carries `type` are TYPE edges; everything
  * else, including an unmarked import that is only ever used as a type, is a RUNTIME edge (an overcount, the safe
- * side). `import('./x')` with a literal specifier is a runtime edge, except an import TYPE — `import('./x').T` or
+ * side). `import('./x')` with a literal specifier is a runtime edge (one with any other specifier is reported unresolved), except an import TYPE — `import('./x').T` or
  * `typeof import('./x')` — which is a type edge (see `parseImports` for the shapes that stay runtime). A specifier with a Vite `?query` (`?url`,
  * `?worker&url`) is an asset URL, not a module dependency, and is counted apart.
  */
@@ -24,7 +24,7 @@ export interface Graph {
   edges: Edge[];
   external: ExternalImport[];
   assetImports: number;
-  /** Relative specifiers that resolved to no file, or to a `.ts` file outside the scanned root. */
+  /** Relative specifiers that resolved to no file or to a `.ts` file outside the scanned root, and non-literal `import()`s. */
   unresolved: string[];
   appUnderscoreInUi: number;
   getDocumentSites: number;
@@ -135,6 +135,9 @@ function braceListAllTypes(list: Tok[]): boolean {
 }
 
 /** Members a dynamic import's PROMISE has at run time: a read of one is a runtime import, never an import type. */
+/** The spec parseImports records for a dynamic import whose specifier is not one literal; never a real path. */
+export const NON_LITERAL = '<non-literal import() specifier>';
+
 const RUNTIME_MEMBERS = new Set([
   'then', 'catch', 'finally',
   'constructor', 'toString', 'toLocaleString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable',
@@ -148,7 +151,9 @@ export function parseImports(src: string): { spec: string; runtime: boolean }[] 
   // Is the token before T[t] one that only a type can follow? `:`, `<`, `|`, `&`, or the `=` of `type X<…> =`.
   const typePositionBefore = (t: number): boolean => {
     const p = t - 1;
-    if (is(p, ':') || is(p, '<') || is(p, '|') || is(p, '&')) return true;
+    if (is(p, ':') || is(p, '<')) return true;
+    // A union `|` or intersection `&`, but not the second character of a logical `||` / `&&` (one token per character).
+    if ((is(p, '|') || is(p, '&')) && !is(p - 1, T[p].v)) return true;
     if (!is(p, '=')) return false;
     let j = p - 1;
     if (is(j, '>')) { let depth = 0; for (; j >= 0; j--) { if (is(j, '>')) depth++; else if (is(j, '<') && --depth === 0) break; } j--; }
@@ -161,22 +166,27 @@ export function parseImports(src: string): { spec: string; runtime: boolean }[] 
     if (tk.v === 'import') {
       if (is(k + 1, '(')) {
         const a = T[k + 2];
+        const literal = a !== undefined && (a.t === 'str' || a.t === 'tpl');
+        // A specifier that is not one literal (`import(spec)`, `import(('./x'))`, `import(`./${x}`)`, `'./' + x`) names
+        // no file the scanner can follow: recorded as NON_LITERAL, which buildGraph reports as unresolved, never dropped.
+        if (!literal || !(is(k + 3, ')') || is(k + 3, ','))) { found.push({ spec: NON_LITERAL, runtime: true }); continue; }
         // `import('x', { with: … })` and a trailing comma are dynamic imports, always runtime.
-        if (a && (a.t === 'str' || a.t === 'tpl') && is(k + 3, ',')) { found.push({ spec: a.v, runtime: true }); continue; }
-        if (a && (a.t === 'str' || a.t === 'tpl') && is(k + 3, ')')) {
-          // `import('x').T` and `typeof import('x')` are TypeScript import TYPES, erased at build: counted as runtime,
-          // one would make its file pair runtime and hide a real runtime import added to that pair later. A bare
-          // `import('x')` in a type position is a TS error (TS1340), so those two are every type form; a lexer cannot
-          // parse a type position, so the RUNTIME shapes are ruled out by their neighbours: a member is a type unless
-          // it is one the promise has (`.then`, `.constructor`, …) or is called (`.x()`); a `typeof` is a type only
-          // after `:`, `<`, `|`, `&` or a `type X =` — anything else (`const a = typeof import('x')`,
-          // `typeof import('x') === 'object'`, or one inside generic arguments after a `,`) is runtime, an overcount. Bound: a value-position `import('x').y` reading
-          // a property the promise lacks, or a `typeof` as an object-literal value, reads as a type — none is in src/.
-          const member = is(k + 4, '.') && T[k + 5]?.t === 'id' ? T[k + 5].v : null;
-          const memberType = member !== null && !RUNTIME_MEMBERS.has(member) && !is(k + 6, '(');
-          const typeofType = is(k - 1, 'typeof') && typePositionBefore(k - 1);
-          found.push({ spec: a.v, runtime: !(memberType || typeofType) });
-        }
+        if (is(k + 3, ',')) { found.push({ spec: a.v, runtime: true }); continue; }
+        // `import('x').T` and `typeof import('x')` are TypeScript import TYPES, erased at build: counted as runtime,
+        // one would make its file pair runtime and hide a real runtime import added to that pair later. A bare
+        // `import('x')` in a type position is a TS error (TS1340), so those two are every type form; a lexer cannot
+        // parse a type position, so the RUNTIME shapes are ruled out by their neighbours: a member is a type unless
+        // it is one the promise has (`.then`, `.constructor`, …) or is called (`.x()`); a `typeof` is a type only
+        // after `:`, `<`, a union `|`, an intersection `&` or a `type X =` — anything else (`const a = typeof import('x')`,
+        // `typeof import('x') === 'object'`, `a || typeof import('x')`, or one inside generic arguments after a `,`) is
+        // runtime. Bounds, none in src/ (a lexer cannot see the grammar that separates them): read as a TYPE though
+        // runtime — a value-position `import('x').y` of a property the promise lacks (a TS2339 error anyway), and a
+        // `typeof import` after a ternary `:`, an object-literal value's `:`, a bitwise `|` or `&`, or a comparison `<`; read as
+        // RUNTIME though a type — after `satisfies`, `keyof`, a generic default `<T = …>`, an index `[…]`, or a `,`.
+        const member = is(k + 4, '.') && T[k + 5]?.t === 'id' ? T[k + 5].v : null;
+        const memberType = member !== null && !RUNTIME_MEMBERS.has(member) && !is(k + 6, '(');
+        const typeofType = is(k - 1, 'typeof') && typePositionBefore(k - 1);
+        found.push({ spec: a.v, runtime: !(memberType || typeofType) });
         continue;
       }
       if (is(k + 1, '.')) continue; // import.meta
@@ -260,6 +270,7 @@ export function buildGraph(root: string): Graph {
     const text = readFileSync(f, 'utf8');
     const from = rel(root, f);
     for (const { spec, runtime } of parseImports(text)) {
+      if (spec === NON_LITERAL) { unresolved.push(`${from}: ${spec}`); continue; }
       const r = resolveSpec(root, f, spec);
       if (r.kind === 'asset') { assetImports++; continue; }
       if (r.kind === 'unresolved') { unresolved.push(`${from}: '${spec}'`); continue; }

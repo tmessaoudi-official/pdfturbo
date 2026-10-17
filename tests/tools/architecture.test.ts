@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildGraph, evaluate, parseImports, type Baseline } from './architectureGraph';
+import { NON_LITERAL, buildGraph, evaluate, parseImports, type Baseline } from './architectureGraph';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -54,6 +54,15 @@ describe('architecture ratchet — the scanner', () => {
       "const vt = typeof import('./valueTypeofBare');",
       "type TA<K extends string> = typeof import('./typeofAlias');",
       "const m3: Map<string, typeof import('./typeofInArgs')> = new Map();",
+      "type U = A | typeof import('./unionTypeof');",
+      "type V = A & typeof import('./intersectionTypeof');",
+      "let m4: Map<typeof import('./genericFirst'), string>;",
+      "const lo = cond || typeof import('./logicalOr');",
+      "const la = a && typeof import('./logicalAnd') === 'object';",
+      "const fr = import('./finallyRead').finally;",
+      "const np = import(('./parenthesized'));",
+      'const nt = import(`./tpl/${x}`);',
+      "const nc = import('./concat' + x);",
     ].join('\n');
     expect(parseImports(src)).toEqual([
       { spec: './mixed', runtime: true },
@@ -67,6 +76,7 @@ describe('architecture ratchet — the scanner', () => {
       { spec: './afterTemplate', runtime: true },
       { spec: './afterBacktickString', runtime: false },
       { spec: './templateSpec', runtime: true },
+      { spec: NON_LITERAL, runtime: true },
       { spec: './sideEffect', runtime: true },
       { spec: './afterSideEffect', runtime: true },
       { spec: './typeQualified', runtime: false },
@@ -84,6 +94,15 @@ describe('architecture ratchet — the scanner', () => {
       { spec: './valueTypeofBare', runtime: true },
       { spec: './typeofAlias', runtime: false },
       { spec: './typeofInArgs', runtime: true },
+      { spec: './unionTypeof', runtime: false },
+      { spec: './intersectionTypeof', runtime: false },
+      { spec: './genericFirst', runtime: false },
+      { spec: './logicalOr', runtime: true },
+      { spec: './logicalAnd', runtime: true },
+      { spec: './finallyRead', runtime: true },
+      { spec: NON_LITERAL, runtime: true },
+      { spec: NON_LITERAL, runtime: true },
+      { spec: NON_LITERAL, runtime: true },
     ]);
   });
 
@@ -112,7 +131,7 @@ describe('architecture ratchet — the scanner', () => {
       'shared-kernel/math.ts -> fflate',
     ]);
     expect(g.assetImports).toBe(1);
-    expect(g.unresolved).toEqual(["main.ts: '../outside'"]);
+    expect(g.unresolved).toEqual(["main.ts: '../outside'", `shared-kernel/dyn.ts: ${NON_LITERAL}`]);
     expect(g.appUnderscoreInUi).toBe(1);
     expect(g.getDocumentSites).toBe(2);
   });
@@ -141,6 +160,7 @@ describe('architecture ratchet — the scanner', () => {
       'new dependency direction ui->export (all 2, value 0): not in the baseline',
       'runtime import cycle: core/app.ts, ui/panel.ts',
       "unresolved import main.ts: '../outside'",
+      `unresolved import shared-kernel/dyn.ts: ${NON_LITERAL}`,
       "shared-kernel/math.ts imports core/app.ts: shared-kernel/ imports only itself",
       "shared-kernel/math.ts imports npm 'fflate': not in the kernel allowlist [bidi-js]",
       'types/bad.ts imports export/shape.ts: types/ imports only shared-kernel/, contracts/ and types/',

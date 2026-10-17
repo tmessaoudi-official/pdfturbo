@@ -15,6 +15,8 @@ pdf-lib coupling.
 - [2026-10-17 01:28] AGREED: Certification for steps 0-3: advisor() at each 3C/6C gate, one three-lens panel at the end of step 3 on a frozen commit (developer, 2026-10-17).
 - [2026-10-17 04:03] ASSUMED (review): Step 1 repoints every whole-statement type-only src importer of IErrorReporter, IProgressManager, ToolMode, AppDOMRefs and RuleRect to its vocabulary home (contracts/, types/), not only the plan's named sites; mixed value+type statements and the re-export shims stay — full-set coverage, advisor agreed at 3C round 1.
 - [2026-10-17 04:39] ASSUMED (review): Step 3 adds a fifth soft brand, PageSpaceRect, for redactionRectToPageSpace's hybrid frame (x absolute user space, y down from the crop top - the frame isItemRedacted compares in); the plan row names four, but an unbranded return is the one converter output tsc could never catch, and it is the frame the crop-origin and C22 leaks lived in - basis: advisor agreed at 3C round 1. Alternative: return plain Rect.
+- [2026-10-17 06:25] ASSUMED (review): Milestone panel S3-1: a non-literal import() specifier is FIXED in code (recorded as NON_LITERAL, reported unresolved by buildGraph) rather than documented as a bound - basis: advisor agreed (round 3); fail-loud keeps the kernel rule sound. Alternative: document it as a scanner bound.
+- [2026-10-17 06:25] ASSUMED (review): Milestone panel K3-1: shim fan-in counts src/ importers from buildGraph edges and tracked tests/ importers by git grep of the old path, each filtered by the moved names its statement imports - basis: advisor agreed (round 3); the graph scans src/ only and carries no names. Alternative: unfiltered path-match counts.
 
 ## Target
 
@@ -37,9 +39,11 @@ pdf-lib coupling.
 
 Rules for every step:
 - Move, then refactor — never both in one commit. A move leaves a re-export shim at the old path (386 test files
-  import `src/` paths); a shim is deleted only when its fan-in is 0, measured from the ratchet's import graph — `buildGraph` edges into
-  the shim file and the names they import (the ratchet does not count shim importers itself, and a `git grep` of the
-  old path misses a same-directory specifier such as `'./bidi'`).
+  import `src/` paths); a shim is deleted only when no importer still takes a MOVED name through it, in `src/` and in
+  `tests/`. `src/` importers come from the ratchet's graph (`buildGraph` edges into the shim file — a `git grep` of the
+  old path misses a same-directory specifier such as `'./bidi'`); `tests/` importers from a `git grep` of the old path
+  (tests import `…/src/<path>`, and the graph scans `src/` only). The graph carries no imported names, so each
+  importer's statement is read for them; the ratchet counts none of this itself.
 - Before each move, grep `vi.mock` for the old path (32 test files mock a `src/` path) and update those mocks in the
   same commit — a re-export shim does not carry `vi.mock` interception.
 - The full deploy gate before every push.
@@ -92,7 +96,8 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 ### Needs research
 ### Fragile
 ### Known issues
-- The steps 1–2 re-export shims still have `src/` importers (measured 2026-10-17 from the import graph): `utils/bidi.ts`
-  5; the `flowDoc` RTL set and `RuleRect` 9; `contentStreamEditor`'s matrix re-export 1 (`export/imageDownsample.ts`);
-  `uiController`'s `AppDOMRefs` 1 (`core/pdfTurboApp.ts`). No roadmap step owns repointing them yet — a shim goes only at
-  fan-in 0.
+- The steps 1–2 re-export shims still have importers of a moved name (measured 2026-10-17; `src/` from the import
+  graph, tracked `tests/` by `git grep` of the old path, each filtered by the names its statement imports):
+  `utils/bidi.ts` 5 in `src/`, 2 in `tests/`; the `flowDoc` RTL set and `RuleRect` 9 and 9; `contentStreamEditor`'s
+  matrix re-export 1 (`export/imageDownsample.ts`) and 1; `uiController`'s `AppDOMRefs` 1 (`core/pdfTurboApp.ts`) and 9.
+  No roadmap step owns repointing them yet — a shim goes only when both counts are 0.
