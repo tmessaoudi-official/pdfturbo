@@ -79,7 +79,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
     built from the file's bytes, not from pdf.js, so it **finishes and saves the document as it was when you started
     the export** — its redactions, annotations and pages included [Verified for Download and Download page:
     `tests/export/exportSnapshot.test.ts`, a close while the sources load; Inferred for Flatten, Sanitize, Compress and
-    Sign, which build through the same `_assemblePdfDoc`; Export page as image has its own path and no test]. Until
+    Sign, which build through the same `_assemblePdfDoc`; Export page as image has its own path and no close-mid-export test]. Until
     the milestone-2 review it read the annotation list live, so a close mid-export shipped a redacted page unredacted.
   - **A text export** (DOCX, Markdown, CSV, XLSX, XFDF) and **an OCR run** read pages through pdf.js and fail with
     their own failure toast [Inferred: each reaches its own catch; not exercised by a test].

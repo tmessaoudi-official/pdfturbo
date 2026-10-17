@@ -196,6 +196,15 @@ their physical size and the resolution you chose.
 
 ### Redaction reaches the other exports too (fixed 2026-08-05)
 
+> **Open issue (M2R3-1, found 2026-10-08, recorded 2026-10-17) — an undo while a Word, Markdown, text, CSV, Excel or
+> XFDF export is running.** These exports read the page list — and the table export the redactions — at several
+> moments while they run, not once at the start. An undo that lands meanwhile (of a page delete, or of a redaction)
+> brings a page or a cell back without its redaction, and its text or field value is written to the file under the
+> usual success message [Verified by the milestone-2 review's probes, 2026-10-08: a deleted page's redacted text and a
+> redacted XFDF field value exported after an undo mid-export; a covered CSV cell after undoing its redaction mid-export].
+> The PDF exports take both lists once, at their start, and are not affected. Workaround: do not undo, redo or edit
+> while one of these exports runs. Tracked in `docs/plans/review-remediation.plan.md` (row 29).
+
 Redaction rasterises the page, which is what makes it removal-grade — but several exports do not go
 through that path, and until 2026-08-05 each handed the redacted text back:
 
@@ -413,7 +422,8 @@ ambiguous (since 2026-09-14; before, each showed its own generic failure, and si
 retry that could never succeed). Editing text in place shows no error: it falls back to an editable
 overlay, and the export or signature built afterwards refuses. The Word, Markdown and text exports, the
 table (CSV, XLSX) and XFDF exports, and OCR's text, Word and editable-box modes do not refuse: they read the
-document through pdf.js, the same reader that draws it, so they export what is on screen. Opening and
+document through pdf.js, the same reader that draws it, so they export what is on screen — except after an undo
+while they run (open issue M2R3-1, § "Redaction reaches the other exports too"). Opening and
 viewing the file are unaffected.
 
 > **Open issue (SEC-3b, found 2026-10-08) — typed form values in "Download page" and "Export page as image".**

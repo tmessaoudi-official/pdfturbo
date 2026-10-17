@@ -1206,7 +1206,11 @@ Pre-existing (not QUAL-1: PDF exports read the bytes, not pdf.js), found by the 
 Fix: every export takes the list once, at its start — `ExportService._elementsNow()` (a copy) — and
 `_assemblePdfDoc` copies its page list too, so a page an undo puts back mid-export is not exported. Applied to every
 entry that read the list: `_assemblePdfDoc`, `downloadPage`, `downloadPageAsImage`, `exportXfdf`, `_extractFlowDoc`,
-`renderThumbnailWithOverlays`. Left live: `_extractPageTableData` (CSV/XLSX) reads it per page, after a `getPage` on
+`renderThumbnailWithOverlays`. **[Open — M2 panel round 3, recorded 2026-10-17]** the copy alone is not enough for
+`exportXfdf` and `_extractFlowDoc`: they walk the LIVE `documentModel.pages` against it, so an undo of a page delete
+mid-export puts back a page whose redaction is not in the copy, and its covered text or field value exports (M2R3-1);
+and the reason below for leaving the table export live covers a close, not an undo of a redaction (M2R3-2). Both →
+review-remediation row 29. Left live: `_extractPageTableData` (CSV/XLSX) reads it per page, after a `getPage` on
 the pdf.js document — and since QUAL-1 a close releases that document, so a close fails the table export instead of
 shipping it. An element MUTATED in place mid-export (an undo of a move) is still read as it is then [Inferred: no
 test; the copy is shallow].
