@@ -149,7 +149,7 @@ work in a private/incognito window when editing sensitive documents on a shared 
   shading's own `/ColorSpace`, an Indexed or Separation base), so pruning one recoloured kept pages, while a colour
   space draws nothing.
 - **Leaving a page out costs time.** The prune reads every owner that shares resources with a left-out page.
-  Current figures, idle machine (row 10, below): about 0.55–0.6 s against 0.1 s for the 142-page file. Historical,
+  Current figures (row 10, below): about 0.8 s against 0.1 s for the 142-page file. Historical,
   before row 10 and at load 20–23: deleting the last page of a 142-page corpus file took a median 2.3 s against 0.28 s without it, the 67-page census
   report 1.3 s against 0.45 s, a 75-page paper 0.30 s against 0.07 s — `copySourcePages` alone, warmed up, five
   alternating runs, measured on the round-8 code (the commit that adds `copySourcePagesRound8.test.ts`, before the
@@ -168,18 +168,26 @@ work in a private/incognito window when editing sensitive documents on a shared 
   (about 16). The pruned output is byte-identical before and after on all 15 corpus files in 39 distinct runs (three
   page selections per file, which coincide on the three two-page forms). Both halves are in
   `var/claude/row10/cost.jsonl` (gitignored; the "before" medians were copied there from the session that measured
-  them, whose worktree was removed — R10-K-1). Reading inline images the way pdf.js does (next item) costs 5–18% more
-  scanning than the plain name scan, still well under half the tokenizer's time (Publication 17's 1,001 streams: 386 →
-  406 ms against 911, the three timed alternately in one process at load ~11; `var/claude/row10/scancost.jsonl`). The
+  them, whose worktree was removed — R10-K-1). Reading the page the way pdf.js does (next item) took most of
+  that back. The scan alone is about 2.3× the plain name scan and 15% under the tokenizer (Publication 17's 1,001
+  streams 184 / 426 / 499 ms, plain / pdf.js / tokenizer, timed alternately in one process at load ~2.5;
+  `var/claude/row10/scancost.jsonl`). End to end, alternating with the code before row 10 (a worktree at `fffe15f`),
+  three pairs at load 2.1–3.4, medians: the 142-page file 1102 → 793 ms, the census report 282 → 281, the paper
+  95 → 91 (`cost.jsonl`, the `-alt` records) — the gain that remains is on the large file. The
   rest — pruning the resources, the reachability walk, the copier hook — is not optimised.
-- **The prune reads a page as pdf.js does for inline images and glued operators, not for every corner of the
-  syntax.** It ends an inline image by its filter and pdf.js's `EI` rules, splits `qBI` into `q` and `BI`, and refuses
-  the export where pdf.js stops reading the page or where it cannot follow pdf.js (a filter given by reference, among
-  others) — until 2026-10-17 a JPEG inline image could hide a `/Fm2 Do` that the prune counted as drawn, keeping a
-  removed page's form in the file (S10-1). Not mirrored: pdf.js keeps the operands of an unknown operator, or of an
-  inline image, for the next known one, and reads a `BI` inside an operand array or dictionary, some number forms and
-  nested arrays differently. On such a content stream the prune can keep a resource no viewer draws, or drop one a
-  viewer would draw. No corpus file has an inline image in a drawn stream; the other shapes were not measured there (plan row 32).
+- **The prune reads a page with pdf.js's own syntax and operator rules (since 2026-10-17), within three bounds.** It
+  ends an inline image by its filter and pdf.js's `EI` rules, reads arrays, dictionaries, comments and references as
+  pdf.js's parser does, applies pdf.js's operator table and operand counts, and reads a page's content streams back to
+  back. Until 2026-10-17 a JPEG inline image, a comment inside an array, or two content streams read with a line break
+  between them could hide a `/Fm2 Do` that the prune counted as drawn, keeping a removed page's form in the file
+  (S10-1, R2S-1, R2C-1). It refuses the export where pdf.js stops reading the page, and where it cannot follow pdf.js
+  (a filter given by reference, an inline image inside an array or dictionary, among others). The bounds: **(1)** a
+  pattern a kept page names with `scn`/`SCN` is kept under any colour space, while a viewer draws one only under a
+  Pattern colour space, so a removed page's pattern can stay in the file's bytes, drawn by nothing (plan row 33);
+  **(2)** a page holding many inline images whose JPEG or ASCII85 data never ends costs time quadratic in its size, on
+  the main thread — 3.6 s for a 248 KB stream (plan row 34); **(3)** the reading follows pdf.js 6.3.289, and only its
+  operator table is re-derived by a test, so a pdf.js upgrade that changes its parser can diverge until the oracle
+  tests catch it. No corpus file has an inline image in a drawn stream.
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure
   destination (`/SD`) is dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry
   every page's marked content.

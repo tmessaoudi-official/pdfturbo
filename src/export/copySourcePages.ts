@@ -1077,8 +1077,9 @@ function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): st
       else if (s instanceof PDFStream && 'getUnencodedContents' in s) bytes = (s as unknown as { getUnencodedContents(): Uint8Array }).getUnencodedContents();
       else return null;
     } catch { return null; }
+    // Back to back, as pdf.js's `StreamsSequenceStream` joins them: an image or a comment that runs on past the end of
+    // one stream runs into the next (round 2, R2C-1; a newline here was a token boundary pdf.js does not see).
     for (let k = 0; k < bytes.length; k++) text += String.fromCharCode(bytes[k]);
-    text += '\n';
   }
   return text;
 }

@@ -30,15 +30,19 @@ describe('the pdf.js operator table (row 10, S10-1)', () => {
   // `BI` opens an inline image instead (the oracle file's `qBI` case).
   it.each([...PDFJS_OPERATORS.keys()].filter(k => PDFJS_OPERATORS.get(k) !== null && k !== 'BI'))(
     'pdf.js reads %s run into letters as itself, then the letters', op => {
-      // Past five bytes the split is not short-cut, so this walks the prefixes pdf.js walks.
-      expect(pdfjs(`/A ${op}xxxxx`, [op])).toEqual([{ operator: op, operands: 1, first: '/A', last: '/A' }]);
+      // Given exactly the operands pdf.js takes (one for a variable count), so the operator is read and not skipped.
+      const [count, variable] = PDFJS_OPERATORS.get(op) as readonly [number, boolean];
+      const operands = variable ? 1 : count;
+      expect(pdfjs(`${'/A '.repeat(operands)}${op}xxxxx`, [op])).toEqual(
+        [{ operator: op, operands, first: operands ? '/A' : undefined, last: operands ? '/A' : undefined }]);
     });
 });
 
 describe('scanNamedOps reads a word the way pdf.js does (row 10, S10-1)', () => {
   it('a control byte before a printable one is an operator of its own', () => {
-    expect(pdfjs('\x01Do')).toEqual([{ operator: 'Do', operands: 0, first: undefined, last: undefined }]);
-    expect(plain('\x01Do')).toEqual([]);
+    // `\x01` is an unknown operator, which keeps the operands for `Do`.
+    expect(pdfjs('/Fm1 \x01Do')).toEqual([{ operator: 'Do', operands: 1, first: '/Fm1', last: '/Fm1' }]);
+    expect(plain('/Fm1 \x01Do')).toEqual([]);
   });
   it('a control byte before another stays in the word', () => {
     expect(pdfjs('\x01\x02Do')).toEqual([]);

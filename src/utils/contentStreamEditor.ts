@@ -400,7 +400,7 @@ function pdfjsWordEnd(src: string, p: number, wordEnd: number, limit: number): n
 }
 
 type PdfjsToken =
-  | { k: 'eof' } | { k: 'str' } | { k: 'lit' }
+  | { k: 'eof' } | { k: 'str' } | { k: 'lit'; v: string }
   | { k: 'num'; v: number } | { k: 'name'; v: string } | { k: 'cmd'; v: string };
 
 /** The next token of pdf.js's `Lexer.getObj` from `p`, with input ending at `end`, and the index after it. */
@@ -480,9 +480,11 @@ function pdfjsToken(src: string, p: number, end: number): { tok: PdfjsToken; at:
   }
   let w = p;
   while (w < end && charClass(code(w)) === 0) w++;
-  const q = pdfjsWordEnd(src, p, w, end);
+  // A whole word that is a known operator is never cut (each known prefix of one grows into the next), so it skips
+  // the split.
+  const q = w - p <= 5 && PDFJS_OPERATORS.has(src.slice(p, w)) ? w : pdfjsWordEnd(src, p, w, end);
   const word = src.slice(p, q);
-  return { tok: word === 'true' || word === 'false' || word === 'null' ? { k: 'lit' } : { k: 'cmd', v: word }, at: q };
+  return { tok: word === 'true' || word === 'false' || word === 'null' ? { k: 'lit', v: word } : { k: 'cmd', v: word }, at: q };
 }
 
 /**
@@ -596,49 +598,62 @@ function pdfjsImageDataEnd(src: string, start: number, filter: string | undefine
   }
 }
 
-type PdfjsValue = PdfjsToken | PdfjsValue[] | { k: 'ref' } | { k: 'dict' };
+type PdfjsValue = PdfjsToken | PdfjsValue[] | { k: 'ref' } | { k: 'dict' } | { k: 'image' };
 
 /**
- * Where pdf.js resumes reading after the inline image whose `BI` ends at `from`: its dictionary lexed and parsed the
- * way `Parser.makeInlineImage` does it (`/F` before `/Filter`, an array's first filter), its data from the byte after
- * the one following `ID`, its end by `pdfjsImageDataEnd`. Throws where pdf.js stops reading the stream (a key that is
- * not a name, a non-name filter in an array) and on shapes this cannot follow: `ID` anywhere but in a key's place, a
- * filter given by reference, and a byte after `ID` that is not whitespace (pdf.js lexes it again after the data).
+ * pdf.js's `Parser` over `src` from `from`: tokens on demand (`peek`/`take`), and `getObj`'s arrays, dictionaries and
+ * `int int R` references. A dictionary skips a key that is not a name and takes whatever follows a key as its value —
+ * a `>>` there is a value, not the end — and the end of the stream inside either throws (`ParserEOFException`). An `ID`
+ * or a `BI` inside one is refused: pdf.js's parser shifts around an `ID` and parses a `BI` there as an image, neither
+ * mirrored. `where` names the context in those errors.
  */
-function pdfjsInlineImageEnd(src: string, from: number): number {
+function pdfjsParser(src: string, from: number) {
   const n = src.length;
   let p = from;
-  const queue: { tok: PdfjsToken; at: number }[] = [];
-  const peek = (k: number): PdfjsToken => {
-    while (queue.length <= k) { const r = pdfjsToken(src, p, n); p = r.at; queue.push(r); }
-    return queue[k].tok;
+  // Read-ahead tokens from `head`; at most three are ever pending (a reference's `int int R`).
+  let queue: { tok: PdfjsToken; at: number }[] = [];
+  let head = 0;
+  const peek = (k = 0): PdfjsToken => {
+    while (queue.length - head <= k) { const r = pdfjsToken(src, p, n); p = r.at; queue.push(r); }
+    return queue[head + k].tok;
   };
-  const take = (): { tok: PdfjsToken; at: number } => { peek(0); return queue.shift() as { tok: PdfjsToken; at: number }; };
+  const take = (): { tok: PdfjsToken; at: number } => {
+    peek(0);
+    const r = queue[head++];
+    if (head === queue.length) { queue = []; head = 0; }
+    return r;
+  };
   const isCmd = (t: PdfjsToken, v: string): boolean => t.k === 'cmd' && t.v === v;
-  const cannotFollow = (what: string): Error => new Error(`Content stream: an inline image ${what}`);
-  const value = (): PdfjsValue => {
-    const { tok } = take();
-    if (isCmd(tok, 'ID')) throw cannotFollow('dictionary holds ID as a value');
-    if (isCmd(tok, '[')) {
-      const items: PdfjsValue[] = [];
-      for (;;) {
-        const u = peek(0);
-        if (isCmd(u, ']')) { take(); return items; }
-        if (u.k === 'eof') throw cannotFollow('dictionary ends inside an array');
-        items.push(value());
+  let end = from;
+  const getObj = (where: string, depth: number): PdfjsValue => {
+    const { tok, at } = take();
+    end = at;
+    const refuse = (what: string): Error => new Error(`Content stream: ${where} ${what}`);
+    if (tok.k === 'cmd') {
+      if (depth > 0 && tok.v === 'ID') throw refuse('holds ID as a value');
+      if (depth > 0 && tok.v === 'BI') throw refuse('holds an inline image');
+      if (tok.v === '[') {
+        const items: PdfjsValue[] = [];
+        for (;;) {
+          const u = peek(0);
+          if (isCmd(u, ']')) { take(); return items; }
+          if (u.k === 'eof') throw refuse('ends inside an array');
+          items.push(getObj(where, depth + 1));
+        }
       }
-    }
-    if (isCmd(tok, '<<')) {
-      for (;;) {
-        const u = peek(0);
-        if (isCmd(u, '>>')) { take(); return { k: 'dict' }; }
-        if (u.k === 'eof') throw cannotFollow('dictionary ends inside a dictionary');
-        if (isCmd(u, 'ID')) throw cannotFollow('dictionary holds ID as a value');
-        take();
-        if (u.k !== 'name') continue;
-        if (peek(0).k === 'eof') throw cannotFollow('dictionary ends inside a dictionary');
-        value();
+      if (tok.v === '<<') {
+        for (;;) {
+          const u = peek(0);
+          if (isCmd(u, '>>')) { take(); return { k: 'dict' }; }
+          if (u.k === 'eof') throw refuse('ends inside a dictionary');
+          if (isCmd(u, 'ID') || isCmd(u, 'BI')) throw refuse('holds ID or BI as a key');
+          take();
+          if (u.k !== 'name') continue;
+          if (peek(0).k === 'eof') throw refuse('ends inside a dictionary');
+          getObj(where, depth + 1);
+        }
       }
+      return tok;
     }
     if (tok.k === 'num' && Number.isInteger(tok.v)) {
       const second = peek(0);
@@ -646,7 +661,22 @@ function pdfjsInlineImageEnd(src: string, from: number): number {
     }
     return tok;
   };
+  /** Continue from `at`, dropping what was read ahead (the caller has parsed past it). */
+  const resume = (at: number): void => { queue = []; head = 0; p = at; };
+  return { peek, take, getObj, resume, isCmd, endOfLast: () => end };
+}
 
+/**
+ * Where pdf.js resumes reading after the inline image whose `BI` ends at `from`: its dictionary parsed the way
+ * `Parser.makeInlineImage` does it (`/F` before `/Filter`, an array's first filter), its data from the byte after
+ * the one following `ID`, its end by `pdfjsImageDataEnd`. Throws where pdf.js stops reading the stream (a key that is
+ * not a name, a non-name filter in an array) and on shapes this cannot follow: `ID` anywhere but in a key's place, a
+ * filter given by reference, and a byte after `ID` that is not whitespace (pdf.js lexes it again after the data).
+ */
+function pdfjsInlineImageEnd(src: string, from: number): number {
+  const n = src.length;
+  const { peek, take, getObj, isCmd } = pdfjsParser(src, from);
+  const cannotFollow = (what: string): Error => new Error(`Content stream: an inline image ${what}`);
   const dict = new Map<string, PdfjsValue>();
   let idEnd: number;
   for (;;) {
@@ -655,7 +685,8 @@ function pdfjsInlineImageEnd(src: string, from: number): number {
     if (tok.k === 'eof') return n;
     if (tok.k !== 'name') throw cannotFollow('key is not a name');
     if (peek(0).k === 'eof') return n;
-    dict.set(tok.v, value());
+    if (isCmd(peek(0), 'ID')) throw cannotFollow('dictionary holds ID as a value');
+    dict.set(tok.v, getObj('an inline image dictionary', 1));
   }
   if (idEnd >= n) return n;
   if (charClass(src.charCodeAt(idEnd)) !== 1) throw cannotFollow('data does not start after whitespace');
@@ -669,6 +700,68 @@ function pdfjsInlineImageEnd(src: string, from: number): number {
     filter = f[0]?.v;
   } else if (!Array.isArray(f) && f?.k === 'ref') throw cannotFollow('filter is given by reference');
   return pdfjsImageDataEnd(src, idEnd + 1, filter);
+}
+
+/** pdf.js's path-construction and path-painting operators (`OPS.moveTo` … `OPS.endPath`), for its invalid-path limit. */
+const PDFJS_PATH_OPERATORS = new Set(['m', 'l', 'c', 'v', 'y', 'h', 're', 'S', 's', 'f', 'F', 'f*', 'B', 'B*', 'b', 'b*', 'n']);
+
+/** A decoded name as content-stream text that `#hh`-decodes back to it. */
+const nameText = (v: string): string =>
+  '/' + v.replace(/[^\x21-\x7e]|[#()<>[\]{}/%]/g, c => '#' + c.charCodeAt(0).toString(16).padStart(2, '0'));
+
+/**
+ * `scanNamedOps(…, { pdfjs: true })`: the whole stream read as pdf.js's `EvaluatorPreprocessor.read` reads it — every
+ * object through `pdfjsParser`, an inline image as one operand (then its `EI`), `null` dropped, an unknown operator
+ * skipped with its operands kept for the next one, a known one taking exactly its count (the extra ones before them
+ * are set aside, and a later operator short of operands takes them back), one short of operands skipped, more than
+ * 33 operands or more than 10 invalid path operators in a row a stop. Where pdf.js stops reading the page this throws.
+ */
+function scanPdfjs(src: string, wanted: ReadonlySet<string>): NamedOp[] {
+  const out: NamedOp[] = [];
+  const parser = pdfjsParser(src, 0);
+  let args: PdfjsValue[] = [];
+  const setAside: PdfjsValue[] = [];
+  let pathOp = false, invalidPath = 0;
+  const textOf = (v: PdfjsValue | undefined): string | undefined =>
+    v !== undefined && !Array.isArray(v) && v.k === 'name' ? nameText(v.v) : undefined;
+  const command = (cmd: string): void => {
+    const spec = PDFJS_OPERATORS.get(cmd);
+    if (!spec) return;
+    const [numArgs, variable] = spec;
+    if (!pathOp) invalidPath = 0;
+    pathOp = PDFJS_PATH_OPERATORS.has(cmd);
+    if (!variable) {
+      while (args.length > numArgs) setAside.push(args.shift() as PdfjsValue);
+      while (args.length < numArgs && setAside.length > 0) args.unshift(setAside.pop() as PdfjsValue);
+      if (args.length < numArgs) {
+        if (pathOp && ++invalidPath > 10) throw new Error(`Content stream: pdf.js stops at too many invalid path operators (${cmd})`);
+        args = [];
+        return;
+      }
+    }
+    if (wanted.has(cmd)) out.push({ operator: cmd, operands: args.length, first: textOf(args[0]), last: textOf(args[args.length - 1]) });
+    args = [];
+  };
+  const operand = (v: PdfjsValue): void => {
+    args.push(v);
+    if (args.length > 33) throw new Error('Content stream: pdf.js stops at more than 33 operands');
+  };
+  for (;;) {
+    const obj = parser.getObj('an operand', 0);
+    if (Array.isArray(obj)) { operand(obj); continue; }
+    if (obj.k === 'eof') return out;
+    if (obj.k === 'cmd' && obj.v === 'BI') {
+      // A `BI` at the top level is a whole token (only a number reads ahead, and never past a command).
+      const end = pdfjsInlineImageEnd(src, parser.endOfLast());
+      if (end >= src.length) return out;
+      parser.resume(end);
+      operand({ k: 'image' });
+      command('EI');
+      continue;
+    }
+    if (obj.k === 'cmd') command(obj.v);
+    else if (obj.k !== 'lit' || obj.v !== 'null') operand(obj);
+  }
 }
 
 /** `scanNamedOps` options. */
@@ -691,9 +784,9 @@ export interface ScanOptions {
  * where pdf.js does (see `ScanOptions`), pinned against pdf.js itself by `tests/export/inlineImagePdfjs.test.ts`.
  */
 export function scanNamedOps(src: string, wanted: ReadonlySet<string>, opts: ScanOptions = {}): NamedOp[] {
+  if (opts.pdfjs === true) return scanPdfjs(src, wanted);
   const out: NamedOp[] = [];
   const n = src.length;
-  const pdfjs = opts.pdfjs === true;
   let longest = 2;
   for (const w of wanted) longest = Math.max(longest, w.length);
   const cls =(k: number): number => { const c = src.charCodeAt(k); return c > 255 ? 0 : CHAR_CLASS[c]; };
@@ -779,19 +872,6 @@ export function scanNamedOps(src: string, wanted: ReadonlySet<string>, opts: Sca
     if (isNumberStart(src.charCodeAt(i))) { skipNumber(); operand(start, false); continue; }
     skipRegular();
     if (i === start) throw new Error(`Content stream: stray '${src[i]}' at byte ${i}`);
-    if (pdfjs) {
-      // pdf.js reads `qBI` as `q` then `BI`; a known operator is never cut, so it needs no split.
-      let p = start;
-      let image = -1;
-      while (p < i) {
-        const q = i - p <= 5 && PDFJS_OPERATORS.has(src.slice(p, i)) ? i : pdfjsWordEnd(src, p, i, n);
-        if (q - p === 2 && src.startsWith('BI', p)) { image = q; break; }
-        operator(p, q);
-        p = q;
-      }
-      if (image >= 0) { i = pdfjsInlineImageEnd(src, image); reset(); }
-      continue;
-    }
     if (i - start === 2 && src.startsWith('BI', start)) { i = findInlineImageEnd(src, i); reset(); continue; }
     operator(start, i);
   }
