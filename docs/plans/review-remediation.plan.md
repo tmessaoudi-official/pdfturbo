@@ -213,7 +213,7 @@ rationale is stale).
 - ARCH-10 — `flowDoc.ts` (2580 lines) hosts shared text-script primitives and a redaction rule, so 7 non-flow modules depend on the flow context
 - ARCH-11 — CQS breach. An export (a query) mutates the aggregate outside history, using DOM focus as the decision input
 - ARCH-12 — pdf.js and pdf-lib have no ports; library calls are spread over 25 and 14 files
-- ARCH-13 — A 32-file type-only cycle pivots on `AppDOMRefs` and the app types
+- ARCH-13 — A 32-file type-only cycle pivots on `AppDOMRefs` and the app types → row 8 (step 1: 35 → 7 files in type-inclusive cycles; the 7 left are the binders typed on `PDFTurboApp`, architecture step 5)
 - ARCH-14 — `IAppContext` is a 26-member port handed to every pointer handler; the narrow ports elsewhere prove the alternative
 - ARCH-19 — No architecture fitness function, though the repo already has the pattern → row 8 (step 0)
 - ARCH-21 — The true-edit use case is orchestrated inside a pointer handler
