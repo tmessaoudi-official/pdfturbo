@@ -1203,21 +1203,44 @@ Pre-existing (not QUAL-1: PDF exports read the bytes, not pdf.js), found by the 
 (`{ rasterCalls: 0, secretInBytes: true }`). Reachable by keyboard: the progress overlay blocks the pointer only
 [Inferred: `keyboardBinder.ts` has no busy gate; not driven in a browser].
 
-Fix: every export takes the list once, at its start — `ExportService._elementsNow()` (a copy) — and
-`_assemblePdfDoc` copies its page list too, so a page an undo puts back mid-export is not exported. Applied to every
-entry that read the list: `_assemblePdfDoc`, `downloadPage`, `downloadPageAsImage`, `exportXfdf`, `_extractFlowDoc`,
-`renderThumbnailWithOverlays`. **[Open — M2 panel round 3, recorded 2026-10-17]** the copy alone is not enough for
-`exportXfdf` and `_extractFlowDoc`: they walk the LIVE `documentModel.pages` against it, so an undo of a page delete
-mid-export puts back a page whose redaction is not in the copy, and its covered text or field value exports (M2R3-1);
-and the reason below for leaving the table export live covers a close, not an undo of a redaction (M2R3-2). Both →
-review-remediation row 29. Left live: `_extractPageTableData` (CSV/XLSX) reads it per page, after a `getPage` on
-the pdf.js document — and since QUAL-1 a close releases that document, so a close fails the table export instead of
-shipping it. An element or page MUTATED in place mid-export is still read as it is then — the copies are shallow, and
-`MoveResizeCmd`, `RotateElementCmd`, `TransformAnnotationsCmd`, `RotatePageCmd` and `SetPageCropCmd` all write the live
-object [Verified for `MoveResizeCmd.undo` by the M2 round-3 safety reviewer — the export follows the screen; the box
-rotation, page rotation and crop cases (the last two read by `rasterizePageWithRedactions` at different moments) are not
-measured → row 29].
+Fix: every export takes the list once, at its start, and the page list with it. Applied to every entry that read the
+list: `_assemblePdfDoc`, `downloadPage`, `downloadPageAsImage`, `exportXfdf`, `_extractFlowDoc`,
+`renderThumbnailWithOverlays`.
 
-Guard: `tests/export/exportSnapshot.test.ts` (6 — the probe can see the secret in the plain source; Download and
-Download page each with and without a close during the source load; a page added mid-export is not exported). Red
-first: `rasterCalls: 0, secretInBytes: true` on both paths, `pages: 2` for the added page.
+**Round 3 refuted half of that fix (raw `m2r3-*.md`, 2026-10-08; recorded and fixed 2026-10-17, review-remediation
+rows 29–30).** Copying ONE list is the same leak by another route. `exportXfdf` and `_extractFlowDoc` copied the
+elements but walked the LIVE `documentModel.pages`, so undoing a page delete mid-export put back a page whose redaction
+the copy never held, and its source text (Word/Markdown/text) or form field value (XFDF `<fields>`) exported (M2R3-1).
+The table export read the elements live after `getPage`/`getTextContent`, so undoing a redaction there exported the
+cell (M2R3-2) — the "left live, a close fails it" reasoning this entry gave covered a close, not an undo. And both
+copies were SHALLOW: `MoveResizeCmd`, `RotateElementCmd`, `TransformAnnotationsCmd`, `RotatePageCmd` and
+`SetPageCropCmd` write the live object, and `rasterizePageWithRedactions` reads the page's rotation before the
+`stripRedactedAnnotations` await and the boxes after it, so an undo of a page turn landing there would pair one state's
+rotation with the other's boxes [Inferred: the read order, not driven in pixels].
+
+`ExportService._snapshotNow()` now copies the page list, each page (its `crop` too) and each element (prototype kept,
+`Object.create` + `Object.assign`) in ONE synchronous step, and every export reads only that: the six entries above
+plus the CSV/XLSX path, which re-finds its page in the snapshot by id after the save dialog. One level is enough
+because every command REPLACES a nested value (`crop`, `points`) rather than editing it. A page subset (an extract
+range, the sign-rect box) is swapped for its snapshot pages by id, so a page deleted while the dialog is open drops out
+instead of the indices retargeting, and the Bates page number comes from the snapshot (an `indexOf` on the live list
+would find no clone and write page 0). `_resolveTableGrid` / `_extractPageTableData` default their `elements` to a
+snapshot taken at the call, for the browser harnesses that call them alone. Not in the snapshot, on purpose: the ink
+layer and the form values — neither decides what a redaction removes. `InsertBlankPageCmd`'s redo now restores the same
+page object (M2R3-3, the AddPagesCmd shape — `ui.md` § "Undoing an Insert pages").
+
+Guards: `tests/export/exportSnapshot.test.ts` (9 — the probe can see the secret in the plain source; Download and
+Download page each with and without a close during the source load; an in-place undo of the page rotation and the box
+during the load does not reach the rasteriser, for Download, Download page and the extract range, which also pins the
+Bates page number; a page added mid-export is not exported) and the M2R3 block in `tests/export/redactionLeaks.test.ts`
+(11 — Markdown and XFDF: a deleted page restored by an undo inside the first `getPage`, with both controls; CSV and
+XLSX: a redaction undone while the text loads, with controls; CSV: the redaction moved off the secret in place). Red
+first: the secret in Markdown, in XFDF `<fields>`, in CSV and in the XLSX sheet; rotation 90 reaching the rasteriser;
+`pages: 2` for the added page (round 2). **The first version of the M2R3 block passed vacuously** — the fake pdf.js page
+lacked `styles` and the viewport converters, the export failed into its catch, and `not.toContain(SECRET)` held on an
+empty file; `run()` now throws on any reported error and on no file. Sabotage, each landed, red on exactly its cases,
+restored with `cmp`: the flow walk back on the live pages → exactly M2R3-1 Markdown; XFDF fields on the live pages →
+exactly M2R3-1 XFDF; the XLSX / CSV table path on the live elements → exactly its M2R3-2 case (CSV also its in-place
+case); elements copied as an array only → the CSV in-place case + the 3 rasteriser cases; pages copied as an array only
+→ the 3 rasteriser cases; the page number by `indexOf` → the Download and range cases; the subset not swapped → exactly
+the range case; the blank-page redo minting a new page → exactly its case.

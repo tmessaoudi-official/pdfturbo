@@ -493,3 +493,9 @@ The redo now puts the source back and restores the SAME page objects at the same
 redo stack (an annotation placed on an inserted page) names those page ids, so re-adding fresh pages would orphan it.
 Guards: two cases in `tests/core/historyManagerCommands.test.ts` (the same ids and the same source document come back;
 the order is kept behind a page that was there before). Red first: `[]` and the blank page alone.
+
+**`InsertBlankPageCmd` had the same shape (M2R3-3, M2 panel round 3; fixed 2026-10-17).** Its redo re-ran
+`addBlankPage`, which mints a new id each time, so a later redo naming the inserted page (an annotation, a rotation, a
+crop) found nothing. The redo now restores the SAME page object at the index it was first inserted at. Guard: the
+`InsertBlankPageCmd` case in `tests/core/historyManagerCommands.test.ts` (same ids and order, same object, current page).
+Red first: a fresh id at index 1.
