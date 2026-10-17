@@ -84,12 +84,15 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-17 05:05] ASSUMED (review): Row 8 milestone panel: export-fidelity-reviewer runs on opus - source: default (no model override, no reviewer-model file)
 - [2026-10-17 05:05] ASSUMED (review): Row 8 milestone panel: safety-promises-reviewer runs on opus - source: default (no model override, no reviewer-model file)
 - [2026-10-17 05:05] ASSUMED (review): Row 8 milestone panel: completeness-reviewer runs on opus - source: default (no model override, no reviewer-model file)
+- [2026-10-17 09:46] ASSUMED (review): Row 9: open P2s (and P1s) that an architecture-plan step already names get an arrow to that step, not a duplicate row (ARCH-2/3/4/5/6/7/8/9/11/12/14, QUAL-21's app._ half, TEST-10); TEST-11 is informational, no row - basis: advisor() agreed at 3C. Alternative: a row per finding.
+- [2026-10-17 09:46] ASSUMED (review): Row 9: TEST-4 (P1, unowned) promoted to row 12 although row 9 names P2s - an unowned P1 is the worse omission; ARCH-21 is a row (28), not an arrow to arch step 5, which narrows ports and does not name it - basis: advisor() agreed at 3C. Alternative: leave TEST-4 unowned; arrow ARCH-21 to step 5.
+- [2026-10-17 09:47] ASSUMED (review): Row 9: SEC-2 (row 14) and TEST-12 (row 21) are marked ask-first and listed under Needs input - basis: the p12 cipher, the passphrase minimum and CI cost are the developer's (pdf-ask-human mandatory cases); advisor() agreed at 3C. Alternative: pick defaults.
 
 ## Formal Plan
 
 Two milestones, each certified by ONE three-lens panel (`export-fidelity-reviewer`, `safety-promises-reviewer`,
-`completeness-reviewer`) on a frozen commit, then pushed. A P0 fix is never held back by the batch-of-10 push rule:
-the milestone boundary is a push point.
+`completeness-reviewer`) on a frozen commit, then pushed. A P0 fix is never held back by global Rule 10's push
+batch: the milestone boundary is a push point.
 
 **Milestone 1 — SEC-1 fixed (rows 1–2).**
 SEC-1 (P0): an excluded page — redacted, deleted, or outside an extracted range — is serialised whole into the export
@@ -101,6 +104,10 @@ probe of `copySourcePages` (2-page source, page 2 excluded): no reference → cl
 shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 
 **Milestone 2 — correctness P1s, docs batch, architecture steps 0–3 (rows 3–9).**
+
+**Backlog after M2 — rows 10–28.** No milestone: each row is taken up on its own ruling, with its own gate. Rows 12–28
+are the open findings no row or architecture step owns (row 9's reconciliation, 2026-10-17); a row marked *ask first*
+needs a developer ruling before any code.
 
 ## SEC-1 inventory — the certification matrix (panel round 6, 2026-10-08)
 
@@ -153,10 +160,29 @@ in those two files. The residue's structural answer is row 11.
 | 9 | Remaining P2 findings as plan rows; P3 findings fixed when their file is touched (list in § Known issues) | M | todo | - | - |
 | 10 | SEC-1 cost follow-up (ruled 2026-10-08): replace the prune's full content tokenizing with a name-only scan; measure against the § Fragile figures, own gate and panel | M | todo | - | src/export/copySourcePages.ts, src/utils/contentStreamEditor.ts, tests/** |
 | 11 | SEC-1 allowlist redesign (ruled 2026-10-08 as the follow-up to M1's disclosed residue): when a page is left out, rebuild each kept page and what it draws from known keys only, so an unknown path is dropped instead of hunted; own plan and panel | L | todo | - | src/export/copySourcePages.ts, tests/** |
+| 12 | TEST-4 (P1): golden characterization tests pinning export BYTES at defaults for the ~15 "byte-identical when unset" claims (today guarded by predicates only) | M | todo | - | tests/export/**, src/export/** |
+| 13 | SEC-3: "Download page" (`downloadPage`) and "Export page as image" (`downloadPageAsImage`) ship the source page as-is (typed form values not applied, never flattened) — route both through `_assemblePdfDoc` like Extract pages; then drop the SECURITY.md open-issue note | M | todo | - | src/export/exportService.ts, tests/**, SECURITY.md |
+| 14 | SEC-2, *ask first*: the generated `.p12` uses 3DES at forge's 2048 iterations and takes any passphrase length — the cipher is a reader-compatibility choice and the minimum is UX, both the developer's | S | todo | - | src/signing/certGen.ts, tests/signing/**, locales/*.json |
+| 15 | QUAL-2: `pdfSanitizer` reads untrusted structure with the throwing `lookupMaybe(key, Type)` (9 calls) — `lookup` + `instanceof`, a wrong-typed key test-first | S | todo | - | src/utils/pdfSanitizer.ts, tests/** |
+| 16 | TEST-5: the `brace-expansion: ^5.0.12` override forces a major outside `minimatch@5.1.9`'s range — re-scope the pin and re-audit ONLINE (never `--offline`; `.claude/rules/audit-gate.md`) | S | todo | - | package.json, package-lock.json, .claude/rules/audit-gate.md |
+| 17 | TEST-7: 6 of 13 `loadPdfDocument` sites take the metadata re-stamp (the default is `updateMetadata: true`) — decide per site, and pin every site, not only `viewerCheck` | S | todo | - | src/signing/pdfSigner.ts, src/handlers/textEditHandler.ts, src/export/exportService.ts, src/utils/pdfLoadGuard.ts, tests/** |
+| 18 | TEST-8: a test asserting `locales/{en,fr,ar}.json` are key-identical (today only a Claude PostToolUse hook checks) | S | todo | - | tests/**, locales/*.json |
+| 19 | TEST-6: keep the gitignored `tests/**/zz*` probes, but out of the default local suite and the pre-push hook (a vitest exclude, opt-in by name), and the one that writes outside its sandbox writes inside it — never a deletion | S | todo | - | vitest.config.ts, .githooks/pre-push |
+| 20 | TEST-9: measure the nine 120 s per-test timeouts in `redaction-vertical.browser.test.ts` and set each from the measurement | S | todo | - | tests/browser/redaction-vertical.browser.test.ts |
+| 21 | TEST-12, *ask first*: real-producer fixtures reach 18 of 383 test files and the 15-file corpus never runs in CI — which corpus files may enter CI, and at what CI cost, is the developer's | L | todo | - | tests/**, .github/workflows/deploy.yml |
+| 22 | QUAL-1b: release a source garbage-collected from the model at the delete itself (released only at close today), with ownership counting across the model and the history | M | todo | - | src/core/**, tests/** |
+| 23 | QUAL-6: `PDFElement.type` as a discriminant, so the 70 downcasts go | L | todo | - | src/elements/**, src/core/**, src/handlers/**, src/export/** |
+| 24 | QUAL-7: `MoveResizeCmd` mutates an element through an untyped bag and is used for everything — typed commands per change | M | todo | - | src/core/commands/moveCmds.ts, src/core/**, tests/** |
+| 25 | QUAL-15: the blank page is a string sentinel with its A4 default re-typed 21 times — one constant and one predicate | M | todo | - | src/**, tests/** |
+| 26 | QUAL-17: `formattingService` repeats "mutate → record → rebuild → autosave" 31 times — one helper | M | todo | - | src/core/formattingService.ts, tests/** |
+| 27 | QUAL-12: 43 functions over 100 lines, 25 over 150 — a function-length ratchet like the architecture ratchet (pinned counts, two-sided), not a rewrite | S | todo | - | tests/tools/** |
+| 28 | ARCH-21: the true-edit use case is orchestrated inside a pointer handler — move it to a use-case module the handler calls | M | todo | - | src/handlers/textEditHandler.ts, src/core/** |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- M1 (SEC-1): nothing pending from the developer — rounds 7 and 8 ruled; after the round-8 fixes M1 is certified with its residue disclosed, then the full deploy gate and the push. Row 11 (allowlist redesign) is the follow-up the residue points to.
+- Row 14 (SEC-2): which `.p12` cipher and iteration count (some readers still need 3DES), and whether to set a passphrase minimum — a ruling before any code.
+- Row 21 (TEST-12): which corpus files may run in CI, and at what CI-minute cost — a ruling before any code.
+- RESOLVED — M1 (SEC-1): nothing pending from the developer — rounds 7 and 8 ruled; after the round-8 fixes M1 is certified with its residue disclosed, then the full deploy gate and the push. Row 11 (allowlist redesign) is the follow-up the residue points to.
 ### Needs research
 - AddPagesCmd redo (found 2026-10-08 reading for QUAL-1) — REPRODUCED by the M2 round-2 completeness reviewer and FIXED in M2 round 2: the redo restores the source and the same pages (`.claude/rules/ui.md` § "Undoing an Insert pages and redoing it added nothing").
 ### Fragile
@@ -187,17 +213,19 @@ in those two files. The residue's structural answer is row 11.
   `/Contents`) is invisible to it, which is why every string-shaped case uses `fileHas`. Keep it that way.
 ### Known issues
 The review's findings, so this plan stands without the gitignored lens reports
-(`var/claude/review-20261007/`, five files). An arrow names the row that absorbs a finding; the rest are open.
-Per the 2026-10-08 ruling a P2 becomes a plan row when it is taken up, and a P3 is fixed when its file is touched.
+(`var/claude/review-20261007/`, five files). An arrow names the plan row, or the step of
+`docs/plans/architecture.plan.md` ("arch step N"), that absorbs a finding. Since row 9 (2026-10-17) every open P1 and
+P2 has an arrow: the ones no row or step owned became rows 12–28; a P3 is still fixed when its file is touched
+(2026-10-08 ruling).
 Each line is the finding's own heading; its evidence (file:line, measurements) stayed in the lens report.
 DOC-4 was triaged from P2 to P3 (SendUserFile does exist in local sessions; only its "container is reclaimed"
 rationale is stale).
 
 **P1 (13)**
 - ARCH-1 — Coordinate frames are untyped; frame meaning lives in comments → row 8 (steps 2–3)
-- ARCH-2 — `PDFTurboApp` is composition root, application facade and UI controller in one class, and it lives in `core/`
-- ARCH-3 — Binders depend on the concrete `PDFTurboApp` and reach its `_`-private members
-- ARCH-4 — Redaction, the product's sharpest invariant, has no bounded context; its policy is spread over 5+ files in 3 directories
+- ARCH-2 — `PDFTurboApp` is composition root, application facade and UI controller in one class, and it lives in `core/` → arch step 10
+- ARCH-3 — Binders depend on the concrete `PDFTurboApp` and reach its `_`-private members → arch step 5
+- ARCH-4 — Redaction, the product's sharpest invariant, has no bounded context; its policy is spread over 5+ files in 3 directories → arch step 4
 - QUAL-1 — Live pdf.js documents (and their workers) are never destroyed when a document is closed, replaced or garbage-collected from the model → row 6
 - SYNC-1 — The reviewers are told `advisor()` does not exist; CLAUDE.md says it is the first rung → row 7
 - SYNC-2 — Milestone certification: repo MAXIMAL (two clean rounds) vs the newer one-panel ruling → ruled
@@ -206,21 +234,21 @@ rationale is stale).
 - TEST-1 — A raw NUL byte makes `src/core/undoRedoController.ts` a BINARY file to git: every diff of the undo/redo coalescing code is invisible to reviewers → row 3
 - TEST-2 — `setFormXObjectContent` swallows every error, and its callers then report a successful true-edit → row 4
 - TEST-3 — `exportService.ts:832` bare catch labelled "no form fields" also swallows `form.flatten()` failures on real forms → row 5
-- TEST-4 — No golden/characterization test pins export output at defaults; the ~15 "byte-identical when unset" claims are guarded by predicates, not bytes
+- TEST-4 — No golden/characterization test pins export output at defaults; the ~15 "byte-identical when unset" claims are guarded by predicates, not bytes → row 12
 
 **P2 (39)**
-- ARCH-5 — Domain entities are DOM views; element classes import i18n and build HTML
-- ARCH-6 — The domain aggregate depends on pdf.js and on the export context
-- ARCH-7 — One aggregate, four holders, and a split repository
-- ARCH-8 — `ExportService` is one class serving six contexts and doing its own I/O
-- ARCH-9 — `contentStreamEditor.ts` (3023 lines) is four layers in one file, and its importers already show the cut lines
+- ARCH-5 — Domain entities are DOM views; element classes import i18n and build HTML → arch step 11
+- ARCH-6 — The domain aggregate depends on pdf.js and on the export context → arch steps 6 (the pdf.js dependency) and 9 (the aggregate's imports)
+- ARCH-7 — One aggregate, four holders, and a split repository → arch step 9
+- ARCH-8 — `ExportService` is one class serving six contexts and doing its own I/O → arch step 7
+- ARCH-9 — `contentStreamEditor.ts` (3023 lines) is four layers in one file, and its importers already show the cut lines → arch step 8
 - ARCH-10 — `flowDoc.ts` (2580 lines) hosts shared text-script primitives and a redaction rule, so 7 non-flow modules depend on the flow context → row 8 (step 2a: the primitives moved to `shared-kernel/text/`, `flowDoc` re-exports them; the redaction rule stays for architecture step 4)
-- ARCH-11 — CQS breach. An export (a query) mutates the aggregate outside history, using DOM focus as the decision input
-- ARCH-12 — pdf.js and pdf-lib have no ports; library calls are spread over 25 and 14 files
+- ARCH-11 — CQS breach. An export (a query) mutates the aggregate outside history, using DOM focus as the decision input → arch step 7
+- ARCH-12 — pdf.js and pdf-lib have no ports; library calls are spread over 25 and 14 files → arch step 6
 - ARCH-13 — A 32-file type-only cycle pivots on `AppDOMRefs` and the app types → row 8 (step 1: 35 → 7 files in type-inclusive cycles; the 7 left are the binders typed on `PDFTurboApp`, architecture step 5)
-- ARCH-14 — `IAppContext` is a 26-member port handed to every pointer handler; the narrow ports elsewhere prove the alternative
+- ARCH-14 — `IAppContext` is a 26-member port handed to every pointer handler; the narrow ports elsewhere prove the alternative → arch step 5
 - ARCH-19 — No architecture fitness function, though the repo already has the pattern → row 8 (step 0)
-- ARCH-21 — The true-edit use case is orchestrated inside a pointer handler
+- ARCH-21 — The true-edit use case is orchestrated inside a pointer handler → row 28
 - DOC-1 — Git identity: "matches 100% of history" is false → row 7
 - DOC-2 — "Recent SHAs are NOT stable / re-sign + force-push" looks container-era → row 7
 - DOC-3 — Form fill, VISION and README understate shipped features → row 7
@@ -229,25 +257,25 @@ rationale is stale).
 - DOC-7 — New Gotcha entries went into CLAUDE.md, against its own intake rule → row 7
 - DOC-8 — Five stale memory notes contradict the repo → row 7
 - DOC-9 — Container-era rationale still drives live policy and comments → row 7
-- QUAL-2 — `pdfSanitizer` reads untrusted structure with the throwing `lookupMaybe(key, Type)`, unguarded
-- QUAL-6 — `PDFElement.type` is not a discriminant, so the code downcasts 70 times
-- QUAL-7 — `MoveResizeCmd` mutates an element through an untyped bag, and is used for everything
-- QUAL-12 — 43 functions exceed 100 lines, 25 exceed 150
-- QUAL-15 — The blank page is a string sentinel with its A4 default re-typed 21 times
+- QUAL-2 — `pdfSanitizer` reads untrusted structure with the throwing `lookupMaybe(key, Type)`, unguarded → row 15
+- QUAL-6 — `PDFElement.type` is not a discriminant, so the code downcasts 70 times → row 23
+- QUAL-7 — `MoveResizeCmd` mutates an element through an untyped bag, and is used for everything → row 24
+- QUAL-12 — 43 functions exceed 100 lines, 25 exceed 150 → row 27
+- QUAL-15 — The blank page is a string sentinel with its A4 default re-typed 21 times → row 25
 - QUAL-16 — Two matrix types and two composition functions — one of them has already composed backwards once → row 8 (step 2)
-- QUAL-17 — The formatting service repeats "mutate → record → rebuild → autosave" 31 times
-- QUAL-21 — The `_underscore` private convention is really three conventions, and the app's "private" members are a public API
-- SEC-2 — Generated `.p12` uses legacy 3DES at forge's default 2048 iterations, and its passphrase has no minimum length
+- QUAL-17 — The formatting service repeats "mutate → record → rebuild → autosave" 31 times → row 26
+- QUAL-21 — The `_underscore` private convention is really three conventions, and the app's "private" members are a public API → arch step 5 (the `app._`-as-public-API half; the naming half is fixed when its file is touched)
+- SEC-2 — Generated `.p12` uses legacy 3DES at forge's default 2048 iterations, and its passphrase has no minimum length → row 14
 - SYNC-5 — Mode plumbing: the tree is autonomous only through a global rule; memory names dead sentinels → row 7
 - SYNC-6 — Model policy v2 drift in the repo skill and agents → row 7
-- TEST-5 — The `brace-expansion: ^5.0.12` override forces a major outside its dependent's range and breaks `minimatch@5.1.9`
-- TEST-6 — Gitignored `tests//zz*` probes run in the LOCAL suite and the pre-push hook but never in CI; one runs unconditionally and writes outside its sandbox
-- TEST-7 — 6 of 13 `loadPdfDocument` sites take the metadata re-stamp; the site pin checks `viewerCheck` only
-- TEST-8 — Locale key identity is enforced only by a Claude PostToolUse hook, not by any test
-- TEST-9 — Nine 120 s per-test timeouts in `redaction-vertical.browser.test.ts` with no measurement
-- TEST-10 — The export context is hand-stubbed in ~23 files; test-helper duplication is the visible cost of fat ports
-- TEST-11 — Testability payoff of hexagonal, quantified: about two thirds of `src` cannot be unit-tested without a DOM, pdf.js or pdf-lib
-- TEST-12 — Real-producer fixtures reach only 18 of 383 test files; the 15-file corpus that most rules measurements cite never runs in CI
+- TEST-5 — The `brace-expansion: ^5.0.12` override forces a major outside its dependent's range and breaks `minimatch@5.1.9` → row 16
+- TEST-6 — Gitignored `tests//zz*` probes run in the LOCAL suite and the pre-push hook but never in CI; one runs unconditionally and writes outside its sandbox → row 19
+- TEST-7 — 6 of 13 `loadPdfDocument` sites take the metadata re-stamp; the site pin checks `viewerCheck` only → row 17
+- TEST-8 — Locale key identity is enforced only by a Claude PostToolUse hook, not by any test → row 18
+- TEST-9 — Nine 120 s per-test timeouts in `redaction-vertical.browser.test.ts` with no measurement → row 20
+- TEST-10 — The export context is hand-stubbed in ~23 files; test-helper duplication is the visible cost of fat ports → arch step 7
+- TEST-11 — Testability payoff of hexagonal, quantified: about two thirds of `src` cannot be unit-tested without a DOM, pdf.js or pdf-lib → informational, no row (the measurement behind docs/plans/architecture.plan.md)
+- TEST-12 — Real-producer fixtures reach only 18 of 383 test files; the 15-file corpus that most rules measurements cite never runs in CI → row 21
 
 **P3 (49)**
 - ARCH-15 — Export reaches UI and core through re-exports instead of `contracts/` → row 8 (step 1: export→ui 0; export→core is type-only, 0 runtime edges)
@@ -300,6 +328,6 @@ rationale is stale).
 - TEST-14 — CI hygiene: no job timeout; `cancel-in-progress: true` on the Pages concurrency group; audit not in pre-push
 - TEST-15 — Untested UI wiring and manual-only sabotage
 - TEST-16 (P3, found 2026-10-08 during TEST-1) — `src/export/xlsxWriter.ts:47-48` says a RegExp built from escape text keeps oxlint's no-control-regex quiet; measured false for a single escape-text literal (the string concatenation is what defeats the static read). Reword when the file is touched.
-- QUAL-1b (P2, found 2026-10-08 during QUAL-1; FIXED at close by M2 round 1) — a source garbage-collected from a live model (its last page deleted) was never released, not even at close (the M2 panel refuted the first claim that a close released it). It is now released at close (`DocumentModel.heldDocuments`); releasing it at the delete itself still needs ownership counting across the model and the history → row 9
-- SEC-3 (P2, found 2026-10-08 by the M2 panel, pre-existing) — "Download page" (`exportService.downloadPage`) AND "Export page as image" (`downloadPageAsImage`, round 2) copy the source page as-is: they never apply typed form values and never flatten, so a field changed or cleared on screen keeps its original value in the one-page file or the image (reviewer probes: `SECRET-ORIG-123` kept). Disclosed as an open issue in SECURITY.md (the page-image row and § "One file, two readers"), not in KNOWN_ISSUES (which holds no open defects). Fix = route both through `_assemblePdfDoc` like Extract pages → row 9
+- QUAL-1b (P2, found 2026-10-08 during QUAL-1; FIXED at close by M2 round 1; the delete-time release is row 22) — a source garbage-collected from a live model (its last page deleted) was never released, not even at close (the M2 panel refuted the first claim that a close released it). It is now released at close (`DocumentModel.heldDocuments`); releasing it at the delete itself still needs ownership counting across the model and the history → row 22
+- SEC-3 (P2, found 2026-10-08 by the M2 panel, pre-existing) — "Download page" (`exportService.downloadPage`) AND "Export page as image" (`downloadPageAsImage`, round 2) copy the source page as-is: they never apply typed form values and never flatten, so a field changed or cleared on screen keeps its original value in the one-page file or the image (reviewer probes: `SECRET-ORIG-123` kept). Disclosed as an open issue in SECURITY.md (the page-image row and § "One file, two readers"), not in KNOWN_ISSUES (which holds no open defects). Fix = route both through `_assemblePdfDoc` like Extract pages → row 13
 - QUAL-1c (P3, found 2026-10-08 during QUAL-1) — a thumbnail panel replaced by `reinitThumbnailPanel()` or dropped by `clearThumbnailPanel()` never disconnects its IntersectionObserver (`render()` disconnects only its own previous one); the observer keeps the detached thumbnail nodes alive. Observer leak, not a worker leak.
