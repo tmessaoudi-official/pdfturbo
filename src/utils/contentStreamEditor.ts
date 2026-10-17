@@ -809,7 +809,7 @@ function scanPdfjs(src: string, wanted: ReadonlySet<string>): NamedOp[] {
 /** `scanNamedOps` options. */
 export interface ScanOptions {
   /**
-   * Read the way pdf.js reads (review-remediation row 10, rounds 1–3): its lexer (a run of letters split into known
+   * Read the way pdf.js reads (review-remediation row 10, rounds 1–5): its lexer (a run of letters split into known
    * operators, `qBI` is `q` then `BI`), its parser (arrays, dictionaries as key/value pairs, references, an inline image
    * ended by its filter and pdf.js's `EI` rules) and its operator reader (`scanPdfjs`: arity, set-aside operands, `null`
    * dropped, its stops), and refuse any operand not of its specification type (`PDFJS_OPERAND_TYPES`), on which pdf.js's
