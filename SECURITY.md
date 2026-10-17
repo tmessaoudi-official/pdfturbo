@@ -113,7 +113,7 @@ reading the code. Both are said plainly instead of implied to be measured.
 
 | Tool | Content is… | Notes |
 |---|---|---|
-| **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Web links on that page (`http`, `https`, `mailto`) that meet no redaction are re-created on the image page, where they were drawn (since 2026-09-25); a link that meets a redaction, a link with any other scheme, and a link to another page are not. Applies to a page from a real PDF; see the note below on **blank** pages, on the CSV/Excel and OCR exports, on **vertical (top-to-bottom) text**, and on **source annotations** (a note, stamp or form field under a redaction is now removed with it). |
+| **Redaction** | **removed** | **[pinned]** The page is rasterised, so the text is genuinely unextractable — and so is the *rest* of that page's text. That cost is why it is not the default. Web links on that page (`http`, `https`, `mailto`) that meet no redaction are re-created on the image page, where they were drawn (since 2026-09-25); a link that meets a redaction, a link with any other scheme, and a link to another page are not. Applies to a page from a real PDF; see the note below on **blank** pages, on the CSV/Excel and OCR exports, on **vertical (top-to-bottom) text**, and on **source annotations** (a note, stamp or form field under a redaction is now removed with it). **Open issue (M2R3-1, 2026-10-08):** an undo while a Word, Markdown, text or XFDF export runs can bring back a deleted page without its redaction — see § "Redaction reaches the other exports too". |
 | **Delete page** | **removed** | **[pinned]** The export is assembled from copied pages; a deleted page is never copied, a link or form field on a kept page that points to it is cut rather than followed, and resources a kept page shares with it keep only what the kept page draws (since 2026-10-08 — the shapes pinned are listed in the note above, with when the export refuses and what is not ruled out). |
 | **Edit text → delete** | **removed** | **[pinned]** Surgically removes the string from the content stream, with no rasterisation, so the rest of the page stays real text. Unlike *replacing* text — which can decline on fonts it cannot redraw — deleting is font-agnostic: it blanks the operator that draws the text, so nothing needs drawing. |
 | **Compress → flatten to images** | **removed** | The **flatten-to-images** setting only; "lossless optimise" and "shrink images" keep all text, and "shrink images" re-saves each photo whole, including any part a crop hides. Rasterises every page, so it is redaction's grade applied document-wide. |
@@ -196,14 +196,18 @@ their physical size and the resolution you chose.
 
 ### Redaction reaches the other exports too (fixed 2026-08-05)
 
-> **Open issue (M2R3-1, found 2026-10-08, recorded 2026-10-17) — an undo while a Word, Markdown, text, CSV, Excel or
-> XFDF export is running.** These exports read the page list — and the table export the redactions — at several
-> moments while they run, not once at the start. An undo that lands meanwhile (of a page delete, or of a redaction)
-> brings a page or a cell back without its redaction, and its text or field value is written to the file under the
-> usual success message [Verified by the milestone-2 review's probes, 2026-10-08: a deleted page's redacted text and a
-> redacted XFDF field value exported after an undo mid-export; a covered CSV cell after undoing its redaction mid-export].
-> The PDF exports take both lists once, at their start, and are not affected. Workaround: do not undo, redo or edit
-> while one of these exports runs. Tracked in `docs/plans/review-remediation.plan.md` (row 29).
+> **Open issue (M2R3-1 and M2R3-2, found 2026-10-08, recorded 2026-10-17) — an undo while a Word, Markdown, text,
+> XFDF, CSV or Excel export is running.** The Word, Markdown, text and XFDF exports take the annotations once, at their
+> start, but read the page list again while they run: undo a page delete meanwhile and the page comes back without
+> the redaction the delete removed, so its covered text or form field value is written to the file under the usual
+> success message — while the screen shows the page redacted (M2R3-1) [Verified by the milestone-2 review's probes,
+> 2026-10-08: a deleted page's redacted text, and a redacted XFDF field value, exported after an undo mid-export]. The
+> CSV and Excel exports read the redactions page by page, so undoing a redaction meanwhile exports the cell it
+> covered; there the screen has lost the redaction too (M2R3-2) [Verified: same review, a covered CSV cell]. The PDF
+> exports take both lists before they start building; only a redaction box changed in place mid-export — the undo of
+> its move or resize — is read as it is then, where the screen shows it [Verified: same review, the in-place undo
+> measured]. Workaround: do not undo, redo or edit while one of these exports runs. Tracked in
+> `docs/plans/review-remediation.plan.md` (row 29).
 
 Redaction rasterises the page, which is what makes it removal-grade — but several exports do not go
 through that path, and until 2026-08-05 each handed the redacted text back:
@@ -423,7 +427,7 @@ retry that could never succeed). Editing text in place shows no error: it falls 
 overlay, and the export or signature built afterwards refuses. The Word, Markdown and text exports, the
 table (CSV, XLSX) and XFDF exports, and OCR's text, Word and editable-box modes do not refuse: they read the
 document through pdf.js, the same reader that draws it, so they export what is on screen — except after an undo
-while they run (open issue M2R3-1, § "Redaction reaches the other exports too"). Opening and
+while they run (open issues M2R3-1 and M2R3-2, § "Redaction reaches the other exports too"). Opening and
 viewing the file are unaffected.
 
 > **Open issue (SEC-3b, found 2026-10-08) — typed form values in "Download page" and "Export page as image".**
