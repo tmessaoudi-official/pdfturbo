@@ -123,7 +123,7 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   the true-edit migration (plan row 31), and the fuzz and fixture tests above run it only — the pdf.js mode has its
   own oracle and differential (next item).
 - **The prune reads a page the way pdf.js's parser and preprocessor do, every operand of its specification type —
-  `scanNamedOps(…, { pdfjs: true })` (S10-1, row-10 panel rounds 1–4, 2026-10-17).** Round 1: the tokenizer ends an inline image at the first `EI` between
+  `scanNamedOps(…, { pdfjs: true })` (S10-1, row-10 panel rounds 1–5, 2026-10-17).** Round 1: the tokenizer ends an inline image at the first `EI` between
   whitespace; pdf.js (`Parser.makeInlineImage`) ends it by its FIRST filter (`/F` before `/Filter`, an array's first
   entry) — DCT at the JPEG end marker, ASCII85 at `~>`, ASCIIHex at `>` — and an unfiltered one at an `EI` whose next
   15 bytes are printable (a lone NUL allowed) and lex, within 75 bytes, as a known operator with its operand count,
@@ -179,16 +179,25 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   pdf.js's per-page inline-image cache key (`inline_img_N`, R4C-3) — a removed page's form the kept page names after
   that point is kept, though pdf.js never paints it there. Everything after such a stop is the kept page's own content
   stream, exported as written whatever the prune decides; each shape needs a malformed or built file, and all seven
-  leaked identically at `fffe15f`, before row 10 (probe). A numbers-only `scn`/`SCN` under a Pattern colour
+  leaked identically at `fffe15f`, before row 10 (probe). The same class inside a Type3 glyph is wider: pdf.js runs a
+  glyph with no error recovery, so any error there (a name the resources lack is enough) empties the whole glyph,
+  a form drawn BEFORE the error included, while the prune keeps it (round 5, R5C-3). These are the stops the audits
+  found; a stop they missed is read past the same way. A numbers-only `scn`/`SCN` under a Pattern colour
   space stops pdf.js too (`handleColorN` pops a name that is not there), and the scan, which does not track the colour
   space, keeps reading (row 33); a `scn`/`SCN` name counts as a drawn pattern under any colour space, while pdf.js draws one only under a
   Pattern colour space — an over-keep of the removed page's pattern, which no viewer draws but the bytes carry
   (R2S-3, plan row 33); the DCT and ASCII85 end searches start again after every rejected candidate, so a stream of
   many unterminated images costs quadratic time on the main thread (248 KB took 3.6 s; R2C-2, plan row 34); and the
   mirror follows pdf.js 6.3.289 — only the operator table is re-derived by a test, so a pdf.js upgrade that changes
-  `Parser` or the preprocessor diverges silently until the oracle tests below catch it. Guards:
-  `tests/export/inlineImagePdfjs.test.ts` (56, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
-  its operator list, the forms told apart by their BBox width, the list walked into a tiling pattern's own (R4C-5) — because the two part where the evaluator stops on one
+  `Parser` or the preprocessor diverges silently until the oracle tests below catch it. Two more bounds from round 5:
+  a removed page's form drawn only through a shading pattern's `/ExtGState` soft mask is KEPT — PDF 32000 draws it
+  there, pdf.js does not (developer ruling 2026-10-17, R5S-2: follow the specification, the over-keep side); and a
+  stream's own `/Resources` is read as drawn through only for a form, a tiling pattern, a page's content and an
+  appearance, so a soft-mask group written without `/Subtype /Form` loses the shared entries it draws — a drawing
+  lost, never a leak (`KNOWN_ISSUES.md` bounds 5 and 6). Guards:
+  `tests/export/inlineImagePdfjs.test.ts` (68, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
+  its operator list, the forms told apart by their BBox width, the list walked into a tiling pattern's own (R4C-5) and
+  into every Type3 glyph's (`charProcOperatorList`, a `Map`; R5C-4) — because the two part where the evaluator stops on one
   path only (R3C-2: the text-only oracle passed shapes pdf.js never paints); each case checks what pdf.js reads, what
   the scan reports and whether the export carries the removed page's form — leak shapes, controls, two-stream joins,
   the parser and evaluator stops, a DCT marker ending the page through `contentOf` (R2C-4, R3K-2), the
@@ -224,12 +233,27 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   round 1's, on the ported rules: `sabotage.json`). **Round 4** (on `ef14117`) found one more
   defect in round 3's own check: a shading pattern written as a STREAM passed it and then fell into the tiling branch,
   so `collect` read its body as drawing and kept the removed page's form; pdf.js reads only `/Shading` (R4S-1/R4C-4,
-  pre-existing). A type-2 pattern now draws nothing of its own. The differential cannot see it — it calls the scan,
+  pre-existing). A type-2 pattern now draws nothing of its own in `collect`'s recursion — and, since round 5, in the
+  owner prune either (below). The differential cannot see it — it calls the scan,
   and the leak was `collect`'s recursion — and its resources are fixed and well-formed, so it covers content syntax only
   (R4C-5). Sabotage, predicted first, each landed, red on exactly its case, restored with `cmp`
   (`var/claude/row10/sabotage-r4.json`): round 3's line back → the stream case; shading not accepted → the stream and
   dictionary cases; a tiling dictionary accepted → its refusal case; the oracle not walking nested lists → the tiling
-  control.
+  control. **Round 5** (on `e7fe819`, the 5-round cap; developer ruling 2026-10-17: fix every finding, no round 6,
+  close row 10 without a clean round): the owner prune (`prunedOwner`) read ANY stream's body as drawing through its
+  own `/Resources`, so a shading pattern, a shading or an image carrying the shared dictionary kept the removed page's
+  form (R5S-1/R5K-1/R5C-1, P0); it reads a body only for a form or a tiling pattern now, and an appearance without
+  `/DA` is registered too (pdf.js draws it whatever its `/Subtype`). A `null` resources entry is present to pdf.js
+  (`Dict.has` is `map.has`) and hides the parent's, which pdf-lib's `has` calls absent — so a tiling pattern's
+  `/XObject null` and a content stream's `/Fm2 null` kept the page's `Fm2` (R5C-2, P0); both hosts test
+  `get(key, true)`. A Type3 font whose own `/Resources` is there, pdf.js-truthy and not a dictionary draws nothing
+  (pdf.js runs the glyph with `get("Resources") || resources` and no recovery), so it refuses; a falsy one (`0`)
+  inherits like a form (R5C-3, `pdfjsFalsy`). Every round-5 leak case fails at `fffe15f` and its control passes
+  (`var/claude/row10/pre-existence-r5-fffe15f.out`): pre-existing. Sabotage, predicted first, each landed, red on
+  exactly its cases, restored with `cmp` (`var/claude/row10/sabotage-r5.json`): every stream body read → the 4
+  stream cases; the tiling `has` back → the tiling-null case; the merge `has` back → the content-stream-null case;
+  the Type3 refusal off → its case; the falsy test reduced → the `/Resources 0` control; the DA-less appearance
+  unregistered → the appearance control; the oracle not walking glyphs → the two Type3 controls.
 
 **Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
 - **An ExtGState `/Font [font size]`** sets the font like `Tf`; a Type3 font set that way with no resources of its own

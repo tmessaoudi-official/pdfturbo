@@ -24,8 +24,11 @@ const PAD = '0 '.repeat(10);
 /** A kept page's content: one stream, or several (`/Contents` an array, which pdf.js reads back to back). */
 type Content = string | string[];
 
-/** Page 0 is the kept page under test; page 1, left out, draws /Fm2 from the same resources. */
-async function build(page0: Content): Promise<PDFDocument> {
+/**
+ * Page 0 is the kept page under test; page 1, left out, draws /Fm2 from the same resources. `local` is the /Resources
+ * of page 0's single content stream, which pdf.js merges over the page's (round 5).
+ */
+async function build(page0: Content, local?: Record<string, unknown>, annot = false): Promise<PDFDocument> {
   const d = await PDFDocument.create({ updateMetadata: false });
   const ctx = d.context;
   const font = ctx.register(ctx.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica' }));
@@ -45,13 +48,47 @@ async function build(page0: Content): Promise<PDFDocument> {
     BBox: [0, 0, 400, 400], XStep: 400, YStep: 400 }));
   const tileDict = ctx.register(ctx.obj({ Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1,
     BBox: [0, 0, 10, 10], XStep: 10, YStep: 10, Resources: {} }));
-  const resources = ctx.register(ctx.obj({ XObject: { Fm1: form(PUB, 300), Fm2: form(SEC, 301) }, Font: { F1: font },
-    Pattern: { P1: tile, P2s: shadingStream, P2d: shadingDict, P1f: tileFm2, P1d: tileDict } }));
-  const stream = (content: string) => ctx.register(ctx.stream(Uint8Array.from(content, c => c.charCodeAt(0))));
-  for (const content of [page0, '/Fm2 Do']) {
+  // Round 5 (R5S-1, R5K-1, R5C-1): streams whose own /Resources is the shared dictionary and whose body draws Fm2. pdf.js
+  // reads none of these bodies — a shading pattern, a shading, an image's data, a Type3 glyph procedure (run with its
+  // font's resources) — and reads a tiling pattern's.
+  const resources = ctx.nextRef();
+  const tiling = { Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1, BBox: [0, 0, 400, 400], XStep: 400, YStep: 400 };
+  const shadingOwn = ctx.register(ctx.stream('/Fm2 Do', { Type: 'Pattern', PatternType: 2, Shading: shading, Resources: resources }));
+  const tileOwn = ctx.register(ctx.stream('/Fm2 Do', { ...tiling, Resources: resources }));
+  const shadingBody = ctx.register(ctx.stream('/Fm2 Do', { ...shading, Resources: resources }));
+  const image = ctx.register(ctx.stream('/Fm2 Do', { Type: 'XObject', Subtype: 'Image', Width: 7, Height: 1,
+    BitsPerComponent: 8, ColorSpace: 'DeviceGray', Resources: resources }));
+  const type3 = (proc: unknown, own?: unknown) => ctx.register(ctx.obj({ Type: 'Font', Subtype: 'Type3',
+    FontBBox: [0, 0, 1000, 1000], FontMatrix: [0.001, 0, 0, 0.001, 0, 0], CharProcs: { a: proc },
+    Encoding: { Type: 'Encoding', Differences: [97, 'a'] }, FirstChar: 97, LastChar: 97, Widths: [1000],
+    ...(own === undefined ? {} : { Resources: own }) } as never));
+  const glyph = ctx.register(ctx.stream('1000 0 d0 /Fm2 Do'));
+  const glyphOwn = ctx.register(ctx.stream('1000 0 d0 /Fm2 Do', { Resources: resources }));
+  // R5C-2: a null entry is present to pdf.js, and hides the one it is merged over.
+  const tileNull = ctx.register(ctx.stream('/Fm2 Do', { ...tiling, Resources: { XObject: null } }));
+  // R5S-2 (ruled 2026-10-17: the spec, not pdf.js): a shading pattern's graphics state soft mask.
+  const group = ctx.register(ctx.stream('/Fm2 Do', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 400, 400],
+    Group: { S: 'Transparency' }, Resources: resources }));
+  const shadingMasked = ctx.register(ctx.obj({ Type: 'Pattern', PatternType: 2, Shading: shading,
+    ExtGState: { SMask: { S: 'Luminosity', G: group } } }));
+  ctx.assign(resources, ctx.obj({ XObject: { Fm1: form(PUB, 300), Fm2: form(SEC, 301), Im1: image },
+    Font: { F1: font, T3o: type3(glyphOwn, {}), T3i: type3(glyph), T3b: type3(glyph, 5), T3z: type3(glyph, 0) },
+    Shading: { S1: shadingBody },
+    Pattern: { P1: tile, P2s: shadingStream, P2d: shadingDict, P1f: tileFm2, P1d: tileDict, P2r: shadingOwn, P1r: tileOwn,
+      P1n: tileNull, P2m: shadingMasked } }));
+  const stream = (content: string, dict?: Record<string, unknown>) =>
+    ctx.register(ctx.stream(Uint8Array.from(content, c => c.charCodeAt(0)), dict as never));
+  // An appearance with neither /Subtype /Form nor a /DA, drawing Fm2: pdf.js paints it whatever its /Subtype (round 5).
+  const appearance = ctx.register(ctx.stream('/Fm2 Do', { BBox: [0, 0, 400, 400], Resources: resources }));
+  for (const [content, own] of [[page0, local], ['/Fm2 Do', undefined]] as const) {
     const p = d.addPage([300, 300]);
     p.node.set(PDFName.of('Resources'), resources);
-    p.node.set(PDFName.of('Contents'), Array.isArray(content) ? ctx.obj(content.map(stream)) : stream(content));
+    p.node.set(PDFName.of('Contents'), Array.isArray(content) ? ctx.obj(content.map(c => stream(c)))
+      : stream(content, own && { Resources: own }));
+    if (annot && content === page0) {
+      p.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Square', Rect: [0, 0, 300, 300],
+        AP: { N: appearance } }))]));
+    }
   }
   return PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
 }
@@ -60,23 +97,31 @@ async function build(page0: Content): Promise<PDFDocument> {
  * The forms pdf.js reads on the kept page, by its text layer and by its operator list (what it paints). They part where
  * pdf.js's evaluator stops on one path only (round 3, R3C-2), so a case pins both.
  */
-async function pdfjsReads(page0: Content): Promise<{ text: string[]; painted: string[] }> {
-  const bytes = await (await build(page0)).save({ useObjectStreams: false });
+async function pdfjsReads(page0: Content, local?: Record<string, unknown>, annot = false): Promise<{ text: string[]; painted: string[] }> {
+  const bytes = await (await build(page0, local, annot)).save({ useObjectStreams: false });
   const doc = await pdfjs.getDocument({ data: bytes.slice(0), verbosity: 0 }).promise;
   try {
     const page = await doc.getPage(1);
     const text = (await page.getTextContent()).items.map(i => ('str' in i ? i.str : '')).join('|');
     const painted = new Set<string>();
     // A tiling pattern carries its own operator list inside its colour arguments: a form it paints counts too
-    // (round 4, R4C-5 — the top-level list alone cannot see one).
-    const walk = (list: { fnArray: number[]; argsArray: unknown[] }): void => list.fnArray.forEach((fn, k) => {
+    // (round 4, R4C-5 — the top-level list alone cannot see one). So does a Type3 glyph, whose list sits on its font in
+    // `commonObjs`, outside the page's list and the text layer (round 5, R5C-4).
+    type OpList = { fnArray: number[]; argsArray: unknown[] };
+    const fonts: string[] = [];
+    const walk = (list: OpList): void => list.fnArray.forEach((fn, k) => {
       const args = list.argsArray[k];
       if (fn === pdfjs.OPS.paintFormXObjectBegin) painted.add(((args as unknown[])[1] as number[])[2] === 301 ? 'Fm2' : 'Fm1');
+      if (fn === pdfjs.OPS.setFont) fonts.push((args as string[])[0]);
       if (Array.isArray(args)) {
         for (const a of args) if (a && typeof a === 'object' && 'fnArray' in a && 'argsArray' in a) walk(a as never);
       }
     });
     walk(await page.getOperatorList());
+    for (const id of new Set(fonts)) {
+      const glyphs = page.commonObjs.has(id) ? (page.commonObjs.get(id) as { charProcOperatorList?: Map<string, OpList> }).charProcOperatorList : undefined;
+      for (const list of glyphs?.values() ?? []) walk(list);
+    }
     return { text: [text.includes(PUB) && 'Fm1', text.includes(SEC) && 'Fm2'].filter((x): x is string => !!x), painted: [...painted].sort() };
   } finally { await doc.loadingTask.destroy(); }
 }
@@ -86,9 +131,9 @@ const pdfjsDraws = async (page0: Content): Promise<string[]> => {
   return text;
 };
 
-async function exported(page0: Content): Promise<string> {
+async function exported(page0: Content, local?: Record<string, unknown>, annot = false): Promise<string> {
   const dest = await PDFDocument.create({ updateMetadata: false });
-  const { pages } = await copySourcePages(dest, await build(page0), [0], { pruneSharedResources: true });
+  const { pages } = await copySourcePages(dest, await build(page0, local, annot), [0], { pruneSharedResources: true });
   pages.forEach(p => dest.addPage(p));
   return Buffer.from(await dest.save({ useObjectStreams: false })).toString('latin1');
 }
@@ -255,5 +300,77 @@ describe('a shading pattern draws nothing of its own (row 10, round 4)', () => {
   });
   it('a tiling pattern written as a dictionary refuses the export', async () => {
     await expect(exported(`/Fm1 Do /Pattern cs /P1d scn 0 0 10 10 re f`)).rejects.toThrow(ExportResourcesUnreadableError);
+  });
+});
+
+/**
+ * Round 5 (the cap, ruled 2026-10-17: fix all and stop). The copier pruned a copied stream's own /Resources by reading
+ * its body as content, whatever the stream was (R5S-1 = R5K-1 = R5C-1, P0, pre-existing): pdf.js reads a body against
+ * its own resources only for a form, a tiling pattern and a page's content. A null resource entry is present to pdf.js
+ * and hides the entry it is merged over, while pdf-lib's `has` says absent (R5C-2, P0). A Type3 font whose own
+ * /Resources is not a dictionary stops pdf.js inside every glyph (R5C-3, shape B). A shading pattern's soft mask
+ * follows the spec, not pdf.js (R5S-2, ruled).
+ */
+describe('a stream draws through its own resources only where pdf.js reads its body (row 10, round 5)', () => {
+  const keeps = async (page0: string, local?: Record<string, unknown>) => {
+    const bytes = await exported(page0, local);
+    expect(bytes.includes(PUB)).toBe(true);
+    return bytes.includes(SEC);
+  };
+  it.each([
+    ['a shading pattern written as a stream with /Resources', `/Fm1 Do /Pattern cs /P2r scn 0 0 10 10 re f`],
+    ['a shading whose stream has /Resources', `/Fm1 Do /S1 sh`],
+    ['an image with /Resources, its data reading /Fm2 Do', `/Fm1 Do q 7 0 0 1 0 0 cm /Im1 Do Q`],
+  ])('%s: pdf.js never reads the body, the export drops Fm2', async (_label, page0) => {
+    expect(await pdfjsReads(page0)).toEqual({ text: ['Fm1'], painted: ['Fm1'] });
+    expect(await keeps(page0)).toBe(false);
+  });
+  it('control: a tiling pattern with /Resources is painted, and the export keeps Fm2', async () => {
+    const page0 = `/Fm1 Do /Pattern cs /P1r scn 0 0 300 300 re f`;
+    expect(await pdfjsReads(page0)).toEqual({ text: ['Fm1'], painted: ['Fm1', 'Fm2'] });
+    expect(await keeps(page0)).toBe(true);
+  });
+  it('a Type3 glyph procedure with /Resources: pdf.js runs it with its font\'s, the export drops Fm2', async () => {
+    const page0 = `/Fm1 Do BT /T3o 12 Tf 10 10 Td (a) Tj ET`;
+    expect((await pdfjsReads(page0)).painted).toEqual(['Fm1']);
+    expect(await keeps(page0)).toBe(false);
+  });
+  it('control: a Type3 glyph that inherits the page\'s resources is painted (the oracle sees inside glyphs)', async () => {
+    const page0 = `/Fm1 Do BT /T3i 12 Tf 10 10 Td (a) Tj ET`;
+    expect((await pdfjsReads(page0)).painted).toEqual(['Fm1', 'Fm2']);
+    expect(await keeps(page0)).toBe(true);
+  });
+  it('a Type3 font whose own /Resources is not a dictionary refuses the export', async () => {
+    const page0 = `/Fm1 Do BT /T3b 12 Tf 10 10 Td (a) Tj ET`;
+    expect((await pdfjsReads(page0)).painted).toEqual(['Fm1']);
+    await expect(exported(page0)).rejects.toThrow(ExportResourcesUnreadableError);
+  });
+  it('control: a Type3 font whose own /Resources is 0 inherits the page\'s, as pdf.js reads it falsy', async () => {
+    const page0 = `/Fm1 Do BT /T3z 12 Tf 10 10 Td (a) Tj ET`;
+    expect((await pdfjsReads(page0)).painted).toEqual(['Fm1', 'Fm2']);
+    expect(await keeps(page0)).toBe(true);
+  });
+  it('a tiling pattern whose own /XObject is null: pdf.js resolves nothing, the export drops Fm2', async () => {
+    const page0 = `/Fm1 Do /Pattern cs /P1n scn 0 0 300 300 re f`;
+    expect(await pdfjsReads(page0)).toEqual({ text: ['Fm1'], painted: ['Fm1'] });
+    expect(await keeps(page0)).toBe(false);
+  });
+  it('a content stream whose own /Fm2 is null: it hides the page\'s, the export drops Fm2', async () => {
+    const page0 = `/Fm1 Do /Fm2 Do`;
+    const local = { XObject: { Fm2: null } };
+    expect(await pdfjsReads(page0, local)).toEqual({ text: ['Fm1'], painted: ['Fm1'] });
+    expect(await keeps(page0, local)).toBe(false);
+  });
+  it('control: an appearance with no /Subtype /Form and no /DA is painted, and the export keeps Fm2', async () => {
+    const page0 = `/Fm1 Do`;
+    expect(await pdfjsReads(page0, undefined, true)).toEqual({ text: ['Fm1'], painted: ['Fm1', 'Fm2'] });
+    const bytes = await exported(page0, undefined, true);
+    expect(bytes.includes(PUB)).toBe(true);
+    expect(bytes.includes(SEC)).toBe(true);
+  });
+  it('a shading pattern\'s soft-mask group is kept, as the spec draws it (ruled; pdf.js ignores it)', async () => {
+    const page0 = `/Fm1 Do /Pattern cs /P2m scn 0 0 10 10 re f`;
+    expect(await pdfjsReads(page0)).toEqual({ text: ['Fm1'], painted: ['Fm1'] });
+    expect(await keeps(page0)).toBe(true);
   });
 });

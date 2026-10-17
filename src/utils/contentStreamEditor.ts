@@ -813,8 +813,9 @@ export interface ScanOptions {
    * operators, `qBI` is `q` then `BI`), its parser (arrays, dictionaries as key/value pairs, references, an inline image
    * ended by its filter and pdf.js's `EI` rules) and its operator reader (`scanPdfjs`: arity, set-aside operands, `null`
    * dropped, its stops), and refuse any operand not of its specification type (`PDFJS_OPERAND_TYPES`), on which pdf.js's
-   * evaluator can stop reading the page. What the SEC-1 prune counts as drawn must be what pdf.js draws. Without it the
-   * scan stays equal to `groupOps(tokenizeContentStream(src))`.
+   * evaluator can stop reading the page. The SEC-1 prune's reading agrees with pdf.js's lexer, parser and preprocessor;
+   * where pdf.js's evaluator stops on what a well-typed operand resolves to, it reads on — a stated bound (developer
+   * ruling 2026-10-17, plan row 35). Without the option the scan stays equal to `groupOps(tokenizeContentStream(src))`.
    */
   readonly pdfjs?: boolean;
 }

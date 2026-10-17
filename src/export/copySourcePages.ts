@@ -584,7 +584,13 @@ class ResourcePruner {
     if (obj instanceof PDFStream) {
       const resources = obj.dict.lookup(key);
       if (!(resources instanceof PDFDict)) { this.refuseIfNotADict(obj.dict.get(key)); return undefined; }
-      const readings: Reading[] = page ?? [{ contents: () => [contentOf(this.lib, this.src, obj)] }];
+      // pdf.js reads a body against its own /Resources only for a form (an appearance and a soft-mask group are forms)
+      // and a tiling pattern: a shading pattern, a shading, an image's data and a Type3 glyph procedure (run with its
+      // font's resources) draw nothing through theirs (round 5, R5S-1). A page's content and an appearance come as `page`.
+      const type = obj.dict.lookup(PDFName.of('PatternType'));
+      const body = obj.dict.lookup(PDFName.of('Subtype')) === PDFName.of('Form')
+        || (type instanceof this.lib.PDFNumber && type.asNumber() === 1);
+      const readings: Reading[] = page ?? [{ contents: () => (body ? [contentOf(this.lib, this.src, obj)] : []) }];
       const recorded = this.patternDrawn.get(obj);
       const pruned = this.pruned(recorded ? [...readings, { contents: () => [], drawn: recorded }] : readings, resources, reached);
       if (!pruned) return undefined;
@@ -709,8 +715,8 @@ class ResourcePruner {
     const { PDFName, PDFDict, PDFRef: Ref } = this.lib;
     const ap = annot.lookup(PDFName.of('AP'));
     if (!(ap instanceof PDFDict)) return;
+    // An appearance with no /DA is registered too: pdf.js draws its body whatever its /Subtype (round 5).
     const [da] = defaultAppearances(this.lib, this.src, annot);
-    if (da === undefined) return;
     for (const key of ['N', 'R', 'D']) {
       const v = ap.get(PDFName.of(key));
       const states = v instanceof Ref ? this.src.context.lookup(v) : v;
@@ -718,7 +724,7 @@ class ResourcePruner {
       for (const r of refs) {
         if (!(r instanceof Ref)) continue;
         const list = this.appearanceDA.get(r) ?? [];
-        if (!list.includes(da)) list.push(da);
+        if (da !== undefined && !list.includes(da)) list.push(da);
         this.appearanceDA.set(r, list);
       }
     }
@@ -826,18 +832,24 @@ class ResourcePruner {
     if (depth > 12) return false;
     let ops;
     // Read as pdf.js reads — its lexer, parser and operator reader, an inline image ended where pdf.js ends it, every
-    // operand of its specification type (row 10, rounds 1–3); a refusal (a throw) fails the export closed.
+    // operand of its specification type (row 10, rounds 1–3; patterns, owners and null entries rounds 3–5); a refusal (a
+    // throw) fails the export closed.
     try { ops = scanNamedOps(content, DRAWING_OPS, { pdfjs: true }); } catch { return false; }
     const entry = (cat: Category, name: string) => {
       const sub = resources.lookup(PDFName.of(cat));
       return sub instanceof PDFDict ? this.src.context.lookup(sub.get(PDFName.of(name))) : undefined;
     };
     // A drawn object draws from `resources` too, the way pdf.js reads it: a form, Type3 font or soft-mask group whose
-    // own `/Resources` is not a dictionary, and a tiling pattern always (pdf.js merges its resources with these).
+    // own `/Resources` is not a dictionary, and a tiling pattern always (pdf.js merges its resources with these). A
+    // Type3 glyph runs with `get("Resources") || resources` and no error recovery, so a Type3 font whose own value is
+    // there, truthy to pdf.js and not a dictionary, draws nothing at all: it refuses (round 5, R5C-3).
     const inherit = (obj: PDFObject | undefined, read: () => (string | null)[], always = false): boolean => {
       if (!obj || seen.has(obj)) return true;
       const own = obj instanceof PDFStream ? obj.dict : obj;
-      if (!(own instanceof PDFDict) || (!always && own.lookup(PDFName.of('Resources')) instanceof PDFDict)) return true;
+      if (!(own instanceof PDFDict)) return true;
+      const value = this.src.context.lookup(own.get(PDFName.of('Resources')));
+      if (!always && value instanceof PDFDict) return true;
+      if (!always && own.lookup(PDFName.of('Subtype')) === PDFName.of('Type3') && !pdfjsFalsy(this.lib, value)) return false;
       seen.add(obj);
       return read().every(c => c !== null && this.collect(c, resources, drawn, seen, depth + 1));
     };
@@ -910,11 +922,13 @@ class ResourcePruner {
           for (const [k, v] of own.entries()) view.set(k, v);
           const text = contentOf(this.lib, this.src, pattern);
           if (text === null || !this.collect(text, view, mine, inner, depth + 1)) return false;
-          for (const cat of PRUNED) if (!own.has(PDFName.of(cat))) for (const n of mine[cat]) drawn[cat].add(n);
+          // A null category is present to pdf.js and hides the page's, which pdf-lib's `has` calls absent (round 5, R5C-2).
+          const ownHas = (cat: Category) => own.get(PDFName.of(cat), true) !== undefined;
+          for (const cat of PRUNED) if (!ownHas(cat)) for (const n of mine[cat]) drawn[cat].add(n);
           // The rest it draws from its own categories, through forms that read the merged view too: kept for its own
           // prune, which reads its content against its own dictionary alone (round 7, R7-C-5).
           const record = this.patternDrawn.get(pattern) ?? noneDrawn();
-          for (const cat of PRUNED) if (own.has(PDFName.of(cat))) for (const n of mine[cat]) record[cat].add(n);
+          for (const cat of PRUNED) if (ownHas(cat)) for (const n of mine[cat]) record[cat].add(n);
           this.patternDrawn.set(pattern, record);
           break;
         }
@@ -1034,6 +1048,13 @@ function defaultAppearances(lib: Lib, src: PDFDocument, node: PDFDict, isCut: (r
   return out;
 }
 
+/** Whether pdf.js reads a resolved value as falsy: absent, null, 0, false or an empty string. */
+function pdfjsFalsy(lib: Lib, value: PDFObject | undefined): boolean {
+  const { PDFNull, PDFNumber, PDFBool, PDFString, PDFHexString } = lib;
+  return value === undefined || value === PDFNull || (value instanceof PDFNumber && value.asNumber() === 0)
+    || value === PDFBool.False || ((value instanceof PDFString || value instanceof PDFHexString) && value.asString() === '');
+}
+
 /** pdf.js's `Dict.merge` with `mergeSubDicts`: `local` wins, and two DIRECT sub-dictionaries are merged entry by entry. */
 function mergeResources(lib: Lib, src: PDFDocument, local: PDFDict, page: PDFDict | undefined): PDFDict {
   const { PDFDict } = lib;
@@ -1051,7 +1072,8 @@ function mergeResources(lib: Lib, src: PDFDocument, local: PDFDict, page: PDFDic
   for (const [k, list] of values) {
     if (list.length === 1 || !(list[0] instanceof PDFDict)) { merged.set(k, list[0]); continue; }
     const sub = src.context.obj({});
-    for (const d of list) if (d instanceof PDFDict) for (const [kk, vv] of d.entries()) if (!sub.has(kk)) sub.set(kk, vv);
+    // A null entry is present, as in pdf.js's map: it hides the page's (pdf-lib's `has` calls it absent, R5C-2).
+    for (const d of list) if (d instanceof PDFDict) for (const [kk, vv] of d.entries()) if (sub.get(kk, true) === undefined) sub.set(kk, vv);
     merged.set(k, sub);
   }
   return merged;
