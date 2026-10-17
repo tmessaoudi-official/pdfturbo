@@ -80,6 +80,10 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-17 00:54] ASSUMED (review): Push count: CLAUDE.md § Git autonomy defers to global Rule 10's batch count instead of hard-coding the ruling's 10 — basis: the 2026-10-08 ruling says 'adopt global Rule 10's batch' and the global count moved 10 -> 30 the same day; advisor() agreed (confident pick). Alternative: write 10 as a repo count.
 - [2026-10-17 01:13] ASSUMED (review): Row 7 closed with four repo commits (120158a A, 3a7f7f6 B, c3fc1c7 C, 60901d0 D) plus memory-note edits outside the repo (E); left open on purpose: DOC-13 (P3, hooks untouched — fixed when touched), DOC-14 (global tool), DOC-15 (no release cut); the three settings .bak files were already absent. Evidence cell names the last commit.
 - [2026-10-17 01:19] AGREED: Push: the 12 commits after row 7 (M2/QUAL-1 + row 7) stay local for the Rule 10 batch or the next milestone, instead of a push at this stop; the M2 fixes stay undeployed until then (developer, 2026-10-17).
+- [2026-10-17 05:04] ASSUMED (review): Row 8 close: the commits pushed at the milestone end carry [skip ci] in the pushed head — basis: the 2026-10-08 19:03 AGREED ruling (Actions minutes exhausted) still applies; no CI run since 2026-10-08, the billing API is not readable with this token's scope, and the quota resets at the billing month start. Alternative: push without the tag (a run that fails on billing).
+- [2026-10-17 05:05] ASSUMED (review): Row 8 milestone panel: export-fidelity-reviewer runs on opus - source: default (no model override, no reviewer-model file)
+- [2026-10-17 05:05] ASSUMED (review): Row 8 milestone panel: safety-promises-reviewer runs on opus - source: default (no model override, no reviewer-model file)
+- [2026-10-17 05:05] ASSUMED (review): Row 8 milestone panel: completeness-reviewer runs on opus - source: default (no model override, no reviewer-model file)
 
 ## Formal Plan
 

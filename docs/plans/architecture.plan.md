@@ -83,7 +83,7 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 | 0 | Architecture ratchet test | M | done | c1d70fa | tests/tools/** |
 | 1 | Type-only edge fixes | S | done | 34323cb | src/export/**, src/contracts/**, src/core/appContext.ts, src/utils/flowDoc.ts |
 | 2 | Shared kernel part 1 (one Matrix, text-script primitives) | M | done | d1b1a86 | src/shared-kernel/**, src/utils/** |
-| 3 | Coordinate-frame brands (types only) | M | todo | - | src/shared-kernel/**, src/utils/geometry.ts |
+| 3 | Coordinate-frame brands (types only) | M | done | 6bc3794 | src/shared-kernel/**, src/utils/geometry.ts |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
