@@ -13,6 +13,7 @@ pdf-lib coupling.
 - [2026-10-17 01:28] AGREED: Frame brands (step 3) are SOFT: an optional phantom __frame property, so plain literals still compile and tsc rejects a converter output handed over in the wrong frame; zero runtime change (developer, 2026-10-17).
 - [2026-10-17 01:28] AGREED: PageFrame lands with step 4, its first user, not as an unused type in step 3 (developer, 2026-10-17).
 - [2026-10-17 01:28] AGREED: Certification for steps 0-3: advisor() at each 3C/6C gate, one three-lens panel at the end of step 3 on a frozen commit (developer, 2026-10-17).
+- [2026-10-17 04:03] ASSUMED (review): Step 1 repoints every whole-statement type-only src importer of IErrorReporter, IProgressManager, ToolMode, AppDOMRefs and RuleRect to its vocabulary home (contracts/, types/), not only the plan's named sites; mixed value+type statements and the re-export shims stay — full-set coverage, advisor agreed at 3C round 1.
 
 ## Target
 

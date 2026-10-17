@@ -33,8 +33,8 @@ import { textDrawnFootprint, type ArabicMeasurer } from './textExtent';
 import { measureArabicLine } from './arabicOverlay';
 import type { DocumentModel, DocumentPage } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
-import type { IErrorReporter } from '../core/errorReporter';
-import type { IProgressManager } from '../ui/progressManager';
+import type { IErrorReporter } from '../contracts/errorReporter';
+import type { IProgressManager } from '../contracts/progressManager';
 import { pointViewport, pageUserUnit } from '../utils/pointViewport';
 import { withPdfjsAssets } from '../utils/pdfjsParams';
 

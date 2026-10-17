@@ -2,7 +2,7 @@ import { saveState } from '../infra/storage';
 import type { DocumentModel } from './documentModel';
 import type { PDFElement } from '../elements/annotationElement';
 import type { InkLayer } from '../infra/inkLayer';
-import type { IErrorReporter } from './errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 
 export interface SessionSnapshot {
   documentModel: DocumentModel;

@@ -1,4 +1,4 @@
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { FormattingService } from '../core/formattingService';
 import type { TextElement } from '../elements/textElement';
 import type { TextCaseMode } from '../utils/textCase';

@@ -1,7 +1,7 @@
 import type { PDFElement, ElementType } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { ToolMode } from '../types/tools';
 import type { CodeElement } from '../elements/codeElement';
 import type { TextElement } from '../elements/textElement';

@@ -8,7 +8,7 @@
  * Coordinates are PDF user space (y-up). Output rows are top-to-bottom and
  * columns left-to-right (reading order).
  */
-import type { RuleRect } from './flowDoc';
+import type { RuleRect } from '../types/ruleRect';
 
 /** A positioned text fragment in PDF user space (y-up). */
 export interface TableTextItem {

@@ -6,7 +6,7 @@ import { RedactionElement } from '../elements/redactionElement';
 import { MoveResizeCmd, type HistoryManager } from './historyManager';
 import { applyTextCase, type TextCaseMode } from '../utils/textCase';
 import type { PDFElement } from '../elements/annotationElement';
-import type { AppDOMRefs } from '../ui/uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { ToolMode } from '../types/tools';
 
 export interface IFormattingContext {

@@ -1,5 +1,5 @@
-import type { ToolMode } from './pdfTurboApp';
-import type { IErrorReporter } from './errorReporter';
+import type { ToolMode } from '../types/tools';
+import type { IErrorReporter } from '../contracts/errorReporter';
 
 export interface IToolModeContext {
   mode: ToolMode;

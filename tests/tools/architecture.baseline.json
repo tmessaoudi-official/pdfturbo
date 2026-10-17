@@ -26,7 +26,7 @@
       "value": 2
     },
     "core->ui": {
-      "all": 26,
+      "all": 19,
       "value": 18
     },
     "core->utils": {
@@ -46,7 +46,7 @@
       "value": 1
     },
     "export->core": {
-      "all": 6,
+      "all": 4,
       "value": 1
     },
     "export->elements": {
@@ -55,10 +55,6 @@
     },
     "export->infra": {
       "all": 2,
-      "value": 0
-    },
-    "export->ui": {
-      "all": 1,
       "value": 0
     },
     "export->utils": {
@@ -88,10 +84,6 @@
     "handlers->signing": {
       "all": 2,
       "value": 2
-    },
-    "handlers->ui": {
-      "all": 1,
-      "value": 0
     },
     "handlers->utils": {
       "all": 12,
@@ -130,7 +122,7 @@
       "value": 1
     },
     "ui->core": {
-      "all": 27,
+      "all": 19,
       "value": 3
     },
     "ui->elements": {
@@ -162,7 +154,7 @@
       "value": 1
     }
   },
-  "typeCycleFiles": 35,
+  "typeCycleFiles": 7,
   "appUnderscoreInUi": 112,
   "getDocumentSites": 13
 }

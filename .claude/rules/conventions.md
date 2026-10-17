@@ -29,8 +29,8 @@ allows unused args/vars only when `_`-prefixed (`argsIgnorePattern`/`varsIgnoreP
 
 `tests/tools/architecture.test.ts` (architecture plan step 0) pins `src/`'s import graph to
 `tests/tools/architecture.baseline.json`: the edge count between every pair of top-level directories (all edges and
-runtime edges), the files in import cycles with type edges included (35), the `app._` reach-ins from `ui/` (112) and
-the `getDocument(` sites (13), plus zero runtime import cycles. A count ABOVE its baseline fails, and so does one
+runtime edges), the files in import cycles with type edges included, the `app._` reach-ins from `ui/` and the
+`getDocument(` sites, plus zero runtime import cycles — the JSON holds the current values. A count ABOVE its baseline fails, and so does one
 BELOW it — `lower the baseline to N` — because unrecorded slack can be spent again silently; a
 `new dependency direction a->b` fails until it is either removed or added to the baseline on purpose. So a change that
 moves an import edits the JSON **in the same commit**, by hand, and the diff of that file is what a reviewer reads.

@@ -14,7 +14,7 @@
  *    needs transient user activation, so probing on startup would either throw or train the user to
  *    dismiss a prompt they never asked for.
  */
-import type { IErrorReporter } from '../core/errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 import { pickOpenFiles, ensureReadPermission, canUseFsOpen, type FsOpenHandle } from '../utils/fileSystemAccess';
 import { addRecentFile, listRecentFiles, removeRecentFile, clearRecentFiles } from '../infra/recentFiles';
 import { t } from '../utils/i18n';

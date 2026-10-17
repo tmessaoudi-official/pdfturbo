@@ -1,6 +1,6 @@
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { WatermarkSettings } from '../core/documentModel';
-import type { IErrorReporter } from '../core/errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 import { trapFocus } from '../utils/focusTrap';
 import { hexToRgbValues } from '../utils/geometry';
 import { MIN_WM_DENSITY, MAX_WM_DENSITY } from '../utils/watermarkDensity';

@@ -1,4 +1,5 @@
-import type { PDFTurboApp, ToolMode } from '../../core/pdfTurboApp';
+import type { PDFTurboApp } from '../../core/pdfTurboApp';
+import type { ToolMode } from '../../types/tools';
 import { FlyoutManager } from '../flyoutManager';
 import { randomOwnerPassword, validateUserPassword, MIN_PASSWORD_LENGTH } from '../../export/encryption';
 import { confirmDestructive } from '../confirmDialog';

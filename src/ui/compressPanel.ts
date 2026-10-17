@@ -1,4 +1,4 @@
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import { trapFocus } from '../utils/focusTrap';
 import { t } from '../utils/i18n';
 import {

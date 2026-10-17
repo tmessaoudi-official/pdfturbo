@@ -6,7 +6,7 @@ import {
 } from './historyManager';
 import type { InkLayer } from '../infra/inkLayer';
 import type { DocumentModel } from './documentModel';
-import type { IErrorReporter } from './errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 
 export interface IAnnotationContext {
   readonly elements: PDFElement[];

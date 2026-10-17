@@ -11,10 +11,10 @@ import type { DocumentModel, SourcePdf, PageCrop } from './documentModel';
 import type { HistoryManager } from './historyManager';
 import type { InkLayer } from '../infra/inkLayer';
 import type { PDFRenderer } from '../infra/pdfRenderer';
-import type { AppDOMRefs } from '../ui/uiController';
-import type { ToolMode } from './pdfTurboApp';
-import type { IErrorReporter } from './errorReporter';
-import type { IProgressManager } from '../ui/progressManager';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
+import type { ToolMode } from '../types/tools';
+import type { IErrorReporter } from '../contracts/errorReporter';
+import type { IProgressManager } from '../contracts/progressManager';
 
 export interface IAppContext {
   /** Current page elements across all pages. */

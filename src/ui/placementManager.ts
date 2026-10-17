@@ -1,7 +1,7 @@
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
 import { AddElementCmd, type HistoryManager } from '../core/historyManager';
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { ToolMode } from '../types/tools';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import { getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';

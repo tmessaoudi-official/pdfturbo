@@ -1,6 +1,6 @@
 import type { DocumentModel } from './documentModel';
 import type { PDFRenderer } from '../infra/pdfRenderer';
-import type { AppDOMRefs } from '../ui/uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { ToolMode } from '../types/tools';
 import type { FormFieldOverlay } from '../utils/formFieldOverlay';
 import type { TextLayerManager } from '../utils/textLayer';

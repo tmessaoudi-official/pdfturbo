@@ -16,6 +16,8 @@ import { redactionRectToPageSpace } from './geometry';
 import { buildTableGrid, clusterPositions, type TableGrid, type TableTextItem } from './tableExtract';
 import { inferBorderlessGridForFlow } from './borderlessTable';
 import { logicalItemOrder, mirroredChar, visualToLogical } from './bidi';
+import type { RuleRect } from '../types/ruleRect';
+export type { RuleRect } from '../types/ruleRect';
 
 /** Shape of a pdf.js TextItem (subset we consume). */
 export interface RawTextItem {
@@ -62,18 +64,6 @@ export interface FlowRun {
   underline?: boolean;
   /** Set when a thin rule crosses this run's x-height (→ DOCX strikethrough). */
   strikethrough?: boolean;
-}
-
-/**
- * A thin graphic rule (filled/stroked path) in PDF user space (y-up), collected
- * from the export op-walk and matched against text runs to detect underlines and
- * strikethroughs. `y` is the bottom edge; height 0 is a pure horizontal stroke.
- */
-export interface RuleRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 /**

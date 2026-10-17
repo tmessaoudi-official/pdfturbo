@@ -1,9 +1,9 @@
-import type { ToolMode } from '../core/pdfTurboApp';
+import type { ToolMode } from '../types/tools';
 import type { CodeElement } from '../elements/codeElement';
 import type { PDFElement } from '../elements/annotationElement';
 import { MoveResizeCmd, type HistoryManager } from '../core/historyManager';
 import { generateCodeDataUrl, getCodeFormat, type QRStyleOptions, type BwipOptions } from '../utils/codeGenerator';
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import { trapFocus } from '../utils/focusTrap';
 import { t } from '../utils/i18n';
 

@@ -1,5 +1,5 @@
-import type { AppDOMRefs } from './uiController';
-import type { IErrorReporter } from '../core/errorReporter';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
+import type { IErrorReporter } from '../contracts/errorReporter';
 import type { ToolMode } from '../types/tools';
 import type { SignatureCaption } from '../elements/signatureElement';
 import { trapFocus } from '../utils/focusTrap';

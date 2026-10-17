@@ -21,7 +21,7 @@
  * their export. So every gate refuses by returning null and none of them guesses.
  */
 import { buildTableGrid, type CellTextFn, type TableGrid, type TableTextItem } from './tableExtract';
-import type { RuleRect } from './flowDoc';
+import type { RuleRect } from '../types/ruleRect';
 
 /** Baseline-clustering tolerance: items within this many points share a text line. */
 const LINE_TOL = 3;

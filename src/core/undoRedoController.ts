@@ -2,7 +2,7 @@ import { TextElement } from '../elements/textElement';
 import { CommentElement } from '../elements/commentElement';
 import { TextEditCmd, SetFormValueCmd, type HistoryManager } from './historyManager';
 import type { PDFElement } from '../elements/annotationElement';
-import type { IErrorReporter } from './errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 
 export interface IUndoRedoContext {
   readonly historyManager: HistoryManager;

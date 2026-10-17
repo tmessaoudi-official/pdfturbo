@@ -16,7 +16,7 @@ import { densitySpacingFactor } from '../utils/watermarkDensity';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentPage, WatermarkSettings } from '../core/documentModel';
 import type { InkLayer } from '../infra/inkLayer';
-import type { IErrorReporter } from '../core/errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 import type { PdfLibOps, PdfLibDrawOps } from '../utils/pdfLibTypes';
 import { batesStampText, batesPosition, type BatesSettings } from './batesStamp';
 import { isEnabled } from '../config/features';

@@ -15,7 +15,7 @@ import { PdfSigner, SignError, type SignOptions } from '../signing';
 import { generateSelfSignedP12 } from '../signing/certGen';
 import { t } from '../utils/i18n';
 import { isPdfLoadRefusal } from '../utils/pdfLoadGuard';
-import type { AppDOMRefs } from '../ui/uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { IErrorReporter } from '../contracts/errorReporter';
 
 /**

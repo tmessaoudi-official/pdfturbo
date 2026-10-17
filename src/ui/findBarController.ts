@@ -1,9 +1,9 @@
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
 import type { SearchManager } from '../core/searchManager';
 import type { TextSearchHandler } from '../handlers/textSearchHandler';
-import type { IErrorReporter } from '../core/errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 import { applyReplacement } from '../core/overlayReplace';
 
 export interface IFindBarContext {

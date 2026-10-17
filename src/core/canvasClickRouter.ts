@@ -1,6 +1,6 @@
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from './documentModel';
-import type { AppDOMRefs } from '../ui/uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { ToolMode } from '../types/tools';
 import type { InkLayer } from '../infra/inkLayer';
 import { FillColorCmd, InkFillColorCmd, type HistoryManager } from './historyManager';

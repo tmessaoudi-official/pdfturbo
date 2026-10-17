@@ -1,4 +1,4 @@
-import type { AppDOMRefs } from '../ui/uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import type { SignaturePad } from '../utils/signaturePad';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import type { ToolMode } from '../types/tools';

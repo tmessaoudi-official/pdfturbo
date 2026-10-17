@@ -9,11 +9,11 @@ import {
 } from './historyManager';
 import type { InkLayer } from '../infra/inkLayer';
 import { DocumentModel, PAGE_SIZES, type DocumentPage, type PageCrop } from './documentModel';
-import type { IErrorReporter } from './errorReporter';
+import type { IErrorReporter } from '../contracts/errorReporter';
 import { prewarmViewerVerdict } from '../utils/viewerVerdict';
-import type { IProgressManager } from '../ui/progressManager';
+import type { IProgressManager } from '../contracts/progressManager';
 import { transformCanvasPoint, redactionRectToContent, clampContentRect, marginsToRect, scaleCropToPageBox } from '../utils/geometry';
-import type { ToolMode } from './pdfTurboApp';
+import type { ToolMode } from '../types/tools';
 import { pointViewport } from '../utils/pointViewport';
 import { withPdfjsAssets } from '../utils/pdfjsParams';
 

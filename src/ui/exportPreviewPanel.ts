@@ -1,7 +1,7 @@
 import type { PDFElement } from '../elements/annotationElement';
 import type { DocumentModel } from '../core/documentModel';
 import type { PDFRenderer } from '../infra/pdfRenderer';
-import type { AppDOMRefs } from './uiController';
+import type { AppDOMRefs } from '../contracts/appDomRefs';
 import { transformPoint } from '../utils/geometry';
 
 export interface IExportPreviewContext {
