@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { NON_LITERAL, buildGraph, evaluate, parseImports, type Baseline } from './architectureGraph';
+import { META_GLOB, NON_LITERAL, buildGraph, evaluate, parseImports, type Baseline } from './architectureGraph';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -63,6 +63,11 @@ describe('architecture ratchet — the scanner', () => {
       "const np = import(('./parenthesized'));",
       'const nt = import(`./tpl/${x}`);',
       "const nc = import('./concat' + x);",
+      'class L { import(spec: string) { return spec; } }',
+      'interface I { import(s: string): Promise<unknown> }',
+      'const o = { import(s: string) { return s; } };',
+      'const tern = c ? import(spec) : null;',
+      "const g = import.meta.glob('./mods/*.ts');",
     ].join('\n');
     expect(parseImports(src)).toEqual([
       { spec: './mixed', runtime: true },
@@ -103,6 +108,8 @@ describe('architecture ratchet — the scanner', () => {
       { spec: NON_LITERAL, runtime: true },
       { spec: NON_LITERAL, runtime: true },
       { spec: NON_LITERAL, runtime: true },
+      { spec: NON_LITERAL, runtime: true },
+      { spec: META_GLOB, runtime: true },
     ]);
   });
 
@@ -131,7 +138,12 @@ describe('architecture ratchet — the scanner', () => {
       'shared-kernel/math.ts -> fflate',
     ]);
     expect(g.assetImports).toBe(1);
-    expect(g.unresolved).toEqual(["main.ts: '../outside'", `shared-kernel/dyn.ts: ${NON_LITERAL}`]);
+    expect(g.unresolved).toEqual([
+      "main.ts: '../outside'",
+      "shared-kernel/dyn.ts: 'bidi-js/../pdfjs-dist'",
+      `shared-kernel/dyn.ts: ${NON_LITERAL}`,
+      `shared-kernel/dyn.ts: ${META_GLOB}`,
+    ]);
     expect(g.appUnderscoreInUi).toBe(1);
     expect(g.getDocumentSites).toBe(2);
   });
@@ -160,7 +172,9 @@ describe('architecture ratchet — the scanner', () => {
       'new dependency direction ui->export (all 2, value 0): not in the baseline',
       'runtime import cycle: core/app.ts, ui/panel.ts',
       "unresolved import main.ts: '../outside'",
+      "unresolved import shared-kernel/dyn.ts: 'bidi-js/../pdfjs-dist'",
       `unresolved import shared-kernel/dyn.ts: ${NON_LITERAL}`,
+      `unresolved import shared-kernel/dyn.ts: ${META_GLOB}`,
       "shared-kernel/math.ts imports core/app.ts: shared-kernel/ imports only itself",
       "shared-kernel/math.ts imports npm 'fflate': not in the kernel allowlist [bidi-js]",
       'types/bad.ts imports export/shape.ts: types/ imports only shared-kernel/, contracts/ and types/',

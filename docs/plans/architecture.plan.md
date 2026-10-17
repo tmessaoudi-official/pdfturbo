@@ -42,8 +42,9 @@ Rules for every step:
   import `src/` paths); a shim is deleted only when no importer still takes a MOVED name through it, in `src/` and in
   `tests/`. `src/` importers come from the ratchet's graph (`buildGraph` edges into the shim file — a `git grep` of the
   old path misses a same-directory specifier such as `'./bidi'`); `tests/` importers from a `git grep` of the old path
-  (tests import `…/src/<path>`, and the graph scans `src/` only). The graph carries no imported names, so each
-  importer's statement is read for them; the ratchet counts none of this itself.
+  (tests import `…/src/<path>`, and the graph scans `src/` only). The graph carries no imported names, so EVERY grep hit
+  is read for them — a static import, an inline type `import('…').T`, and a `vi.mock` factory's `importOriginal` read
+  each count; the ratchet counts none of this itself.
 - Before each move, grep `vi.mock` for the old path (32 test files mock a `src/` path) and update those mocks in the
   same commit — a re-export shim does not carry `vi.mock` interception.
 - The full deploy gate before every push.
@@ -97,7 +98,9 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 ### Fragile
 ### Known issues
 - The steps 1–2 re-export shims still have importers of a moved name (measured 2026-10-17; `src/` from the import
-  graph, tracked `tests/` by `git grep` of the old path, each filtered by the names its statement imports):
-  `utils/bidi.ts` 5 in `src/`, 2 in `tests/`; the `flowDoc` RTL set and `RuleRect` 9 and 9; `contentStreamEditor`'s
-  matrix re-export 1 (`export/imageDownsample.ts`) and 1; `uiController`'s `AppDOMRefs` 1 (`core/pdfTurboApp.ts`) and 9.
+  graph, tracked `tests/` by `git grep` of the old path, every hit read for the moved names it takes):
+  `utils/bidi.ts` 5 in `src/`, 2 in `tests/`; the `flowDoc` RTL set and `RuleRect` 9 and 10 (one is
+  `textEditHandler.test.ts`'s `vi.mock` `importOriginal`); `contentStreamEditor`'s matrix re-export 1
+  (`export/imageDownsample.ts`) and 1; `uiController`'s `AppDOMRefs` 1 (`core/pdfTurboApp.ts`) and 10 (one an inline
+  `import('…').AppDOMRefs` in `text-toolbar.browser.test.ts`).
   No roadmap step owns repointing them yet — a shim goes only when both counts are 0.

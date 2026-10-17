@@ -10,7 +10,7 @@
  * Classification follows TypeScript's own elision rules, since this repo has no `verbatimModuleSyntax`:
  * `import type …`, `export type …` and a brace list whose every specifier carries `type` are TYPE edges; everything
  * else, including an unmarked import that is only ever used as a type, is a RUNTIME edge (an overcount, the safe
- * side). `import('./x')` with a literal specifier is a runtime edge (one with any other specifier is reported unresolved), except an import TYPE — `import('./x').T` or
+ * side). `import('./x')` with a literal specifier is a runtime edge (one with any other specifier, and an `import.meta.glob`, is reported unresolved), except an import TYPE — `import('./x').T` or
  * `typeof import('./x')` — which is a type edge (see `parseImports` for the shapes that stay runtime). A specifier with a Vite `?query` (`?url`,
  * `?worker&url`) is an asset URL, not a module dependency, and is counted apart.
  */
@@ -24,7 +24,7 @@ export interface Graph {
   edges: Edge[];
   external: ExternalImport[];
   assetImports: number;
-  /** Relative specifiers that resolved to no file or to a `.ts` file outside the scanned root, and non-literal `import()`s. */
+  /** Specifiers that resolved to no file or to a `.ts` file outside the scanned root, a package path with a `..` segment, and non-literal `import()`s / `import.meta.glob`s. */
   unresolved: string[];
   appUnderscoreInUi: number;
   getDocumentSites: number;
@@ -134,10 +134,12 @@ function braceListAllTypes(list: Tok[]): boolean {
   return nonEmpty.length > 0 && nonEmpty.every((s) => s[0].v === 'type' && s.length > 1 && s[1].v !== 'as');
 }
 
-/** Members a dynamic import's PROMISE has at run time: a read of one is a runtime import, never an import type. */
 /** The spec parseImports records for a dynamic import whose specifier is not one literal; never a real path. */
 export const NON_LITERAL = '<non-literal import() specifier>';
+/** The spec parseImports records for a Vite `import.meta.glob(…)`, which loads files the scanner does not expand. */
+export const META_GLOB = '<import.meta.glob>';
 
+/** Members a dynamic import's PROMISE has at run time: a read of one is a runtime import, never an import type. */
 const RUNTIME_MEMBERS = new Set([
   'then', 'catch', 'finally',
   'constructor', 'toString', 'toLocaleString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable',
@@ -169,7 +171,16 @@ export function parseImports(src: string): { spec: string; runtime: boolean }[] 
         const literal = a !== undefined && (a.t === 'str' || a.t === 'tpl');
         // A specifier that is not one literal (`import(spec)`, `import(('./x'))`, `import(`./${x}`)`, `'./' + x`) names
         // no file the scanner can follow: recorded as NON_LITERAL, which buildGraph reports as unresolved, never dropped.
-        if (!literal || !(is(k + 3, ')') || is(k + 3, ','))) { found.push({ spec: NON_LITERAL, runtime: true }); continue; }
+        if (!literal || !(is(k + 3, ')') || is(k + 3, ','))) {
+          // A METHOD named `import` (`class L { import(s: string) {…} }`, an interface member, object shorthand) is no
+          // import: its `)` is followed by a body `{` or a return type `:` — the `:` of a ternary `c ? import(x) : y`
+          // has a `?` before the `import`.
+          let close = k + 1;
+          for (let depth = 0; close < T.length; close++) { if (is(close, '(')) depth++; else if (is(close, ')') && --depth === 0) break; }
+          if (is(close + 1, '{') || (is(close + 1, ':') && !is(k - 1, '?'))) continue;
+          found.push({ spec: NON_LITERAL, runtime: true });
+          continue;
+        }
         // `import('x', { with: … })` and a trailing comma are dynamic imports, always runtime.
         if (is(k + 3, ',')) { found.push({ spec: a.v, runtime: true }); continue; }
         // `import('x').T` and `typeof import('x')` are TypeScript import TYPES, erased at build: counted as runtime,
@@ -182,14 +193,17 @@ export function parseImports(src: string): { spec: string; runtime: boolean }[] 
         // runtime. Bounds, none in src/ (a lexer cannot see the grammar that separates them): read as a TYPE though
         // runtime — a value-position `import('x').y` of a property the promise lacks (a TS2339 error anyway), and a
         // `typeof import` after a ternary `:`, an object-literal value's `:`, a bitwise `|` or `&`, or a comparison `<`; read as
-        // RUNTIME though a type — after `satisfies`, `keyof`, a generic default `<T = …>`, an index `[…]`, or a `,`.
+        // RUNTIME though a type — a `typeof import` in every other type position (after `satisfies`, `keyof`, `extends`, `as`,
+        // `=>`, `(`, `[`, `?`, a generic default `<T = …>` or a `,`), the overcount the header calls the safe side.
         const member = is(k + 4, '.') && T[k + 5]?.t === 'id' ? T[k + 5].v : null;
         const memberType = member !== null && !RUNTIME_MEMBERS.has(member) && !is(k + 6, '(');
         const typeofType = is(k - 1, 'typeof') && typePositionBefore(k - 1);
         found.push({ spec: a.v, runtime: !(memberType || typeofType) });
         continue;
       }
-      if (is(k + 1, '.')) continue; // import.meta
+      // `import.meta.glob(…)` (Vite) loads every file its pattern matches, which the scanner does not expand: recorded as
+      // META_GLOB and reported unresolved, like a non-literal import(). Any other `import.meta` is no import.
+      if (is(k + 1, '.')) { if (is(k + 2, 'meta') && is(k + 3, '.') && is(k + 4, 'glob')) found.push({ spec: META_GLOB, runtime: true }); continue; }
       if (T[k + 1]?.t === 'str') { found.push({ spec: T[k + 1].v, runtime: true }); continue; }
       // import <clause> from '<spec>' — a clause is identifiers, braces, commas and `*` only.
       let j = k + 1;
@@ -235,6 +249,8 @@ function resolveSpec(root: string, fromAbs: string, spec: string): Resolved {
   if (spec.includes('?')) return { kind: 'asset' };
   if (!spec.startsWith('.') && !spec.startsWith('/')) {
     const parts = spec.split('/');
+    // `'bidi-js/../pdfjs-dist'` names pdfjs-dist, not bidi-js: a `..` segment makes the first segment a lie.
+    if (parts.includes('..')) return { kind: 'unresolved' };
     return { kind: 'external', pkg: spec.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0] };
   }
   const b = resolve(dirname(fromAbs), spec);
@@ -270,7 +286,7 @@ export function buildGraph(root: string): Graph {
     const text = readFileSync(f, 'utf8');
     const from = rel(root, f);
     for (const { spec, runtime } of parseImports(text)) {
-      if (spec === NON_LITERAL) { unresolved.push(`${from}: ${spec}`); continue; }
+      if (spec === NON_LITERAL || spec === META_GLOB) { unresolved.push(`${from}: ${spec}`); continue; }
       const r = resolveSpec(root, f, spec);
       if (r.kind === 'asset') { assetImports++; continue; }
       if (r.kind === 'unresolved') { unresolved.push(`${from}: '${spec}'`); continue; }
