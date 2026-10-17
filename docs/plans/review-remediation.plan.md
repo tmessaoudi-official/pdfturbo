@@ -88,6 +88,8 @@ has its own plan: `docs/plans/architecture.plan.md`.
 - [2026-10-17 09:46] ASSUMED (review): Row 9: TEST-4 (P1, unowned) promoted to row 12 although row 9 names P2s - an unowned P1 is the worse omission; ARCH-21 is a row (28), not an arrow to arch step 5, which narrows ports and does not name it - basis: advisor() agreed at 3C. Alternative: leave TEST-4 unowned; arrow ARCH-21 to step 5.
 - [2026-10-17 09:47] ASSUMED (review): Row 9: SEC-2 (row 14) and TEST-12 (row 21) are marked ask-first and listed under Needs input - basis: the p12 cipher, the passphrase minimum and CI cost are the developer's (pdf-ask-human mandatory cases); advisor() agreed at 3C. Alternative: pick defaults.
 - [2026-10-17 09:55] ASSUMED (review): M2 close reviewer: completeness-reviewer runs on opus - source: default (no model override, no reviewer-model file); STANDARD tier under the CLAUDE.md no-src/ carve-out (9ba51fa..HEAD touches docs/plans/** only)
+- [2026-10-17 10:10] ASSUMED (review): M2 is not closed: its panel round 3 (a7cae67, 2026-10-08) left findings that were never recorded (raw files m2r3-safety 19:25 and m2r3-completeness 19:28, after the plan's last round entry at 18:55; the correctness lens never reported) - recorded as M2R3-1..4, rows 29-30, M2 closes after them and a clean round-4 panel. Basis: the row-9 close reviewer's K-1, verified at HEAD (exportService.ts _extractFlowDoc/exportXfdf walk the live page list; :714 reads elements live); advisor() agreed. Alternative: fix row 29 inside row 9.
+- [2026-10-17 10:10] ASSUMED (review): Row 9 close-review fixes: the M2 Download-page finding is renamed SEC-3b (the lens report's SEC-3 is the signer finding; SECURITY.md follows); row 13 is not ask-first (it aligns Download page with the behaviour SECURITY.md already states as intended); the architecture-plan shim item is owned by arch step 12; KNOWN_ISSUES' snapshot grade names the two driven paths - basis: reviewer K-3..K-7, advisor() agreed. Alternative: leave the IDs shared.
 
 ## Formal Plan
 
@@ -104,9 +106,15 @@ Flatten (link vector) and `assemblePdfBytes` → signed, sanitized and compresse
 probe of `copySourcePages` (2-page source, page 2 excluded): no reference → clean; GoTo `/Dest` → secret in bytes;
 shared field `/Kids` → secret in bytes; control → the scan sees the secret.
 
-**Milestone 2 — correctness P1s, docs batch, architecture steps 0–3 (rows 3–9).**
+**Milestone 2 — correctness P1s, docs batch, architecture steps 0–3 (rows 3–9, 29–30).**
 
-**Backlog after M2 — rows 10–28.** No milestone: each row is taken up on its own ruling, with its own gate. Rows 12–28
+**M2 is NOT closed (found 2026-10-17).** Its panel reached round 3 on `a7cae67` (2026-10-08): the safety and
+completeness lenses reported at 19:25 and 19:28 (`var/claude/raw/m2r3-*.md`) — one P1, two P2 and one P3, recorded
+below as M2R3-1..4 — and the correctness lens never reported, so round 3 is uncertified for that lens. The session
+ended before round 3 was written into this plan, and row 9's close reviewer found the raw files on 2026-10-17. M2
+closes when rows 29–30 are fixed and a round-4 three-lens panel on a frozen commit is clean.
+
+**Backlog — rows 10–28.** No milestone: each row is taken up on its own ruling, with its own gate. Rows 12–28
 are the open findings no row or architecture step owns (row 9's reconciliation, 2026-10-17); a row marked *ask first*
 needs a developer ruling before any code.
 
@@ -162,7 +170,7 @@ in those two files. The residue's structural answer is row 11.
 | 10 | SEC-1 cost follow-up (ruled 2026-10-08): replace the prune's full content tokenizing with a name-only scan; measure against the § Fragile figures, own gate and panel | M | todo | - | src/export/copySourcePages.ts, src/utils/contentStreamEditor.ts, tests/** |
 | 11 | SEC-1 allowlist redesign (ruled 2026-10-08 as the follow-up to M1's disclosed residue): when a page is left out, rebuild each kept page and what it draws from known keys only, so an unknown path is dropped instead of hunted; own plan and panel | L | todo | - | src/export/copySourcePages.ts, tests/** |
 | 12 | TEST-4 (P1): golden characterization tests pinning export BYTES at defaults for the ~15 "byte-identical when unset" claims (today guarded by predicates only) | M | todo | - | tests/export/**, src/export/** |
-| 13 | SEC-3: "Download page" (`downloadPage`) and "Export page as image" (`downloadPageAsImage`) ship the source page as-is (typed form values not applied, never flattened) — route both through `_assemblePdfDoc` like Extract pages; then drop the SECURITY.md open-issue note | M | todo | - | src/export/exportService.ts, tests/**, SECURITY.md |
+| 13 | SEC-3b: "Download page" (`downloadPage`) and "Export page as image" (`downloadPageAsImage`) ship the source page as-is (typed form values not applied, never flattened) — route both through `_assemblePdfDoc` like Extract pages; then drop the SECURITY.md open-issue note. Not ask-first: it makes both carry the typed values as Download, Extract pages and Flatten already do, the behaviour SECURITY.md § "One file, two readers" states as intended | M | todo | - | src/export/exportService.ts, tests/**, SECURITY.md |
 | 14 | SEC-2, *ask first*: the generated `.p12` uses 3DES at forge's 2048 iterations and takes any passphrase length — the cipher is a reader-compatibility choice and the minimum is UX, both the developer's | S | todo | - | src/signing/certGen.ts, tests/signing/**, locales/*.json |
 | 15 | QUAL-2: `pdfSanitizer` reads untrusted structure with the throwing `lookupMaybe(key, Type)` (9 calls) — `lookup` + `instanceof`, a wrong-typed key test-first | S | todo | - | src/utils/pdfSanitizer.ts, tests/** |
 | 16 | TEST-5: the `brace-expansion: ^5.0.12` override forces a major outside `minimatch@5.1.9`'s range — re-scope the pin and re-audit ONLINE (never `--offline`; `.claude/rules/audit-gate.md`) | S | todo | - | package.json, package-lock.json, .claude/rules/audit-gate.md |
@@ -178,6 +186,8 @@ in those two files. The residue's structural answer is row 11.
 | 26 | QUAL-17: `formattingService` repeats "mutate → record → rebuild → autosave" 31 times — one helper | M | todo | - | src/core/formattingService.ts, tests/** |
 | 27 | QUAL-12: 43 functions over 100 lines, 25 over 150 — a function-length ratchet like the architecture ratchet (pinned counts, two-sided), not a rewrite | S | todo | - | tests/tools/** |
 | 28 | ARCH-21: the true-edit use case is orchestrated inside a pointer handler — move it to a use-case module the handler calls | M | todo | - | src/handlers/textEditHandler.ts, src/core/** |
+| 29 | M2R3-1 + M2R3-2 (M2 round 3, P1 regression of the round-2 snapshot fix): `_extractFlowDoc` (DOCX/MD/TXT) and `exportXfdf` walk the LIVE `documentModel.pages` against an element snapshot taken at the start, and `_extractPageTableData` (CSV/XLSX) reads the elements live — an undo mid-export (of a page delete, or of a redaction) exports covered text, a field value or a cell. Red test first from the round-3 probe recipe (delete a page holding a redaction, start the export, undo mid-export), take pages and elements together before the first await, sabotage, then the M2 round-4 three-lens panel | M | todo | - | src/export/exportService.ts, tests/export/**, KNOWN_ISSUES.md, .claude/rules/redaction.md |
+| 30 | M2R3-3: `InsertBlankPageCmd` redo re-runs `addBlankPage` with a NEW page id, so a later redo naming the old id (rotate, crop, an annotation) does nothing — give it the `AddPagesCmd` fix (redo restores the same page) | S | todo | - | src/core/commands/pageCmds.ts, tests/core/** |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
@@ -237,7 +247,7 @@ rationale is stale).
 - TEST-3 — `exportService.ts:832` bare catch labelled "no form fields" also swallows `form.flatten()` failures on real forms → row 5
 - TEST-4 — No golden/characterization test pins export output at defaults; the ~15 "byte-identical when unset" claims are guarded by predicates, not bytes → row 12
 
-**P2 (39)**
+**P2 (41)**
 - ARCH-5 — Domain entities are DOM views; element classes import i18n and build HTML → arch step 11
 - ARCH-6 — The domain aggregate depends on pdf.js and on the export context → arch steps 6 (the pdf.js dependency) and 9 (the aggregate's imports)
 - ARCH-7 — One aggregate, four holders, and a split repository → arch step 9
@@ -277,8 +287,10 @@ rationale is stale).
 - TEST-10 — The export context is hand-stubbed in ~23 files; test-helper duplication is the visible cost of fat ports → arch step 7
 - TEST-11 — Testability payoff of hexagonal, quantified: about two thirds of `src` cannot be unit-tested without a DOM, pdf.js or pdf-lib → informational, no row (the measurement behind docs/plans/architecture.plan.md)
 - TEST-12 — Real-producer fixtures reach only 18 of 383 test files; the 15-file corpus that most rules measurements cite never runs in CI → row 21
+- QUAL-1b (found 2026-10-08 during QUAL-1; FIXED at close by M2 round 1; the delete-time release is row 22) — a source garbage-collected from a live model (its last page deleted) was never released, not even at close (the M2 panel refuted the first claim that a close released it). It is now released at close (`DocumentModel.heldDocuments`); releasing it at the delete itself still needs ownership counting across the model and the history → row 22
+- SEC-3b (found 2026-10-08 by the M2 panel, pre-existing; called SEC-3 in the 2026-10-08 Decisions Log and until 2026-10-17 — renamed because the lens report's SEC-3, the signer finding, holds that ID) — "Download page" (`exportService.downloadPage`) AND "Export page as image" (`downloadPageAsImage`, round 2) copy the source page as-is: they never apply typed form values and never flatten, so a field changed or cleared on screen keeps its original value in the one-page file or the image (reviewer probes: `SECRET-ORIG-123` kept). Disclosed as an open issue in SECURITY.md (the page-image row and § "One file, two readers"), not in KNOWN_ISSUES (which holds no open defects). Fix = route both through `_assemblePdfDoc` like Extract pages → row 13
 
-**P3 (49)**
+**P3 (51)**
 - ARCH-15 — Export reaches UI and core through re-exports instead of `contracts/` → row 8 (step 1: export→ui 0; export→core is type-only, 0 runtime edges)
 - ARCH-16 — Ubiquitous language drift
 - ARCH-17 — Commands are after-the-fact undo records, not intents
@@ -329,6 +341,10 @@ rationale is stale).
 - TEST-14 — CI hygiene: no job timeout; `cancel-in-progress: true` on the Pages concurrency group; audit not in pre-push
 - TEST-15 — Untested UI wiring and manual-only sabotage
 - TEST-16 (P3, found 2026-10-08 during TEST-1) — `src/export/xlsxWriter.ts:47-48` says a RegExp built from escape text keeps oxlint's no-control-regex quiet; measured false for a single escape-text literal (the string concatenation is what defeats the static read). Reword when the file is touched.
-- QUAL-1b (P2, found 2026-10-08 during QUAL-1; FIXED at close by M2 round 1; the delete-time release is row 22) — a source garbage-collected from a live model (its last page deleted) was never released, not even at close (the M2 panel refuted the first claim that a close released it). It is now released at close (`DocumentModel.heldDocuments`); releasing it at the delete itself still needs ownership counting across the model and the history → row 22
-- SEC-3 (P2, found 2026-10-08 by the M2 panel, pre-existing) — "Download page" (`exportService.downloadPage`) AND "Export page as image" (`downloadPageAsImage`, round 2) copy the source page as-is: they never apply typed form values and never flatten, so a field changed or cleared on screen keeps its original value in the one-page file or the image (reviewer probes: `SECRET-ORIG-123` kept). Disclosed as an open issue in SECURITY.md (the page-image row and § "One file, two readers"), not in KNOWN_ISSUES (which holds no open defects). Fix = route both through `_assemblePdfDoc` like Extract pages → row 13
 - QUAL-1c (P3, found 2026-10-08 during QUAL-1) — a thumbnail panel replaced by `reinitThumbnailPanel()` or dropped by `clearThumbnailPanel()` never disconnects its IntersectionObserver (`render()` disconnects only its own previous one); the observer keeps the detached thumbnail nodes alive. Observer leak, not a worker leak.
+
+**M2 panel round 3 (on `a7cae67`, 2026-10-08; recorded 2026-10-17 from `var/claude/raw/m2r3-{safety,completeness}.md`)**
+- M2R3-1 (P1, both lenses) — `_extractFlowDoc` and `exportXfdf` (and its `collectFormWidgets(documentModel.pages, …)`) walk the LIVE page list against an element snapshot taken at the start: delete a page holding a redaction (the delete removes its redactions), start a DOCX/MD/TXT or XFDF export, undo mid-export → the page is back, its redaction is not in the snapshot, and the covered text or field value is exported with a success toast. A regression of the round-2 fix (before it, both lists were live and consistent) → row 29
+- M2R3-2 (P2, safety) — `_extractPageTableData` reads `this._ctx.elements` live after its awaits: undoing a redaction mid CSV/XLSX export ships the covered cell (the screen loses the redaction too) → row 29
+- M2R3-3 (P2, completeness, pre-existing) — `InsertBlankPageCmd` redo creates a new page id, so a later redo naming the old one no-ops → row 30
+- M2R3-4 (P3, both lenses) — `KNOWN_ISSUES.md` graded seven export paths `[Verified: exportSnapshot.test.ts]` while the test drives two → fixed 2026-10-17 (the grade now names the two)

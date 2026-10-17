@@ -109,4 +109,5 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
   `textEditHandler.test.ts`'s `vi.mock` `importOriginal`); `contentStreamEditor`'s matrix re-export 1
   (`export/imageDownsample.ts`) and 1; `uiController`'s `AppDOMRefs` 1 (`core/pdfTurboApp.ts`) and 10 (one an inline
   `import('…').AppDOMRefs` in `text-toolbar.browser.test.ts`).
-  No roadmap step owns repointing them yet — a shim goes only when both counts are 0.
+  Owner: step 12 (the directory rename repoints every importer), unless a step that touches a shim's file repoints
+  it first (assigned 2026-10-17, row 9 of review-remediation) — a shim goes only when both counts are 0.
