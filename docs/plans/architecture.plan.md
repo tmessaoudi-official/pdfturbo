@@ -78,7 +78,7 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 
 | Step | Commits | Change | Proof |
 |---|---|---|---|
-| 0 | 1 | `tests/tools/architecture.test.ts` + `tests/tools/architecture.baseline.json`: a lexer + token-level import graph over `src/**/*.ts` (no `.d.ts`; Vite `?query` specifiers dropped). Value vs type edges. A **two-sided** ratchet on the top-level-dir value-edge matrix (above baseline fails; below fails with "lower it to N"). A new dir pair fails, except edges into `shared-kernel/`, `contracts/`, `types/`. Zero runtime SCCs. `\bapp\._[A-Za-z]` in `ui/**` and `\bgetDocument\(` in `src/**` pinned at today's counts (112, 13). | Fixture tree `tests/tools/fixtures/architecture/**` (valid TS, no `.test.ts`): every import form plus a planted cycle and a planted new pair, all caught. Non-vacuity: ≥ 600 edges, `core→ui` value = 18. |
+| 0 | 1 | `tests/tools/architecture.test.ts` + `tests/tools/architecture.baseline.json`: a lexer + token-level import graph over `src/**/*.ts` (no `.d.ts`; a Vite `?query` specifier is counted apart, not as an edge — since the 2026-10-17 panel `shared-kernel/`, `contracts/` and `types/` may hold none). Value vs type edges. A **two-sided** ratchet on the top-level-dir value-edge matrix (above baseline fails; below fails with "lower it to N"). A new dir pair fails, except edges into `shared-kernel/`, `contracts/`, `types/`. Zero runtime SCCs. `\bapp\._[A-Za-z]` in `ui/**` and `\bgetDocument\(` in `src/**` pinned at today's counts (112, 13). | Fixture tree `tests/tools/fixtures/architecture/**` (valid TS, no `.test.ts`): every import form plus a planted cycle and a planted new pair, all caught. Non-vacuity: ≥ 600 edges, `core→ui` value = 18. |
 | 1 | 1–2 | `exportService`/`exportPipeline` take `IErrorReporter`/`IProgressManager` from `contracts/`. `AppDOMRefs` → `src/contracts/appDomRefs.ts` (shim in `uiController`). `appContext` takes `ToolMode` from `types/tools`. `RuleRect` → `src/types/ruleRect.ts` (shim in `flowDoc`). | type-check. The ratchet baseline is lowered in the same commit (export→ui = 0, the 3-file type SCC gone). |
 | 2a | 1 | Verbatim moves: `shared-kernel/geometry/matrix.ts` (`Matrix`, `multiplyMatrix`, `applyMatrixToPoint`), `shared-kernel/text/bidi.ts` (all of `utils/bidi.ts`), `shared-kernel/text/script.ts` (the flowDoc RTL set: `isArabicText`, `reverseRtlText`, `letterDirection`, `rowIsRtl`, `orderLineWords`, `mirrorShapeBrackets`, `needsWordSpace`, plus their private helpers). Shims at the old paths. Ratchet: the kernel imports no other `src/` dir and npm only from `['bidi-js']`. | Line-by-line verbatim check of moved bodies; full jsdom suite. |
 | 2b | 1 | `opStreamWalker` uses the kernel `Matrix` + `multiplyMatrix`; its local `composeCtm` is removed; the anonymous 6-tuples in `flattenAnnotations.ts` and `flowDoc.ts` are typed `Matrix`. | An `Object.is` equality test of the old `composeCtm` formula against `multiplyMatrix` on random, −0 and large values, red-proven by swapping the argument order; the walker suites. |
@@ -97,6 +97,10 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 ### Blocked
 ### Needs input
 ### Needs research
+- A real parser for the ratchet instead of the lexer: rolldown's oxc (`parseAst`, already in `node_modules` through vite)
+  matched the lexer's runtime imports on all 188 `src/` files in every round of the 2026-10-17 milestone panel, and every
+  panel finding was a lexer edge case. Using it means a devDependency (e.g. `oxc-parser`) — the developer's ruling, not
+  yet asked; its npm status and licence are unchecked.
 ### Fragile
 ### Known issues
 - The steps 1–2 re-export shims still have importers of a moved name (measured 2026-10-17; `src/` from the import
