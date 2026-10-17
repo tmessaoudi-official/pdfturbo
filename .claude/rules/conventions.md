@@ -40,7 +40,9 @@ only each other, `shared-kernel/` only itself plus the npm allowlist `KERNEL_NPM
 `tests/tools/architectureGraph.ts`, not tsc (TypeScript 7 has no JS API): an unmarked import used only as a type is
 a runtime edge — mark it `import type` to move it. An `import('x').T` or `typeof import('x')` type reference is a type edge
 (milestone panel 2026-10-17: counted as runtime it made its file pair runtime and hid a real runtime import added to that
-pair; `export->core` value fell 1 → 0 with the fix), while `import('x').then(…)` stays runtime. With it the lexer's
+pair; `export->core` value fell 1 → 0 with the fix). The runtime shapes stay runtime — a promise member (`.then`,
+`.constructor`, …), a called member, a `typeof` outside a type position, import attributes, a trailing comma — and
+`parseImports`' comment names the one bound (a value-position read of a property the promise lacks). With it the lexer's
 runtime imports match rolldown's oxc parser on all 188 `src/` files (a one-off probe, not a test). The `getDocument(`
 pin counted 13 at step 0: 12 calls and one interface method declaration (`viewerCheck.ts`); a comment is blanked. Its fixture tree `tests/tools/fixtures/architecture/` is
 type-checked by tsc and never collected by vitest (no `.test.ts` in it).
@@ -63,7 +65,9 @@ another frame does not compile; nothing exists at run time (comment-stripped JS 
 as far as a typed value flows — a rect stored in a plain-typed model field (a page crop, an element) is unbranded
 again, so tsc checks converter-to-converter chains, not the model. When it landed tsc found 0 wrong-frame callers;
 the shipped frame bugs were already fixed, so this is a fence, not a catch. A new converter takes a brand, never an
-anonymous `{ x: number; y: number; … }` — `tests/shared-kernel/geometry/frames.test.ts` fails on one, in any spelling
-(fields in any order, `;` or `,`, optional or not), and on any unbranded `Rect` in that file. Its
+anonymous `{ x: number; y: number; … }` — `tests/shared-kernel/geometry/frames.test.ts` fails on one — the four fields
+at one brace body's own depth, in any order, `;` or `,`, optional or `readonly`, nested members allowed — and on any
+unbranded `Rect` in that file; comments are blanked by the architecture lexer, so a `//` inside a string is not one. Not
+caught (a bound): the fields split across an intersection, or a `Record<…>`. Its
 `@ts-expect-error` lines sit on the converter CALLS, with no annotated variable between: one on a variable typed with
 the brand pins the brand type but stays green when a converter's signature goes back to a plain `Rect` (measured).

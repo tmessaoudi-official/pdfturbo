@@ -291,7 +291,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **ocr** — OCR engine, CSP and assets (1) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
 - **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle, the historical cloud-container browser recipe (10) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
 - **audit-gate** — the deploy-blocking `npm audit` gate, its expiring exemption and the six `overrides` occurrences (1) → `.claude/rules/audit-gate.md` (loads when you read `scripts/audit-gate*`, `package.json` …).
-- **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods (4) → `.claude/rules/conventions.md` (loads at session start).
+- **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods, the architecture ratchet, rect frame brands (6) → `.claude/rules/conventions.md` (loads at session start).
 
 **Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 7 files exceed that cap (measured 2026-10-17: `redaction.md` 1215, `flow-export.md` 905, `export.md` 808, `toolchain.md` ~556, `ui.md` 495, `docx-edit.md` 449, `arabic-rtl.md` 373 lines) — six at birth, where single entries ran 200–400 lines and a verbatim move could not cut them, and `arabic-rtl.md` crossed it since. They are the first candidates for a prune with the developer (`/rules-split`).
 

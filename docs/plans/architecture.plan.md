@@ -37,8 +37,9 @@ pdf-lib coupling.
 
 Rules for every step:
 - Move, then refactor — never both in one commit. A move leaves a re-export shim at the old path (386 test files
-  import `src/` paths); a shim is deleted only when its fan-in is 0, measured by `git grep` of the old path in `src/` and `tests/` (the
-  ratchet does not count shim importers).
+  import `src/` paths); a shim is deleted only when its fan-in is 0, measured from the ratchet's import graph — `buildGraph` edges into
+  the shim file and the names they import (the ratchet does not count shim importers itself, and a `git grep` of the
+  old path misses a same-directory specifier such as `'./bidi'`).
 - Before each move, grep `vi.mock` for the old path (32 test files mock a `src/` path) and update those mocks in the
   same commit — a re-export shim does not carry `vi.mock` interception.
 - The full deploy gate before every push.
@@ -82,7 +83,7 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
 | 0 | Architecture ratchet test | M | done | c1d70fa | tests/tools/** |
-| 1 | Type-only edge fixes | S | done | 34323cb | src/export/**, src/contracts/**, src/types/**, src/core/**, src/ui/**, src/utils/flowDoc.ts |
+| 1 | Type-only edge fixes | S | done | 34323cb | src/export/**, src/contracts/**, src/types/**, src/core/**, src/ui/**, src/handlers/**, src/utils/** |
 | 2 | Shared kernel part 1 (one Matrix, text-script primitives; 2a at 6c6ec81, 2b here) | M | done | d1b1a86 | src/shared-kernel/**, src/utils/**, src/export/** |
 | 3 | Coordinate-frame brands (types only) | M | done | 6bc3794 | src/shared-kernel/**, src/utils/geometry.ts |
 <!-- /progress-block -->
@@ -91,5 +92,7 @@ gated by `advisor()` at 6C; one three-lens panel runs at the end on a frozen com
 ### Needs research
 ### Fragile
 ### Known issues
-- The step-2 re-export shims still have importers (measured 2026-10-17: `utils/bidi.ts` 4; the `flowDoc` RTL set and
-  `RuleRect` 8 `src/` importers), and no roadmap step owns repointing them yet — a shim goes only at fan-in 0.
+- The steps 1–2 re-export shims still have `src/` importers (measured 2026-10-17 from the import graph): `utils/bidi.ts`
+  5; the `flowDoc` RTL set and `RuleRect` 9; `contentStreamEditor`'s matrix re-export 1 (`export/imageDownsample.ts`);
+  `uiController`'s `AppDOMRefs` 1 (`core/pdfTurboApp.ts`). No roadmap step owns repointing them yet — a shim goes only at
+  fan-in 0.

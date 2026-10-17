@@ -10,6 +10,32 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DisplayRect } from '../../../src/shared-kernel/geometry/frames';
 import { contentRectToDisplay, redactionRectToContent, rotatedElementFootprint } from '../../../src/utils/geometry';
+import { lex } from '../../tools/architectureGraph';
+
+/**
+ * Every anonymous rect type in `code` — a brace body holding `x`, `y`, `width` and `height` typed `number` at its own
+ * depth, in any order, with `;` or `,`, optional or `readonly` — and every unbranded `Rect`. Comments are blanked by
+ * the architecture lexer, which reads strings as strings, so a `//` inside one is not a comment. Not caught (bounds):
+ * the four fields split across an intersection, or written as a `Record<…>`.
+ */
+function rectTypeViolations(code: string): string[] {
+  const src = lex(code).code;
+  const field = (name: string): RegExp => new RegExp(`\\b${name}\\??\\s*:\\s*number\\b`);
+  const found: string[] = [];
+  for (let i = src.indexOf('{'); i >= 0; i = src.indexOf('{', i + 1)) {
+    let depth = 0;
+    let own = '';
+    let j = i;
+    for (; j < src.length; j++) {
+      if (src[j] === '{') depth++;
+      else if (src[j] === '}') { depth--; if (depth === 0) break; }
+      else if (depth === 1) own += src[j];
+    }
+    if (['x', 'y', 'width', 'height'].every((f) => field(f).test(own))) found.push(src.slice(i, j + 1));
+  }
+  for (const m of src.match(/\bRect\b/g) ?? []) found.push(m);
+  return found;
+}
 
 const takesDisplay = (r: DisplayRect): number => r.width;
 
@@ -31,15 +57,21 @@ describe('coordinate-frame brands (step 3)', () => {
     expect(Object.keys(r).sort()).toEqual(['height', 'width', 'x', 'y']);
   });
 
-  // Any spelling: fields in any order, `;` or `,` between them, optional or not — and no unbranded `Rect`, which would
-  // compile against every frame. Comments are stripped first, so a doc comment naming a PDF `/Rect` is not a hit.
+  it('the fitness scan catches every spelling it claims, and reads strings as strings', () => {
+    const hits = (code: string): number => rectTypeViolations(code).length;
+    expect(hits('const f = (r: { y: number, x: number, height?: number, width: number }): number => r.x;')).toBe(1);
+    expect(hits('interface R { readonly x: number; readonly y: number; readonly width: number; readonly height: number }')).toBe(1);
+    expect(hits('const f = (r: { x: number; y: number; width: number; height: number; meta: { id: string } }) => r;')).toBe(1);
+    expect(hits("const u = 'http://x'; const f = (r: { x: number; y: number; width: number; height: number }) => r;")).toBe(1);
+    expect(hits("import type { Rect } from './frames';")).toBe(1);
+    expect(hits('// a PDF /Rect, and { x: number; y: number; width: number; height: number } in a comment')).toBe(0);
+    expect(hits('const f = (p: { x: number; y: number }) => p.x;')).toBe(0);
+    // A point and a size are not a rect: only the fields at a brace body's OWN depth count.
+    expect(hits('const f = (r: { pos: { x: number; y: number }; size: { width: number; height: number } }) => r;')).toBe(0);
+  });
+
   it('src/utils/geometry.ts declares no anonymous or unbranded rect type (the plan step-3 fitness rule)', () => {
-    const src = readFileSync(join(__dirname, '..', '..', '..', 'src', 'utils', 'geometry.ts'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*$/gm, '');
-    const field = (name: string): RegExp => new RegExp(`\\b${name}\\??\\s*:\\s*number\\b`);
-    const anonymous = (src.match(/\{[^{}]*\}/g) ?? []).filter((body) => ['x', 'y', 'width', 'height'].every((f) => field(f).test(body)));
-    expect(anonymous).toEqual([]);
-    expect(src.match(/\bRect\b/g) ?? []).toEqual([]);
+    const src = readFileSync(join(__dirname, '..', '..', '..', 'src', 'utils', 'geometry.ts'), 'utf8');
+    expect(rectTypeViolations(src)).toEqual([]);
   });
 });

@@ -45,6 +45,15 @@ describe('architecture ratchet — the scanner', () => {
       "const p = import('./thenChain').then((m) => m);",
       "const c = import('./catchChain').catch(() => null);",
       "const f = import('./finallyChain').finally(() => 0);",
+      "const v = typeof import('./valueTypeof') === 'object';",
+      "const w = typeof import('./valueTypeofNe') !== 'x';",
+      "const k = import('./ctorProp').constructor;",
+      "const s2 = import('./calledMember').describe();",
+      "const at = import('./withAttrs', { with: { type: 'json' } });",
+      "const tc = import(\n  './trailingComma',\n);",
+      "const vt = typeof import('./valueTypeofBare');",
+      "type TA<K extends string> = typeof import('./typeofAlias');",
+      "const m3: Map<string, typeof import('./typeofInArgs')> = new Map();",
     ].join('\n');
     expect(parseImports(src)).toEqual([
       { spec: './mixed', runtime: true },
@@ -66,6 +75,15 @@ describe('architecture ratchet — the scanner', () => {
       { spec: './thenChain', runtime: true },
       { spec: './catchChain', runtime: true },
       { spec: './finallyChain', runtime: true },
+      { spec: './valueTypeof', runtime: true },
+      { spec: './valueTypeofNe', runtime: true },
+      { spec: './ctorProp', runtime: true },
+      { spec: './calledMember', runtime: true },
+      { spec: './withAttrs', runtime: true },
+      { spec: './trailingComma', runtime: true },
+      { spec: './valueTypeofBare', runtime: true },
+      { spec: './typeofAlias', runtime: false },
+      { spec: './typeofInArgs', runtime: true },
     ]);
   });
 
