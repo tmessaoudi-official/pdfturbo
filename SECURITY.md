@@ -202,11 +202,13 @@ their physical size and the resolution you chose.
 > the redaction the delete removed, so its covered text or form field value is written to the file under the usual
 > success message — while the screen shows the page redacted (M2R3-1) [Verified by the milestone-2 review's probes,
 > 2026-10-08: a deleted page's redacted text, and a redacted XFDF field value, exported after an undo mid-export]. The
-> CSV and Excel exports read the redactions page by page, so undoing a redaction meanwhile exports the cell it
-> covered; there the screen has lost the redaction too (M2R3-2) [Verified: same review, a covered CSV cell]. The PDF
-> exports take both lists before they start building; only a redaction box changed in place mid-export — the undo of
-> its move or resize — is read as it is then, where the screen shows it [Verified: same review, the in-place undo
-> measured]. Workaround: do not undo, redo or edit while one of these exports runs. Tracked in
+> CSV and Excel exports read the redactions only after loading the page's text, so undoing a redaction meanwhile
+> exports the cell it covered; there the screen has lost the redaction too (M2R3-2) [Verified: same review, a covered
+> CSV cell]. The PDF exports take both lists before they start building, but an undo that changes an annotation or a page IN PLACE — a
+> box's move, resize or rotation, a page's rotation or crop — is read as it is then. For a redaction's move or resize
+> that is where the screen shows it [Verified: same review, measured]; whether a page-rotation or crop undo landing
+> mid-export can misplace a burn is not measured [Inferred: the rasteriser reads the page's rotation and crop at
+> different moments]. Workaround: do not undo, redo or edit while one of these exports runs. Tracked in
 > `docs/plans/review-remediation.plan.md` (row 29).
 
 Redaction rasterises the page, which is what makes it removal-grade — but several exports do not go
@@ -426,8 +428,8 @@ ambiguous (since 2026-09-14; before, each showed its own generic failure, and si
 retry that could never succeed). Editing text in place shows no error: it falls back to an editable
 overlay, and the export or signature built afterwards refuses. The Word, Markdown and text exports, the
 table (CSV, XLSX) and XFDF exports, and OCR's text, Word and editable-box modes do not refuse: they read the
-document through pdf.js, the same reader that draws it, so they export what is on screen — except after an undo
-while they run (open issues M2R3-1 and M2R3-2, § "Redaction reaches the other exports too"). Opening and
+document through pdf.js, the same reader that draws it, so they export what is on screen — except after the undo
+of a page delete while they run (open issue M2R3-1, § "Redaction reaches the other exports too"). Opening and
 viewing the file are unaffected.
 
 > **Open issue (SEC-3b, found 2026-10-08) — typed form values in "Download page" and "Export page as image".**
