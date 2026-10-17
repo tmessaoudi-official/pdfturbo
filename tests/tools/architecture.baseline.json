@@ -1,0 +1,168 @@
+{
+  "_note": "Architecture ratchet baseline (tests/tools/architecture.test.ts). Two-sided: a count above its value fails, and a count below it fails until this file is lowered to match. Edit by hand, in the same commit as the change that moves the number.",
+  "matrix": {
+    "core->config": {
+      "all": 2,
+      "value": 2
+    },
+    "core->elements": {
+      "all": 31,
+      "value": 11
+    },
+    "core->export": {
+      "all": 7,
+      "value": 5
+    },
+    "core->handlers": {
+      "all": 9,
+      "value": 8
+    },
+    "core->infra": {
+      "all": 12,
+      "value": 3
+    },
+    "core->ocr": {
+      "all": 2,
+      "value": 2
+    },
+    "core->ui": {
+      "all": 26,
+      "value": 18
+    },
+    "core->utils": {
+      "all": 35,
+      "value": 28
+    },
+    "docx->utils": {
+      "all": 9,
+      "value": 9
+    },
+    "elements->utils": {
+      "all": 6,
+      "value": 5
+    },
+    "export->config": {
+      "all": 1,
+      "value": 1
+    },
+    "export->core": {
+      "all": 6,
+      "value": 1
+    },
+    "export->elements": {
+      "all": 20,
+      "value": 5
+    },
+    "export->infra": {
+      "all": 2,
+      "value": 0
+    },
+    "export->ui": {
+      "all": 1,
+      "value": 0
+    },
+    "export->utils": {
+      "all": 44,
+      "value": 40
+    },
+    "handlers->config": {
+      "all": 1,
+      "value": 1
+    },
+    "handlers->core": {
+      "all": 13,
+      "value": 6
+    },
+    "handlers->elements": {
+      "all": 12,
+      "value": 8
+    },
+    "handlers->infra": {
+      "all": 1,
+      "value": 0
+    },
+    "handlers->ocr": {
+      "all": 3,
+      "value": 2
+    },
+    "handlers->signing": {
+      "all": 2,
+      "value": 2
+    },
+    "handlers->ui": {
+      "all": 1,
+      "value": 0
+    },
+    "handlers->utils": {
+      "all": 12,
+      "value": 12
+    },
+    "infra->core": {
+      "all": 2,
+      "value": 0
+    },
+    "infra->elements": {
+      "all": 1,
+      "value": 0
+    },
+    "infra->export": {
+      "all": 1,
+      "value": 0
+    },
+    "infra->utils": {
+      "all": 3,
+      "value": 2
+    },
+    "ocr->export": {
+      "all": 1,
+      "value": 1
+    },
+    "ocr->utils": {
+      "all": 3,
+      "value": 3
+    },
+    "signing->utils": {
+      "all": 2,
+      "value": 2
+    },
+    "ui->config": {
+      "all": 1,
+      "value": 1
+    },
+    "ui->core": {
+      "all": 27,
+      "value": 3
+    },
+    "ui->elements": {
+      "all": 22,
+      "value": 7
+    },
+    "ui->export": {
+      "all": 5,
+      "value": 4
+    },
+    "ui->handlers": {
+      "all": 2,
+      "value": 0
+    },
+    "ui->infra": {
+      "all": 7,
+      "value": 2
+    },
+    "ui->utils": {
+      "all": 36,
+      "value": 33
+    },
+    "utils->elements": {
+      "all": 10,
+      "value": 9
+    },
+    "utils->export": {
+      "all": 1,
+      "value": 1
+    }
+  },
+  "typeCycleFiles": 35,
+  "appUnderscoreInUi": 112,
+  "getDocumentSites": 13
+}
