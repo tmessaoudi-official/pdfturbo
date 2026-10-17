@@ -35,8 +35,18 @@ async function build(page0: Content): Promise<PDFDocument> {
   // A tiling pattern, for the pattern-name cases (round 3, R3S-2).
   const tile = ctx.register(ctx.stream('0 0 5 5 re f', { Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1,
     BBox: [0, 0, 10, 10], XStep: 10, YStep: 10, Resources: {} }));
+  // Round 4 (R4S-1, R4C-4, R4K-1): a shading pattern written as a stream whose body draws Fm2 (pdf.js reads only its
+  // /Shading), the same as a dictionary, a tiling pattern drawing Fm2, and a tiling pattern written as a dictionary.
+  const shading = { ShadingType: 2, ColorSpace: 'DeviceGray', Coords: [0, 0, 10, 0],
+    Function: { FunctionType: 2, Domain: [0, 1], C0: [0], C1: [1], N: 1 } };
+  const shadingStream = ctx.register(ctx.stream('/Fm2 Do', { Type: 'Pattern', PatternType: 2, Shading: shading }));
+  const shadingDict = ctx.register(ctx.obj({ Type: 'Pattern', PatternType: 2, Shading: shading }));
+  const tileFm2 = ctx.register(ctx.stream('/Fm2 Do', { Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1,
+    BBox: [0, 0, 400, 400], XStep: 400, YStep: 400 }));
+  const tileDict = ctx.register(ctx.obj({ Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1,
+    BBox: [0, 0, 10, 10], XStep: 10, YStep: 10, Resources: {} }));
   const resources = ctx.register(ctx.obj({ XObject: { Fm1: form(PUB, 300), Fm2: form(SEC, 301) }, Font: { F1: font },
-    Pattern: { P1: tile } }));
+    Pattern: { P1: tile, P2s: shadingStream, P2d: shadingDict, P1f: tileFm2, P1d: tileDict } }));
   const stream = (content: string) => ctx.register(ctx.stream(Uint8Array.from(content, c => c.charCodeAt(0))));
   for (const content of [page0, '/Fm2 Do']) {
     const p = d.addPage([300, 300]);
@@ -56,11 +66,17 @@ async function pdfjsReads(page0: Content): Promise<{ text: string[]; painted: st
   try {
     const page = await doc.getPage(1);
     const text = (await page.getTextContent()).items.map(i => ('str' in i ? i.str : '')).join('|');
-    const list = await page.getOperatorList();
     const painted = new Set<string>();
-    list.fnArray.forEach((fn, k) => {
-      if (fn === pdfjs.OPS.paintFormXObjectBegin) painted.add((list.argsArray[k][1] as number[])[2] === 301 ? 'Fm2' : 'Fm1');
+    // A tiling pattern carries its own operator list inside its colour arguments: a form it paints counts too
+    // (round 4, R4C-5 — the top-level list alone cannot see one).
+    const walk = (list: { fnArray: number[]; argsArray: unknown[] }): void => list.fnArray.forEach((fn, k) => {
+      const args = list.argsArray[k];
+      if (fn === pdfjs.OPS.paintFormXObjectBegin) painted.add(((args as unknown[])[1] as number[])[2] === 301 ? 'Fm2' : 'Fm1');
+      if (Array.isArray(args)) {
+        for (const a of args) if (a && typeof a === 'object' && 'fnArray' in a && 'argsArray' in a) walk(a as never);
+      }
     });
+    walk(await page.getOperatorList());
     return { text: [text.includes(PUB) && 'Fm1', text.includes(SEC) && 'Fm2'].filter((x): x is string => !!x), painted: [...painted].sort() };
   } finally { await doc.loadingTask.destroy(); }
 }
@@ -208,5 +224,36 @@ describe('a pattern name the prune cannot resolve refuses the export (row 10, ro
     const bytes = await exported(page0);
     expect(bytes.includes(PUB)).toBe(true);
     expect(bytes.includes(SEC)).toBe(false);
+  });
+});
+
+/**
+ * A shading pattern draws no content of its own: pdf.js's `handleColorN` reads only its /Shading and /Matrix, even when
+ * the pattern is written as a stream with a body (round 4, R4S-1/R4C-4 — the prune read that body as a tiling pattern's
+ * and kept the removed page's form; pre-existing, measured at fffe15f). Both accepting branches of the round-3 check are
+ * pinned (R4K-1), and the oracle is shown to see a form painted inside a tiling pattern (R4C-5).
+ */
+describe('a shading pattern draws nothing of its own (row 10, round 4)', () => {
+  it('a shading pattern written as a stream whose body draws Fm2', async () => {
+    const page0 = `/Fm1 Do /Pattern cs /P2s scn 0 0 10 10 re f`;
+    expect(await pdfjsDraws(page0)).toEqual(['Fm1']);
+    const bytes = await exported(page0);
+    expect(bytes.includes(PUB)).toBe(true);
+    expect(bytes.includes(SEC)).toBe(false);
+  });
+  it('control: a shading pattern written as a dictionary is accepted', async () => {
+    const page0 = `/Fm1 Do /Pattern cs /P2d scn 0 0 10 10 re f`;
+    expect(await pdfjsDraws(page0)).toEqual(['Fm1']);
+    const bytes = await exported(page0);
+    expect(bytes.includes(PUB)).toBe(true);
+    expect(bytes.includes(SEC)).toBe(false);
+  });
+  it('control: a tiling pattern whose content draws Fm2 is painted, and the export keeps Fm2', async () => {
+    const page0 = `/Fm1 Do /Pattern cs /P1f scn 0 0 300 300 re f`;
+    expect(await pdfjsReads(page0)).toEqual({ text: ['Fm1'], painted: ['Fm1', 'Fm2'] });
+    expect((await exported(page0)).includes(SEC)).toBe(true);
+  });
+  it('a tiling pattern written as a dictionary refuses the export', async () => {
+    await expect(exported(`/Fm1 Do /Pattern cs /P1d scn 0 0 10 10 re f`)).rejects.toThrow(ExportResourcesUnreadableError);
   });
 });

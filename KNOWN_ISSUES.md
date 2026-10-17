@@ -192,8 +192,13 @@ work in a private/incognito window when editing sensitive documents on a shared 
   (plan row 33); **(2)** a page holding many inline images whose JPEG or ASCII85 data never ends costs time quadratic
   in its size, on the main thread — 3.6 s for a 248 KB stream (plan row 34); **(3)** the reading follows pdf.js
   6.3.289, and only its operator table is re-derived by a test, so a pdf.js upgrade that changes its parser can diverge
-  until the oracle tests catch it; **(4)** pdf.js's evaluator was audited for where it stops reading the page, not
-  mirrored: a stop on a well-typed operand that this audit missed would be read past. No corpus file has an inline
+  until the oracle tests catch it; **(4)** pdf.js's evaluator was audited, not mirrored, and it also stops — or empties the
+  page — on what a well-typed operand RESOLVES to: a `/Font` resource that is not a dictionary, an inline image's
+  `/OC` or a filtered image mask that fails to decode, a marked-content `/MCID` or graphics-state value of the wrong
+  type, a `Do` name equal to pdf.js's own inline-image cache key. A kept page that names a removed page's form after
+  such a point keeps that form in the file, though pdf.js never paints it there; everything after the stop is the kept
+  page's own content and is exported as written either way. Each shape needs a malformed or deliberately built file,
+  and each predates the 2026-10-17 change (plan row 35). No corpus file has an inline
   image in a drawn stream.
 - **When a page is left out, a link whose target is a structure element (PDF 2.0) is removed, and a structure
   destination (`/SD`) is dropped from a link that also names a page.** The structure tree is never exported, and copying it would carry

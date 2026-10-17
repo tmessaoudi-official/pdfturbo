@@ -1,8 +1,10 @@
 /**
  * Review-remediation row 10 (SEC-1 cost follow-up, ruled 2026-10-08): the prune reads what each kept page draws with
- * the name-only `scanNamedOps`, not the full tokenizer, which was half its time on a 142-page file (§ Fragile). The
- * full tokenizer is made to throw here: before row 10 the prune caught it, could not read the page and refused the
- * export (`ExportResourcesUnreadableError`). What the scan reports is pinned against the tokenizer in
+ * the name-only `scanNamedOps` in its pdf.js mode (`{ pdfjs: true }`, since S10-1), not the full tokenizer, which was
+ * half its time on a 142-page file (§ Fragile). The full tokenizer is made to throw here: before row 10 the prune
+ * caught it, could not read the page and refused the export (`ExportResourcesUnreadableError`). What the pdf.js mode
+ * reports is pinned against pdf.js itself in `tests/export/inlineImagePdfjs.test.ts` and
+ * `prunePdfjsDifferential.test.ts`; the default mode stays pinned against the tokenizer in
  * `tests/utils/scanNamedOps.test.ts`.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -48,7 +50,7 @@ async function oneOperandBdc(): Promise<PDFDocument> {
   return PDFDocument.load(await d.save({ useObjectStreams: false }), { updateMetadata: false });
 }
 
-describe('the prune reads pages with the name-only scan (row 10)', () => {
+describe('the prune reads pages with the name-only scan, not the tokenizer (row 10)', () => {
   it('a BDC with one operand names no property list, so the removed page\'s stays out', async () => {
     const dest = await PDFDocument.create({ updateMetadata: false });
     const { pages } = await copySourcePages(dest, await oneOperandBdc(), [0], { pruneSharedResources: true });

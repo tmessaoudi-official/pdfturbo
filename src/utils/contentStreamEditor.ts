@@ -750,7 +750,8 @@ const nameText = (v: string): string =>
  * 33 operands or more than 10 invalid path operators in a row a stop. It throws where pdf.js's lexer, parser or
  * operator reader stop, and on an operand not of its specification type — a superset of where pdf.js's evaluator stops
  * on a malformed operand (`5 TJ`, a bare `EI`; row 10 round 3), audited, not mirrored. A pattern name pdf.js cannot
- * resolve is refused by the caller, which has the resources.
+ * resolve is refused by the caller, which has the resources. Where pdf.js stops on what a well-typed operand RESOLVES
+ * to (a `/Font` that is not a dictionary, an inline image's `/OC`, …) this reads on: a stated bound (round 4, row 35).
  */
 function scanPdfjs(src: string, wanted: ReadonlySet<string>): NamedOp[] {
   const out: NamedOp[] = [];

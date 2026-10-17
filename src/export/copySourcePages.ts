@@ -888,7 +888,8 @@ class ResourcePruner {
             ?.lookup(PDFName.of('PatternType'));
           const typeNum = type instanceof this.lib.PDFNumber ? type.asNumber() : undefined;
           if (!(typeNum === 2 || (typeNum === 1 && pattern instanceof PDFStream))) return false;
-          if (!(pattern instanceof PDFStream)) break;
+          // A shading pattern draws only its /Shading, even when written as a stream with a body (round 4, R4S-1).
+          if (typeNum === 2 || !(pattern instanceof PDFStream)) break;
           const own = pattern.dict.lookup(PDFName.of('Resources'));
           if (!(own instanceof PDFDict)) {
             if (!inherit(pattern, () => [contentOf(this.lib, this.src, pattern)], true)) return false;

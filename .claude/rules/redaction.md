@@ -122,8 +122,8 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   Since S10-1 the prune passes `{ pdfjs: true }`, so this mode has no production caller; it stays tokenizer-equal for
   the true-edit migration (plan row 31), and the fuzz and fixture tests above run it only — the pdf.js mode has its
   own oracle and differential (next item).
-- **The prune reads a page the way pdf.js's parser and preprocessor do — `scanNamedOps(…, { pdfjs: true })` (S10-1,
-  row-10 panel rounds 1 and 2, 2026-10-17).** Round 1: the tokenizer ends an inline image at the first `EI` between
+- **The prune reads a page the way pdf.js's parser and preprocessor do, every operand of its specification type —
+  `scanNamedOps(…, { pdfjs: true })` (S10-1, row-10 panel rounds 1–4, 2026-10-17).** Round 1: the tokenizer ends an inline image at the first `EI` between
   whitespace; pdf.js (`Parser.makeInlineImage`) ends it by its FIRST filter (`/F` before `/Filter`, an array's first
   entry) — DCT at the JPEG end marker, ASCII85 at `~>`, ASCIIHex at `>` — and an unfiltered one at an `EI` whose next
   15 bytes are printable (a lone NUL allowed) and lex, within 75 bytes, as a known operator with its operand count,
@@ -154,8 +154,12 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   (a stream) or a shading pattern. pdf.js stops on some wrong types and tolerates others; the scan refuses them all,
   the safe side, and that costs nothing measurable: 0 refusals on the 3,604 joined pages and forms of the corpus
   (`var/claude/row10/refusals-r3.jsonl`). The pattern check refuses under any colour space, because the scan does not
-  track it (row 33). The other resource reads in the evaluator (`Do`, `gs`, `sh`, `cs`, marked content, a tiling
-  pattern's own content, `Tf`'s font) are caught there under `ignoreErrors` and do not stop the page. So it THROWS —
+  track it (row 33). Round 4 refuted this entry's claim that the evaluator's other
+  resource reads cannot stop the page: `Do`, `sh`, `cs` and a tiling pattern's own content are caught under
+  `ignoreErrors`, but `Tf`'s font (`loadFont` on a `/Font` that is not a dictionary), an inline image's `/OC`
+  (`parseMarkedContentProps`) and a filtered mask that fails to decode (`createMask`) throw past it, and a `BDC`
+  `/MCID` or ExtGState value that is a dictionary puts a pdf.js `Dict` into the operator list, whose `structuredClone`
+  fails and empties the whole page (R4S-2, R4S-3, R4C-1, R4C-2). So it THROWS —
   the export refuses — where pdf.js's lexer, parser or preprocessor stop reading the page (a lexer error such as `-x`
   or `.x`, a stray `)`, an array or dictionary cut off by the end of the stream, an 11th path operator short of
   operands, a 34th operand, an operator past 128 bytes), on an operand of the wrong type, and where the scan cannot
@@ -169,7 +173,13 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   scans alternating in one process at load ~2.5 (`var/claude/row10/scancost.jsonl`, `r2-final`), plain / pdf.js
   mode / tokenizer: Publication 17's 1,001 streams 184 / 426 / 499 ms, the census report 78 / 123 / 218, the GPT-3
   paper 8 / 20 / 23 — the mirror still reads faster than the tokenizer did, at about 2.3× the plain scan (round 3's
-  type check: Publication 17 439 ms, `r3`). **Bounds, stated:** a numbers-only `scn`/`SCN` under a Pattern colour
+  type check: Publication 17 439 ms, `r3`). **Bounds, stated:** pdf.js's evaluator was audited, not mirrored, and the
+  evaluator-recovery class round 4 found is a stated bound (developer ruling 2026-10-17, plan row 35): where pdf.js
+  stops, or empties the page, on what a well-typed operand RESOLVES to — the four reads above, and a `Do` name equal to
+  pdf.js's per-page inline-image cache key (`inline_img_N`, R4C-3) — a removed page's form the kept page names after
+  that point is kept, though pdf.js never paints it there. Everything after such a stop is the kept page's own content
+  stream, exported as written whatever the prune decides; each shape needs a malformed or built file, and all seven
+  leaked identically at `fffe15f`, before row 10 (probe). A numbers-only `scn`/`SCN` under a Pattern colour
   space stops pdf.js too (`handleColorN` pops a name that is not there), and the scan, which does not track the colour
   space, keeps reading (row 33); a `scn`/`SCN` name counts as a drawn pattern under any colour space, while pdf.js draws one only under a
   Pattern colour space — an over-keep of the removed page's pattern, which no viewer draws but the bytes carry
@@ -177,12 +187,14 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   many unterminated images costs quadratic time on the main thread (248 KB took 3.6 s; R2C-2, plan row 34); and the
   mirror follows pdf.js 6.3.289 — only the operator table is re-derived by a test, so a pdf.js upgrade that changes
   `Parser` or the preprocessor diverges silently until the oracle tests below catch it. Guards:
-  `tests/export/inlineImagePdfjs.test.ts` (52, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
-  its operator list, the forms told apart by their BBox width — because the two part where the evaluator stops on one
+  `tests/export/inlineImagePdfjs.test.ts` (56, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
+  its operator list, the forms told apart by their BBox width, the list walked into a tiling pattern's own (R4C-5) — because the two part where the evaluator stops on one
   path only (R3C-2: the text-only oracle passed shapes pdf.js never paints); each case checks what pdf.js reads, what
   the scan reports and whether the export carries the removed page's form — leak shapes, controls, two-stream joins,
-  the parser and evaluator stops, a DCT marker ending the page through `contentOf` (R2C-4, R3K-2) and the
-  pattern-name refusal with its control), `tests/utils/scanNamedOpsPdfjs.test.ts` (100: the table, every operator run
+  the parser and evaluator stops, a DCT marker ending the page through `contentOf` (R2C-4, R3K-2), the
+  pattern-name refusal with its control, and round 4's pattern shapes: a shading pattern written as a stream whose body
+  draws the removed page's form, a shading dictionary accepted, a tiling dictionary refused, and a tiling pattern
+  drawing that form as the control that the oracle sees inside a pattern), `tests/utils/scanNamedOpsPdfjs.test.ts` (100: the table, every operator run
   into letters with exactly its operand count and types — the types written out independently of the scan's table —
   the word rules, the type refusals and the refusals the oracle cannot drive) and
   `tests/export/prunePdfjsDifferential.test.ts` (3000 seeded streams built from the shapes that have diverged, half
@@ -209,7 +221,15 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   limit → 1 + 0; no 33-operand limit → 1 + 0; the end of the stream inside an array tolerated → 1 + 0 [red]; the
   streams joined with a newline again → 5 + 0 (3 in round 2, plus the two DCT-marker cases, one stream and split);
   references not read → 0 + 2 [red]. Record: `var/claude/row10/sabotage-r3.json` (round 2's: `sabotage-r2.json`;
-  round 1's, on the ported rules: `sabotage.json`).
+  round 1's, on the ported rules: `sabotage.json`). **Round 4** (on `ef14117`) found one more
+  defect in round 3's own check: a shading pattern written as a STREAM passed it and then fell into the tiling branch,
+  so `collect` read its body as drawing and kept the removed page's form; pdf.js reads only `/Shading` (R4S-1/R4C-4,
+  pre-existing). A type-2 pattern now draws nothing of its own. The differential cannot see it — it calls the scan,
+  and the leak was `collect`'s recursion — and its resources are fixed and well-formed, so it covers content syntax only
+  (R4C-5). Sabotage, predicted first, each landed, red on exactly its case, restored with `cmp`
+  (`var/claude/row10/sabotage-r4.json`): round 3's line back → the stream case; shading not accepted → the stream and
+  dictionary cases; a tiling dictionary accepted → its refusal case; the oracle not walking nested lists → the tiling
+  control.
 
 **Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
 - **An ExtGState `/Font [font size]`** sets the font like `Tf`; a Type3 font set that way with no resources of its own

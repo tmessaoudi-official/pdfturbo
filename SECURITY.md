@@ -67,7 +67,7 @@ reading the code. Both are said plainly instead of implied to be measured.
 > entries it draws — the way pdf.js reads it, including a font set through a graphics state, a page whose content
 > stream carries resources of its own, and a page's content read with pdf.js's own syntax and operator rules, an
 > operand of the wrong type refused (since 2026-10-17: a picture's data, a comment inside a list, two content streams
-> read as one, or a malformed instruction that makes the viewer stop reading the page could hide a drawing instruction
+> read as one, or an instruction of the wrong type that makes the viewer stop reading the page could hide a drawing instruction
 > the export counted and no viewer runs; the bounds of that reading are listed in `KNOWN_ISSUES.md`). When that drawing cannot be read, so what it draws is unknown, the PDF exports **refuse** with a
 > message rather than guess; **Compress → flatten to images** still works on such a document. Each of these shapes
 > is pinned by a test that finds the removed page's text in the source and not in the export
@@ -76,7 +76,13 @@ reading the code. Both are said plainly instead of implied to be measured.
 > `tests/browser/redaction-orphan-leak.browser.test.ts`; `prunePdfjsDifferential.test.ts` checks the page reading
 > against pdf.js without exporting). **Not covered,
 > and stated:** a carrier reached some other way than these is not ruled out; a pattern a kept page names with
-> `scn` under a colour space that is not a Pattern one is kept, though no viewer draws it there (plan row 33); a link that names its target by
+> `scn` under a colour space that is not a Pattern one is kept, though no viewer draws it there, and a numbers-only
+> `scn` under a Pattern colour space, where pdf.js stops reading the page, is read past (plan row 33); where pdf.js
+> stops reading a kept page, or drops its whole drawing, on a malformed resource — a font resource that is not a
+> dictionary, an inline image's optional-content reference or a mask that fails to decode, a marked-content or
+> graphics-state value of the wrong type, a form named like pdf.js's internal inline-image key — a removed page's form
+> the kept page names after that point is kept, though pdf.js never paints it there (the rest of the kept page after
+> the stop is its own content and is exported as written; plan row 35); a link that names its target by
 > a *named destination* is dead in every export (the name table is not copied) — it does not leak, and it does not
 > work. Three residues are kept by design, because the kept page needs the object they live in: a **font** shared
 > with a removed page keeps that page's glyph shapes and its character map, so which characters the removed page

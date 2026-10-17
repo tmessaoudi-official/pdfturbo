@@ -5,6 +5,9 @@
  * PAINTS (its operator list) and exactly the forms its text layer reads — a form it adds is a removed page's form kept
  * in the export, a form it misses is a kept page's form dropped. The two readers part where pdf.js's evaluator stops on
  * the drawing path only (round 3, R3C-2: a bare `EI`), so the text alone was a proxy that read more than pdf.js draws.
+ * It varies the CONTENT only, over fixed, well-formed resources, and calls the scan rather than `collect`: where pdf.js
+ * stops on what an operand resolves to, or a pattern's own content decides, it cannot see (round 4, R4C-5 — the
+ * resource-varying oracle is plan row 35; the pattern shapes are pinned in `inlineImagePdfjs.test.ts`).
  */
 import { describe, it, expect } from 'vitest';
 import { PDFDocument, PDFName } from '@cantoo/pdf-lib';

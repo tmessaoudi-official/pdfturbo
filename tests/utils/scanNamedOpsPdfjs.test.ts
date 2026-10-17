@@ -1,8 +1,10 @@
 /**
  * `scanNamedOps(…, { pdfjs: true })` (review-remediation row 10, S10-1): the operator table it splits words and judges
- * an `EI` by, re-derived from the installed pdf.js, and the cases the pdf.js oracle in
- * `tests/export/inlineImagePdfjs.test.ts` cannot drive — pdf.js loops for ever on one of them, and the rest are shapes
- * this mode refuses because it cannot follow them (a reference it cannot resolve, a byte pdf.js lexes twice).
+ * an `EI` by, re-derived from the installed pdf.js; each operator with its operand count and types (round 3, the
+ * types written out from PDF 32000 Table A.1 independently of the scan's table) and the refusals of a wrong type; and
+ * the cases the pdf.js oracle in `tests/export/inlineImagePdfjs.test.ts` cannot drive — pdf.js loops for ever on one
+ * of them, and the rest are shapes this mode refuses because it cannot follow them (a reference it cannot resolve, a
+ * byte pdf.js lexes twice).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
