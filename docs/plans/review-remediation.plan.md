@@ -214,7 +214,7 @@ rationale is stale).
 - ARCH-7 — One aggregate, four holders, and a split repository
 - ARCH-8 — `ExportService` is one class serving six contexts and doing its own I/O
 - ARCH-9 — `contentStreamEditor.ts` (3023 lines) is four layers in one file, and its importers already show the cut lines
-- ARCH-10 — `flowDoc.ts` (2580 lines) hosts shared text-script primitives and a redaction rule, so 7 non-flow modules depend on the flow context
+- ARCH-10 — `flowDoc.ts` (2580 lines) hosts shared text-script primitives and a redaction rule, so 7 non-flow modules depend on the flow context → row 8 (step 2a: the primitives moved to `shared-kernel/text/`, `flowDoc` re-exports them; the redaction rule stays for architecture step 4)
 - ARCH-11 — CQS breach. An export (a query) mutates the aggregate outside history, using DOM focus as the decision input
 - ARCH-12 — pdf.js and pdf-lib have no ports; library calls are spread over 25 and 14 files
 - ARCH-13 — A 32-file type-only cycle pivots on `AppDOMRefs` and the app types → row 8 (step 1: 35 → 7 files in type-inclusive cycles; the 7 left are the binders typed on `PDFTurboApp`, architecture step 5)
@@ -250,7 +250,7 @@ rationale is stale).
 - TEST-12 — Real-producer fixtures reach only 18 of 383 test files; the 15-file corpus that most rules measurements cite never runs in CI
 
 **P3 (49)**
-- ARCH-15 — Export reaches UI and core through re-exports instead of `contracts/`
+- ARCH-15 — Export reaches UI and core through re-exports instead of `contracts/` → row 8 (step 1: export→ui 0; export→core is type-only, 0 runtime edges)
 - ARCH-16 — Ubiquitous language drift
 - ARCH-17 — Commands are after-the-fact undo records, not intents
 - ARCH-18 — Cross-context leaks outside the main tangle

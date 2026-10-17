@@ -38,7 +38,11 @@ Edges INTO `shared-kernel/`, `contracts/` and `types/` are not counted (shared v
 only each other, `shared-kernel/` only itself plus the npm allowlist `KERNEL_NPM_ALLOWLIST` (today `bidi-js`, ruled
 2026-10-17); `src/*.ts` (the composition root) may import anything. The scanner is a lexer in
 `tests/tools/architectureGraph.ts`, not tsc (TypeScript 7 has no JS API): an unmarked import used only as a type is
-a runtime edge — mark it `import type` to move it. Its fixture tree `tests/tools/fixtures/architecture/` is
+a runtime edge — mark it `import type` to move it. An `import('x').T` or `typeof import('x')` type reference is a type edge
+(milestone panel 2026-10-17: counted as runtime it made its file pair runtime and hid a real runtime import added to that
+pair; `export->core` value fell 1 → 0 with the fix), while `import('x').then(…)` stays runtime. With it the lexer's
+runtime imports match rolldown's oxc parser on all 188 `src/` files (a one-off probe, not a test). The `getDocument(`
+pin counted 13 at step 0: 12 calls and one interface method declaration (`viewerCheck.ts`); a comment is blanked. Its fixture tree `tests/tools/fixtures/architecture/` is
 type-checked by tsc and never collected by vitest (no `.test.ts` in it).
 
 **Moved homes (architecture step 2, 2026-10-17).** A citation elsewhere in these rules of `flowDoc.ts`, `utils/bidi.ts`
@@ -59,6 +63,7 @@ another frame does not compile; nothing exists at run time (comment-stripped JS 
 as far as a typed value flows — a rect stored in a plain-typed model field (a page crop, an element) is unbranded
 again, so tsc checks converter-to-converter chains, not the model. When it landed tsc found 0 wrong-frame callers;
 the shipped frame bugs were already fixed, so this is a fence, not a catch. A new converter takes a brand, never an
-anonymous `{ x: number; y: number; … }` — `tests/shared-kernel/geometry/frames.test.ts` fails on one. Its
+anonymous `{ x: number; y: number; … }` — `tests/shared-kernel/geometry/frames.test.ts` fails on one, in any spelling
+(fields in any order, `;` or `,`, optional or not), and on any unbranded `Rect` in that file. Its
 `@ts-expect-error` lines sit on the converter CALLS, with no annotated variable between: one on a variable typed with
 the brand pins the brand type but stays green when a converter's signature goes back to a plain `Rect` (measured).

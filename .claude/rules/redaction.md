@@ -8,6 +8,7 @@ paths:
   - "src/export/copySourcePages.ts"
   - "tests/export/copySourcePages.test.ts"
   - "src/utils/geometry.ts"
+  - "src/shared-kernel/geometry/frames.ts"
   - "src/utils/flowDoc.ts"
   - "tests/browser/*redaction*"
   - "tests/browser/hide-vs-remove*"

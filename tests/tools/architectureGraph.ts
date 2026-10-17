@@ -133,6 +133,8 @@ function braceListAllTypes(list: Tok[]): boolean {
   return nonEmpty.length > 0 && nonEmpty.every((s) => s[0].v === 'type' && s.length > 1 && s[1].v !== 'as');
 }
 
+const PROMISE_METHODS = new Set(['then', 'catch', 'finally']);
+
 /** Every module specifier `src` imports or re-exports, with whether TypeScript keeps it at runtime. */
 export function parseImports(src: string): { spec: string; runtime: boolean }[] {
   const T = lex(src).tokens;
@@ -145,7 +147,15 @@ export function parseImports(src: string): { spec: string; runtime: boolean }[] 
     if (tk.v === 'import') {
       if (is(k + 1, '(')) {
         const a = T[k + 2];
-        if (a && (a.t === 'str' || a.t === 'tpl') && is(k + 3, ')')) found.push({ spec: a.v, runtime: true });
+        if (a && (a.t === 'str' || a.t === 'tpl') && is(k + 3, ')')) {
+          // `import('x').T` and `typeof import('x')` are TypeScript import TYPES, erased at build: counted as runtime,
+          // one would make its file pair runtime and hide a real runtime import added to that pair later. A member
+          // access on the promise (`.then` / `.catch` / `.finally`) is a runtime dynamic import, and a bare
+          // `import('x')` in a type position is a TS error (TS1340), so those two shapes are every type form.
+          const member = is(k + 4, '.') && T[k + 5]?.t === 'id' ? T[k + 5].v : null;
+          const typeRef = is(k - 1, 'typeof') || (member !== null && !PROMISE_METHODS.has(member));
+          found.push({ spec: a.v, runtime: !typeRef });
+        }
         continue;
       }
       if (is(k + 1, '.')) continue; // import.meta

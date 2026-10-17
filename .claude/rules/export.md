@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/export/**"
+  - "src/shared-kernel/geometry/matrix.ts"
   - "src/utils/pdfSanitizer.ts"
   - "src/utils/xfdf.ts"
   - "tests/export/**"
@@ -193,7 +194,8 @@ arithmetic — it was that a partial fix is invisible.**
 STRUCTURALLY rather than by discipline.** `rules`, `vRules`, image CTMs and the `colorMap` keys all
 derive from the walker's ctm, so `walkPageOps` gained an optional CropBox origin that seeds its
 **base transform** — one argument moves those four together and a partial normalisation of them
-becomes unexpressible. `composeCtm(m, …)` applies `m` last, so the translation stays outermost and
+becomes unexpressible. `composeCtm(m, …)` — since architecture step 2b (2026-10-17) the kernel's `multiplyMatrix(M_cm, ctm)`, pinned
+bit-identical by `tests/shared-kernel/geometry/matrix.test.ts` — applies `m` last, so the translation stays outermost and
 is never scaled by a later `cm`; that was read (`result[4] = m[0]*e + m[2]*f + m[4]`), not assumed.
 Words go through the pure `translateItemsToCropOrigin`, links through a two-term subtraction, and
 `reconstructPage` + `imagePlacementRedacted` are handed `cropFrame = [0,0,vp.width,vp.height]`.

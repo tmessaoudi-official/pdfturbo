@@ -31,8 +31,15 @@ describe('coordinate-frame brands (step 3)', () => {
     expect(Object.keys(r).sort()).toEqual(['height', 'width', 'x', 'y']);
   });
 
-  it('src/utils/geometry.ts declares no anonymous rect type (the plan step-3 fitness rule)', () => {
-    const src = readFileSync(join(__dirname, '..', '..', '..', 'src', 'utils', 'geometry.ts'), 'utf8');
-    expect(src.match(/\{\s*x:\s*number;\s*y:\s*number;\s*width:\s*number;\s*height:\s*number/g) ?? []).toEqual([]);
+  // Any spelling: fields in any order, `;` or `,` between them, optional or not — and no unbranded `Rect`, which would
+  // compile against every frame. Comments are stripped first, so a doc comment naming a PDF `/Rect` is not a hit.
+  it('src/utils/geometry.ts declares no anonymous or unbranded rect type (the plan step-3 fitness rule)', () => {
+    const src = readFileSync(join(__dirname, '..', '..', '..', 'src', 'utils', 'geometry.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '');
+    const field = (name: string): RegExp => new RegExp(`\\b${name}\\??\\s*:\\s*number\\b`);
+    const anonymous = (src.match(/\{[^{}]*\}/g) ?? []).filter((body) => ['x', 'y', 'width', 'height'].every((f) => field(f).test(body)));
+    expect(anonymous).toEqual([]);
+    expect(src.match(/\bRect\b/g) ?? []).toEqual([]);
   });
 });

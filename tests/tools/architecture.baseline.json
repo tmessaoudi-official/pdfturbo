@@ -11,7 +11,7 @@
     },
     "core->export": {
       "all": 7,
-      "value": 5
+      "value": 4
     },
     "core->handlers": {
       "all": 9,
@@ -47,7 +47,7 @@
     },
     "export->core": {
       "all": 4,
-      "value": 1
+      "value": 0
     },
     "export->elements": {
       "all": 20,

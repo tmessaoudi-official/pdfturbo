@@ -39,6 +39,12 @@ describe('architecture ratchet — the scanner', () => {
       'const re = /\\/\\//;',
       "import './sideEffect';",
       "import { w } from './afterSideEffect';",
+      "type Q = import('./typeQualified').Shape;",
+      "type G = import('./typeGeneric').Box<number>[];",
+      "let n: typeof import('./typeofImport');",
+      "const p = import('./thenChain').then((m) => m);",
+      "const c = import('./catchChain').catch(() => null);",
+      "const f = import('./finallyChain').finally(() => 0);",
     ].join('\n');
     expect(parseImports(src)).toEqual([
       { spec: './mixed', runtime: true },
@@ -54,6 +60,12 @@ describe('architecture ratchet — the scanner', () => {
       { spec: './templateSpec', runtime: true },
       { spec: './sideEffect', runtime: true },
       { spec: './afterSideEffect', runtime: true },
+      { spec: './typeQualified', runtime: false },
+      { spec: './typeGeneric', runtime: false },
+      { spec: './typeofImport', runtime: false },
+      { spec: './thenChain', runtime: true },
+      { spec: './catchChain', runtime: true },
+      { spec: './finallyChain', runtime: true },
     ]);
   });
 
@@ -61,6 +73,7 @@ describe('architecture ratchet — the scanner', () => {
     const g = buildGraph(join(__dirname, 'fixtures', 'architecture', 'src'));
     const edges = g.edges.map((e) => `${e.from} -> ${e.to} ${e.runtime ? 'runtime' : 'type'}`).sort();
     expect(edges).toEqual([
+      'contracts/leak.ts -> export/shape.ts type',
       'core/app.ts -> export/render.ts runtime',
       'core/app.ts -> export/shape.ts type',
       'core/app.ts -> types/tool.ts type',
@@ -74,6 +87,7 @@ describe('architecture ratchet — the scanner', () => {
       'ui/lazy.ts -> types/tool.ts runtime',
       'ui/panel.ts -> core/app.ts runtime',
       'ui/panel.ts -> export/shape.ts type',
+      'ui/typeRef.ts -> export/shape.ts type',
     ]);
     expect(g.external.map((x) => `${x.from} -> ${x.pkg}`).sort()).toEqual([
       'shared-kernel/math.ts -> bidi-js',
@@ -106,12 +120,13 @@ describe('architecture ratchet — the scanner', () => {
       'core->handlers: in the baseline but the code has no such edge: remove it from the baseline',
       'files in import cycles (type edges included) 2 < baseline 3: lower the baseline to 2',
       'getDocument( sites 2 > baseline 1',
-      'new dependency direction ui->export (all 1, value 0): not in the baseline',
+      'new dependency direction ui->export (all 2, value 0): not in the baseline',
       'runtime import cycle: core/app.ts, ui/panel.ts',
       "unresolved import main.ts: '../outside'",
       "shared-kernel/math.ts imports core/app.ts: shared-kernel/ imports only itself",
       "shared-kernel/math.ts imports npm 'fflate': not in the kernel allowlist [bidi-js]",
       'types/bad.ts imports export/shape.ts: types/ imports only shared-kernel/, contracts/ and types/',
+      'contracts/leak.ts imports export/shape.ts: contracts/ imports only shared-kernel/, contracts/ and types/',
     ].sort());
   });
 });

@@ -3,6 +3,7 @@ paths:
   - "src/utils/contentStreamEditor.ts"
   - "src/utils/glyphNames.ts"
   - "src/handlers/textEditHandler.ts"
+  - "src/shared-kernel/geometry/matrix.ts"
   - "tests/utils/contentStreamEditor*"
 ---
 
