@@ -393,6 +393,9 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   deploy. The workflow also declares a `pull_request: [master]` trigger, but the project
   is single-dev/single-branch so in practice every run is a push to `master` — there is
   **no human PR review gate** (the local pre-push hook is the safety net; see below).
+  A manual `gh workflow run deploy.yml --ref master` deploys too (developer ruling 2026-10-17); until then the
+  Pages upload and the `deploy` job were push-only, so a dispatch built and tested but deployed nothing (run
+  39067128465). Both run only for `refs/heads/master`, never for a pull request or another ref.
 - **Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high`
   plus one expiring exemption) runs first in CI and is **deploy-blocking**; keep it on. The `overrides`
   block in `package.json` (`brace-expansion`, `fast-uri`, `source-map-js`, `undici`) is a LIVING pin:
