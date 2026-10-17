@@ -24,3 +24,19 @@ upstream since ~2021.
 `_underscore` prefix throughout; oxlint's `no-unused-vars`
 allows unused args/vars only when `_`-prefixed (`argsIgnorePattern`/`varsIgnorePattern`).
 `no-underscore-dangle` is deliberately OFF in `.oxlintrc.json` so it doesn't fight this convention.
+
+### The architecture ratchet is two-sided — edit its baseline in the same commit (2026-10-17)
+
+`tests/tools/architecture.test.ts` (architecture plan step 0) pins `src/`'s import graph to
+`tests/tools/architecture.baseline.json`: the edge count between every pair of top-level directories (all edges and
+runtime edges), the files in import cycles with type edges included (35), the `app._` reach-ins from `ui/` (112) and
+the `getDocument(` sites (13), plus zero runtime import cycles. A count ABOVE its baseline fails, and so does one
+BELOW it — `lower the baseline to N` — because unrecorded slack can be spent again silently; a
+`new dependency direction a->b` fails until it is either removed or added to the baseline on purpose. So a change that
+moves an import edits the JSON **in the same commit**, by hand, and the diff of that file is what a reviewer reads.
+Edges INTO `shared-kernel/`, `contracts/` and `types/` are not counted (shared vocabulary); those three may import
+only each other, `shared-kernel/` only itself plus the npm allowlist `KERNEL_NPM_ALLOWLIST` (today `bidi-js`, ruled
+2026-10-17); `src/*.ts` (the composition root) may import anything. The scanner is a lexer in
+`tests/tools/architectureGraph.ts`, not tsc (TypeScript 7 has no JS API): an unmarked import used only as a type is
+a runtime edge — mark it `import type` to move it. Its fixture tree `tests/tools/fixtures/architecture/` is
+type-checked by tsc and never collected by vitest (no `.test.ts` in it).

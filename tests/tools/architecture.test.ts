@@ -57,7 +57,7 @@ describe('architecture ratchet — the scanner', () => {
     ]);
   });
 
-  it('builds the fixture graph exactly: comments and strings ignored, asset URLs set apart, npm packages named', () => {
+  it('builds the fixture graph exactly: comments and strings ignored, asset URLs set apart, npm packages named, an import leaving the root unresolved', () => {
     const g = buildGraph(join(__dirname, 'fixtures', 'architecture', 'src'));
     const edges = g.edges.map((e) => `${e.from} -> ${e.to} ${e.runtime ? 'runtime' : 'type'}`).sort();
     expect(edges).toEqual([
@@ -68,6 +68,7 @@ describe('architecture ratchet — the scanner', () => {
       'core/app.ts -> ui/panel.ts runtime',
       'export/render.ts -> types/tool.ts runtime',
       'export/render.ts -> ui/side.ts runtime',
+      'main.ts -> ui/side.ts runtime',
       'shared-kernel/math.ts -> core/app.ts runtime',
       'types/bad.ts -> export/shape.ts type',
       'ui/lazy.ts -> types/tool.ts runtime',
@@ -79,11 +80,12 @@ describe('architecture ratchet — the scanner', () => {
       'shared-kernel/math.ts -> fflate',
     ]);
     expect(g.assetImports).toBe(1);
-    expect(g.unresolved).toEqual([]);
+    expect(g.unresolved).toEqual(["main.ts: '../outside'"]);
     expect(g.appUnderscoreInUi).toBe(1);
     expect(g.getDocumentSites).toBe(2);
   });
 
+  // main.ts -> ui/ is absent from the expected list: the composition root may import any directory.
   it('reports every planted violation, and both directions of baseline drift', () => {
     const g = buildGraph(join(__dirname, 'fixtures', 'architecture', 'src'));
     const baseline: Baseline = {
@@ -106,6 +108,7 @@ describe('architecture ratchet — the scanner', () => {
       'getDocument( sites 2 > baseline 1',
       'new dependency direction ui->export (all 1, value 0): not in the baseline',
       'runtime import cycle: core/app.ts, ui/panel.ts',
+      "unresolved import main.ts: '../outside'",
       "shared-kernel/math.ts imports core/app.ts: shared-kernel/ imports only itself",
       "shared-kernel/math.ts imports npm 'fflate': not in the kernel allowlist [bidi-js]",
       'types/bad.ts imports export/shape.ts: types/ imports only shared-kernel/, contracts/ and types/',
