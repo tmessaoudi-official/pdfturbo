@@ -17,7 +17,7 @@ New entries for this area go HERE, not into CLAUDE.md.
 
 ### Supply chain (#37)
 
-**Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high` plus one expiring exemption, see the fifth occurrence below) runs first and is **deploy-blocking**
+**Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high` plus an expiring-exemption list, empty since 2026-11-10 — the fifth occurrence below added its one entry and the seventh removed it) runs first and is **deploy-blocking**
 (a high/critical advisory fails the build before anything deploys). It was briefly disabled
 (`e154540`, 2026-07-28) and **restored the same day** once the blocker was root-caused — keep it on.
 **What the blocker was, so it is recognised next time:** 8 "high" findings that were really ONE
