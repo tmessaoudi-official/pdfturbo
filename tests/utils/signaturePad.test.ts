@@ -209,3 +209,73 @@ describe('SignaturePad — replay', () => {
       }
   });
 });
+
+describe('SignaturePad — logical size (setSize, phone-signature-pad step 4)', () => {
+  // the developer's phone: dpr 2.8125, a 368x147 CSS-px pad (step-3 W4)
+  it('sizes the buffer by dpr, fixes the CSS box in px, and encodes in the LOGICAL size', () => {
+    const { pad, canvas, stroke } = makePad();
+    pad.setSize(368, 147, 2.8125);
+    expect([canvas.width, canvas.height]).toEqual([1035, 413]);
+    expect([canvas.style.width, canvas.style.height]).toEqual(['368px', '147px']);
+    stroke([[10, 10], [300, 120]]);
+    const input = pad.toSignatureInput();
+    expect([input.width, input.height]).toEqual([368, 147]);
+    expect(input.strokes).toEqual([[{ x: 10, y: 10 }, { x: 300, y: 120 }]]);
+  });
+
+  it('scales the context by dpr, so a CSS-px point is drawn at its buffer pixel', () => {
+    const { pad, ctx } = makePad();
+    pad.setSize(250, 100, 2);
+    const m = ctx.getTransform();
+    expect([m.a, m.b, m.c, m.d, m.e, m.f]).toEqual([2, 0, 0, 2, 0, 0]);
+  });
+
+  it('replay fits into the logical size, not the buffer', () => {
+    const { pad } = makePad();
+    pad.setSize(500, 200, 2);
+    pad.replay({ gridWidth: 1023, gridHeight: 341, color: '#000000', lineWidth: 4, strokes: [[{ x: 1023, y: 341 }]] });
+    const s = Math.min(500 / 1023, 200 / 341);
+    const [[p]] = pad.getStrokes();
+    expect(p.x).toBeCloseTo(500, 6);
+    expect(p.y).toBeCloseTo((200 - 341 * s) / 2 + 341 * s, 6);
+  });
+
+  it('clear() wipes the WHOLE buffer, even at a dpr below 1', () => {
+    const { pad, ctx } = makePad();
+    pad.setSize(100, 40, 0.9); // buffer 90x36
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(88, 34, 2, 2); // the buffer's last pixels: outside a scaled clearRect(0,0,90,36)
+    ctx.restore();
+    expect(pad.isEmpty()).toBe(false);
+    pad.clear();
+    expect(pad.isEmpty()).toBe(true);
+  });
+
+  it('a resize of a drawn pad rescales its strokes (contain, centred) instead of losing or misplacing them', () => {
+    const { pad, stroke } = makePad();
+    pad.setSize(300, 120, 1);
+    stroke([[0, 0], [300, 120]]);
+    pad.setSize(600, 240, 1);
+    expect(pad.getStrokes()).toEqual([[{ x: 0, y: 0 }, { x: 600, y: 240 }]]);
+    pad.setSize(400, 400, 1); // portrait: width-bound, centred vertically
+    const s = 400 / 600;
+    const oy = (400 - 240 * s) / 2;
+    const [[a, b]] = pad.getStrokes();
+    expect([a.x, a.y]).toEqual([0, oy]);
+    expect(b.x).toBeCloseTo(400, 9);
+    expect(b.y).toBeCloseTo(oy + 240 * s, 9);
+    expect(pad.toSignatureInput().width).toBe(400);
+  });
+
+  it('a resize mid-stroke ends that stroke, so the next finger is not locked out (a rotation while touching)', () => {
+    const { pad, fire } = makePad();
+    pad.setSize(300, 120, 1);
+    fire('pointerdown', 1, 1, 7); // pointer 7 is never released
+    pad.setSize(300, 120, 1);
+    fire('pointerdown', 9, 9, 8);
+    fire('pointermove', 10, 10, 8);
+    expect(pad.getStrokes()).toEqual([[{ x: 1, y: 1 }], [{ x: 9, y: 9 }, { x: 10, y: 10 }]]);
+  });
+});

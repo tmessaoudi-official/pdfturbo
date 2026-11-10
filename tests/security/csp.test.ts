@@ -37,3 +37,27 @@ describe('M3 #32 — CSP hardening directives', () => {
     expect(csp).toMatch(/default-src\s+'self'/);
   });
 });
+
+describe('pad.html (phone-signature-pad step 4) — the same CSP, a base-path icon, no service worker', () => {
+  const PAD_HTML = resolve(__dirname, '../../pad.html');
+  const csp = (file: string) => {
+    const m = readFileSync(file, 'utf8').match(/http-equiv=["']Content-Security-Policy["']\s+content=(["'])([\s\S]*?)\1/i);
+    if (!m) throw new Error(`no Content-Security-Policy meta tag in ${file}`);
+    return m[2];
+  };
+
+  it('carries exactly the CSP of index.html (a second page must not be a weaker door)', () => {
+    expect(csp(PAD_HTML)).toBe(csp(INDEX_HTML));
+  });
+
+  it('links its icon relative to the base path (a root /favicon.ico would 404 under /pdfturbo/)', () => {
+    expect(readFileSync(PAD_HTML, 'utf8')).toMatch(/<link rel="icon"[^>]*href="\.\/icon\.svg"/);
+  });
+
+  it('its entry never registers the service worker (the phone must not download the editor)', () => {
+    const html = readFileSync(PAD_HTML, 'utf8');
+    const src = html.match(/<script type="module" src="([^"]+)"/)?.[1];
+    expect(src).toBe('/src/padMain.ts');
+    expect(readFileSync(resolve(__dirname, '../..', 'src/padMain.ts'), 'utf8')).not.toMatch(/pwa-register|serviceWorker/);
+  });
+});

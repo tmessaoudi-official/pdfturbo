@@ -48,9 +48,11 @@ export default defineConfig({
   //     grep -rhoE "await import\(['\"][^.'\"][^'\"]*['\"]\)" src/ | sort -u
   // Reproduce the race (it needs BOTH steps, in this order — a lone coverage run passes):
   //     rm -rf node_modules/.vite && npm run test:browser && npm run test:coverage:export
+  // zxing-wasm/reader and qrcode-generator (phone-signature-pad step 4): new to this suite, imported by
+  // tests/browser/pad-page and src/utils/qrCanvas; listed so a late discovery cannot reload mid-suite.
   optimizeDeps: {
     include: ['docx', 'fflate', 'node-forge', 'tesseract.js', '@pdf-lib/fontkit', '@cantoo/pdf-lib',
-      'pdfjs-dist/build/pdf.worker.min.mjs'],
+      'pdfjs-dist/build/pdf.worker.min.mjs', 'zxing-wasm/reader', 'qrcode-generator'],
   },
   test: {
     include: ['tests/browser/**/*.browser.test.ts'],

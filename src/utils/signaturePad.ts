@@ -24,6 +24,8 @@ export class SignaturePad {
   private _strokes: SignaturePoint[][] = [];
   private _current: SignaturePoint[] | null = null;
   private _pointerId: number | null = null;
+  /** The drawing size in CSS px once `setSize` ran; until then the buffer size (the ✍ modal pad never calls it). */
+  private _size: { width: number; height: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: SignaturePadOptions = {}) {
     this.canvas  = canvas;
@@ -85,15 +87,45 @@ export class SignaturePad {
   }
 
   private _dot(x: number, y: number, width: number, color: string): void {
-    this.ctx.beginPath();
-    this.ctx.arc(x, y, width / 2, 0, Math.PI * 2);
-    this.ctx.fillStyle = color;
-    this.ctx.fill();
+    paintDot(this.ctx, x, y, width, color);
+  }
+
+  /** The drawing size in CSS px: what points are recorded in, encoded against and replayed into. */
+  private _logical(): { width: number; height: number } {
+    return this._size ?? { width: this.canvas.width, height: this.canvas.height };
+  }
+
+  /**
+   * Size the pad to `cssWidth` x `cssHeight` CSS px on a `dpr` screen: the buffer gets device pixels (sharp on a
+   * phone), the canvas box is fixed in px (recorded points are CSS px relative to it, so it must not stretch), and the
+   * context is scaled so drawing stays in CSS px. A stroke in progress ends; strokes already drawn are rescaled into the
+   * new size (contain, centred) and redrawn at the pad's own colour and width.
+   */
+  setSize(cssWidth: number, cssHeight: number, dpr: number = window.devicePixelRatio): void {
+    const old = this._logical();
+    const strokes = this._strokes;
+    this.canvas.width = Math.round(cssWidth * dpr);
+    this.canvas.height = Math.round(cssHeight * dpr);
+    this.canvas.style.width = `${cssWidth}px`;
+    this.canvas.style.height = `${cssHeight}px`;
+    this._size = { width: cssWidth, height: cssHeight };
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // a width assignment reset it
+    this.isDrawing = false;
+    this._pointerId = null;
+    this._current = null;
+    const s = Math.min(cssWidth / old.width, cssHeight / old.height);
+    const ox = (cssWidth - old.width * s) / 2;
+    const oy = (cssHeight - old.height * s) / 2;
+    this._strokes = strokes.map((st) => st.map((p) => ({ x: ox + p.x * s, y: oy + p.y * s })));
+    paintStrokes(this.ctx, this._strokes, this.color, this.lineWidth);
   }
 
   /** Wipe the canvas and the recorded strokes, and end any stroke in progress. */
   clear(): void {
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0); // the whole buffer, whatever the dpr scale
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.restore();
     this._strokes = [];
     this._current = null;
     this.isDrawing = false;
@@ -110,7 +142,8 @@ export class SignaturePad {
 
   /** The signature for `encodeSignatureFrames`, in the pad's CURRENT colour and width (PTSIG v1 carries one of each). */
   toSignatureInput(): SignatureInput {
-    return { width: this.canvas.width, height: this.canvas.height, color: this.color, lineWidth: this.lineWidth, strokes: this.getStrokes() };
+    const { width, height } = this._logical();
+    return { width, height, color: this.color, lineWidth: this.lineWidth, strokes: this.getStrokes() };
   }
 
   /**
@@ -120,30 +153,42 @@ export class SignaturePad {
    */
   replay(sig: DecodedSignature): void {
     this.clear();
-    const s = Math.min(this.canvas.width / sig.gridWidth, this.canvas.height / sig.gridHeight);
-    const ox = (this.canvas.width - sig.gridWidth * s) / 2;
-    const oy = (this.canvas.height - sig.gridHeight * s) / 2;
-    const width = sig.lineWidth * s;
+    const { width: w, height: h } = this._logical();
+    const s = Math.min(w / sig.gridWidth, h / sig.gridHeight);
+    const ox = (w - sig.gridWidth * s) / 2;
+    const oy = (h - sig.gridHeight * s) / 2;
     this._strokes = sig.strokes.map((stroke) => stroke.map((p) => ({ x: ox + p.x * s, y: oy + p.y * s })));
-    for (const stroke of this._strokes) {
-      if (stroke.length === 1) {
-        this._dot(stroke[0].x, stroke[0].y, width, sig.color);
-        continue;
-      }
-      this.ctx.beginPath();
-      this.ctx.moveTo(stroke[0].x, stroke[0].y);
-      for (let i = 1; i < stroke.length; i++) this.ctx.lineTo(stroke[i].x, stroke[i].y);
-      this.ctx.strokeStyle = sig.color;
-      this.ctx.lineWidth   = width;
-      this.ctx.lineCap     = 'round';
-      this.ctx.lineJoin    = 'round';
-      this.ctx.stroke();
-    }
+    paintStrokes(this.ctx, this._strokes, sig.color, sig.lineWidth * s);
   }
 
   isEmpty(): boolean {
     const data = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height).data;
     for (let i = 3; i < data.length; i += 4) { if (data[i] > 0) return false; }
     return true;
+  }
+}
+
+function paintDot(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, color: string): void {
+  ctx.beginPath();
+  ctx.arc(x, y, width / 2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+/** Draw strokes as the pad shows them: a round-capped polyline each, a one-point stroke as a dot of the line width. */
+export function paintStrokes(ctx: CanvasRenderingContext2D, strokes: readonly SignaturePoint[][], color: string, width: number): void {
+  for (const stroke of strokes) {
+    if (stroke.length === 1) {
+      paintDot(ctx, stroke[0].x, stroke[0].y, width, color);
+      continue;
+    }
+    ctx.beginPath();
+    ctx.moveTo(stroke[0].x, stroke[0].y);
+    for (let i = 1; i < stroke.length; i++) ctx.lineTo(stroke[i].x, stroke[i].y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = width;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
   }
 }

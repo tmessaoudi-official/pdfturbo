@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -16,6 +17,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'es2020',
+    // Two pages: the editor and the light phone signature pad (phone-signature-pad plan step 4). Vite 8 names the
+    // option `rolldownOptions`; `rollupOptions` is its deprecated alias.
+    rolldownOptions: {
+      input: {
+        index: fileURLToPath(new URL('./index.html', import.meta.url)), // keeps the editor's chunk names (index-*)
+        pad: fileURLToPath(new URL('./pad.html', import.meta.url)),
+      },
+    },
   },
   plugins: [
     VitePWA({

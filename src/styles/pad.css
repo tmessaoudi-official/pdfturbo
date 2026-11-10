@@ -1,0 +1,17 @@
+/* pad.html — the phone signature pad (phone-signature-pad plan step 4). Light on purpose: none of the editor CSS.
+   The canvas box is sized in px by SignaturePad.setSize; nothing here may stretch it (recorded points are CSS px). */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #f4f4f6; color: #111; font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.pad-page { max-width: 640px; margin: 0 auto; padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 10px; }
+.pad-page h1 { font-size: 20px; }
+.pad-hint { color: #444; font-size: 15px; margin-bottom: 10px; }
+.pad-canvas { display: block; background: #fff; touch-action: none; box-shadow: 0 0 0 1px #b8b8c0; border-radius: 4px; }
+.pad-qr { display: block; margin: 0 auto; background: #fff; }
+.pad-count { text-align: center; font-weight: 600; }
+.pad-error { color: #b42318; font-size: 15px; }
+.pad-actions { display: flex; gap: 10px; margin-top: 10px; }
+.pad-actions button { flex: 1; min-height: 48px; font: inherit; font-size: 17px; border-radius: 8px; border: 1px solid #b8b8c0; background: #fff; color: #111; }
+.pad-actions .pad-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.pad-actions button:disabled { opacity: 0.45; }
+.pad-actions button:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+[hidden] { display: none !important; }

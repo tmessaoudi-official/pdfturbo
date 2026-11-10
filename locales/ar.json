@@ -712,5 +712,19 @@
     "generatingMarkdown": "جارٍ إنشاء Markdown…",
     "restoringSession": "جارٍ استعادة الجلسة…",
     "convertingImages": "جارٍ تحويل الصور…"
+  },
+  "pad": {
+    "docTitle": "PDFturbo — التوقيع",
+    "title": "وقّع هنا",
+    "hint": "وقّع بإصبعك، ثم اضغط «تم».",
+    "canvasLabel": "لوحة التوقيع",
+    "clear": "مسح",
+    "done": "تم",
+    "tooComplex": "هذا التوقيع مفصّل أكثر مما تتسع له رموز QR. امسحه ووقّع مرة أخرى بشكل أبسط قليلًا.",
+    "qrLabel": "رمز QR للتوقيع",
+    "qrCount": "رمز QR {{index}} من {{total}}",
+    "scanHint": "ضع هذه الشاشة أمام كاميرا الحاسوب.",
+    "edit": "تعديل",
+    "download": "تنزيل PNG"
   }
 }

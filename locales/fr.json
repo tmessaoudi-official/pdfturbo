@@ -712,5 +712,19 @@
     "generatingMarkdown": "Génération du Markdown…",
     "restoringSession": "Restauration de la session…",
     "convertingImages": "Conversion des images…"
+  },
+  "pad": {
+    "docTitle": "PDFturbo — Signer",
+    "title": "Signez ici",
+    "hint": "Signez avec le doigt, puis touchez Terminé.",
+    "canvasLabel": "Zone de signature",
+    "clear": "Effacer",
+    "done": "Terminé",
+    "tooComplex": "Cette signature est trop détaillée pour les codes QR. Effacez-la et signez à nouveau, un peu plus simplement.",
+    "qrLabel": "Code QR de la signature",
+    "qrCount": "QR {{index}} sur {{total}}",
+    "scanHint": "Présentez cet écran devant la caméra du PC.",
+    "edit": "Modifier",
+    "download": "Télécharger le PNG"
   }
 }

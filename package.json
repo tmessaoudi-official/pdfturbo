@@ -48,6 +48,7 @@
     "prosemirror-tables": "1.8.5",
     "prosemirror-view": "^1.42.9",
     "qr-code-styling": "^1.9.2",
+    "qrcode-generator": "^2.0.4",
     "sortablejs": "^1.15.7",
     "tesseract.js": "^7.0.0",
     "zxing-wasm": "^3.1.6"
