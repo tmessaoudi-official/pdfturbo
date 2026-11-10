@@ -2,8 +2,11 @@
 // WCAG 2.5.3 Label in Name (axe `label-content-name-mismatch`, serious since axe-core 4.14): a control's accessible
 // name must contain its visible text, so a speech-input user can say what they see. `applyTranslations()` copies a
 // `data-i18n-title` into `aria-label`, so for these buttons the title IS the accessible name. The real-Chrome gate
-// (`tests/browser/a11y-axe.browser.test.ts`) checks English only; this file checks all three locales.
+// (`tests/browser/a11y-axe.browser.test.ts`) audits the main view in English and every opened flyout and dialog in all
+// three locales; this file pins the strings in jsdom, so a locale edit fails fast without a browser.
 import { describe, it, expect, afterAll } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import i18next from 'i18next';
 import en from '../../locales/en.json';
 import fr from '../../locales/fr.json';
@@ -32,6 +35,44 @@ describe('Label in Name — the title that becomes the accessible name starts wi
       expect(d.formatting.fontSizeUpTitle.startsWith('A+')).toBe(true); // literal `A+` in index.html
     });
   }
+});
+
+// The seven that sit inside a flyout or the text-options panel (2026-11-10): no gate opened those until the axe gate's
+// every-disclosure pass. This reads the REAL index.html wiring — the visible text a user sees after
+// `applyTranslations()` (the list buttons' word is translated through a `data-i18n` span) against the name it gets —
+// so a title that drifts from its button, or a visible word left in English, fails here in all three locales.
+describe('Label in Name — the flyout and text-options buttons, wired from index.html', () => {
+  const IDS = ['editTextBtn', 'exportDocxBtn', 'exportMdBtn', 'superscriptBtn', 'subscriptBtn',
+    'bulletListBtn', 'numberedListBtn'] as const;
+  afterAll(async () => { await i18next.changeLanguage('en'); document.body.innerHTML = ''; });
+
+  it('each name starts with the button\'s visible text, and the list word is in the UI language', async () => {
+    const html = readFileSync(resolve(__dirname, '../../index.html'), 'utf8');
+    const body = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? '';
+    document.body.innerHTML = body.replace(/<script[\s\S]*?<\/script>/gi, '');
+    localStorage.setItem('i18nextLng', 'en');
+    await initI18n();
+    const failures: string[] = [];
+    for (const lng of ['en', 'fr', 'ar'] as const) {
+      await changeLanguage(lng);
+      for (const id of IDS) {
+        const btn = document.getElementById(id);
+        if (!btn) throw new Error(`#${id} missing from index.html`);
+        const visible = spoken(btn.textContent ?? '');
+        const name = btn.getAttribute('aria-label') ?? '';
+        // Both sides lose a leading pictograph or bullet (✎, •) the same way axe drops it, and the match ends on a word
+        // boundary: axe compares words, so "List" does not satisfy "Liste à puces".
+        const n = spoken(name);
+        const startsWithWord = n.startsWith(visible) && !/[\p{L}\p{N}]/u.test(n.charAt(visible.length));
+        if (!visible || !startsWithWord) failures.push(`${lng} #${id}: "${visible}" vs "${name}"`);
+      }
+      for (const id of ['bulletListBtn', 'numberedListBtn']) {
+        const shown = document.getElementById(id)?.textContent ?? '';
+        if (!shown.endsWith(LOCALES[lng].formatting.list)) failures.push(`${lng} #${id} shows "${shown}"`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
 });
 
 describe('Label in Name — the language globe button', () => {

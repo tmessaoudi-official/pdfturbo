@@ -79,7 +79,7 @@
         </div>
         <div class="draw-flyout" id="textFlyout">
           <button id="addTextBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n="toolbar.addText" data-i18n-title="toolbar.addTextTitle" title="T Text — add text (T)">T Text</button>
-          <button id="editTextBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n-title="toolbar.editTextTitle" title="Edit PDF text (overlay)">✎ <span class="btn-label" data-i18n="toolbar.editTextLabel">Edit Text</span></button>
+          <button id="editTextBtn" class="btn btn-secondary" disabled aria-pressed="false" data-i18n-title="toolbar.editTextTitle" title="Edit Text — click a word to overlay and edit it">✎ <span class="btn-label" data-i18n="toolbar.editTextLabel">Edit Text</span></button>
         </div>
       </div>
       <button id="redactBtn" class="btn btn-icon" disabled aria-pressed="false" data-i18n-title="toolbar.redactTitle" title="Redact (K)">⬛</button>
@@ -140,8 +140,8 @@
         <div class="draw-flyout" id="exportFlyout">
           <button id="previewExportBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.previewExportTitle" title="Preview export positions">👁</button>
           <button id="watermarkBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.watermarkTitle" title="Watermark settings">≋</button>
-          <button id="exportDocxBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportDocxTitle" title="Export as Word document (beta)">DOCX</button>
-          <button id="exportMdBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportMdTitle" title="Export as Markdown (beta)">MD</button>
+          <button id="exportDocxBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportDocxTitle" title="DOCX — export as Word document (beta)">DOCX</button>
+          <button id="exportMdBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportMdTitle" title="MD — export as Markdown (beta)">MD</button>
           <button id="sanitizeBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.sanitizeTitle" title="Sanitize — download a copy with metadata, scripts, external actions and attached files removed">🧹</button>
           <button id="extractPagesBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.extractPagesTitle" title="Extract pages to a new PDF">✂</button>
           <button id="exportTableBtn" class="btn btn-icon" disabled data-i18n-title="toolbar.exportTableTitle" title="Extract a ruled table to CSV">▦</button>
@@ -871,13 +871,13 @@
     </div>
     <div class="wm-field">
       <label><span data-i18n="formatting.baseline">Baseline</span></label>
-      <button id="superscriptBtn" class="btn btn-sm" data-i18n-title="formatting.superscript" title="Superscript">x²</button>
-      <button id="subscriptBtn"   class="btn btn-sm" data-i18n-title="formatting.subscript"   title="Subscript">x₂</button>
+      <button id="superscriptBtn" class="btn btn-sm" data-i18n-title="formatting.superscript" title="x² — superscript">x²</button>
+      <button id="subscriptBtn"   class="btn btn-sm" data-i18n-title="formatting.subscript"   title="x₂ — subscript">x₂</button>
     </div>
     <div class="wm-field">
       <label><span data-i18n="formatting.list">List</span></label>
-      <button id="bulletListBtn"   class="btn btn-sm" data-i18n-title="formatting.bulletList"   title="Bullet list">• List</button>
-      <button id="numberedListBtn" class="btn btn-sm" data-i18n-title="formatting.numberedList" title="Numbered list">1. List</button>
+      <button id="bulletListBtn"   class="btn btn-sm" data-i18n-title="formatting.bulletList"   title="• List — bullet list">• <span data-i18n="formatting.list">List</span></button>
+      <button id="numberedListBtn" class="btn btn-sm" data-i18n-title="formatting.numberedList" title="1. List — numbered list">1. <span data-i18n="formatting.list">List</span></button>
     </div>
     <div class="wm-field">
       <label><span data-i18n="formatting.linkLabel">Link URL</span>

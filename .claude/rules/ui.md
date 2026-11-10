@@ -370,8 +370,9 @@ text in all three locales ("T Text — add text (T)", "Signers — approval sign
 **The leading "T" counts** — axe drops pictographs (👥, 🌐) but not a letter, so "Text — add text (T)" still fails
 (measured with a one-off axe probe, 2026-11-10). The globe button's name is set in CODE, in `updateLangButtons()`
 from `toolbar.langAria` ("Language: EN — change language"), because its visible text is the current language;
-it runs after `applyTranslations()` at both call sites, and the tooltip keeps the plain title. The browser gate
-checks English only; `tests/utils/i18nLabelInName.test.ts` checks all three locales and the globe name per
+it runs after `applyTranslations()` at both call sites, and the tooltip keeps the plain title. The browser gate's
+main-view passes run English (its opened-disclosure passes run en/fr/ar, below);
+`tests/utils/i18nLabelInName.test.ts` checks all three locales and the globe name per
 language (sabotage: dropping the `setAttribute` reds exactly that case). A new button whose visible text and
 title differ needs the same shape.
 
@@ -384,10 +385,25 @@ lead. Fixed the same way ("OCR — recognize text …", "e-Sign — sign with �
 and `a11y-axe.browser.test.ts` gained a **1280 px main-view pass** (red first on exactly those three nodes; it asserts
 `innerWidth` took, so a resize that silently fails cannot make it vacuous). Measured after the fix: every WCAG 2.1 A/AA
 rule clean in en/fr/ar at 414 and 1280 px on the MAIN VIEW with every flyout and panel closed (one-off probe with the
-app CSS; the gate itself runs English). The opened Text and Export flyouts and the text-options panel are not audited
-for Label in Name by any gate: the QA sweep's one axe pass runs on `wcag2a`/`wcag2aa` tags only, and that rule is
-`wcag21a`. `index.html`'s static
+app CSS; the gate's main-view passes run English). `index.html`'s static
 `title=` fallbacks were aligned with `en.json` for all six.
+
+**Opened disclosures — the last seven, same day.** Nothing had audited an OPEN flyout or panel, nor any locale but
+English (the QA sweep's one axe pass runs `wcag2a`/`wcag2aa` tags only; Label in Name is `wcag21a`). A probe that
+opened every `.draw-flyout-wrap` and every `role="dialog"` (3 + 17) at 414 and 1280 px in en/fr/ar found zero
+violations of any impact except Label in Name on seven buttons: `#editTextBtn` (1280 px), `#exportDocxBtn` "DOCX" /
+`#exportMdBtn` "MD" named "Export as …", `#superscriptBtn` "x²" / `#subscriptBtn` "x₂", and the list buttons — whose
+visible "• List" / "1. List" was **hard-coded English in the French and Arabic UI**. Titles now lead with the visible
+text ("DOCX — export as Word document (beta)", "x² — superscript", "• Liste — liste à puces"), and the list word is a
+`data-i18n="formatting.list"` span. (`docxToolbar.bulletList` is a different key — the DOCX editor's toolbar — and was
+left alone.) **Run axe on `document`, never on the opened element**: scoped to the Text flyout, axe passed
+`#editTextBtn` in Arabic that the document-wide run fails (measured). `a11y-axe.browser.test.ts` carries that pass as
+six tests, one per width × locale — as one test the 120 axe runs took 30.8 s at load 8, past the 30 s `testTimeout`,
+and the timed-out body kept opening dialogs under the next test (measured; do not merge them back). Each asserts the
+disclosure is hidden before and RENDERED after opening (`checkVisibility()`), so a selector or class that stops
+working cannot make it vacuous (sabotage: a no-op `open()` reds all six; one FR title reverted reds exactly the two fr
+tests). `tests/utils/i18nLabelInName.test.ts` checks the seven from the real `index.html` in jsdom with a word-boundary
+match — a plain `startsWith` accepted "List" as the start of "Liste à puces".
 
 ### Mobile thumbnail controls = a single ⋮ action menu (F2b, 2026-06-26)
 

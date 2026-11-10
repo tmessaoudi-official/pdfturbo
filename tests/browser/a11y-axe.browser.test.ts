@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { page } from 'vitest/browser';
 import axe, { type AxeResults, type Result } from 'axe-core';
-import { initI18n } from '../../src/utils/i18n';
+import { initI18n, changeLanguage } from '../../src/utils/i18n';
 // Load the real app styles so contrast rules see production colors.
 import '../../src/styles/index.css';
 // Vite serves the real index.html as a string we can parse for its <body>.
@@ -116,6 +116,67 @@ describe('G22 — axe-core WCAG 2.1 A/AA gate (real Chrome)', () => {
       await page.viewport(w0, h0);
     }
   });
+
+  // Every disclosure OPEN, one at a time — every `.draw-flyout-wrap` and every `role="dialog"` — at 414 and 1280 px, in
+  // en/fr/ar. Until 2026-11-10 no gate audited an opened flyout or panel, nor any locale but English, and seven buttons
+  // failed Label in Name there (`#exportDocxBtn` "DOCX" named "Export as Word document (beta)", `#bulletListBtn` "• List"
+  // in English inside the French UI, …). Axe runs on `document`, not on the disclosure: scoped to the flyout it missed
+  // `#editTextBtn` in Arabic (measured). Zero violations of ANY impact: MODERATE_MINOR_CEILING is 0, so this is the same
+  // gate as the main view's, applied to 120 states. ONE test per width × locale (20 axe runs each): as a single test the
+  // 120 runs took 10–15 s quiet but 30.8 s at load 8 — past the 30 s `testTimeout` — and vitest does not abort a timed-out
+  // body, so it kept opening dialogs under the next test, which went red too (measured 2026-11-10).
+  for (const width of [414, 1280]) {
+    for (const lng of ['en', 'fr', 'ar']) {
+      it(`every flyout and dialog opened, ${width} px, ${lng}: zero violations`, async () => {
+        await auditOpenDisclosures(width, lng);
+      });
+    }
+  }
+
+  async function auditOpenDisclosures(width: number, lng: string): Promise<void> {
+    type Disclosure = { name: string; shown: HTMLElement; open: () => void; close: () => void };
+    const states: Disclosure[] = [];
+    for (const wrap of Array.from(document.querySelectorAll<HTMLElement>('.draw-flyout-wrap'))) {
+      const menu = wrap.querySelector<HTMLElement>('.draw-flyout');
+      if (!menu) throw new Error(`flyout #${wrap.id} has no .draw-flyout menu`);
+      states.push({ name: `flyout#${wrap.id}`, shown: menu,
+        open: () => wrap.classList.add('open'), close: () => wrap.classList.remove('open') });
+    }
+    for (const dlg of Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))) {
+      const inline = dlg.style.display; // a few dialogs are hidden by an inline `display:none`, the rest by CSS
+      states.push({ name: `dialog#${dlg.id}`, shown: dlg,
+        open: () => { dlg.classList.add('active'); dlg.style.display = 'flex'; },
+        close: () => { dlg.classList.remove('active'); dlg.style.display = inline; } });
+    }
+    // 3 flyouts + 17 dialogs on 2026-11-10; a selector that silently matched nothing would make this pass vacuous.
+    expect(states.length).toBeGreaterThanOrEqual(20);
+
+    const [w0, h0] = [window.innerWidth, window.innerHeight];
+    const found: string[] = [];
+    try {
+      await page.viewport(width, 900);
+      expect(window.innerWidth).toBe(width); // the pass is vacuous if the resize did not take
+      await changeLanguage(lng);
+      for (const s of states) {
+        expect(s.shown.checkVisibility(), `${s.name} is closed before the pass`).toBe(false);
+        s.open();
+        try {
+          // The pass is vacuous unless the disclosure actually rendered.
+          expect(s.shown.checkVisibility(), `${s.name} did not open`).toBe(true);
+          const results = await runAxe(document);
+          for (const v of results.violations) {
+            for (const n of v.nodes) found.push(`${s.name} ${v.impact}:${v.id}:${n.target.join(' ')}`);
+          }
+        } finally {
+          s.close();
+        }
+      }
+    } finally {
+      await changeLanguage('en');
+      await page.viewport(w0, h0);
+    }
+    expect(found).toEqual([]);
+  }
 
   it('open dialog (help modal): zero critical and zero serious violations', async () => {
     const modal = document.getElementById('helpModal');
