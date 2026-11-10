@@ -358,6 +358,15 @@ describe('encodeSignatureFrames', () => {
     expect([port.gridWidth, port.gridHeight]).toEqual([341, 1023]);
   });
 
+  it('an extreme aspect keeps a shorter side of at least 1 (0 would be refused by the decoder)', () => {
+    // 3000 x 1 → the shorter side rounds to 0.341 → 0; the floor makes it 1
+    const d = decodeSignatureFrames(encodeSignatureFrames({ ...unit([pts([3000, 1])]), width: 3000, height: 1 }).frames);
+    expect([d.gridWidth, d.gridHeight]).toEqual([1023, 1]);
+    expect(d.strokes).toEqual([pts([1023, 0])]);
+    const p = decodeSignatureFrames(encodeSignatureFrames({ ...unit([pts([1, 3000])]), width: 1, height: 3000 }).frames);
+    expect([p.gridWidth, p.gridHeight]).toEqual([1, 1023]);
+  });
+
   it('clamps points drawn past the surface edge onto the grid', () => {
     const d = decodeSignatureFrames(encodeSignatureFrames(unit([pts([-5, 600], [1100, -3])])).frames);
     expect(d.strokes).toEqual([pts([0, 511], [1023, 0])]);
@@ -388,7 +397,8 @@ describe('encodeSignatureFrames', () => {
   });
 
   it('a long hostile stroke (10k zigzag points, nothing to simplify) ends in a typed outcome', () => {
-    // ~0.6 s per tolerance measured (var/claude/ptsig/scale.txt, n·log n); a smooth 20k stroke is ~40 ms
+    // ~0.6 s per tolerance measured (var/claude/ptsig/scale.txt, near n·log n on two shapes); a smooth 20k stroke is
+    // ~40 ms. A zigzag splits evenly, so this does NOT prove the RDP is iterative (the explicit stack in the code does).
     const long = Array.from({ length: 10_000 }, (_, i) => ({ x: (i % 1000) * 1.0, y: i % 2 === 0 ? 100 : 106 }));
     // codeOf rethrows anything that is not a PtsigError, so a RangeError (recursion depth) fails here
     expect(['ok', 'too-large']).toContain(codeOf(() => encodeSignatureFrames(unit([long]))));
@@ -461,19 +471,17 @@ describe('encodeSignatureFrames', () => {
 describe('fuzz (seeded)', () => {
   const BODY_CODES = new Set(['ok', 'range', 'limit', 'trailing', 'truncated', 'empty']);
 
-  function invariantsHold(frames: string[]): void {
+  /** One boolean per decoded signature: a per-point expect() made this fuzz ~4x slower under load. */
+  function invariantsHold(frames: string[]): boolean {
     const d = decodeSignatureFrames(frames);
-    expect(Math.max(d.gridWidth, d.gridHeight)).toBe(1023);
-    expect(d.strokes.length).toBeGreaterThan(0);
-    expect(d.strokes.length).toBeLessThanOrEqual(PTSIG_LIMITS.maxStrokes);
-    for (const s of d.strokes) {
-      expect(s.length).toBeGreaterThan(0);
-      expect(s.length).toBeLessThanOrEqual(PTSIG_LIMITS.maxPointsPerStroke);
-      for (const p of s) {
-        expect(Number.isInteger(p.x) && p.x >= 0 && p.x <= d.gridWidth).toBe(true);
-        expect(Number.isInteger(p.y) && p.y >= 0 && p.y <= d.gridHeight).toBe(true);
-      }
-    }
+    if (Math.max(d.gridWidth, d.gridHeight) !== 1023) return false;
+    if (d.strokes.length === 0 || d.strokes.length > PTSIG_LIMITS.maxStrokes) return false;
+    return d.strokes.every(
+      (s) =>
+        s.length > 0 &&
+        s.length <= PTSIG_LIMITS.maxPointsPerStroke &&
+        s.every((p) => Number.isInteger(p.x) && Number.isInteger(p.y) && p.x >= 0 && p.y >= 0 && p.x <= d.gridWidth && p.y <= d.gridHeight),
+    );
   }
 
   it('class 1 — random alphanumeric text never throws anything but a PtsigError', () => {
@@ -516,6 +524,8 @@ describe('fuzz (seeded)', () => {
       makeBody({ strokes: [[[1, 1], [2, 2]], [[3, 3]]] }),
     ];
     const tally: Record<string, number> = {};
+    const unexpected: string[] = [];
+    let insane = 0;
     for (let i = 0; i < 3000; i++) {
       const b = [...bases[i % bases.length]];
       const kind = Math.floor(r() * 5);
@@ -529,9 +539,11 @@ describe('fuzz (seeded)', () => {
       const frames = seal(b);
       const code = codeOf(() => decodeSignatureFrames(frames));
       tally[code] = (tally[code] ?? 0) + 1;
-      expect(BODY_CODES.has(code)).toBe(true);
-      if (code === 'ok') invariantsHold(frames);
+      if (!BODY_CODES.has(code)) unexpected.push(code);
+      if (code === 'ok' && !invariantsHold(frames)) insane++;
     }
+    expect(unexpected).toEqual([]);
+    expect(insane).toBe(0);
     for (const c of ['ok', 'range', 'limit', 'trailing', 'truncated']) expect(tally[c] ?? 0).toBeGreaterThan(0);
   });
 });
