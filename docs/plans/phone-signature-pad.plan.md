@@ -25,6 +25,8 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-10 18:19] AGREED: Fix the last 7 Label-in-Name buttons (editText, exportDocx, exportMd, superscript, subscript, bulletList, numberedList) with 'visible text — purpose' titles in EN/FR/AR as tabled 2026-11-10; the list buttons' visible word is translated via formatting.list.
 - [2026-11-10 18:19] AGREED: The axe gate gains a pass that opens every flyout and every role=dialog at 414 and 1280 px in en/fr/ar with the 0 ceiling; per-task certification advisor() only.
 - [2026-11-10 19:47] AGREED: Byte budget = one QR of version 19 at EC M (~900 base45 chars, ~600 payload bytes); a bigger signature uses the PTSIG multi-QR sequence. Measured: the developer's Integrated Webcam is 1280x720@30; v19 M read ~3/s in both ladder runs, v23+ only intermittently; the badly-held re-test is left to the step-7 manual check.
+- [2026-11-10 20:18] AGREED: PTSIG v1 frame: magic PT, version 1, index/total nibbles, CRC-32 of the whole body (also the sequence id), then the body slice; one frame = base45 of at most 606 bytes (909 alphanumeric chars = the measured v19 EC M cap), so 598 body bytes per frame.
+- [2026-11-10 20:18] AGREED: Oversize signatures: simplify with RDP tolerance 1 to 4 grid units to fit one QR, then use the fewest frames up to 4 (hybrid); per-task certification advisor() only, the three-lens panel stays at step 8.
 
 ## Formal Plan
 
@@ -34,11 +36,17 @@ appearance image all get it with no change to export, redaction or signing code.
 
 **Design (3C round 1, advisor-reviewed 2026-11-10).**
 
-- **Payload `PTSIG`.** Strokes normalised to a 1024 grid, Ramer–Douglas–Peucker simplification, delta + zigzag varint.
-  Header: magic, format version, frame index/total (a multi-QR sequence stays possible without a format break), aspect,
-  colour, line width. **base45 (RFC 9285) in QR alphanumeric mode**, so it costs about 3% rather than base64's 33%. The byte
-  budget is set by the step-1 hardware test, not guessed. Decoding is strict: caps on strokes, points and bytes; bad magic,
-  version or trailing bytes are rejected. The scanned QR is untrusted input and is only ever drawn onto a canvas.
+- **Payload `PTSIG` v1** (`src/utils/signatureStrokes.ts`, ruled 2026-11-10 20:18). One frame per QR, base45
+  (RFC 9285) so it stays in QR alphanumeric mode (about 3% overhead rather than base64's 33%), at most 909 characters
+  (606 bytes, the measured v19 EC-M budget). Frame: magic `PT`, version 1, frame index/total nibbles (1–4 frames),
+  CRC-32 of the WHOLE body (also the sequence id), then up to 598 body bytes. Body: grid width/height varints (longer
+  side exactly 1023), RGB colour, line width in quarter grid units, stroke count, then per stroke a point count and
+  zigzag-varint deltas (the first point relative to the previous stroke's end). The encoder quantises, drops repeats
+  and simplifies with Ramer–Douglas–Peucker; it picks the fewest frames over tolerances 1–4 grid units, then the
+  lowest tolerance. Decoding is strict, with a typed error code per failure: the length cap runs before base45,
+  canonical varints of at most 3 bytes, stroke (256) and point (1024) caps checked before anything is read, every
+  point on the grid, no trailing bytes. **The CRC detects misreads; it authenticates nothing** — the parser behind it
+  is fuzzed with re-sealed mutated bodies. The scanned QR is untrusted input and is only ever drawn onto a canvas.
 - **Phone page.** `pad.html` is a separate Vite entry with the same CSP. It does NOT register the service worker, so it
   stays light: no editor precache on the phone. Once loaded it signs offline, but there is no offline-first claim. On a
   format mismatch the PC shows "refresh the page on your phone".
@@ -82,8 +90,8 @@ commit.
 | 0C2 | jsdom 31 if vitest 5.1 reads its Blob (codeGenerator cases decide); else keep the hold | S | done | 4b5e4ad; codeGenerator 10/10 on jsdom 31 + vitest 5.1; undici override dropped (jsdom 31 floor ^8.12.3 clears the advisories); 3 tests adapted to jsdom 31 behaviour, 2 sabotages | package.json, package-lock.json, tests/{elements,handlers,utils}/**, .claude/rules/{toolchain,audit-gate,conventions}.md, CLAUDE.md |
 | 0D | Label in Name for the last 7 buttons (flyouts + text-options panel, EN/FR/AR, list word translated) + axe gate opening every flyout and dialog at 414/1280 px in en/fr/ar | M | done | commit "fix(a11y): opened flyouts and panels …" (2026-11-10); both tests red on the 7 → green; sabotages: no-op open() reds 6, one FR title reds the 2 fr tests | locales/**, index.html, tests/browser/a11y-axe.browser.test.ts, tests/utils/i18nLabelInName.test.ts, .claude/rules/{ui,redaction,export,toolchain}.md, KNOWN_ISSUES.md |
 | 1 | Install + audit zxing-wasm; hardware QR readability test (developer's phone + webcam, throwaway page in var/claude); set the byte budget | S | done | zxing-wasm ^3.1.6 (MIT, audit:gate ok, +4 packages); canvas round-trip 16/16 sizes v9–v35, wasm self-hosted, 0 non-localhost requests; 2 webcam runs (1280x720; the phone's px/module and dpr were not recorded) → budget v19 M / ~600 B per QR (Decisions Log 19:47) | package.json, package-lock.json |
-| 2 | PTSIG codec + base45 + strict decode + fuzz, test-first (jsdom) | M | todo | - | src/utils/signatureStrokes.ts, tests/utils/** |
-| 3 | SignaturePad records and replays strokes; `phonePad` flag with a per-key default OFF, test-first | S | todo | - | src/utils/signaturePad.ts, src/config/features.ts, tests/** |
+| 2 | PTSIG codec + base45 + strict decode + fuzz, test-first (jsdom) | M | done | commit "feat(sign): PTSIG v1 codec …" (2026-11-10); 45 tests red (module missing) → green; 15 sabotages each red on their own guard (the varint-limit one first stayed green and its test was moved); synthetic sizes var/claude/ptsig/sizes.txt: 6 strokes / 720 samples = 1 frame at tolerance 1 [Inferred] | src/utils/signatureStrokes.ts, tests/utils/** |
+| 3 | SignaturePad records and replays strokes; `phonePad` flag with a per-key default OFF, test-first; then run a REAL hand-drawn signature through the codec and record its frames, tolerance and encode time before step 4 | S | todo | - | src/utils/signaturePad.ts, src/config/features.ts, tests/** |
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | todo | - | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
 | 5 | PC modal behind the flag: Use phone / Scan (zxing-wasm, camera lifecycle) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | todo | - | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
 | 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | todo | - | README.md, .claude/rules/**, KNOWN_ISSUES.md |
