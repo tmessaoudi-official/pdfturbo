@@ -359,6 +359,22 @@ opacity 0.508 measured `#6f787f` (4.49, FAIL) when its real background is `#6c75
 8 phantom violations whose count drifted run to run with load timing. `scripts/qa-sweep.mjs` now waits
 for `document.getAnimations()` to settle before running axe.
 
+### Label in Name: an accessible name starts with the visible text — axe-core 4.14 (2026-11-10)
+
+axe-core 4.14 raised `label-content-name-mismatch` (WCAG 2.5.3) to **serious**, so the static gate
+(`a11y-axe.browser.test.ts`) went red on four buttons whose `data-i18n-title`, which `applyTranslations()`
+copies into `aria-label`, did not contain the visible text: `#textModeBtn` "T Text" named "Add Text (T)",
+`#signersBtn` "👥 Signers", `#fontSizeDownBtn` "A−", `#langGlobeBtn` "🌐 EN" named "Change language". A
+speech-input user says what they see ("click Signers") and nothing answers. The titles now start with the visible
+text in all three locales ("T Text — add text (T)", "Signers — approval signatures …", "A− — decrease font size").
+**The leading "T" counts** — axe drops pictographs (👥, 🌐) but not a letter, so "Text — add text (T)" still fails
+(measured with a one-off axe probe, 2026-11-10). The globe button's name is set in CODE, in `updateLangButtons()`
+from `toolbar.langAria` ("Language: EN — change language"), because its visible text is the current language;
+it runs after `applyTranslations()` at both call sites, and the tooltip keeps the plain title. The browser gate
+checks English only; `tests/utils/i18nLabelInName.test.ts` checks all three locales and the globe name per
+language (sabotage: dropping the `setAttribute` reds exactly that case). A new button whose visible text and
+title differ needs the same shape.
+
 ### Mobile thumbnail controls = a single ⋮ action menu (F2b, 2026-06-26)
 
 The per-thumbnail controls

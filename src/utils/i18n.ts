@@ -107,5 +107,11 @@ function updateLangButtons(): void {
   });
   const labels: Record<string, string> = { en: 'EN', fr: 'FR', ar: 'ع' };
   const globeBtn = document.getElementById('langGlobeBtn');
-  if (globeBtn) globeBtn.textContent = '🌐 ' + (labels[current] ?? current.toUpperCase());
+  if (globeBtn) {
+    const shown = labels[current] ?? current.toUpperCase();
+    globeBtn.textContent = '🌐 ' + shown;
+    // WCAG 2.5.3 Label in Name: the accessible name must contain the visible "EN"/"FR"/"ع", so it is set here after
+    // `applyTranslations()` copied the plain title ("Change language") into aria-label. The tooltip keeps the title.
+    globeBtn.setAttribute('aria-label', t('toolbar.langAria', { lang: shown }));
+  }
 }

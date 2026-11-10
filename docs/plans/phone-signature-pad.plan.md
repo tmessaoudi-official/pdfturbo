@@ -18,6 +18,7 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-10 11:17] AGREED: Before the phone pad, fix the red audit gate and upgrade dependencies: A audit fix, B in-range minors/patches, C1 vite-plugin-pwa 2, C2 jsdom 31 if vitest 5.1 reads its Blob — one commit each; i18next 27 (released 2026-11-10) deferred ~2 weeks.
 - [2026-11-10 11:54] AGREED: pdfjs-dist held at ~6.3.289 in this batch: 6.4 loses DOCX font names (commonObjs lookup), 6.5 changes the multi-stream parse the prune/load guard mirror; 6.4/6.5 is a separate task.
 - [2026-11-10 11:54] AGREED: axe-core 4.14 adopted with a fix of the 4 WCAG 2.5.3 Label-in-Name buttons (langGlobeBtn, textModeBtn, signersBtn, fontSizeDownBtn) in EN/FR/AR, own commit; names start with the visible text.
+- [2026-11-10 12:10] ASSUMED (review): textModeBtn name is 'T Text — add text (T)', not the ruled example 'Text — add text (T)': an axe 4.14 probe fails the example (the visible text is 'T Text'; axe strips pictographs, not the letter T); the ruling's principle (start with the visible text) decides it. Alternatives: aria-hidden on the T glyph (needs a markup split of a data-i18n textContent).
 
 ## Formal Plan
 
@@ -69,8 +70,8 @@ commit.
 | # | Step | Size | State | Evidence | Files |
 |---|------|------|-------|----------|-------|
 | 0A | Audit fix: node-forge ^1.4.3, vite ^8.3.7, undici override ^8.12.4 (master gate red since before this plan) | S | done | fd10323 | package.json, package-lock.json, .claude/rules/audit-gate.md, .claude/rules/toolchain.md |
-| 0B | In-range minors/patches (vitest 5.1, playwright 1.65, oxlint 1.93, pdfjs-dist 6.5 + vendored assets, docx, prosemirror, i18next 26.7, axe-core, …) | M | todo | - | package.json, package-lock.json, public/pdfjs/** |
-| 0B2 | axe-core 4.14 + the 4 Label-in-Name names (EN/FR/AR), a11y test red first | S | todo | - | package.json, package-lock.json, locales/**, src/utils/i18n.ts, tests/** |
+| 0B | In-range minors/patches (vitest 5.1, playwright 1.65, oxlint 1.93, pdfjs-dist 6.5 + vendored assets, docx, prosemirror, i18next 26.7, axe-core, …) | M | done | 4ccb8ff (pdfjs-dist held ~6.3.289, axe-core held ~4.13 for 0B2) | package.json, package-lock.json, src/utils/i18n.ts, src/core/globalErrorBoundary.ts, tests/** |
+| 0B2 | axe-core 4.14 + the 4 Label-in-Name names (EN/FR/AR), a11y test red first | S | done | this commit; a11y-axe red→green, tests/utils/i18nLabelInName.test.ts 4 red→green, sabotage reds the globe case | package.json, package-lock.json, locales/**, src/utils/i18n.ts, tests/utils/i18nLabelInName.test.ts, .claude/rules/{ui,redaction,export,toolchain}.md, KNOWN_ISSUES.md |
 | 0C1 | vite-plugin-pwa 2.0 (workbox-build/window peers) | M | todo | - | package.json, package-lock.json, vite.config.ts |
 | 0C2 | jsdom 31 if vitest 5.1 reads its Blob (codeGenerator cases decide); else keep the hold | S | todo | - | package.json, package-lock.json, .claude/rules/toolchain.md |
 | 1 | Install + audit zxing-wasm; hardware QR readability test (developer's phone + webcam, throwaway page in var/claude); set the byte budget | S | todo | - | package.json, package-lock.json |

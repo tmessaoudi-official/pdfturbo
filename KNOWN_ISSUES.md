@@ -563,7 +563,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **Seventeen values are pending** — `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone 2), `toast.exportResourcesUnreadable` (new, SEC-1,
+  read, and it is recorded as one. **Twenty-one values are pending** — `toolbar.addTextTitle`, `toolbar.signersTitle` and `formatting.fontSizeDownTitle` (re-worded so the accessible name starts with the visible text, WCAG 2.5.3, axe-core 4.14 on 2026-11-10) and `toolbar.langAria` (new, same change), `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone 2), `toast.exportResourcesUnreadable` (new, SEC-1,
   2026-10-08) and the fourteen below (this line said three from WS7 round 10 on and
   missed five later keys: `toast.pdfLoadRefused` (WS7 round 15), `toast.exportLayersConflict` (WS8),
   `thumbnail.previewUnavailable` (A6), `toolbar.clearRecentFiles` and `progress.ocrLoadingModel` (limits rows
