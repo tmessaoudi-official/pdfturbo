@@ -76,5 +76,12 @@ describe('the pad page end to end', () => {
     const sig = decodeSignatureFrames(texts);
     expect(sig.strokes.length).toBe(2);
     expect(sig.strokes[1]).toHaveLength(1);
+    // where the ink landed: the drag started at CSS (20, 30) on a pad whose longer side maps to 1023 grid units
+    const { width } = page.pad.toSignatureInput();
+    const k = 1023 / width;
+    expect(Math.abs(sig.strokes[0][0].x - 20 * k)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sig.strokes[0][0].y - 30 * k)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sig.strokes[1][0].x - 200 * k)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sig.strokes[1][0].y - 40 * k)).toBeLessThanOrEqual(1);
   });
 });
