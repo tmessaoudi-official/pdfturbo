@@ -375,6 +375,20 @@ checks English only; `tests/utils/i18nLabelInName.test.ts` checks all three loca
 language (sabotage: dropping the `setAttribute` reds exactly that case). A new button whose visible text and
 title differ needs the same shape.
 
+**The gate was blind at desktop width — three more, same day.** The vitest browser iframe is 414 px wide, where the
+toolbar hides its `.btn-label` text, so the axe gate had only ever audited the MOBILE toolbar; and the QA sweep, which
+does run at 1440 px, runs axe with the `wcag2a`/`wcag2aa` tags only, while Label in Name is a WCAG 2.1 rule
+(`wcag21a`). A per-locale probe at 1280 px found `#ocrBtn` ("OCR", named "Recognize text … (OCR)"), `#signBtn`
+("e-Sign") and `#fontSizeUpBtn` ("A+") — "(OCR)" at the END of the name does not satisfy axe; the visible text must
+lead. Fixed the same way ("OCR — recognize text …", "e-Sign — sign with … (PKCS#12)", "A+ — increase font size"),
+and `a11y-axe.browser.test.ts` gained a **1280 px main-view pass** (red first on exactly those three nodes; it asserts
+`innerWidth` took, so a resize that silently fails cannot make it vacuous). Measured after the fix: every WCAG 2.1 A/AA
+rule clean in en/fr/ar at 414 and 1280 px on the MAIN VIEW with every flyout and panel closed (one-off probe with the
+app CSS; the gate itself runs English). The opened Text and Export flyouts and the text-options panel are not audited
+for Label in Name by any gate: the QA sweep's one axe pass runs on `wcag2a`/`wcag2aa` tags only, and that rule is
+`wcag21a`. `index.html`'s static
+`title=` fallbacks were aligned with `en.json` for all six.
+
 ### Mobile thumbnail controls = a single ⋮ action menu (F2b, 2026-06-26)
 
 The per-thumbnail controls

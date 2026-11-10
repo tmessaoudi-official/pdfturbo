@@ -18,7 +18,10 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-10 11:17] AGREED: Before the phone pad, fix the red audit gate and upgrade dependencies: A audit fix, B in-range minors/patches, C1 vite-plugin-pwa 2, C2 jsdom 31 if vitest 5.1 reads its Blob — one commit each; i18next 27 (released 2026-11-10) deferred ~2 weeks.
 - [2026-11-10 11:54] AGREED: pdfjs-dist held at ~6.3.289 in this batch: 6.4 loses DOCX font names (commonObjs lookup), 6.5 changes the multi-stream parse the prune/load guard mirror; 6.4/6.5 is a separate task.
 - [2026-11-10 11:54] AGREED: axe-core 4.14 adopted with a fix of the 4 WCAG 2.5.3 Label-in-Name buttons (langGlobeBtn, textModeBtn, signersBtn, fontSizeDownBtn) in EN/FR/AR, own commit; names start with the visible text.
-- [2026-11-10 12:10] ASSUMED (review): textModeBtn name is 'T Text — add text (T)', not the ruled example 'Text — add text (T)': an axe 4.14 probe fails the example (the visible text is 'T Text'; axe strips pictographs, not the letter T); the ruling's principle (start with the visible text) decides it. Alternatives: aria-hidden on the T glyph (needs a markup split of a data-i18n textContent).
+- [2026-11-10 12:10] AGREED (ratified ASSUMED): textModeBtn name is 'T Text — add text (T)', not the ruled example 'Text — add text (T)': an axe 4.14 probe fails the example (the visible text is 'T Text'; axe strips pictographs, not the letter T); the ruling's principle (start with the visible text) decides it. Alternatives: aria-hidden on the T glyph (needs a markup split of a data-i18n textContent).
+- [2026-11-10 14:36] AGREED: The 23 gitignored zz* probe files (2026-10-01..17 review rounds) moved from tests/tools/ to var/claude/zz-probes-2026-10/: two wrote to a dead session's scratchpad and failed the local pre-push hook.
+- [2026-11-10 14:36] AGREED: 6C for the dependency phase (0A-0C2) is advisor() only; the three-lens panel stays at the milestone end (step 8).
+- [2026-11-10 14:40] AGREED: Fix three more Label-in-Name buttons found at 1280 px (ocrBtn, signBtn, fontSizeUpBtn) like the first four, and widen the axe gate with a 1280 px pass; the CI gate only ran at 414 px and the sweep runs wcag2a/aa tags only.
 
 ## Formal Plan
 

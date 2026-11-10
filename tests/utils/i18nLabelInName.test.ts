@@ -23,6 +23,14 @@ describe('Label in Name — the title that becomes the accessible name starts wi
       // `#fontSizeDownBtn`'s visible text is the literal `A−` (U+2212) in index.html, not a locale string.
       expect(d.formatting.fontSizeDownTitle.startsWith('A−')).toBe(true);
     });
+    // These three show their text only at desktop width (`.btn-label` is hidden in the 414 px test iframe), which is
+    // why the axe gate missed them until it gained a 1280 px pass (2026-11-10).
+    it(`${lng}: OCR, e-Sign and A+ buttons`, () => {
+      expect(d.toolbar.ocrTitle.startsWith(d.toolbar.ocrLabel)).toBe(true);
+      expect(d.toolbar.signCertTitle.startsWith(d.toolbar.signCertLabel)).toBe(true);
+      expect(d.toolbar.signCertTitle).toContain('PKCS#12');
+      expect(d.formatting.fontSizeUpTitle.startsWith('A+')).toBe(true); // literal `A+` in index.html
+    });
   }
 });
 

@@ -15,6 +15,7 @@
  * the count can't silently grow, without forcing WCAG perfection in one pass.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
+import { page } from 'vitest/browser';
 import axe, { type AxeResults, type Result } from 'axe-core';
 import { initI18n } from '../../src/utils/i18n';
 // Load the real app styles so contrast rules see production colors.
@@ -90,6 +91,30 @@ describe('G22 — axe-core WCAG 2.1 A/AA gate (real Chrome)', () => {
 
     // Baseline guard: moderate/minor may exist but must not balloon.
     expect(counts.moderate + counts.minor).toBeLessThanOrEqual(MODERATE_MINOR_CEILING);
+  });
+
+  // The browser runner's iframe is 414 px wide, where the toolbar hides its `.btn-label` text — so until 2026-11-10 this
+  // gate only ever audited the MOBILE toolbar. At desktop width the labels are visible, and axe-core 4.14's Label in Name
+  // rule (WCAG 2.5.3, serious) failed three buttons there that nothing saw (the QA sweep runs wcag2a/aa tags only).
+  it('main view at desktop width (1280 px): zero critical and zero serious violations', async () => {
+    const [w0, h0] = [window.innerWidth, window.innerHeight];
+    await page.viewport(1280, 900);
+    try {
+      expect(window.innerWidth).toBe(1280); // the pass is vacuous if the resize did not take
+      const results = await runAxe(document);
+      const counts = summarize(results);
+      // eslint-disable-next-line no-console
+      console.log('[axe main-view 1280] impact counts:', JSON.stringify(counts));
+      if (results.violations.length) {
+        // eslint-disable-next-line no-console
+        console.log('[axe main-view 1280] violations:\n' + describeViolations(results.violations));
+      }
+      const blocking = results.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious');
+      expect(blocking.flatMap((v) => v.nodes.map((n) => `${v.impact}:${v.id}:${n.target.join(' ')}`))).toEqual([]);
+      expect(counts.moderate + counts.minor).toBeLessThanOrEqual(MODERATE_MINOR_CEILING);
+    } finally {
+      await page.viewport(w0, h0);
+    }
   });
 
   it('open dialog (help modal): zero critical and zero serious violations', async () => {
