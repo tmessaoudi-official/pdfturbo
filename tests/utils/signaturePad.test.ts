@@ -72,6 +72,25 @@ describe('SignaturePad — recording', () => {
     expect(pad.getStrokes()).toEqual([[{ x: 1, y: 1 }], [{ x: 4, y: 4 }]]);
   });
 
+  it('a lost pointer capture ends the stroke, so the next finger can draw (the modal closed mid-stroke)', () => {
+    const { pad, fire } = makePad();
+    fire('pointerdown', 1, 1, 7);
+    fire('lostpointercapture', 1, 1, 7); // the canvas was hidden; its pointerup lands elsewhere
+    fire('pointerdown', 9, 9, 8);
+    fire('pointerup', 9, 9, 8);
+    expect(pad.getStrokes()).toEqual([[{ x: 1, y: 1 }], [{ x: 9, y: 9 }]]);
+  });
+
+  it('clear() mid-stroke ends the drawing state too, so a new pointer is not locked out', () => {
+    const { pad, fire } = makePad();
+    fire('pointerdown', 1, 1, 7); // never released
+    pad.clear(); // openModal() calls this
+    fire('pointerdown', 9, 9, 8);
+    fire('pointermove', 10, 10, 8);
+    fire('pointermove', 11, 11, 7); // the old pointer cannot draw any more
+    expect(pad.getStrokes()).toEqual([[{ x: 9, y: 9 }, { x: 10, y: 10 }]]);
+  });
+
   it('a mouse without the primary button pressed does not start a stroke (unchanged)', () => {
     const { pad, fire } = makePad();
     fire('pointerdown', 1, 1, 1, { pointerType: 'mouse', buttons: 2 });

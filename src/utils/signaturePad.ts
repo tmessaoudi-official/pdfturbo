@@ -40,6 +40,9 @@ export class SignaturePad {
     this.canvas.addEventListener('pointerup',     (e) => this._stopDrawing(e));
     this.canvas.addEventListener('pointercancel', (e) => this._stopDrawing(e));
     this.canvas.addEventListener('pointerleave',  (e) => this._stopDrawing(e));
+    // the canvas hidden mid-stroke (the modal closed) releases the capture and its pointerup lands elsewhere:
+    // without this the pad would stay "drawing" for a pointer that is gone and ignore every later one
+    this.canvas.addEventListener('lostpointercapture', (e) => this._stopDrawing(e));
   }
 
   private _startDrawing(e: PointerEvent): void {
@@ -88,10 +91,13 @@ export class SignaturePad {
     this.ctx.fill();
   }
 
+  /** Wipe the canvas and the recorded strokes, and end any stroke in progress. */
   clear(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this._strokes = [];
     this._current = null;
+    this.isDrawing = false;
+    this._pointerId = null;
   }
   getDataURL():               string  { return this.canvas.toDataURL(); }
   setLineWidth(w: number):    void    { this.lineWidth = w; }
