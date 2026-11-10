@@ -17,6 +17,18 @@ export function t(key: string, opts?: Record<string, string | number>): string {
   return String(i18next.t(key as any, opts as any));
 }
 
+/**
+ * Like `t`, but safe before `initI18n()` resolves: until i18next has started it reads the ENGLISH text straight from the
+ * bundled `en.json` (the key itself when that has none). Only for code that can run before start-up — the global error
+ * boundary. i18next 26.7+ returns '' from `t()` before `init()` (26.4 returned the key), which blanked that toast.
+ */
+export function tBeforeInit(key: string): string {
+  if (i18next.isInitialized) return t(key);
+  let node: unknown = en;
+  for (const part of key.split('.')) node = (node as Record<string, unknown> | undefined)?.[part];
+  return typeof node === 'string' ? node : key;
+}
+
 /** Apply translations to all [data-i18n*] elements in the document. */
 export function applyTranslations(): void {
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(el => {

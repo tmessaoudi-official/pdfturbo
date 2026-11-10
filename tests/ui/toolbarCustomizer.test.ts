@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import i18next from 'i18next';
 import Sortable from 'sortablejs';
 import { ToolbarCustomizer } from '../../src/ui/toolbarCustomizer';
 import type { ILayoutStorage } from '../../src/ui/layoutStorage';
+
+// Production builds this UI only after `await initI18n()` (main.ts). Start i18next the same way, with no resources so `t()`
+// returns the key: i18next 26.7+ returns '' from `t()` before `init()` (26.4 returned the key).
+beforeAll(async () => { await i18next.init({ lng: 'en', resources: {} }); });
 
 vi.mock('sortablejs', () => ({
   default: vi.fn().mockImplementation(function SortableMock() {

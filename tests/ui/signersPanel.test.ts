@@ -3,8 +3,13 @@
  * F-D D2 — guided Signers panel: the pure caption builder, ISO date helper, and
  * the open/draw/close flow that arms a captioned signature placement.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import i18next from 'i18next';
 import { buildSignerCaption, isoDate, SignersPanel, type ISignersContext } from '../../src/ui/signersPanel';
+
+// Production builds this UI only after `await initI18n()` (main.ts). Start i18next the same way, with no resources so `t()`
+// returns the key: i18next 26.7+ returns '' from `t()` before `init()` (26.4 returned the key).
+beforeAll(async () => { await i18next.init({ lng: 'en', resources: {} }); });
 
 const FIXED = new Date(2026, 5, 18); // 2026-06-18 (month is 0-based)
 

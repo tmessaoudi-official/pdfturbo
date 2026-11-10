@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { installGlobalErrorBoundary } from '../../src/core/globalErrorBoundary';
 import { LogBuffer } from '../../src/core/logBuffer';
 import type { IErrorReporter } from '../../src/contracts/errorReporter';
+import en from '../../locales/en.json';
 
 function makeReporter() {
   const calls: Array<{ method: string; key: string; err?: unknown }> = [];
@@ -64,7 +65,10 @@ describe('installGlobalErrorBoundary', () => {
     window.dispatchEvent(new ErrorEvent('error', { error: new Error('early'), message: 'early' }));
 
     const toast = document.getElementById('toast');
-    expect(toast?.textContent?.length).toBeGreaterThan(0);
+    // i18n is not started yet here, as in production before `initI18n()` resolves. i18next 26.7+ returns '' from
+    // `t()` before `init()` (26.4 returned the raw key), so the toast would be blank — an invisible failure. Before
+    // i18n starts the English message is shown; after, the translated one (the reporter path above).
+    expect(toast?.textContent).toBe(en.toast.unexpectedError);
     expect(toast?.className).toContain('show');
     // Still recorded to the buffer even without a reporter.
     expect(log.entries().length).toBeGreaterThan(0);

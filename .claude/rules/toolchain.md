@@ -49,6 +49,30 @@ checks it at SETUP and stops the run if a vitest upgrade reshapes it: re-check t
 cleans up itself, and if so delete the file and its `globalSetup` line. `vitest.browser.config.ts` does
 not need it: a full `npm run test:browser` left 0 such dirs (measured 2026-09-28).
 
+### `pdfjs-dist` is held at ~6.3.289 — 6.4 and 6.5 each change behaviour the export depends on (2026-11-10)
+
+The 2026-11-10 upgrade took every in-range dependency up except this one, and each step was MEASURED by downgrading
+it alone with the rest held new. **6.4.299** resolves `page.commonObjs.get(fontName)` (`exportService.ts`, the flow
+export's `FontInfoMap`) to nothing usable after `getTextContent` alone, so the DOCX font name falls back to pdf.js's
+internal id: `expected 'g_d0_f1' to be 'AokinMincho'` (`tests/browser/docx-font-names.browser.test.ts`, 2 cases; green on
+6.3.289). **6.5.438** also changes how a page's content streams are read across their boundary — an inline image or a
+comment running into the next stream, a stale stream state — which `scanNamedOps(…, { pdfjs: true })` and the load guard
+mirror on purpose (`redaction.md` § "A removed page rode back in", row 10: "the mirror follows pdf.js 6.3.289"): 8 cases
+red in `inlineImagePdfjs`, `prunePdfjsDifferential`, `pdfLoadGuard` and `ws8AuditShapes`, all green on 6.4.299 and
+6.3.289. `package.json` therefore has `"pdfjs-dist": "~6.3.289"` (patch-only). **Moving it is its own task** (developer
+ruling 2026-11-10): first trace the 6.4 font lookup, then re-derive the prune's mirror against 6.5's `Parser` and
+preprocessor with the oracle tests as the check — never relax an oracle case to make it pass. `prepare-pdfjs-assets.mjs`
+re-copies `public/pdfjs/` from `node_modules` before dev, build and the browser suite, so the vendored assets follow the
+installed version by themselves.
+
+**i18next 26.7 (adopted the same day) returns `''` from `t()` before `init()`**; 26.4 returned the key [Verified: a
+node probe, `before init: ""`, `after init, no resources: "toast.x"`]. Production builds the UI only after
+`await initI18n()` (`main.ts`), so the one live path was the global error boundary's toast, which can fire before
+start-up and went blank: it now reads `tBeforeInit`, the English text from the bundled `en.json` until i18next starts
+(`tests/core/globalErrorBoundary.test.ts`, red first). A jsdom test that builds UI reading `t()` starts i18next the way
+production does (`tests/ui/signersPanel.test.ts`, `toolbarCustomizer.test.ts`: `i18next.init({ lng: 'en', resources: {} })`,
+so `t()` returns the key its assertions read). i18next 27 (released 2026-11-10) is deferred about two weeks.
+
 ### `jsdom` is held at 30.0.x — vitest 5.0.2's Blob shim cannot read 30.1's Blob (2026-09-29)
 
 The 2026-09-29 upgrade-to-latest took every dependency to its newest release except this one, and the reason is

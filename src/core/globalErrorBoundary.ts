@@ -11,7 +11,7 @@
 // protects the user's data, the dev console must still see the original event, and
 // suppressing it could hide a recoverable state. The boundary only *observes*.
 
-import { t } from '../utils/i18n';
+import { tBeforeInit } from '../utils/i18n';
 import type { IErrorReporter } from '../contracts/errorReporter';
 import type { ILogBuffer } from './logBuffer';
 
@@ -35,7 +35,7 @@ function extractError(e: Event): unknown {
 function domFallbackToast(): void {
   const toast = document.getElementById('toast');
   if (toast) {
-    toast.textContent = t(TOAST_KEY);
+    toast.textContent = tBeforeInit(TOAST_KEY);
     toast.className = 'show';
   }
 }
