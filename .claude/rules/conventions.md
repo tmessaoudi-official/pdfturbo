@@ -9,7 +9,9 @@ Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, 
 ### Tests run in jsdom
 
 Canvas rendering, real PDF rasterization, and pointer gestures
-are not exercised by `npm run test`. There is now a real-browser harness — `npm run test:browser`
+are not exercised by `npm run test`. (Since jsdom 31, 2026-11-10, `getContext('2d')` returns a real context — the
+optional `@napi-rs/canvas` peer, installed by pdfjs-dist — but no jsdom test rasterises a page, and a test that needs
+"no canvas" stubs it: `toolchain.md` § "`jsdom` is held at 30.0.x", the RESOLVED paragraph.) There is now a real-browser harness — `npm run test:browser`
 (`tests/browser/*.browser.test.ts`, real Chrome) — that DOES exercise these; use it for
 editor/export/DnD changes alongside `npm run dev` manual checks. CI runs both suites (deploy.yml).
 

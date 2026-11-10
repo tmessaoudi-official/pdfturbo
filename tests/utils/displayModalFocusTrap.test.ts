@@ -53,16 +53,18 @@ describe('attachDisplayModalFocusTrap', () => {
     const { modal, button } = buildModal();
     attachDisplayModalFocusTrap(modal, ':scope > div');
 
-    // Mirror the real open paths (pdfPassword / extractPages focus their input first).
-    button.focus();
+    // Mirror the real open paths (`documentLoader` pdfPassword / `extractPagesBinder`): show the modal, focus a field
+    // in the same task, and only then does the observer run. Focusing BEFORE the show is not a real path — a hidden
+    // element cannot take focus (browsers, and jsdom since 31).
     modal.style.display = 'flex';
+    button.focus();
     await flush();
 
     expect(document.activeElement).toBe(button);
   });
 
   it('tears the trap down once the modal is hidden again', async () => {
-    const { modal, button } = buildModal();
+    const { modal } = buildModal();
     attachDisplayModalFocusTrap(modal, ':scope > div');
 
     modal.style.display = 'flex';
@@ -70,10 +72,14 @@ describe('attachDisplayModalFocusTrap', () => {
     modal.style.display = 'none';
     await flush();
 
-    // With the trap gone, Tab from the last focusable is NOT forced back to the first.
-    button.focus();
-    panelOf(modal).dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-    expect(document.activeElement).toBe(button);
+    // A hidden element cannot take focus (browsers, and jsdom since 31), so the probe is the listener itself: a live
+    // trap cancels a Tab whose focus is outside the panel and pulls focus to the first field; a torn-down one leaves
+    // the event and the focus alone.
+    (document.activeElement as HTMLElement | null)?.blur();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    panelOf(modal).dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('returns focus to the trigger element on close', async () => {

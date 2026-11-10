@@ -180,7 +180,7 @@ on :4173 — i.e. the BUILT artifact that actually deploys, not the dev server. 
 download: the script prefers a usable build under `PLAYWRIGHT_BROWSERS_PATH` (skipping
 chromium-1194) and otherwise falls back to the same system Chrome `test:browser` uses. Needs `npm run dev` serving and `npx playwright install chromium` (the preinstalled
 chromium-1194 is refused on purpose — see the container note in `toolchain.md`). It answers "does the product
-work?", which **neither** vitest suite does: jsdom has no canvas and the browser suite mounts
+work?", which **neither** vitest suite does: jsdom never rasterises a page (since jsdom 31 it has a bare 2D canvas, nothing more) and the browser suite mounts
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
 UI crawl is over **disclosure depth** (only 8 of 141 buttons are visible on a freshly loaded document)
@@ -398,7 +398,7 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   39067128465). Both run only for `refs/heads/master`, never for a pull request or another ref.
 - **Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high`
   plus an expiring-exemption list, empty since 2026-11-10) runs first in CI and is **deploy-blocking**; keep it on. The `overrides`
-  block in `package.json` (`brace-expansion`, `fast-uri`, `source-map-js`, `undici`) is a LIVING pin:
+  block in `package.json` (`brace-expansion`, `fast-uri`, `source-map-js`; `undici` left it 2026-11-10) is a LIVING pin:
   re-audit before every push, never with `--offline` (a false green), and never widen
   `scripts/audit-gate-allowlist.json` for convenience. The seven occurrences and the former exemption's evidence:
   `.claude/rules/audit-gate.md`. OCR traineddata stays SHA-256-pinned (`scripts/prepare-ocr-assets.mjs`);

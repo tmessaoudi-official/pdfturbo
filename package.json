@@ -61,7 +61,7 @@
     "@vitest/ui": "^5.1.0",
     "axe-core": "^4.14.0",
     "fake-indexeddb": "^6.2.8",
-    "jsdom": "~30.0.1",
+    "jsdom": "^31.0.0",
     "oxlint": "^1.93.0",
     "playwright": "^1.65.0",
     "typescript": "^7.0.2",
@@ -72,7 +72,6 @@
   "overrides": {
     "brace-expansion": "^5.0.12",
     "fast-uri": "^3.1.8",
-    "source-map-js": "^1.2.2",
-    "undici": "^8.12.4"
+    "source-map-js": "^1.2.2"
   }
 }

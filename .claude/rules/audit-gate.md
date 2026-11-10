@@ -12,7 +12,7 @@ paths:
 Moved verbatim from CLAUDE.md § "Git & CI" on 2026-10-17 (review-remediation row 7, DOC-7): the six
 audit occurrences were always-loaded toolchain history, against the intake rule. Scope: the
 deploy-blocking `npm audit` gate, its expiring-exemption list (empty since 2026-11-10), and the `overrides` pins in
-`package.json`. The `undici` pin's story is in `toolchain.md` § "`jsdom` is held at 30.0.x" (SEC-10).
+`package.json`. The `undici` pin's story is in `toolchain.md` § "`jsdom` is held at 30.0.x" (SEC-10); the pin was dropped on 2026-11-10 with jsdom 31, whose own `undici ^8.12.3` floor clears every advisory it was for.
 New entries for this area go HERE, not into CLAUDE.md.
 
 ### Supply chain (#37)

@@ -75,6 +75,30 @@ so `t()` returns the key its assertions read). i18next 27 (released 2026-11-10) 
 
 ### `jsdom` is held at 30.0.x — vitest 5.0.2's Blob shim cannot read 30.1's Blob (2026-09-29)
 
+**RESOLVED 2026-11-10 — `jsdom` ^31.0.0, the `undici` override dropped.** vitest 5.1.0 reads a Blob's bytes through
+jsdom's own `implForWrapper` (`jsdom/lib/generated/idl/utils.js`) and keeps the own-symbol lookup only for jsdom < 30.1,
+so the three `codeGenerator` cases pass on jsdom 31 (10/10). jsdom 31 declares `undici ^8.12.3`, above every advisory
+range the override existed for (GHSA-3wwx-pv8p-q78v 8.1.0–8.10.1, and 8.0.0–8.12.1 for the 2026-11-10 four), so the
+override is gone and the lock still resolves 8.12.4; the audit gate stays green. The lock change is confined to jsdom's
+own dev-only tree (its CSS engine packages left, `bcp-47`/`parse5-parser-stream` came in). **jsdom 31 changed three
+behaviours a test can depend on — each reddened exactly one existing assumption, and the test was fixed, never the
+code:**
+
+- **A real 2D canvas.** jsdom 31's optional canvas peer is `@napi-rs/canvas`, which `pdfjs-dist` already installs, so
+  `canvas.getContext('2d')` returns a `CanvasRenderingContext2D` in jsdom (it was `null`). `ocrHandlerSingleFlight`
+  relied on the null to stop before rendering; it now stubs `getContext` → `null`, so it holds with or without the
+  peer. Older test comments saying "jsdom has no canvas" predate this — still true that the jsdom suite never
+  rasterises a page.
+- **Focus needs a rendered element.** `focus()` on a node inside `display:none` is now a no-op, as in browsers.
+  `displayModalFocusTrap` focused before showing the modal (no real path does: `documentLoader` and
+  `extractPagesBinder` show, then focus); the case now follows that order, and the teardown case probes the listener
+  (a cancelable Tab is left alone once hidden) instead of focusing a hidden button. Sabotage: forcing `focusFirst`
+  and leaking the keydown listener each red their own case.
+- **Colours serialise to `rgb()`** in `style.getPropertyValue`, as Chrome does (`1px rgb(255, 0, 0)`);
+  `textElement`'s Slice-2 stroke case asserts that form.
+
+The text below is the 2026-09-29 record of why the hold existed.
+
 The 2026-09-29 upgrade-to-latest took every dependency to its newest release except this one, and the reason is
 measured. With `jsdom` 30.1.1 under `vitest` 5.0.2, `URL.createObjectURL(new Blob([…]))` throws
 `Cannot read properties of undefined (reading '_bytes')` — 3 cases in `tests/utils/codeGenerator.test.ts`,

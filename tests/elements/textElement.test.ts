@@ -50,7 +50,7 @@ describe('TextElement Slice-2 DOM preview', () => {
     // outline uses the element's own fill color (no separate stroke color)
     const stroke = input.style.getPropertyValue('-webkit-text-stroke');
     expect(stroke).toContain('1px');
-    expect(stroke).toContain('#ff0000');
+    expect(stroke).toContain('rgb(255, 0, 0)'); // a colour reads back serialised as rgb() — Chrome, and jsdom since 31
     expect(input.style.letterSpacing).toBe('2px');
     expect(input.style.transform).toContain('scaleX(0.8)');
     expect(input.style.textAlign).toBe('justify');

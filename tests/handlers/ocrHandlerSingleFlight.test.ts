@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OcrHandler } from '../../src/handlers/ocrHandler';
 import type { PDFTurboApp } from '../../src/core/pdfTurboApp';
 
@@ -29,11 +29,15 @@ function makeApp(getPage: () => Promise<unknown>): PDFTurboApp {
   } as unknown as PDFTurboApp;
 }
 
-// jsdom's canvas.getContext('2d') returns null, so run() bails right after getViewport
-// (before recognition) — perfect for exercising the single-flight gate cheaply.
+// With no 2D context, run() bails right after getViewport (before rendering and recognition) — the cheapest way to
+// exercise the single-flight gate. jsdom 30 had no canvas at all; jsdom 31 gets a real one from the optional
+// `@napi-rs/canvas` peer (installed by pdfjs-dist), so the null context is now stubbed rather than assumed.
 const resolvedPage = { getViewport: () => ({ width: 10, height: 10 }) };
 
 describe('OcrHandler single-flight (M0 #6)', () => {
+  beforeEach(() => { vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
   it('ignores a concurrent run while one is already in flight', { timeout: 2000 }, async () => {
     const d = deferred<unknown>();
     const getPage = vi.fn().mockReturnValue(d.promise);
