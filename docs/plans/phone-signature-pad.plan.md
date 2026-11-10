@@ -24,6 +24,7 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-10 14:40] AGREED: Fix three more Label-in-Name buttons found at 1280 px (ocrBtn, signBtn, fontSizeUpBtn) like the first four, and widen the axe gate with a 1280 px pass; the CI gate only ran at 414 px and the sweep runs wcag2a/aa tags only.
 - [2026-11-10 18:19] AGREED: Fix the last 7 Label-in-Name buttons (editText, exportDocx, exportMd, superscript, subscript, bulletList, numberedList) with 'visible text — purpose' titles in EN/FR/AR as tabled 2026-11-10; the list buttons' visible word is translated via formatting.list.
 - [2026-11-10 18:19] AGREED: The axe gate gains a pass that opens every flyout and every role=dialog at 414 and 1280 px in en/fr/ar with the 0 ceiling; per-task certification advisor() only.
+- [2026-11-10 19:47] AGREED: Byte budget = one QR of version 19 at EC M (~900 base45 chars, ~600 payload bytes); a bigger signature uses the PTSIG multi-QR sequence. Measured: the developer's Integrated Webcam is 1280x720@30; v19 M read ~3/s in both ladder runs, v23+ only intermittently; the badly-held re-test is left to the step-7 manual check.
 
 ## Formal Plan
 
@@ -56,9 +57,9 @@ appearance image all get it with no change to export, redaction or signing code.
   (`NavigationRoute(createHandlerBoundToURL("index.html"))`), so a phone on an old version gets the old editor and old
   JS. Mitigation: the "Use phone" panel on the PC says "if your phone opens the editor, accept its Update prompt and
   scan again". Pad parameters go in the `#fragment`, never the query, so a precached `pad.html` still matches.
-- **Feature flag `phonePad`.** Keep the buttons hidden until the step-9 manual check passes. `isEnabled` today only
+- **Feature flag `phonePad`.** Keep the buttons hidden until the step-7 manual check passes. `isEnabled` today only
   defaults to ON, so it gains a per-key default.
-- **Device route for steps 1 and 9.** The PC stays on `localhost`, because the camera needs a secure context. The dev
+- **Device route for steps 1 and 7.** The PC stays on `localhost`, because the camera needs a secure context. The dev
   server runs with `vite --host`, and the phone opens `http://<LAN-IP>:5173/pdfturbo/pad.html` by hand; the phone page
   needs no secure context, since it uses no camera. Node for every step: `/stack/tools/nvm/versions/node/v26.13.0/bin`.
 - **Fake-camera test.** It repaints the canvas after the stream starts; a static canvas may emit no frames.
@@ -80,21 +81,26 @@ commit.
 | 0C1 | vite-plugin-pwa 2.0 (workbox-build/window peers) | M | done | 9ed17b8; dist/sw.js, manifest.json, index.html, workbox runtime byte-identical to 1.3.0, all 26 emitted assets same hashed names and sizes; vite.config.ts unchanged | package.json, package-lock.json, .claude/rules/audit-gate.md |
 | 0C2 | jsdom 31 if vitest 5.1 reads its Blob (codeGenerator cases decide); else keep the hold | S | done | 4b5e4ad; codeGenerator 10/10 on jsdom 31 + vitest 5.1; undici override dropped (jsdom 31 floor ^8.12.3 clears the advisories); 3 tests adapted to jsdom 31 behaviour, 2 sabotages | package.json, package-lock.json, tests/{elements,handlers,utils}/**, .claude/rules/{toolchain,audit-gate,conventions}.md, CLAUDE.md |
 | 0D | Label in Name for the last 7 buttons (flyouts + text-options panel, EN/FR/AR, list word translated) + axe gate opening every flyout and dialog at 414/1280 px in en/fr/ar | M | done | commit "fix(a11y): opened flyouts and panels …" (2026-11-10); both tests red on the 7 → green; sabotages: no-op open() reds 6, one FR title reds the 2 fr tests | locales/**, index.html, tests/browser/a11y-axe.browser.test.ts, tests/utils/i18nLabelInName.test.ts, .claude/rules/{ui,redaction,export,toolchain}.md, KNOWN_ISSUES.md |
-| 1 | Install + audit zxing-wasm; hardware QR readability test (developer's phone + webcam, throwaway page in var/claude); set the byte budget | S | todo | - | package.json, package-lock.json |
+| 1 | Install + audit zxing-wasm; hardware QR readability test (developer's phone + webcam, throwaway page in var/claude); set the byte budget | S | done | zxing-wasm ^3.1.6 (MIT, audit:gate ok, +4 packages); canvas round-trip 16/16 sizes v9–v35, wasm self-hosted, 0 non-localhost requests; 2 webcam runs (1280x720; the phone's px/module and dpr were not recorded) → budget v19 M / ~600 B per QR (Decisions Log 19:47) | package.json, package-lock.json |
 | 2 | PTSIG codec + base45 + strict decode + fuzz, test-first (jsdom) | M | todo | - | src/utils/signatureStrokes.ts, tests/utils/** |
 | 3 | SignaturePad records and replays strokes; `phonePad` flag with a per-key default OFF, test-first | S | todo | - | src/utils/signaturePad.ts, src/config/features.ts, tests/** |
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | todo | - | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
 | 5 | PC modal behind the flag: Use phone / Scan (zxing-wasm, camera lifecycle) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | todo | - | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
-| 6 | Docs + rules entry + Arabic pending-count homes + full deploy gate incl. qa:sweep | M | todo | - | README.md, .claude/rules/**, KNOWN_ISSUES.md |
-| 7 | Manual check on the real phone + webcam, with screenshots; then turn the flag ON | S | todo | - | src/config/features.ts |
+| 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | todo | - | README.md, .claude/rules/**, KNOWN_ISSUES.md |
+| 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON | S | todo | - | src/config/features.ts |
 | 8 | Milestone three-lens panel on a frozen commit | M | todo | - | |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
 - Steps 1 and 7 need the developer's phone and PC webcam.
+- [x] W1. Open http://<LAN-IP>:5173/pdfturbo/var/claude/qrtest/show.html on the phone — DONE 2026-11-10: the phone connected over the LAN (ss), ufw let :5173 through
+- [x] W2. Open http://localhost:5173/pdfturbo/var/claude/qrtest/scan.html in desktop Chrome, Start camera, allow it — DONE 2026-11-10: Integrated Webcam granted 1280x720 @30 fps (asked ideal 1920x1080)
+- [x] W3. Run the 16-size ladder in front of the webcam — DONE 2026-11-10: two full runs (var/claude/qrtest/run1.txt, run2.txt); the badly-held re-test (40 cm, tilted, half brightness) was not run and moves to step 7
 ### Needs research
-- The Vite multi-page option name for the installed Vite (Rule 9); the zxing-wasm wasm file size and its `locateFile` / override API.
+- The Vite multi-page option name for the installed Vite 8.3.7 (Rule 9) — step 4.
+- RESOLVED (step 1): zxing-wasm 3.1.6 — import from `zxing-wasm/reader` (reader-only wasm 947 KB raw / 411 KB gzip; `full` is 1.5 MB); self-host with `prepareZXingModule({ overrides: { locateFile: (p, prefix) => p.endsWith('.wasm') ? wasmUrl : prefix + p } })` and `import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url'` (measured: no CDN request); reader options `{ formats: ['QRCode'], tryHarder: true, maxNumberOfSymbols: 1 }`; a result carries `version` and `ecLevel`.
 ### Fragile
 ### Known issues
+- Step-1 findings for steps 2–5: the PTSIG text must stay in the QR alphanumeric set (alphanumeric mode is 2–7 versions smaller than byte mode for the same text, measured (3–7 at EC M, 2–7 at EC L)); the test encoder was `qrcode-generator` 1.5.2 with an explicit `'Alphanumeric'` mode — `pad.html`'s encoder is chosen in step 4 and must also force that mode; draw with integer device pixels per module and a 4-module quiet zone; `pad.html` needs a `<link rel="icon">` under the base path (the test page drew a root `/favicon.ico` 404, which the QA sweep would fail on); one decode in run 2 returned text that was not the expected payload (`bad:1` at v32 M, text not logged, cause unknown — a misread or another code in view). The strict header checks would NOT catch a misread body behind an intact header: step 2 decides whether PTSIG carries an integrity check (e.g. a CRC), and the step-7 scan page logs any mismatched text.
 - pdfjs-dist held at ~6.3.289 (2026-11-10): 6.4.299 resolves DOCX font names to the internal id (`docx-font-names.browser.test.ts`, 2 cases); 6.5.438 also reds 8 prune/load-guard oracle cases (multi-stream parse). Separate task, not scheduled.
 - A desktop with no webcam cannot scan; it uses Import image instead.

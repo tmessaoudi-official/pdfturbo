@@ -139,7 +139,9 @@ In the production graph but **not bundled**: `@napi-rs/canvas` (pdf.js loads it 
 through `createRequire`), `node-fetch` with `whatwg-url`, `tr46` and `webidl-conversions`
 (tesseract.js's Node path), `require-from-string` (bidi-js's CommonJS build; checked absent from
 `dist/` in WS7 round 10), `opencollective-postinstall` (an install script), and `@types/node` /
-`undici-types` (type declarations).
+`undici-types` (type declarations). Also `zxing-wasm` 3.1.6 (MIT), added 2026-11-10 for the phone signature pad and not imported by `src/` yet, with its
+`type-fest`, `tagged-tag` and `@types/emscripten` (type-level only): when the pad's Scan button ships it, it moves to the
+bundled list together with **zxing-cpp** (Apache-2.0), which its `zxing_reader.wasm` is compiled from.
 
 ---
 
