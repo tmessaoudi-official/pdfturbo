@@ -36,7 +36,7 @@
     "fflate": "^0.8.3",
     "i18next": "^26.4.2",
     "i18next-browser-languagedetector": "^8.2.1",
-    "node-forge": "^1.4.0",
+    "node-forge": "^1.4.3",
     "pdfjs-dist": "^6.3.289",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-history": "^1.5.1",
@@ -65,7 +65,7 @@
     "oxlint": "^1.86.0",
     "playwright": "^1.63.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.1",
+    "vite": "^8.3.7",
     "vite-plugin-pwa": "^1.0.0",
     "vitest": "^5.0.2"
   },
@@ -73,6 +73,6 @@
     "brace-expansion": "^5.0.12",
     "fast-uri": "^3.1.8",
     "source-map-js": "^1.2.2",
-    "undici": "^8.11.2"
+    "undici": "^8.12.4"
   }
 }

@@ -193,7 +193,7 @@ at the 2026-09-13 round-10 gate — read the report's own summary line rather th
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here
-goes green-local / red-CI (it has happened): `npm run audit:gate` (= `npm audit --audit-level=high` with the one expiring exemption below) → `npm run ocr:assets`
+goes green-local / red-CI (it has happened): `npm run audit:gate` (= `npm audit --audit-level=high` plus an expiring-exemption list, empty since 2026-11-10) → `npm run ocr:assets`
 → type-check → lint → `npm run test` (jsdom) → `npm run test:browser` (real Chrome) →
 **`npm run test:coverage:export`** (the M1 #14 branch-coverage gate on `src/export/pdfElementRenderer.ts`,
 threshold 25% — adding an uncovered branch to `renderText` can drop below it and FAIL the build even
@@ -290,7 +290,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep, releasing a closed document, insert-pages redo (14) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
 - **ocr** — OCR engine, CSP and assets, the OCR redaction burn read before the render (2) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
 - **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle, the historical cloud-container browser recipe (10) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
-- **audit-gate** — the deploy-blocking `npm audit` gate, its expiring exemption and the six `overrides` occurrences (1) → `.claude/rules/audit-gate.md` (loads when you read `scripts/audit-gate*`, `package.json` …).
+- **audit-gate** — the deploy-blocking `npm audit` gate, its expiring-exemption list and the seven occurrences (1) → `.claude/rules/audit-gate.md` (loads when you read `scripts/audit-gate*`, `package.json` …).
 - **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods, the architecture ratchet, rect frame brands (6) → `.claude/rules/conventions.md` (loads at session start).
 
 **Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 7 files exceed that cap (measured 2026-10-17: `redaction.md` 1444, `flow-export.md` 905, `export.md` 812, `toolchain.md` 556, `ui.md` 501, `docx-edit.md` 449, `arabic-rtl.md` 374 lines) — six at birth, where single entries ran 200–400 lines and a verbatim move could not cut them, and `arabic-rtl.md` crossed it since. They are the first candidates for a prune with the developer (`/rules-split`).
@@ -397,10 +397,10 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   Pages upload and the `deploy` job were push-only, so a dispatch built and tested but deployed nothing (run
   39067128465). Both run only for `refs/heads/master`, never for a pull request or another ref.
 - **Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high`
-  plus one expiring exemption) runs first in CI and is **deploy-blocking**; keep it on. The `overrides`
+  plus an expiring-exemption list, empty since 2026-11-10) runs first in CI and is **deploy-blocking**; keep it on. The `overrides`
   block in `package.json` (`brace-expansion`, `fast-uri`, `source-map-js`, `undici`) is a LIVING pin:
   re-audit before every push, never with `--offline` (a false green), and never widen
-  `scripts/audit-gate-allowlist.json` for convenience. The six occurrences and the exemption's evidence:
+  `scripts/audit-gate-allowlist.json` for convenience. The seven occurrences and the former exemption's evidence:
   `.claude/rules/audit-gate.md`. OCR traineddata stays SHA-256-pinned (`scripts/prepare-ocr-assets.mjs`);
   no other remote assets are fetched at build.
 - **Pre-push gate**: `.githooks/pre-push` (auto-installed via the `prepare` script →

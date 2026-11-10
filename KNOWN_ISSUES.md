@@ -64,12 +64,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 ## Deferred / nice-to-have (non-blocking)
 
-### node-forge advisory GHSA-86w9-cpqp-85rv — exempted in the deploy audit until 2026-12-31 (2026-10-02)
+### ~~node-forge advisory GHSA-86w9-cpqp-85rv~~ — CLOSED 2026-11-10
 
-- **No patched release exists** (node-forge 1.4.0 is the latest), so `scripts/audit-gate.mjs` exempts this one advisory by id AND package, with an
-  expiry. The exemption rests on the app never verifying an RSA signature with forge: `src/signing/cmsVerify.ts` verifies with WebCrypto and forge only
-  parses and creates. It voids itself when npm reports a fix or the date passes. Detail: `.claude/rules/audit-gate.md` § "Supply chain (#37)" (fifth occurrence) and
-  `.claude/rules/signing.md`.
+- node-forge 1.4.3 (2026-11-04) fixed it; the deploy-audit exemption was removed and the allowlist is empty. The WebCrypto verify in
+  `src/signing/cmsVerify.ts` stays. Detail: `.claude/rules/audit-gate.md` § "Supply chain (#37)" (seventh occurrence).
 
 ### From QUAL-1 — releasing a closed document (2026-10-08)
 

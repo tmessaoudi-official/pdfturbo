@@ -22,6 +22,10 @@ through forge (`tests/signing/rsaVerify.test.ts`, red first: `expected true to b
 `crypto.subtle.verify('RSASSA-PKCS1-v1_5', …)` (SHA-256, as before); forge still PARSES the CMS and the certificate, and still
 CREATES every signature (`cms.ts`, `p12.ts`, `certGen.ts` — the advisory is about verification only). It returns false and never throws.
 
+**Fixed upstream 2026-11-04 (node-forge 1.4.3), adopted 2026-11-10:** the audit exemption below was removed as STALE
+(`.claude/rules/audit-gate.md`, seventh occurrence). The WebCrypto verify and its source guard STAY — they keep any forge
+`.verify(` from shipping, whatever forge's next advisory is.
+
 **Scope, so this is not read as more than it is:** `verifyAllSignatures` has no production caller — `multiSign.ts` and the tests only,
 kept out of the barrel — so the shipped app never verifies a signature with forge; the swap is hardening for the day someone wires
 it. The advisory itself stays in `npm audit`, which is why `scripts/audit-gate.mjs` exempts that one id until a patched release

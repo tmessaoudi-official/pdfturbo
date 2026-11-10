@@ -66,7 +66,7 @@ describe('verifyRsaSha256', () => {
   });
 });
 
-// The guard behind the audit exemption (scripts/audit-gate-allowlist.json, GHSA-86w9-cpqp-85rv): no `.verify(` call may ship
+// The guard behind the former audit exemption (GHSA-86w9-cpqp-85rv, removed 2026-11-10 when node-forge 1.4.3 fixed it): no `.verify(` call may ship
 // except WebCrypto's. It scans what ships, not one directory: every code file under src/ (any depth), plus the HTML pages with
 // inline scripts (index.html, public/*.html). It was scoped to src/signing, flat, until the 2026-10-06 audit: a forge
 // `cert.publicKey.verify(...)` in src/handlers/ or in src/signing/<sub>/ passed it while the exemption kept the audit green.

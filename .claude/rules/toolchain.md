@@ -61,7 +61,7 @@ deterministic in isolation, not load. vitest replaces `URL.createObjectURL` with
 latest release, so nothing upstream fixes it yet.
 
 `package.json` therefore has `"jsdom": "~30.0.1"` (patch-only, so a fresh install cannot float to 30.1) and the
-`overrides` block gained `"undici": "^8.11.2"`: jsdom 30.0.1 pulls `undici@8.10.0`, inside the advisory range
+`overrides` block gained `"undici": "^8.11.2"` (raised to `^8.12.4` on 2026-11-10, audit-gate.md seventh occurrence): jsdom 30.0.1 pulls `undici@8.10.0`, inside the advisory range
 GHSA-3wwx-pv8p-q78v (8.1.0–8.10.1); jsdom 30.1.1 had cleared it by bumping `undici` to `^8.10.2`, and the override does
 the same without the jsdom bump. jsdom 30.0.1 declares `undici ^8.9.0`, so 8.11.2 stays inside its own range. Both are
 devDependency-only. **Remove both when a vitest release reads jsdom 30.1's Blob:** bump `jsdom` to `^30.1.x`, drop the
