@@ -98,8 +98,9 @@ The driver reports facts. You decide what they mean.
    enumeration used visibility instead of hit-testable reachability.
 3. **`SKIP` is coverage you did not get — and the real number is worse than the skip count.** The
    report now ends with `Exercised N distinct control(s) of M in the DOM` and **names** every control
-   that was not. Read that line first; a green `0 fail` over 66 of 141 controls is not a clean bill of
-   health. **CI passes `--allow-destructive`** (36 skips instead of 44 — it reaches redaction, erase
+   that was not. Read that line first; a green `0 fail` over 57 of 141 controls is not a clean bill of
+   health. (Until 2026-11-11 that line also counted non-control subjects — `boot`, `load`, `a11y` — and
+   read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive`** (36 skips instead of 44 — it reaches redaction, erase
    and crop-remove), so a local default run is WEAKER than the gate; match the flag before comparing.
    Do NOT claim the sweep covers a specific feature without checking that list — measured 2026-07-31,
    `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
@@ -163,16 +164,22 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots.
 
-**Baseline, `--allow-destructive` (what CI runs), measured 2026-07-31:**
-**151 checks · 114 pass · 0 fail · 0 warn · 37 skip · 0 a11y · 0 accepted-by-decision**, over
-**66 distinct controls of 141** in the DOM, in ~2 min including the 5 workflow scenarios. A DEFAULT run
+**Baseline, `--allow-destructive` (what CI runs), measured 2026-11-11 on the deploy build:**
+**156 checks · 119 pass · 0 fail · 0 warn · 37 skip · 0 a11y · 0 accepted-by-decision**, over
+**57 distinct controls of 141** in the DOM (control ids only; the 2026-07-31 figure "151 · 114 … 66 of
+141" counted subjects too), including the 5 workflow scenarios and the **phone pad pass**. The pad pass
+runs right after boot, before any document is loaded: on a built app the service worker controls
+`pad.html`, `pad.html` is absent from the precache (`index.html` present as the control), the pad (not
+the editor) renders, draw → Done → QR, axe — five `pad:` lines; on a dev server the worker checks are
+one SKIP. A `pad:` FAIL means the phone would get a stale pad or the editor: see
+`.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`". A DEFAULT run
 (no flag) measures **149 · 103 · 0 · 0 · 46**, so always compare like with like.
 
 Read the numbers in this order, because two of them mislead on their own:
 
 - **Distinct controls, not the check total.** The DFS revisits some controls at different depths, so
   the entry count exceeds distinct coverage. The report's `Exercised N distinct control(s) of M` line
-  is the honest figure; a `0 fail` over 66 of 141 is not a clean bill of health.
+  is the honest figure; a `0 fail` over 57 of 141 is not a clean bill of health.
 - **`0 accepted-by-decision` is load-bearing.** `A11Y_ACCEPTED` was emptied on 2026-07-31 when the last
   exception (`scrollable-region-focusable`) was properly fixed. A run reporting an `ACCEPT` line means
   someone re-opened a hole in the gate — find out why before shipping.

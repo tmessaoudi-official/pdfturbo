@@ -184,6 +184,11 @@ async function main() {
   const bootErrors = consoleErrors.splice(0);
   record(bootErrors.length ? 'FAIL' : 'PASS', 'boot', bootErrors.join(' | ') || 'app booted, 0 console errors');
 
+  // ── phone pad page (phone-signature-pad 5c) ────────────────────────────────────
+  // Runs BEFORE any document is loaded: a second page in this context is safe only while no pdf.js document is live
+  // (see "RESET IN-PAGE, NEVER BY NAVIGATION" below), and the pad page loads no pdf.js at all.
+  await padPass(ctx, page);
+
   // ── load a document (most tools are inert without one) ─────────────────────────
   const fixture = resolve(FIXTURE);
   if (!existsSync(fixture)) { console.error(`qa-sweep: fixture not found: ${fixture}`); await browser.close(); process.exit(2); }
@@ -633,6 +638,89 @@ async function main() {
   await finish(browser);
 }
 
+// The phone signature pad (pad.html) under the editor's service worker. On a BUILT app the worker must control the
+// pad, must not have it in the precache (a precached pad updates only when the EDITOR's prompt is accepted, and the
+// pad shows no prompt), and must serve the PAD, not its index.html navigation fallback. A dev server has no worker:
+// it answers sw.js with index.html and 200, so the worker is detected by the file's body, never its status; there the
+// worker checks are SKIP and the pad itself is still drawn, scanned for errors and audited.
+async function padPass(ctx, editor) {
+  const swUrl = new URL('sw.js', URL_).href;
+  const builtSw = await editor.evaluate(async (u) => {
+    try { const r = await fetch(u, { cache: 'no-store' }); return r.ok && /precacheAndRoute|workbox/.test(await r.text()); }
+    catch { return false; }
+  }, swUrl);
+  if (builtSw) {
+    // Bounded: a worker that never activates must FAIL the gate, not hang it (60 s: the box ran at load 30+).
+    const ready = await editor.evaluate(() => Promise.race([
+      navigator.serviceWorker.ready.then(() => true),
+      new Promise(r => { setTimeout(() => r(false), 60_000); }),
+    ])).catch(() => false);
+    record(ready ? 'PASS' : 'FAIL', 'pad: service worker', ready ? 'active' : 'navigator.serviceWorker.ready did not resolve in 60 s');
+    if (!ready) return;
+    const paths = await editor.evaluate(async () => {
+      const out = [];
+      for (const name of (await caches.keys()).filter(n => n.includes('precache')))
+        for (const req of await (await caches.open(name)).keys()) out.push(new URL(req.url).pathname);
+      return out;
+    });
+    // The control: the editor IS precached, so an empty or renamed cache cannot pass. Pathnames, because a precache
+    // key carries a ?__WB_REVISION__ query.
+    const hasIndex = paths.some(p => p.endsWith('/index.html'));
+    const hasPad = paths.some(p => p.endsWith('/pad.html'));
+    record(hasIndex && !hasPad ? 'PASS' : 'FAIL', 'pad: not precached',
+      `${paths.length} precached; index.html ${hasIndex ? 'in' : 'MISSING'}, pad.html ${hasPad ? 'IN (stale until the editor prompt)' : 'out'}`);
+  } else {
+    record('SKIP', 'pad: service worker', `no built worker at ${swUrl} (dev server) — controller and precache checks skipped`);
+  }
+
+  const pad = await ctx.newPage();
+  pad.setDefaultTimeout(15_000);
+  const errors = [];
+  pad.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  pad.on('pageerror', e => errors.push(`uncaught: ${e.message}`));
+  pad.on('response', r => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
+  pad.on('requestfailed', r => errors.push(`FAILED ${r.url()} (${r.failure()?.errorText})`));
+  try {
+    await pad.goto(new URL('pad.html#lang=en', URL_).href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const canvas = pad.locator('#padRoot [data-pad="canvas"]');
+    // Wait for EITHER page, so a navigation answered with the editor reports that, not a timeout.
+    await pad.locator('#padRoot [data-pad="canvas"], #canvasContainer').first().waitFor({ state: 'visible' });
+    const editorShown = await pad.locator('#canvasContainer').count();
+    if (editorShown) throw new Error('the EDITOR rendered at pad.html (a navigation fallback answered it)');
+    const controlled = await pad.evaluate(() => Boolean(navigator.serviceWorker?.controller));
+    if (builtSw) {
+      record(controlled && !editorShown ? 'PASS' : 'FAIL', 'pad: served under the worker',
+        `controller ${controlled ? 'set' : 'NULL'}, ${editorShown ? 'the EDITOR rendered' : 'the pad rendered'}`);
+    } else {
+      record(editorShown ? 'FAIL' : 'PASS', 'pad: page', editorShown ? 'the EDITOR rendered' : 'the pad rendered');
+    }
+    const box = await canvas.boundingBox();
+    await pad.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.7);
+    await pad.mouse.down();
+    await pad.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.3, { steps: 8 });
+    await pad.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.7, { steps: 8 });
+    await pad.mouse.up();
+    await pad.click('[data-pad="done"]');
+    await pad.locator('[data-pad="qr"]').waitFor({ state: 'visible' });
+    await pad.screenshot({ path: join(OUT, '001-pad-qr.png') });
+    if (A11Y && existsSync(join('node_modules', 'axe-core', 'axe.min.js'))) {
+      await pad.evaluate(readFileSync(join('node_modules', 'axe-core', 'axe.min.js'), 'utf8'));
+      const v = (await pad.evaluate(async () => (await window.axe.run(document, {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
+      })).violations)) || [];
+      const severe = v.filter(x => x.impact === 'critical' || x.impact === 'serious');
+      const detail = v.length ? v.map(x => `${x.id}:${x.impact}(${x.nodes.length})`).join(', ') : '0 violations';
+      record(severe.length ? 'FAIL' : v.length ? 'A11Y' : 'PASS', 'pad: a11y (WCAG 2.1 AA)', detail, '001-pad-qr.png');
+    }
+    record(errors.length ? 'FAIL' : 'PASS', 'pad: draw → Done → QR',
+      errors.join(' | ') || 'QR shown, 0 console errors, 0 failed requests', '001-pad-qr.png');
+  } catch (e) {
+    record('FAIL', 'pad: draw → Done → QR', `${String(e.message).split('\n')[0]}${errors.length ? ` | ${errors.join(' | ')}` : ''}`);
+  } finally {
+    await pad.close().catch(() => {});
+  }
+}
+
 async function finish(browser) {
   await browser.close().catch(() => {});
   const count = v => results.filter(r => r.verdict === v).length;
@@ -656,7 +744,10 @@ async function finish(browser) {
       && DESTRUCTIVE.some(d => id.toLowerCase().includes(d.toLowerCase()));
     const byName = missed.filter(destructive);
     const unreached = missed.filter(id => !destructive(id));
-    lines.push('', `Exercised ${exercised.size} distinct control(s) of ${new Set(domButtonIds).size} in the DOM.`);
+    // Only DOM control ids count: `boot`, `load …`, `a11y …` and the `pad: …` checks are subjects, not controls.
+    const controls = new Set(domButtonIds);
+    const reached = [...exercised].filter(id => controls.has(id)).length;
+    lines.push('', `Exercised ${reached} distinct control(s) of ${controls.size} in the DOM.`);
     if (byName.length) lines.push(`NOT exercised — destructive by name (--allow-destructive): ${byName.join(', ')}`);
     if (unreached.length) {
       lines.push(

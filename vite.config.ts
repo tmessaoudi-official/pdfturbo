@@ -38,7 +38,14 @@ export default defineConfig({
         // served via the 'ocr-assets' runtime cache below, on first OCR use.
         // Row 36 — pdf.js's decoder fallbacks under pdfjs/wasm/ are .js too, and are fetched only when a
         // JBIG2 / JPEG 2000 image meets a browser that cannot run WebAssembly; keep them out as well.
-        globIgnores: ['**/tesseract/**', '**/pdfjs/**'],
+        // Phone-signature-pad 5c — pad.html is NOT precached: a precached page updates only when the EDITOR's update
+        // prompt is accepted (registerType 'prompt'), and the pad shows no prompt, so "refresh the page on your phone"
+        // could never cure a version mismatch. It is served NetworkFirst below instead.
+        globIgnores: ['**/tesseract/**', '**/pdfjs/**', '**/pad.html'],
+        // Load-bearing with the line above: the worker registers its index.html NavigationRoute BEFORE the runtime
+        // routes, so without this a navigation to pad.html is answered with the EDITOR. Workbox tests a denylist
+        // against pathname + search, hence the optional query.
+        navigateFallbackDenylist: [/\/pad\.html(?:\?|$)/],
         // pdf.js + pdf-lib chunks can be >2MB — raise the precache limit
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
@@ -74,6 +81,29 @@ export default defineConfig({
             options: {
               cacheName: 'pdfjs-wasm',
               expiration: { maxEntries: 10, maxAgeSeconds: 90 * 24 * 60 * 60 },
+            },
+          },
+          {
+            // Phone-signature-pad 5b/5c — the QR scanner's zxing reader wasm (~950 KB, hashed under assets/), fetched
+            // only when the PC camera scan starts, so it stays out of the precache and is cached on that first scan;
+            // a later scan then works offline. It is .wasm, so it never matches the .js rule below.
+            urlPattern: ({ url }) =>
+              url.pathname.includes('/zxing_reader') && url.pathname.endsWith('.wasm') && url.origin === self.location.origin,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'zxing-wasm',
+              expiration: { maxEntries: 2, maxAgeSeconds: 90 * 24 * 60 * 60 },
+            },
+          },
+          {
+            // Phone-signature-pad 5c — the phone pad page, fresh from the network whenever there is one (a deploy
+            // reaches the phone on its next load), the last good copy when there is none. A pad never opened online
+            // is not available offline: no claim is made for it.
+            urlPattern: ({ url }) => url.pathname.endsWith('/pad.html') && url.origin === self.location.origin,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pad-page',
+              expiration: { maxEntries: 2, maxAgeSeconds: 30 * 24 * 60 * 60 },
             },
           },
           {

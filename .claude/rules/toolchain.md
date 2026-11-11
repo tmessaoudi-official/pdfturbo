@@ -576,6 +576,27 @@ swap open sessions; the SW waits and the app surfaces an update prompt (`toast.a
 Pushes to `master` are still production releases (auto-deployed via GitHub Pages), but open
 clients update only on user action / next load, not instantly.
 
+**The phone pad page is NOT precached and is served NetworkFirst (phone-signature-pad 5c, 2026-11-11).** A precached
+page updates only when the EDITOR's update prompt is accepted, and `pad.html` shows no prompt, so a phone that once
+loaded the pad would keep an old copy that "refresh the page" never replaces. `vite.config.ts` therefore puts
+`**/pad.html` in `globIgnores`, serves it from the `pad-page` runtime cache NetworkFirst (fresh online, the last good
+copy offline; a pad never opened online is not available offline, and no claim is made for one), and lists it in
+`navigateFallbackDenylist`. **The denylist is load-bearing:** the built `sw.js` registers its `index.html`
+`NavigationRoute` BEFORE the runtime routes, so without it a navigation to `pad.html` is answered with the EDITOR.
+Workbox tests a denylist against pathname + search (`workbox-routing/NavigationRoute.js`), hence
+`/\/pad\.html(?:\?|$)/`. The camera scan's zxing reader wasm (~950 KB) is never precached either; the `zxing-wasm`
+runtime cache stores it on the first scan, so a later scan works offline. `pad.html` keeps its manifest link (an install
+started from the pad installs the editor). The pad-URL QR names whatever origin served the editor, so on `localhost` it
+names localhost, which a phone cannot open: use the LAN route by hand (step 7).
+Phones whose installed worker predates 5c still answer `pad.html` with the editor until that worker updates, which is
+what the ✍ modal's "If your phone opens the editor instead, accept its Update prompt" hint is for.
+Guards: `tests/infra/pwaOcrCaching.test.ts` (the 5c block runs the extracted `urlPattern` functions and the denylist on
+real URLs), and the QA sweep's pad pass on every deploy (on a built app: the worker controls `pad.html`, it is absent
+from the precache with `index.html` present as the control, the pad, not the editor, renders, draw → Done → QR, axe;
+on a dev server the worker part is SKIP). The `zxing-wasm` rule is certified by the throwaway
+`var/claude/sig-scan-check/pwa.mjs` (flag-ON build, the server STOPPED for the offline leg), not by the gate: CI sweeps
+the flag-OFF build and never scans.
+
 ### Running `npm run test:browser` in the Claude cloud container — HISTORICAL (2026-07-28)
 
 Moved verbatim from CLAUDE.md § Commands on 2026-10-17 (review-remediation row 7, DOC-9).

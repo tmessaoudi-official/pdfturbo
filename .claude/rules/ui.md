@@ -241,6 +241,11 @@ buried among 150 entries read as thorough and are not. **Read that line before c
 covers a feature** — `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
 DOCX/MD/XFDF export buttons are **never clicked** (a `deploy.yml` comment claimed otherwise; corrected).
 
+**AMENDED 2026-11-11 (phone-signature-pad 5c): the "66" over-counted.** The `Exercised N` line counted every
+PASS/FAIL/WARN *subject*, and `boot`, `load …`, `a11y …` and the scenario names are subjects, not controls — about 9
+of the 66. It now counts only subjects that are DOM control ids: the same pre-5c build measured **57 of 141** under
+the new count. The crawl did not change; read the line's own figure, never this heading's.
+
 **The cause is the product, not the driver.** `modalBinder.ts` registers the export flyout with
 `closeWhen: 'any-click'`, and each file-menu item removes `.open` from its wrap in its own handler — so
 the app shuts the container as soon as one child is used and every later sibling is legitimately hidden.

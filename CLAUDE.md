@@ -190,6 +190,9 @@ rather than links, since the app is a single page. Baseline (default flags): 142
 and CI drives a throwaway browser on a fixture; without it the gate skipped 44 controls including
 redaction and flatten. That run measured 145 checks / 107 pass / 0 fail on 2026-07-31 and 151 / 114 / 0
 at the 2026-09-13 round-10 gate — read the report's own summary line rather than citing either.
+Before the crawl it runs a **phone pad pass** (phone-signature-pad 5c): on a built app the
+service worker controls `pad.html`, `pad.html` is absent from the precache, the pad (not the editor) renders and draws a
+QR, and axe passes; on a dev server the worker checks are SKIP — `.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`".
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here

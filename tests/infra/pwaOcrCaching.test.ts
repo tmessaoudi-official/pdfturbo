@@ -97,3 +97,56 @@ describe('PWA Arabic font caching (limits row 10, B4)', () => {
     expect(glob?.[1]).not.toMatch(/ttf|woff|otf/);
   });
 });
+
+// Phone-signature-pad step 5c — the scanner's zxing wasm is cached on first scan, and the phone pad page is never
+// served stale or as the editor. The rules are read out of the config and RUN on real URLs, not just matched as text.
+describe('PWA scanner wasm + phone pad page (phone-signature-pad 5c)', () => {
+  /** The urlPattern source of the rule whose cacheName is `name`, evaluated with a fake `self`, and its handler. */
+  const rule = (name: string): { match: (href: string) => boolean; handler: string } => {
+    const at = cfg.indexOf(`cacheName: '${name}'`);
+    expect(at, `no runtime rule with cacheName '${name}'`).toBeGreaterThan(-1);
+    const start = cfg.lastIndexOf('urlPattern:', at);
+    const handlerAt = cfg.indexOf('handler:', start);
+    const src = cfg.slice(start + 'urlPattern:'.length, handlerAt).trim().replace(/,$/, '');
+    const fn = new Function('self', `return ${src};`)({ location: { origin: 'https://app.test' } }) as (o: { url: URL }) => boolean;
+    const handler = /handler:\s*'(\w+)'/.exec(cfg.slice(handlerAt))?.[1] ?? '';
+    return { match: (href) => fn({ url: new URL(href) }), handler };
+  };
+
+  it('caches the zxing reader wasm, same origin only, CacheFirst', () => {
+    const r = rule('zxing-wasm');
+    expect(r.handler).toBe('CacheFirst');
+    expect(r.match('https://app.test/pdfturbo/assets/zxing_reader-Ab12_cD.wasm')).toBe(true);
+    expect(r.match('https://cdn.test/pdfturbo/assets/zxing_reader-Ab12_cD.wasm')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/assets/reader-Ab12.js')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/pdfjs/wasm/openjpeg.wasm')).toBe(false);
+  });
+
+  it('serves pad.html NetworkFirst from its own cache, same origin only', () => {
+    const r = rule('pad-page');
+    expect(r.handler).toBe('NetworkFirst');
+    expect(r.match('https://app.test/pdfturbo/pad.html')).toBe(true);
+    expect(r.match('https://app.test/pdfturbo/pad.html?x=1')).toBe(true);
+    expect(r.match('https://cdn.test/pdfturbo/pad.html')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/index.html')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/notpad.html')).toBe(false);
+  });
+
+  it('keeps pad.html out of the precache, so a deploy reaches the phone without the editor prompt', () => {
+    expect(cfg).toMatch(/globIgnores:\s*\[[^\]]*'\*\*\/pad\.html'[^\]]*\]/);
+  });
+
+  it('exempts pad.html from the index.html navigation fallback (matched on pathname + search, as Workbox does)', () => {
+    const list = /navigateFallbackDenylist:\s*\[([^\]]*)\]/.exec(cfg)?.[1];
+    expect(list, 'no navigateFallbackDenylist').toBeDefined();
+    const res = new Function(`return [${list}];`)() as RegExp[];
+    const denied = (p: string) => res.some((re) => re.test(p));
+    expect(denied('/pdfturbo/pad.html')).toBe(true);
+    expect(denied('/pdfturbo/pad.html?x=1')).toBe(true);
+    expect(denied('/pdfturbo/')).toBe(false);
+    expect(denied('/pdfturbo/index.html')).toBe(false);
+    expect(denied('/pdfturbo/notpad.html')).toBe(false);
+    expect(denied('/pdfturbo/pad.htmlx')).toBe(false);
+  });
+});
