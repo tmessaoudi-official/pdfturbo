@@ -5,11 +5,19 @@ paths:
   - "src/ui/signersPanel.ts"
   - "src/ui/placementManager.ts"
   - "tests/signing/**"
+  - "src/pad/**"
+  - "src/padMain.ts"
+  - "src/ui/signatureSources.ts"
+  - "src/ui/qrScanner.ts"
+  - "src/utils/signatureStrokes.ts"
+  - "src/utils/ptsigCollector.ts"
+  - "src/utils/qrCanvas.ts"
+  - "src/utils/signatureImage.ts"
 ---
 
 # pdfturbo gotchas — signing
 
-Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: e-signing, PAdES and the ByteRange, signature placement, the Signers panel. These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
+Moved verbatim from CLAUDE.md § Gotchas on 2026-09-28 (review-remediation 5.3, /rules-split). Scope: e-signing, PAdES and the ByteRange, signature placement, the Signers panel, the phone signature pad (added 2026-11-11). These entries are this project's decision register (the design docs they came from were removed in `ac4ef68`). New entries for this area go HERE, not into CLAUDE.md. A § "…" reference names a heading in CLAUDE.md or in another `.claude/rules/` file — CLAUDE.md § Gotchas lists every moved heading; a § that names a bold paragraph (e.g. "MD/TXT parity") or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`.
 
 ### The RSA signature check is WebCrypto's, not node-forge's — GHSA-86w9-cpqp-85rv (2026-10-02)
 
@@ -280,3 +288,36 @@ for the no-backend tool; D3 is now an opt-in productionisation candidate. Editab
 § i18n. The key has an Arabic value (`locales/ar.json:442`) and predates the 2026-07-30 sign-off; whether
 that pass covered it was never provable, and the ruling closed the question rather than re-reading it. Note the prose said `mentionDefault` for two years — the actual key
 is `modal.signers.mentionDefault`, which is why a grep for the short name finds only `signersPanel.ts`.
+
+### The phone signature pad — sign on the phone, scan it back, no server (2026-11-10/11)
+
+Plan `docs/plans/phone-signature-pad.plan.md` (its Decisions Log is the ruling record). **Shape:** the ✍ modal's *Sign on
+phone* panel shows a QR of the `pad.html` URL (built from `location` + base; parameters only in the `#fragment`, so a
+cached page still matches); the phone draws on `pad.html` — its own Vite entry, same CSP, registers NO service worker,
+ink locked to black 2.5 CSS px, a tap draws a dot (`dotOnTap`, phone only) — and *Done* shows the signature as PTSIG v1
+QR codes (1–4 frames, cycled every 1 s). *Start camera* on the PC reads them in any order; the strokes are replayed onto
+`signatureCanvas` and **wait for Save** (no auto-save). *Import image* (the no-webcam route, fed by the phone's
+*Download PNG*): `createImageBitmap`, size and pixel caps, the paper keyed out, ink colour kept, re-encoded to PNG (EXIF
+dropped). The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
+untouched: no persisted field, no `SCHEMA_VERSION` change.
+
+- **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen; `zxing-wasm`'s reader wasm is
+  self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.
+- **The PTSIG CRC-32 detects misreads; it authenticates NOTHING.** A scanned QR is untrusted input: the decoder is strict
+  (length cap before base45, ≤3-byte canonical varints, 256 strokes / 1024 points checked before reading, every point on
+  the grid, no trailing bytes, a typed error code per failure), fuzzed with re-sealed mutated bodies, and its output is
+  only ever drawn onto a canvas. A frame of another format asks the user to refresh the phone page.
+- **Budget:** one QR of version 19 at EC M (909 alphanumeric chars = 606 bytes), measured on the developer's
+  1280×720 webcam; a bigger signature is simplified (Ramer–Douglas–Peucker, 1–4 grid units), then split, up to 4 frames.
+- **Camera:** `getUserMedia` FIRST, the lazy wasm after (a refusal costs no download); one `finish()` stops every track
+  on every exit — Stop, modal close, panel collapse, an import, a hidden tab, a track that ends. A refused or missing
+  camera is shown in the panel and NEVER logged with `console.error`: the QA sweep fails on a console error.
+- **Flag `phonePad` defaults OFF** (`isEnabled` has a per-key default) until the step-7 check on a real phone and webcam.
+- **Offline and an outdated phone:** `toolchain.md` § "PWA is `registerType: 'prompt'`" (the 5c paragraph). Known, left
+  as is by ruling: at 414 px on a first visit the cookie banner covers the modal's Save row (plan § Known issues).
+- **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage}.test.ts`,
+  `tests/ui/{qrScanner,signatureSources}.test.ts`, `tests/pad/padPage.test.ts`; real Chrome
+  `tests/browser/{pad-page,signature-pad,signature-sources,signature-import,signature-scan}.browser.test.ts` (QR round trip,
+  a fake camera with real zxing, image-import pixels); the QA sweep's phone pad pass on every deploy.
+- **Not certified by execution:** a real phone read by a real webcam (step 7); the 33 Arabic keys (in the pending count,
+  `toolchain.md` § i18n).

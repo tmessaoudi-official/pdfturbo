@@ -41,6 +41,10 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Eraser** — erase freehand ink strokes (does not affect annotation elements)
 - **Fill bucket** — flood-fill enclosed regions of freehand ink drawings with a chosen colour
 - **Signature pad** — draw a signature on a canvas, then place it anywhere
+- **Sign on your phone** — the PC shows a QR code that opens a signing page on your phone; you sign with your finger, the phone
+  shows the signature as QR codes, and the PC's camera reads them back. No server and no account: the signature travels
+  only as QR codes on the phone's screen. Without a webcam, download the signature as a PNG on the phone, move it to
+  the PC yourself, and use **Import image** there (the paper background is removed)
 - **Image overlay** — insert PNG/JPEG/WebP images
 - **Comment / sticky note** — place resizable sticky notes
 - **Redaction** — permanent black-box redaction; the covered text is genuinely removed, not hidden. On a page from a source PDF this works by rasterizing that page, so the text becomes unextractable; on a **blank** page there is nothing to rasterize, so the covered annotations are instead not written to the export at all. Both paths remove; they remove by different means, and the bounds of each are graded in [SECURITY.md](SECURITY.md)
@@ -80,8 +84,9 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - Pinch-to-zoom on mobile; Ctrl+Wheel on desktop
 - Keyboard shortcuts for all major tools
 - PWA: installable, works offline for the app shell. Files only some documents need — the Arabic font,
-  the OCR engine and languages, pdf.js's CJK CMaps, image decoders and colour profile — are cached the
-  first time they are used, so each needs one online use before it works offline
+  the OCR engine and languages, pdf.js's CJK CMaps, image decoders and colour profile, the QR scanner — are cached
+  the first time they are used, so each needs one online use before it works offline. The phone signing page
+  registers no service worker: it needs the network to open, unless the app itself was opened on that phone before
 - Full EN / FR / AR (RTL) localisation
 
 ## License

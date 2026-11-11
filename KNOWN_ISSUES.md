@@ -563,7 +563,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **Thirty-one values are pending** — `toolbar.addTextTitle`, `toolbar.signersTitle`, `formatting.fontSizeDownTitle`, `toolbar.ocrTitle`, `toolbar.signCertTitle`, `formatting.fontSizeUpTitle`, `toolbar.editTextTitle`, `toolbar.exportDocxTitle`, `toolbar.exportMdTitle`, `formatting.superscript`, `formatting.subscript`, `formatting.bulletList` and `formatting.numberedList` (re-worded so the accessible name starts with the visible text, WCAG 2.5.3, axe-core 4.14 on 2026-11-10) and `toolbar.langAria` (new, same change), `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone 2), `toast.exportResourcesUnreadable` (new, SEC-1,
+  read, and it is recorded as one. **Sixty-four values are pending** — the 33 phone-signature-pad keys (`pad.*` 12, `modal.signature.*` 21 — the pad page f251f30, Sign on phone + Import image 16906ff, Scan 3cd3054; 2026-11-10/11, all new, session-written), then `toolbar.addTextTitle`, `toolbar.signersTitle`, `formatting.fontSizeDownTitle`, `toolbar.ocrTitle`, `toolbar.signCertTitle`, `formatting.fontSizeUpTitle`, `toolbar.editTextTitle`, `toolbar.exportDocxTitle`, `toolbar.exportMdTitle`, `formatting.superscript`, `formatting.subscript`, `formatting.bulletList` and `formatting.numberedList` (re-worded so the accessible name starts with the visible text, WCAG 2.5.3, axe-core 4.14 on 2026-11-10) and `toolbar.langAria` (new, same change), `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone 2), `toast.exportResourcesUnreadable` (new, SEC-1,
   2026-10-08) and the fourteen below (this line said three from WS7 round 10 on and
   missed five later keys: `toast.pdfLoadRefused` (WS7 round 15), `toast.exportLayersConflict` (WS8),
   `thumbnail.previewUnavailable` (A6), `toolbar.clearRecentFiles` and `progress.ocrLoadingModel` (limits rows
@@ -577,7 +577,8 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   wording starts `[Unverified]` like any new value. WS7 round 10 added two more the same day,
   `docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`, also written by the session. This list lived in four prose copies and drifted
   three times (11 / 12 / 14 / 15) before the closure; `CLAUDE.md` § "The hide-vs-remove audit" is the
-  count's home. **RTL rendering was not part of that review** — see ceiling C18 (select/copy/search precision); C19 (tashkeel/GPOS in the overlay) was fixed by limits row 25.
+  count's home. Outside the count (not an `ar.json` key): the Arabic **Camera** paragraph of `public/privacy.html`,
+  added 2026-11-11 for the phone signature pad, is session-written and unreviewed too. **RTL rendering was not part of that review** — see ceiling C18 (select/copy/search precision); C19 (tashkeel/GPOS in the overlay) was fixed by limits row 25.
   Overlay bracket mirroring and RTL list-marker placement were fixed by limits row 25 (2026-09-27): brackets, `•`, `-` and `%`,
   which the Arabic font has no glyph for, used to draw as empty boxes and extract as U+0000. Two bounds remain: a mirrored
   guillemet extracts as its mirror (`«` drawn as `»` copies as `»`, as in any viewer's copy of such a PDF), and the export

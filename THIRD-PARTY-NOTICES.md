@@ -9,7 +9,8 @@ _Last generated: 2026-06-26, from `package.json`; versions refreshed 2026-09-13 
 latest (every licence re-read from the installed `package.json` — none changed). fflate and the four
 packages under "Bundled transitively" were added the same day, after WS7 round 10 found them missing;
 the transitive dependencies of the other libraries followed after WS7 round 11. The pdf.js data files
-(CMaps, decoders, colour module, CMYK profile) were added 2026-09-26 with rows 32, 36 and 37._
+(CMaps, decoders, colour module, CMYK profile) were added 2026-09-26 with rows 32, 36 and 37. zxing-wasm (with the libraries
+its reader wasm is compiled from, bar the Emscripten runtime — not listed for any wasm here) and qrcode-generator 2.0.4 were added 2026-11-11 for the phone signature pad._
 
 ---
 
@@ -78,6 +79,13 @@ the transitive dependencies of the other libraries followed after WS7 round 11. 
 - **Repository**: https://github.com/kozakdenys/qr-code-styling
 - Copyright © 2019 Denys Kozak
 
+### qrcode-generator
+- **Version**: ^2.0.4 · **License**: MIT
+- **Repository**: https://github.com/kazuhikoarase/qrcode-generator
+- Copyright © 2009 Kazuhiko Arase
+- A direct dependency since 2026-11-10 (the phone signature pad's QR codes, `src/utils/qrCanvas.ts`); qr-code-styling
+  still brings its own 1.5.2, listed below — both copies ship.
+
 ### SortableJS
 - **Version**: ^1.15.7 · **License**: MIT
 - **Repository**: https://github.com/SortableJS/Sortable
@@ -92,6 +100,25 @@ the transitive dependencies of the other libraries followed after WS7 round 11. 
 - **Version**: ^7.0.0 · **License**: Apache-2.0
 - **Repository**: https://github.com/naptha/tesseract.js
 - Copyright © 2015 Project Naptha and Tesseract.js contributors
+
+### zxing-wasm (the QR scanner, phone signature pad)
+- **Version**: ^3.1.6 · **License**: MIT
+- **Repository**: https://github.com/Sec-ant/zxing-wasm
+- Copyright © 2023 Ze-Zheng Wu
+- **Compiled into `zxing_reader.wasm`** (served from `assets/`, loaded lazily on the first scan). Only the READER build
+  ships; zint, which the writer build carries, is not in it.
+  - **zxing-cpp** at commit `2c3dcfeffa7878950a58c1703c86774a428b0c91` · Apache-2.0 · https://github.com/zxing-cpp/zxing-cpp ·
+    Copyright © ZXing authors, Nu-book Inc., Axel Waggershauser and contributors — with its bundled **librscpp**
+    (Apache-2.0, same authors). No `NOTICE` file exists at that commit (the raw URL answers 404), so Apache-2.0 §4(d)
+    adds nothing to ship.
+  - **libzueci** (bundled in zxing-cpp) · BSD-3-Clause · Copyright © 2022 gitlost — *inferred*: zxing-cpp builds it into
+    its readers when `ZXING_ENABLE_UNICODE` is on, its default, and zxing-wasm does not change it; a C library leaves no
+    names in the binary to match. Its licence text is in zxing-cpp's `core/src/libzueci/zueci.c`.
+  - **`ZXingWasm.cpp`** (zxing-wasm's binding) · Apache-2.0 · Copyright © 2016 Nu-book Inc., 2023 Axel Waggershauser,
+    2023 Ze-Zheng Wu.
+  - **stb_image** · MIT OR public domain (Unlicense), **used under MIT** · https://github.com/nothings/stb ·
+    Copyright © 2017 Sean Barrett — *verified*: its error strings (`bad huffman code`, `unknown image type`) are in
+    the shipped wasm.
 
 ### Bundled transitively (runtime dependencies of @cantoo/pdf-lib)
 
@@ -127,7 +154,8 @@ without a string match. Licence texts and copyright lines are in each package's 
   *inferred*.
 - ProseMirror's own dependencies — **prosemirror-transform** 1.12.0, **orderedmap** 2.1.1,
   **rope-sequence** 1.3.4, **w3c-keyname** 2.2.8 (all MIT) — *inferred*.
-- **qrcode-generator** 1.5.2 · MIT — a dependency of qr-code-styling — *inferred*.
+- **qrcode-generator** 1.5.2 · MIT — a dependency of qr-code-styling (the 2.0.4 direct dependency is listed above) —
+  *verified* 2026-11-11: its `bad maskPattern` string is in the entry chunk, beside 2.0.4's in the signature chunk.
 - **@babel/runtime** 7.29.7 · MIT — a dependency of i18next-browser-languagedetector — *inferred*.
 - tesseract.js's dependencies — **idb-keyval** 6.3.0 (Apache-2.0), **wasm-feature-detect** 1.8.0
   (Apache-2.0), **is-url** 1.2.4, **bmp-js** 0.1.0, **zlibjs** 0.3.1, **regenerator-runtime** 0.13.11
@@ -139,9 +167,8 @@ In the production graph but **not bundled**: `@napi-rs/canvas` (pdf.js loads it 
 through `createRequire`), `node-fetch` with `whatwg-url`, `tr46` and `webidl-conversions`
 (tesseract.js's Node path), `require-from-string` (bidi-js's CommonJS build; checked absent from
 `dist/` in WS7 round 10), `opencollective-postinstall` (an install script), and `@types/node` /
-`undici-types` (type declarations). Also `zxing-wasm` 3.1.6 (MIT), added 2026-11-10 for the phone signature pad and not imported by `src/` yet, with its
-`type-fest`, `tagged-tag` and `@types/emscripten` (type-level only): when the pad's Scan button ships it, it moves to the
-bundled list together with **zxing-cpp** (Apache-2.0), which its `zxing_reader.wasm` is compiled from.
+`undici-types` (type declarations). Also zxing-wasm's `type-fest`, `tagged-tag` and `@types/emscripten` (type-level only). zxing-wasm itself moved to
+the bundled list on 2026-11-11, when the pad's Start camera button shipped it.
 
 ---
 
@@ -160,8 +187,9 @@ bundled list together with **zxing-cpp** (Apache-2.0), which its `zxing_reader.w
 
 ## Apache-2.0 note
 
-PDF.js and tesseract.js are used under the Apache License 2.0. PDFturbo consumes them as
-published (no modification of their source). Their copyright notices are preserved above.
+PDF.js, tesseract.js and zxing-cpp (inside zxing-wasm's reader, with `ZXingWasm.cpp` and librscpp) are used under
+the Apache License 2.0. PDFturbo consumes them as published (no modification of their source). Their copyright
+notices are preserved above; zxing-cpp has no `NOTICE` file at the pinned commit.
 
 ## Build-time tooling (NOT distributed in the application)
 

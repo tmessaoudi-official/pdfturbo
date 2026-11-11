@@ -28,9 +28,13 @@ Security concerns most relevant to this project:
 - XSS via malicious PDF content
 - Malicious PDF files causing unexpected behavior in pdf.js
 - Privacy: PDFs are processed locally and never uploaded anywhere
-- Dependencies: the deploy fails on any high advisory (`npm run audit:gate`). One advisory without a patched release, node-forge
-  GHSA-86w9-cpqp-85rv (RSA PKCS#1 v1.5 verification), is exempted until 2026-12-31 because the app verifies RSA signatures with WebCrypto, never forge;
-  see `KNOWN_ISSUES.md`.
+- Dependencies: the deploy fails on any high advisory (`npm run audit:gate`); its exemption list is empty since
+  2026-11-10, when node-forge 1.4.3 fixed GHSA-86w9-cpqp-85rv (the app verifies RSA signatures with WebCrypto either way;
+  see `KNOWN_ISSUES.md`).
+- The phone signature pad (2026-11-11): a scanned QR code and an imported signature image are untrusted input — the
+  QR decoder is strict and fuzzed, an image is size- and pixel-capped and re-encoded, and both only ever become pixels on
+  a canvas. The camera runs only while scanning, frames are decoded on the device and never stored or sent, and every
+  track stops on every exit (`.claude/rules/signing.md` § "The phone signature pad"; `public/privacy.html` § Camera).
 
 ## Hiding is not removing — which tool actually deletes content
 

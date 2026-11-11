@@ -56,6 +56,11 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-11 14:09] AGREED: The release is a MINOR version bump (x.Y.0): a new user-facing feature, no breaking change; the current version is shown before it is written.
 - [2026-11-11 14:41] AGREED: 5c browser red (cold full run, load 33: 9 import failures + 3 tests) accepted as load noise: browser-suite inputs identical to 3cd3054 (cold 736/0), all 17 red files 225/225 together; the full suite re-runs in the pre-push gate and CI.
 - [2026-11-11 14:43] AGREED: 5c 6C tier: advisor() only.
+- [2026-11-11 14:51] AGREED: Step 6 is Medium; plan GO as written: notices (zxing-wasm reader = zxing-cpp + ZXingWasm.cpp Apache-2.0 + stb_image MIT/PD; qrcode-generator 2.0.4 direct), Arabic pending count 31->64 in all homes, signing.md phone-pad section, README feature + offline lines, full gate.
+- [2026-11-11 14:51] AGREED: privacy.html gains a Camera section in EN/FR/AR now (camera only while scanning, frames processed on the device, never stored or sent, tracks stopped); the text is shown before the commit; Arabic [Unverified] until a native read.
+- [2026-11-11 14:51] AGREED: Step 6 3C tier: advisor() only.
+- [2026-11-11 15:13] AGREED: privacy.html Camera text approved as written (EN/FR/AR shown before the commit).
+- [2026-11-11 15:13] AGREED: Step 6 6C tier: advisor() only.
 
 ## Formal Plan
 
@@ -123,7 +128,7 @@ commit.
 | 3 | SignaturePad records and replays strokes; `phonePad` flag with a per-key default OFF, test-first; then run a REAL hand-drawn signature through the codec and record its frames, tolerance and encode time before step 4; and observe one off-canvas coordinate during a captured drag (the codec's clamp rests on `setPointerCapture`, Inferred so far) | S | done | code: 26ffb0b + lock-out fix e32b2c5 (a pad left mid-stroke refused the next finger; found at 6C, never pushed) — jsdom 15 pad cases (14 red first) + 5 flag cases (2 red first); Chrome 4 (tap on both pad kinds, a real drag past the edge, replay pixels; written after the code, proven by sabotage); 11 sabotages (flag 3, pad 6, lock-out 2), each red on its own case; a real mouse drag keeps recording past the edge under pointer capture [Verified, desktop Chrome]; full deploy gate green on 26ffb0b; real signature (W4): 1 QR at tolerance 1, 579 chars, encode 0.3 ms on the phone | src/utils/signaturePad.ts, src/config/features.ts, tests/** |
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | done | commit "feat(sign): pad.html — sign on the phone …" (2026-11-10); jsdom: 6 setSize + 6 qrCanvas + 4 PNG + 12 page + 3 CSP cases, red first; Chrome 3 (dpr-2 pixels, the 909-char v19 frame read back verbatim by zxing, drag → Done → QR → zxing → the encoded frame), written before the page, red on the missing module; 20 sabotages each red on their own guard (one first stayed green — resize mid-stroke — and its test now asserts the next pointer draws); built pad.html via vite preview at 412 px / dpr 2.8125, en + ar, re-run on the committed build at 6C: axe 0 violations (WCAG 2.0/2.1 A+AA, both views), 0 console errors, 0 failed requests, 0 CSP violations, no SW, 0 overflow (a 12 px overflow found there was fixed test-first: the pad and QR now use the content box), ~60 KB gzip; editor index.html unchanged but one modulepreload (a shared chunk: i18n + locales + pad code, 48.8 KB gzip); precache +4; full deploy gate green (jsdom 4129, Chrome 712, coverage 9, qa:sweep 151/114/0) | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
 | 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | doing | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b DONE 2026-11-11 ("Step-5b DONE"); 5c DONE 2026-11-11 ("Step-5c DONE") | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
-| 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | todo | - | README.md, .claude/rules/**, KNOWN_ISSUES.md |
+| 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | done | DONE 2026-11-11 ("Step-6 DONE"); also public/privacy.html (Camera section, ruled) | README.md, .claude/rules/**, KNOWN_ISSUES.md, THIRD-PARTY-NOTICES.md, public/privacy.html |
 | 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred) | S | todo | - | src/config/features.ts |
 | 8 | Milestone three-lens panel on a frozen commit | M | todo | - | |
 <!-- /progress-block -->
@@ -230,6 +235,28 @@ commit.
   `qa-sweep.mjs` / `vite.config.ts` edit (14:10:52 / 14:08 < 14:11:06) and `vite.config.ts` equals its snapshot; the
   offline-pad and sweep pad-QR screenshots were read. `ocr.md` § "PWA caching (#48" and the safety reviewer still quote
   the one-entry `globIgnores: ['**/tesseract/**']` — pre-existing, not changed by 5c, still true of the tesseract entry.
+- Step-6 DONE (2026-11-11), docs only (no `src/`). `THIRD-PARTY-NOTICES.md`: zxing-wasm 3.1.6 moved to the bundled list
+  with what its shipped READER wasm is compiled from — zxing-cpp at `2c3dcfef…` (Apache-2.0, its librscpp too),
+  `ZXingWasm.cpp` (Apache-2.0), stb_image (MIT/PD, used under MIT; its error strings are in the wasm) and libzueci
+  (BSD-3-Clause, inferred from zxing-cpp's CMake: `ZXING_ENABLE_UNICODE` defaults ON); zint is writer-only and not shipped;
+  no `NOTICE` at either pinned commit (raw URLs 404), so Apache §4(d) adds no file. qrcode-generator 2.0.4 listed as a
+  direct dependency; 1.5.2 (via qr-code-styling) now *verified* — both copies ship. Arabic pending count 31 → 64 in
+  its four homes (`toolchain.md`, `redaction.md`, `export.md`, `KNOWN_ISSUES.md`); `crop.md:135`'s "15" is a dated
+  statement of the 2026-09-13 set and stays. `.claude/rules/signing.md`: § "The phone signature pad" + 8 `paths:` globs
+  for the pad files; CLAUDE.md signing bullet (5 → 6). README: the feature bullet and the offline line (the pad page
+  registers no worker). `public/privacy.html` (ruled): a Camera section in EN/FR/AR and "Last updated" → November 2026;
+  before/after screenshots `var/claude/privacy-shots/`, read; its Arabic paragraph is unreviewed and recorded beside the
+  pending count in `KNOWN_ISSUES.md`. Gate (`var/claude/gate-6/gate.log`, load 17–26): all 9 steps rc=0 — jsdom 4230,
+  `test:browser` 736/0 from a cleared `node_modules/.vite` (the same suite inputs as 5c bar `public/privacy.html`, which
+  backs the 14:41 load-noise ruling), coverage, build, qa:sweep 156 / 119 / 0 / 37 skip with the 5 `pad:` checks PASS,
+  57 of 141.
+  6C round 1 (advisor, tier ruled): `SECURITY.md` § Scope lacked the new input surfaces — a phone-pad bullet added (the
+  scanned QR and the imported image are untrusted, the camera's lifetime), and its node-forge sentence was stale ("exempted
+  until 2026-12-31"; the allowlist is `[]` since 2026-11-10) — corrected; README's PNG route says the user moves the file;
+  the notices' "added" line names the Emscripten runtime as not listed (as for every wasm in the file). Re-shot `after-fr`
+  read (Camera section, "novembre 2026"); the footer and storage-banner links are `./privacy.html` (`index.html:245,260`).
+  `signing.md` is now 323 lines, over the ~300 intake cap — recorded, a candidate for the next `/rules-split` prune. Its
+  "Flag `phonePad` defaults OFF" bullet goes stale when step 7 turns the flag on: edit it in that commit.
 - Known, left as is (ruling 2026-11-11): at 414 px on a FIRST visit the cookie banner covers the ✍ modal's Save
   row when the phone panel is open — in French (the longest strings) even with no refusal message; the modal is
   then ~750–790 px in an 860 px viewport. It clears when the banner is dismissed, and the modal scrolls. Look at it
