@@ -18,8 +18,8 @@ most of the work went into proving that what the product claims to remove is act
   signature waits in the modal for Save. No server, no upload: the QR codes on the phone's screen, or the PNG you
   move yourself, are the only link. The scanner's decoder is self-hosted and cached on first use. Online, the phone
   page is fetched from the network first (the browser's own cache may answer for a few minutes after a deploy); on a
-  phone where the app was opened, a copy stays usable offline for 30 days after it was last opened online, until the app
-  updates there.
+  phone where the app was opened, a copy stays usable offline for up to 30 days after it was last opened online, until
+  the app updates there.
 
 #### Fixed
 - **Accessible names start with the visible text** (WCAG 2.5.3, raised to serious by axe-core 4.14) — fourteen
@@ -55,7 +55,7 @@ measured ceiling, and the fixes from a whole-repo review of 2026-10-07. Again, m
 - **DOCX export keeps the PDF's real font names**, the East Asian slot included.
 - **Arabic overlay text** — brackets mirrored, the characters the bundled Noto font lacks drawn, the list gutter on
   the right, and tashkeel placed where the font's GPOS puts it. The Arabic font is cached on first use, so export
-  works offline.
+  works offline (for up to 90 days after that download).
 - **True edit** keeps an embedded font written as literal strings, and edits an embedded simple font with no
   ToUnicode through its `/Encoding`.
 - **Clear recent files** in the File menu; OCR progress names its phase (loading the model, then recognizing).

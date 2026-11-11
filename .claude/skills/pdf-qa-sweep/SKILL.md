@@ -85,7 +85,7 @@ Exit codes: `0` no failures · `1` at least one FAIL · `2` harness could not ru
 the deploy and the screenshots upload as a CI artifact. CI cannot run this SKILL — there is no model in
 the runner — so what CI gets is the mechanical half. **Your** half is the interpretation below, which is
 why running `/pdf-qa-sweep` by hand is still worth doing: CI will not resolve a WARN, root-cause a FAIL, or
-notice that 44 controls were skipped.
+notice how many controls were skipped (44 in a default-flag run on 2026-07-31).
 
 ## Then interpret it — the part that is your job, not the script's
 

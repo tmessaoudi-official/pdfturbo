@@ -37,6 +37,9 @@ Security concerns most relevant to this project:
   only text to that decoder. An image is size- and pixel-capped and re-encoded, and both only ever become pixels on a
   canvas. The camera runs only while scanning, frames are decoded on the device and never stored or sent, and every
   track stops on every exit (`.claude/rules/signing.md` § "The phone signature pad"; `public/privacy.html` § Camera).
+  A camera permission is granted to the site's ORIGIN, and the app is served from a GitHub Pages origin shared with
+  every other Pages project of the same account (`/pdfturbo/` is only a path): choose a one-time permission where the
+  browser offers one, or revoke it after scanning.
 
 ## Hiding is not removing — which tool actually deletes content
 

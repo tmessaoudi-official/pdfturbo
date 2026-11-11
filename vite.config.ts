@@ -87,7 +87,8 @@ export default defineConfig({
           {
             // Phone-signature-pad 5b/5c — the QR scanner's zxing reader wasm (~950 KB, hashed under assets/), fetched
             // only when the PC camera scan starts, so it stays out of the precache and is cached on that first scan;
-            // a later scan then works offline. It is .wasm, so it never matches the .js rule below.
+            // a later scan then works offline (for up to 90 days after that download). It is .wasm, so it never matches
+            // the .js rule below.
             urlPattern: ({ url }) =>
               url.pathname.includes('/zxing_reader') && url.pathname.endsWith('.wasm') && url.origin === self.location.origin,
             handler: 'CacheFirst',
@@ -99,8 +100,8 @@ export default defineConfig({
           {
             // Phone-signature-pad 5c — the phone pad page, from the network first whenever there is one (a deploy
             // reaches the phone once the browser's HTTP cache lets the request through), the last good copy when there
-            // is none, for 30 days after the last online load. A pad never opened online is not available offline: no
-            // claim is made for it.
+            // is none, for up to 30 days after the last online load. A pad never opened online is not available offline:
+            // no claim is made for it.
             urlPattern: ({ url }) => url.pathname.endsWith('/pad.html') && url.origin === self.location.origin,
             handler: 'NetworkFirst',
             options: {

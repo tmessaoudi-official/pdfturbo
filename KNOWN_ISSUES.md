@@ -21,6 +21,13 @@ bytes** — in your browser's **IndexedDB**. This data never leaves your device,
 work in a private/incognito window when editing sensitive documents on a shared machine. See
 [`SECURITY.md`](SECURITY.md).
 
+**The browser decides how long this data lives.** Safari deletes a site's IndexedDB, localStorage, service-worker
+registration and caches after seven days of Safari use without user interaction on that site; an app added to the
+home screen keeps its own count and is not expected to lose its data (WebKit, *Full Third-Party Cookie Blocking and
+More*, 2020-03-24, webkit.org/blog/10218). So in Safari the saved session, the offline app and the files cached on
+first use (the "up to 30 / 90 days" in the README) can be gone sooner. Other browsers may also clear site data
+under storage pressure; no claim is made here about any other browser's rule.
+
 ---
 
 ## Escape-hatch families (the levers — most ceilings map to one)
@@ -73,9 +80,8 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 - **The storage banner can cover the ✍ modal's Save button on a phone.** At 414 px wide on a FIRST visit, with the
   phone panel open, the Save row sits under the storage-notice banner (French, the longest strings: fully covered).
-  Dismiss the banner and Save is reachable; the modal also scrolls. The cause is the banner's stacking above every
-  dialog but the session-restore one (`z-index: 9000` against 1000; that one is 10000), not this modal — left as is by
-  ruling (plan § Known issues).
+  Dismiss the banner and Save is reachable; the modal also scrolls. The cause is the banner's stacking (`z-index: 9000`)
+  above the dialogs at 1000–2000, the ✍ modal among them, not this modal — left as is by ruling (plan § Known issues).
 - **A camera busy in another app reads as "could not be used".** Chrome raises `NotReadableError` for it, which the
   scanner reports as the generic failure (`modal.signature.scanError.failed`: "Try again, or use Import image"), not as
   "the camera is in use".

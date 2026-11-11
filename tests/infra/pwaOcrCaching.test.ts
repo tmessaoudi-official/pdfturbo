@@ -113,6 +113,27 @@ describe('PWA scanner wasm + phone pad page (phone-signature-pad 5c)', () => {
     return { match: (href) => fn({ url: new URL(href) }), handler };
   };
 
+  /** The maxAgeSeconds of the rule whose cacheName is `name`, read only up to the NEXT rule's cacheName (so a rule that
+   *  loses its own never reads its neighbour's), evaluated as the expression the config writes. */
+  const maxAge = (name: string): number | undefined => {
+    const at = cfg.indexOf(`cacheName: '${name}'`);
+    expect(at, `no runtime rule with cacheName '${name}'`).toBeGreaterThan(-1);
+    const next = cfg.indexOf('cacheName:', at + 1);
+    const body = cfg.slice(at, next === -1 ? undefined : next);
+    const expr = /maxAgeSeconds:\s*([\d\s*]+)/.exec(body)?.[1];
+    return expr === undefined ? undefined : (new Function(`return ${expr};`)() as number);
+  };
+
+  // Milestone panel round 3 (2026-11-11): these numbers are QUOTED in README.md, FEATURES.md, CHANGELOG.md,
+  // KNOWN_ISSUES.md and .claude/rules/toolchain.md ("up to 90 days after it was downloaded"; the pad page "up to 30 days
+  // after it was last opened online"). Change one here and those sentences go with it.
+  it('keeps the first-use files 90 days and the phone pad page and stylesheet 30 days, as the docs say', () => {
+    for (const name of ['ocr-assets', 'pdfjs-cmaps', 'pdfjs-wasm', 'zxing-wasm', 'app-fonts']) {
+      expect(maxAge(name), name).toBe(90 * 24 * 60 * 60);
+    }
+    for (const name of ['pad-page', 'pad-css']) expect(maxAge(name), name).toBe(30 * 24 * 60 * 60);
+  });
+
   it('caches the zxing reader wasm, same origin only, CacheFirst', () => {
     const r = rule('zxing-wasm');
     expect(r.handler).toBe('CacheFirst');

@@ -35,6 +35,7 @@ paths:
   - "tests/browser/signature-sources.browser.test.ts"
   - "tests/browser/signature-import.browser.test.ts"
   - "tests/browser/signature-scan.browser.test.ts"
+  - "tests/security/csp.test.ts"
 ---
 
 # pdfturbo gotchas — signing
@@ -323,7 +324,7 @@ QR codes (1–4 frames, cycled every 1 s). *Start camera* on the PC reads them i
 dropped). The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
 untouched: no persisted field, no `SCHEMA_VERSION` change.
 
-- **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen; `zxing-wasm`'s reader wasm is
+- **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.
 - **The PTSIG CRC-32 detects misreads; it authenticates NOTHING.** A scanned QR is untrusted input: the PTSIG decoder is strict
   (length cap before base45, ≤3-byte canonical varints, 256 strokes / 1024 points checked before reading, every point on

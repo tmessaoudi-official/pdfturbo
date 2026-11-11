@@ -580,13 +580,15 @@ clients update only on user action / next load, not instantly.
 page updates only when the EDITOR's update prompt is accepted, and `pad.html` shows no prompt, so a phone that once
 loaded the pad would keep an old copy that "refresh the page" never replaces. `vite.config.ts` therefore puts
 `**/pad.html` in `globIgnores`, serves it from the `pad-page` runtime cache NetworkFirst (from the network first online, the
-last good copy offline for 30 days after the last online load, until the app updates on that phone; a pad never opened online is not available offline, and no claim is made for one), and lists it in
+last good copy offline for up to 30 days after the last online load, until the app updates on that phone; a pad never opened online is not available offline, and no claim is made for one), and lists it in
 `navigateFallbackDenylist`. **The denylist is load-bearing:** the built `sw.js` registers its `index.html`
 `NavigationRoute` BEFORE the runtime routes, so without it a navigation to `pad.html` is answered with the EDITOR.
 Workbox tests a denylist against pathname + search (`workbox-routing/NavigationRoute.js`), hence
 `/^[^?]*\/pad\.html(?:\?|$)/` — anchored to the path since milestone panel round 1 (2026-11-11), so a query that only
 mentions pad.html (`/pdfturbo/?next=/pad.html`) keeps the editor on its offline fallback. The camera scan's zxing reader wasm (~950 KB) is never precached either; the `zxing-wasm`
-runtime cache stores it on the first scan, so a later scan works offline. `pad.html` keeps its manifest link (an install
+runtime cache stores it on the first scan, so a later scan works offline for up to 90 days after that download (CacheFirst does not
+refresh a copy it still serves, and workbox's `ExpirationPlugin` refuses a copy whose `Date` header is older than `maxAgeSeconds`; the five 90-day and
+two 30-day ages are pinned by `tests/infra/pwaOcrCaching.test.ts`, because the README, FEATURES, CHANGELOG and KNOWN_ISSUES quote them). `pad.html` keeps its manifest link (an install
 started from the pad installs the editor). The pad-URL QR names whatever origin served the editor, so on `localhost` it
 names localhost, which a phone cannot open: use the LAN route by hand (step 7).
 Phones whose installed worker predates 5c still answer `pad.html` with the editor until that worker updates, which is

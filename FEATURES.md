@@ -17,8 +17,8 @@ _Last updated: 2026-11-11 · Version 1.0.0_
 - Text search with highlighted matches (RTL/Arabic-aware), and "add highlight" on a match
 - Session persistence (IndexedDB) with restore-or-start-fresh on reload
 - Installable PWA; app shell works offline (fonts, OCR and pdf.js data files and the QR scanner after their first
-  online use; the phone signing page only on a phone where the app was opened and the page was then opened online,
-  for 30 days after its last online opening and until the app updates on that phone)
+  online use, for up to 90 days after that download; the phone signing page only on a phone where the app was opened and the page was then opened online,
+  for up to 30 days after its last online opening and until the app updates on that phone)
 
 ## Annotation & markup
 - **Text boxes** — font family/size, bold/italic, underline/strikethrough, colour, alignment,

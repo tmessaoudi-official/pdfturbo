@@ -181,6 +181,36 @@ describe('startScan — every stop path ends every track', () => {
     expect(allEnded(s.tracks)).toBe(true);
   });
 
+  // Milestone panel round 3 (2026-11-11): the two `if (ended) return;` checks after an await had no case of their own.
+  it('stop() while video.play() is pending, and play() then RESOLVES: no decoder is loaded', async () => {
+    let play!: () => void;
+    const video = fakeVideo(() => new Promise<void>((r) => { play = r; }));
+    const s = setup({ video });
+    await tick();
+    s.handle.stop();
+    play();
+    await s.handle.finished;
+    await tick();
+    expect(s.loadDecoder).not.toHaveBeenCalled();
+    expect(s.ends).toEqual([{ reason: 'stopped' }]);
+    expect(allEnded(s.tracks)).toBe(true);
+  });
+
+  it('a decode still running when stop() comes: the text it returns never reaches onText', async () => {
+    let release!: (t: string[]) => void;
+    const decode = vi.fn(() => new Promise<string[]>((r) => { release = r; }));
+    const onText = vi.fn(() => true);
+    const s = setup({ loadDecoder: () => Promise.resolve(decode), onText });
+    await vi.waitFor(() => { expect(decode).toHaveBeenCalled(); });
+    s.handle.stop();
+    release(['LATE']);
+    await s.handle.finished;
+    await tick();
+    expect(onText).not.toHaveBeenCalled();
+    expect(s.ends).toEqual([{ reason: 'stopped' }]);
+    expect(allEnded(s.tracks)).toBe(true);
+  });
+
   it('the tab hidden', async () => {
     const s = setup({ onText: () => false, wait: () => tick() });
     await tick(); await tick();

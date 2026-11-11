@@ -86,6 +86,17 @@ describe('main.ts feeds the gate the phonePad flag', () => {
     expect(src).toMatch(/applyPhonePadFlag\(\{[^}]*\benabled:\s*isEnabled\('phonePad'\)\s*[,}]/);
     expect(src).not.toMatch(/enabled:\s*!\s*isEnabled\('phonePad'\)/);
   });
+  // Milestone panel round 3 (2026-11-11): a call made only when the flag is ON (`if (isEnabled('phonePad'))
+  // applyPhonePadFlag(…)`, `isEnabled('phonePad') && applyPhonePadFlag(…)`, an if-block around it) passed the check
+  // above and left a flag-OFF build with the block visible and unwired. The call must be its own statement (after `;`
+  // or `}`) and the flag read exactly once, in it (a bare `if (x)` on the line before ends at `)` and is caught).
+  // Bound — not caught: the call inside a block after another statement (`if (x) { a(); applyPhonePadFlag({…`, measured)
+  // when `x` does not name phonePad, a `return` or throw ABOVE the call, or the call moved into a function never run.
+  it('calls it unconditionally: its own statement, and the only place the phonePad flag is read', () => {
+    expect(src).toMatch(/[;}]\s*applyPhonePadFlag\(\{/);
+    expect(src.match(/isEnabled\('phonePad'\)/g)?.length).toBe(1);
+  });
+
   it('has no other #sigSources handling of its own', () => {
     expect(src).not.toMatch(/sigSources/);
   });

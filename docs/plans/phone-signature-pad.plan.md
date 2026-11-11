@@ -73,6 +73,11 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-11 19:00] AGREED: Agent-definition go for round 2: completeness-reviewer.md 'The deploy gate, in full' gains the qa:sweep step (one clause); round-2 fix 3C tier: advisor() only.
 - [2026-11-11 19:00] ASSUMED (review): Round-1 raw reports renamed var/claude/raw/m3r1-* -> pp1-* (round 2: pp2-*): the m3r* names belonged to the 2026-10-17 architecture milestone and were overwritten, then restored from that session's transcript; the 17:10 entry's m3r1 path reads pp1.
 - [2026-11-11 19:22] AGREED: Round-2 fix 6C tier: advisor() only (panel round 3 follows on the commit).
+- [2026-11-11 19:30] AGREED: Offline pad after an app update (6C round-2 finding: a pad cached before the update loads assets the new worker dropped, so it breaks offline until opened online once): accepted as a documented bound, not fixed (efe36b1 wording).
+- [2026-11-11 19:30] AGREED: Milestone panel round 3 on frozen efe36b1 (round-2 fixes): reviewers stay on fable.
+- [2026-11-11 19:51] AGREED: Panel round 3 (efe36b1, 12 P3, no product defect; var/claude/raw/pp3-*.md): fix all as proposed, then round 4; round-3 fix 3C tier: advisor() only.
+- [2026-11-11 19:51] AGREED: privacy.html (EN/FR/AR): the phone-to-PC sentence gains the Download PNG route (shown before the commit; Arabic unreviewed); the camera grant being per site origin (shared github.io) is disclosed in SECURITY.md only.
+- [2026-11-11 20:30] AGREED: privacy.html Download PNG clause approved as shown (EN/FR/AR, Arabic unreviewed); 6C tier for the round-3 fixes: advisor() only.
 
 ## Formal Plan
 
@@ -142,9 +147,9 @@ commit.
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | done | commit "feat(sign): pad.html — sign on the phone …" (2026-11-10); jsdom: 6 setSize + 6 qrCanvas + 4 PNG + 12 page + 3 CSP cases, red first; Chrome 3 (dpr-2 pixels, the 909-char v19 frame read back verbatim by zxing, drag → Done → QR → zxing → the encoded frame), written before the page, red on the missing module; 20 sabotages each red on their own guard (one first stayed green — resize mid-stroke — and its test now asserts the next pointer draws); built pad.html via vite preview at 412 px / dpr 2.8125, en + ar, re-run on the committed build at 6C: axe 0 violations (WCAG 2.0/2.1 A+AA, both views), 0 console errors, 0 failed requests, 0 CSP violations, no SW, 0 overflow (a 12 px overflow found there was fixed test-first: the pad and QR now use the content box), ~60 KB gzip; editor index.html unchanged but one modulepreload (a shared chunk: i18n + locales + pad code, 48.8 KB gzip); precache +4; full deploy gate green (jsdom 4129, Chrome 712, coverage 9, qa:sweep 151/114/0) | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
 | 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | done | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b DONE 2026-11-11 ("Step-5b DONE"); 5c DONE 2026-11-11 ("Step-5c DONE") | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
 | 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | done | DONE 2026-11-11 ("Step-6 DONE"); also public/privacy.html (Camera section, ruled) | README.md, .claude/rules/**, KNOWN_ISSUES.md, THIRD-PARTY-NOTICES.md, public/privacy.html |
-| 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred). The flag-ON commit also edits every "off" surface (from a grep of `phonePad`, `DEFAULT_OFF`, "off by default", "flag-OFF", "Defaults OFF", panel round 2): `src/config/features.ts` (`DEFAULT_OFF` and its comments), `src/vite-env.d.ts` ("Defaults OFF"), `tests/config/features.test.ts` (the default-false cases), `src/main.ts`'s step-5 comment, `src/ui/phonePadGate.ts`'s header ("the default app keeps the old modal"), `signing.md`'s "Flag `phonePad` defaults OFF" bullet, `flow-export.md`'s "`DEFAULT_OFF` — `phonePad`" line, `toolchain.md`'s "CI sweeps the flag-OFF build and never scans", the FEATURES and CHANGELOG "off by default" parentheticals, and the `pdf-qa-sweep` SKILL baseline (re-measured on the flag-ON deploy build) | S | todo | - | src/config/features.ts, src/vite-env.d.ts, tests/config/features.test.ts, src/main.ts, src/ui/phonePadGate.ts, .claude/rules/{signing,flow-export,toolchain}.md, .claude/skills/pdf-qa-sweep/SKILL.md, FEATURES.md, CHANGELOG.md |
-| 8 | Milestone three-lens panel on a frozen commit | M | doing | round 1 on d93ed13 (22 findings, `var/claude/raw/pp1-*.md`), fixed in e54f5a1; round 2 on e54f5a1 (15 findings: 3 P2, 12 P3, no P0/P1, `pp2-*.md`), fixed in the round-2 fix commit; round 3 next | |
-| 9 | Version 1.1.0 (MINOR; the bump shown to the developer first), after step 7's flag ON: `package.json` `version`, `package-lock.json` (its root `version` fields), FEATURES.md's `Version` stamp, CHANGELOG.md's `[Unreleased]` heading → `[1.1.0] — <date>`; then the full deploy gate, ONE push, /ci-watch | S | todo | - | package.json, package-lock.json, FEATURES.md, CHANGELOG.md |
+| 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred). The flag-ON commit also edits every "off" surface (from a grep of `phonePad`, `DEFAULT_OFF`, "off by default", "flag-OFF", "Defaults OFF", panel round 2): `src/config/features.ts` (`DEFAULT_OFF` and its comments), `src/vite-env.d.ts` ("Defaults OFF"), `tests/config/features.test.ts` (the default-false cases), `src/main.ts`'s step-5 comment, `src/ui/phonePadGate.ts`'s header ("the default app keeps the old modal"), `signing.md`'s "Flag `phonePad` defaults OFF" bullet, `flow-export.md`'s "`DEFAULT_OFF` — `phonePad`" line, `toolchain.md`'s "CI sweeps the flag-OFF build and never scans", the FEATURES and CHANGELOG "off by default" parentheticals, and the `pdf-qa-sweep` SKILL baseline (re-measured on the flag-ON deploy build); and the lines step 7 itself makes stale (panel round 3): the "Not certified by execution: a real phone … (step 7)" bullets in `KNOWN_ISSUES.md` § "From the phone signature pad" and `signing.md` § "The phone signature pad", and — when the Arabic review happens — the pending count in `toolchain.md` § i18n ("Pending count: 64"), `KNOWN_ISSUES.md` ("Sixty-four values are pending") and `signing.md` ("the 33 Arabic keys") | S | todo | - | src/config/features.ts, src/vite-env.d.ts, tests/config/features.test.ts, src/main.ts, src/ui/phonePadGate.ts, .claude/rules/{signing,flow-export,toolchain}.md, .claude/skills/pdf-qa-sweep/SKILL.md, FEATURES.md, CHANGELOG.md, KNOWN_ISSUES.md |
+| 8 | Milestone three-lens panel on a frozen commit | M | doing | round 1 on d93ed13 (22 findings, `var/claude/raw/pp1-*.md`), fixed in e54f5a1; round 2 on e54f5a1 (15 findings: 3 P2, 12 P3, no P0/P1, `pp2-*.md`), fixed in efe36b1; round 3 on efe36b1 (12 P3, no product defect, `pp3-*.md`), fixed in the round-3 fix commit; round 4 next | |
+| 9 | Version 1.1.0 (MINOR; the bump shown to the developer first), after step 7's flag ON: `package.json` `version`, `package-lock.json` (its root `version` fields), FEATURES.md's `Version` stamp, CHANGELOG.md's `[Unreleased]` heading → `[1.1.0] — <date>` and its "Shipped continuously to GitHub Pages; no version bump." line (panel round 3); then the full deploy gate, ONE push, /ci-watch | S | todo | - | package.json, package-lock.json, FEATURES.md, CHANGELOG.md |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
@@ -316,15 +321,48 @@ commit.
   "few minutes" HTTP-cache window (the reviewer's GitHub Pages `max-age=600`, not measured here); and the reverse
   worker-age case found at 6C — after the app updates, a pad cached before it loads assets the new worker dropped
   (`PrecacheController.activate` deletes them), so the offline pad breaks until opened online once; now in the
-  docs' wording and `KNOWN_ISSUES.md`, never driven.
+  docs' wording and `KNOWN_ISSUES.md`, never driven. Two comment-only edits landed after that gate and before
+  efe36b1 (`src/ui/placementManager.ts`, `tests/ui/placementGhost.test.ts`, the ghost wording); the round-3
+  reviewer re-ran type-check, lint and that test, and the round-3 fix gate re-runs everything on a tree that holds them.
+- Milestone panel round 3 FIXES (2026-11-11, on efe36b1's 12 P3 findings, `var/claude/raw/pp3-*.md`; ruling 19:51).
+  Certified by execution (each mutant applied, red on its own case only, restored with `cmp`; runners
+  `var/claude/r3mut/run.py`, `run2.py`): two `qrScanner` stop cases — a decode returning after `stop()` (its `if (ended)` removed
+  → that case) and `play()` resolving after `stop()` (its check removed → that case; before, it cost only a decoder
+  load); the `main.ts` gate call must be its own statement and the only `isEnabled('phonePad')` (call under `if`, under
+  `&&`, inside an if-block → that case each — that if-block mutant opens a brace it never closes, which stands because the
+  guard reads the source as text; a bare `if (x)` on the line before → that case; the call in a block after another
+  statement stays GREEN, measured, and is the bound written in the test comment); the cache ages pinned —
+  `ocr-assets`, `pdfjs-cmaps`, `pdfjs-wasm`, `zxing-wasm`, `app-fonts` at 90 days, `pad-page`, `pad-css` at 30 (pad-page
+  30 → 7, zxing 90 → 30, and pad-page losing its `maxAgeSeconds` beside a 30-day neighbour → that case each). Docs:
+  "up to 30 days" (README, FEATURES, CHANGELOG, `toolchain.md`, the `vite.config.ts` comment) and "up to 90 days after
+  it was downloaded" for the first-use files (README, FEATURES, `toolchain.md` — CacheFirst does not refresh a copy it
+  still serves, and the `Date` check counts from the download); a `KNOWN_ISSUES.md` § Privacy paragraph on Safari's seven-day deletion
+  [Verified: WebKit blog 10218, J. Wilander, Mar 24, 2020, fetched 2026-11-11: "without user interaction on the site";
+  Safari only — no claim about other browsers; `privacy.html` promises no retention period, so nothing contradicts it]; `privacy.html`
+  EN/FR/AR and `signing.md` name the *Download PNG* route (Arabic [Unverified], before/after screenshots in
+  `var/claude/privacy-shots/`; the page's "Last updated: November 2026" stamp still holds; no test names the page, and
+  `rsaVerify.test.ts`'s `public/*.html` source scan ran green in the gate); `SECURITY.md` discloses the
+  camera grant's origin (the shared GitHub Pages origin); the stacking claims restated as z-ranges from an enumeration
+  of all 18 dialogs (17 `role="dialog"` in `index.html` + the DOCX editor): the banner (9000) is above the dialogs at
+  1000–2000 only, and the ghost (9999) is painted over the two 9999 dialogs (appended to `body` after them) and below
+  the two at 10000 — round 2's "every dialog but the session-restore one" was wrong for both (KNOWN_ISSUES, this plan,
+  `ui.md`, `placementManager.ts`, `placementGhost.test.ts`); rows 7 and 9 completed; the `pdf-qa-sweep` skip count
+  dated; `tests/security/csp.test.ts` in `signing.md`'s paths.
+  Gate on the fix tree (`var/claude/gate-pp3/`, load 13–23 from another project's runs): 9/9 rc=0 — jsdom 4255 + 2
+  expected fail (+4, the new cases), Chrome 736/0, coverage 45.45% branch, build, QA sweep 156/119/0; built-app checks
+  10/10 rc=0, flag-ON sweep 161/119/0. Written after that gate (6C round 1): this paragraph, the plan wording, the
+  Safari wording (README, KNOWN_ISSUES), `toolchain.md`'s CacheFirst clause and the `phonePadGate` bound comment —
+  re-run after them: `phonePadGate.test.ts` 8/8, type-check rc=0, lint rc=0, and the four tests that read files
+  (`sourceControlBytes`, `rsaVerify`'s `public/*.html` scan, `phonePadGate`, `pwaOcrCaching`) 37/37; no test reads
+  README, KNOWN_ISSUES, `toolchain.md` or this plan (grep for a `readFileSync` of each).
 - Known, left as is (ruling 2026-11-11): at 414 px on a FIRST visit the cookie banner covers the ✍ modal's Save
   row when the phone panel is open — in French (the longest strings) even with no refusal message; the modal is
   then ~750–790 px in an 860 px viewport. It clears when the banner is dismissed, and the modal scrolls. Look at it
   on the real phone in step 7. **5b made it worse (ruling kept, 2026-11-11):** the Start camera row takes the FR
   modal at 414 px to its 90vh cap (774 px), and with the phone panel open the Save row sits FULLY under the storage
-  banner (`z-index: 9000`, above every dialog at 1000 — all but the session-restore one, at 10000) — Save cannot be clicked until the banner is dismissed
+  banner (`z-index: 9000`, above the dialogs at 1000–2000, the ✍ modal among them) — Save cannot be clicked until the banner is dismissed
   (measured: Playwright's click timed out, `var/claude/sig-scan-check/5a-rerun/`). Panel closed: 400 px, no overlap.
-  The root cause is the banner's stacking over the dialogs (all but the session-restore one), not this modal.
+  The root cause is the banner's stacking over the dialogs at 1000–2000, not this modal.
 - 5a, NOT certified by execution: the Arabic strings (no native review); a real phone scanning the pad-URL QR
   (step 7); flag OFF at a SHORT viewport — `.signature-content` now has `max-height: 90vh; overflow-y: auto` for
   every user, measured identical to pre-5a at 900 and 860 px high only (the modal is 349 px tall, so it bites
