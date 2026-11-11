@@ -148,6 +148,15 @@ describe('G22 — axe-core WCAG 2.1 A/AA gate (real Chrome)', () => {
         open: () => { dlg.classList.add('active'); dlg.style.display = 'flex'; },
         close: () => { dlg.classList.remove('active'); dlg.style.display = inline; } });
     }
+    // The ✍ modal's phone panel (phone-signature-pad step 5a) is a disclosure INSIDE a dialog: open both. It is in the
+    // static markup whatever the `phonePad` flag says (main.ts removes it when off), so it is audited here either way.
+    const sigModal = document.getElementById('signatureModal');
+    const sigPanel = document.getElementById('sigPhonePanel');
+    const sigBtn = document.getElementById('sigPhoneBtn');
+    if (!sigModal || !sigPanel || !sigBtn) throw new Error('#signatureModal / #sigPhonePanel / #sigPhoneBtn missing');
+    states.push({ name: 'panel#sigPhonePanel', shown: sigPanel,
+      open: () => { sigModal.classList.add('active'); sigPanel.hidden = false; sigBtn.setAttribute('aria-expanded', 'true'); },
+      close: () => { sigModal.classList.remove('active'); sigPanel.hidden = true; sigBtn.setAttribute('aria-expanded', 'false'); } });
     // 3 flyouts + 17 dialogs on 2026-11-10; a selector that silently matched nothing would make this pass vacuous.
     expect(states.length).toBeGreaterThanOrEqual(20);
 

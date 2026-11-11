@@ -154,11 +154,21 @@ export class SignaturePad {
   replay(sig: DecodedSignature): void {
     this.clear();
     const { width: w, height: h } = this._logical();
-    const s = Math.min(w / sig.gridWidth, h / sig.gridHeight);
-    const ox = (w - sig.gridWidth * s) / 2;
-    const oy = (h - sig.gridHeight * s) / 2;
-    this._strokes = sig.strokes.map((stroke) => stroke.map((p) => ({ x: ox + p.x * s, y: oy + p.y * s })));
+    const box = fitContain(sig.gridWidth, sig.gridHeight, w, h);
+    const s = box.w / sig.gridWidth;
+    this._strokes = sig.strokes.map((stroke) => stroke.map((p) => ({ x: box.x + p.x * s, y: box.y + p.y * s })));
     paintStrokes(this.ctx, this._strokes, sig.color, sig.lineWidth * s);
+  }
+
+  /**
+   * Clear the pad and draw an imported signature image (phone-signature-pad step 5a) fitted inside the drawing size
+   * (contain, centred). It has no strokes: Save takes the pixels (`getDataURL`), and the PC never encodes it.
+   */
+  drawImage(img: CanvasImageSource & { width: number; height: number }): void {
+    this.clear();
+    const { width: w, height: h } = this._logical();
+    const box = fitContain(img.width, img.height, w, h);
+    this.ctx.drawImage(img, box.x, box.y, box.w, box.h);
   }
 
   isEmpty(): boolean {
@@ -166,6 +176,14 @@ export class SignaturePad {
     for (let i = 3; i < data.length; i += 4) { if (data[i] > 0) return false; }
     return true;
   }
+}
+
+/** The largest `sw x sh` box that fits inside `dw x dh` with the same shape, centred. */
+export function fitContain(sw: number, sh: number, dw: number, dh: number): { x: number; y: number; w: number; h: number } {
+  const s = Math.min(dw / sw, dh / sh);
+  const w = sw * s;
+  const h = sh * s;
+  return { x: (dw - w) / 2, y: (dh - h) / 2, w, h };
 }
 
 function paintDot(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, color: string): void {

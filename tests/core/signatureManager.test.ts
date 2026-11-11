@@ -69,4 +69,26 @@ describe('SignatureManager', () => {
     mgr.closeModal();
     expect(mgr.pendingCaption).toBeNull();
   });
+  // Phone-signature-pad step 5a: the camera and the phone panel must stop on EVERY close. Only closeModal() (Cancel,
+  // Escape) and save() close the modal (grep of signatureModal across src/, 2026-11-10), so both notify.
+  it('onClosed listeners run on closeModal() and on a successful save(), not on a save refused for an empty pad', () => {
+    const empty = makeCtx(true);
+    const mgrEmpty = new SignatureManager(empty.ctx);
+    const onEmpty = vi.fn();
+    mgrEmpty.onClosed(onEmpty);
+    mgrEmpty.save();
+    expect(onEmpty).not.toHaveBeenCalled();
+
+    const { ctx } = makeCtx(false);
+    const mgr = new SignatureManager(ctx);
+    const a = vi.fn();
+    const b = vi.fn();
+    mgr.onClosed(a);
+    mgr.onClosed(b);
+    mgr.closeModal();
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).toHaveBeenCalledTimes(1);
+    mgr.save();
+    expect(a).toHaveBeenCalledTimes(2);
+  });
 });

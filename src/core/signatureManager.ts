@@ -24,8 +24,16 @@ export class SignatureManager {
    */
   pendingCaption: SignatureCaption | null = null;
   private _signatureNatural: { w: number; h: number } | null = null;
+  private readonly _closedListeners: Array<() => void> = [];
 
   constructor(private readonly _ctx: ISignatureContext) {}
+
+  /**
+   * Run `fn` whenever the modal closes — cancelled (Cancel, Escape) or saved. These are the ONLY two close paths (grep
+   * of `signatureModal` across src/, 2026-11-10). The phone panel and the camera (phone-signature-pad step 5) stop here,
+   * so a close by any route cannot leave the camera running.
+   */
+  onClosed(fn: () => void): void { this._closedListeners.push(fn); }
 
   get signatureNatural(): { w: number; h: number } | null { return this._signatureNatural; }
   set signatureNatural(v: { w: number; h: number } | null) { this._signatureNatural = v; }
@@ -52,6 +60,7 @@ export class SignatureManager {
     // Cancelling the pad must drop any caption armed by the Signers panel, so it
     // can't leak onto a later plain ✍ signature (the leak guard's cancel path).
     this.pendingCaption = null;
+    this._notifyClosed();
   }
 
   save(): void {
@@ -68,5 +77,10 @@ export class SignatureManager {
     // just-captured pad and make the signature appear to "reset on Save" (QA 2026-06-17).
     this._ctx.setMode('addSignature', { suppressSignatureModal: true });
     this._ctx.ui.addSignatureBtn.classList.add('active');
+    this._notifyClosed();
+  }
+
+  private _notifyClosed(): void {
+    for (const fn of this._closedListeners) fn();
   }
 }

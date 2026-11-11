@@ -4,7 +4,8 @@ import './utils/polyfills';
 import { PDFTurboApp } from './core/pdfTurboApp';
 import { LogBuffer } from './core/logBuffer';
 import { installGlobalErrorBoundary } from './core/globalErrorBoundary';
-import { initI18n, changeLanguage, onLanguageChanged, t } from './utils/i18n';
+import { initI18n, changeLanguage, onLanguageChanged, t, getCurrentLang } from './utils/i18n';
+import { mountSignatureSources, padUrlFor } from './ui/signatureSources';
 import { registerSW } from 'virtual:pwa-register';
 import { wireSwUpdate } from './pwaUpdate';
 import { isEnabled } from './config/features';
@@ -136,6 +137,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!isEnabled('crop')) { app.ui.cropBtn.style.display = 'none'; document.getElementById('cropControls')?.remove(); }
   if (!isEnabled('compress')) { app.ui.compressBtn.style.display = 'none'; app.ui.compressModal.remove(); }
   if (!isEnabled('signers')) { app.ui.signersBtn.style.display = 'none'; app.ui.signersModal.remove(); }
+  // Phone-signature-pad step 5: Sign on phone / Import image in the ✍ modal, OFF until the step-7 phone + webcam check.
+  const sigSources = document.getElementById('sigSources');
+  if (!isEnabled('phonePad')) sigSources?.remove();
+  else if (sigSources) {
+    mountSignatureSources({
+      root: sigSources,
+      pad: app.signaturePad,
+      onModalClosed: (fn) => app.onSignatureModalClosed(fn),
+      padUrl: () => padUrlFor(location.origin, import.meta.env.BASE_URL, getCurrentLang()),
+    });
+  }
 
   // #1c — DOCX editor entry (flag-gated, lazy). Nothing docx-related (ProseMirror,
   // the docx model) loads until the user actually opens the editor: the controller

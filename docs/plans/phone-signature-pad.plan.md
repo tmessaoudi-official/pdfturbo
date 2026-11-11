@@ -33,6 +33,14 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-10 22:41] AGREED: Step 4: a 2–4 frame signature auto-cycles its QRs every 1 s with a 'QR k of n' label.
 - [2026-11-10 22:41] AGREED: Step 4: 3C certification tier advisor() only.
 - [2026-11-10 22:45] AGREED: Step 4 plan approved (5 bullets + the 3C round-1 acceptance list); QR encoder qrcode-generator ^2.0.4 as a direct dependency, proven test-first against the v19-M budget, falling back to the installed 1.5.2 if it fails.
+- [2026-11-10 23:35] AGREED: Step 5 is Large, delivered as three commits each test-first with its own 6C and green gate: 5a Use phone + Import image, 5b Scan (camera + zxing-wasm), 5c PWA rules.
+- [2026-11-10 23:46] AGREED: Step 5 plan GO as written (5a Sign on phone + Import image, 5b Scan, 5c PWA); pad.html leaves the precache and is served NetworkFirst, reversing the Formal Plan's precache line.
+- [2026-11-10 23:46] AGREED: PC modal has two buttons: Sign on phone (one panel: the pad-URL QR, then Start camera) and Import image; not three.
+- [2026-11-10 23:46] AGREED: Import image removes the paper: composite over white, key out the paper level, keep the ink colour, trim to the ink.
+- [2026-11-10 23:46] AGREED: After a successful scan the signature is shown on the canvas and waits for Save; no auto-save.
+- [2026-11-11 09:51] AGREED: Step 5a remainder runs as Medium; plan go: the file-input reset is guarded in Chrome with a real file list (not a jsdom setter spy), beside the pad-URL QR read-back; the gate runs before the 5a commit.
+- [2026-11-11 10:49] AGREED: The placement ghost floating above the open signature modal (pre-existing, placementManager.ts) is fixed now, test first, as its OWN commit before 5a.
+- [2026-11-11 10:49] AGREED: The cookie banner covering the modal's Save row at 414 px on a first visit (phone panel + error message open) is noted under Known issues and left as is.
 
 ## Formal Plan
 
@@ -56,17 +64,17 @@ appearance image all get it with no change to export, redaction or signing code.
 - **Phone page.** `pad.html` is a separate Vite entry with the same CSP. It does NOT register the service worker, so it
   stays light: no editor precache on the phone. Once loaded it signs offline, but there is no offline-first claim. On a
   format mismatch the PC shows "refresh the page on your phone".
-- **PC side.** Three buttons in the signature modal:
-  - **Use phone**: a QR of the pad URL, derived from `location` + base so it also works in dev and preview.
-  - **Scan**: `getUserMedia` → `zxing-wasm`, loaded lazily from a self-hosted wasm via `locateFile`, never the CDN
+- **PC side.** Two buttons in the signature modal (ruled 2026-11-10, step-5 gate; the Use phone and Scan halves share one panel):
+  - **Sign on phone**: a QR of the pad URL, derived from `location` + base so it also works in dev and preview.
+  - **Start camera** (in the same panel): `getUserMedia` → `zxing-wasm`, loaded lazily from a self-hosted wasm via `locateFile`, never the CDN
     default (`connect-src 'self'` would block it).
   - **Import image**: `createImageBitmap`, a size and dimension cap, a fit onto `signatureCanvas`, re-encoded to PNG,
     which drops EXIF and other metadata.
 
   Camera tracks are stopped on success, cancel, close and when the tab is hidden. An expected denial or a missing camera
   is shown in the UI and never logged with `console.error`, because the QA sweep fails on a console error.
-- **PWA.** A runtime cache rule for the zxing wasm (like `pdfjs-wasm`); the new service worker precaches `pad.html` and
-  keeps it out of the navigation fallback. **The outdated-app case cannot be fixed from new code**
+- **PWA.** A runtime cache rule for the zxing wasm (like `pdfjs-wasm`); `pad.html` is NOT precached (ruled 2026-11-10, step-5 gate): it is
+  served NetworkFirst and kept out of the navigation fallback, so a phone refresh always gets the current pad. **The outdated-app case cannot be fixed from new code**
   (3C round 2): the deployed `dist/sw.js` routes every navigation to the cached `index.html`
   (`NavigationRoute(createHandlerBoundToURL("index.html"))`), so a phone on an old version gets the old editor and old
   JS. Mitigation: the "Use phone" panel on the PC says "if your phone opens the editor, accept its Update prompt and
@@ -99,7 +107,7 @@ commit.
 | 2 | PTSIG codec + base45 + strict decode + fuzz, test-first (jsdom) | M | done | commit "feat(sign): PTSIG v1 codec …" (2026-11-10); 45 tests red (module missing) → green, +1 at 6C (the shorter-side floor); 17 sabotages each red on their own guard (the varint-limit one first stayed green and its test was moved); 6C advisor clean, the fuzz made ~20x cheaper (one expect per signature); synthetic sizes var/claude/ptsig/sizes.txt: 6 strokes / 720 samples = 1 frame at tolerance 1 [Inferred] | src/utils/signatureStrokes.ts, tests/utils/** |
 | 3 | SignaturePad records and replays strokes; `phonePad` flag with a per-key default OFF, test-first; then run a REAL hand-drawn signature through the codec and record its frames, tolerance and encode time before step 4; and observe one off-canvas coordinate during a captured drag (the codec's clamp rests on `setPointerCapture`, Inferred so far) | S | done | code: 26ffb0b + lock-out fix e32b2c5 (a pad left mid-stroke refused the next finger; found at 6C, never pushed) — jsdom 15 pad cases (14 red first) + 5 flag cases (2 red first); Chrome 4 (tap on both pad kinds, a real drag past the edge, replay pixels; written after the code, proven by sabotage); 11 sabotages (flag 3, pad 6, lock-out 2), each red on its own case; a real mouse drag keeps recording past the edge under pointer capture [Verified, desktop Chrome]; full deploy gate green on 26ffb0b; real signature (W4): 1 QR at tolerance 1, 579 chars, encode 0.3 ms on the phone | src/utils/signaturePad.ts, src/config/features.ts, tests/** |
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | done | commit "feat(sign): pad.html — sign on the phone …" (2026-11-10); jsdom: 6 setSize + 6 qrCanvas + 4 PNG + 12 page + 3 CSP cases, red first; Chrome 3 (dpr-2 pixels, the 909-char v19 frame read back verbatim by zxing, drag → Done → QR → zxing → the encoded frame), written before the page, red on the missing module; 20 sabotages each red on their own guard (one first stayed green — resize mid-stroke — and its test now asserts the next pointer draws); built pad.html via vite preview at 412 px / dpr 2.8125, en + ar, re-run on the committed build at 6C: axe 0 violations (WCAG 2.0/2.1 A+AA, both views), 0 console errors, 0 failed requests, 0 CSP violations, no SW, 0 overflow (a 12 px overflow found there was fixed test-first: the pad and QR now use the content box), ~60 KB gzip; editor index.html unchanged but one modulepreload (a shared chunk: i18n + locales + pad code, 48.8 KB gzip); precache +4; full deploy gate green (jsdom 4129, Chrome 712, coverage 9, qa:sweep 151/114/0) | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
-| 5 | PC modal behind the flag: Use phone / Scan (zxing-wasm, camera lifecycle) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | todo | - | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
+| 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | doing | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b, 5c todo | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
 | 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | todo | - | README.md, .claude/rules/**, KNOWN_ISSUES.md |
 | 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred) | S | todo | - | src/config/features.ts |
 | 8 | Milestone three-lens panel on a frozen commit | M | todo | - | |
@@ -117,6 +125,73 @@ commit.
 - RESOLVED (step 1): zxing-wasm 3.1.6 — import from `zxing-wasm/reader` (reader-only wasm 947 KB raw / 411 KB gzip; `full` is 1.5 MB); self-host with `prepareZXingModule({ overrides: { locateFile: (p, prefix) => p.endsWith('.wasm') ? wasmUrl : prefix + p } })` and `import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url'` (measured: no CDN request); reader options `{ formats: ['QRCode'], tryHarder: true, maxNumberOfSymbols: 1 }`; a result carries `version` and `ecLevel`.
 ### Fragile
 ### Known issues
+- Step-5a DONE (2026-11-11 10:59; the 00:03 "RESUME HERE" entry, closed). What the resume added to the 5a tree:
+  (1) the vacuous jsdom `input.value === ''` line is gone; the reset is pinned in Chrome with a real FileList
+  (`tests/browser/signature-sources.browser.test.ts`, precondition asserted: one file, a `…s.png` value) — mutant
+  `input-not-reset` green in jsdom, RED there. (2) The byte-mode pad-URL QR is read back by zxing as the exact URL
+  (en/fr/ar x dpr 1/2); an upper-casing mutant in `makeQr` stays green in jsdom and reds all six. (3) Built-app
+  acceptance, `var/claude/sig-sources-check/check.mjs` (it asserts and exits non-zero; criteria fixed before run 1,
+  two corrected after it — the QR box is AT MOST 180 CSS px, and Chrome lays out in 1/64 px): the pre-5a build 3
+  states, flag OFF 3 (no `#sigSources`, modal sizes identical to pre-5a at 1280 and 414), flag ON 6 (en/fr/ar x
+  1280/414: pad URL `…pad.html#lang=<lang>`, translated refusal, import onto the pad, Save closes modal + panel) —
+  no console error, failed request, CSP or axe violation. (4) `src/styles/editor.css` is CRLF in git and the 5a
+  edit had saved it LF (291/274 in `--numstat`); restored, the diff is 17/0. (5) Found by reading the screenshots,
+  not by the script: the placement ghost floated above the modal — pre-existing, fixed in its own commit (ruling
+  2026-11-11; `.claude/rules/ui.md` § "The placement ghost floated above every dialog").
+- Known, left as is (ruling 2026-11-11): at 414 px on a FIRST visit the cookie banner covers the ✍ modal's Save
+  row when the phone panel is open — in French (the longest strings) even with no refusal message; the modal is
+  then ~750–790 px in an 860 px viewport. It clears when the banner is dismissed, and the modal scrolls. Look at it
+  on the real phone in step 7.
+- 5a, NOT certified by execution: the Arabic strings (no native review); a real phone scanning the pad-URL QR
+  (step 7); flag OFF at a SHORT viewport — `.signature-content` now has `max-height: 90vh; overflow-y: auto` for
+  every user, measured identical to pre-5a at 900 and 860 px high only (the modal is 349 px tall, so it bites
+  below ~390 px); the zero-size image refusal in `signatureImage.ts` (no test reaches it; it fails closed).
+- 5a, certified at 6C round 1 (2026-11-11): the BUILT `pad.html` honours `#lang=` (`padMain.ts`, reachable only
+  through the built page; `var/claude/sig-sources-check/padlang.mjs` on the gate's own `dist/`): `#lang=ar` under
+  an en-US browser → `lang="ar" dir="rtl"`, Arabic buttons, nothing stored; `#lang=en` under fr-FR → English;
+  `#lang=xx` and no fragment → the browser's language, stored as before; no console or CSP error (6 cases).
+- Step-5 plan (3C rounds 1–2 with advisor, 2026-11-10; the choices marked † were ruled by the developer 2026-11-10 23:46):
+  **5a — Sign on phone + Import image.** Markup `#sigSources` in `#signatureModal` (removed by `main.ts` when
+  `phonePad` is off, the existing pattern): † two buttons, *Sign on phone* (an inline panel above the canvas: the
+  pad-URL QR via `drawQr`, `new URL('pad.html', origin + BASE_URL)` + `#lang=<current>`, the URL as text, the "if your
+  phone opens the editor, accept Update" note, and — in 5b — *Start camera*) and *Import image*. `pad.html` honours
+  `#lang=` (en/fr/ar only). `SignatureManager.onClosed(fn)`, called from `closeModal()` and `save()` (the only two
+  close paths, grep-verified), exposed as public `app.onSignatureModalClosed` (no `app._` reach-in). Import
+  (`src/utils/signatureImage.ts`): png/jpeg/webp, ≤ 15 MB; loaded as an `<img>` from a blob URL (header only, EXIF
+  orientation applied) and refused above 50 MP BEFORE `createImageBitmap(img, {resizeWidth/Height})` to a long side ≤
+  2048; composited over WHITE first (so the pad's own transparent PNG imports right); † paper keyed out: the paper level
+  from a high brightness percentile, alpha ramped from it, ink colour kept; trimmed to the ink box, fitted (contain,
+  centred) onto `signatureCanvas` by a new `SignaturePad.drawImage` that clears the strokes; Save unchanged (getDataURL
+  re-encodes PNG, dropping metadata). Fixtures fixed BEFORE the code: (i) `strokesToCanvas` → PNG → import keeps every
+  stroke; (ii) a photo-like image, paper a gradient 235 → 170 across it, ink 40: alpha 0 everywhere outside the ink,
+  ink alpha ≥ 200 — if one global level fails (ii), the keying goes local, the criterion does not move. Failure paths
+  (a UI message, no console.error, blob URL revoked): wrong type, too big, too many pixels, corrupt image. Gates: the
+  axe gate opens the signature modal WITH the panel open, 414/1280 px, en/fr/ar; Label in Name for the new buttons;
+  before/after screenshots of the modal shown in the turn.
+  **5b — Scan.** `src/utils/ptsigCollector.ts` (pure, jsdom): `feed(text)` → frames grouped by
+  `readFrameHeader().crc` (≤ 4 groups held, oldest dropped); a complete group decodes; `crc`/`mixed` drops that group
+  and scanning goes on; `version` → "refresh the page on your phone"; `magic`/`base45` → ignored with a "not a
+  PDFturbo signature" hint; text never trimmed. `src/ui/qrScanner.ts`: lazy `zxing-wasm/reader` (self-hosted wasm),
+  `getUserMedia`, a non-overlapping loop (video → canvas → ImageData → `readBarcodes`); a cancel token checked after
+  every await; tracks stopped on success, Stop, Cancel, Escape, Save and a hidden tab (UI back to *Start camera*);
+  NotAllowed/NotFound and the unexpected failures (zxing import or wasm fetch fails, a throw in the loop) shown in the
+  panel, tracks stopped, never console.error. Success → `pad.replay(sig)` + "Scanned — press Save" († no auto-save).
+  Chrome: a fake camera (`canvas.captureStream`, repainted) with 1 then 2 cycling frames → pad pixels + every track
+  `ended`; one test per stop path. Flag-ON acceptance: a build with `VITE_FEATURE_PHONE_PAD=true` into
+  `var/claude/`, `vite preview`: the wasm instantiates with 0 CSP violations, a denied camera gives 0 console errors,
+  axe with the scan panel open (414/1280, en/fr/ar), one `qa:sweep` run against it.
+  **5c — PWA.** Runtime cache `zxing-wasm` (CacheFirst, `/assets/zxing_reader*.wasm`) before the `.js` rule. †
+  `pad.html` OUT of the precache (`globIgnores`) and served NetworkFirst (`pad-page` cache) — this REVERSES the Formal
+  Plan line "the new service worker precaches `pad.html`": a precached pad updates only when the EDITOR's prompt is
+  accepted (`registerType: 'prompt'`; the pad shows no prompt), so "refresh the page on your phone" would not cure a
+  version mismatch; no offline claim (no runtime rule covers `.css`). The `navigateFallbackDenylist` entry for
+  `pad.html` is load-bearing: the built `dist/sw.js` registers `NavigationRoute(index.html)` BEFORE the runtime
+  routes (grep-verified). `qa-sweep.mjs` gains a pad pass: await `navigator.serviceWorker.ready` on the editor, open a
+  NEW page in the same context, assert `navigator.serviceWorker.controller !== null` and that the pad (not the editor)
+  rendered, draw → Done → QR, axe, 0 console errors; the documented sweep baselines updated. The manifest link on
+  `pad.html` stays, documented (an install from the pad installs the editor). Dev caveat (documented, no UI): on
+  `localhost` the pad-URL QR names localhost; step 7 uses the by-hand LAN route.
+  Each of 5a/5b/5c: test-first, sabotages, its own 6C, the full gate green before its commit.
 - Step-1 findings for steps 2–5: the PTSIG text must stay in the QR alphanumeric set (alphanumeric mode is 2–7 versions smaller than byte mode for the same text, measured (3–7 at EC M, 2–7 at EC L)); the test encoder was `qrcode-generator` 1.5.2 with an explicit `'Alphanumeric'` mode — `pad.html`'s encoder is chosen in step 4 and must also force that mode; draw with integer device pixels per module and a 4-module quiet zone; `pad.html` needs a `<link rel="icon">` under the base path (the test page drew a root `/favicon.ico` 404, which the QA sweep would fail on); one decode in run 2 returned text that was not the expected payload (`bad:1` at v32 M, text not logged, cause unknown — a misread or another code in view). The strict header checks would NOT catch a misread body behind an intact header: step 2 decides whether PTSIG carries an integrity check (e.g. a CRC), and the step-7 scan page logs any mismatched text.
 - Step-4 acceptance (3C round 1, 2026-11-10): (a) the BUILT `pad.html` loaded from `vite preview` in Chrome from a
   clean profile: draw, Done, QR, Download — zero console errors, failed requests or CSP violations, no service worker

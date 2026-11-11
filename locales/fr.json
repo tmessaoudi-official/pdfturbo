@@ -286,7 +286,19 @@
       "colorLabel": "Couleur :",
       "clear": "Effacer",
       "cancel": "Annuler",
-      "save": "Enregistrer"
+      "save": "Enregistrer",
+      "phone": "Signer sur le téléphone",
+      "importImage": "Importer une image",
+      "padQrLabel": "QR code de la page de signature pour téléphone",
+      "phoneSteps": "Scannez ce code avec votre téléphone et signez dessus. Montrez ensuite le code du téléphone à la caméra de cet ordinateur.",
+      "phoneUpdateNote": "Si votre téléphone ouvre l'éditeur à la place, acceptez sa mise à jour et scannez à nouveau.",
+      "importError": {
+        "type": "Choisissez une image PNG, JPEG ou WebP.",
+        "bytes": "Cette image est trop lourde (plus de 15 Mo).",
+        "pixels": "Cette image a trop de pixels (plus de 50 mégapixels).",
+        "decode": "Impossible de lire cette image.",
+        "empty": "Aucune signature trouvée dans cette image."
+      }
     },
     "help": {
       "title": "Raccourcis clavier",

@@ -286,7 +286,19 @@
       "colorLabel": "Color:",
       "clear": "Clear",
       "cancel": "Cancel",
-      "save": "Save"
+      "save": "Save",
+      "phone": "Sign on phone",
+      "importImage": "Import image",
+      "padQrLabel": "QR code of the phone signature page",
+      "phoneSteps": "Scan this code with your phone and sign there. Then show the phone's code to this computer's camera.",
+      "phoneUpdateNote": "If your phone opens the editor instead, accept its Update prompt and scan again.",
+      "importError": {
+        "type": "Choose a PNG, JPEG or WebP image.",
+        "bytes": "This image is too large (over 15 MB).",
+        "pixels": "This image has too many pixels (over 50 megapixels).",
+        "decode": "This image could not be read.",
+        "empty": "No signature found in this image."
+      }
     },
     "help": {
       "title": "Keyboard Shortcuts",

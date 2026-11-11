@@ -33,6 +33,12 @@ const PAD_ASPECT = 0.4; // the ✍ modal's canvas shape, so a replay on the PC f
 const MAX_QR_PX = 480;
 const CYCLE_MS = 1000;
 
+/** The language the PC handed over in the pad URL's fragment (`#lang=fr`, step 5a): one of the app's three, else null. */
+export function padLanguageFromHash(hash: string): 'en' | 'fr' | 'ar' | null {
+  const lang = new URLSearchParams(hash.replace(/^#/, '')).get('lang');
+  return lang === 'en' || lang === 'fr' || lang === 'ar' ? lang : null;
+}
+
 export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadPageHandle {
   const dpr = opts.dpr ?? (() => window.devicePixelRatio);
   const t = opts.t ?? i18nT;

@@ -57,3 +57,16 @@ describe('drawQr — integer device pixels, a 4-module quiet zone', () => {
     expect(drawQr(canvas, FULL_FRAME, 20, 1)).toEqual({ modules: 93, modulePx: 1 });
   });
 });
+
+describe('makeQr / drawQr — byte mode, for the pad URL on the PC (phone-signature-pad step 5a)', () => {
+  const URL_ = 'https://example.github.io/pdfturbo/pad.html#lang=fr';
+  it('encodes a lowercase URL with # and = only when byte mode is asked for', () => {
+    expect(() => makeQr(URL_)).toThrow('alphanumeric');
+    expect(makeQr(URL_, 'Byte').size).toBe(33); // 51 bytes at EC M: past version 3 (42), within version 4 (62)
+  });
+  it('drawQr passes the mode through', () => {
+    const c = document.createElement('canvas');
+    expect(drawQr(c, URL_, 200, 1, 'Byte').modules).toBe(33);
+    expect(() => drawQr(c, URL_, 200, 1)).toThrow('alphanumeric');
+  });
+});

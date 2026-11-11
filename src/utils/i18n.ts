@@ -61,11 +61,16 @@ export function updateHtmlDir(): void {
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
 }
 
-/** Initialize i18next once at app start. Awaited in main.ts before app creation. */
-export async function initI18n(): Promise<void> {
+/**
+ * Initialize i18next once at app start. Awaited in main.ts before app creation. `lng` forces a language for this page
+ * only and is not stored: pad.html takes the PC's language from its `#lang=` (phone-signature-pad step 5a), and the
+ * phone's own stored choice — the editor's, same origin — must survive it.
+ */
+export async function initI18n(opts: { lng?: string } = {}): Promise<void> {
   await i18next
     .use(LanguageDetector)
     .init({
+      lng: opts.lng, // explicit even when undefined: a re-init MERGES options, so an earlier forced language would stick
       fallbackLng: 'en',
       supportedLngs: ['en', 'fr', 'ar'],
       load: 'languageOnly',
@@ -77,7 +82,7 @@ export async function initI18n(): Promise<void> {
       detection: {
         order: ['localStorage', 'navigator'],
         lookupLocalStorage: 'i18nextLng',
-        caches: ['localStorage'],
+        caches: opts.lng ? [] : ['localStorage'],
       },
       interpolation: { escapeValue: true },
     });

@@ -247,6 +247,10 @@ input[type="file"] {
   border-radius: 8px;
   max-width: 600px;
   width: 90%;
+  /* The phone panel (phone-signature-pad step 5) adds a QR and text: on a short screen the modal scrolls instead of
+     pushing Save off the bottom. */
+  max-height: 90vh;
+  overflow-y: auto;
 }
 .signature-settings {
   display: flex;
@@ -267,6 +271,19 @@ input[type="file"] {
   gap: 10px;
   justify-content: flex-end;
   margin-top: 10px;
+}
+/* Phone-signature-pad step 5: Sign on phone / Import image. `[hidden]` must win over the flex display below. */
+.signature-source-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.signature-phone-panel { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px; background: #f8fafc; }
+.signature-phone-panel[hidden], .signature-source-msg[hidden] { display: none; }
+.signature-pad-qr { flex: 0 0 auto; background: #fff; image-rendering: pixelated; }
+.signature-phone-text { min-width: 0; font-size: 0.9rem; }
+.signature-phone-text p { margin: 0 0 6px; }
+.signature-pad-url { font-family: monospace; overflow-wrap: anywhere; color: #475569; }
+.signature-phone-note { color: #616a78; }
+.signature-source-msg { color: #b91c1c; margin: 8px 0 0; }
+@media (max-width: 640px) {
+  .signature-phone-panel { flex-direction: column; align-items: center; }
 }
 /* ── Image element ───────────────────────────────────── */
 .image-element { background: rgba(37,99,235,0.05); }

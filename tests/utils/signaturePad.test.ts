@@ -279,3 +279,43 @@ describe('SignaturePad — logical size (setSize, phone-signature-pad step 4)', 
     expect(pad.getStrokes()).toEqual([[{ x: 1, y: 1 }], [{ x: 9, y: 9 }, { x: 10, y: 10 }]]);
   });
 });
+
+describe('SignaturePad — drawImage (Import image, phone-signature-pad step 5a)', () => {
+  it('clears the pad, then fits the image inside the logical size (contain, centred) and drops the strokes', () => {
+    const { pad, stroke, ctx } = makePad();
+    stroke([[5, 5], [50, 50]]);
+    const img = document.createElement('canvas');
+    img.width = 100;
+    img.height = 100; // square into 500x200 → 200x200 at x 150
+    const clearRect = vi.spyOn(ctx, 'clearRect');
+    const drawImage = vi.spyOn(ctx, 'drawImage');
+    pad.drawImage(img);
+    expect(clearRect).toHaveBeenCalled();
+    expect(drawImage).toHaveBeenCalledWith(img, 150, 0, 200, 200);
+    expect(pad.getStrokes()).toEqual([]);
+    expect(pad.isEmpty()).toBe(true); // a blank source draws nothing
+  });
+
+  it('uses the LOGICAL size after setSize, not the dpr-scaled buffer', () => {
+    const { pad, ctx } = makePad();
+    pad.setSize(300, 120, 2);
+    const img = document.createElement('canvas');
+    img.width = 600;
+    img.height = 60; // wide: 300x30 at y 45
+    const drawImage = vi.spyOn(ctx, 'drawImage');
+    pad.drawImage(img);
+    expect(drawImage).toHaveBeenCalledWith(img, 0, 45, 300, 30);
+  });
+
+  it('the drawn image is what isEmpty and getDataURL see', () => {
+    const { pad } = makePad();
+    const img = document.createElement('canvas');
+    img.width = 10;
+    img.height = 4;
+    const ictx = img.getContext('2d') as CanvasRenderingContext2D;
+    ictx.fillStyle = '#000';
+    ictx.fillRect(0, 0, 10, 4);
+    pad.drawImage(img);
+    expect(pad.isEmpty()).toBe(false);
+  });
+});

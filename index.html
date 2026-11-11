@@ -703,6 +703,23 @@
         <span data-i18n="modal.signature.colorLabel">Color:</span> <input type="color" id="sigColor" value="#000000">
       </label>
     </div>
+    <!-- Phone-signature-pad step 5: the other signature sources. main.ts removes this block while the phonePad flag is off. -->
+    <div class="signature-sources" id="sigSources">
+      <div class="signature-source-buttons">
+        <button type="button" id="sigPhoneBtn" class="btn btn-secondary" aria-expanded="false" aria-controls="sigPhonePanel"><span aria-hidden="true">📱</span> <span data-i18n="modal.signature.phone">Sign on phone</span></button>
+        <button type="button" id="sigImportBtn" class="btn btn-secondary"><span aria-hidden="true">🖼️</span> <span data-i18n="modal.signature.importImage">Import image</span></button>
+        <input type="file" id="sigImageInput" accept="image/png,image/jpeg,image/webp" hidden data-i18n-aria="modal.signature.importImage" aria-label="Import image">
+      </div>
+      <div class="signature-phone-panel" id="sigPhonePanel" hidden>
+        <canvas id="sigPadQr" class="signature-pad-qr" role="img" data-i18n-aria="modal.signature.padQrLabel" aria-label="QR code of the phone signature page"></canvas>
+        <div class="signature-phone-text">
+          <p data-i18n="modal.signature.phoneSteps">Scan this code with your phone and sign there. Then show the phone's code to this computer's camera.</p>
+          <p class="signature-pad-url" id="sigPadUrl" dir="ltr"></p>
+          <p class="signature-phone-note" data-i18n="modal.signature.phoneUpdateNote">If your phone opens the editor instead, accept its Update prompt and scan again.</p>
+        </div>
+      </div>
+      <p class="signature-source-msg" id="sigSourceMsg" role="alert" hidden></p>
+    </div>
     <canvas id="signatureCanvas" width="500" height="200"></canvas>
     <div class="signature-actions">
       <button id="clearSignature" class="btn btn-secondary" data-i18n="modal.signature.clear">Clear</button>

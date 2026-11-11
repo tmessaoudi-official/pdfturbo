@@ -203,3 +203,16 @@ describe('pad page — Download', () => {
     expect(a.href.startsWith('data:image/png')).toBe(true);
   });
 });
+
+describe('padLanguageFromHash — the PC hands its language to the phone (step 5a)', () => {
+  it('reads lang= from the fragment, for the three app languages only', async () => {
+    const { padLanguageFromHash } = await import('../../src/pad/padPage');
+    expect(padLanguageFromHash('#lang=fr')).toBe('fr');
+    expect(padLanguageFromHash('#lang=ar')).toBe('ar');
+    expect(padLanguageFromHash('#x=1&lang=en')).toBe('en');
+    expect(padLanguageFromHash('#lang=de')).toBeNull();
+    expect(padLanguageFromHash('#lang=FR')).toBeNull();
+    expect(padLanguageFromHash('')).toBeNull();
+    expect(padLanguageFromHash('#lang=fr<script>')).toBeNull();
+  });
+});
