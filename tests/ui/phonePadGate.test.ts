@@ -4,15 +4,25 @@
 // after the modal closes. main.ts owns the flag read; it hands the VALUE to applyPhonePadFlag.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { resolve } from 'node:path';
 import { applyPhonePadFlag } from '../../src/ui/phonePadGate';
+
+vi.mock('../../src/utils/qrCanvas', () => ({ drawQr: vi.fn(() => ({ modules: 33, modulePx: 4 })) }));
+
+// The app's method reads `this`, as PDFTurboApp's does: a gate that passes it UNBOUND fails here (round 2).
+class FakeApp {
+  closers: Array<() => void> = [];
+  constructor(readonly signaturePad: { drawImage: () => void; replay: () => void }) {}
+  onSignatureModalClosed(fn: () => void): void { this.closers.push(fn); }
+}
 
 function setup() {
   document.body.innerHTML = '<div id="sigSources"></div>';
   const pad = { drawImage: vi.fn(), replay: vi.fn() };
-  const closers: Array<() => void> = [];
-  const app = { signaturePad: pad, onSignatureModalClosed: vi.fn((fn: () => void) => { closers.push(fn); }) };
+  const app = new FakeApp(pad);
+  vi.spyOn(app, 'onSignatureModalClosed');
   const mount = vi.fn();
-  return { pad, app, closers, mount };
+  return { pad, app, closers: app.closers, mount };
 }
 
 describe('applyPhonePadFlag', () => {
@@ -50,13 +60,30 @@ describe('applyPhonePadFlag', () => {
     applyPhonePadFlag({ enabled: true, doc: document, app, padUrl: () => 'u', mount });
     expect(mount).not.toHaveBeenCalled();
   });
+
+  it('flag ON with no mount injected: the real block is mounted and wired to the app modal close', () => {
+    const { app } = setup();
+    const doc = new DOMParser().parseFromString(readFileSync(resolve(__dirname, '../../index.html'), 'utf8'), 'text/html');
+    const markup = doc.getElementById('sigSources');
+    if (!markup) throw new Error('#sigSources missing from index.html');
+    document.body.innerHTML = '';
+    document.body.append(document.importNode(markup, true));
+    applyPhonePadFlag({ enabled: true, doc: document, app, padUrl: () => 'https://x.example/pdfturbo/pad.html' });
+    expect(app.onSignatureModalClosed).toHaveBeenCalled();
+    const panel = document.getElementById('sigPhonePanel') as HTMLElement;
+    (document.getElementById('sigPhoneBtn') as HTMLButtonElement).click();
+    expect(panel.hidden).toBe(false);
+    app.closers.forEach((fn) => fn());
+    expect(panel.hidden).toBe(true);
+  });
 });
 
 describe('main.ts feeds the gate the phonePad flag', () => {
   // Comments blanked, so a commented-out call cannot satisfy it.
   const src = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   it("calls applyPhonePadFlag with enabled: isEnabled('phonePad'), not its negation", () => {
-    expect(src).toMatch(/applyPhonePadFlag\(\{[^}]*\benabled:\s*isEnabled\('phonePad'\)/);
+    // The call must END at `)` then `,` or `}`: `isEnabled('phonePad') === false` is a negation too (round 2).
+    expect(src).toMatch(/applyPhonePadFlag\(\{[^}]*\benabled:\s*isEnabled\('phonePad'\)\s*[,}]/);
     expect(src).not.toMatch(/enabled:\s*!\s*isEnabled\('phonePad'\)/);
   });
   it('has no other #sigSources handling of its own', () => {

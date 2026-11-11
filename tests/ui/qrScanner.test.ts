@@ -276,6 +276,32 @@ describe('startScan — every end releases the frame canvas', () => {
     await s.handle.finished;
     expect(release).toHaveBeenCalledTimes(1);
   });
+  // The wiring the cases above cannot see (milestone panel round 2): with NO grab injected, startScan builds its own
+  // canvasGrab() — a default left un-released (wrapped, or built without release) keeps the last frame. The canvas is a
+  // fake returned from document.createElement, so a real one cannot throw on the fake video and end the scan early.
+  it('the default grabber (no grab injected) is released when the scan is stopped', async () => {
+    const ctx = { drawImage: vi.fn(), getImageData: vi.fn((_x: number, _y: number, w: number, h: number) => ({ width: w, height: h }) as ImageData) };
+    const canvas = { width: 0, height: 0, getContext: vi.fn(() => ctx) };
+    const realCreate = document.createElement.bind(document);
+    const create = vi.spyOn(document, 'createElement').mockImplementation(
+      ((tag: string, o?: ElementCreationOptions) => (tag === 'canvas' ? canvas : realCreate(tag, o))) as typeof document.createElement,
+    );
+    try {
+      let grabbed!: () => void;
+      const firstFrame = new Promise<void>((r) => { grabbed = r; });
+      const decode = vi.fn(() => { grabbed(); return Promise.resolve([] as string[]); });
+      const s = setup({ grab: undefined, onText: () => false, loadDecoder: () => Promise.resolve(decode), wait: tick });
+      await firstFrame;
+      expect(ctx.getImageData).toHaveBeenCalled();
+      expect([canvas.width, canvas.height]).toEqual([640, 480]);
+      s.handle.stop();
+      await s.handle.finished;
+      expect(s.ends).toEqual([{ reason: 'stopped' }]);
+      expect([canvas.width, canvas.height]).toEqual([0, 0]);
+    } finally {
+      create.mockRestore();
+    }
+  });
 });
 
 describe('canvasGrab — release() frees the canvas for good', () => {

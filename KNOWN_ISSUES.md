@@ -9,7 +9,7 @@ The items below are **not defects and not on a fix list** — they are the hones
 client-side editor. Each notes the "escape hatch" that *would* lift it and the trade-off of taking
 it, so the limit is understood rather than mistaken for a bug.
 
-_Last updated: 2026-10-08._
+_Last updated: 2026-11-11._
 
 ---
 
@@ -73,8 +73,9 @@ work in a private/incognito window when editing sensitive documents on a shared 
 
 - **The storage banner can cover the ✍ modal's Save button on a phone.** At 414 px wide on a FIRST visit, with the
   phone panel open, the Save row sits under the storage-notice banner (French, the longest strings: fully covered).
-  Dismiss the banner and Save is reachable; the modal also scrolls. The cause is the banner's stacking above EVERY
-  dialog (`z-index: 9000` against 1000), not this modal — left as is by ruling (plan § Known issues).
+  Dismiss the banner and Save is reachable; the modal also scrolls. The cause is the banner's stacking above every
+  dialog but the session-restore one (`z-index: 9000` against 1000; that one is 10000), not this modal — left as is by
+  ruling (plan § Known issues).
 - **A camera busy in another app reads as "could not be used".** Chrome raises `NotReadableError` for it, which the
   scanner reports as the generic failure (`modal.signature.scanError.failed`: "Try again, or use Import image"), not as
   "the camera is in use".
@@ -85,7 +86,10 @@ work in a private/incognito window when editing sensitive documents on a shared 
   zxing wasm heap may still hold the frame it last read, in memory only — never written or sent — until the tab closes.
 - **Not certified by execution:** a real phone read by a real webcam (step 7 of the plan); a phone on an OLDER
   service worker loading a NEWER pad page offline (the `pad-css` cache rule exists for it; the two-build case was
-  never driven). The rule itself only reaches a phone once its worker has updated to a build that carries it.
+  never driven). The rule itself only reaches a phone once its worker has updated to a build that carries it. The
+  reverse case: once the app updates on a phone, a pad page cached before the update loads assets the new worker no
+  longer holds (workbox drops them on activate), so the offline pad breaks until it is opened online once — read from
+  workbox's `PrecacheController.activate`, not driven.
 
 ### From QUAL-1 — releasing a closed document (2026-10-08)
 

@@ -395,9 +395,9 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 ## Git & CI
 
 - Single branch `master`; pushing to it triggers `.github/workflows/deploy.yml`:
-  `node scripts/audit-gate.mjs` (the audit, see below) → type-check → lint → test (jsdom) → `ocr:assets` +
-  `playwright install-deps chromium` → test:browser (real Chrome) → build → GitHub Pages
-  deploy. The workflow also declares a `pull_request: [master]` trigger, but the project
+  `node scripts/audit-gate.mjs` (the audit, see below) → `ocr:assets` → type-check → lint → test (jsdom) →
+  `playwright install-deps chromium` → test:browser (real Chrome) → test:coverage:export → build → qa:sweep
+  (`vite preview` :4173, `--allow-destructive --require-sw`) → GitHub Pages deploy. The workflow also declares a `pull_request: [master]` trigger, but the project
   is single-dev/single-branch so in practice every run is a push to `master` — there is
   **no human PR review gate** (the local pre-push hook is the safety net; see below).
   A manual `gh workflow run deploy.yml --ref master` deploys too (developer ruling 2026-10-17); until then the

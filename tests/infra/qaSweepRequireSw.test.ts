@@ -18,6 +18,10 @@ describe('--require-sw', () => {
   });
 
   it('the sweep parses the flag and turns the no-worker SKIP into a FAIL with it', () => {
+    // Bound (round 2): text pins. `has` and `argv` are pinned too, so a `has` that ignores its argument goes red; the
+    // FAIL itself is proven by the recorded live run, not by a test (driving it needs a build with no worker).
+    expect(sweep).toMatch(/^const argv = process\.argv\.slice\(2\);$/m);
+    expect(sweep).toMatch(/^const has = n => argv\.includes\(n\);$/m);
     expect(sweep).toMatch(/const REQUIRE_SW = has\('--require-sw'\);/);
     expect(sweep).toMatch(/record\(REQUIRE_SW \? 'FAIL' : 'SKIP', 'pad: service worker'/);
   });

@@ -17,7 +17,7 @@
  * Usage:
  *   node scripts/qa-sweep.mjs [--url <url>] [--fixture <pdf>] [--allow-destructive] [--require-sw]
  *                             [--only <substr>] [--depth N] [--max-clicks N]
- *                             [--no-a11y] [--no-scenarios] [--out <dir>]
+ *                             [--no-a11y] [--no-scenarios] [--scenario <name>] [--out <dir>]
  *
  * Exit codes: 0 = no failures; 1 = at least one FAIL; 2 = harness could not run (no browser, no
  * server, app never booted). A non-zero exit is the point — this is usable as a gate.

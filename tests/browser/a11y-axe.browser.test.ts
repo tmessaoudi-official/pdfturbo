@@ -149,7 +149,7 @@ describe('G22 — axe-core WCAG 2.1 A/AA gate (real Chrome)', () => {
         close: () => { dlg.classList.remove('active'); dlg.style.display = inline; } });
     }
     // The ✍ modal's phone panel (phone-signature-pad step 5a) is a disclosure INSIDE a dialog: open both. It is in the
-    // static markup whatever the `phonePad` flag says (main.ts removes it when off), so it is audited here either way.
+    // static markup whatever the `phonePad` flag says (`phonePadGate.ts` removes it when off), so it is audited here either way.
     const sigModal = document.getElementById('signatureModal');
     const sigPanel = document.getElementById('sigPhonePanel');
     const sigBtn = document.getElementById('sigPhoneBtn');

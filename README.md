@@ -87,8 +87,9 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
   the OCR engine and languages, pdf.js's CJK CMaps, image decoders and colour profile, the QR scanner — are cached
   the first time they are used, so each needs one online use before it works offline. The phone signing page
   registers no service worker: it needs the network to open, unless the app itself was opened in that phone's browser
-  and the signing page was then opened there online (the app's worker keeps that copy); a signing page never opened
-  online is not available offline
+  and the signing page was then opened there online (the app's worker keeps that copy for 30 days after the page was
+  last opened online, until the app updates on that phone); a signing page never opened online, or not since the
+  last 30 days or the last app update, is not available offline
 - Full EN / FR / AR (RTL) localisation
 
 ## License

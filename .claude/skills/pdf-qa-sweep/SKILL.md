@@ -2,7 +2,7 @@
 name: pdf-qa-sweep
 description: Exhaustive systematic QA on the real PDFturbo app in a real browser — boot, load a PDF, exercise every reachable control, collect console/network errors, run axe-core WCAG checks, screenshot everything. Use before a release, after any change to the editor/export/UI surface, or when a defect is reported that the test suites do not reproduce. Not a substitute for the vitest suites; it answers "does the product work?" rather than "does this unit work?".
 user-invocable: true
-args: "[--allow-destructive] [--require-sw] [--only <substr>] [--depth N] [--max-clicks N] [--no-a11y] [--fixture <pdf>] [--url <url>]"
+args: "[--allow-destructive] [--require-sw] [--only <substr>] [--depth N] [--max-clicks N] [--no-a11y] [--no-scenarios] [--scenario <name>] [--fixture <pdf>] [--url <url>] [--out <dir>]"
 ---
 
 ## --help
@@ -13,7 +13,8 @@ args: "[--allow-destructive] [--require-sw] [--only <substr>] [--depth N] [--max
 > /pdf-qa-sweep — drive the real app in a real browser and report what breaks.
 >
 > Usage: /pdf-qa-sweep [--allow-destructive] [--require-sw] [--only <substr>] [--depth N]
->                  [--max-clicks N] [--no-a11y] [--fixture <pdf>] [--url <url>]
+>                  [--max-clicks N] [--no-a11y] [--no-scenarios] [--scenario <name>]
+>                  [--fixture <pdf>] [--url <url>] [--out <dir>]
 >
 >   --allow-destructive  include delete/remove/reset/redact/flatten/compress controls
 >   --require-sw         a missing built service worker FAILs the pad pass (CI; never on a dev server)
@@ -21,8 +22,11 @@ args: "[--allow-destructive] [--require-sw] [--only <substr>] [--depth N] [--max
 >   --depth N            max UI disclosure depth (default 3)
 >   --max-clicks N       safety cap (default 250; converges ~145 today)
 >   --no-a11y            skip the axe-core WCAG 2.1 AA pass
+>   --no-scenarios       skip the workflow scenarios
+>   --scenario <name>    run only the scenarios whose name contains <name>
 >   --fixture <pdf>      document to load (default tests/fixtures/qa-imagetext.pdf)
 >   --url <url>          default http://localhost:5173/pdfturbo/
+>   --out <dir>          report directory (default var/claude/qa-sweep/<stamp>)
 > ```
 
 ---
@@ -71,7 +75,7 @@ npm run qa:sweep                    # add --allow-destructive for the full surfa
 
 # What CI does — against the BUILT artifact, which is what actually deploys:
 npm run build && npm run preview -- --port 4173 &
-npm run qa:sweep -- --url http://localhost:4173/pdfturbo/
+npm run qa:sweep -- --url http://localhost:4173/pdfturbo/ --allow-destructive --require-sw
 ```
 
 Exit codes: `0` no failures · `1` at least one FAIL · `2` harness could not run.
@@ -101,8 +105,8 @@ The driver reports facts. You decide what they mean.
    report now ends with `Exercised N distinct control(s) of M in the DOM` and **names** every control
    that was not. Read that line first; a green `0 fail` over 57 of 141 controls is not a clean bill of
    health. (Until 2026-11-11 that line also counted non-control subjects — `boot`, `load`, `a11y` — and
-   read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive` and `--require-sw`** (the latter: a missing built worker FAILs the pad pass instead of SKIP) (36 skips instead of 44 — it reaches redaction, erase
-   and crop-remove), so a local default run is WEAKER than the gate; match the flag before comparing.
+   read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive` and `--require-sw`** (the latter: a missing built worker FAILs the pad pass instead of SKIP) (on 2026-07-31: 36 skips instead of 44 — it reaches redaction, erase
+   and crop-remove; the 2026-11-11 baseline below: 37), so a local default run is WEAKER than the gate; match the flag before comparing.
    Do NOT claim the sweep covers a specific feature without checking that list — measured 2026-07-31,
    `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
    DOCX/MD/XFDF export buttons are **never clicked**, because `modalBinder.ts` registers the export flyout with

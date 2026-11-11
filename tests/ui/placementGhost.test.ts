@@ -6,7 +6,8 @@ import { PlacementManager, type IPlacementContext } from '../../src/ui/placement
 
 /**
  * The placement ghost — the dashed box that follows the pointer in a placement mode — shows where the element will
- * land ON THE PAGE. It is `position:fixed; z-index:9999`, above every dialog, and until 2026-11-11 it followed the
+ * land ON THE PAGE. It is `position:fixed; z-index:9999`, above every dialog but the session-restore one
+ * (10000), and until 2026-11-11 it followed the
  * pointer over an open dialog too: over the ✍ modal's drawing pad, and (phone-signature-pad step 5a) over the QR code
  * a phone has to scan. Mounted on the REAL `#signatureModal` markup of index.html, so the dialog role cannot drift.
  */

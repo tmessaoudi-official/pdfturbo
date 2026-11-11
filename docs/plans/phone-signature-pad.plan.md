@@ -68,6 +68,11 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-11 17:10] AGREED: Round-1 refuter stage skipped: each finding verified by reading (greps in the session); round 2 re-reviews every fix.
 - [2026-11-11 17:13] AGREED: Round-1 fix round 3C tier: advisor() only.
 - [2026-11-11 17:51] AGREED: Round-1 fix round 6C tier: advisor() only (panel round 2 follows on the commit).
+- [2026-11-11 18:20] AGREED: Milestone panel round 2 on frozen e54f5a1 (round-1 fixes): reviewers stay on fable.
+- [2026-11-11 19:00] AGREED: Panel round 2 (e54f5a1, 15 findings, no P0/P1): fix all 15 as proposed, then round 3; #3 (--require-sw) stays a text pin plus the recorded live run.
+- [2026-11-11 19:00] AGREED: Agent-definition go for round 2: completeness-reviewer.md 'The deploy gate, in full' gains the qa:sweep step (one clause); round-2 fix 3C tier: advisor() only.
+- [2026-11-11 19:00] ASSUMED (review): Round-1 raw reports renamed var/claude/raw/m3r1-* -> pp1-* (round 2: pp2-*): the m3r* names belonged to the 2026-10-17 architecture milestone and were overwritten, then restored from that session's transcript; the 17:10 entry's m3r1 path reads pp1.
+- [2026-11-11 19:22] AGREED: Round-2 fix 6C tier: advisor() only (panel round 3 follows on the commit).
 
 ## Formal Plan
 
@@ -101,7 +106,7 @@ appearance image all get it with no change to export, redaction or signing code.
   Camera tracks are stopped on success, cancel, close and when the tab is hidden. An expected denial or a missing camera
   is shown in the UI and never logged with `console.error`, because the QA sweep fails on a console error.
 - **PWA.** A runtime cache rule for the zxing wasm (like `pdfjs-wasm`); `pad.html` is NOT precached (ruled 2026-11-10, step-5 gate): it is
-  served NetworkFirst and kept out of the navigation fallback, so a phone refresh always gets the current pad. **The outdated-app case cannot be fixed from new code**
+  served NetworkFirst and kept out of the navigation fallback, so an online phone gets the current pad from the network first (the browser's HTTP cache may answer for a few minutes after a deploy). **The outdated-app case cannot be fixed from new code**
   (3C round 2): the deployed `dist/sw.js` routes every navigation to the cached `index.html`
   (`NavigationRoute(createHandlerBoundToURL("index.html"))`), so a phone on an old version gets the old editor and old
   JS. Mitigation: the "Use phone" panel on the PC says "if your phone opens the editor, accept its Update prompt and
@@ -137,8 +142,9 @@ commit.
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | done | commit "feat(sign): pad.html — sign on the phone …" (2026-11-10); jsdom: 6 setSize + 6 qrCanvas + 4 PNG + 12 page + 3 CSP cases, red first; Chrome 3 (dpr-2 pixels, the 909-char v19 frame read back verbatim by zxing, drag → Done → QR → zxing → the encoded frame), written before the page, red on the missing module; 20 sabotages each red on their own guard (one first stayed green — resize mid-stroke — and its test now asserts the next pointer draws); built pad.html via vite preview at 412 px / dpr 2.8125, en + ar, re-run on the committed build at 6C: axe 0 violations (WCAG 2.0/2.1 A+AA, both views), 0 console errors, 0 failed requests, 0 CSP violations, no SW, 0 overflow (a 12 px overflow found there was fixed test-first: the pad and QR now use the content box), ~60 KB gzip; editor index.html unchanged but one modulepreload (a shared chunk: i18n + locales + pad code, 48.8 KB gzip); precache +4; full deploy gate green (jsdom 4129, Chrome 712, coverage 9, qa:sweep 151/114/0) | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
 | 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | done | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b DONE 2026-11-11 ("Step-5b DONE"); 5c DONE 2026-11-11 ("Step-5c DONE") | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
 | 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | done | DONE 2026-11-11 ("Step-6 DONE"); also public/privacy.html (Camera section, ruled) | README.md, .claude/rules/**, KNOWN_ISSUES.md, THIRD-PARTY-NOTICES.md, public/privacy.html |
-| 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred). The flag-ON commit also edits every "off" surface: `signing.md`'s "Flag `phonePad` defaults OFF" bullet, the FEATURES and CHANGELOG "off by default" parentheticals, `flow-export.md`'s "`DEFAULT_OFF` — `phonePad`" line, and `main.ts`'s step-5 comment | S | todo | - | src/config/features.ts, .claude/rules/{signing,flow-export}.md, FEATURES.md, CHANGELOG.md, src/main.ts |
-| 8 | Milestone three-lens panel on a frozen commit | M | doing | round 1 on d93ed13 (22 findings, `var/claude/raw/m3r1-*.md`); fixes in the round-1 fix commit; round 2 next | |
+| 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred). The flag-ON commit also edits every "off" surface (from a grep of `phonePad`, `DEFAULT_OFF`, "off by default", "flag-OFF", "Defaults OFF", panel round 2): `src/config/features.ts` (`DEFAULT_OFF` and its comments), `src/vite-env.d.ts` ("Defaults OFF"), `tests/config/features.test.ts` (the default-false cases), `src/main.ts`'s step-5 comment, `src/ui/phonePadGate.ts`'s header ("the default app keeps the old modal"), `signing.md`'s "Flag `phonePad` defaults OFF" bullet, `flow-export.md`'s "`DEFAULT_OFF` — `phonePad`" line, `toolchain.md`'s "CI sweeps the flag-OFF build and never scans", the FEATURES and CHANGELOG "off by default" parentheticals, and the `pdf-qa-sweep` SKILL baseline (re-measured on the flag-ON deploy build) | S | todo | - | src/config/features.ts, src/vite-env.d.ts, tests/config/features.test.ts, src/main.ts, src/ui/phonePadGate.ts, .claude/rules/{signing,flow-export,toolchain}.md, .claude/skills/pdf-qa-sweep/SKILL.md, FEATURES.md, CHANGELOG.md |
+| 8 | Milestone three-lens panel on a frozen commit | M | doing | round 1 on d93ed13 (22 findings, `var/claude/raw/pp1-*.md`), fixed in e54f5a1; round 2 on e54f5a1 (15 findings: 3 P2, 12 P3, no P0/P1, `pp2-*.md`), fixed in the round-2 fix commit; round 3 next | |
+| 9 | Version 1.1.0 (MINOR; the bump shown to the developer first), after step 7's flag ON: `package.json` `version`, `package-lock.json` (its root `version` fields), FEATURES.md's `Version` stamp, CHANGELOG.md's `[Unreleased]` heading → `[1.1.0] — <date>`; then the full deploy gate, ONE push, /ci-watch | S | todo | - | package.json, package-lock.json, FEATURES.md, CHANGELOG.md |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
@@ -265,7 +271,8 @@ commit.
   read (Camera section, "novembre 2026"); the footer and storage-banner links are `./privacy.html` (`index.html:245,260`).
   `signing.md` is now 323 lines, over the ~300 intake cap — recorded, a candidate for the next `/rules-split` prune. Its
   "Flag `phonePad` defaults OFF" bullet goes stale when step 7 turns the flag on: edit it in that commit.
-- Milestone panel round 1 FIXES (2026-11-11, on d93ed13's findings, `var/claude/raw/m3r1-*.md`). Certified by
+- Milestone panel round 1 FIXES (2026-11-11, on d93ed13's findings, `var/claude/raw/pp1-*.md`; the files were first
+  written as `m3r1-*`, a name the 2026-10-17 milestone already used — Decisions Log 19:00). Certified by
   execution (each red first or mutant-proven, restored with `cmp`): #4 the flag gate moved to `src/ui/phonePadGate.ts`
   (`applyPhonePadFlag`; `tests/ui/phonePadGate.test.ts` 6 — gate inverted → 3, main.ts negated / hard-coded true / call
   deleted → the source check, the close forward dropped → 1); #5 `tests/ui/qrScannerZxing.test.ts` 4 + a CSP
@@ -280,16 +287,44 @@ commit.
   2026-11-11, #3 SECURITY (the PTSIG decoder is fuzzed; zxing is not), #7 KNOWN_ISSUES § "From the phone signature
   pad", #8 signing.md globs, #9 the CLAUDE.md index counts (ui 16, toolchain 11), #10 the two agent definitions
   (developer go), #13 zxing logs on its own wasm failure, #15 the lostpointercapture comment, #16–#20.
+  #21 is resolved by the flag ON before the push (step 7). #22 accepted, NOT fixed (ruling 17:10), its three items
+  named (panel round 2): the unpushed SHAs cited in `toolchain.md`, `redaction.md`, `export.md` and `KNOWN_ISSUES.md`
+  (local commits are signed and keep their SHAs; the one push carries them), the developer-machine Node path in this
+  plan's toolchain note, and the Emscripten runtime left unlisted in `THIRD-PARTY-NOTICES.md` (as for every wasm there).
   Outside the range, NOT fixed (reported to the developer): `icon.svg` is referenced by `index.html`, `pad.html` and
   the manifest but exists in neither `public/` nor `dist/`.
+- Milestone panel round 2 FIXES (2026-11-11, on e54f5a1's 15 findings, `var/claude/raw/pp2-*.md`; ruling 19:00).
+  Certified by execution (each mutant applied, red on its own case only, restored with `cmp`): #1 the main.ts source
+  check ends at `[,}]` (mutant `isEnabled('phonePad') === false` → that check); #2 the gate's fake app method reads
+  `this` (unbound-method mutant → 2 cases), a real-mount case with no `mount` injected (no-op default → 1), a
+  `startScan` case with no `grab` and a fake canvas (default wrapped without `release` → 1); #3 `argv` and `has` pinned
+  (a `has` ignoring `--require-sw` → 1; the FAIL itself stays proven by the recorded live run). Gate on the fix tree
+  (`var/claude/gate-pp2/`): 9/9 rc=0 — jsdom 4251 + 2 expected fail, Chrome 736/0, coverage, build, QA sweep
+  156/119/0 with the 5 pad checks; built-app checks 10/10 rc=0, 22 states with no console error, flag-ON sweep
+  161/119/0. Docs: #4 the 30-day offline limit (README, FEATURES, CHANGELOG, `toolchain.md`); #5 "always fetched fresh"
+  (CHANGELOG, the `vite.config.ts` comment, `toolchain.md`); #6 "nothing leaves" (FEATURES, CHANGELOG, `padPage.ts`'s
+  comment); #7 `completeness-reviewer.md` + CLAUDE.md § Git & CI (that line also had `ocr:assets` in the wrong place:
+  it runs right after the audit in `deploy.yml`); #8 the CHANGELOG bullet for the 2026-10-17 prune rounds (every one of
+  the five bodies is the keep-a-removed-page's-form direction); #9 row 7 completed from a grep, row 9 added; #10 the
+  #22 items named; #11 the KNOWN_ISSUES stamp; #12 the session-restore exception (KNOWN_ISSUES, this plan); #13 the
+  `pdf-qa-sweep` recipe, skip count and flag lists (and the script's header); #14 "main.ts removes" in 3 files; #15
+  `signing.md` paths (one per line; no rules file here used a brace glob, and its support is unverified) and guards.
+  The 30-day limit is read from source, not driven: `ExpirationPlugin.cachedResponseWillBeUsed` serves a `pad-page`
+  copy only while its `Date` header is within `maxAgeSeconds` (`workbox-expiration/ExpirationPlugin.js:70-97,186-203`),
+  and every asset `dist/pad.html` loads is precached [Verified: 4 URLs in `dist/sw.js`], so `pad-page` is the only
+  clock. NOT certified by execution: the
+  "few minutes" HTTP-cache window (the reviewer's GitHub Pages `max-age=600`, not measured here); and the reverse
+  worker-age case found at 6C — after the app updates, a pad cached before it loads assets the new worker dropped
+  (`PrecacheController.activate` deletes them), so the offline pad breaks until opened online once; now in the
+  docs' wording and `KNOWN_ISSUES.md`, never driven.
 - Known, left as is (ruling 2026-11-11): at 414 px on a FIRST visit the cookie banner covers the ✍ modal's Save
   row when the phone panel is open — in French (the longest strings) even with no refusal message; the modal is
   then ~750–790 px in an 860 px viewport. It clears when the banner is dismissed, and the modal scrolls. Look at it
   on the real phone in step 7. **5b made it worse (ruling kept, 2026-11-11):** the Start camera row takes the FR
   modal at 414 px to its 90vh cap (774 px), and with the phone panel open the Save row sits FULLY under the storage
-  banner (`z-index: 9000`, above every dialog at 1000) — Save cannot be clicked until the banner is dismissed
+  banner (`z-index: 9000`, above every dialog at 1000 — all but the session-restore one, at 10000) — Save cannot be clicked until the banner is dismissed
   (measured: Playwright's click timed out, `var/claude/sig-scan-check/5a-rerun/`). Panel closed: 400 px, no overlap.
-  The root cause is the banner's stacking over EVERY dialog, not this modal.
+  The root cause is the banner's stacking over the dialogs (all but the session-restore one), not this modal.
 - 5a, NOT certified by execution: the Arabic strings (no native review); a real phone scanning the pad-URL QR
   (step 7); flag OFF at a SHORT viewport — `.signature-content` now has `max-height: 90vh; overflow-y: auto` for
   every user, measured identical to pre-5a at 900 and 860 px high only (the modal is 349 px tall, so it bites

@@ -413,7 +413,7 @@ match — a plain `startsWith` accepted "List" as the start of "Liste à puces".
 ### The placement ghost floated above every dialog (2026-11-11)
 
 The dashed box that follows the pointer in a placement mode (`PlacementManager.updatePlacementGhost`, bound to a
-`document` `pointermove`) is `position:fixed; z-index:9999` — above every dialog. The ✍ modal opens IN `addSignature`
+`document` `pointermove`) is `position:fixed; z-index:9999` — above every dialog but the session-restore one (10000). The ✍ modal opens IN `addSignature`
 mode, so the box followed the pointer over the drawing pad, and with the phone pad (step 5a) over the QR code a phone
 has to scan. Measured on the build made before the fix, real Chrome: pointer on the pad → `shown at 472,432`; Text mode,
 pointer on the page, then the `S` key with the pointer still → the stale "T" box stayed above the modal. Found by

@@ -104,7 +104,8 @@ editor for months; a DOCX image was destroyed on save.
    so in that style. Silent partial implementation is the failure mode; a documented ceiling is fine.
 8. **The deploy gate, in full.** `CLAUDE.md` says a push runs: `npm run audit:gate` (`scripts/audit-gate.mjs` — `npm audit --audit-level=high` with an expiring-exemption list, `scripts/audit-gate-allowlist.json`, EMPTY since 2026-11-10) →
    `npm run ocr:assets` → `type-check` → `lint` → `test` → `test:browser` →
-   **`test:coverage:export`** → `build`. The coverage-export step enforces a 25% branch floor on
+   **`test:coverage:export`** → `build` → `qa:sweep` (`--allow-destructive --require-sw`, against `vite preview` on
+   :4173). The coverage-export step enforces a 25% branch floor on
    `pdfElementRenderer.ts` and **fails the build** when a new uncovered branch drops it. A change to
    that file with no coverage claim is a finding — green local tests do not prove the gate passes.
    The audit step is deploy-blocking and currently ON. A diff that comments it out, that adds an allowlist entry without a

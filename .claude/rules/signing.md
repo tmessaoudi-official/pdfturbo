@@ -18,7 +18,23 @@ paths:
   - "src/config/features.ts"
   - "src/ui/phonePadGate.ts"
   - "pad.html"
+  - "src/styles/pad.css"
   - "tests/pad/**"
+  - "tests/ui/qrScanner.test.ts"
+  - "tests/ui/qrScannerZxing.test.ts"
+  - "tests/ui/signatureSources.test.ts"
+  - "tests/ui/phonePadGate.test.ts"
+  - "tests/utils/signatureStrokes.test.ts"
+  - "tests/utils/ptsigCollector.test.ts"
+  - "tests/utils/qrCanvas.test.ts"
+  - "tests/utils/signatureImage.test.ts"
+  - "tests/utils/signaturePad.test.ts"
+  - "tests/utils/signaturePng.test.ts"
+  - "tests/browser/pad-page.browser.test.ts"
+  - "tests/browser/signature-pad.browser.test.ts"
+  - "tests/browser/signature-sources.browser.test.ts"
+  - "tests/browser/signature-import.browser.test.ts"
+  - "tests/browser/signature-scan.browser.test.ts"
 ---
 
 # pdfturbo gotchas — signing
@@ -324,8 +340,9 @@ untouched: no persisted field, no `SCHEMA_VERSION` change.
 - **Flag `phonePad` defaults OFF** (`isEnabled` has a per-key default) until the step-7 check on a real phone and webcam.
 - **Offline and an outdated phone:** `toolchain.md` § "PWA is `registerType: 'prompt'`" (the 5c paragraph). Known, left
   as is by ruling: at 414 px on a first visit the cookie banner covers the modal's Save row (plan § Known issues).
-- **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage}.test.ts`,
-  `tests/ui/{qrScanner,qrScannerZxing,signatureSources,phonePadGate}.test.ts`, `tests/pad/padPage.test.ts`; real Chrome
+- **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage,signaturePad,signaturePng}.test.ts`,
+  `tests/ui/{qrScanner,qrScannerZxing,signatureSources,phonePadGate}.test.ts`, `tests/pad/padPage.test.ts`, the CSP's
+  `connect-src 'self' blob:` pin in `tests/security/csp.test.ts`, `tests/infra/{pwaOcrCaching,qaSweepRequireSw}.test.ts`; real Chrome
   `tests/browser/{pad-page,signature-pad,signature-sources,signature-import,signature-scan}.browser.test.ts` (QR round trip,
   a fake camera with real zxing, image-import pixels); the QA sweep's phone pad pass on every deploy.
 - **Not certified by execution:** a real phone read by a real webcam (step 7); the 33 Arabic keys (in the pending count,

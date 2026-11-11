@@ -7,7 +7,7 @@ import { t as i18nT } from '../utils/i18n';
 /**
  * The phone signature pad page (pad.html, phone-signature-pad plan step 4). The signer draws with a finger, taps Done,
  * and the page shows the signature as PTSIG QR code(s) for the PC's webcam — 2–4 codes cycle every second — or saves it
- * as a transparent PNG (the no-webcam route). Nothing leaves the phone except what the screen shows.
+ * as a transparent PNG (the no-webcam route). The page sends nothing: what the screen shows, or the PNG the user saves and moves, is the only output.
  * Rulings 2026-11-10 22:41: ink locked to black 2.5 CSS px; Download = the signature PNG; a 1 s cycle.
  */
 

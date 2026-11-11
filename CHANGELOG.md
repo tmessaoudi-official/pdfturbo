@@ -15,8 +15,11 @@ most of the work went into proving that what the product claims to remove is act
 - **Sign on your phone** (off by default until checked on a real phone): the ✍ modal shows a QR code that opens a
   drawing page (`pad.html`) on the phone; *Done* shows the signature as one to four QR codes, which *Start camera*
   on the PC reads, or the phone saves a PNG that *Import image* brings in (paper keyed out, metadata dropped). The
-  signature waits in the modal for Save. No server, no upload: the QR codes on the phone's screen are the only link.
-  The scanner's decoder is self-hosted and cached on first use; the phone page is always fetched fresh when online.
+  signature waits in the modal for Save. No server, no upload: the QR codes on the phone's screen, or the PNG you
+  move yourself, are the only link. The scanner's decoder is self-hosted and cached on first use. Online, the phone
+  page is fetched from the network first (the browser's own cache may answer for a few minutes after a deploy); on a
+  phone where the app was opened, a copy stays usable offline for 30 days after it was last opened online, until the app
+  updates there.
 
 #### Fixed
 - **Accessible names start with the visible text** (WCAG 2.5.3, raised to serious by axe-core 4.14) — fourteen
@@ -25,6 +28,10 @@ most of the work went into proving that what the product claims to remove is act
 - **The placement box no longer floats above an open dialog** (it followed the pointer over the signature pad).
 - **Exports freeze the document they started from** — an undo, a close or an edit landing mid-export can no longer
   change what is written (milestone-2 review rounds 3–5); true edit refuses to commit over bytes it was not built from.
+- **The removed-page clean-up reads a page the way the viewer does** — an inline image's data, a shading pattern, an
+  operand the viewer stops on, a stream body the viewer never reads, or a null resource entry could make the clean-up (SEC-1, below)
+  misjudge what a kept page draws, so something only a removed page uses could stay in the file. Each case now
+  follows pdf.js's own reading, and pages are read with a faster name-only scan.
 
 #### Changed
 - Dependencies upgraded: in range (vite 8.3, i18next 26.7, node-forge 1.4.3, which closed the last audit exemption),

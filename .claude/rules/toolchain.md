@@ -579,8 +579,8 @@ clients update only on user action / next load, not instantly.
 **The phone pad page is NOT precached and is served NetworkFirst (phone-signature-pad 5c, 2026-11-11).** A precached
 page updates only when the EDITOR's update prompt is accepted, and `pad.html` shows no prompt, so a phone that once
 loaded the pad would keep an old copy that "refresh the page" never replaces. `vite.config.ts` therefore puts
-`**/pad.html` in `globIgnores`, serves it from the `pad-page` runtime cache NetworkFirst (fresh online, the last good
-copy offline; a pad never opened online is not available offline, and no claim is made for one), and lists it in
+`**/pad.html` in `globIgnores`, serves it from the `pad-page` runtime cache NetworkFirst (from the network first online, the
+last good copy offline for 30 days after the last online load, until the app updates on that phone; a pad never opened online is not available offline, and no claim is made for one), and lists it in
 `navigateFallbackDenylist`. **The denylist is load-bearing:** the built `sw.js` registers its `index.html`
 `NavigationRoute` BEFORE the runtime routes, so without it a navigation to `pad.html` is answered with the EDITOR.
 Workbox tests a denylist against pathname + search (`workbox-routing/NavigationRoute.js`), hence

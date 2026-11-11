@@ -97,9 +97,10 @@ export default defineConfig({
             },
           },
           {
-            // Phone-signature-pad 5c — the phone pad page, fresh from the network whenever there is one (a deploy
-            // reaches the phone on its next load), the last good copy when there is none. A pad never opened online
-            // is not available offline: no claim is made for it.
+            // Phone-signature-pad 5c — the phone pad page, from the network first whenever there is one (a deploy
+            // reaches the phone once the browser's HTTP cache lets the request through), the last good copy when there
+            // is none, for 30 days after the last online load. A pad never opened online is not available offline: no
+            // claim is made for it.
             urlPattern: ({ url }) => url.pathname.endsWith('/pad.html') && url.origin === self.location.origin,
             handler: 'NetworkFirst',
             options: {
