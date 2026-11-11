@@ -2,7 +2,7 @@
 name: pdf-qa-sweep
 description: Exhaustive systematic QA on the real PDFturbo app in a real browser — boot, load a PDF, exercise every reachable control, collect console/network errors, run axe-core WCAG checks, screenshot everything. Use before a release, after any change to the editor/export/UI surface, or when a defect is reported that the test suites do not reproduce. Not a substitute for the vitest suites; it answers "does the product work?" rather than "does this unit work?".
 user-invocable: true
-args: "[--allow-destructive] [--only <substr>] [--depth N] [--max-clicks N] [--no-a11y] [--fixture <pdf>] [--url <url>]"
+args: "[--allow-destructive] [--require-sw] [--only <substr>] [--depth N] [--max-clicks N] [--no-a11y] [--fixture <pdf>] [--url <url>]"
 ---
 
 ## --help
@@ -12,10 +12,11 @@ args: "[--allow-destructive] [--only <substr>] [--depth N] [--max-clicks N] [--n
 > ```
 > /pdf-qa-sweep — drive the real app in a real browser and report what breaks.
 >
-> Usage: /pdf-qa-sweep [--allow-destructive] [--only <substr>] [--depth N]
+> Usage: /pdf-qa-sweep [--allow-destructive] [--require-sw] [--only <substr>] [--depth N]
 >                  [--max-clicks N] [--no-a11y] [--fixture <pdf>] [--url <url>]
 >
 >   --allow-destructive  include delete/remove/reset/redact/flatten/compress controls
+>   --require-sw         a missing built service worker FAILs the pad pass (CI; never on a dev server)
 >   --only <substr>      exercise only button ids containing <substr>
 >   --depth N            max UI disclosure depth (default 3)
 >   --max-clicks N       safety cap (default 250; converges ~145 today)
@@ -100,7 +101,7 @@ The driver reports facts. You decide what they mean.
    report now ends with `Exercised N distinct control(s) of M in the DOM` and **names** every control
    that was not. Read that line first; a green `0 fail` over 57 of 141 controls is not a clean bill of
    health. (Until 2026-11-11 that line also counted non-control subjects — `boot`, `load`, `a11y` — and
-   read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive`** (36 skips instead of 44 — it reaches redaction, erase
+   read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive` and `--require-sw`** (the latter: a missing built worker FAILs the pad pass instead of SKIP) (36 skips instead of 44 — it reaches redaction, erase
    and crop-remove), so a local default run is WEAKER than the gate; match the flag before comparing.
    Do NOT claim the sweep covers a specific feature without checking that list — measured 2026-07-31,
    `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the

@@ -44,8 +44,9 @@ export default defineConfig({
         globIgnores: ['**/tesseract/**', '**/pdfjs/**', '**/pad.html'],
         // Load-bearing with the line above: the worker registers its index.html NavigationRoute BEFORE the runtime
         // routes, so without this a navigation to pad.html is answered with the EDITOR. Workbox tests a denylist
-        // against pathname + search, hence the optional query.
-        navigateFallbackDenylist: [/\/pad\.html(?:\?|$)/],
+        // against pathname + search, hence the optional query — and the path is anchored (`^[^?]*`) so a query that
+        // only MENTIONS pad.html (`/pdfturbo/?next=/pad.html`) keeps the editor on its offline fallback.
+        navigateFallbackDenylist: [/^[^?]*\/pad\.html(?:\?|$)/],
         // pdf.js + pdf-lib chunks can be >2MB — raise the precache limit
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
@@ -104,6 +105,19 @@ export default defineConfig({
             options: {
               cacheName: 'pad-page',
               expiration: { maxEntries: 2, maxAgeSeconds: 30 * 24 * 60 * 60 },
+            },
+          },
+          {
+            // Milestone panel round 1 (2026-11-11) — the pad's stylesheet. Precached with the build, but a phone still on
+            // the PREVIOUS worker gets a NEW pad.html above whose hashed stylesheet that worker never precached: the .js
+            // rule below caches the script, and nothing cached the stylesheet, so the pad served offline later lost its
+            // styles. Hashed name, so CacheFirst.
+            urlPattern: ({ url }) =>
+              url.pathname.includes('/assets/pad-') && url.pathname.endsWith('.css') && url.origin === self.location.origin,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pad-css',
+              expiration: { maxEntries: 4, maxAgeSeconds: 30 * 24 * 60 * 60 },
             },
           },
           {

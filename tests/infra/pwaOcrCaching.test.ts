@@ -122,6 +122,19 @@ describe('PWA scanner wasm + phone pad page (phone-signature-pad 5c)', () => {
     expect(r.match('https://app.test/pdfturbo/pdfjs/wasm/openjpeg.wasm')).toBe(false);
   });
 
+  // Milestone panel round 1 (2026-11-11): a phone still on the PREVIOUS worker gets a NEW pad.html (NetworkFirst) whose
+  // hashed stylesheet that worker never precached; the .js rule caches its script, and this rule its stylesheet, so the
+  // pad that page-cache serves offline later still has its styles (`.pad-canvas` touch-action:none among them).
+  it('caches the pad stylesheet CacheFirst, same origin only, nothing else', () => {
+    const r = rule('pad-css');
+    expect(r.handler).toBe('CacheFirst');
+    expect(r.match('https://app.test/pdfturbo/assets/pad-CJfYdPWO.css')).toBe(true);
+    expect(r.match('https://cdn.test/pdfturbo/assets/pad-CJfYdPWO.css')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/assets/pad-vDrAKLVg.js')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/assets/index-WeDgRYK8.css')).toBe(false);
+    expect(r.match('https://app.test/pdfturbo/assets/docxProseMirror-xgn2yNtQ.css')).toBe(false);
+  });
+
   it('serves pad.html NetworkFirst from its own cache, same origin only', () => {
     const r = rule('pad-page');
     expect(r.handler).toBe('NetworkFirst');
@@ -138,7 +151,8 @@ describe('PWA scanner wasm + phone pad page (phone-signature-pad 5c)', () => {
   });
 
   it('exempts pad.html from the index.html navigation fallback (matched on pathname + search, as Workbox does)', () => {
-    const list = /navigateFallbackDenylist:\s*\[([^\]]*)\]/.exec(cfg)?.[1];
+    // The whole line: an anchored pattern carries its own `[^?]`, so a `[^\]]*` capture would stop inside it.
+    const list = /navigateFallbackDenylist:\s*\[(.*)\],?\s*$/m.exec(cfg)?.[1];
     expect(list, 'no navigateFallbackDenylist').toBeDefined();
     const res = new Function(`return [${list}];`)() as RegExp[];
     const denied = (p: string) => res.some((re) => re.test(p));
@@ -148,5 +162,9 @@ describe('PWA scanner wasm + phone pad page (phone-signature-pad 5c)', () => {
     expect(denied('/pdfturbo/index.html')).toBe(false);
     expect(denied('/pdfturbo/notpad.html')).toBe(false);
     expect(denied('/pdfturbo/pad.htmlx')).toBe(false);
+    // Anchored to the PATH (milestone panel round 1, 2026-11-11): a query that merely mentions pad.html must not take
+    // the editor's own navigation off its offline fallback.
+    expect(denied('/pdfturbo/?next=/pad.html')).toBe(false);
+    expect(denied('/pdfturbo/index.html?from=/pad.html?x')).toBe(false);
   });
 });

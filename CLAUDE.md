@@ -193,6 +193,8 @@ at the 2026-09-13 round-10 gate — read the report's own summary line rather th
 Before the crawl it runs a **phone pad pass** (phone-signature-pad 5c): on a built app the
 service worker controls `pad.html`, `pad.html` is absent from the precache, the pad (not the editor) renders and draws a
 QR, and axe passes; on a dev server the worker checks are SKIP — `.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`".
+**CI also passes `--require-sw`** (milestone panel round 1, 2026-11-11): with it a missing built worker is a FAIL,
+not that SKIP, so a build that stops emitting `sw.js` cannot pass the pad pass silently.
 
 **Before every commit**: `npm run type-check && npm run lint && npm run test`. **Before every
 PUSH** run the FULL deploy gate — CI (`deploy.yml`) runs MORE than the three above and a miss here
@@ -203,7 +205,7 @@ threshold 25% — adding an uncovered branch to `renderText` can drop below it a
 when every test passes) → `npm run build` → **`npm run qa:sweep`** against `vite preview` on :4173
 (the live whole-app sweep; fails on a console error, a failed request, or a critical/serious axe
 violation, and uploads its screenshots as a CI artifact when it does; run with
-`--allow-destructive` so redaction/flatten are actually exercised). Any of these failing on `master` blocks the deploy.
+`--allow-destructive` so redaction/flatten are actually exercised, and `--require-sw`). Any of these failing on `master` blocks the deploy.
 
 **Browser harness** (`vitest.browser.config.ts`): real-browser regression tests for things jsdom
 cannot exercise — canvas/pdf.js rasterization, pointer drag, image (`commonObjs`/`VideoFrame`)
@@ -233,6 +235,8 @@ coverage run passes, which is how a wrong fix gets "verified"):
 ```
 src/
 ├── main.ts                 # entry point — instantiates PDFTurboApp
+├── padMain.ts              # entry point of pad.html, the phone signature pad (its own Vite entry, no service worker)
+├── pad/                    # the phone pad page (padPage.ts)
 ├── shared-kernel/          # pure vocabulary: geometry/{matrix,frames}.ts, text/{bidi,script}.ts — imports only
 │                           #   itself + bidi-js (the architecture ratchet enforces it)
 ├── contracts/ , types/     # shared interfaces and type vocabulary (IErrorReporter, AppDOMRefs, ToolMode…)
@@ -290,9 +294,9 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **docx-edit** — DOCX read + edit and its package garbage collection (2) → `.claude/rules/docx-edit.md` (loads when you read `src/docx/**`, `tests/docx/**`).
 - **signing** — e-signing, PAdES and the ByteRange, signature placement, the Signers panel, the RSA verify, the phone signature pad (6) → `.claude/rules/signing.md` (loads when you read `src/signing/**`, `src/handlers/signingHandler.ts`, `src/pad/**`, `src/ui/qrScanner.ts` …).
 - **crop** — per-page crop, its handles and numeric margins — and why crop HIDES while redaction REMOVES (4) → `.claude/rules/crop.md` (loads when you read `src/core/pageService.ts`, `src/core/pageRenderPipeline.ts` …).
-- **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep, releasing a closed document, insert-pages redo (14) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
+- **ui** — the app shell: open/save, storage, modes, pointer and click routing, a11y, thumbnails, watermark, the QA sweep, releasing a closed document, insert-pages redo, Label in Name, the placement ghost over dialogs (16) → `.claude/rules/ui.md` (loads when you read `src/ui/**`, `src/core/**` …).
 - **ocr** — OCR engine, CSP and assets, the OCR redaction burn read before the render (2) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
-- **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle, the historical cloud-container browser recipe (10) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
+- **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle, the historical cloud-container browser recipe, pdfjs-dist held at ~6.3.289 (11) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
 - **audit-gate** — the deploy-blocking `npm audit` gate, its expiring-exemption list and the seven occurrences (1) → `.claude/rules/audit-gate.md` (loads when you read `scripts/audit-gate*`, `package.json` …).
 - **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods, the architecture ratchet, rect frame brands (6) → `.claude/rules/conventions.md` (loads at session start).
 
@@ -378,7 +382,7 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 - § "RTL brackets and list markers in the Arabic overlay — limits row 25, D17 (2026-09-27)" → `arabic-rtl.md`
 - § "Tashkeel placed by GPOS in the Arabic overlay — limits row 25, C19 (2026-09-27)" → `arabic-rtl.md`
 - § "Approval caption + guided Signers panel (F-D D1/D2)" → `signing.md`
-- § "Git & CI" "Supply chain (#37)" (the six audit occurrences, moved 2026-10-17) → `audit-gate.md`
+- § "Git & CI" "Supply chain (#37)" (the audit occurrences — six when moved 2026-10-17, seven since 2026-11-10) → `audit-gate.md`
 - § "Commands" "Running `npm run test:browser` in the Claude cloud container" (moved 2026-10-17) → `toolchain.md`
 - § "Per-page crop (#G23)" → `crop.md`
 - § "Crop HIDES, redaction REMOVES — and the obvious check gives a false negative (2026-08-04)" → `crop.md`

@@ -86,8 +86,9 @@ regression is a genuine harm, not an inconvenience:
    screenshot is staged. Also confirm no test *inlines* content extracted from a private fixture.
 7. **CSP and PWA scope.** A widened CSP, a new `connect-src`, or a changed `base` path is a
    security-relevant change even when it looks like config. The SW precache must keep
-   `globIgnores: ['**/tesseract/**']` — dropping it re-bloats the install payload and changes what is
-   fetched at what time.
+   `globIgnores: ['**/tesseract/**', '**/pdfjs/**', '**/pad.html']` — dropping `tesseract`/`pdfjs` re-bloats the install payload and changes what is
+   fetched at what time; dropping `pad.html` (and its `navigateFallbackDenylist` entry) brings back a stale
+   or editor-served phone pad (`.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`").
 8. **Secrets in the diff.** No tokens, no keys, no `.env` content, no absolute paths from the
    developer's machine, no internal hostnames.
 

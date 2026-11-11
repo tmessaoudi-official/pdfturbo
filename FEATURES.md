@@ -3,7 +3,7 @@
 A client-side PDF editor that runs **100% in the browser** — no backend, nothing uploaded.
 TypeScript + Vite + PWA. Localised in English, French, and Arabic (with full RTL).
 
-_Last updated: 2026-09-27 · Version 1.0.0_
+_Last updated: 2026-11-11 · Version 1.0.0_
 
 ---
 
@@ -16,7 +16,8 @@ _Last updated: 2026-09-27 · Version 1.0.0_
 - Zoom in/out, fit-to-width (auto re-fit on resize), pinch-to-zoom (mobile), Ctrl+Wheel (desktop)
 - Text search with highlighted matches (RTL/Arabic-aware), and "add highlight" on a match
 - Session persistence (IndexedDB) with restore-or-start-fresh on reload
-- Installable PWA; app shell works offline (fonts, OCR and pdf.js data files after their first online use)
+- Installable PWA; app shell works offline (fonts, OCR and pdf.js data files and the QR scanner after their first
+  online use; the phone signing page only on a phone where the app was opened and the page was then opened online)
 
 ## Annotation & markup
 - **Text boxes** — font family/size, bold/italic, underline/strikethrough, colour, alignment,
@@ -81,6 +82,9 @@ _Last updated: 2026-09-27 · Version 1.0.0_
 - **Visible digital signature** — PKCS#12 / CMS (node-forge); upload a `.p12` or **generate a
   self-signed certificate in-browser**
 - **Approval signatures** — drawn signature with caption ("read & approved"), guided multi-signer panel
+- **Sign on your phone** — the signature modal shows a QR code that opens a drawing page on the phone; the finished
+  signature comes back as QR codes on the phone's screen, read by the PC's camera, or as a PNG through **Import image**.
+  No server: nothing leaves either device (off by default until checked on a real phone)
 - **Signature byte range per the standard** — the signed range excludes the whole `/Contents` string, delimiters
   included (fixed 2026-09-27; before it, an independent validator rejected every signature the app produced). The
   signing engine can also write a **PAdES-B-B** (`ETSI.CAdES.detached`) signature; the app still signs as

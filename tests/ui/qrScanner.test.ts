@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { startScan, CAMERA_CONSTRAINTS, type ScanDeps, type ScanEnd, type VideoLike } from '../../src/ui/qrScanner';
+import { startScan, canvasGrab, CAMERA_CONSTRAINTS, type ScanDeps, type ScanEnd, type VideoLike } from '../../src/ui/qrScanner';
 
 /**
  * The ✍ modal's camera scanner (phone-signature-pad step 5b). Every way the scan can end must leave every camera
@@ -209,7 +209,7 @@ describe('startScan — every stop path ends every track', () => {
   });
 });
 
-describe('startScan — failures are reported, never logged', () => {
+describe('startScan — failures are reported, and the scanner logs nothing itself', () => {
   it.each([
     ['NotAllowedError', 'denied'],
     ['SecurityError', 'denied'],
@@ -247,5 +247,61 @@ describe('startScan — failures are reported, never logged', () => {
     await s.handle.finished;
     expect(s.ends).toEqual([{ reason: 'error', error: 'failed' }]);
     expect(allEnded(s.tracks)).toBe(true);
+  });
+});
+
+// Milestone panel round 1 (2026-11-11): the last camera frame stayed in the grab canvas after the scan ended. Every end
+// now releases it (width/height 0 frees the bitmap), and the release is terminal. Bound: zxing's wasm heap may still
+// hold a copy of the last frame it read; the page cannot clear that.
+describe('startScan — every end releases the frame canvas', () => {
+  function releasingGrab() {
+    const release = vi.fn();
+    const grab = Object.assign(() => ({}) as ImageData, { release });
+    return { grab, release };
+  }
+  it.each([
+    ['done', (_h: { stop(): void }) => {}],
+    ['stop()', (h: { stop(): void }) => { h.stop(); }],
+  ] as const)('%s → release() once', async (_n, act) => {
+    const { grab, release } = releasingGrab();
+    const s = setup({ grab, onText: () => _n === 'done' });
+    act(s.handle);
+    await s.handle.finished;
+    s.handle.stop();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+  it('a failure → release() once', async () => {
+    const { grab, release } = releasingGrab();
+    const s = setup({ grab, loadDecoder: () => Promise.reject(new TypeError('Failed to fetch')) });
+    await s.handle.finished;
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('canvasGrab — release() frees the canvas for good', () => {
+  function fakeCanvas() {
+    const ctx = { drawImage: vi.fn(), getImageData: vi.fn((_x: number, _y: number, w: number, h: number) => ({ width: w, height: h }) as ImageData) };
+    const canvas = { width: 0, height: 0, getContext: vi.fn(() => ctx) };
+    return { canvas, ctx };
+  }
+  it('grabs the frame, then release() zeroes the canvas and no later grab recreates it', () => {
+    const { canvas } = fakeCanvas();
+    const create = vi.fn(() => canvas as unknown as HTMLCanvasElement);
+    const grab = canvasGrab(create);
+    const video = fakeVideo();
+    expect(grab(video)).toEqual({ width: 640, height: 480 });
+    expect(canvas.width).toBe(640);
+    grab.release();
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+    expect(grab(video)).toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+  });
+  it('release() before any frame creates nothing', () => {
+    const create = vi.fn(() => fakeCanvas().canvas as unknown as HTMLCanvasElement);
+    const grab = canvasGrab(create);
+    grab.release();
+    expect(grab(fakeVideo())).toBeNull();
+    expect(create).not.toHaveBeenCalled();
   });
 });

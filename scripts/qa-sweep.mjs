@@ -15,7 +15,7 @@
  * this unit work?").
  *
  * Usage:
- *   node scripts/qa-sweep.mjs [--url <url>] [--fixture <pdf>] [--allow-destructive]
+ *   node scripts/qa-sweep.mjs [--url <url>] [--fixture <pdf>] [--allow-destructive] [--require-sw]
  *                             [--only <substr>] [--depth N] [--max-clicks N]
  *                             [--no-a11y] [--no-scenarios] [--out <dir>]
  *
@@ -70,6 +70,8 @@ const URL_ = flag('--url', 'http://localhost:5173/pdfturbo/');
 const FIXTURE = flag('--fixture', 'tests/fixtures/qa-imagetext.pdf');
 const ONLY = flag('--only');
 const ALLOW_DESTRUCTIVE = has('--allow-destructive');
+// The deploy gate sweeps a BUILT app, so there a missing service worker is a defect, not a dev server: FAIL, not SKIP.
+const REQUIRE_SW = has('--require-sw');
 const A11Y = !has('--no-a11y');
 const SCENARIOS = !has('--no-scenarios');
 const SCENARIO_ONLY = flag('--scenario');
@@ -642,7 +644,8 @@ async function main() {
 // pad, must not have it in the precache (a precached pad updates only when the EDITOR's prompt is accepted, and the
 // pad shows no prompt), and must serve the PAD, not its index.html navigation fallback. A dev server has no worker:
 // it answers sw.js with index.html and 200, so the worker is detected by the file's body, never its status; there the
-// worker checks are SKIP and the pad itself is still drawn, scanned for errors and audited.
+// worker checks are SKIP and the pad itself is still drawn, scanned for errors and audited. `--require-sw` (the deploy
+// gate) turns that SKIP into a FAIL, so a build that stops emitting the worker cannot pass silently.
 async function padPass(ctx, editor) {
   const swUrl = new URL('sw.js', URL_).href;
   const builtSw = await editor.evaluate(async (u) => {
@@ -670,7 +673,9 @@ async function padPass(ctx, editor) {
     record(hasIndex && !hasPad ? 'PASS' : 'FAIL', 'pad: not precached',
       `${paths.length} precached; index.html ${hasIndex ? 'in' : 'MISSING'}, pad.html ${hasPad ? 'IN (stale until the editor prompt)' : 'out'}`);
   } else {
-    record('SKIP', 'pad: service worker', `no built worker at ${swUrl} (dev server) — controller and precache checks skipped`);
+    record(REQUIRE_SW ? 'FAIL' : 'SKIP', 'pad: service worker', REQUIRE_SW
+      ? `no built worker at ${swUrl} and --require-sw was given — the build emitted no service worker, or this is a dev server`
+      : `no built worker at ${swUrl} (dev server) — controller and precache checks skipped`);
   }
 
   const pad = await ctx.newPage();

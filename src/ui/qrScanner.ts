@@ -9,13 +9,16 @@ import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
  * Every end — done, stop(), the tab hidden, a track that ends by itself, any failure — stops every track and detaches
  * the video, exactly once, and reports once through `onEnd`. A stop that lands while an await is pending (the
  * permission prompt, `play()`, the decoder load, a decode) is honoured when that await returns: a stream granted late
- * is stopped at once. Nothing is logged: an expected denial is shown by the caller, and the QA sweep fails on any
- * console error.
+ * is stopped at once. This module logs nothing: an expected denial is shown by the caller, and the QA sweep fails on
+ * any console error. zxing itself does `console.error` when its wasm fails to load — that path is a real failure
+ * (reported as 'failed'), not an expected one, so the sweep is right to flag it.
  */
 
 export type ScanError = 'denied' | 'noCamera' | 'failed';
 export type ScanEnd = { reason: 'done' } | { reason: 'stopped' } | { reason: 'error'; error: ScanError };
 export type Decode = (frame: ImageData) => Promise<string[]>;
+/** Reads the current video frame, or null when the video has none yet. `release()`, when present, is called once at the end. */
+export type Grab = ((video: VideoLike) => ImageData | null) & { release?(): void };
 
 /** The part of `HTMLVideoElement` the scanner uses. */
 export interface VideoLike {
@@ -35,8 +38,8 @@ export interface ScanDeps {
   /** `null` = no camera API at all. Default: `navigator.mediaDevices.getUserMedia`. */
   getUserMedia?: ((c: MediaStreamConstraints) => Promise<MediaStream>) | null;
   loadDecoder?: () => Promise<Decode>;
-  /** The current video frame, or null when the video has none yet. */
-  grab?: (video: VideoLike) => ImageData | null;
+  /** The current video frame, or null when the video has none yet. Default: `canvasGrab()`. */
+  grab?: Grab;
   /** The pause between two reads. */
   wait?: () => Promise<void>;
   doc?: Document;
@@ -73,15 +76,21 @@ export async function loadZxingDecoder(): Promise<Decode> {
   return async (frame) => (await readBarcodes(frame, READ_OPTIONS)).filter((r) => r.isValid).map((r) => r.text);
 }
 
-function canvasGrab(): (video: VideoLike) => ImageData | null {
+/**
+ * The frame grabber: one lazily created canvas, reused. `release()` zeroes it (which frees its bitmap, the last camera
+ * frame) and is terminal: a grab after it returns null and creates nothing.
+ */
+export function canvasGrab(create: () => HTMLCanvasElement = () => document.createElement('canvas')): Grab & { release(): void } {
   let canvas: HTMLCanvasElement | null = null;
   let ctx: CanvasRenderingContext2D | null = null;
-  return (video) => {
+  let released = false;
+  const grab = (video: VideoLike): ImageData | null => {
+    if (released) return null;
     const w = video.videoWidth;
     const h = video.videoHeight;
     if (video.readyState < 2 || !w || !h) return null; // HAVE_CURRENT_DATA
     if (!canvas) {
-      canvas = document.createElement('canvas');
+      canvas = create();
       ctx = canvas.getContext('2d', { willReadFrequently: true });
     }
     if (!ctx) return null;
@@ -92,6 +101,16 @@ function canvasGrab(): (video: VideoLike) => ImageData | null {
     ctx.drawImage(video as HTMLVideoElement, 0, 0, w, h);
     return ctx.getImageData(0, 0, w, h);
   };
+  const release = (): void => {
+    released = true;
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    canvas = null;
+    ctx = null;
+  };
+  return Object.assign(grab, { release });
 }
 
 function classify(e: unknown): ScanError {
@@ -124,6 +143,7 @@ export function startScan(deps: ScanDeps): ScanHandle {
     }
     stream = null;
     deps.video.srcObject = null;
+    grab.release?.();
     deps.onEnd(end);
   }
 

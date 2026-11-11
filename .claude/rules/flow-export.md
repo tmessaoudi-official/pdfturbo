@@ -332,7 +332,7 @@ overlay was fixed by limits row 25, C19.)
 attribute — they're SEPARATE thin filled `re` rects whose width is decoupled from the text, so a true-edit
 that changed text LENGTH used to leave the rule frozen (longer edit → un-underlined tail; the reported bug).
 `replaceTextAt`/`deleteTextAt` take `opts.adjustDecorations` (wired from `isEnabled('textDecor')`, #28 seam,
-default ON; PURE behavior gate — no UI button, so vite needs NO define, env-undefined→ON like every flag).
+default ON; PURE behavior gate — no UI button, so vite needs NO define, env-undefined→ON like every flag but those in `DEFAULT_OFF` — `phonePad`, since 2026-11-11).
 Pure helpers in `contentStreamEditor.ts`: `locateDecorationRects` (CTM-aware walk, USER space) collects BOTH
 decoration encodings — filled `re`+fill-painter rects (`kind:'rect'`) AND horizontal stroked lines
 `mx my m  lx ly l  S` (`kind:'line'`, the Word/LibreOffice underline form; `DecorationRule` is a discriminated

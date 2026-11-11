@@ -42,8 +42,9 @@ export class SignaturePad {
     this.canvas.addEventListener('pointerup',     (e) => this._stopDrawing(e));
     this.canvas.addEventListener('pointercancel', (e) => this._stopDrawing(e));
     this.canvas.addEventListener('pointerleave',  (e) => this._stopDrawing(e));
-    // the canvas hidden mid-stroke (the modal closed) releases the capture and its pointerup lands elsewhere:
-    // without this the pad would stay "drawing" for a pointer that is gone and ignore every later one
+    // Defensive: a canvas hidden mid-stroke (the modal closed) may release the capture with its pointerup landing
+    // elsewhere, leaving the pad "drawing" for a pointer that is gone. The milestone panel's reviewer (round 1,
+    // 2026-11-11) saw Chrome 157 still deliver that pointerup to the canvas; the listener is harmless and stays.
     this.canvas.addEventListener('lostpointercapture', (e) => this._stopDrawing(e));
   }
 

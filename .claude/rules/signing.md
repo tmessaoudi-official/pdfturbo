@@ -13,6 +13,12 @@ paths:
   - "src/utils/ptsigCollector.ts"
   - "src/utils/qrCanvas.ts"
   - "src/utils/signatureImage.ts"
+  - "src/utils/signaturePad.ts"
+  - "src/utils/signaturePng.ts"
+  - "src/config/features.ts"
+  - "src/ui/phonePadGate.ts"
+  - "pad.html"
+  - "tests/pad/**"
 ---
 
 # pdfturbo gotchas — signing
@@ -303,20 +309,23 @@ untouched: no persisted field, no `SCHEMA_VERSION` change.
 
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen; `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.
-- **The PTSIG CRC-32 detects misreads; it authenticates NOTHING.** A scanned QR is untrusted input: the decoder is strict
+- **The PTSIG CRC-32 detects misreads; it authenticates NOTHING.** A scanned QR is untrusted input: the PTSIG decoder is strict
   (length cap before base45, ≤3-byte canonical varints, 256 strokes / 1024 points checked before reading, every point on
   the grid, no trailing bytes, a typed error code per failure), fuzzed with re-sealed mutated bodies, and its output is
-  only ever drawn onto a canvas. A frame of another format asks the user to refresh the phone page.
+  only ever drawn onto a canvas. A frame of another format asks the user to refresh the phone page. zxing-cpp's reader,
+  which turns a camera frame into that text, is third-party and NOT fuzzed here: it runs in its wasm sandbox and returns
+  only text (milestone panel round 1, 2026-11-11 — `SECURITY.md` said "the QR decoder is fuzzed").
 - **Budget:** one QR of version 19 at EC M (909 alphanumeric chars = 606 bytes), measured on the developer's
   1280×720 webcam; a bigger signature is simplified (Ramer–Douglas–Peucker, 1–4 grid units), then split, up to 4 frames.
 - **Camera:** `getUserMedia` FIRST, the lazy wasm after (a refusal costs no download); one `finish()` stops every track
   on every exit — Stop, modal close, panel collapse, an import, a hidden tab, a track that ends. A refused or missing
-  camera is shown in the panel and NEVER logged with `console.error`: the QA sweep fails on a console error.
+  camera is shown in the panel and NEVER logged with `console.error`: the QA sweep fails on a console error. (zxing
+  ITSELF logs one when its wasm fails to load — a real failure, reported as 'failed', so the sweep should flag it.)
 - **Flag `phonePad` defaults OFF** (`isEnabled` has a per-key default) until the step-7 check on a real phone and webcam.
 - **Offline and an outdated phone:** `toolchain.md` § "PWA is `registerType: 'prompt'`" (the 5c paragraph). Known, left
   as is by ruling: at 414 px on a first visit the cookie banner covers the modal's Save row (plan § Known issues).
 - **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage}.test.ts`,
-  `tests/ui/{qrScanner,signatureSources}.test.ts`, `tests/pad/padPage.test.ts`; real Chrome
+  `tests/ui/{qrScanner,qrScannerZxing,signatureSources,phonePadGate}.test.ts`, `tests/pad/padPage.test.ts`; real Chrome
   `tests/browser/{pad-page,signature-pad,signature-sources,signature-import,signature-scan}.browser.test.ts` (QR round trip,
   a fake camera with real zxing, image-import pixels); the QA sweep's phone pad pass on every deploy.
 - **Not certified by execution:** a real phone read by a real webcam (step 7); the 33 Arabic keys (in the pending count,

@@ -31,6 +31,12 @@ describe('M3 #32 — CSP hardening directives', () => {
     expect(cspContent()).toMatch(/form-action\s+'none'/);
   });
 
+  it("connect-src is exactly 'self' blob: (the zxing wasm must be self-hosted — a CDN fetch would be blocked)", () => {
+    // Milestone panel round 1 (2026-11-11): qrScanner.ts's locateFile override relies on this; widening it would
+    // let a regression of that override reach a third-party CDN instead of failing.
+    expect(cspContent()).toMatch(/connect-src 'self' blob:(?:;|$)/);
+  });
+
   it('still keeps the existing object-src none + self default', () => {
     const csp = cspContent();
     expect(csp).toMatch(/object-src\s+'none'/);

@@ -584,7 +584,8 @@ copy offline; a pad never opened online is not available offline, and no claim i
 `navigateFallbackDenylist`. **The denylist is load-bearing:** the built `sw.js` registers its `index.html`
 `NavigationRoute` BEFORE the runtime routes, so without it a navigation to `pad.html` is answered with the EDITOR.
 Workbox tests a denylist against pathname + search (`workbox-routing/NavigationRoute.js`), hence
-`/\/pad\.html(?:\?|$)/`. The camera scan's zxing reader wasm (~950 KB) is never precached either; the `zxing-wasm`
+`/^[^?]*\/pad\.html(?:\?|$)/` — anchored to the path since milestone panel round 1 (2026-11-11), so a query that only
+mentions pad.html (`/pdfturbo/?next=/pad.html`) keeps the editor on its offline fallback. The camera scan's zxing reader wasm (~950 KB) is never precached either; the `zxing-wasm`
 runtime cache stores it on the first scan, so a later scan works offline. `pad.html` keeps its manifest link (an install
 started from the pad installs the editor). The pad-URL QR names whatever origin served the editor, so on `localhost` it
 names localhost, which a phone cannot open: use the LAN route by hand (step 7).
@@ -593,7 +594,13 @@ what the ✍ modal's "If your phone opens the editor instead, accept its Update 
 Guards: `tests/infra/pwaOcrCaching.test.ts` (the 5c block runs the extracted `urlPattern` functions and the denylist on
 real URLs), and the QA sweep's pad pass on every deploy (on a built app: the worker controls `pad.html`, it is absent
 from the precache with `index.html` present as the control, the pad, not the editor, renders, draw → Done → QR, axe;
-on a dev server the worker part is SKIP). The `zxing-wasm` rule is certified by the throwaway
+on a dev server the worker part is SKIP — and FAIL with `--require-sw`, which the deploy gate passes, so a build that
+stops emitting `sw.js` cannot pass silently; `tests/infra/qaSweepRequireSw.test.ts` pins the wiring). **`pad-css`**
+(milestone panel round 1, 2026-11-11): a CacheFirst runtime rule for `/assets/pad-*.css`, same origin. The stylesheet is
+precached with its build, but a phone still on the PREVIOUS worker gets a NEW `pad.html` (NetworkFirst) whose hashed
+stylesheet that worker never precached — the `.js` rule caches the script, nothing cached the stylesheet. The rule is
+tested on URLs; the two-build case itself is NOT certified by execution. Runtime rules live in the ACTIVE worker, so a
+phone whose worker predates the rule is not covered by the deploy that adds it — only from the deploy after. The `zxing-wasm` rule is certified by the throwaway
 `var/claude/sig-scan-check/pwa.mjs` (flag-ON build, the server STOPPED for the offline leg), not by the gate: CI sweeps
 the flag-OFF build and never scans.
 

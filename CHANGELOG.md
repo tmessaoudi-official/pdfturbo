@@ -3,11 +3,34 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-10-08)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-11-11)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
 most of the work went into proving that what the product claims to remove is actually removed.
+
+### 2026-10-09 → 2026-11-11 — the phone signature pad, accessible names, and dependency upgrades
+
+#### Added
+- **Sign on your phone** (off by default until checked on a real phone): the ✍ modal shows a QR code that opens a
+  drawing page (`pad.html`) on the phone; *Done* shows the signature as one to four QR codes, which *Start camera*
+  on the PC reads, or the phone saves a PNG that *Import image* brings in (paper keyed out, metadata dropped). The
+  signature waits in the modal for Save. No server, no upload: the QR codes on the phone's screen are the only link.
+  The scanner's decoder is self-hosted and cached on first use; the phone page is always fetched fresh when online.
+
+#### Fixed
+- **Accessible names start with the visible text** (WCAG 2.5.3, raised to serious by axe-core 4.14) — fourteen
+  buttons across the toolbar, the flyouts and the text panel, in English, French and Arabic; the bullet and numbered
+  list labels were hard-coded English in the French and Arabic UI.
+- **The placement box no longer floats above an open dialog** (it followed the pointer over the signature pad).
+- **Exports freeze the document they started from** — an undo, a close or an edit landing mid-export can no longer
+  change what is written (milestone-2 review rounds 3–5); true edit refuses to commit over bytes it was not built from.
+
+#### Changed
+- Dependencies upgraded: in range (vite 8.3, i18next 26.7, node-forge 1.4.3, which closed the last audit exemption),
+  and two majors in their own changes (vite-plugin-pwa 2.0, jsdom 31, the dev-only test DOM); `pdfjs-dist` is held
+  at 6.3 because 6.4 and 6.5 change behaviour the export depends on.
+- An internal import-graph ratchet and named coordinate frames for page rectangles (no behaviour change).
 
 ### 2026-09-25 → 2026-10-08 — the limits walkthrough and the review remediation
 

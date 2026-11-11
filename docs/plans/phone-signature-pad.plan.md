@@ -61,6 +61,13 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-11 14:51] AGREED: Step 6 3C tier: advisor() only.
 - [2026-11-11 15:13] AGREED: privacy.html Camera text approved as written (EN/FR/AR shown before the commit).
 - [2026-11-11 15:13] AGREED: Step 6 6C tier: advisor() only.
+- [2026-11-11 16:53] AGREED: Order changed while the developer is away from the PC: the step-8 three-lens panel runs now on frozen d93ed13; step 7 (real phone) after, then the flag ON (one line + the signing.md bullet), then the 1.1.0 bump and one push; a code fix from step 7 needs a panel re-round.
+- [2026-11-11 16:55] AGREED: Step-8 panel reviewers run on fable.
+- [2026-11-11 17:10] AGREED: Milestone panel round 1 (fable, frozen d93ed13): 22 findings (3 P1, 7 P2, 12 P3, no P0) in var/claude/raw/m3r1-*.md; fix #1-#20 as proposed, #21 resolved by the flag-ON before the push, #22 accepted; round 2 on the fix commit.
+- [2026-11-11 17:10] AGREED: Agent definitions completeness-reviewer.md and safety-promises-reviewer.md: correct the stale exemption and globIgnores facts (developer go).
+- [2026-11-11 17:10] AGREED: Round-1 refuter stage skipped: each finding verified by reading (greps in the session); round 2 re-reviews every fix.
+- [2026-11-11 17:13] AGREED: Round-1 fix round 3C tier: advisor() only.
+- [2026-11-11 17:51] AGREED: Round-1 fix round 6C tier: advisor() only (panel round 2 follows on the commit).
 
 ## Formal Plan
 
@@ -98,7 +105,8 @@ appearance image all get it with no change to export, redaction or signing code.
   (3C round 2): the deployed `dist/sw.js` routes every navigation to the cached `index.html`
   (`NavigationRoute(createHandlerBoundToURL("index.html"))`), so a phone on an old version gets the old editor and old
   JS. Mitigation: the "Use phone" panel on the PC says "if your phone opens the editor, accept its Update prompt and
-  scan again". Pad parameters go in the `#fragment`, never the query, so a precached `pad.html` still matches.
+  scan again". Pad parameters go in the `#fragment`, never the query, so a cached `pad.html` still matches (5c took
+  `pad.html` out of the precache: it is served NetworkFirst from the `pad-page` cache).
 - **Feature flag `phonePad`.** Keep the buttons hidden until the step-7 manual check passes. `isEnabled` today only
   defaults to ON, so it gains a per-key default.
 - **Device route for steps 1 and 7.** The PC stays on `localhost`, because the camera needs a secure context. The dev
@@ -127,10 +135,10 @@ commit.
 | 2 | PTSIG codec + base45 + strict decode + fuzz, test-first (jsdom) | M | done | commit "feat(sign): PTSIG v1 codec …" (2026-11-10); 45 tests red (module missing) → green, +1 at 6C (the shorter-side floor); 17 sabotages each red on their own guard (the varint-limit one first stayed green and its test was moved); 6C advisor clean, the fuzz made ~20x cheaper (one expect per signature); synthetic sizes var/claude/ptsig/sizes.txt: 6 strokes / 720 samples = 1 frame at tolerance 1 [Inferred] | src/utils/signatureStrokes.ts, tests/utils/** |
 | 3 | SignaturePad records and replays strokes; `phonePad` flag with a per-key default OFF, test-first; then run a REAL hand-drawn signature through the codec and record its frames, tolerance and encode time before step 4; and observe one off-canvas coordinate during a captured drag (the codec's clamp rests on `setPointerCapture`, Inferred so far) | S | done | code: 26ffb0b + lock-out fix e32b2c5 (a pad left mid-stroke refused the next finger; found at 6C, never pushed) — jsdom 15 pad cases (14 red first) + 5 flag cases (2 red first); Chrome 4 (tap on both pad kinds, a real drag past the edge, replay pixels; written after the code, proven by sabotage); 11 sabotages (flag 3, pad 6, lock-out 2), each red on its own case; a real mouse drag keeps recording past the edge under pointer capture [Verified, desktop Chrome]; full deploy gate green on 26ffb0b; real signature (W4): 1 QR at tolerance 1, 579 chars, encode 0.3 ms on the phone | src/utils/signaturePad.ts, src/config/features.ts, tests/** |
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | done | commit "feat(sign): pad.html — sign on the phone …" (2026-11-10); jsdom: 6 setSize + 6 qrCanvas + 4 PNG + 12 page + 3 CSP cases, red first; Chrome 3 (dpr-2 pixels, the 909-char v19 frame read back verbatim by zxing, drag → Done → QR → zxing → the encoded frame), written before the page, red on the missing module; 20 sabotages each red on their own guard (one first stayed green — resize mid-stroke — and its test now asserts the next pointer draws); built pad.html via vite preview at 412 px / dpr 2.8125, en + ar, re-run on the committed build at 6C: axe 0 violations (WCAG 2.0/2.1 A+AA, both views), 0 console errors, 0 failed requests, 0 CSP violations, no SW, 0 overflow (a 12 px overflow found there was fixed test-first: the pad and QR now use the content box), ~60 KB gzip; editor index.html unchanged but one modulepreload (a shared chunk: i18n + locales + pad code, 48.8 KB gzip); precache +4; full deploy gate green (jsdom 4129, Chrome 712, coverage 9, qa:sweep 151/114/0) | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
-| 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | doing | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b DONE 2026-11-11 ("Step-5b DONE"); 5c DONE 2026-11-11 ("Step-5c DONE") | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
+| 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | done | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b DONE 2026-11-11 ("Step-5b DONE"); 5c DONE 2026-11-11 ("Step-5c DONE") | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
 | 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | done | DONE 2026-11-11 ("Step-6 DONE"); also public/privacy.html (Camera section, ruled) | README.md, .claude/rules/**, KNOWN_ISSUES.md, THIRD-PARTY-NOTICES.md, public/privacy.html |
-| 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred) | S | todo | - | src/config/features.ts |
-| 8 | Milestone three-lens panel on a frozen commit | M | todo | - | |
+| 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred). The flag-ON commit also edits every "off" surface: `signing.md`'s "Flag `phonePad` defaults OFF" bullet, the FEATURES and CHANGELOG "off by default" parentheticals, `flow-export.md`'s "`DEFAULT_OFF` — `phonePad`" line, and `main.ts`'s step-5 comment | S | todo | - | src/config/features.ts, .claude/rules/{signing,flow-export}.md, FEATURES.md, CHANGELOG.md, src/main.ts |
+| 8 | Milestone three-lens panel on a frozen commit | M | doing | round 1 on d93ed13 (22 findings, `var/claude/raw/m3r1-*.md`); fixes in the round-1 fix commit; round 2 next | |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
@@ -201,7 +209,7 @@ commit.
   same tree (`rm -rf node_modules/.vite`, `browser-cold.log`): 131 files, 736 pass, 3 skipped, rc=0 at load 26.
   No timeout raised.
 - Step-5c DONE (2026-11-11). `vite.config.ts`: `**/pad.html` in `globIgnores`, `navigateFallbackDenylist:
-  [/\/pad\.html(?:\?|$)/]` (Workbox matches a denylist on pathname + search — `workbox-routing/NavigationRoute.js:85`),
+  [/^[^?]*\/pad\.html(?:\?|$)/]` (path-anchored by milestone panel round 1; Workbox matches a denylist on pathname + search — `workbox-routing/NavigationRoute.js:85`),
   `zxing-wasm` CacheFirst (`/zxing_reader` + `.wasm`, same origin, 2 entries) and `pad-page` NetworkFirst
   (`/pad.html`, same origin). Built `sw.js`: precache 31 → 30, the denylist and both caches present. Tests (red first):
   `tests/infra/pwaOcrCaching.test.ts` +4, which RUN the extracted `urlPattern` functions and the denylist on real URLs.
@@ -257,6 +265,23 @@ commit.
   read (Camera section, "novembre 2026"); the footer and storage-banner links are `./privacy.html` (`index.html:245,260`).
   `signing.md` is now 323 lines, over the ~300 intake cap — recorded, a candidate for the next `/rules-split` prune. Its
   "Flag `phonePad` defaults OFF" bullet goes stale when step 7 turns the flag on: edit it in that commit.
+- Milestone panel round 1 FIXES (2026-11-11, on d93ed13's findings, `var/claude/raw/m3r1-*.md`). Certified by
+  execution (each red first or mutant-proven, restored with `cmp`): #4 the flag gate moved to `src/ui/phonePadGate.ts`
+  (`applyPhonePadFlag`; `tests/ui/phonePadGate.test.ts` 6 — gate inverted → 3, main.ts negated / hard-coded true / call
+  deleted → the source check, the close forward dropped → 1); #5 `tests/ui/qrScannerZxing.test.ts` 4 + a CSP
+  `connect-src 'self' blob:` pin (locateFile → CDN, the retry memo, `fireImmediately`, the validity filter, a widened
+  CSP → each red); #6 `--require-sw` (FAIL instead of SKIP when no built worker; `deploy.yml`, the local gate scripts;
+  `tests/infra/qaSweepRequireSw.test.ts` 2 red first; LIVE on a dev server: with the flag rc=1 `FAIL pad: service
+  worker`, without rc=0 SKIP); #11 the denylist anchored `^[^?]*` (red first on `/pdfturbo/?next=/pad.html`); #12 the
+  `pad-css` CacheFirst rule (red first; any-css / cross-origin mutants red); #14 `canvasGrab` exported, every scan end
+  calls `release()` (canvas zeroed, terminal) — 5 cases red first, 3 mutants red. NOT certified by execution: #12's
+  two-build scenario (an older worker serving a newer pad offline) — never driven; the wasm heap's copy of the last
+  frame (#14's bound, `KNOWN_ISSUES.md`). Docs: #1 README offline sentence, #2 FEATURES + CHANGELOG through
+  2026-11-11, #3 SECURITY (the PTSIG decoder is fuzzed; zxing is not), #7 KNOWN_ISSUES § "From the phone signature
+  pad", #8 signing.md globs, #9 the CLAUDE.md index counts (ui 16, toolchain 11), #10 the two agent definitions
+  (developer go), #13 zxing logs on its own wasm failure, #15 the lostpointercapture comment, #16–#20.
+  Outside the range, NOT fixed (reported to the developer): `icon.svg` is referenced by `index.html`, `pad.html` and
+  the manifest but exists in neither `public/` nor `dist/`.
 - Known, left as is (ruling 2026-11-11): at 414 px on a FIRST visit the cookie banner covers the ✍ modal's Save
   row when the phone panel is open — in French (the longest strings) even with no refusal message; the modal is
   then ~750–790 px in an 860 px viewport. It clears when the banner is dismissed, and the modal scrolls. Look at it
@@ -303,7 +328,8 @@ commit.
   `getUserMedia`, a non-overlapping loop (video → canvas → ImageData → `readBarcodes`); a cancel token checked after
   every await; tracks stopped on success, Stop, Cancel, Escape, Save and a hidden tab (UI back to *Start camera*);
   NotAllowed/NotFound and the unexpected failures (zxing import or wasm fetch fails, a throw in the loop) shown in the
-  panel, tracks stopped, never console.error. Success → `pad.replay(sig)` + "Scanned — press Save" († no auto-save).
+  panel, tracks stopped, never console.error from our code (zxing itself logs one when its wasm fails to load — milestone
+  panel round 1, 2026-11-11; a real failure, so the QA sweep is right to flag it). Success → `pad.replay(sig)` + "Scanned — press Save" († no auto-save).
   Chrome: a fake camera (`canvas.captureStream`, repainted) with 1 then 2 cycling frames → pad pixels + every track
   `ended`; one test per stop path. Flag-ON acceptance: a build with `VITE_FEATURE_PHONE_PAD=true` into
   `var/claude/`, `vite preview`: the wasm instantiates with 0 CSP violations, a denied camera gives 0 console errors,
@@ -335,7 +361,8 @@ commit.
   `pad.html` OUT of the precache (`globIgnores`) and served NetworkFirst (`pad-page` cache) — this REVERSES the Formal
   Plan line "the new service worker precaches `pad.html`": a precached pad updates only when the EDITOR's prompt is
   accepted (`registerType: 'prompt'`; the pad shows no prompt), so "refresh the page on your phone" would not cure a
-  version mismatch; no offline claim (no runtime rule covers `.css`). The `navigateFallbackDenylist` entry for
+  version mismatch; no offline claim (no runtime rule covered `.css` — milestone panel round 1 added the `pad-css`
+  CacheFirst rule for a pad served by an older worker; that two-build case is NOT certified by execution). The `navigateFallbackDenylist` entry for
   `pad.html` is load-bearing: the built `dist/sw.js` registers `NavigationRoute(index.html)` BEFORE the runtime
   routes (grep-verified). `qa-sweep.mjs` gains a pad pass: await `navigator.serviceWorker.ready` on the editor, open a
   NEW page in the same context, assert `navigator.serviceWorker.controller !== null` and that the pad (not the editor)

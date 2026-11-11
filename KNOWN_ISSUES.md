@@ -69,6 +69,24 @@ work in a private/incognito window when editing sensitive documents on a shared 
 - node-forge 1.4.3 (2026-11-04) fixed it; the deploy-audit exemption was removed and the allowlist is empty. The WebCrypto verify in
   `src/signing/cmsVerify.ts` stays. Detail: `.claude/rules/audit-gate.md` § "Supply chain (#37)" (seventh occurrence).
 
+### From the phone signature pad (2026-11-11)
+
+- **The storage banner can cover the ✍ modal's Save button on a phone.** At 414 px wide on a FIRST visit, with the
+  phone panel open, the Save row sits under the storage-notice banner (French, the longest strings: fully covered).
+  Dismiss the banner and Save is reachable; the modal also scrolls. The cause is the banner's stacking above EVERY
+  dialog (`z-index: 9000` against 1000), not this modal — left as is by ruling (plan § Known issues).
+- **A camera busy in another app reads as "could not be used".** Chrome raises `NotReadableError` for it, which the
+  scanner reports as the generic failure (`modal.signature.scanError.failed`: "Try again, or use Import image"), not as
+  "the camera is in use".
+- **The signature modal is height-capped for everyone.** `.signature-content` got `max-height: 90vh; overflow-y: auto`
+  with the phone pad; measured identical to before at 900 and 860 px high only. Below ~390 px of height (where the
+  349 px modal meets the cap) it scrolls — not measured.
+- **The last camera frame may stay in the QR reader's memory.** The page releases its own copy when the scan ends; the
+  zxing wasm heap may still hold the frame it last read, in memory only — never written or sent — until the tab closes.
+- **Not certified by execution:** a real phone read by a real webcam (step 7 of the plan); a phone on an OLDER
+  service worker loading a NEWER pad page offline (the `pad-css` cache rule exists for it; the two-build case was
+  never driven). The rule itself only reaches a phone once its worker has updated to a build that carries it.
+
 ### From QUAL-1 — releasing a closed document (2026-10-08)
 
 - Closing or replacing a document now releases its pdf.js documents. What happens to an action still running at
