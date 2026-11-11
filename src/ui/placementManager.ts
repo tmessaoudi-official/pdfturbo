@@ -239,8 +239,11 @@ export class PlacementManager {
 
   updatePlacementGhost(e: PointerEvent): void {
     const placementModes: ToolMode[] = ['addText', 'addComment', 'addImage', 'addSignature'];
-    if (!placementModes.includes(this._ctx.mode)) {
-      if (this._placementGhost) this._placementGhost.style.display = 'none';
+    // The ghost shows where the element will land ON THE PAGE. It is fixed at z-index 9999, above every dialog, so
+    // over an open dialog (the ✍ modal opens in `addSignature` mode: its pad, its phone-pad QR) it is hidden.
+    const overDialog = e.target instanceof Element && e.target.closest('[role="dialog"]') !== null;
+    if (!placementModes.includes(this._ctx.mode) || overDialog) {
+      this.hidePlacementGhost();
       return;
     }
     if (!this._placementGhost) {

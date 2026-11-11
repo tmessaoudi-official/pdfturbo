@@ -114,6 +114,24 @@ describe('ToolModeService.setMode', () => {
     expect(ctx.hidePlacementGhost).not.toHaveBeenCalled();
   });
 
+  // A ghost left on screen by an earlier placement mode (Text, then the S shortcut) would sit ABOVE the ✍ modal —
+  // z-index 9999 — until the pointer moved: opening the modal hides it.
+  it('hides the placement ghost when entering addSignature opens the modal', () => {
+    const ctx = makeCtx();
+    const mgr = new ToolModeService(ctx);
+    mgr.setMode('addSignature');
+    expect(ctx.openSignatureModal).toHaveBeenCalledTimes(1);
+    expect(ctx.hidePlacementGhost).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the ghost when addSignature is armed WITHOUT the modal (after Save: placement on the page)', () => {
+    const ctx = makeCtx();
+    const mgr = new ToolModeService(ctx);
+    mgr.setMode('addSignature', { suppressSignatureModal: true });
+    expect(ctx.openSignatureModal).not.toHaveBeenCalled();
+    expect(ctx.hidePlacementGhost).not.toHaveBeenCalled();
+  });
+
   it('shows toast hint for modes that have one', () => {
     const ctx = makeCtx();
     const mgr = new ToolModeService(ctx);

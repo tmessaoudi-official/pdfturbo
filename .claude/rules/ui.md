@@ -405,6 +405,27 @@ working cannot make it vacuous (sabotage: a no-op `open()` reds all six; one FR 
 tests). `tests/utils/i18nLabelInName.test.ts` checks the seven from the real `index.html` in jsdom with a word-boundary
 match — a plain `startsWith` accepted "List" as the start of "Liste à puces".
 
+### The placement ghost floated above every dialog (2026-11-11)
+
+The dashed box that follows the pointer in a placement mode (`PlacementManager.updatePlacementGhost`, bound to a
+`document` `pointermove`) is `position:fixed; z-index:9999` — above every dialog. The ✍ modal opens IN `addSignature`
+mode, so the box followed the pointer over the drawing pad, and with the phone pad (step 5a) over the QR code a phone
+has to scan. Measured on the build made before the fix, real Chrome: pointer on the pad → `shown at 472,432`; Text mode,
+pointer on the page, then the `S` key with the pointer still → the stale "T" box stayed above the modal. Found by
+READING the acceptance screenshots: the driver's criteria (axe, console, geometry) were all green.
+
+Two sites, one cause. `updatePlacementGhost` hides the box while the pointer's target is inside `[role="dialog"]`
+(the backdrop IS the dialog element, hence `closest`), and `ToolModeService.setMode` hides it when entering
+`addSignature` opens the modal — not when the mode is armed with `suppressSignatureModal` (after Save the box must
+show: that is the placement). Guards: `tests/ui/placementGhost.test.ts` (5, on the real `#signatureModal` markup) and
+two cases in `tests/core/toolModeService.test.ts`. Sabotage: predicate false → 4; predicate true → 3 (the control);
+the hide removed → 1; the hide made unconditional for `addSignature` → 1. After the fix, same drive: hidden over the
+pad, over the QR and after `S`; shown again on the page after Save.
+
+**Bound:** the hide at OPEN time covers the ✍ modal only (the one dialog a placement mode opens). A ghost already on
+screen when ANY OTHER dialog opens from the keyboard stays where it was until the pointer moves; then the pointer rule
+hides it.
+
 ### Mobile thumbnail controls = a single ⋮ action menu (F2b, 2026-06-26)
 
 The per-thumbnail controls

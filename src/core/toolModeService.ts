@@ -78,7 +78,10 @@ export class ToolModeService {
     ctx.updateFormattingToolbar();
     ctx.setOverlayPointerEvents(mode === 'select');
     ctx.setCanvasTouchAction(canvasCapturesGesture(mode) ? 'none' : 'pan-x pan-y');
-    if (mode === 'addSignature' && !opts?.suppressSignatureModal) ctx.openSignatureModal();
+    if (mode === 'addSignature' && !opts?.suppressSignatureModal) {
+      ctx.openSignatureModal();
+      ctx.hidePlacementGhost(); // one left by an earlier placement mode would sit above the modal until the pointer moves
+    }
     if (!PLACEMENT_MODES.includes(mode)) ctx.hidePlacementGhost();
     const hintKey = mode === 'select' ? undefined : MODE_HINT_KEYS[mode];
     if (hintKey) ctx.reportError.info(hintKey);
