@@ -41,6 +41,14 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-11 09:51] AGREED: Step 5a remainder runs as Medium; plan go: the file-input reset is guarded in Chrome with a real file list (not a jsdom setter spy), beside the pad-URL QR read-back; the gate runs before the 5a commit.
 - [2026-11-11 10:49] AGREED: The placement ghost floating above the open signature modal (pre-existing, placementManager.ts) is fixed now, test first, as its OWN commit before 5a.
 - [2026-11-11 10:49] AGREED: The cookie banner covering the modal's Save row at 414 px on a first visit (phone panel + error message open) is noted under Known issues and left as is.
+- [2026-11-11 11:32] AGREED: Step 5b (Scan) runs as Large: the ruled 5b plan is re-read against the code after 5a, restated, and waits for an explicit go before any code.
+- [2026-11-11 11:44] AGREED: 5b camera preview: while the camera runs, the live video takes the pad-URL QR's 180 px box in the Sign on phone panel; Stop or a scan brings the QR back.
+- [2026-11-11 11:44] AGREED: 5b 3C tier: advisor() only.
+- [2026-11-11 11:51] AGREED: Step 5b plan GO as restated after 5a (3C rounds 1-3 with advisor, clean).
+- [2026-11-11 11:51] AGREED: 5b preview mirrored by CSS only (scaleX(-1)); decoding reads raw frames.
+- [2026-11-11 11:51] AGREED: 5b adds the optional built-app scan of a real PTSIG QR via a .y4m fake camera, time-boxed ~30 min; dropped and recorded if the tooling fails.
+- [2026-11-11 12:24] AGREED: Cookie banner over the signature modal's Save row: ruling kept after 5b's new evidence (FR 414 with the phone panel open: Save FULLY covered until the banner is dismissed); the Known issues note is updated, step 7 looks at it.
+- [2026-11-11 12:42] AGREED: 5b 6C tier: advisor() only.
 
 ## Formal Plan
 
@@ -107,7 +115,7 @@ commit.
 | 2 | PTSIG codec + base45 + strict decode + fuzz, test-first (jsdom) | M | done | commit "feat(sign): PTSIG v1 codec …" (2026-11-10); 45 tests red (module missing) → green, +1 at 6C (the shorter-side floor); 17 sabotages each red on their own guard (the varint-limit one first stayed green and its test was moved); 6C advisor clean, the fuzz made ~20x cheaper (one expect per signature); synthetic sizes var/claude/ptsig/sizes.txt: 6 strokes / 720 samples = 1 frame at tolerance 1 [Inferred] | src/utils/signatureStrokes.ts, tests/utils/** |
 | 3 | SignaturePad records and replays strokes; `phonePad` flag with a per-key default OFF, test-first; then run a REAL hand-drawn signature through the codec and record its frames, tolerance and encode time before step 4; and observe one off-canvas coordinate during a captured drag (the codec's clamp rests on `setPointerCapture`, Inferred so far) | S | done | code: 26ffb0b + lock-out fix e32b2c5 (a pad left mid-stroke refused the next finger; found at 6C, never pushed) — jsdom 15 pad cases (14 red first) + 5 flag cases (2 red first); Chrome 4 (tap on both pad kinds, a real drag past the edge, replay pixels; written after the code, proven by sabotage); 11 sabotages (flag 3, pad 6, lock-out 2), each red on its own case; a real mouse drag keeps recording past the edge under pointer capture [Verified, desktop Chrome]; full deploy gate green on 26ffb0b; real signature (W4): 1 QR at tolerance 1, 579 chars, encode 0.3 ms on the phone | src/utils/signaturePad.ts, src/config/features.ts, tests/** |
 | 4 | pad.html phone page (Vite entry, CSP, i18n/RTL, QR + PNG download, no SW) + its locale keys + architecture baseline + its browser test, in one commit | M | done | commit "feat(sign): pad.html — sign on the phone …" (2026-11-10); jsdom: 6 setSize + 6 qrCanvas + 4 PNG + 12 page + 3 CSP cases, red first; Chrome 3 (dpr-2 pixels, the 909-char v19 frame read back verbatim by zxing, drag → Done → QR → zxing → the encoded frame), written before the page, red on the missing module; 20 sabotages each red on their own guard (one first stayed green — resize mid-stroke — and its test now asserts the next pointer draws); built pad.html via vite preview at 412 px / dpr 2.8125, en + ar, re-run on the committed build at 6C: axe 0 violations (WCAG 2.0/2.1 A+AA, both views), 0 console errors, 0 failed requests, 0 CSP violations, no SW, 0 overflow (a 12 px overflow found there was fixed test-first: the pad and QR now use the content box), ~60 KB gzip; editor index.html unchanged but one modulepreload (a shared chunk: i18n + locales + pad code, 48.8 KB gzip); precache +4; full deploy gate green (jsdom 4129, Chrome 712, coverage 9, qa:sweep 151/114/0) | pad.html, src/pad/**, vite.config.ts, locales/**, tests/** |
-| 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | doing | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b, 5c todo | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
+| 5 | PC modal behind the flag: Sign on phone (+ Scan in its panel) / Import image; PWA rules; locale keys, baseline, browser tests (QR round-trip, fake-camera e2e with tracks stopped, image-import pixels) in the same commits | L | doing | 5a DONE 2026-11-11 (see "Step-5a DONE" under Known issues); 5b DONE 2026-11-11 ("Step-5b DONE"); 5c todo | index.html, src/core/signatureManager.ts, src/ui/**, vite.config.ts, vitest.browser.config.ts, locales/**, tests/** |
 | 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | todo | - | README.md, .claude/rules/**, KNOWN_ISSUES.md |
 | 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred) | S | todo | - | src/config/features.ts |
 | 8 | Milestone three-lens panel on a frozen commit | M | todo | - | |
@@ -138,10 +146,56 @@ commit.
   edit had saved it LF (291/274 in `--numstat`); restored, the diff is 17/0. (5) Found by reading the screenshots,
   not by the script: the placement ghost floated above the modal — pre-existing, fixed in its own commit (ruling
   2026-11-11; `.claude/rules/ui.md` § "The placement ghost floated above every dialog").
+- Step-5b DONE (2026-11-11; certifying gate 13:27 + the cold-cache `test:browser`, see 6C round 1). Code: `src/utils/ptsigCollector.ts` (frames grouped by crc, LRU of 4,
+  every `PtsigErrorCode` mapped), `src/ui/qrScanner.ts` (camera first, then lazy zxing; one `finish` stops every
+  track), the camera toggle + preview + polite status in `signatureSources.ts`, 11 keys x 3 locales, 5 CSS lines
+  (CRLF kept: numstat 5/0 with and without `-w`), `ui->utils` baseline 39/36 → 41/37 (the ratchet pins no `?query`
+  count for `ui/`). Tests: jsdom collector 14 + scanner 22 + panel 17 new scan cases (+3 at 6C: 20 new; the file holds 35 with 5a's), each file red first (module/markup missing);
+  Chrome `signature-scan.browser.test.ts` 9 (fake camera = repainted `canvas.captureStream`, real zxing, real pad),
+  written after the code and proven by sabotage. Sabotage: 23 mutants at first, all landed and restored byte-exact; 22 red at
+  once, C4 (the total-mismatch check) first stayed GREEN — the decoder's own `mixed` gave the same outcome — and its
+  case now asserts the observable difference (a 3-frame group then a 2-frame frame → `dropped`, not "part 2 of 3").
+  Built app (`var/claude/sig-scan-check/scan.mjs`, flag-ON build): granted 6 states (en/fr/ar x 1280/414: live
+  tracks, wasm `200 /pdfturbo/assets/zxing_reader-*.wasm`, 0 CSP, preview 180x180 mirrored, axe clean with the camera
+  RUNNING, Stop restores the QR); denied 3 (the refusal shown, 0 console errors, the wasm never fetched); y4m 1 — a
+  REAL PTSIG QR through the fake camera: pad ink 3713 px, Save → drag → ONE signature element (ink 3.7%, spans 453 of
+  500 px). 5a's driver on the 5b builds: flag OFF 3 states, modal sizes identical to 5a (600x349, 373x294, 373x299);
+  flag ON 6 states (FR 414: Save covered by the storage banner, dismissed first — the known issue below). Precache:
+  30 → 31 entries, +46.8 KB (the lazy `reader-*.js` zxing chunk, 36 KB, in EVERY build, flag on or off); the 947 KB
+  wasm is not precached — 5c's runtime rule. zxing reached only by a dynamic `import()`, not modulepreloaded. Full gate
+  (cold-cache pair included): jsdom 4223, Chrome 736, coverage 45.45% branches, qa:sweep 151/114/0.
+  NOT certified by execution: a real webcam reading a real phone (step 7); the Arabic scan strings (no native review);
+  a camera unplugged mid-scan in a real browser (jsdom only); `NotReadableError` (camera busy) shown as "failed";
+  `NotFoundError` from a real browser with NO camera (this machine has a webcam; the fake-device flags always give one —
+  jsdom only, the no-API path below reaches the same message).
+- 5b, 6C round 1 (advisor, 2026-11-11) — fixed or added, test first where code changed:
+  (a) a scan that ended INSIDE `startScan()` (no `getUserMedia`, so `onEnd` ran synchronously) left a dead handle in
+  `camera`, so the next Start click called `stop()` on it and did nothing — fixed with an `ended` flag (jsdom case red
+  first; mutant P8 red); proven in a real browser by `scan.mjs noapi` (`navigator.mediaDevices` removed, as on a
+  plain-http LAN page): en/fr/ar show "No camera found", 0 console errors, no wasm fetched, and a SECOND Start runs a
+  new scan (`mediaDevices` read 1 → 2). (b) the status line was rewritten every frame (≈12/s, re-announced by
+  `role=status`) — now written only on change (MutationObserver records 0; P9 red). (c) a second import superseding
+  the first (`++epoch`) was unpinned — supersede case + P7 red. (d) Escape with the camera RUNNING, added to granted
+  mode: all 6 states end with the modal closed, `srcObject` null and every track `ended`. (e) the flag-ON qa:sweep, the
+  ruled "one run against the flag-ON build": 156 checks / 114 pass / 0 fail, 0 serious a11y, 66 of 144 controls; it
+  did NOT click `sigCamBtn` (SKIP "became hidden before click"), so the camera path is certified by `scan.mjs`, not
+  by the sweep. Sabotage after the fixes: 26 mutants (P7–P9 added), all red, every restore `cmp` clean.
+  Full gate re-run on the fixed tree (`var/claude/gate-5b-r2/gate.log`, load 28–37 from other projects' gates on 8
+  cores): audit, ocr, type-check, lint, jsdom 4226 (+3), coverage, build, qa:sweep 151/114/0 all rc=0; Chrome 734
+  pass + 2 red in files 5b does not touch (`redaction-orphan-leak` "Failed to fetch dynamically imported module",
+  `userunit-frame` CONTROL 30 s timeout) — both files 24/24 green re-run alone (`isolated.log`). Not
+  the optimizer-reload trap: no `optimized dependencies changed` line in either 5b gate log, and `zxing-wasm/reader`
+  + `qrcode-generator` are in `optimizeDeps.include` since step 4. Closed by a full COLD-cache `test:browser` on the
+  same tree (`rm -rf node_modules/.vite`, `browser-cold.log`): 131 files, 736 pass, 3 skipped, rc=0 at load 26.
+  No timeout raised.
 - Known, left as is (ruling 2026-11-11): at 414 px on a FIRST visit the cookie banner covers the ✍ modal's Save
   row when the phone panel is open — in French (the longest strings) even with no refusal message; the modal is
   then ~750–790 px in an 860 px viewport. It clears when the banner is dismissed, and the modal scrolls. Look at it
-  on the real phone in step 7.
+  on the real phone in step 7. **5b made it worse (ruling kept, 2026-11-11):** the Start camera row takes the FR
+  modal at 414 px to its 90vh cap (774 px), and with the phone panel open the Save row sits FULLY under the storage
+  banner (`z-index: 9000`, above every dialog at 1000) — Save cannot be clicked until the banner is dismissed
+  (measured: Playwright's click timed out, `var/claude/sig-scan-check/5a-rerun/`). Panel closed: 400 px, no overlap.
+  The root cause is the banner's stacking over EVERY dialog, not this modal.
 - 5a, NOT certified by execution: the Arabic strings (no native review); a real phone scanning the pad-URL QR
   (step 7); flag OFF at a SHORT viewport — `.signature-content` now has `max-height: 90vh; overflow-y: auto` for
   every user, measured identical to pre-5a at 900 and 860 px high only (the modal is 349 px tall, so it bites
@@ -150,6 +204,11 @@ commit.
   through the built page; `var/claude/sig-sources-check/padlang.mjs` on the gate's own `dist/`): `#lang=ar` under
   an en-US browser → `lang="ar" dir="rtl"`, Arabic buttons, nothing stored; `#lang=en` under fr-FR → English;
   `#lang=xx` and no fragment → the browser's language, stored as before; no console or CSP error (6 cases).
+- 5a, certified at 6C round 2 (2026-11-11, after the 5a commit; `var/claude/sig-sources-check/placed.mjs`, flag-ON
+  build): an IMPORTED image goes Save → drag on the page → ONE signature element whose image is the import (500x200,
+  ink 3.4% of the pixels, spanning the full width — not blank, not a filled box); changing the width and colour
+  inputs after the import leaves the pad's pixels untouched (3428 = 3428). Save reads the pad's pixels
+  (`getDataURL`, `isEmpty` by alpha), so an image with no strokes is saved as drawn. Reuse it for 5b's scan.
 - Step-5 plan (3C rounds 1–2 with advisor, 2026-11-10; the choices marked † were ruled by the developer 2026-11-10 23:46):
   **5a — Sign on phone + Import image.** Markup `#sigSources` in `#signatureModal` (removed by `main.ts` when
   `phonePad` is off, the existing pattern): † two buttons, *Sign on phone* (an inline panel above the canvas: the
@@ -180,6 +239,29 @@ commit.
   `ended`; one test per stop path. Flag-ON acceptance: a build with `VITE_FEATURE_PHONE_PAD=true` into
   `var/claude/`, `vite preview`: the wasm instantiates with 0 CSP violations, a denied camera gives 0 console errors,
   axe with the scan panel open (414/1280, en/fr/ar), one `qa:sweep` run against it.
+  **5b restated after 5a (3C round 1 with advisor, 2026-11-11; preview ruling 11:44).** Adds to the above:
+  collector events `done | progress(have,total) | refresh | foreign | dropped`, every `PtsigErrorCode` mapped through a
+  `Record<PtsigErrorCode, …>` (tsc-exhaustive; a body error in a complete, CRC-valid group → `dropped`), a non-`PtsigError`
+  rethrown; groups evicted LEAST RECENTLY FED (four junk reads must not evict the group in progress). Stop paths, each
+  its own test with every track `ended`: success, Stop, Cancel/Escape, Save, hidden tab, an import starting, the panel
+  collapsed by *Sign on phone*, a close while `getUserMedia` is PENDING (the late stream's tracks ended), a stop while
+  `video.play()` is pending (AbortError swallowed, no unhandled rejection), a track that ends by itself (UI back to
+  *Start camera*); `navigator.mediaDevices` undefined → the `noCamera` message. Constraints as step 1 (ideal 1920x1080).
+  † Preview: while the camera runs the `<video>` (accessible name) takes `#sigPadQr`'s 180 px box; Stop / a scan
+  brings the QR back. Progress and "Scanned — press Save" go to a polite status line, not the `role="alert"` message;
+  `t` gains params. Colour/width inputs leave a replayed pad's pixels untouched (pinned). Chrome: scan → Save → drag →
+  ONE signature element (as `placed.mjs`). Axe + Label in Name with the camera RUNNING and in the error state; the
+  modal height at 414 px FR measured against 5a's 750–790 px. Precache: the lazy zxing JS chunk matches the precache
+  globs (`**/*.js`) in EVERY build — measure the delta for 5c (the wasm is not precached). Baseline: `?url` count,
+  edges. Cold-cache pair re-run. Load order: camera FIRST, then the lazy zxing import (a denial costs no download).
+  † The preview is mirrored by CSS only (`scaleX(-1)`); decoding reads the raw frames. An import that lands after a
+  scan must not draw over it: a scan success advances the import epoch (pinned). Built-app floor (3C round 2):
+  Chrome with `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream` [Verified 2026-11-11: live tracks
+  in all 6 granted states] — the REAL `getUserMedia` →
+  `<video>` → zxing path, so the wasm instantiates (0 CSP violations) and the loop runs on the synthetic pattern; a
+  denied camera (no fake-ui grant) → the message, 0 console errors; 5a's `check.mjs` re-run on the 5b build, the
+  three flag-OFF states first. Optional, time-boxed (offered at the gate): `--use-file-for-fake-video-capture` on a
+  `.y4m` of a real PTSIG QR, so the built app SCANS a signature end to end.
   **5c — PWA.** Runtime cache `zxing-wasm` (CacheFirst, `/assets/zxing_reader*.wasm`) before the `.js` rule. †
   `pad.html` OUT of the precache (`globIgnores`) and served NetworkFirst (`pad-page` cache) — this REVERSES the Formal
   Plan line "the new service worker precaches `pad.html`": a precached pad updates only when the EDITOR's prompt is

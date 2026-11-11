@@ -25,7 +25,7 @@ function mount(over: Partial<Parameters<typeof mountSignatureSources>[0]> = {}) 
   if (!markup) throw new Error('#sigSources missing from index.html');
   document.body.replaceChildren(document.importNode(markup, true));
   const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
-  const pad = { drawImage: vi.fn() };
+  const pad = { drawImage: vi.fn(), replay: vi.fn() };
   const loadImage = vi.fn((_f: File) => Promise.resolve(document.createElement('canvas')));
   const handle = mountSignatureSources({
     root: $('sigSources'), pad, onModalClosed: () => {}, padUrl: () => '', loadImage, t: (k) => k, dpr: () => 1, ...over,

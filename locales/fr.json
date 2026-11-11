@@ -298,6 +298,19 @@
         "pixels": "Cette image a trop de pixels (plus de 50 mégapixels).",
         "decode": "Impossible de lire cette image.",
         "empty": "Aucune signature trouvée dans cette image."
+      },
+      "startCamera": "Démarrer la caméra",
+      "stopCamera": "Arrêter la caméra",
+      "cameraPreview": "Aperçu de la caméra",
+      "scanLooking": "Présentez le code du téléphone devant la caméra…",
+      "scanPart": "Partie {{have}} sur {{total}} lue. Gardez le téléphone visible.",
+      "scanDone": "Signature scannée. Vérifiez-la, puis cliquez sur Enregistrer.",
+      "scanRefresh": "La page du téléphone n'est pas à jour : actualisez-la sur votre téléphone, signez à nouveau et montrez le nouveau code.",
+      "scanForeign": "Ce n'est pas un code de signature PDFturbo.",
+      "scanError": {
+        "denied": "L'accès à la caméra a été refusé. Autorisez la caméra pour ce site, ou utilisez Importer une image.",
+        "noCamera": "Aucune caméra trouvée. Utilisez plutôt Importer une image.",
+        "failed": "Impossible d'utiliser la caméra. Réessayez, ou utilisez Importer une image."
       }
     },
     "help": {

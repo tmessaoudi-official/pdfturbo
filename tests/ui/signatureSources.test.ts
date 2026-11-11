@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -8,6 +8,8 @@ vi.mock('../../src/utils/qrCanvas', () => ({ drawQr: vi.fn(() => ({ modules: 33,
 import { drawQr } from '../../src/utils/qrCanvas';
 import { mountSignatureSources, padUrlFor } from '../../src/ui/signatureSources';
 import { SignatureImageError } from '../../src/utils/signatureImage';
+import type { ScanDeps, ScanEnd, ScanHandle } from '../../src/ui/qrScanner';
+import { base45Encode, crc32, decodeSignatureFrames, encodeSignatureBody, encodeSignatureFrames, type SignatureInput } from '../../src/utils/signatureStrokes';
 
 /**
  * The two signature sources in the ✍ modal (phone-signature-pad plan step 5a; rulings 2026-11-10 23:46: two buttons,
@@ -26,27 +28,42 @@ function mount(over: Partial<Parameters<typeof mountSignatureSources>[0]> = {}) 
   document.body.append(document.importNode(markup, true));
   const root = document.getElementById('sigSources') as HTMLElement;
   let closed: (() => void) | null = null;
-  const pad = { drawImage: vi.fn() };
+  const pad = { drawImage: vi.fn(), replay: vi.fn() };
   const loadImage = vi.fn(() => Promise.resolve(document.createElement('canvas')));
+  const scans: FakeScan[] = [];
+  const scan = vi.fn((d: ScanDeps): ScanHandle => {
+    const s: FakeScan = {
+      deps: d,
+      ended: false,
+      stop: vi.fn<() => void>(() => s.end({ reason: 'stopped' })),
+      end: (e) => { if (!s.ended) { s.ended = true; d.onEnd(e); } },
+    };
+    scans.push(s);
+    return { stop: s.stop, finished: Promise.resolve() };
+  });
   const deps = {
     root,
     pad,
     onModalClosed: (fn: () => void) => { closed = fn; },
     padUrl: () => 'https://example.github.io/pdfturbo/pad.html#lang=fr',
     loadImage,
-    t: (k: string) => `T(${k})`,
+    scan,
+    t: (k: string, p?: Record<string, string | number>) => (p ? `T(${k}|${JSON.stringify(p)})` : `T(${k})`),
     dpr: () => 2,
     ...over,
   };
   const handle = mountSignatureSources(deps);
   const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
   return {
-    handle, pad, loadImage, close: () => closed?.(),
+    handle, pad, loadImage, scan, scans, close: () => closed?.(),
     phoneBtn: $<HTMLButtonElement>('sigPhoneBtn'), panel: $('sigPhonePanel'), qr: $<HTMLCanvasElement>('sigPadQr'),
     url: $('sigPadUrl'), importBtn: $<HTMLButtonElement>('sigImportBtn'), input: $<HTMLInputElement>('sigImageInput'),
-    msg: $('sigSourceMsg'),
+    msg: $('sigSourceMsg'), camBtn: $<HTMLButtonElement>('sigCamBtn'), video: $<HTMLVideoElement>('sigCamVideo'),
+    status: $('sigScanStatus'),
   };
 }
+
+interface FakeScan { deps: ScanDeps; ended: boolean; stop: Mock<() => void>; end(e: ScanEnd): void }
 
 function pick(input: HTMLInputElement, file: File) {
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
@@ -162,6 +179,20 @@ describe('Import image', () => {
     expect(msg.hidden).toBe(true);
   });
 
+  it('a second import supersedes the first one still loading: only the latest is drawn', async () => {
+    const finishers: Array<(c: HTMLCanvasElement) => void> = [];
+    const { input, pad } = mount({ loadImage: vi.fn(() => new Promise<HTMLCanvasElement>((r) => { finishers.push(r); })) });
+    pick(input, new File([new Uint8Array([1])], 'a.png', { type: 'image/png' }));
+    pick(input, new File([new Uint8Array([2])], 'b.png', { type: 'image/png' }));
+    const second = document.createElement('canvas');
+    finishers[1](second);
+    await flush();
+    finishers[0](document.createElement('canvas'));
+    await flush();
+    expect(pad.drawImage).toHaveBeenCalledTimes(1);
+    expect(pad.drawImage).toHaveBeenCalledWith(second);
+  });
+
   it('an import that lands after the modal closed is not drawn', async () => {
     let finish: (c: HTMLCanvasElement) => void = () => {};
     const { input, pad, close } = mount({ loadImage: vi.fn(() => new Promise<HTMLCanvasElement>((r) => { finish = r; })) });
@@ -179,6 +210,188 @@ describe('Import image', () => {
     await expect(handle.whenIdle()).rejects.toBe(boom); // in the app nobody catches it: the global error boundary does
     expect(msg.hidden).toBe(true);
     expect(pad.drawImage).not.toHaveBeenCalled();
+  });
+});
+
+// ---- step 5b: Start camera (rulings 2026-11-11: the preview takes the QR's box; no auto-save) ----------------------
+
+const SIG: SignatureInput = { width: 500, height: 200, color: '#000080', lineWidth: 2, strokes: [[{ x: 20, y: 30 }, { x: 300, y: 150 }]] };
+const ONE = encodeSignatureFrames(SIG).frames;
+const body = encodeSignatureBody(SIG, 1);
+/** The same signature split into two frames (the encoder would use one: the collector must not care). */
+const TWO = [0, 1].map((i) => {
+  const per = Math.ceil(body.length / 2);
+  const slice = body.subarray(i * per, (i + 1) * per);
+  const crc = crc32(body);
+  const bytes = new Uint8Array(8 + slice.length);
+  bytes.set([0x50, 0x54, 1, (i << 4) | 2, crc >>> 24, (crc >>> 16) & 0xff, (crc >>> 8) & 0xff, crc & 0xff]);
+  bytes.set(slice, 8);
+  return base45Encode(bytes);
+});
+
+function started(over: Partial<Parameters<typeof mountSignatureSources>[0]> = {}) {
+  const m = mount(over);
+  m.phoneBtn.click();
+  m.camBtn.click();
+  return { ...m, s: m.scans[m.scans.length - 1] };
+}
+
+describe('Start camera — the markup', () => {
+  it('a toggle button, a muted inline video with a name, and a POLITE status line apart from the alert', () => {
+    const { camBtn, video, status, msg, panel } = mount();
+    expect(panel.contains(camBtn)).toBe(true);
+    expect(camBtn.querySelector('[data-i18n="modal.signature.startCamera"]')).not.toBeNull();
+    expect(camBtn.hasAttribute('aria-pressed')).toBe(false); // the label changes, so no pressed state on top
+    expect(video.hidden).toBe(true);
+    expect(video.muted || video.hasAttribute('muted')).toBe(true);
+    expect(video.hasAttribute('playsinline')).toBe(true);
+    expect(video.dataset.i18nAria).toBe('modal.signature.cameraPreview');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status).not.toBe(msg);
+  });
+});
+
+describe('Start camera — scanning', () => {
+  it('starts the scanner on the video; the preview takes the QR box; the button becomes Stop', () => {
+    const { scan, video, qr, camBtn, status } = started();
+    expect(scan).toHaveBeenCalledTimes(1);
+    expect(scan.mock.calls[0][0].video).toBe(video);
+    expect(video.hidden).toBe(false);
+    expect(qr.hidden).toBe(true);
+    expect(camBtn.textContent).toContain('T(modal.signature.stopCamera)');
+    expect(status.textContent).toBe('T(modal.signature.scanLooking)');
+  });
+
+  it('a one-frame signature is replayed on the pad and the scan ends; no auto-save', () => {
+    const { s, pad, status } = started();
+    expect(s.deps.onText(ONE[0])).toBe(true);
+    expect(pad.replay).toHaveBeenCalledWith(decodeSignatureFrames(ONE));
+    expect(status.textContent).toBe('T(modal.signature.scanDone)');
+  });
+
+  it('after the end: the QR is back, the video hidden, the button Start again; the done status stays', () => {
+    const { s, qr, video, camBtn, status } = started();
+    s.deps.onText(ONE[0]);
+    s.end({ reason: 'done' });
+    expect(qr.hidden).toBe(false);
+    expect(video.hidden).toBe(true);
+    expect(camBtn.textContent).toContain('T(modal.signature.startCamera)');
+    expect(status.textContent).toBe('T(modal.signature.scanDone)');
+  });
+
+  it('a multi-frame signature shows "part 1 of 2", then decodes', () => {
+    const { s, pad, status } = started();
+    expect(s.deps.onText(TWO[1])).toBe(false);
+    expect(status.textContent).toBe('T(modal.signature.scanPart|{"have":1,"total":2})');
+    expect(s.deps.onText(TWO[0])).toBe(true);
+    expect(pad.replay).toHaveBeenCalledWith(decodeSignatureFrames(TWO));
+  });
+
+  it.each([
+    ['https://example.org/', 'scanForeign'],
+    [base45Encode(new Uint8Array([0x50, 0x54, 2, 1, 0, 0, 0, 0, 9])), 'scanRefresh'],
+  ])('a code that is not a usable signature (%s) is shown in the status, and scanning goes on', (text, key) => {
+    const { s, pad, status } = started();
+    expect(s.deps.onText(text)).toBe(false);
+    expect(status.textContent).toBe(`T(modal.signature.${key})`);
+    expect(pad.replay).not.toHaveBeenCalled();
+  });
+
+  it.each(['denied', 'noCamera', 'failed'] as const)('a failure (%s) is shown in the alert; the UI goes back to Start camera', (error) => {
+    const { s, msg, status, camBtn, qr } = started();
+    s.end({ reason: 'error', error });
+    expect(msg.hidden).toBe(false);
+    expect(msg.textContent).toBe(`T(modal.signature.scanError.${error})`);
+    expect(status.textContent).toBe('');
+    expect(camBtn.textContent).toContain('T(modal.signature.startCamera)');
+    expect(qr.hidden).toBe(false);
+  });
+
+  it('Start again after a stop forgets the frames read before', () => {
+    const m = started();
+    m.s.deps.onText(TWO[0]);
+    m.camBtn.click(); // Stop
+    m.camBtn.click(); // Start
+    const again = m.scans[1];
+    expect(again.deps.onText(TWO[1])).toBe(false);
+    expect(m.pad.replay).not.toHaveBeenCalled();
+  });
+
+  it('a scan that ends INSIDE startScan (no camera API: http on the LAN) leaves Start camera working', () => {
+    const scan = vi.fn((d: ScanDeps): ScanHandle => {
+      d.onEnd({ reason: 'error', error: 'noCamera' }); // synchronously, before the handle is returned
+      return { stop: vi.fn(), finished: Promise.resolve() };
+    });
+    const m = mount({ scan });
+    m.phoneBtn.click();
+    m.camBtn.click();
+    expect(m.msg.textContent).toBe('T(modal.signature.scanError.noCamera)');
+    expect(m.camBtn.textContent).toContain('T(modal.signature.startCamera)');
+    m.camBtn.click();
+    expect(scan).toHaveBeenCalledTimes(2);
+  });
+
+  it('reading the same code again does not rewrite the status line (a live region re-announces a rewrite)', async () => {
+    const { s, status } = started();
+    s.deps.onText(TWO[0]);
+    const writes: MutationRecord[] = [];
+    const mo = new MutationObserver((r) => writes.push(...r));
+    mo.observe(status, { childList: true, characterData: true, subtree: true });
+    s.deps.onText(TWO[0]);
+    s.deps.onText(TWO[0]);
+    await flush();
+    mo.disconnect();
+    expect(writes).toHaveLength(0);
+    expect(status.textContent).toBe('T(modal.signature.scanPart|{"have":1,"total":2})');
+  });
+
+  it('Start clears a previous failure message', () => {
+    const m = started();
+    m.s.end({ reason: 'error', error: 'denied' });
+    m.camBtn.click();
+    expect(m.msg.hidden).toBe(true);
+  });
+});
+
+describe('Start camera — every way out stops the camera', () => {
+  it('the Stop button', () => {
+    const { s, camBtn, status } = started();
+    camBtn.click();
+    expect(s.stop).toHaveBeenCalledTimes(1);
+    expect(status.textContent).toBe('');
+    expect(camBtn.textContent).toContain('T(modal.signature.startCamera)');
+  });
+
+  it('a modal close (Cancel, Escape, Save)', () => {
+    const { s, close, status } = started();
+    close();
+    expect(s.stop).toHaveBeenCalled();
+    expect(status.textContent).toBe('');
+  });
+
+  it('the panel collapsed by Sign on phone', () => {
+    const { s, phoneBtn } = started();
+    phoneBtn.click();
+    expect(s.stop).toHaveBeenCalled();
+  });
+
+  it('an import starting', () => {
+    const { s, input } = started();
+    pick(input, new File([new Uint8Array([1])], 's.png', { type: 'image/png' }));
+    expect(s.stop).toHaveBeenCalled();
+  });
+
+  it('an import still loading when a scan lands is NOT drawn over the scan', async () => {
+    let finish: (c: HTMLCanvasElement) => void = () => {};
+    const m = mount({ loadImage: vi.fn(() => new Promise<HTMLCanvasElement>((r) => { finish = r; })) });
+    pick(m.input, new File([new Uint8Array([1])], 's.png', { type: 'image/png' }));
+    m.phoneBtn.click();
+    m.camBtn.click();
+    m.scans[0].deps.onText(ONE[0]);
+    finish(document.createElement('canvas'));
+    await flush();
+    expect(m.pad.replay).toHaveBeenCalledTimes(1);
+    expect(m.pad.drawImage).not.toHaveBeenCalled();
   });
 });
 

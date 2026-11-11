@@ -282,6 +282,11 @@ input[type="file"] {
 .signature-pad-url { font-family: monospace; overflow-wrap: anywhere; color: #475569; }
 .signature-phone-note { color: #616a78; }
 .signature-source-msg { color: #b91c1c; margin: 8px 0 0; }
+/* Step 5b: the camera preview takes the QR's 180 px box while it runs; mirrored like a selfie view (decoding reads
+   the raw frames). */
+.signature-pad-qr[hidden], .signature-cam-video[hidden] { display: none; }
+.signature-cam-video { flex: 0 0 auto; width: 180px; height: 180px; object-fit: cover; transform: scaleX(-1); background: #0f172a; border-radius: 4px; }
+.signature-phone-text .signature-scan-status { margin: 6px 0 0; color: #1e3a5f; }
 @media (max-width: 640px) {
   .signature-phone-panel { flex-direction: column; align-items: center; }
 }

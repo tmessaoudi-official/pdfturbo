@@ -712,10 +712,14 @@
       </div>
       <div class="signature-phone-panel" id="sigPhonePanel" hidden>
         <canvas id="sigPadQr" class="signature-pad-qr" role="img" data-i18n-aria="modal.signature.padQrLabel" aria-label="QR code of the phone signature page"></canvas>
+        <!-- Step 5b: the camera preview takes the QR's box while it runs (ruling 2026-11-11), mirrored by CSS only. -->
+        <video id="sigCamVideo" class="signature-cam-video" muted playsinline hidden data-i18n-aria="modal.signature.cameraPreview" aria-label="Camera preview"></video>
         <div class="signature-phone-text">
           <p data-i18n="modal.signature.phoneSteps">Scan this code with your phone and sign there. Then show the phone's code to this computer's camera.</p>
           <p class="signature-pad-url" id="sigPadUrl" dir="ltr"></p>
           <p class="signature-phone-note" data-i18n="modal.signature.phoneUpdateNote">If your phone opens the editor instead, accept its Update prompt and scan again.</p>
+          <button type="button" id="sigCamBtn" class="btn btn-secondary"><span aria-hidden="true">📷</span> <span id="sigCamLabel" data-i18n="modal.signature.startCamera">Start camera</span></button>
+          <p class="signature-scan-status" id="sigScanStatus" role="status" aria-live="polite"></p>
         </div>
       </div>
       <p class="signature-source-msg" id="sigSourceMsg" role="alert" hidden></p>
