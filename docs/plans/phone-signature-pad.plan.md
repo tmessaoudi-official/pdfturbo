@@ -317,7 +317,10 @@ Milestone panel round 4 (fable, frozen `3918563`) — DONE, ruled 15:37 (four AG
 **NEXT (ruling 19:09 — this order replaces the 15:45 "Order of work" and "After round 5" sequence below):**
 (a) the HTTPS smoke walk on the DEPLOYED build (user-only, Needs input R4-4) — DONE 2026-11-12 except R4-4.7; (b) the privacy.html text (R4-1) shown to
 the developer, then committed and pushed on its own (R4-5) — DONE 2026-11-12; (c) the rest of the round-4 fix task (Medium; tier
-`advisor()` only, ruled 15:40) in the 15:45 order's steps (1)–(4), (6)–(8) — DONE 2026-11-12 (row 8; evidence `var/claude/r4fix/`, before/after screenshots and the real-file re-runs); (d) panel round 5 (the LAST before the
+`advisor()` only, ruled 15:40) in the 15:45 order's steps (1)–(4), (6)–(8) — DONE 2026-11-12 (row 8; evidence `var/claude/r4fix/`, before/after screenshots and the real-file re-runs; full gate
+9/9 rc=0 `var/claude/gate-r4fix.log`: jsdom 4329, Chrome 756, coverage 9, QA sweep 162 / 120 / 0 fail / 42 skip; 6C
+`advisor()` clean in round 2 after a docs follow-up, "docs: the pad pass runs axe on the draw view too"; both commits
+local, not pushed); (d) panel round 5 (the LAST before the
 5-round cap); (e) step 9 (1.1.0, shown first), gate, push, `/ci-watch`. The 10:33 "ONE push after 1.1.0" is void in fact
 (everything through `9312404` is live).
 
