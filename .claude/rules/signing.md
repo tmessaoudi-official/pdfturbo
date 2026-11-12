@@ -399,7 +399,11 @@ out on a height change too (it shows no text input; normal mode stays width-only
 fullscreen and then `screen.orientation.lock('landscape')`; an entry left before the grant never locks and exits the
 fullscreen it gets (an entry counter). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
 (`pad-fullscreen.browser.test.ts`): a request without a gesture rejects `TypeError: Permissions check failed`, the lock
-on a desktop `NotSupportedError`. Exit, Done and a `fullscreenchange` with no element (Android back, Esc) leave; Done
+on a desktop `NotSupportedError`; the runner's iframe allows fullscreen, so the Chrome file takes the real default
+path (pinned: `fullscreenElement` is `HTML`, the iframe stays 800 × 360). **`active()` is `Boolean(fullscreenElement)`,
+not `!== null`:** the property does not exist where the API does not (iPhone Safari — jsdom likewise), and `undefined
+!== null` made Exit and Done call a missing `exitFullscreen` and throw, leaving the pad at its full size (6C round 1;
+the jsdom default-wiring case, red first, and its mutant); `leaveFull` also lays out BEFORE the platform calls. Exit, Done and a `fullscreenchange` with no element (Android back, Esc) leave; Done
 leaves FIRST, so the QR — and a too-large error — show on the normal page. **The QR fits the height too** (`qrSide`:
 the room below its top, 12 px kept): measured on a 915 × 412 phone the old 469 px QR ran to 519 px; now 344 px, read back
 by zxing, and a full 909-character frame reads at that side at dpr 1. PTSIG never sees the pad size (the grid's longer

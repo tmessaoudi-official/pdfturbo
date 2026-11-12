@@ -57,7 +57,8 @@ export const browserFullscreen: FullscreenApi = {
   enabled: () => document.fullscreenEnabled === true && typeof document.documentElement.requestFullscreen === 'function',
   request: () => document.documentElement.requestFullscreen({ navigationUI: 'hide' }),
   exit: () => document.exitFullscreen(),
-  active: () => document.fullscreenElement !== null,
+  // `fullscreenElement` does not exist where the API does not (iPhone Safari): undefined is not fullscreen either.
+  active: () => Boolean(document.fullscreenElement),
   lockLandscape: () => (screen.orientation as LockableOrientation | undefined)?.lock?.('landscape') ?? Promise.resolve(),
   unlock: () => (screen.orientation as LockableOrientation | undefined)?.unlock?.(),
 };
@@ -264,9 +265,9 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     enterFs.hidden = false;
     rotateHint.hidden = true;
     if (hadFocus) enterFs.focus();
+    layout(); // before the platform calls: the page is back to normal whatever they do
     fs.unlock();
     if (fs.active()) void fs.exit(); // the check and the call share one task: the browser cannot leave in between
-    layout();
   };
   enterFs.addEventListener('click', enterFull);
   exitFs.addEventListener('click', leaveFull);

@@ -2,7 +2,8 @@
  * The phone pad's full screen in REAL Chrome with the real pad.css (plan row 11, phone half; rulings 2026-11-12 19:09 /
  * 23:09 / 23:15) — what jsdom cannot show: the CSS hides the title, hint and ink controls; the measured drawing box sizes
  * the pad with no 600 px cap; nothing leaves the viewport, portrait or landscape; the QR after a landscape Done is
- * wholly on screen; axe on the full view. It also MEASURES the two rejections behind padPage.ts's `.catch` on the
+ * wholly on screen; axe on the full view. The runner's iframe ALLOWS fullscreen (pinned): a real ⛶ click takes the
+ * default `browserFullscreen` path into element fullscreen, and the iframe keeps its 800 × 360 size there. It also MEASURES the two rejections behind padPage.ts's `.catch` on the
  * fullscreen request (a request without a user gesture, and `screen.orientation.lock` on a desktop).
  */
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
@@ -75,6 +76,9 @@ describe('full screen with the real CSS', () => {
     const { root, q } = mountPage();
     await userEvent.click(q('fullscreen'));
     expect(root.classList.contains('pad-full')).toBe(true);
+    // WHICH path this file runs, measured: the runner allows fullscreen, so the default wiring enters it.
+    expect(document.fullscreenEnabled).toBe(true);
+    expect(document.fullscreenElement?.tagName ?? null).toBe('HTML'); // the default wiring really went fullscreen here
     for (const sel of ['h1', '.pad-hint', '.pad-ink']) expect((root.querySelector(sel) as HTMLElement).checkVisibility(), sel).toBe(false);
     for (const name of ['canvas', 'rotateHint', 'clear', 'exitFullscreen', 'done']) {
       expect(q(name).checkVisibility(), name).toBe(true);
@@ -91,6 +95,8 @@ describe('full screen with the real CSS', () => {
     window.scrollTo(0, 120);
     expect(window.scrollY).toBeGreaterThan(0); // the normal page is taller than a landscape phone
     await userEvent.click(q('fullscreen'));
+    expect(document.fullscreenElement?.tagName ?? null).toBe('HTML');
+    expect([window.innerWidth, window.innerHeight]).toEqual([800, 360]); // the iframe's fullscreen keeps its size: the numbers below are at 800 × 360
     expect(window.scrollY).toBe(0);
     expect(root.classList.contains('pad-full')).toBe(true);
     expect(q('rotateHint').checkVisibility()).toBe(false);

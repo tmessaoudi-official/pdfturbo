@@ -373,7 +373,9 @@ describe('pad page — the ink (7b)', () => {
 });
 
 // Full screen (plan row 11, phone half; rulings 2026-11-12 19:09 / 23:09 / 23:15). The Fullscreen API and the viewport
-// are injected: real Chrome pins the CSS, the default API wiring and the landscape QR (pad-fullscreen.browser.test.ts).
+// are injected here, except the one case below that runs the DEFAULT wiring where the API is absent (jsdom has none, like
+// iPhone Safari). Real Chrome pins the CSS, the default wiring into element fullscreen and the landscape QR
+// (pad-fullscreen.browser.test.ts).
 describe('pad page — full screen (row 11, phone half)', () => {
   const flush = () => new Promise<void>((r) => { setTimeout(r, 0); });
   function full(o: { box?: { w: number; h: number }; vp?: { width: number; height: number }; enabled?: boolean; hash?: string } = {}) {
@@ -563,6 +565,28 @@ describe('pad page — full screen (row 11, phone half)', () => {
     f.setActive(false);
     document.dispatchEvent(new Event('fullscreenchange'));
     expect(f.isFull()).toBe(true);
+  });
+
+  it('the DEFAULT wiring where the Fullscreen API does not exist (iPhone Safari; jsdom has none either): Exit and Done still leave', () => {
+    expect('fullscreenElement' in document).toBe(false); // the premise: no API at all here
+    const errors: unknown[] = [];
+    const onError = (e: ErrorEvent) => { errors.push(e.error ?? e.message); };
+    window.addEventListener('error', onError);
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    try {
+      const s = setup(368); // no `fullscreen` option: browserFullscreen
+      s.q('fullscreen').click();
+      expect(s.root.classList.contains('pad-full')).toBe(true);
+      s.q('exitFullscreen').click();
+      expect([s.root.classList.contains('pad-full'), s.canvas.style.width]).toEqual([false, '368px']);
+      s.q('fullscreen').click();
+      s.draw([[10, 10], [60, 40]]);
+      s.q('done').click();
+      expect([s.view('qr').hidden, s.root.classList.contains('pad-full')]).toEqual([false, false]);
+      expect(errors).toEqual([]);
+    } finally {
+      window.removeEventListener('error', onError);
+    }
   });
 
   it('PTSIG does not see the pad size: a 1150×460 full-screen pad encodes onto the same 1023 grid and decodes', () => {

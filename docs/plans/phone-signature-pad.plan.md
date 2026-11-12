@@ -365,7 +365,11 @@ the developer, then committed and pushed on its own (R4-5) — DONE 2026-11-12; 
 `advisor()` only, ruled 15:40) in the 15:45 order's steps (1)–(4), (6)–(8) — DONE 2026-11-12 (row 8; evidence `var/claude/r4fix/`, before/after screenshots and the real-file re-runs; full gate
 9/9 rc=0 `var/claude/gate-r4fix.log`: jsdom 4329, Chrome 756, coverage 9, QA sweep 162 / 120 / 0 fail / 42 skip; 6C
 `advisor()` clean in round 2 after a docs follow-up, "docs: the pad pass runs axe on the draw view too"; both commits
-local, not pushed); (d) panel round 5 (the LAST before the
+pushed 22:59 with the rulings, e24aa93). **UPDATE 23:55 (reorder, ruling 23:05): row 11's PHONE half is BUILT** —
+§ "Row 11, phone half", commits "feat(sign): full screen on the phone pad" + its 6C fix "fix(sign): full screen leaves
+cleanly where the Fullscreen API is absent"; local, NOT pushed. NEXT, in order: the developer's phone walk of full
+screen (Android fullscreen + landscape lock, iPhone fill + rotate hint + Exit/Done, the ⛶ glyph, a webcam scan of the
+344 px landscape QR — the LAN dev server is enough), then R4-3's sweep scenario (ruled 22:57: fix it), then (d) panel round 5 (the LAST before the
 5-round cap); (e) step 9 (1.1.0, shown first), gate, push, `/ci-watch`. The 10:33 "ONE push after 1.1.0" is void in fact
 (everything through `9312404` is live).
 
