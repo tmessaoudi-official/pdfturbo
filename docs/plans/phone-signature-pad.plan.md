@@ -108,6 +108,7 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-12 15:37] AGREED: Kill-switch scope (PP4-K1/S3): document it — VITE_FEATURE_PHONE_PAD=false removes the PC's entry points (Sign on phone, Import image, camera); pad.html stays built and served; the variable must be added to deploy.yml to pull it
 - [2026-11-12 15:37] AGREED: LAN addresses in the plan (PP4-S1): redact both in a new commit; git history keeps them
 - [2026-11-12 15:37] AGREED: privacy.html (PP4-S2/K5/S5/K6): complete the storage list in EN/FR/AR (four localStorage keys, the recent-files list, Clear recent files vs Reset Session), exact text shown to the developer before the commit; both Arabic passages recorded as unreviewed
+- [2026-11-12 15:49] AGREED: Round-4 fix task tier (answered 15:40, logged at the save): advisor() only at its 3C and 6C; spec mode asks the tier again at the next gate
 
 ## Formal Plan
 
@@ -293,7 +294,8 @@ jsdom and ~4 Chrome cases; C ≈ 15 surfaces, mostly prose. **Rollback:** each c
 **State.** HEAD = the "docs: phone signature pad — resume state after panel round 4" commit, on `3918563` (commit C,
 `feat(sign): phone signature pad on by default`). 10 local commits are NOT pushed (`git rev-list --count
 origin/master..HEAD`); origin is at `e534300`. The one push happens after 1.1.0 (ruling 10:33). The full deploy gate
-on `3918563` was 9/9 rc=0 (`var/claude/gate-c.log`: Node 26.13.1, 0 VITE_FEATURE vars, jsdom 4324, Chrome 748,
+ran on the tree that became `3918563` (only `tests/config/features.test.ts` was edited after it, re-run alone + tsc +
+lint green) and was 9/9 rc=0 (`var/claude/gate-c.log`: Node 26.13.1, 0 VITE_FEATURE vars, jsdom 4324, Chrome 748,
 coverage 9, QA sweep 161 / 119 / 0 fail / 42 skip, 57 of 144). Working tree: only the developer's own
 `.claude/settings.json` edit (never commit, stash or write it). No round-4 fix has been started; nothing is half-edited.
 
@@ -337,8 +339,9 @@ scan then a refused import (`var/claude/ink-check/check.mjs` scans with real zxi
 green. (3) Re-run BOTH real WhatsApp files through `real-import.mjs` after C1 (`var/claude/w22/whatsapp.jpeg` →
 yellow, `var/claude/w22/whatsapp-black.jpeg` → the `flattened` refusal) — re-proves W23. (4) Bound pins, K2 sweep
 change (sweep alone), docs. (5) Privacy text → the developer (plus: C4 reverses the 10:33 pin; K12 if not traced).
-(6) ONE full gate after the last tracked edit: `bash var/claude/gate-c.sh > var/claude/gate-r4fix.log 2>&1` (kills
-its own preview correctly since 15:10). (7) Walk all 21 "Refuted if" clauses against the diff. (8) 6C advisor,
+(6) ONE full gate after the last tracked edit: `bash var/claude/gate-c.sh > var/claude/gate-r4fix.log 2>&1` (its
+preview kill was fixed after the C gate and tested alone at the save: port up, killed, free — the full script has
+not re-run since). (7) Walk all 21 "Refuted if" clauses against the diff. (8) 6C advisor,
 commit by pathspec (no trailers; author verified). (9) Round 5: frozen on the fix commit, same three agents on fable,
 prompts naming the 15:37 Decisions-Log lines so C2, C3, the kill-switch scope and the IP history are not re-raised;
 run tests through `bash var/claude/node26.sh …` (a raw nvm path in an agent prompt trips the expertise gate).
@@ -374,6 +377,9 @@ Later: row 10 (PC `#sigColor` swatch row), W16 (native Arabic read, optional), m
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
+- [ ] R4-1. Approve the completed privacy.html storage text (EN/FR/AR) before its commit (ruling 15:37; round-4 fix task)
+- [ ] R4-2. Acknowledge that the C4 fix reverses the 10:33 plan's pinned "a refused import after a scan also clears the status"
+- [ ] R4-3. If the K12 trace fails: accept that the deploy sweep no longer clicks clearSignature / cancelSignature with the flag ON
 - Steps 1 and 7 need the developer's phone and PC webcam.
 - [x] W1. Open http://<LAN-IP>:5173/pdfturbo/var/claude/qrtest/show.html on the phone — DONE 2026-11-10: the phone connected over the LAN (ss), ufw let :5173 through
 - [x] W2. Open http://localhost:5173/pdfturbo/var/claude/qrtest/scan.html in desktop Chrome, Start camera, allow it — DONE 2026-11-10: Integrated Webcam granted 1280x720 @30 fps (asked ideal 1920x1080)
