@@ -9,6 +9,7 @@ import {
   hasOwnTransparency,
   inkBounds,
   isFlattenedOnBlack,
+  isOpaque,
   keyOutBlackSheet,
   keyOutPaper,
 } from '../../src/utils/signatureImage';
@@ -17,7 +18,7 @@ import { fitContain } from '../../src/utils/signaturePad';
 /**
  * Import image (phone-signature-pad plan step 5a, ruled 2026-11-10 23:46: the paper is removed, the ink kept).
  * The fixtures and their pass criteria were fixed BEFORE the code (3C round 2): (i) ink on white — what the keying
- * sees for an opaque image (since 7b A2 a mostly transparent one, the phone's PNG, keeps its own alpha) — keeps every
+ * sees for an opaque image (since 7b A2 one at least 5% fully transparent, the phone's PNG, keeps its own alpha) — keeps every
  * stroke; (ii) a photo-like page whose paper runs 235 → 170 across it with ink at
  * 40: alpha 0 everywhere outside the ink, ink alpha ≥ 200.
  */
@@ -49,7 +50,7 @@ function greyImage(w: number, h: number, grey: (x: number, y: number) => number)
 
 const alphaAt = (img: ImageData, x: number, y: number) => img.data[(y * img.width + x) * 4 + 3];
 
-// 7b commit A2 (ruling 2026-11-12 10:25): an image that is MOSTLY transparent keeps its own alpha — the phone's PNG has
+// 7b commit A2 (ruling 2026-11-12 10:25): an image at least 5% fully transparent keeps its own alpha — the phone's PNG has
 // no paper to key out, and keying it on white erased a light ink (yellow: luminance 226, 29 below the paper, KEY_LO 30).
 // The share was measured in Chrome before the code: the phone PNG of a signature 73–95% clear, a pad-filling scribble
 // 8.5–66%, an opaque sheet with r=40 transparent corners 0.2% — so 5%.
@@ -216,6 +217,31 @@ describe('isFlattenedOnBlack — an opaque image whose border is pure black (W22
   it('a border that is TRANSPARENT black (alpha 0 — a dense PNG under the 5% own-alpha share) is not flattened', () => {
     const img = rgbaImage(120, 40, (x, y) => (x === 0 || y === 0 || x === 119 || y === 39 ? [0, 0, 0, 0] : [0, 0, 0, 255]));
     expect(isFlattenedOnBlack(img)).toBe(false);
+  });
+});
+
+// Panel round 4 C1 (ruling 2026-11-12 15:37): a transparent PNG with an opaque black FRAME passed the border test and
+// was refused as "flattened" (black stroke) or had its own alpha rewritten (a 50%-alpha yellow came back at 255). A
+// flattened image has no alpha at all — a JPEG, or a PNG re-encoded without it — so the test runs only on an image
+// that is FULLY opaque; any pixel under 255 means the image brings its own alpha.
+describe('isOpaque — only a fully opaque image can have been flattened (C1)', () => {
+  it('true when every pixel has alpha 255', () => {
+    expect(isOpaque(flattened([255, 247, 0]))).toBe(true);
+  });
+
+  it('false with ONE pixel at alpha 254, and with one at alpha 0', () => {
+    const soft = flattened([255, 247, 0]);
+    soft.data[(20 * 120 + 60) * 4 + 3] = 254;
+    expect(isOpaque(soft)).toBe(false);
+    const hole = flattened([255, 247, 0]);
+    hole.data[3] = 0;
+    expect(isOpaque(hole)).toBe(false);
+  });
+
+  it('the C1 shape: a clear image with an opaque black frame passes the border test but is NOT opaque', () => {
+    const framed = rgbaImage(120, 40, (x, y) => (x < 2 || y < 2 || x > 117 || y > 37 ? [0, 0, 0, 255] : [0, 0, 0, 0]));
+    expect(isFlattenedOnBlack(framed)).toBe(true); // the border alone cannot tell them apart
+    expect(isOpaque(framed)).toBe(false);
   });
 });
 

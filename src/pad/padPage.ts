@@ -165,7 +165,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   }
   picker.addEventListener('change', () => {
     const hex = picker.value.toLowerCase();
-    if (isWhite(hex)) return; // invisible ink is never offered
+    if (isWhite(hex)) return; // exact white is never offered (a near-white is: S4, ruling 09:56)
     pushRecentColor(hex);
     ink = { ...ink, color: hex };
     applyInk();

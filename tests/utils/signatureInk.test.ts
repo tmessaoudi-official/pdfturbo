@@ -3,7 +3,7 @@
 // replay on the PC comes back at w. The phone reads the fragment STRICTLY, like `lang`: a bad field falls back to its
 // own default, never to a guess.
 import { describe, it, expect } from 'vitest';
-import { clampLineWidth, padInkFragment, padInkFromHash, parseLineWidth, PAD_INK_DEFAULT } from '../../src/utils/signatureInk';
+import { clampLineWidth, isWhite, padInkFragment, padInkFromHash, parseLineWidth, PAD_INK_DEFAULT } from '../../src/utils/signatureInk';
 
 describe('clampLineWidth / parseLineWidth — the PC width box, 1–10 whole', () => {
   it('rounds and clamps', () => {
@@ -54,5 +54,9 @@ describe('padInkFromHash — what the phone reads', () => {
   it('white is never offered as ink, whatever its case: it falls back to black', () => {
     expect(padInkFromHash('#c=ffffff&w=4&cw=640').color).toBe('#000000');
     expect(padInkFromHash('#c=FFFFFF&w=4&cw=640').color).toBe('#000000');
+  });
+  it('BOUND (panel round 4 S4, ruling 09:56): only EXACT white is refused — a near-white passes as ink', () => {
+    expect(padInkFromHash('#c=fefefe&w=4&cw=640').color).toBe('#fefefe');
+    expect(isWhite('#fefefe')).toBe(false);
   });
 });

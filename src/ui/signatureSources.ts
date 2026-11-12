@@ -14,7 +14,7 @@ import { startScan, type ScanDeps, type ScanEnd, type ScanHandle } from './qrSca
  *    phone's signature QR codes (`qrScanner` → `ptsigCollector`) and replays the signature on the pad; it never saves.
  *    While the camera runs its preview takes the QR's box (ruling 2026-11-11). Every way out stops the camera: Stop,
  *    a modal close (Cancel, Escape, Save), the panel collapsed, an import starting, a scan accepted.
- *  - **Import image** loads an image (`loadSignatureImage`: caps, paper removed — or its own alpha kept when it is mostly transparent — trimmed) onto the pad.
+ *  - **Import image** loads an image (`loadSignatureImage`: caps, paper removed — or its own alpha kept when at least 5% of it is fully transparent — trimmed) onto the pad.
  * The link carries the PC's ink (7b commit B): the ✍ modal's colour and width boxes, injected as `ink`, read at each QR
  * draw and re-drawn on a box change; after a scan the boxes take the scanned ink (the pad keeps the exact width).
  * Whatever arrives lands on `signatureCanvas`, and the existing Save takes it. Bound to the static `#sigSources` markup
@@ -184,7 +184,6 @@ export function mountSignatureSources(deps: SignatureSourcesDeps): SignatureSour
     input.value = ''; // the same file can be picked again after a refusal
     if (!file) return;
     stopCamera();
-    setStatus(null); // a finished scan's "Signature scanned" described the pad this import replaces (step-7 W13)
     const mine = ++epoch;
     importBtn.disabled = true;
     pending = (async () => {
@@ -192,6 +191,9 @@ export function mountSignatureSources(deps: SignatureSourcesDeps): SignatureSour
         const img = await load(file);
         if (mine !== epoch) return;
         deps.pad.drawImage(img);
+        // A finished scan's "Signature scanned" described the pad this import has just replaced (step-7 W13). Only a
+        // drawn import clears it: a refused one leaves the scan on the pad (panel round 4 C4, ruling 2026-11-12 19:57).
+        setStatus(null);
         showMessage(null);
       } catch (e) {
         if (!(e instanceof SignatureImageError)) throw e;

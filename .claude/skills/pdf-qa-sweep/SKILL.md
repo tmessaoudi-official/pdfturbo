@@ -170,19 +170,21 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots.
 
 **Baseline, `--allow-destructive --require-sw` (what CI runs), measured 2026-11-12 on the deploy build, `phonePad`
-ON by default (phone-signature-pad 7b commit C):**
-**161 checks · 119 pass · 0 fail · 0 warn · 42 skip · 0 a11y · 0 accepted-by-decision**, over
+ON by default (phone-signature-pad 7b commit C), re-measured 2026-11-12 after the draw-view axe line (panel round 4 K2,
+`var/claude/gate-r4fix.log`; it was 161 · 119 before):**
+**162 checks · 120 pass · 0 fail · 0 warn · 42 skip · 0 a11y · 0 accepted-by-decision**, over
 **57 distinct controls of 144** in the DOM (control ids only; the 2026-07-31 figure "151 · 114 … 66 of
 141" counted subjects too), including the 5 workflow scenarios and the **phone pad pass**. With the flag OFF
 (2026-11-11) it was 156 · 119 · 0 · 0 · 37 over 57 of 141: turning it on adds three controls to the DOM, and the crawl
 gains `sigPhoneBtn` and `sigImportBtn` but loses `clearSignature` and `cancelSignature`, which it now finds hidden.
-The modal is still open after the Import click (that run's `125-sigImportBtn-after.png`), so the crawl's Escape
-unwind most likely closes it (inferred from that screenshot, not traced). Same 57; `sigCamBtn` is never clicked, so no run
+The modal is still open after the Import click; the crawl's `unwind()` after that leaf finds the page centre inside
+`#signatureModal` and presses Escape, which closes it (TRACED 2026-11-12, panel round 4 K12,
+`var/claude/r4fix/k12-trace.mjs`; why Clear's own unwind did not close it before the flag went on is NOT traced). Same 57; `sigCamBtn` is never clicked, so no run
 exercises a camera. The pad pass
 runs right after boot, before any document is loaded: on a built app the service worker controls
 `pad.html`, `pad.html` is absent from the precache (`index.html` present as the control), the pad (not
-the editor) renders, draw → Done → QR, axe — five `pad:` lines; on a dev server the worker checks are
-one SKIP. A `pad:` FAIL means the phone would get a stale pad or the editor: see
+the editor) renders, axe on the DRAW view (before Done — panel round 4 K2, 2026-11-12), draw → Done → QR, axe on
+the QR view — six `pad:` lines; on a dev server the worker checks are one SKIP (five lines). A `pad:` FAIL means the phone would get a stale pad or the editor: see
 `.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`". A DEFAULT run
 (no flag) measured **149 · 103 · 0 · 0 · 46** with `phonePad` OFF (not re-measured since), so always compare like with like.
 

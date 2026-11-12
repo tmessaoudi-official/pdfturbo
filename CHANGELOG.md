@@ -16,7 +16,9 @@ most of the work went into proving that what the product claims to remove is act
   drawing page (`pad.html`) on the phone; *Done* shows the signature as one to four QR codes, which *Start camera*
   on the PC reads, or the phone saves a PNG that *Import image* brings in (paper keyed out — a transparent PNG keeps its own alpha, so any ink colour survives; one a messenger sent "as a photo", its transparency turned black, has a light ink brought back and a black one refused with "send it as a file" — metadata dropped). The
   signature waits in the modal for Save. The phone page opens on the PC's ink colour and width and can change them
-  (the shared colour palette without white, a 1–10 width); after a scan the PC's colour and width boxes follow the
+  (the shared colour palette without white, a 1–10 width — the PC's ✍ Line Width box is clamped to 1–10 as you type
+  too, where 50 or a non-number used to reach the pad; a tap on the PC's ✍ pad is no longer recorded as a stroke, which a colour change would have turned into a dot);
+  after a scan the PC's colour and width boxes follow the
   scanned ink, and changing them repaints it. No server, no upload: the QR codes on the phone's screen, or the PNG you
   move yourself, are the only link. The scanner's decoder is self-hosted and cached on first use. Online, the phone
   page is fetched from the network first (the browser's own cache may answer for a few minutes after a deploy); on a
@@ -28,6 +30,9 @@ most of the work went into proving that what the product claims to remove is act
   buttons across the toolbar, the flyouts and the text panel, in English, French and Arabic; the bullet and numbered
   list labels were hard-coded English in the French and Arabic UI.
 - **The placement box no longer floats above an open dialog** (it followed the pointer over the signature pad).
+- **Import image keeps a transparent PNG as drawn** when it has an opaque dark frame: it was refused as "sent as a
+  photo", or a semi-transparent ink came back fully opaque. A refused import no longer clears "Signature scanned"
+  while the scanned signature is still on the pad.
 - **The privacy page lists everything the app stores** (English, French and Arabic): the toolbar layout, the recent
   files list, the OCR library's copy of its language data, a per-tab notice flag and the offline copies of the site's
   own files were missing, and the IndexedDB entry said Reset Session clears "this", though it leaves the recent files

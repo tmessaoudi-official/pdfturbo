@@ -36,6 +36,12 @@ paths:
   - "tests/browser/signature-import.browser.test.ts"
   - "tests/browser/signature-scan.browser.test.ts"
   - "tests/security/csp.test.ts"
+  - "src/utils/signatureInk.ts"
+  - "src/ui/signatureInkBoxes.ts"
+  - "tests/utils/signatureInk.test.ts"
+  - "tests/ui/signatureInkBoxes.test.ts"
+  - "tests/browser/pad-ink.browser.test.ts"
+  - "tests/utils/i18nInitLang.test.ts"
 ---
 
 # pdfturbo gotchas — signing
@@ -321,10 +327,10 @@ a tap draws a dot (`dotOnTap`, phone only), ink from the PC (below) — and *Don
 QR codes (1–4 frames, cycled every 1 s). *Start camera* on the PC reads them in any order; the strokes are replayed onto
 `signatureCanvas` and **wait for Save** (no auto-save). *Import image* (the no-webcam route, fed by the phone's
 *Download PNG*): `createImageBitmap`, size and pixel caps, the paper keyed out, ink colour kept, re-encoded to PNG (EXIF
-dropped). **A mostly transparent image keeps its own alpha** (7b A2, ruling 2026-11-12 10:25; `hasOwnTransparency`,
+dropped). **An image with at least 5% of its pixels fully transparent keeps its own alpha** (7b A2, ruling 2026-11-12 10:25; `hasOwnTransparency`,
 ≥ 5% of pixels fully clear, measured: the phone's PNG 73–95% for a signature, 8.5% for a pad-filling scribble; a paper
 sheet with transparent rounded corners 0.2%): keyed on white, a yellow ink (luminance 226, 29 below the paper, `KEY_LO`
-30) vanished and the import said "no ink found". Bounds: a mostly transparent PNG carrying an opaque white box keeps
+30) vanished and the import said "no ink found". Bounds: such a PNG carrying an opaque white box keeps
 the box; a cross-hatch denser than 95% ink falls back to keying, where a light ink fades.
 **A transparent PNG flattened on BLACK is keyed in reverse** (7b W22-F, ruling 2026-11-12 13:55; `isFlattenedOnBlack`,
 `keyOutBlackSheet`). Found on the real phone: WhatsApp's photo mode re-encodes the pad's PNG as a JPEG, its clear
@@ -344,6 +350,22 @@ working input. The ink colour is found with a 256-bin histogram of the max chann
 Measured on the real file through the REAL Import of a running dev server: 4,679 opaque pad pixels, all yellow, none
 near-black, no console error (`var/claude/w22/after-real*`, gitignored; before: the developer's desktop screenshot of
 the black blobs, `before-desktop.png`). Sabotage, 9 mutants, each red where predicted.
+**Only a FULLY opaque image is tested for flattening** (panel round 4 C1, ruled 2026-11-12 15:37; `isOpaque`). The
+border test alone took a transparent PNG with an opaque black frame for a flattened one: a black stroke inside was
+refused as `flattened`, a 50%-alpha yellow came back at alpha 255 (the reviewer's probe4, re-run through the real
+Import before the fix — `var/claude/r4fix/`, gitignored). A flattened image has no alpha at all, so one pixel under 255
+sends the image to the own-alpha rule instead. Guards: the `isOpaque` jsdom cases and the Chrome "own alpha is never read
+as flattened" block, which also proves a flattened JPEG over the 2048 px cap stays opaque through the downscale and is
+still rescued; the decoded bitmap is closed in a `finally`, the `flattened` refusal included (C5, a Chrome spy). Re-run
+after the fix through the real Import: the WhatsApp yellow file 4,679 yellow pixels, none dark; the black one refused.
+**Bounds, pinned in `signature-import.browser.test.ts` § "BOUNDS" and listed in KNOWN_ISSUES:** a paper scan saved with
+clear corners (≈ 10%) keeps its sheet (C2); a 1 px straight stroke in a saturated non-yellow colour along the top or
+left edge, sent as a photo, leaves about half the border black and is not detected (C3 — the pin asserts the border
+SHARE, not pixel counts, which differ across Chrome builds); a white box inside a transparent PNG is kept, and a light
+ink over more than 95% of an image under the 5% share is keyed away (K9).
+**A refused import leaves a finished scan's status** (panel round 4 C4, ruling 19:57, which reversed the 10:33 plan):
+"Signature scanned" clears only once an import has been DRAWN on the pad; a refused one leaves the scan on the pad, so
+its status stays beside the refusal.
 The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
 untouched: no persisted field, no `SCHEMA_VERSION` change.
 
@@ -352,8 +374,9 @@ untouched: no persisted field, no `SCHEMA_VERSION` change.
 a whole 1–10, in PC canvas px) and `cw` (the PC canvas width, 200–4000); the phone draws at `w × padWidth / cw` CSS px,
 so the PC's replay — which fits the phone's grid to `cw` — comes back at `w` (pixel-measured in Chrome: 6 ± 0.5). The
 `cw` floor 200 is PTSIG's: the width travels in quarter grid units capped at 255, and at w = 10 a `cw` under 162 passes
-it. The phone reads the fragment strictly (each bad field → its default: black, 2, 500) and NEVER offers white — not
-from the link (`c=ffffff` → black), nor the recents, nor a custom pick. One PTSIG ink per signature, so every ink change
+it. The phone reads the fragment strictly (each bad field → its default: black, 2, 500) and NEVER offers EXACT white (`#ffffff`) — not
+from the link (`c=ffffff` → black), nor the recents, nor a custom pick; a near-white such as `#fefefe` passes (panel round 4
+S4, a bound by ruling 09:56). One PTSIG ink per signature, so every ink change
 repaints every stroke: on the phone always (`SignaturePad.repaint()`, never through `clear()`), on the PC only while
 the pad shows a scan (`inkFollows`, set by `replay`, which now TAKES the replayed ink — the exact width, not a rounded
 one). After a scan the boxes are written (`#sigLineWidth` = the width rounded and clamped) and the QR re-drawn — a
@@ -383,7 +406,10 @@ used to replay at about 3.4.
   ITSELF logs one when its wasm fails to load — a real failure, reported as 'failed', so the sweep should flag it.)
 - **Flag `phonePad` is ON by default since step 7b commit C (2026-11-12)**, after the walk on the developer's phone and
   the PC webcam (W6–W15 on 2026-11-11, W17–W23 on 2026-11-12; W16, a native Arabic read, stays open). It defaulted OFF through a per-key `DEFAULT_OFF` set in `isEnabled` until then; that set is
-  gone, so every flag defaults ON again and `VITE_FEATURE_PHONE_PAD=false` is the deploy kill-switch.
+  gone, so every flag defaults ON again and `VITE_FEATURE_PHONE_PAD=false` is the deploy kill-switch. **Its scope
+  (panel round 4 K1/S3, ruled 15:37 — documented, not widened):** it removes the PC's entry points (Sign on phone,
+  Import image, the camera); `pad.html` is its own Vite entry and stays built and served, so an old QR still opens
+  it. No deploy path sets the variable today — to pull the feature, add it to the build env in `deploy.yml`.
 - **Offline and an outdated phone:** `toolchain.md` § "PWA is `registerType: 'prompt'`" (the 5c paragraph). Known, left
   as is by ruling: at 414 px on a first visit the cookie banner covers the modal's Save row (plan § Known issues).
 - **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage,signaturePad,signaturePng,signatureInk,i18nInitLang}.test.ts`,
@@ -394,7 +420,9 @@ used to replay at about 3.4.
   pad pass on every deploy. 7b B was sabotage-checked 20 ways (each of the plan's eight mutants plus twelve more), each
   red where predicted. Its wiring in `modalBinder.ts` and `main.ts` (imported by no test) is pinned by a source check.
 - **Not certified by execution:** the walk (W6–W15 2026-11-11, W17–W23 2026-11-12) drove the flag-ON DEV server over
-  plain HTTP on the LAN,
-  with the PC's test Chrome told to treat that origin as secure. Never walked: the deployed HTTPS build with its service
-  worker controlling `pad.html`, and a phone accepting the pad's Update prompt and scanning again. The 38 Arabic keys
+  plain HTTP on the LAN, with the PC's test Chrome told to treat that origin as secure. The deployed HTTPS build was
+  walked on 2026-11-12 (plan R4-4.1–4.7, developer-reported): the worker controlling `pad.html`, the pad offline, a scan
+  from the offline phone, and the editor's Update prompt accepted then a fresh scan — that update changed no pad file,
+  so it is NOT the two-build case. Never walked: a phone on an OLDER worker loading a NEWER pad offline, and the
+  reverse (KNOWN_ISSUES § "From the phone signature pad"). The 38 Arabic keys
   (in the pending count, `toolchain.md` § i18n) have no native read.

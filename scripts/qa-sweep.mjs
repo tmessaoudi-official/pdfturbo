@@ -646,6 +646,23 @@ async function main() {
 // it answers sw.js with index.html and 200, so the worker is detected by the file's body, never its status; there the
 // worker checks are SKIP and the pad itself is still drawn, scanned for errors and audited. `--require-sw` (the deploy
 // gate) turns that SKIP into a FAIL, so a build that stops emitting the worker cannot pass silently.
+/** axe on the pad page as it is now, same tags and same policy as the editor's pass; animations settled first. */
+async function padAxe(pad, label, shot) {
+  const axePath = join('node_modules', 'axe-core', 'axe.min.js');
+  if (!A11Y || !existsSync(axePath)) return;
+  await pad.waitForFunction(
+    () => Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))).then(() => true),
+    null, { timeout: 15_000 },
+  ).catch(() => {});
+  if (!(await pad.evaluate(() => Boolean(window.axe)))) await pad.evaluate(readFileSync(axePath, 'utf8'));
+  const v = (await pad.evaluate(async () => (await window.axe.run(document, {
+    runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
+  })).violations)) || [];
+  const severe = v.filter(x => x.impact === 'critical' || x.impact === 'serious');
+  const detail = v.length ? v.map(x => `${x.id}:${x.impact}(${x.nodes.length})`).join(', ') : '0 violations';
+  record(severe.length ? 'FAIL' : v.length ? 'A11Y' : 'PASS', label, detail, shot);
+}
+
 async function padPass(ctx, editor) {
   const swUrl = new URL('sw.js', URL_).href;
   const builtSw = await editor.evaluate(async (u) => {
@@ -705,18 +722,14 @@ async function padPass(ctx, editor) {
     await pad.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.3, { steps: 8 });
     await pad.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.7, { steps: 8 });
     await pad.mouse.up();
+    // BOTH views are audited (panel round 4 K2, 2026-11-12): the draw view — swatches, the width stepper, the canvas —
+    // is where the phone user spends the time; until then only the QR view was.
+    await pad.screenshot({ path: join(OUT, '000-pad-draw.png') });
+    await padAxe(pad, 'pad: a11y, draw view', '000-pad-draw.png');
     await pad.click('[data-pad="done"]');
     await pad.locator('[data-pad="qr"]').waitFor({ state: 'visible' });
     await pad.screenshot({ path: join(OUT, '001-pad-qr.png') });
-    if (A11Y && existsSync(join('node_modules', 'axe-core', 'axe.min.js'))) {
-      await pad.evaluate(readFileSync(join('node_modules', 'axe-core', 'axe.min.js'), 'utf8'));
-      const v = (await pad.evaluate(async () => (await window.axe.run(document, {
-        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
-      })).violations)) || [];
-      const severe = v.filter(x => x.impact === 'critical' || x.impact === 'serious');
-      const detail = v.length ? v.map(x => `${x.id}:${x.impact}(${x.nodes.length})`).join(', ') : '0 violations';
-      record(severe.length ? 'FAIL' : v.length ? 'A11Y' : 'PASS', 'pad: a11y (WCAG 2.1 AA)', detail, '001-pad-qr.png');
-    }
+    await padAxe(pad, 'pad: a11y (WCAG 2.1 AA)', '001-pad-qr.png');
     record(errors.length ? 'FAIL' : 'PASS', 'pad: draw → Done → QR',
       errors.join(' | ') || 'QR shown, 0 console errors, 0 failed requests', '001-pad-qr.png');
   } catch (e) {

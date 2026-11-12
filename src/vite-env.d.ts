@@ -17,7 +17,9 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_COMPRESS?: string;
   readonly VITE_FEATURE_SIGNERS?: string;
   readonly VITE_FEATURE_TEXT_DECOR?: string;
-  // The phone signature pad: ON since phone-signature-pad step 7b (2026-11-12); false/0/off/no disables it.
+  // The phone signature pad: ON since phone-signature-pad step 7b (2026-11-12); false/0/off/no removes the PC's
+  // Sign on phone / Import image / camera. pad.html is still built and served (scope: features.ts header). No deploy
+  // path sets this: add it to the build env in .github/workflows/deploy.yml to use it.
   readonly VITE_FEATURE_PHONE_PAD?: string;
 }
 

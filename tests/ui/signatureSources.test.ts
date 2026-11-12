@@ -408,7 +408,9 @@ describe('Start camera — every way out stops the camera', () => {
 
 // Step-7 walkthrough W13 (2026-11-11, F1): after a completed scan, an import left "Signature scanned. Check it, then
 // press Save." on screen over the imported image; the Clear button left it over an EMPTY pad (found while planning 7b).
-// The status line describes the pad, so anything that replaces or empties the pad clears it.
+// The status line describes the pad, so anything that replaces or empties the pad clears it — and only that: a REFUSED
+// import leaves the scan on the pad, so it leaves its status too (panel round 4 C4, ruling 2026-11-12 19:57, which
+// REVERSES the 10:33 plan's "a refused import after a scan also clears it").
 describe('after a scan, the status does not outlive the pad it describes (F1)', () => {
   function scanned(over: Partial<Parameters<typeof mountSignatureSources>[0]> = {}) {
     let cleared: (() => void) | null = null;
@@ -419,21 +421,34 @@ describe('after a scan, the status does not outlive the pad it describes (F1)', 
     return { ...m, clearPad: () => cleared?.() };
   }
 
-  it('an import clears it as soon as the import starts', async () => {
+  it('a successful import clears it once the image is drawn — not while it is still loading', async () => {
     const m = scanned();
     pick(m.input, new File([new Uint8Array([1])], 's.png', { type: 'image/png' }));
-    expect(m.status.textContent).toBe('');
+    expect(m.status.textContent).toBe('T(modal.signature.scanDone)'); // the pad still holds the scan
     await m.handle.whenIdle();
     expect(m.pad.drawImage).toHaveBeenCalledTimes(1);
     expect(m.status.textContent).toBe('');
   });
 
-  it('a REFUSED import clears it too, and shows the refusal', async () => {
-    const m = scanned({ loadImage: vi.fn(() => Promise.reject(new SignatureImageError('type', 'not an image'))) });
-    pick(m.input, new File([new Uint8Array([1])], 's.gif', { type: 'image/gif' }));
+  it('a REFUSED import leaves it — the pad still holds the scan — and shows the refusal', async () => {
+    const m = scanned({ loadImage: vi.fn(() => Promise.reject(new SignatureImageError('flattened', 'flattened'))) });
+    pick(m.input, new File([new Uint8Array([1])], 's.jpg', { type: 'image/jpeg' }));
     await m.handle.whenIdle();
-    expect(m.status.textContent).toBe('');
+    expect(m.pad.drawImage).not.toHaveBeenCalled();
+    expect(m.status.textContent).toBe('T(modal.signature.scanDone)');
     expect(m.msg.hidden).toBe(false);
+  });
+
+  it('an import that loads after a NEWER scan landed is dropped, and the newer scan keeps its status (control)', async () => {
+    let finish: (c: HTMLCanvasElement) => void = () => {};
+    const m = scanned({ loadImage: vi.fn(() => new Promise<HTMLCanvasElement>((r) => { finish = r; })) });
+    pick(m.input, new File([new Uint8Array([1])], 's.png', { type: 'image/png' }));
+    m.camBtn.click();
+    m.scans[1].deps.onText(ONE[0]);
+    finish(document.createElement('canvas'));
+    await m.handle.whenIdle();
+    expect(m.pad.drawImage).not.toHaveBeenCalled();
+    expect(m.status.textContent).toBe('T(modal.signature.scanDone)');
   });
 
   it('the modal Clear button clears it', () => {

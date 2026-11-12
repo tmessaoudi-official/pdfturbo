@@ -3,11 +3,18 @@
  * ink kept). What jsdom cannot run: a real PNG / JPEG decoded through `<img>` + `createImageBitmap`, the caps checked
  * from the header BEFORE the full decode, a corrupt file, and the result fitted onto a real pad.
  *  (i)  the pad's OWN download (a transparent PNG from `strokesToCanvas`) imports with every stroke kept — since 7b A2
- *       it keeps its own alpha (mostly transparent: `hasOwnTransparency`), so a light ink survives too;
+ *       it keeps its own alpha (at least 5% fully transparent: `hasOwnTransparency`), so a light ink survives too;
  *  (ii) a photo-like JPEG: paper 235 → 170 across the page, ink 40 — the paper away from the ink is clear.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { IMPORT_LIMITS, SignatureImageError, loadSignatureImage } from '../../src/utils/signatureImage';
+import {
+  FLAT_BORDER_SHARE,
+  IMPORT_LIMITS,
+  SignatureImageError,
+  borderBlackShare,
+  isFlattenedOnBlack,
+  loadSignatureImage,
+} from '../../src/utils/signatureImage';
 import { SignaturePad } from '../../src/utils/signaturePad';
 import { strokesToCanvas } from '../../src/utils/signaturePng';
 
@@ -153,7 +160,7 @@ describe('loadSignatureImage — real decode', () => {
 
 // 7b commit A2 (ruling 2026-11-12 10:25): with colour on the phone, its Download PNG can be any palette ink. Keyed on
 // white, yellow #ffff00 (luminance 226, 29 below the paper; KEY_LO is 30) vanished and the import said "no ink found".
-// A MOSTLY transparent image now keeps its own alpha; an opaque one is keyed as before (the two controls).
+// An image at least 5% fully transparent now keeps its own alpha; an opaque one is keyed as before (the two controls).
 describe('loadSignatureImage — an image with its own transparency (7b A2)', () => {
   const rgbaAt = (c: HTMLCanvasElement, x: number, y: number) =>
     Array.from((c.getContext('2d') as CanvasRenderingContext2D).getImageData(x, y, 1, 1).data);
@@ -270,6 +277,165 @@ describe('loadSignatureImage — the phone PNG sent "as a photo" (W22-F, ruling 
     ctx.fillRect(150, 200, 300, 6); // its ink
     const out = await loadSignatureImage(await toFile(c, 'image/jpeg', 0.9));
     expect(Math.abs(out.width - 400)).toBeLessThanOrEqual(4); // the sheet, not the 300 px ink
+  });
+});
+
+// Panel round 4 (rulings 2026-11-12 15:37). C1: the flattened-on-black test ran on images that bring their own alpha,
+// so a transparent PNG with an opaque black frame was refused (black stroke) or had its alpha rewritten (a 50%-alpha
+// yellow came back at 255) — the shapes are the reviewer's probe4. C5: the bitmap was not closed on that refusal.
+describe('loadSignatureImage — an image with its own alpha is never read as flattened (C1, C5)', () => {
+  const rgbaAt = (c: HTMLCanvasElement, x: number, y: number) =>
+    Array.from((c.getContext('2d') as CanvasRenderingContext2D).getImageData(x, y, 1, 1).data);
+  const framed = (draw: (ctx: CanvasRenderingContext2D) => void) => {
+    const c = document.createElement('canvas');
+    c.width = 400;
+    c.height = 160;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 396, 156); // an opaque 4 px black frame on a clear image
+    draw(ctx);
+    return c;
+  };
+
+  it('a transparent PNG with a black frame and a black stroke imports as drawn: the frame is ink, inside it is clear', async () => {
+    const c = framed((ctx) => {
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(60, 110);
+      ctx.bezierCurveTo(120, 20, 200, 150, 340, 60);
+      ctx.stroke();
+    });
+    const out = await loadSignatureImage(await toFile(c, 'image/png'));
+    expect([out.width, out.height]).toEqual([400, 160]); // the frame reaches the edges: nothing to trim
+    expect(rgbaAt(out, 200, 1)).toEqual([0, 0, 0, 255]); // the frame, black and opaque
+    expect(rgbaAt(out, 30, 30)[3]).toBe(0); // inside the frame, away from the stroke: still clear
+  });
+
+  it('a 50%-alpha yellow stroke inside a black frame keeps its own alpha (≈ 128), not 255', async () => {
+    const c = framed((ctx) => {
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.moveTo(60, 80);
+      ctx.lineTo(340, 80);
+      ctx.stroke();
+    });
+    const out = await loadSignatureImage(await toFile(c, 'image/png'));
+    const p = rgbaAt(out, 200, 80);
+    expect(p.slice(0, 3)).toEqual([255, 255, 0]);
+    expect(Math.abs(p[3] - 128), `stroke alpha ${p[3]}`).toBeLessThanOrEqual(8);
+  });
+
+  it('a flattened JPEG larger than the long-side cap is still rescued after the downscale (it stays opaque)', async () => {
+    const png = strokesToCanvas(
+      [[{ x: 10, y: 30 }, { x: 110, y: 30 }], [{ x: 60, y: 0 }, { x: 60, y: 60 }]],
+      { color: '#fff700', lineWidth: 2.5, scale: 30 },
+    );
+    if (!png) throw new Error('no png');
+    expect(png.width).toBeGreaterThan(IMPORT_LIMITS.maxSide); // precondition: the decode resizes it
+    const c = document.createElement('canvas');
+    c.width = png.width;
+    c.height = png.height;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(png, 0, 0);
+    const out = await loadSignatureImage(await toFile(c, 'image/jpeg', 0.5));
+    const core = rgbaAt(out, Math.round(out.width * 0.1), Math.round(out.height / 2));
+    expect(core[0] > 230 && core[1] > 220 && core[2] < 60 && core[3] >= 235, `core pixel ${core}`).toBe(true);
+    expect(rgbaAt(out, Math.round(out.width * 0.1), Math.round(out.height * 0.1))[3]).toBe(0); // the black is gone
+  });
+
+  it('the decoded bitmap is closed on a "flattened" refusal, as on a success', async () => {
+    const close = vi.spyOn(ImageBitmap.prototype, 'close');
+    const c = document.createElement('canvas');
+    c.width = 200;
+    c.height = 100;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 200, 100); // black ink on black: refused, nothing to rescue
+    expect(await codeOf(loadSignatureImage(await toFile(c, 'image/jpeg', 0.9)))).toBe('flattened');
+    expect(close).toHaveBeenCalledTimes(1);
+    const ok = framed(() => {});
+    expect(await codeOf(loadSignatureImage(await toFile(ok, 'image/png')))).toBe('resolved'); // control
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Panel round 4 C2, C3, K9: limits of the two rules, kept by ruling (15:37) and PINNED here, so a change that moves
+// one is seen. Each is in KNOWN_ISSUES.md § "From the phone signature pad".
+describe('loadSignatureImage — BOUNDS, pinned (C2, C3, K9)', () => {
+  const rgbaAt = (c: HTMLCanvasElement, x: number, y: number) =>
+    Array.from((c.getContext('2d') as CanvasRenderingContext2D).getImageData(x, y, 1, 1).data);
+
+  it('C2: a paper scan rotated 3° and saved as PNG (≈ 10% clear corner wedges) keeps its own alpha: the sheet stays', async () => {
+    const c = document.createElement('canvas');
+    c.width = 1036;
+    c.height = 752;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.translate(518, 376);
+    ctx.rotate((3 * Math.PI) / 180);
+    ctx.fillStyle = 'rgb(238,236,230)';
+    ctx.fillRect(-500, -350, 1000, 700);
+    ctx.strokeStyle = 'rgb(25,25,60)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(-300, 40);
+    ctx.bezierCurveTo(-150, -160, 50, 180, 300, -40);
+    ctx.stroke();
+    const out = await loadSignatureImage(await toFile(c, 'image/png'));
+    expect(Math.abs(out.width - 1036)).toBeLessThanOrEqual(4); // the whole sheet, not the 600 px of ink
+    expect(rgbaAt(out, 518, 600)[3]).toBe(255); // paper, kept opaque
+  });
+
+  it('C3: a 1 px straight red stroke sent as a photo leaves the border far from all-black — not read as flattened', async () => {
+    const png = strokesToCanvas([[{ x: 10, y: 30 }, { x: 330, y: 30 }]], { color: '#ff0000', lineWidth: 368 / 500, scale: 2.8125 });
+    if (!png) throw new Error('no png');
+    const c = document.createElement('canvas');
+    c.width = png.width;
+    c.height = png.height;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(png, 0, 0);
+    const file = await toFile(c, 'image/jpeg', 0.5);
+    const bmp = await createImageBitmap(file);
+    const d = document.createElement('canvas');
+    d.width = bmp.width;
+    d.height = bmp.height;
+    const dctx = d.getContext('2d') as CanvasRenderingContext2D;
+    dctx.drawImage(bmp, 0, 0);
+    bmp.close();
+    const img = dctx.getImageData(0, 0, d.width, d.height);
+    // The property, not pixel counts (JPEG output differs across Chrome builds): measured 49.6–50.3% at q 0.5–0.9.
+    expect(borderBlackShare(img)).toBeLessThan(FLAT_BORDER_SHARE - 0.2);
+    expect(isFlattenedOnBlack(img)).toBe(false);
+  });
+
+  it('K9: a transparent PNG carrying an opaque white box keeps the box', async () => {
+    const c = document.createElement('canvas');
+    c.width = 400;
+    c.height = 200;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(100, 50, 200, 100); // 75% of the image stays clear
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(130, 95, 140, 5);
+    const out = await loadSignatureImage(await toFile(c, 'image/png'));
+    expect([out.width, out.height]).toEqual([200, 100]); // trimmed to the box, not to the ink
+    expect(rgbaAt(out, 10, 10)).toEqual([255, 255, 255, 255]);
+  });
+
+  it('K9: a light ink covering more than 95% of the image falls back to keying, and the yellow is lost ("empty")', async () => {
+    const c = document.createElement('canvas');
+    c.width = 400;
+    c.height = 200;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#ffff00';
+    ctx.fillRect(0, 0, 400, 194); // 3% clear: under the 5% own-alpha share
+    expect(await codeOf(loadSignatureImage(await toFile(c, 'image/png')))).toBe('empty');
   });
 });
 

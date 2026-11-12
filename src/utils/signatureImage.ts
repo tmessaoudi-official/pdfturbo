@@ -4,13 +4,14 @@
  *
  * The file is untrusted. It is type- and byte-capped, loaded as an `<img>` from a blob URL so its dimensions are known
  * from the header and capped BEFORE `createImageBitmap` decodes it, downscaled to a long side of `maxSide`, and trimmed to the
- * ink. An image that is MOSTLY transparent (`hasOwnTransparency` — the phone's Download PNG) keeps its own alpha: it has
- * no paper, and keying it on white erased a light ink (7b A2, ruling 2026-11-12 10:25: yellow vanished). Any other image
- * is composited over WHITE (its few clear pixels would otherwise read as black ink) and keyed. Bound, accepted by the
- * ruling: a mostly transparent PNG that carries an opaque white box keeps the box. An image whose border is pure black
- * (`isFlattenedOnBlack` — that PNG sent "as a photo" by a messenger, its clear pixels turned black) is keyed in reverse
- * (`keyOutBlackSheet`), or refused as `flattened` when its ink was black too (W22-F). The PC then re-encodes the pad as PNG
- * on Save, so no EXIF or other metadata of the source survives.
+ * ink. An image with at least 5% of its pixels fully transparent (`hasOwnTransparency` — the phone's Download PNG) keeps
+ * its own alpha: it has no paper, and keying it on white erased a light ink (7b A2, ruling 2026-11-12 10:25: yellow
+ * vanished). Any other image is composited over WHITE (its few clear pixels would otherwise read as black ink) and keyed.
+ * Bounds, accepted by the rulings: such a PNG that carries an opaque white box keeps the box, and so does a scan saved
+ * with clear corners (C2). A FULLY opaque image whose border is pure black (`isOpaque` + `isFlattenedOnBlack` — that PNG
+ * sent "as a photo" by a messenger, its clear pixels turned black) is keyed in reverse (`keyOutBlackSheet`), or refused
+ * as `flattened` when its ink was black too (W22-F). The PC then re-encodes the pad as PNG on Save, so no EXIF or other
+ * metadata of the source survives.
  */
 
 export const IMPORT_LIMITS = { maxBytes: 15 * 1024 * 1024, maxPixels: 50_000_000, maxSide: 2048 };
@@ -128,8 +129,8 @@ const MIN_INK = 20;
 
 const maxChannel = (d: Uint8ClampedArray, i: number) => Math.max(d[i], d[i + 1], d[i + 2]);
 
-/** True when at least `FLAT_BORDER_SHARE` of the border pixels are opaque and black: a transparent image flattened on black. */
-export function isFlattenedOnBlack(img: ImageData): boolean {
+/** The share of the border pixels that are opaque and black (max channel ≤ `SHEET_BLACK`); 0 for an empty image. */
+export function borderBlackShare(img: ImageData): number {
   const { width: w, height: h, data } = img;
   let n = 0;
   let black = 0;
@@ -146,7 +147,23 @@ export function isFlattenedOnBlack(img: ImageData): boolean {
     at(0, y);
     if (w > 1) at(w - 1, y);
   }
-  return n > 0 && black >= n * FLAT_BORDER_SHARE;
+  return n > 0 ? black / n : 0;
+}
+
+/**
+ * True when every pixel is fully opaque. Only such an image can be a transparent one FLATTENED (a JPEG, or a PNG re-encoded
+ * without alpha): one pixel under 255 means the image brings its own alpha, and a black frame drawn on it is ink, not a
+ * sheet (panel round 4 C1, ruling 2026-11-12 15:37 — the border test alone refused it, or rewrote a 50%-alpha ink to 255).
+ */
+export function isOpaque(img: ImageData): boolean {
+  const { data } = img;
+  for (let i = 3; i < data.length; i += 4) if (data[i] !== 255) return false;
+  return true;
+}
+
+/** True when at least `FLAT_BORDER_SHARE` of the border pixels are opaque and black: a transparent image flattened on black. */
+export function isFlattenedOnBlack(img: ImageData): boolean {
+  return img.width > 0 && img.height > 0 && borderBlackShare(img) >= FLAT_BORDER_SHARE;
 }
 
 /**
@@ -232,31 +249,35 @@ export async function loadSignatureImage(file: File, limits: ImportLimits = IMPO
     const s = Math.min(1, limits.maxSide / Math.max(w, h));
     const bw = Math.max(1, Math.round(w * s));
     const bh = Math.max(1, Math.round(h * s));
-    let bitmap: ImageBitmap;
+    let bitmap: ImageBitmap | undefined;
+    let data: ImageData;
     try {
-      bitmap = await createImageBitmap(img, { resizeWidth: bw, resizeHeight: bh, resizeQuality: 'high' });
-    } catch (e) {
-      // A file whose header loads but whose body is broken (truncated, measured for PNG and JPEG) is rejected HERE, by
-      // the decode, with a DOMException. Anything else is a bug, not a refused image.
-      if (e instanceof DOMException) throw new SignatureImageError('decode', 'the image could not be decoded');
-      throw e;
-    }
-    const work = document.createElement('canvas');
-    work.width = bw;
-    work.height = bh;
-    const ctx = work.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
-    ctx.drawImage(bitmap, 0, 0); // on a CLEAR canvas first: does the image bring its own alpha?
-    let data = ctx.getImageData(0, 0, bw, bh);
-    if (isFlattenedOnBlack(data)) {
-      if (!keyOutBlackSheet(data)) throw new SignatureImageError('flattened', 'a transparent image flattened on black, no light ink');
-    } else if (!hasOwnTransparency(data)) {
-      ctx.globalCompositeOperation = 'destination-over'; // white UNDER the image, as if drawn on paper
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, bw, bh);
+      try {
+        bitmap = await createImageBitmap(img, { resizeWidth: bw, resizeHeight: bh, resizeQuality: 'high' });
+      } catch (e) {
+        // A file whose header loads but whose body is broken (truncated, measured for PNG and JPEG) is rejected HERE, by
+        // the decode, with a DOMException. Anything else is a bug, not a refused image.
+        if (e instanceof DOMException) throw new SignatureImageError('decode', 'the image could not be decoded');
+        throw e;
+      }
+      const work = document.createElement('canvas');
+      work.width = bw;
+      work.height = bh;
+      const ctx = work.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
+      ctx.drawImage(bitmap, 0, 0); // on a CLEAR canvas first: does the image bring its own alpha?
       data = ctx.getImageData(0, 0, bw, bh);
-      keyOutPaper(data);
+      if (isOpaque(data) && isFlattenedOnBlack(data)) {
+        if (!keyOutBlackSheet(data)) throw new SignatureImageError('flattened', 'a transparent image flattened on black, no light ink');
+      } else if (!hasOwnTransparency(data)) {
+        ctx.globalCompositeOperation = 'destination-over'; // white UNDER the image, as if drawn on paper
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, bw, bh);
+        data = ctx.getImageData(0, 0, bw, bh);
+        keyOutPaper(data);
+      }
+    } finally {
+      bitmap?.close(); // on every exit, the `flattened` refusal included (panel round 4 C5)
     }
-    bitmap.close();
     const box = inkBounds(data);
     if (!box) throw new SignatureImageError('empty', 'no ink found');
     const out = document.createElement('canvas');

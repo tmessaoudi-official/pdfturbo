@@ -6,6 +6,11 @@
  * (`pdfturbo.feature.<key>` = on/off) wins over the env, for local dev toggling.
  * (phonePad defaulted OFF through a per-key DEFAULT_OFF set until its real-phone
  * check; that set went when phone-signature-pad step 7b turned it on, 2026-11-12.)
+ * Scope of a switch, stated because phonePad's is narrower than it reads (panel round 4 K1/S3, ruled 2026-11-12
+ * 15:37): off, phonePad removes the PC's entry points (Sign on phone, Import image, the camera); `pad.html` is a
+ * separate Vite entry and is still built and served, so a QR already on a phone still opens it. And NO deploy path
+ * sets any VITE_FEATURE_* today: to pull a feature, add the variable to the build step's env in
+ * `.github/workflows/deploy.yml`.
  *
  * env values are read lazily (at call time) so the value is always current and
  * so tests can `vi.stubEnv` without module-cache resets. Vite still statically

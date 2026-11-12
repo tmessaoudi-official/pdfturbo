@@ -8,7 +8,8 @@
  * `lineQuarters`), and at w = 10 a `cw` under 162 passes that cap (measured: cw 150 → 273).
  *
  * The phone reads the fragment STRICTLY, like `lang`: a bad field falls back to its own default (black, 2, 500), never
- * to a guess. White falls back to black: invisible ink is never offered, whichever way it arrives.
+ * to a guess. EXACT white (`#ffffff`) falls back to black, whichever way it arrives; a near-white such as `#fefefe` is
+ * accepted (ruling 2026-11-12 09:56 — the panel's S4 bound, round 4).
  */
 
 export interface PadInk {

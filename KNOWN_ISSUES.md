@@ -96,11 +96,24 @@ under storage pressure; no claim is made here about any other browser's rule.
   is ≥ 90% pure black as a transparent PNG flattened on black — a scan with a black lid, a screenshot with black bars
   round a photo of paper: the sheet is kept as the ink and the signature becomes a hole. It was unusable before the
   W22-F fix too (the ink inside a thick black frame); a photo's surround is noisy and is not affected.
+- **A thin stroke at the edge, sent as a photo, can escape that detection** (panel round 4 C3). A 1-px straight stroke
+  running along the top or left edge, in a saturated colour other than yellow: the JPEG bleeds its colour onto the
+  black border row, about half the border stays black, and the image is keyed as paper — the black comes back as ink.
+  Measured on 252 synthetic shapes: 30 missed, all at the thinnest width; 2 px and wider never missed. Send the PNG as a
+  document.
+- **An image with at least 5% fully transparent pixels keeps its own alpha, whatever else it holds** (panel round 4
+  C2, K9). A paper scan straightened and saved as PNG (≈ 10% clear corner wedges) imports as the whole sheet, not keyed
+  — invisible on the white pad, visible where it covers the page's text; a transparent PNG carrying an opaque white box
+  keeps the box. The other way round: a light ink covering more than 95% of a transparent image (under 5% clear) is
+  keyed on white, and the light ink fades or is refused as "no ink found".
+- **The editor itself is hard to use on a phone** (step-7 walkthrough W15, 2026-11-11): only about a quarter of the
+  content is visible at a phone's width; Chrome's "desktop site" mode works around it. The pad page is not affected.
+  Its own milestone after 1.1.0: `docs/plans/mobile-editor-layout.plan.md`.
 - **The last camera frame may stay in the QR reader's memory.** The page releases its own copy when the scan ends; the
   zxing wasm heap may still hold the frame it last read, in memory only — never written or sent — until the tab closes.
-- **Not certified by execution:** the real-phone walk (2026-11-11 and 2026-11-12) ran against the development server over plain HTTP
-  on a local network, so the deployed HTTPS build with its service worker, and a phone accepting the pad's Update
-  prompt and scanning again, were never walked; a phone on an OLDER
+- **Not certified by execution:** the deployed HTTPS build was walked on the developer's phone on 2026-11-12 — the
+  service worker controlling the pad, the pad offline, a scan from the offline phone, and the editor's Update prompt
+  accepted followed by a fresh scan (the update changed no pad file). Never walked: a phone on an OLDER
   service worker loading a NEWER pad page offline (the `pad-css` cache rule exists for it; the two-build case was
   never driven). The rule itself only reaches a phone once its worker has updated to a build that carries it. The
   reverse case: once the app updates on a phone, a pad page cached before the update loads assets the new worker no
