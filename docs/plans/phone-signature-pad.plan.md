@@ -112,6 +112,7 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-12 19:09] AGREED: The 12 commits through 9312404 were pushed at 16:04 (CI run 43243778809 green, deployed), so the flag-ON pad is live before the round-4 fixes; new order: the HTTPS smoke walk on the deployed build FIRST, then the privacy.html text (R4-1) for approval, then the other round-4 fixes, round 5, 1.1.0
 - [2026-11-12 19:09] AGREED: Full-screen signing = a big pad with the controls hidden (a full-screen button; only Clear / Done / exit stay), the pad keeps PAD_ASPECT 0.4, a CSS fill as the base (iPhone Safari has no element fullscreen), requestFullscreen + orientation lock only where supported
 - [2026-11-12 19:09] AGREED: Full-screen signing lands AFTER 1.1.0 as its own Medium plan and review, never inside the round-4 fix batch or round 5
+- [2026-11-12 19:21] AGREED: R4-5: the privacy.html fix is pushed on its own as soon as the full gate is green (with the local docs commits), not held for 1.1.0
 
 ## Formal Plan
 
@@ -391,7 +392,14 @@ Later: row 10 (PC `#sigColor` swatch row), W16 (native Arabic read, optional), m
 - [ ] R4-2. Acknowledge that the C4 fix reverses the 10:33 plan's pinned "a refused import after a scan also clears the status"
 - [ ] R4-3. If the K12 trace fails: accept that the deploy sweep no longer clicks clearSignature / cancelSignature with the flag ON
 - [ ] R4-4. HTTPS smoke walk on the deployed Pages build (ruling 19:09, FIRST): on the phone, open the pad from the deployed editor's QR; check the service worker controls `pad.html` and `pad.html` still loads offline/after reload; sign, Done, scan on the PC; then a new deploy → the phone accepts the pad's Update prompt and scans again
-- [ ] R4-5. Push cadence after the early push: does the privacy.html fix push as soon as it is green, or wait for 1.1.0
+  - [x] R4-4.1. PC Chrome: open the deployed editor, open a PDF, ✍ → Sign on phone; the QR names an https github.io pad.html URL — DONE 2026-11-12: developer-reported (the https github.io pad.html link); confirmed by R4-4.2
+  - [x] R4-4.2. Phone: scan that QR with the camera app; the pad opens — DONE 2026-11-12: developer-reported, pad opened on github.io with swatches, width stepper, Clear + disabled Done
+  - [x] R4-4.3. Phone: open the deployed EDITOR once in a new tab (installs the worker — pad.html registers none, toolchain.md 5c), then back to the pad tab and reload it online; the pad (not the editor) shows — DONE 2026-11-12: developer-reported, the pad (not the editor) came back after the reload
+  - [x] R4-4.4. Phone: airplane mode, reload; the pad still loads offline (service worker) — DONE 2026-11-12: developer-reported, the pad loaded with airplane mode on
+  - [x] R4-4.5. Phone, STILL offline: sign, Done; QR frame(s) shown — DONE 2026-11-12: developer-reported, QR shown with airplane mode on
+  - [x] R4-4.6. PC: Start camera, scan the phone; the signature lands on the canvas, Save places it — DONE 2026-11-12: developer-reported on the deployed HTTPS build, scanned from the offline phone, saved and placed
+  - [ ] R4-4.7. After the next deploy (the privacy push): on the phone open the editor (the Update prompt is the EDITOR's — pad.html shows none), accept it, then reload the pad and scan again (walkthrough R4-4; open, waits for that deploy)
+- [ ] R4-5. Push cadence after the early push: does the privacy.html fix push as soon as it is green, or wait for 1.1.0 — RULED 19:21: push alone when green
 - Steps 1 and 7 need the developer's phone and PC webcam.
 - [x] W1. Open http://<LAN-IP>:5173/pdfturbo/var/claude/qrtest/show.html on the phone — DONE 2026-11-10: the phone connected over the LAN (ss), ufw let :5173 through
 - [x] W2. Open http://localhost:5173/pdfturbo/var/claude/qrtest/scan.html in desktop Chrome, Start camera, allow it — DONE 2026-11-10: Integrated Webcam granted 1280x720 @30 fps (asked ideal 1920x1080)
