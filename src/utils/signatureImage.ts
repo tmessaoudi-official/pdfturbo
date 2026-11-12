@@ -158,18 +158,28 @@ export function isFlattenedOnBlack(img: ImageData): boolean {
  */
 export function keyOutBlackSheet(img: ImageData): boolean {
   const { data } = img;
-  const bright: number[] = [];
+  // The ink: the brightest tenth of the bright pixels (the stroke cores, not their edges), its colour their mean. A
+  // histogram of the max channel finds that tenth in one pass (no sort over up to 4 M pixels on the main thread).
+  const hist = new Uint32Array(256);
+  let bright = 0;
   for (let i = 0; i < data.length; i += 4) {
     const m = maxChannel(data, i);
-    if (m >= INK_BRIGHT) bright.push(i);
+    if (m >= INK_BRIGHT) {
+      hist[m]++;
+      bright++;
+    }
   }
-  if (bright.length < MIN_INK) return false;
-  // The ink: the brightest tenth of the bright pixels (the stroke cores, not their edges), its colour their mean.
-  bright.sort((a, b) => maxChannel(data, a) - maxChannel(data, b));
-  const core = bright.slice(Math.floor(bright.length * 0.9));
+  if (bright < MIN_INK) return false;
+  let cut = 255;
+  for (let seen = hist[255]; seen < bright * 0.1 && cut > INK_BRIGHT; ) seen += hist[--cut];
   const ink = [0, 0, 0];
-  for (const i of core) for (let c = 0; c < 3; c++) ink[c] += data[i + c];
-  for (let c = 0; c < 3; c++) ink[c] = Math.round(ink[c] / core.length);
+  let core = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (maxChannel(data, i) < cut) continue;
+    for (let c = 0; c < 3; c++) ink[c] += data[i + c];
+    core++;
+  }
+  for (let c = 0; c < 3; c++) ink[c] = Math.round(ink[c] / core);
   const inkMax = Math.max(ink[0], ink[1], ink[2]);
   for (let i = 0; i < data.length; i += 4) {
     const m = maxChannel(data, i);
