@@ -1,8 +1,7 @@
 /// <reference types="vite/client" />
 
-// Feature-flag kill-switches (#28). Unset → the feature's default: ON, except the
-// DEFAULT_OFF keys in src/config/features.ts. Set to false/0/off at build time to
-// disable a feature in a deploy, or true/1/on to enable a DEFAULT_OFF one.
+// Feature-flag kill-switches (#28). Unset → the feature is ON. Set to false/0/off/no
+// at build time to disable a feature in a deploy.
 interface ImportMetaEnv {
   readonly VITE_FEATURE_TRUE_EDIT?: string;
   readonly VITE_FEATURE_SEARCHABLE_OCR?: string;
@@ -18,7 +17,7 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_COMPRESS?: string;
   readonly VITE_FEATURE_SIGNERS?: string;
   readonly VITE_FEATURE_TEXT_DECOR?: string;
-  // Defaults OFF (features.ts DEFAULT_OFF): true/1/on/yes enables the phone signature pad in a deploy.
+  // The phone signature pad: ON since phone-signature-pad step 7b (2026-11-12); false/0/off/no disables it.
   readonly VITE_FEATURE_PHONE_PAD?: string;
 }
 

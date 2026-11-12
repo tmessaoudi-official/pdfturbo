@@ -1,5 +1,6 @@
 // The phonePad flag gate for the ✍ modal's "Sign on phone / Import image" block (phone-signature-pad step 5).
-// Flag OFF: #sigSources is removed, so the default app keeps the old modal. Flag ON: it is mounted on the app's
+// Flag OFF (a deploy kill-switch since step 7b turned it on by default): #sigSources is removed, so the modal is
+// the old one. Flag ON: it is mounted on the app's
 // signature pad, with the modal's close forwarded — that forward is what stops the camera when the modal closes.
 // main.ts reads the flag and passes the VALUE (milestone panel round 1, 2026-11-11: this used to be inline in
 // main.ts, which no test imports).

@@ -98,7 +98,9 @@ under storage pressure; no claim is made here about any other browser's rule.
   W22-F fix too (the ink inside a thick black frame); a photo's surround is noisy and is not affected.
 - **The last camera frame may stay in the QR reader's memory.** The page releases its own copy when the scan ends; the
   zxing wasm heap may still hold the frame it last read, in memory only — never written or sent — until the tab closes.
-- **Not certified by execution:** a real phone read by a real webcam (step 7 of the plan); a phone on an OLDER
+- **Not certified by execution:** the real-phone walk (2026-11-11 and 2026-11-12) ran against the development server over plain HTTP
+  on a local network, so the deployed HTTPS build with its service worker, and a phone accepting the pad's Update
+  prompt and scanning again, were never walked; a phone on an OLDER
   service worker loading a NEWER pad page offline (the `pad-css` cache rule exists for it; the two-build case was
   never driven). The rule itself only reaches a phone once its worker has updated to a build that carries it. The
   reverse case: once the app updates on a phone, a pad page cached before the update loads assets the new worker no

@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!isEnabled('crop')) { app.ui.cropBtn.style.display = 'none'; document.getElementById('cropControls')?.remove(); }
   if (!isEnabled('compress')) { app.ui.compressBtn.style.display = 'none'; app.ui.compressModal.remove(); }
   if (!isEnabled('signers')) { app.ui.signersBtn.style.display = 'none'; app.ui.signersModal.remove(); }
-  // Phone-signature-pad step 5: Sign on phone / Import image in the ✍ modal, OFF until the step-7 phone + webcam check.
+  // Phone-signature-pad step 5: Sign on phone / Import image in the ✍ modal; ON by default since step 7b (2026-11-12).
   applyPhonePadFlag({
     enabled: isEnabled('phonePad'),
     doc: document,

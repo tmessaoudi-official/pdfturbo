@@ -71,36 +71,35 @@ describe('feature flags (#28)', () => {
     expect(isEnabled('eSign')).toBe(true);
   });
 
-  // phonePad (phone-signature-pad plan step 3) is the first feature that defaults OFF until its manual check
-  // passes (step 7). An env value can therefore ENABLE a key, not only kill it.
-  describe('a default-OFF feature (phonePad)', () => {
-    it('is off with no env var and no override', () => {
-      expect(isEnabled('phonePad')).toBe(false);
+  // phonePad defaulted OFF from plan step 3 until its real-phone check (W6–W15 2026-11-11, W17–W23 2026-11-12); step 7b
+  // commit C turned it ON like every other feature, and the per-key default (DEFAULT_OFF) went with it.
+  describe('phonePad — on by default since 7b commit C', () => {
+    it('is on with no env var and no override', () => {
+      expect(isEnabled('phonePad')).toBe(true);
     });
 
-    it('an env value of true/1/on/yes enables it (the env switch reaches it)', () => {
-      for (const v of ['true', '1', 'on', 'YES']) {
+    it('an env value of false/0/off/no disables it in a deploy (the env switch reaches it)', () => {
+      for (const v of ['false', '0', 'off', 'NO']) {
         vi.stubEnv('VITE_FEATURE_PHONE_PAD', v);
-        expect(isEnabled('phonePad')).toBe(true);
+        expect(isEnabled('phonePad')).toBe(false);
       }
     });
 
-    it('a false or unrecognised env value leaves it off', () => {
-      vi.stubEnv('VITE_FEATURE_PHONE_PAD', 'false');
-      expect(isEnabled('phonePad')).toBe(false);
+    it('an unrecognised env value leaves it on', () => {
       vi.stubEnv('VITE_FEATURE_PHONE_PAD', 'garbage');
-      expect(isEnabled('phonePad')).toBe(false);
+      expect(isEnabled('phonePad')).toBe(true);
     });
 
     it('a localStorage override wins over the env either way', () => {
-      localStorage.setItem('pdfturbo.feature.phonePad', 'on');
+      vi.stubEnv('VITE_FEATURE_PHONE_PAD', 'false'); // killed by the deploy…
+      localStorage.setItem('pdfturbo.feature.phonePad', 'on'); // …re-enabled locally
       expect(isEnabled('phonePad')).toBe(true);
       vi.stubEnv('VITE_FEATURE_PHONE_PAD', 'true');
       localStorage.setItem('pdfturbo.feature.phonePad', 'off');
       expect(isEnabled('phonePad')).toBe(false);
     });
 
-    it('a default-ON feature is unchanged by the new rule: an "on" env value keeps it on', () => {
+    it('an "on" env value keeps a feature on', () => {
       vi.stubEnv('VITE_FEATURE_CROP', 'on');
       expect(isEnabled('crop')).toBe(true);
       expect(isEnabled('docxEdit')).toBe(true);

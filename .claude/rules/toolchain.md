@@ -604,7 +604,8 @@ stylesheet that worker never precached — the `.js` rule caches the script, not
 tested on URLs; the two-build case itself is NOT certified by execution. Runtime rules live in the ACTIVE worker, so a
 phone whose worker predates the rule is not covered by the deploy that adds it — only from the deploy after. The `zxing-wasm` rule is certified by the throwaway
 `var/claude/sig-scan-check/pwa.mjs` (flag-ON build, the server STOPPED for the offline leg), not by the gate: CI sweeps
-the flag-OFF build and never scans.
+the default build — `phonePad` ON since 7b commit C (2026-11-12), so the sweep opens the phone panel and its QR — but
+never clicks Start camera, so it never scans.
 
 ### Running `npm run test:browser` in the Claude cloud container — HISTORICAL (2026-07-28)
 

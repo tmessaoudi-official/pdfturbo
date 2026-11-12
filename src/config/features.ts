@@ -1,10 +1,11 @@
 /**
- * Feature-flag / kill-switch seam (#28). A gated feature defaults ON unless it is
- * listed in DEFAULT_OFF; a build-time env var (`VITE_FEATURE_<NAME>`) of
- * false/0/off/no turns it off, so a bad deploy is one env change away from
- * disabled — no code change, no rollback — and true/1/on/yes turns it on, which
- * is how a DEFAULT_OFF feature is enabled in a deploy. A `localStorage` override
+ * Feature-flag / kill-switch seam (#28). Every gated feature defaults ON; a
+ * build-time env var (`VITE_FEATURE_<NAME>`) of false/0/off/no turns it off, so a
+ * bad deploy is one env change away from disabled — no code change, no rollback.
+ * true/1/on/yes is read too (it keeps the feature on). A `localStorage` override
  * (`pdfturbo.feature.<key>` = on/off) wins over the env, for local dev toggling.
+ * (phonePad defaulted OFF through a per-key DEFAULT_OFF set until its real-phone
+ * check; that set went when phone-signature-pad step 7b turned it on, 2026-11-12.)
  *
  * env values are read lazily (at call time) so the value is always current and
  * so tests can `vi.stubEnv` without module-cache resets. Vite still statically
@@ -15,8 +16,6 @@ export type FeatureKey = 'trueEdit' | 'searchableOcr' | 'eSign' | 'flatten' | 'x
 
 const OFF = new Set(['false', '0', 'off', 'no']);
 const ON = new Set(['true', '1', 'on', 'yes']);
-/** Features that stay off until switched on: phonePad until its manual phone + webcam check (plan step 7). */
-const DEFAULT_OFF: ReadonlySet<FeatureKey> = new Set<FeatureKey>(['phonePad']);
 
 function envFlag(feature: FeatureKey): string | undefined {
   switch (feature) {
@@ -45,12 +44,12 @@ function override(feature: FeatureKey): boolean | null {
   return null;
 }
 
-/** override > env > the feature's default (ON, or OFF for DEFAULT_OFF); an unrecognised value falls through. */
+/** override > env > the default (ON); an unrecognised value falls through. */
 export function isEnabled(feature: FeatureKey): boolean {
   const o = override(feature);
   if (o !== null) return o;
   const env = envFlag(feature)?.toLowerCase();
   if (env && OFF.has(env)) return false;
   if (env && ON.has(env)) return true;
-  return !DEFAULT_OFF.has(feature);
+  return true;
 }

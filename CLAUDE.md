@@ -183,7 +183,8 @@ chromium-1194 is refused on purpose — see the container note in `toolchain.md`
 work?", which **neither** vitest suite does: jsdom never rasterises a page (since jsdom 31 it has a bare 2D canvas, nothing more) and the browser suite mounts
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
-UI crawl is over **disclosure depth** (only 8 of 141 buttons are visible on a freshly loaded document)
+UI crawl is over **disclosure depth** (only 8 of 141 buttons were visible on a freshly loaded document when counted;
+the sweep's DOM total is 144 since the phone pad went on, 2026-11-12)
 rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s
 — `deploy.yml` records 143 / 97 / 0 for a default-flag run; neither log was kept, so read the report's own summary line. **CI runs it with
 `--allow-destructive`** — correct there because the flag protects a developer's own open document,

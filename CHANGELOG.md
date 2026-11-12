@@ -12,7 +12,7 @@ most of the work went into proving that what the product claims to remove is act
 ### 2026-10-09 → 2026-11-11 — the phone signature pad, accessible names, and dependency upgrades
 
 #### Added
-- **Sign on your phone** (off by default until checked on a real phone): the ✍ modal shows a QR code that opens a
+- **Sign on your phone** (checked on a real phone and webcam before it was turned on): the ✍ modal shows a QR code that opens a
   drawing page (`pad.html`) on the phone; *Done* shows the signature as one to four QR codes, which *Start camera*
   on the PC reads, or the phone saves a PNG that *Import image* brings in (paper keyed out — a transparent PNG keeps its own alpha, so any ink colour survives; one a messenger sent "as a photo", its transparency turned black, has a light ink brought back and a black one refused with "send it as a file" — metadata dropped). The
   signature waits in the modal for Save. The phone page opens on the PC's ink colour and width and can change them

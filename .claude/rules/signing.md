@@ -381,7 +381,9 @@ used to replay at about 3.4.
   on every exit — Stop, modal close, panel collapse, an import, a hidden tab, a track that ends. A refused or missing
   camera is shown in the panel and NEVER logged with `console.error`: the QA sweep fails on a console error. (zxing
   ITSELF logs one when its wasm fails to load — a real failure, reported as 'failed', so the sweep should flag it.)
-- **Flag `phonePad` defaults OFF** (`isEnabled` has a per-key default) until the step-7 check on a real phone and webcam.
+- **Flag `phonePad` is ON by default since step 7b commit C (2026-11-12)**, after the walk on the developer's phone and
+  the PC webcam (W6–W15 on 2026-11-11, W17–W23 on 2026-11-12; W16, a native Arabic read, stays open). It defaulted OFF through a per-key `DEFAULT_OFF` set in `isEnabled` until then; that set is
+  gone, so every flag defaults ON again and `VITE_FEATURE_PHONE_PAD=false` is the deploy kill-switch.
 - **Offline and an outdated phone:** `toolchain.md` § "PWA is `registerType: 'prompt'`" (the 5c paragraph). Known, left
   as is by ruling: at 414 px on a first visit the cookie banner covers the modal's Save row (plan § Known issues).
 - **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage,signaturePad,signaturePng,signatureInk,i18nInitLang}.test.ts`,
@@ -391,5 +393,8 @@ used to replay at about 3.4.
   a fake camera with real zxing, image-import pixels, the ink PC → phone → PC measured in pixels); the QA sweep's phone
   pad pass on every deploy. 7b B was sabotage-checked 20 ways (each of the plan's eight mutants plus twelve more), each
   red where predicted. Its wiring in `modalBinder.ts` and `main.ts` (imported by no test) is pinned by a source check.
-- **Not certified by execution:** a real phone read by a real webcam (step 7); the 38 Arabic keys (in the pending count,
-  `toolchain.md` § i18n).
+- **Not certified by execution:** the walk (W6–W15 2026-11-11, W17–W23 2026-11-12) drove the flag-ON DEV server over
+  plain HTTP on the LAN,
+  with the PC's test Chrome told to treat that origin as secure. Never walked: the deployed HTTPS build with its service
+  worker controlling `pad.html`, and a phone accepting the pad's Update prompt and scanning again. The 38 Arabic keys
+  (in the pending count, `toolchain.md` § i18n) have no native read.
