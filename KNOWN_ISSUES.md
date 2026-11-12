@@ -88,6 +88,14 @@ under storage pressure; no claim is made here about any other browser's rule.
 - **The signature modal is height-capped for everyone.** `.signature-content` got `max-height: 90vh; overflow-y: auto`
   with the phone pad; measured identical to before at 900 and 860 px high only. Below ~390 px of height (where the
   349 px modal meets the cap) it scrolls — not measured.
+- **A signature PNG sent "as a photo" loses its transparency** (7b W22-F, 2026-11-12). A messenger's photo mode
+  (WhatsApp measured) re-encodes the phone's PNG as a JPEG and its clear pixels turn black. *Import image* brings a
+  coloured ink back from that black, but a BLACK ink is gone for good — black on black — and the import is refused
+  with "send the PNG as a file (document)". Sent as a document, the PNG arrives unchanged.
+- **A light sheet framed in pure black imports as the sheet.** The same detection reads any opaque image whose border
+  is ≥ 90% pure black as a transparent PNG flattened on black — a scan with a black lid, a screenshot with black bars
+  round a photo of paper: the sheet is kept as the ink and the signature becomes a hole. It was unusable before the
+  W22-F fix too (the ink inside a thick black frame); a photo's surround is noisy and is not affected.
 - **The last camera frame may stay in the QR reader's memory.** The page releases its own copy when the scan ends; the
   zxing wasm heap may still hold the frame it last read, in memory only — never written or sent — until the tab closes.
 - **Not certified by execution:** a real phone read by a real webcam (step 7 of the plan); a phone on an OLDER

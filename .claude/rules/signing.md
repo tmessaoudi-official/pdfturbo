@@ -336,8 +336,8 @@ the black **by its max channel** — by luminance, pure blue (29) sits in the no
 the ink's` (flattening left `ink × coverage`), floored at 40 so JPEG noise never becomes faint ink and the trim stays on
 the strokes; every kept pixel takes the ONE ink colour (the mean of the brightest tenth) — dividing pixel by coverage
 blew up the JPEG's colour error at the edges. No ink brighter than 64 (fewer than 20 pixels: black ink sent as a photo,
-nothing left to rescue) → refused as `flattened`, "send the PNG as a file". **Bound, pinned by a test:** a light sheet on
-a PURE-black surround (a scanner's black lid) passes the detection and its sheet is kept as the ink, the ink a hole; a
+nothing left to rescue) → refused as `flattened`, "send the PNG as a file". **Bound, pinned by a test:** a light sheet
+framed in PURE black (a scanner's black lid, a screenshot with black bars round a photo of paper) passes the detection and its sheet is kept as the ink, the ink a hole; a
 photo's surround is noisy and fails it. It was unusable BEFORE too, differently — measured on the same fixture through
 the 2bd36d9 code: the ink kept, inside a thick black frame (box 484×294 for a 400×240 sheet); so the rescue traded no
 working input. The ink colour is found with a 256-bin histogram of the max channel, not a sort (up to 4 M pixels).
