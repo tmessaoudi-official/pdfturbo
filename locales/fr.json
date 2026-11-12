@@ -297,7 +297,8 @@
         "bytes": "Cette image est trop lourde (plus de 15 Mo).",
         "pixels": "Cette image a trop de pixels (plus de 50 mégapixels).",
         "decode": "Impossible de lire cette image.",
-        "empty": "Aucune signature trouvée dans cette image."
+        "empty": "Aucune signature trouvée dans cette image.",
+        "flattened": "Cette image a perdu sa transparence — elle a sans doute été envoyée comme photo. Envoyez le PNG comme fichier (document)."
       },
       "startCamera": "Démarrer la caméra",
       "stopCamera": "Arrêter la caméra",

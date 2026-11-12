@@ -155,7 +155,13 @@ describe('Import image', () => {
     expect(msg.hidden).toBe(true);
   });
 
-  it.each(['type', 'bytes', 'pixels', 'decode', 'empty'] as const)('a refused image (%s) is SHOWN, the pad untouched, nothing logged', async (code) => {
+  it.each(['en', 'fr', 'ar'])('every refusal code has its message in %s (a missing one would show the raw key)', (lang) => {
+    const loc = JSON.parse(readFileSync(resolve(__dirname, `../../locales/${lang}.json`), 'utf8'));
+    const keys = Object.keys(loc.modal.signature.importError).sort();
+    expect(keys).toEqual(['bytes', 'decode', 'empty', 'flattened', 'pixels', 'type']);
+  });
+
+  it.each(['type', 'bytes', 'pixels', 'decode', 'empty', 'flattened'] as const)('a refused image (%s) is SHOWN, the pad untouched, nothing logged', async (code) => {
     const { input, pad, msg } = mount({ loadImage: vi.fn(() => Promise.reject(new SignatureImageError(code, 'x'))) });
     pick(input, new File([new Uint8Array([1])], 's.png', { type: 'image/png' }));
     await flush();

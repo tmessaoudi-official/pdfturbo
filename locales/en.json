@@ -297,7 +297,8 @@
         "bytes": "This image is too large (over 15 MB).",
         "pixels": "This image has too many pixels (over 50 megapixels).",
         "decode": "This image could not be read.",
-        "empty": "No signature found in this image."
+        "empty": "No signature found in this image.",
+        "flattened": "This image lost its transparency — it was probably sent as a photo. Send the PNG as a file (document) instead."
       },
       "startCamera": "Start camera",
       "stopCamera": "Stop camera",

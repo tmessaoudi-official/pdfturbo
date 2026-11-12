@@ -216,6 +216,63 @@ describe('loadSignatureImage — an image with its own transparency (7b A2)', ()
   });
 });
 
+describe('loadSignatureImage — the phone PNG sent "as a photo" (W22-F, ruling 2026-11-12 13:55)', () => {
+  // WhatsApp's photo mode re-encoded the phone's transparent PNG as a JPEG and its clear pixels became black (the
+  // developer's file: 848×339, no alpha, 94.5% near-black). The same thing, made here: the pad's PNG drawn over black,
+  // encoded at JPEG quality 0.5 — harsher than WhatsApp's (its border measured ≤ 29; 0.5 gives more ringing).
+  const rgbaAt = (c: HTMLCanvasElement, x: number, y: number) =>
+    Array.from((c.getContext('2d') as CanvasRenderingContext2D).getImageData(x, y, 1, 1).data);
+
+  const sentAsPhoto = (color: string) => {
+    const png = strokesToCanvas(
+      [[{ x: 10, y: 30 }, { x: 110, y: 30 }], [{ x: 60, y: 0 }, { x: 60, y: 60 }]],
+      { color, lineWidth: 2.5, scale: 2 },
+    );
+    if (!png) throw new Error('no png');
+    const c = document.createElement('canvas');
+    c.width = png.width;
+    c.height = png.height;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(png, 0, 0);
+    return toFile(c, 'image/jpeg', 0.5);
+  };
+
+  it.each([
+    ['yellow', '#fff700', (p: number[]) => p[0] > 230 && p[1] > 220 && p[2] < 60],
+    ['blue', '#1d4ed8', (p: number[]) => p[2] > 190 && p[0] < 60 && p[1] < 110],
+  ] as const)('%s ink comes back in its colour, trimmed to its strokes, the black gone', async (_name, color, isInk) => {
+    const out = await loadSignatureImage(await sentAsPhoto(color));
+    expect(Math.abs(out.width - 102.5 * 2)).toBeLessThanOrEqual(6); // trimmed to the ink: no black kept, no noise
+    const core = rgbaAt(out, 20, Math.round(out.height / 2));
+    // alpha = coverage = max channel / the ink's; the JPEG leaves a core pixel a few % under the ink's mean (247, 252
+    // measured), never near the floor — exact coverage is pinned in jsdom, where there is no JPEG error.
+    expect(core[3]).toBeGreaterThanOrEqual(235);
+    expect(isInk(core), `core pixel ${core}`).toBe(true);
+    expect(rgbaAt(out, 20, 20)[3]).toBe(0); // away from the strokes: clear, not black
+  });
+
+  it('black ink sent as a photo (black on black) is refused as "flattened" — nothing is left to rescue', async () => {
+    expect(await codeOf(loadSignatureImage(await sentAsPhoto('#000000')))).toBe('flattened');
+  });
+
+  it('BOUND (pinned, signing.md): a white sheet on a pure-black surround is read as light ink — the sheet is kept', async () => {
+    const c = document.createElement('canvas');
+    c.width = 600;
+    c.height = 400;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 600, 400);
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(100, 80, 400, 240); // the sheet
+    ctx.fillStyle = '#202020';
+    ctx.fillRect(150, 200, 300, 6); // its ink
+    const out = await loadSignatureImage(await toFile(c, 'image/jpeg', 0.9));
+    expect(Math.abs(out.width - 400)).toBeLessThanOrEqual(4); // the sheet, not the 300 px ink
+  });
+});
+
 describe('Import onto the ✍ pad', () => {
   it('the imported signature lands centred on the pad and is what Save takes (getDataURL)', async () => {
     const png = strokesToCanvas([[{ x: 0, y: 20 }, { x: 200, y: 20 }]], { color: '#000000', lineWidth: 4, scale: 1 });

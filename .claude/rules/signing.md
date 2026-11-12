@@ -325,7 +325,22 @@ dropped). **A mostly transparent image keeps its own alpha** (7b A2, ruling 2026
 ≥ 5% of pixels fully clear, measured: the phone's PNG 73–95% for a signature, 8.5% for a pad-filling scribble; a paper
 sheet with transparent rounded corners 0.2%): keyed on white, a yellow ink (luminance 226, 29 below the paper, `KEY_LO`
 30) vanished and the import said "no ink found". Bounds: a mostly transparent PNG carrying an opaque white box keeps
-the box; a cross-hatch denser than 95% ink falls back to keying, where a light ink fades. The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
+the box; a cross-hatch denser than 95% ink falls back to keying, where a light ink fades.
+**A transparent PNG flattened on BLACK is keyed in reverse** (7b W22-F, ruling 2026-11-12 13:55; `isFlattenedOnBlack`,
+`keyOutBlackSheet`). Found on the real phone: WhatsApp's photo mode re-encodes the pad's PNG as a JPEG, its clear
+pixels black (848×339, no alpha, 94.5% near-black; the border's max channel ≤ 16 on 99.87%, 29 at most); keyed as
+paper, the black round the strokes was kept and the yellow removed. Sent as a DOCUMENT it stays a PNG (W22). Detection:
+≥ 90% of the border opaque with a max channel ≤ 32 (a flattened pad-filling scribble keeps 95.1% ≤ 24 at JPEG quality
+0.5; an alpha-0 border never counts, so a dense PNG under the 5% share is not caught). The ink is what is BRIGHTER than
+the black **by its max channel** — by luminance, pure blue (29) sits in the noise; alpha is the coverage `max channel /
+the ink's` (flattening left `ink × coverage`), floored at 40 so JPEG noise never becomes faint ink and the trim stays on
+the strokes; every kept pixel takes the ONE ink colour (the mean of the brightest tenth) — dividing pixel by coverage
+blew up the JPEG's colour error at the edges. No ink brighter than 64 (fewer than 20 pixels: black ink sent as a photo,
+nothing left to rescue) → refused as `flattened`, "send the PNG as a file". **Bound, pinned by a test:** a light sheet on
+a PURE-black surround (a scanner's black lid) passes the detection and its sheet is kept as the ink; a photo's surround
+is noisy and fails it. Measured on the real file after the fix: ink `[255,252,32]`, the black gone
+(`var/claude/w22/after-on-white.png`, gitignored). Sabotage, 8 mutants, each red where predicted.
+The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
 untouched: no persisted field, no `SCHEMA_VERSION` change.
 
 **The ink — the PC hands it over, the phone can change it, the PC's boxes follow the scan** (7b commit B, rulings
@@ -372,5 +387,5 @@ used to replay at about 3.4.
   a fake camera with real zxing, image-import pixels, the ink PC → phone → PC measured in pixels); the QA sweep's phone
   pad pass on every deploy. 7b B was sabotage-checked 20 ways (each of the plan's eight mutants plus twelve more), each
   red where predicted. Its wiring in `modalBinder.ts` and `main.ts` (imported by no test) is pinned by a source check.
-- **Not certified by execution:** a real phone read by a real webcam (step 7); the 37 Arabic keys (in the pending count,
+- **Not certified by execution:** a real phone read by a real webcam (step 7); the 38 Arabic keys (in the pending count,
   `toolchain.md` § i18n).

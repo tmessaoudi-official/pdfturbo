@@ -14,7 +14,7 @@ most of the work went into proving that what the product claims to remove is act
 #### Added
 - **Sign on your phone** (off by default until checked on a real phone): the ✍ modal shows a QR code that opens a
   drawing page (`pad.html`) on the phone; *Done* shows the signature as one to four QR codes, which *Start camera*
-  on the PC reads, or the phone saves a PNG that *Import image* brings in (paper keyed out — a transparent PNG keeps its own alpha, so any ink colour survives — metadata dropped). The
+  on the PC reads, or the phone saves a PNG that *Import image* brings in (paper keyed out — a transparent PNG keeps its own alpha, so any ink colour survives; one a messenger sent "as a photo", its transparency turned black, has a light ink brought back and a black one refused with "send it as a file" — metadata dropped). The
   signature waits in the modal for Save. The phone page opens on the PC's ink colour and width and can change them
   (the shared colour palette without white, a 1–10 width); after a scan the PC's colour and width boxes follow the
   scanned ink, and changing them repaints it. No server, no upload: the QR codes on the phone's screen, or the PNG you

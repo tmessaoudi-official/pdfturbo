@@ -7,7 +7,9 @@
  * ink. An image that is MOSTLY transparent (`hasOwnTransparency` — the phone's Download PNG) keeps its own alpha: it has
  * no paper, and keying it on white erased a light ink (7b A2, ruling 2026-11-12 10:25: yellow vanished). Any other image
  * is composited over WHITE (its few clear pixels would otherwise read as black ink) and keyed. Bound, accepted by the
- * ruling: a mostly transparent PNG that carries an opaque white box keeps the box. The PC then re-encodes the pad as PNG
+ * ruling: a mostly transparent PNG that carries an opaque white box keeps the box. An image whose border is pure black
+ * (`isFlattenedOnBlack` — that PNG sent "as a photo" by a messenger, its clear pixels turned black) is keyed in reverse
+ * (`keyOutBlackSheet`), or refused as `flattened` when its ink was black too (W22-F). The PC then re-encodes the pad as PNG
  * on Save, so no EXIF or other metadata of the source survives.
  */
 
@@ -16,7 +18,7 @@ export type ImportLimits = typeof IMPORT_LIMITS;
 
 const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
-export type SignatureImageErrorCode = 'type' | 'bytes' | 'pixels' | 'decode' | 'empty';
+export type SignatureImageErrorCode = 'type' | 'bytes' | 'pixels' | 'decode' | 'empty' | 'flattened';
 
 /** An image refused for a reason the user can act on — shown in the modal, never logged. */
 export class SignatureImageError extends Error {
@@ -106,6 +108,79 @@ export function keyOutPaper(img: ImageData): void {
   }
 }
 
+// A transparent image FLATTENED ON BLACK (W22-F, ruling 2026-11-12 13:55): a messenger that sends the phone's PNG "as a
+// photo" re-encodes it as a JPEG, and its clear pixels become black. Measured on the developer's WhatsApp file: no alpha,
+// 94.5% near-black, the border's max channel ≤ 16 on 99.87% of it, 29 at most. Keyed as paper it came out backwards —
+// the black around the strokes kept, the yellow removed. Measured in Chrome on the pad's own PNG flattened at JPEG
+// quality 0.5: a pad-filling scribble keeps 95.1% of its border ≤ 24 (98.2% ≤ 40). A photo of paper does not reach that: a desk is
+// noisy, a sheet is light. Bound (signing.md): a light sheet on a PURE-black surround (a scanner's black lid) passes the
+// test, and its sheet is kept as the ink.
+
+/** The max channel at or under which a pixel is the black sheet: above the noise measured on the real file's border (29 at most). */
+const SHEET_BLACK = 32;
+/** The share of the border that must be opaque and `SHEET_BLACK` for an image to be read as flattened on black. */
+export const FLAT_BORDER_SHARE = 0.9;
+/** At or under this max channel a pixel is clear: JPEG noise and ringing must not become faint ink. */
+const INK_FLOOR = 40;
+/** From this max channel a pixel counts as ink when finding the ink colour; fewer than `MIN_INK` such pixels → none. */
+const INK_BRIGHT = 64;
+const MIN_INK = 20;
+
+const maxChannel = (d: Uint8ClampedArray, i: number) => Math.max(d[i], d[i + 1], d[i + 2]);
+
+/** True when at least `FLAT_BORDER_SHARE` of the border pixels are opaque and black: a transparent image flattened on black. */
+export function isFlattenedOnBlack(img: ImageData): boolean {
+  const { width: w, height: h, data } = img;
+  let n = 0;
+  let black = 0;
+  const at = (x: number, y: number) => {
+    const i = (y * w + x) * 4;
+    n++;
+    if (data[i + 3] === 255 && maxChannel(data, i) <= SHEET_BLACK) black++;
+  };
+  for (let x = 0; x < w; x++) {
+    at(x, 0);
+    if (h > 1) at(x, h - 1);
+  }
+  for (let y = 1; y < h - 1; y++) {
+    at(0, y);
+    if (w > 1) at(w - 1, y);
+  }
+  return n > 0 && black >= n * FLAT_BORDER_SHARE;
+}
+
+/**
+ * Key an image flattened on black, in place: the ink is what is BRIGHTER than the black, measured by the max channel
+ * (pure blue ink has a luminance of 29 — the noise — and a max channel of 255). Flattening left `ink × coverage`, so the
+ * coverage is `max channel / the ink's`, and every kept pixel is painted in the ONE ink colour (PTSIG and the pad carry
+ * one ink per signature): dividing each pixel by its coverage would blow up the JPEG's colour error at the edges.
+ * False when no ink brighter than the black is found (black ink sent as a photo: nothing is left to rescue).
+ */
+export function keyOutBlackSheet(img: ImageData): boolean {
+  const { data } = img;
+  const bright: number[] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const m = maxChannel(data, i);
+    if (m >= INK_BRIGHT) bright.push(i);
+  }
+  if (bright.length < MIN_INK) return false;
+  // The ink: the brightest tenth of the bright pixels (the stroke cores, not their edges), its colour their mean.
+  bright.sort((a, b) => maxChannel(data, a) - maxChannel(data, b));
+  const core = bright.slice(Math.floor(bright.length * 0.9));
+  const ink = [0, 0, 0];
+  for (const i of core) for (let c = 0; c < 3; c++) ink[c] += data[i + c];
+  for (let c = 0; c < 3; c++) ink[c] = Math.round(ink[c] / core.length);
+  const inkMax = Math.max(ink[0], ink[1], ink[2]);
+  for (let i = 0; i < data.length; i += 4) {
+    const m = maxChannel(data, i);
+    data[i + 3] = m <= INK_FLOOR ? 0 : Math.round(Math.min(1, m / inkMax) * 255);
+    data[i] = ink[0];
+    data[i + 1] = ink[1];
+    data[i + 2] = ink[2];
+  }
+  return true;
+}
+
 /** The box of the pixels with any alpha, or null when the image is clear. */
 export function inkBounds(img: ImageData): { x: number; y: number; w: number; h: number } | null {
   const { width: w, height: h, data } = img;
@@ -162,7 +237,9 @@ export async function loadSignatureImage(file: File, limits: ImportLimits = IMPO
     const ctx = work.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
     ctx.drawImage(bitmap, 0, 0); // on a CLEAR canvas first: does the image bring its own alpha?
     let data = ctx.getImageData(0, 0, bw, bh);
-    if (!hasOwnTransparency(data)) {
+    if (isFlattenedOnBlack(data)) {
+      if (!keyOutBlackSheet(data)) throw new SignatureImageError('flattened', 'a transparent image flattened on black, no light ink');
+    } else if (!hasOwnTransparency(data)) {
       ctx.globalCompositeOperation = 'destination-over'; // white UNDER the image, as if drawn on paper
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, bw, bh);

@@ -5,8 +5,11 @@ import {
   SignatureImageError,
   OWN_ALPHA_SHARE,
   checkImageFile,
+  FLAT_BORDER_SHARE,
   hasOwnTransparency,
   inkBounds,
+  isFlattenedOnBlack,
+  keyOutBlackSheet,
   keyOutPaper,
 } from '../../src/utils/signatureImage';
 import { fitContain } from '../../src/utils/signaturePad';
@@ -136,6 +139,103 @@ describe('keyOutPaper', () => {
     keyOutPaper(img);
     const i = (9 * 40 + 20) * 4;
     expect([img.data[i], img.data[i + 1], img.data[i + 2], img.data[i + 3]]).toEqual([0x10, 0x30, 0xc0, 255]);
+  });
+});
+
+// W22-F (ruling 2026-11-12 13:55): a messenger that sends the phone's PNG "as a photo" re-encodes it as a JPEG and its
+// clear pixels become BLACK — measured on the developer's WhatsApp file: no alpha, 94.5% near-black, the border's max
+// channel ≤ 16 on 99.87% of it (max 29). Keyed as paper, the black around the strokes was kept and the yellow removed.
+// Such an image is keyed in REVERSE: the ink is what is BRIGHTER than the black, by its max channel (pure blue ink has a
+// luminance of 29, the noise ceiling, and a max channel of 255), painted in the one ink colour PTSIG and the pad carry.
+
+/** RGBA per pixel, fully opaque unless `px` says otherwise. */
+function rgbaImage(w: number, h: number, px: (x: number, y: number) => [number, number, number, number?]): ImageData {
+  const img = canvas(w, h).createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const [r, g, b, a = 255] = px(x, y);
+      img.data.set([r, g, b, a], (y * w + x) * 4);
+    }
+  }
+  return img;
+}
+
+/** Deterministic JPEG-like noise on black: a grey 0–29 (the measured ceiling). */
+const noise = (x: number, y: number) => (x * 7 + y * 13) % 30;
+
+/**
+ * A 120×40 "pad PNG flattened on black": a stroke at rows 18–21, x 10–109, in `ink`, with half-covered edge rows 17
+ * and 22 (ink × 0.5, what antialiasing over black leaves), on noisy black — and one ringing pixel at max channel 38.
+ */
+function flattened(ink: [number, number, number]): ImageData {
+  return rgbaImage(120, 40, (x, y) => {
+    if (x >= 10 && x < 110 && y >= 18 && y <= 21) return ink;
+    if (x >= 10 && x < 110 && (y === 17 || y === 22)) return [Math.round(ink[0] / 2), Math.round(ink[1] / 2), Math.round(ink[2] / 2)];
+    if (x === 5 && y === 30) return [38, 38, 38];
+    const n = noise(x, y);
+    return [n, n, n];
+  });
+}
+
+const rgbaOf = (img: ImageData, x: number, y: number) => Array.from(img.data.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 4));
+
+describe('isFlattenedOnBlack — an opaque image whose border is pure black (W22-F)', () => {
+  it('the share is 90% (measured: a flattened pad-filling scribble 95.1% at JPEG quality 0.5, the real file 99.87%)', () => {
+    expect(FLAT_BORDER_SHARE).toBe(0.9);
+  });
+
+  it('a pad PNG flattened on black, with JPEG noise up to 29: true', () => {
+    expect(isFlattenedOnBlack(flattened([255, 247, 0]))).toBe(true);
+  });
+
+  it('true at exactly the share of the border black, false one pixel below', () => {
+    const w = 50;
+    const h = 30;
+    const ring = 2 * w + 2 * (h - 2);
+    const lit = (k: number) => {
+      // the first `k` border pixels (top row, then the rest) are white, the others black
+      const order: Array<[number, number]> = [];
+      for (let x = 0; x < w; x++) order.push([x, 0], [x, h - 1]);
+      for (let y = 1; y < h - 1; y++) order.push([0, y], [w - 1, y]);
+      const white = new Set(order.slice(0, k).map(([x, y]) => `${x},${y}`));
+      return rgbaImage(w, h, (x, y) => (white.has(`${x},${y}`) ? [255, 255, 255] : [0, 0, 0]));
+    };
+    const blackNeeded = Math.ceil(ring * FLAT_BORDER_SHARE);
+    expect(isFlattenedOnBlack(lit(ring - blackNeeded))).toBe(true);
+    expect(isFlattenedOnBlack(lit(ring - blackNeeded + 1))).toBe(false);
+  });
+
+  it('white paper with dark ink: false', () => {
+    expect(isFlattenedOnBlack(greyImage(120, 40, (x, y) => (y === 20 ? 30 : 245)))).toBe(false);
+  });
+
+  it('a dark, noisy desk around the paper (grey 20–79): false', () => {
+    expect(isFlattenedOnBlack(greyImage(120, 40, (x, y) => 20 + ((x * 31 + y * 17) % 60)))).toBe(false);
+  });
+
+  it('a border that is TRANSPARENT black (alpha 0 — a dense PNG under the 5% own-alpha share) is not flattened', () => {
+    const img = rgbaImage(120, 40, (x, y) => (x === 0 || y === 0 || x === 119 || y === 39 ? [0, 0, 0, 0] : [0, 0, 0, 255]));
+    expect(isFlattenedOnBlack(img)).toBe(false);
+  });
+});
+
+describe('keyOutBlackSheet — the ink is what is brighter than the black (W22-F)', () => {
+  it.each([
+    ['yellow', [255, 247, 0]],
+    ['blue', [29, 78, 216]],
+    ['red', [220, 38, 38]],
+  ] as const)('%s ink: the stroke opaque in that colour, its edge half-transparent in the SAME colour, every noise pixel clear', (_name, ink) => {
+    const img = flattened([...ink]);
+    expect(keyOutBlackSheet(img)).toBe(true);
+    expect(rgbaOf(img, 60, 19)).toEqual([...ink, 255]);
+    const edge = rgbaOf(img, 60, 17);
+    expect(edge.slice(0, 3)).toEqual([...ink]); // not ink × 0.5: the black it was blended with is gone
+    expect(Math.abs(edge[3] - 128)).toBeLessThanOrEqual(2);
+    expect(inkBounds(img)).toEqual({ x: 10, y: 17, w: 100, h: 6 }); // the noise and the ringing pixel are not ink
+  });
+
+  it('black ink on black (the default ink sent as a photo): nothing to rescue — false', () => {
+    expect(keyOutBlackSheet(flattened([0, 0, 0]))).toBe(false);
   });
 });
 
