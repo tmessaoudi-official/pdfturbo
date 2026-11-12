@@ -30,8 +30,8 @@ most of the work went into proving that what the product claims to remove is act
 - **The placement box no longer floats above an open dialog** (it followed the pointer over the signature pad).
 - **The privacy page lists everything the app stores** (English, French and Arabic): the toolbar layout, the recent
   files list, the OCR library's copy of its language data, a per-tab notice flag and the offline copies of the site's
-  own files were missing, and Reset Session was described as clearing more than the session. It now says which button
-  deletes what, that the data is stored unencrypted, and that no cookie is used.
+  own files were missing, and the IndexedDB entry said Reset Session clears "this", though it leaves the recent files
+  list. It now says which button deletes what, and that the data is stored unencrypted.
 - **Exports freeze the document they started from** — an undo, a close or an edit landing mid-export can no longer
   change what is written (milestone-2 review rounds 3–5); true edit refuses to commit over bytes it was not built from.
 - **The removed-page clean-up reads a page the way the viewer does** — an inline image's data, a shading pattern, an

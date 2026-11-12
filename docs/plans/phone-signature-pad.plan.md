@@ -115,6 +115,7 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-12 19:21] AGREED: R4-5: the privacy.html fix is pushed on its own as soon as the full gate is green (with the local docs commits), not held for 1.1.0
 - [2026-11-12 19:57] AGREED: R4-1: privacy.html storage text approved as shown (built from the running app: 4 localStorage keys, 1 sessionStorage flag, IndexedDB session + recent + OCR language copy + cache list, Cache Storage of own files, no cookies; FR/AR quote the real Reset labels) PLUS one sentence that the data is stored unencrypted and a private window is advised on a shared computer
 - [2026-11-12 19:57] AGREED: R4-2: C4 reverses the 10:33 pin — 'Signature scanned' clears only after a SUCCESSFUL import; a refused import leaves it, since the pad still holds the scan
+- [2026-11-12 20:51] AGREED: The unencrypted sentence keeps the clause 'anyone who can use your browser profile can read it' (from SECURITY.md), shown in EN/FR/AR and approved with the commit-and-push answer
 
 ## Formal Plan
 
@@ -340,7 +341,7 @@ Rulings 15:37 decide each:
 | K8 (P3) dates the bump won't touch | name in row 9 now: CHANGELOG.md:6 `[Unreleased]` range "→ 2026-11-11", CHANGELOG.md:12 "2026-10-09 → 2026-11-11", FEATURES.md:6 "Last updated: 2026-11-11" — fix them AT the 1.1.0 bump |
 | K10 (P3) CLAUDE.md over-cap list stale (signing.md now >300) | re-measure `wc -l .claude/rules/*.md` LAST, after signing.md grows |
 | K11 (P3) row-7b figures without artefacts | "43/43" = the six Chrome files signing.md names at 8b39515 (the correctness lens re-ran them: 43); say which figures' logs were not kept (jsdom 4260/4264/4310, Chrome 744, B's 20 mutants) |
-| K12 (P3) flag ON drops `clearSignature`/`cancelSignature` from the sweep (cause inferred) | time-box a trace in `scripts/qa-sweep.mjs` `exercise()`/`unwind()`; if not traced, ask the developer to accept the loss at the privacy-text stop |
+| K12 (P3) flag ON drops `clearSignature`/`cancelSignature` from the sweep (cause inferred) | time-box a trace in `scripts/qa-sweep.mjs` `exercise()`/`unwind()`; if not traced, ask the developer to accept the loss (R4-3) — the privacy-text stop passed without it (19:57), so ask at the next stop |
 | K13 (P3) SECURITY.md:33-36 omits the pad-link fragment as untrusted input | add it |
 | K14 (P3) CHANGELOG misses the ✍ Line Width clamp 1–10 (live) and "a tap on the ✍ pad is no longer recorded" | add both |
 
@@ -400,8 +401,9 @@ Later: row 10 (PC `#sigColor` swatch row), W16 (native Arabic read, optional), m
   - [x] R4-4.4. Phone: airplane mode, reload; the pad still loads offline (service worker) — DONE 2026-11-12: developer-reported, the pad loaded with airplane mode on
   - [x] R4-4.5. Phone, STILL offline: sign, Done; QR frame(s) shown — DONE 2026-11-12: developer-reported, QR shown with airplane mode on
   - [x] R4-4.6. PC: Start camera, scan the phone; the signature lands on the canvas, Save places it — DONE 2026-11-12: developer-reported on the deployed HTTPS build, scanned from the offline phone, saved and placed
-  - [ ] R4-4.7. After the next deploy (the privacy push): on the phone open the editor (the Update prompt is the EDITOR's — pad.html shows none), accept it, then reload the pad and scan again (walkthrough R4-4; open, waits for that deploy)
-- [ ] R4-5. Push cadence after the early push: does the privacy.html fix push as soon as it is green, or wait for 1.1.0 — RULED 19:21: push alone when green
+  - [ ] R4-4.7. After the next deploy (the privacy push, 0de46ef — deployed, sw.js privacy.html revision fabf2346 → b79d0390): on the phone open the editor (the Update prompt is the EDITOR's — pad.html shows none), accept it, then reload the pad and scan again (walkthrough R4-4). BOUND: 9312404..0de46ef changed only docs + public/privacy.html, so pad.html and its hashed assets are identical in both deploys — this proves "the prompt is accepted and the pad still loads and scans", NOT a new pad.html under the old worker (the `pad-css` two-build case `toolchain.md` calls uncertified)
+- [x] R4-5. Push cadence after the early push: does the privacy.html fix push as soon as it is green, or wait for 1.1.0 — RULED 19:21: push alone when green — DONE 2026-11-12: pushed 0de46ef, CI run 43292911513 green, live page carries the new text (curl)
+- [ ] R4-6. signing.md § phone pad "Not certified by execution": the deployed HTTPS build with the worker controlling pad.html is now walked (R4-4.1–4.6, 2026-11-12); reword it in the round-4 docs pass, keeping the Update-prompt path and the two-build case as uncertified until R4-4.7 and beyond
 - Steps 1 and 7 need the developer's phone and PC webcam.
 - [x] W1. Open http://<LAN-IP>:5173/pdfturbo/var/claude/qrtest/show.html on the phone — DONE 2026-11-10: the phone connected over the LAN (ss), ufw let :5173 through
 - [x] W2. Open http://localhost:5173/pdfturbo/var/claude/qrtest/scan.html in desktop Chrome, Start camera, allow it — DONE 2026-11-10: Integrated Webcam granted 1280x720 @30 fps (asked ideal 1920x1080)
