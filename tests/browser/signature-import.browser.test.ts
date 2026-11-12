@@ -2,8 +2,8 @@
  * Import image in REAL Chrome (phone-signature-pad plan step 5a; ruling 2026-11-10 23:46: the paper is removed, the
  * ink kept). What jsdom cannot run: a real PNG / JPEG decoded through `<img>` + `createImageBitmap`, the caps checked
  * from the header BEFORE the full decode, a corrupt file, and the result fitted onto a real pad.
- *  (i)  the pad's OWN download (a transparent PNG from `strokesToCanvas`) imports with every stroke kept — composited
- *       over white first, or its transparent pixels would read as black ink;
+ *  (i)  the pad's OWN download (a transparent PNG from `strokesToCanvas`) imports with every stroke kept — since 7b A2
+ *       it keeps its own alpha (mostly transparent: `hasOwnTransparency`), so a light ink survives too;
  *  (ii) a photo-like JPEG: paper 235 → 170 across the page, ink 40 — the paper away from the ink is clear.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -146,6 +146,71 @@ describe('loadSignatureImage — real decode', () => {
     const ctx = c.getContext('2d') as CanvasRenderingContext2D;
     ctx.fillStyle = '#f4f4f4';
     ctx.fillRect(0, 0, 200, 100);
+    expect(await codeOf(loadSignatureImage(await toFile(c, 'image/png')))).toBe('empty');
+  });
+});
+
+// 7b commit A2 (ruling 2026-11-12 10:25): with colour on the phone, its Download PNG can be any palette ink. Keyed on
+// white, yellow #ffff00 (luminance 226, 29 below the paper; KEY_LO is 30) vanished and the import said "no ink found".
+// A MOSTLY transparent image now keeps its own alpha; an opaque one is keyed as before (the two controls).
+describe('loadSignatureImage — an image with its own transparency (7b A2)', () => {
+  const rgbaAt = (c: HTMLCanvasElement, x: number, y: number) =>
+    Array.from((c.getContext('2d') as CanvasRenderingContext2D).getImageData(x, y, 1, 1).data);
+
+  it('a YELLOW phone PNG imports yellow, trimmed to its strokes', async () => {
+    const png = strokesToCanvas(
+      [[{ x: 10, y: 30 }, { x: 110, y: 30 }], [{ x: 60, y: 0 }, { x: 60, y: 60 }]],
+      { color: '#ffff00', lineWidth: 2.5, scale: 2 },
+    );
+    if (!png) throw new Error('no png');
+    const out = await loadSignatureImage(await toFile(png, 'image/png'));
+    expect(Math.abs(out.width - 102.5 * 2)).toBeLessThanOrEqual(2);
+    expect(rgbaAt(out, 10, Math.round(out.height / 2))).toEqual([255, 255, 0, 255]);
+    expect(alpha(out)(20, 20)).toBe(0);
+  });
+
+  it('a pad-filling yellow scribble (W11 shape, measured 8.5% clear at width 10) keeps its alpha too', async () => {
+    const W = 368, H = 147;
+    const scribble = [Array.from({ length: 50 }, (_, i) => ({ x: i % 2 ? W - 4 : 4, y: 4 + i * ((H - 8) / 49) }))];
+    const png = strokesToCanvas(scribble, { color: '#ffff00', lineWidth: 10 * W / 500, scale: 2.8125 });
+    if (!png) throw new Error('no png');
+    const out = await loadSignatureImage(await toFile(png, 'image/png'));
+    expect(rgbaAt(out, Math.round(out.width / 2), Math.round(out.height / 2))[3]).toBeGreaterThan(0);
+  });
+
+  it('control: an OPAQUE paper sheet with transparent rounded corners (0.2% clear) is still keyed', async () => {
+    const c = document.createElement('canvas');
+    c.width = 1000;
+    c.height = 700;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = 'rgb(240,240,240)';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 1000, 700, 40);
+    ctx.fill();
+    ctx.fillStyle = 'rgb(30,30,30)';
+    ctx.fillRect(200, 340, 600, 8); // the ink
+    const out = await loadSignatureImage(await toFile(c, 'image/png'));
+    expect(Math.abs(out.width - 600)).toBeLessThanOrEqual(4); // trimmed to the ink: the paper was keyed away
+    expect(Math.abs(out.height - 8)).toBeLessThanOrEqual(4);
+  });
+
+  it('control: an opaque white-background PNG is still keyed (its white is removed)', async () => {
+    const c = document.createElement('canvas');
+    c.width = 400;
+    c.height = 200;
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 400, 200);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(50, 90, 300, 6);
+    const out = await loadSignatureImage(await toFile(c, 'image/png'));
+    expect(Math.abs(out.width - 300)).toBeLessThanOrEqual(4);
+  });
+
+  it('a fully transparent PNG is still refused as "empty"', async () => {
+    const c = document.createElement('canvas');
+    c.width = 200;
+    c.height = 100;
     expect(await codeOf(loadSignatureImage(await toFile(c, 'image/png')))).toBe('empty');
   });
 });

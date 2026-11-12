@@ -321,7 +321,11 @@ ink locked to black 2.5 CSS px, a tap draws a dot (`dotOnTap`, phone only) — a
 QR codes (1–4 frames, cycled every 1 s). *Start camera* on the PC reads them in any order; the strokes are replayed onto
 `signatureCanvas` and **wait for Save** (no auto-save). *Import image* (the no-webcam route, fed by the phone's
 *Download PNG*): `createImageBitmap`, size and pixel caps, the paper keyed out, ink colour kept, re-encoded to PNG (EXIF
-dropped). The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
+dropped). **A mostly transparent image keeps its own alpha** (7b A2, ruling 2026-11-12 10:25; `hasOwnTransparency`,
+≥ 5% of pixels fully clear, measured: the phone's PNG 73–95% for a signature, 8.5% for a pad-filling scribble; a paper
+sheet with transparent rounded corners 0.2%): keyed on white, a yellow ink (luminance 226, 29 below the paper, `KEY_LO`
+30) vanished and the import said "no ink found". Bounds: a mostly transparent PNG carrying an opaque white box keeps
+the box; a cross-hatch denser than 95% ink falls back to keying, where a light ink fades. The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
 untouched: no persisted field, no `SCHEMA_VERSION` change.
 
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is

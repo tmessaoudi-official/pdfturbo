@@ -3,9 +3,12 @@
  * the ink kept). The no-webcam route — the phone's Download PNG — and a photo of a signature on paper both land here.
  *
  * The file is untrusted. It is type- and byte-capped, loaded as an `<img>` from a blob URL so its dimensions are known
- * from the header and capped BEFORE `createImageBitmap` decodes it, downscaled to a long side of `maxSide`, composited
- * over WHITE (a transparent PNG's clear pixels would otherwise read as black ink), keyed, and trimmed to the ink. The
- * PC then re-encodes the pad as PNG on Save, so no EXIF or other metadata of the source survives.
+ * from the header and capped BEFORE `createImageBitmap` decodes it, downscaled to a long side of `maxSide`, and trimmed to the
+ * ink. An image that is MOSTLY transparent (`hasOwnTransparency` — the phone's Download PNG) keeps its own alpha: it has
+ * no paper, and keying it on white erased a light ink (7b A2, ruling 2026-11-12 10:25: yellow vanished). Any other image
+ * is composited over WHITE (its few clear pixels would otherwise read as black ink) and keyed. Bound, accepted by the
+ * ruling: a mostly transparent PNG that carries an opaque white box keeps the box. The PC then re-encodes the pad as PNG
+ * on Save, so no EXIF or other metadata of the source survives.
  */
 
 export const IMPORT_LIMITS = { maxBytes: 15 * 1024 * 1024, maxPixels: 50_000_000, maxSide: 2048 };
@@ -36,6 +39,23 @@ export function checkImageFile(file: { type: string; size: number }, limits: Imp
 const KEY_LO = 30;
 const KEY_HI = 90;
 const PAPER_PERCENTILE = 0.9;
+
+/**
+ * The share of FULLY transparent pixels from which an image keeps its own alpha. Measured in Chrome (7b A2, 2026-11-12)
+ * on the phone's own Download PNG: a signature 73–95% clear, a pad-filling scribble 8.5–66%; an opaque paper sheet with
+ * transparent rounded corners (r = 40 on 1000×700) 0.2%. A denser cross-hatch measured 3.1% at width 2.5 and falls back
+ * to keying — harmless for a dark ink, a light one fades there.
+ */
+export const OWN_ALPHA_SHARE = 0.05;
+
+/** True when at least `OWN_ALPHA_SHARE` of the pixels are fully transparent (alpha 0): the image brings its own alpha. */
+export function hasOwnTransparency(img: ImageData): boolean {
+  const { data } = img;
+  const pixels = data.length / 4;
+  let clear = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] === 0) clear++;
+  return clear >= pixels * OWN_ALPHA_SHARE;
+}
 
 /** Make the paper transparent in place; the ink keeps its colour. `img` is opaque (composited over white). */
 export function keyOutPaper(img: ImageData): void {
@@ -140,12 +160,16 @@ export async function loadSignatureImage(file: File, limits: ImportLimits = IMPO
     work.width = bw;
     work.height = bh;
     const ctx = work.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, bw, bh);
-    ctx.drawImage(bitmap, 0, 0);
+    ctx.drawImage(bitmap, 0, 0); // on a CLEAR canvas first: does the image bring its own alpha?
+    let data = ctx.getImageData(0, 0, bw, bh);
+    if (!hasOwnTransparency(data)) {
+      ctx.globalCompositeOperation = 'destination-over'; // white UNDER the image, as if drawn on paper
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, bw, bh);
+      data = ctx.getImageData(0, 0, bw, bh);
+      keyOutPaper(data);
+    }
     bitmap.close();
-    const data = ctx.getImageData(0, 0, bw, bh);
-    keyOutPaper(data);
     const box = inkBounds(data);
     if (!box) throw new SignatureImageError('empty', 'no ink found');
     const out = document.createElement('canvas');

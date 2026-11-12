@@ -3,7 +3,9 @@ import { describe, it, expect } from 'vitest';
 import {
   IMPORT_LIMITS,
   SignatureImageError,
+  OWN_ALPHA_SHARE,
   checkImageFile,
+  hasOwnTransparency,
   inkBounds,
   keyOutPaper,
 } from '../../src/utils/signatureImage';
@@ -11,8 +13,9 @@ import { fitContain } from '../../src/utils/signaturePad';
 
 /**
  * Import image (phone-signature-pad plan step 5a, ruled 2026-11-10 23:46: the paper is removed, the ink kept).
- * The fixtures and their pass criteria were fixed BEFORE the code (3C round 2): (i) the pad's own transparent PNG,
- * composited over white, keeps every stroke; (ii) a photo-like page whose paper runs 235 → 170 across it with ink at
+ * The fixtures and their pass criteria were fixed BEFORE the code (3C round 2): (i) ink on white — what the keying
+ * sees for an opaque image (since 7b A2 a mostly transparent one, the phone's PNG, keeps its own alpha) — keeps every
+ * stroke; (ii) a photo-like page whose paper runs 235 → 170 across it with ink at
  * 40: alpha 0 everywhere outside the ink, ink alpha ≥ 200.
  */
 
@@ -42,6 +45,39 @@ function greyImage(w: number, h: number, grey: (x: number, y: number) => number)
 }
 
 const alphaAt = (img: ImageData, x: number, y: number) => img.data[(y * img.width + x) * 4 + 3];
+
+// 7b commit A2 (ruling 2026-11-12 10:25): an image that is MOSTLY transparent keeps its own alpha — the phone's PNG has
+// no paper to key out, and keying it on white erased a light ink (yellow: luminance 226, 29 below the paper, KEY_LO 30).
+// The share was measured in Chrome before the code: the phone PNG of a signature 73–95% clear, a pad-filling scribble
+// 8.5–66%, an opaque sheet with r=40 transparent corners 0.2% — so 5%.
+describe('hasOwnTransparency', () => {
+  /** A 100x100 opaque image with its first `clear` pixels fully transparent. */
+  const withClear = (clear: number) => {
+    const img = canvas(100, 100).createImageData(100, 100);
+    for (let p = 0; p < 10_000; p++) img.data[p * 4 + 3] = p < clear ? 0 : 255;
+    return img;
+  };
+
+  it('the share is 5%', () => {
+    expect(OWN_ALPHA_SHARE).toBe(0.05);
+  });
+
+  it('true at exactly 5% fully transparent pixels, false one pixel below', () => {
+    expect(hasOwnTransparency(withClear(500))).toBe(true);
+    expect(hasOwnTransparency(withClear(499))).toBe(false);
+  });
+
+  it('only FULLY transparent pixels count: a soft edge (alpha 1-254) everywhere is not transparency', () => {
+    const img = withClear(0);
+    for (let p = 0; p < 10_000; p++) img.data[p * 4 + 3] = 128;
+    expect(hasOwnTransparency(img)).toBe(false);
+  });
+
+  it('an opaque image, and a fully clear one', () => {
+    expect(hasOwnTransparency(withClear(0))).toBe(false);
+    expect(hasOwnTransparency(withClear(10_000))).toBe(true);
+  });
+});
 
 describe('keyOutPaper', () => {
   it('(i) ink on white — the pad PNG composited over white — keeps every ink pixel opaque and the paper clear', () => {

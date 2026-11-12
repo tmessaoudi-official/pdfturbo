@@ -12,7 +12,7 @@ import { startScan, type ScanDeps, type ScanEnd, type ScanHandle } from './qrSca
  *    phone's signature QR codes (`qrScanner` → `ptsigCollector`) and replays the signature on the pad; it never saves.
  *    While the camera runs its preview takes the QR's box (ruling 2026-11-11). Every way out stops the camera: Stop,
  *    a modal close (Cancel, Escape, Save), the panel collapsed, an import starting, a scan accepted.
- *  - **Import image** loads an image (`loadSignatureImage`: caps, paper removed, trimmed) onto the pad.
+ *  - **Import image** loads an image (`loadSignatureImage`: caps, paper removed — or its own alpha kept when it is mostly transparent — trimmed) onto the pad.
  * Whatever arrives lands on `signatureCanvas`, and the existing Save takes it. Bound to the static `#sigSources` markup
  * of index.html; `phonePadGate.ts` removes that markup when the `phonePad` flag is off. A refused image or a camera failure is
  * SHOWN in the modal and never logged (the QA sweep fails on a console error); a loader bug is not a refusal and is
