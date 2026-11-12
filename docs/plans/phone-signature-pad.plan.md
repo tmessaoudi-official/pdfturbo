@@ -291,9 +291,10 @@ jsdom and ~4 Chrome cases; C ≈ 15 surfaces, mostly prose. **Rollback:** each c
 
 ## RESUME HERE (saved 2026-11-12 ~15:50 — the session stopped at a WORKING state)
 
-**State.** HEAD = the "docs: phone signature pad — resume state after panel round 4" commit, on `3918563` (commit C,
-`feat(sign): phone signature pad on by default`). 10 local commits are NOT pushed (`git rev-list --count
-origin/master..HEAD`); origin is at `e534300`. The one push happens after 1.1.0 (ruling 10:33). The full deploy gate
+**State.** HEAD = the two resume-state docs commits ("docs: phone signature pad — resume state after panel round 4",
+"… round-4 tier logged, three user-only items listed", and this wording fix) on top of `3918563` (commit C,
+`feat(sign): phone signature pad on by default`). Every commit since origin is local and NOT pushed (count:
+`git rev-list --count origin/master..HEAD`); origin is at `e534300`. The one push happens after 1.1.0 (ruling 10:33). The full deploy gate
 ran on the tree that became `3918563` (only `tests/config/features.test.ts` was edited after it, re-run alone + tsc +
 lint green) and was 9/9 rc=0 (`var/claude/gate-c.log`: Node 26.13.1, 0 VITE_FEATURE vars, jsdom 4324, Chrome 748,
 coverage 9, QA sweep 161 / 119 / 0 fail / 42 skip, 57 of 144). Working tree: only the developer's own
