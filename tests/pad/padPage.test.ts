@@ -13,7 +13,7 @@ vi.mock('../../src/utils/signatureStrokes', async (importOriginal) => {
 });
 
 import { mountPadPage, type PadPageOptions } from '../../src/pad/padPage';
-import { PtsigError, decodeSignatureFrames } from '../../src/utils/signatureStrokes';
+import { PtsigError, decodeSignatureFrames, encodeSignatureFrames } from '../../src/utils/signatureStrokes';
 
 const mounted: Array<{ destroy(): void }> = [];
 const mount = (...a: Parameters<typeof mountPadPage>) => { const p = mountPadPage(...a); mounted.push(p); return p; };
@@ -154,6 +154,14 @@ describe('pad page — Done and the QR view', () => {
     window.dispatchEvent(new Event('resize'));
     const last = drawQr.mock.calls[drawQr.mock.calls.length - 1] as unknown as [unknown, string, number, number];
     expect(last.slice(1)).toEqual(['B', 380, 2.8125]);
+  });
+
+  it('a landscape phone: the QR side is capped by the room below its top as well (a 480 px QR in a 360 px screen cannot be scanned)', () => {
+    const s = setup(800, { viewport: () => ({ width: 800, height: 360 }) });
+    s.draw([[10, 10], [60, 40]]);
+    s.q('done').click();
+    const [, , side] = drawQr.mock.calls[0] as unknown as [unknown, string, number];
+    expect(side).toBe(360 - 12); // jsdom puts the QR's top at 0; 12 px kept below it
   });
 
   it('a hidden page stops the cycle and a visible one resumes it', () => {
@@ -361,5 +369,210 @@ describe('pad page — the ink (7b)', () => {
     const groups = [...root.querySelectorAll('[data-pad-view="draw"] [role="group"]')].map((g) => g.getAttribute('aria-label'));
     expect(groups).toEqual(['pad.color', 'pad.width']);
     for (const b of swatches()) if (b.dataset.pad !== 'customColor') expect([b.textContent, /^#[0-9a-f]{6}$/.test(b.title)]).toEqual(['', true]);
+  });
+});
+
+// Full screen (plan row 11, phone half; rulings 2026-11-12 19:09 / 23:09 / 23:15). The Fullscreen API and the viewport
+// are injected: real Chrome pins the CSS, the default API wiring and the landscape QR (pad-fullscreen.browser.test.ts).
+describe('pad page — full screen (row 11, phone half)', () => {
+  const flush = () => new Promise<void>((r) => { setTimeout(r, 0); });
+  function full(o: { box?: { w: number; h: number }; vp?: { width: number; height: number }; enabled?: boolean; hash?: string } = {}) {
+    let active = false;
+    let grantReq: () => void = () => {};
+    const api = {
+      enabled: vi.fn(() => o.enabled ?? true),
+      request: vi.fn(() => new Promise<void>((r) => { grantReq = () => { active = true; r(); }; })),
+      exit: vi.fn(() => { active = false; return Promise.resolve(); }),
+      active: vi.fn(() => active),
+      lockLandscape: vi.fn(() => Promise.resolve()),
+      unlock: vi.fn(),
+    };
+    let vp = o.vp ?? { width: 800, height: 360 };
+    let box = o.box ?? { w: 776, h: 280 };
+    let h = o.hash ?? '';
+    const seenHint: Array<HTMLElement['hidden']> = [];
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const setLanguage = vi.fn();
+    const s = setup(380, { fullscreen: api, viewport: () => vp, hash: () => h, setLanguage });
+    const hint = s.q('rotateHint');
+    const b = s.q('box');
+    Object.defineProperty(b, 'clientWidth', { configurable: true, get: () => box.w });
+    Object.defineProperty(b, 'clientHeight', { configurable: true, get: () => { seenHint.push(hint.hidden); return box.h; } });
+    const visibleActions = () => [...s.root.querySelectorAll<HTMLElement>('[data-pad-view="draw"] .pad-actions > button')].filter((e) => !e.hidden).map((e) => e.dataset.pad);
+    return {
+      ...s, api, hint, seenHint, scrollTo, setLanguage, visibleActions,
+      grant: async () => { grantReq(); await flush(); },
+      setActive: (v: boolean) => { active = v; },
+      setVp: (v: { width: number; height: number }) => { vp = v; },
+      setBox: (v: { w: number; h: number }) => { box = v; },
+      setHash: (v: string) => { h = v; window.dispatchEvent(new HashChangeEvent('hashchange')); },
+      isFull: () => s.root.classList.contains('pad-full'),
+      enter: () => s.q('fullscreen').click(),
+      exit: () => s.q('exitFullscreen').click(),
+      size: () => [s.canvas.style.width, s.canvas.style.height],
+    };
+  }
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('the toggle sits between Clear and Done; entering swaps it for Exit, moves focus, marks the root and scrolls to the top', () => {
+    const f = full();
+    expect(f.visibleActions()).toEqual(['clear', 'fullscreen', 'done']);
+    expect(f.q('fullscreen').textContent).toBe('pad.fullscreen');
+    expect(f.isFull()).toBe(false);
+    f.enter();
+    expect(f.isFull()).toBe(true);
+    expect(f.visibleActions()).toEqual(['clear', 'exitFullscreen', 'done']);
+    expect(f.q('exitFullscreen').textContent).toBe('pad.exitFullscreen');
+    expect(document.activeElement).toBe(f.q('exitFullscreen'));
+    expect(f.scrollTo).toHaveBeenCalledWith(0, 0);
+    f.exit();
+    expect(f.isFull()).toBe(false);
+    expect(f.visibleActions()).toEqual(['clear', 'fullscreen', 'done']);
+    expect(document.activeElement).toBe(f.q('fullscreen'));
+  });
+
+  it('full mode sizes the pad from the MEASURED box, with no 600 px cap: min(box width, box height ÷ 0.4)', () => {
+    const f = full({ box: { w: 776, h: 280 } });
+    expect(f.size()).toEqual(['380px', '152px']);
+    f.enter();
+    expect(f.size()).toEqual(['700px', '280px']);
+    f.exit();
+    expect(f.size()).toEqual(['380px', '152px']);
+    f.setBox({ w: 1200, h: 470 }); // a tablet: wider than the normal 600 px cap
+    f.enter();
+    expect(f.size()).toEqual(['1175px', '470px']);
+  });
+
+  it('in full mode a height-only resize re-lays out (no text input shows there); normal mode is width-only again after', () => {
+    const f = full({ box: { w: 776, h: 280 } });
+    f.enter();
+    const spy = vi.spyOn(f.page.pad, 'setSize');
+    f.setBox({ w: 776, h: 200 }); // the URL bar or a fullscreen grant changed the height only
+    window.dispatchEvent(new Event('resize'));
+    expect(spy).toHaveBeenCalledWith(500, 200, 2.8125);
+    f.exit();
+    spy.mockClear();
+    f.setBox({ w: 776, h: 100 });
+    window.dispatchEvent(new Event('resize'));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('where the Fullscreen API exists: request, then the landscape lock once granted; without it (iPhone Safari) the CSS fill alone', async () => {
+    const f = full();
+    f.enter();
+    expect(f.api.request).toHaveBeenCalledTimes(1);
+    expect(f.api.lockLandscape).not.toHaveBeenCalled();
+    await f.grant();
+    expect(f.api.lockLandscape).toHaveBeenCalledTimes(1);
+    const g = full({ enabled: false });
+    g.enter();
+    expect(g.api.request).not.toHaveBeenCalled();
+    expect(g.isFull()).toBe(true);
+    expect(g.size()).toEqual(['700px', '280px']);
+  });
+
+  it('an entry left before fullscreen is granted never locks landscape, and leaves the fullscreen it gets', async () => {
+    const f = full();
+    f.enter();
+    f.exit();
+    await f.grant();
+    expect(f.api.lockLandscape).not.toHaveBeenCalled();
+    expect(f.api.exit).toHaveBeenCalledTimes(1);
+    expect(f.isFull()).toBe(false);
+  });
+
+  it('Exit leaves the API fullscreen and unlocks; a fullscreenchange to no element (Android back, Esc) leaves full mode', async () => {
+    const f = full();
+    f.enter();
+    await f.grant();
+    document.dispatchEvent(new Event('fullscreenchange')); // the grant's own change: still full
+    expect(f.isFull()).toBe(true);
+    f.exit();
+    expect(f.api.exit).toHaveBeenCalledTimes(1);
+    expect(f.api.unlock).toHaveBeenCalled();
+    f.enter();
+    await f.grant();
+    f.setActive(false); // the browser left fullscreen on its own
+    document.dispatchEvent(new Event('fullscreenchange'));
+    expect(f.isFull()).toBe(false);
+    expect(f.api.exit).toHaveBeenCalledTimes(1); // not asked to leave a fullscreen that is already gone
+    expect(f.q('fullscreen').hidden).toBe(false);
+  });
+
+  it('Done in full screen leaves it FIRST, then shows the QR of the normal-size pad; the drawing is kept; Edit returns to the normal pad', () => {
+    const f = full();
+    f.enter();
+    f.draw([[10, 10], [600, 200]]);
+    f.q('done').click();
+    expect(f.isFull()).toBe(false);
+    expect([f.view('draw').hidden, f.view('qr').hidden]).toEqual([true, false]);
+    const [, text] = drawQr.mock.calls[0] as unknown as [HTMLCanvasElement, string];
+    expect(decodeSignatureFrames([text]).gridHeight).toBe(Math.round((152 * 1023) / 380));
+    expect(f.page.pad.getStrokes()).toHaveLength(1);
+    f.q('edit').click();
+    expect([f.view('draw').hidden, f.isFull()]).toEqual([false, false]);
+  });
+
+  it('a signature too large for the QRs, Done in full screen: the error shows on the NORMAL pad', () => {
+    encode.override = () => { throw new PtsigError('too-large', 'test'); };
+    const f = full();
+    f.enter();
+    f.draw([[10, 10], [60, 40]]);
+    f.q('done').click();
+    expect(f.isFull()).toBe(false);
+    expect([f.view('draw').hidden, f.q('error').hidden]).toEqual([false, false]);
+  });
+
+  it('the line width follows the bigger pad: w × padWidth / cw', () => {
+    const f = full({ hash: '#c=ff0000&w=4&cw=640', box: { w: 776, h: 280 } });
+    f.enter();
+    expect(f.page.pad.lineWidth).toBeCloseTo((4 * 700) / 640, 9);
+  });
+
+  it('the rotate hint: only in full mode while upright, and set BEFORE the box is measured', () => {
+    const f = full({ vp: { width: 412, height: 800 }, box: { w: 388, h: 600 } });
+    expect(f.hint.hidden).toBe(true);
+    f.enter();
+    expect(f.hint.hidden).toBe(false);
+    expect(f.seenHint.at(-1)).toBe(false);
+    f.setVp({ width: 800, height: 412 });
+    f.setBox({ w: 776, h: 300 });
+    window.dispatchEvent(new Event('resize'));
+    expect(f.hint.hidden).toBe(true);
+    expect(f.seenHint.at(-1)).toBe(true);
+    f.setVp({ width: 412, height: 800 });
+    f.exit();
+    expect(f.hint.hidden).toBe(true);
+  });
+
+  it('a new link while full keeps full mode, and each button keeps its own translation key (a language change re-translates both)', () => {
+    const f = full();
+    f.enter();
+    f.setHash('#lang=fr&c=0066ff&w=6&cw=640');
+    expect(f.setLanguage).toHaveBeenCalledWith('fr');
+    expect(f.isFull()).toBe(true);
+    expect([f.q('fullscreen').dataset.i18n, f.q('exitFullscreen').dataset.i18n]).toEqual(['pad.fullscreen', 'pad.exitFullscreen']);
+    expect(f.visibleActions()).toEqual(['clear', 'exitFullscreen', 'done']);
+  });
+
+  it('destroy() removes the fullscreenchange listener', async () => {
+    const f = full();
+    f.enter();
+    await f.grant();
+    f.page.destroy();
+    f.setActive(false);
+    document.dispatchEvent(new Event('fullscreenchange'));
+    expect(f.isFull()).toBe(true);
+  });
+
+  it('PTSIG does not see the pad size: a 1150×460 full-screen pad encodes onto the same 1023 grid and decodes', () => {
+    const f = full({ box: { w: 1200, h: 460 } });
+    f.enter();
+    expect(f.size()).toEqual(['1150px', '460px']);
+    f.draw([[10, 10], [500, 300], [1100, 450]]);
+    const { frames } = encodeSignatureFrames(f.page.pad.toSignatureInput());
+    const sig = decodeSignatureFrames(frames);
+    expect([sig.gridWidth, sig.gridHeight]).toEqual([1023, Math.round((460 * 1023) / 1150)]);
+    expect(sig.strokes).toHaveLength(1);
   });
 });

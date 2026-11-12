@@ -15,6 +15,11 @@ import { COLOR_PRESETS, getRecentColors, pushRecentColor } from '../utils/recent
  * the signer can change it — the shared swatch row without white, a 1–10 stepper; the pad draws at w × padWidth / cw
  * CSS px, and every change repaints every stroke (PTSIG carries one ink). A new link (`hashchange`) re-applies the
  * language and the ink. A link without ink opens black at 2.
+ * Full screen (plan row 11, phone half; rulings 2026-11-12 19:09 / 23:09 / 23:15): ⛶ hides the title, hint and ink
+ * controls and sizes the pad to a MEASURED drawing box (no 600 px cap), keeping PAD_ASPECT. The CSS fill is the base —
+ * iPhone Safari has no element fullscreen; where the Fullscreen API exists the page also asks for it, then a landscape
+ * lock. Exit, Done and the browser leaving fullscreen (Android back, Esc) all return to the normal page; Done leaves
+ * FIRST, so the QR and a too-large error show on the normal page.
  */
 
 export type Translate = (key: string, opts?: Record<string, string | number>) => string;
@@ -28,7 +33,34 @@ export interface PadPageOptions {
   hash?: () => string;
   /** Switch the page language (default the app's `changeLanguage`: re-translates `[data-i18n]`, sets lang/dir). */
   setLanguage?: (lang: string) => unknown;
+  /** The Fullscreen API and the orientation lock (default the browser's: `browserFullscreen`). */
+  fullscreen?: FullscreenApi;
+  /** The viewport size, for the rotate hint (default `innerWidth` × `innerHeight`). */
+  viewport?: () => { width: number; height: number };
 }
+
+export interface FullscreenApi {
+  /** The page may ask for element fullscreen (false on iPhone Safari: the CSS fill alone). */
+  enabled(): boolean;
+  request(): Promise<unknown>;
+  exit(): Promise<unknown>;
+  /** An element is fullscreen now. */
+  active(): boolean;
+  lockLandscape(): Promise<unknown>;
+  unlock(): void;
+}
+
+type LockableOrientation = ScreenOrientation & { lock?: (o: string) => Promise<void>; unlock?: () => void };
+
+/** The browser's Fullscreen API on the whole page, and the screen orientation lock where the browser has one. */
+export const browserFullscreen: FullscreenApi = {
+  enabled: () => document.fullscreenEnabled === true && typeof document.documentElement.requestFullscreen === 'function',
+  request: () => document.documentElement.requestFullscreen({ navigationUI: 'hide' }),
+  exit: () => document.exitFullscreen(),
+  active: () => document.fullscreenElement !== null,
+  lockLandscape: () => (screen.orientation as LockableOrientation | undefined)?.lock?.('landscape') ?? Promise.resolve(),
+  unlock: () => (screen.orientation as LockableOrientation | undefined)?.unlock?.(),
+};
 
 export interface PadPageHandle {
   pad: SignaturePad;
@@ -39,6 +71,7 @@ export interface PadPageHandle {
 const MAX_PAD_PX = 600;
 const PAD_ASPECT = 0.4; // the ✍ modal's canvas shape, so a replay on the PC fills it
 const MAX_QR_PX = 480;
+const QR_BOTTOM_PX = 12; // kept free below the QR when the screen's height is what limits it
 const CYCLE_MS = 1000;
 
 /** The language the PC handed over in the pad URL's fragment (`#lang=fr`, step 5a): one of the app's three, else null. */
@@ -52,6 +85,8 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   const t = opts.t ?? i18nT;
   const hash = opts.hash ?? (() => location.hash);
   const setLanguage = opts.setLanguage ?? ((lang: string) => changeLanguage(lang));
+  const fs = opts.fullscreen ?? browserFullscreen;
+  const viewport = opts.viewport ?? (() => ({ width: window.innerWidth, height: window.innerHeight }));
   let ink: PadInk = padInkFromHash(hash());
 
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, i18n?: string): HTMLElementTagNameMap[K] => {
@@ -75,9 +110,18 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   const clear = el('button', { type: 'button', 'data-pad': 'clear' }, 'pad.clear');
   const done = el('button', { type: 'button', 'data-pad': 'done', class: 'pad-primary' }, 'pad.done');
   done.disabled = true;
+  // Two buttons, each with its own key, so a language change while full re-translates both correctly.
+  const enterFs = el('button', { type: 'button', 'data-pad': 'fullscreen' }, 'pad.fullscreen');
+  const exitFs = el('button', { type: 'button', 'data-pad': 'exitFullscreen' }, 'pad.exitFullscreen');
+  exitFs.hidden = true;
+  const rotateHint = el('p', { 'data-pad': 'rotateHint', class: 'pad-rotate' }, 'pad.rotateHint');
+  rotateHint.hidden = true;
+  // The drawing box: in full mode it takes the room left by the rest and is MEASURED; the canvas inside cannot feed
+  // that measurement (pad.css positions it absolutely there).
+  const box = el('div', { 'data-pad': 'box', class: 'pad-box' });
   const drawView = el('section', { 'data-pad-view': 'draw' });
   const drawActions = el('div', { class: 'pad-actions' });
-  drawActions.append(clear, done);
+  drawActions.append(clear, enterFs, exitFs, done);
 
   // The ink controls. A swatch is named by its hex through `title`, as the editor's toolbar row does (no visible text,
   // so no Label-in-Name risk); the custom swatch and the stepper buttons by translated aria-labels.
@@ -93,7 +137,8 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   const controls = el('div', { class: 'pad-ink' });
   controls.append(swatches, stepper, picker);
 
-  drawView.append(el('p', { class: 'pad-hint' }, 'pad.hint'), controls, canvas, error, drawActions); // the hint says "tap Done": draw view only
+  box.append(canvas);
+  drawView.append(el('p', { class: 'pad-hint' }, 'pad.hint'), controls, rotateHint, box, error, drawActions); // the hint says "tap Done": draw view only
 
   const qr = labelled(el('canvas', { 'data-pad': 'qr', class: 'pad-qr', role: 'img' }), 'pad.qrLabel');
   const count = el('p', { 'data-pad': 'count', class: 'pad-count', 'aria-live': 'polite' });
@@ -116,12 +161,20 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     const cs = getComputedStyle(root);
     return root.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   };
-  // Lay out on a WIDTH change only: a height-only resize is the on-screen keyboard or the URL bar collapsing.
+  // Normal mode lays out on a WIDTH change only: a height-only resize is the on-screen keyboard or the URL bar
+  // collapsing. Full mode shows no text input, so there the box's height counts too.
   let laidOutWidth = -1;
+  let full = false;
   // The link's width is in PC px for a PC canvas `cw` wide; this pad is `laidOutWidth` wide.
   const padLineWidth = () => (ink.width * laidOutWidth) / ink.cw;
+  const padWidth = () => {
+    if (!full) return Math.min(contentWidth(), MAX_PAD_PX);
+    const vp = viewport();
+    rotateHint.hidden = !(vp.height > vp.width); // BEFORE the box is measured: the hint takes room from it
+    return Math.max(1, Math.floor(Math.min(box.clientWidth, box.clientHeight / PAD_ASPECT)));
+  };
   const layout = () => {
-    const w = Math.min(contentWidth(), MAX_PAD_PX);
+    const w = padWidth();
     if (w === laidOutWidth) return;
     laidOutWidth = w;
     pad.setLineWidth(padLineWidth()); // BEFORE setSize, which repaints the strokes in the pad's width
@@ -179,6 +232,47 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   widthDown.addEventListener('click', () => step(-1));
   widthUp.addEventListener('click', () => step(1));
 
+  // Each entry gets its own number: a fullscreen granted after the signer already left must not lock landscape.
+  let entry = 0;
+  const enterFull = () => {
+    if (full) return;
+    full = true;
+    const mine = ++entry;
+    root.classList.add('pad-full');
+    enterFs.hidden = true;
+    exitFs.hidden = false;
+    exitFs.focus();
+    window.scrollTo(0, 0); // the normal page is taller than a landscape phone: start at the top
+    layout();
+    if (!fs.enabled()) return; // iPhone Safari: the CSS fill alone
+    fs.request()
+      .then(() => {
+        if (mine !== entry) return fs.exit(); // left before the grant
+        return fs.lockLandscape();
+      })
+      // Refused or unsupported (measured in Chrome: requestFullscreen without a user gesture rejects, and lock() on a
+      // desktop rejects NotSupportedError — pad-fullscreen.browser.test.ts): the CSS fill stays, which is the base.
+      .catch(() => {});
+  };
+  const leaveFull = () => {
+    if (!full) return;
+    full = false;
+    entry++;
+    const hadFocus = document.activeElement === exitFs;
+    root.classList.remove('pad-full');
+    exitFs.hidden = true;
+    enterFs.hidden = false;
+    rotateHint.hidden = true;
+    if (hadFocus) enterFs.focus();
+    fs.unlock();
+    if (fs.active()) void fs.exit(); // the check and the call share one task: the browser cannot leave in between
+    layout();
+  };
+  enterFs.addEventListener('click', enterFull);
+  exitFs.addEventListener('click', leaveFull);
+  const onFullscreenChange = () => { if (!fs.active()) leaveFull(); };
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+
   const refreshDone = () => { done.disabled = pad.getStrokes().length === 0; };
   canvas.addEventListener('pointerdown', refreshDone); // after the pad's own listener: the stroke already exists
   clear.addEventListener('click', () => {
@@ -190,9 +284,15 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   let frames: string[] = [];
   let shown = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
+  // The QR fits the width AND the room below its top: on a landscape phone (the usual state after a full-screen Done) a
+  // 480 px QR runs off a 360 px screen, and a QR cut off cannot be scanned (plan row 11, ruling 2026-11-12 23:15).
+  const qrSide = () => {
+    const top = qr.getBoundingClientRect().top + window.scrollY;
+    return Math.max(1, Math.min(contentWidth(), MAX_QR_PX, viewport().height - top - QR_BOTTOM_PX));
+  };
   const show = (i: number) => {
     shown = i;
-    drawQr(qr, frames[i], Math.min(contentWidth(), MAX_QR_PX), dpr());
+    drawQr(qr, frames[i], qrSide(), dpr());
     count.hidden = frames.length < 2;
     if (!count.hidden) count.textContent = t('pad.qrCount', { index: i + 1, total: frames.length });
   };
@@ -211,6 +311,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   window.addEventListener('resize', layout);
 
   done.addEventListener('click', () => {
+    leaveFull(); // FIRST: the QR, or the too-large error, shows on the normal page (ruling 23:15)
     try {
       frames = encodeSignatureFrames(pad.toSignatureInput()).frames;
     } catch (e) {
@@ -223,6 +324,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     error.hidden = true;
     drawView.hidden = true;
     qrView.hidden = false;
+    if (window.scrollY > 0) window.scrollTo(0, 0); // the QR's room is measured from the page top
     show(0);
     startCycle();
   });
@@ -265,6 +367,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
       window.removeEventListener('resize', layout);
       window.removeEventListener('hashchange', onHashChange);
       document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
     },
   };
 }

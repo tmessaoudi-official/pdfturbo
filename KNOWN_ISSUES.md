@@ -78,6 +78,10 @@ under storage pressure; no claim is made here about any other browser's rule.
 
 ### From the phone signature pad (2026-11-11)
 
+- **Full screen on an iPhone is a layout, not browser fullscreen.** iPhone Safari has no element fullscreen, so ⛶
+  only hides the controls and sizes the pad to the visible page; the address bar stays, and the phone does not turn
+  to landscape by itself (the rotate hint asks). Android Chrome goes fullscreen and locks landscape. Neither was
+  checked on a real phone yet (plan row 11, phone half).
 - **The storage banner can cover the ✍ modal's Save button on a phone.** At 414 px wide on a FIRST visit, with the
   phone panel open, the Save row sits under the storage-notice banner (French, the longest strings: fully covered).
   Dismiss the banner and Save is reachable; the modal also scrolls. The cause is the banner's stacking (`z-index: 9000`)
@@ -614,7 +618,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   (`toolbar.recentFiles`, `toast.recentFileUnavailable`) and `toolbar.sanitizeTitle` — plus the two
   UNRECONCILED marker sets (`formatting.*` Slice 2, `modal.signers.*`) were **CLOSED BY DEVELOPER
   RULING on 2026-09-13** ("consider the arabic review done"). That is a ruling, not a second native
-  read, and it is recorded as one. **Sixty-nine values are pending** — the 38 phone-signature-pad keys (`pad.*` 16, `modal.signature.*` 22 — the pad page f251f30, Sign on phone + Import image 16906ff, Scan 3cd3054, the pad's ink controls (7b, `pad.color`/`width`/`widthDown`/`widthUp`), the flattened-image refusal (7b W22-F, `modal.signature.importError.flattened`); 2026-11-10/12, all new, session-written), then `toolbar.addTextTitle`, `toolbar.signersTitle`, `formatting.fontSizeDownTitle`, `toolbar.ocrTitle`, `toolbar.signCertTitle`, `formatting.fontSizeUpTitle`, `toolbar.editTextTitle`, `toolbar.exportDocxTitle`, `toolbar.exportMdTitle`, `formatting.superscript`, `formatting.subscript`, `formatting.bulletList` and `formatting.numberedList` (re-worded so the accessible name starts with the visible text, WCAG 2.5.3, axe-core 4.14 on 2026-11-10) and `toolbar.langAria` (new, same change), `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone 2), `toast.exportResourcesUnreadable` (new, SEC-1,
+  read, and it is recorded as one. **Seventy-two values are pending** — the 41 phone-signature-pad keys (`pad.*` 19, `modal.signature.*` 22 — the pad page f251f30, Sign on phone + Import image 16906ff, Scan 3cd3054, the pad's ink controls (7b, `pad.color`/`width`/`widthDown`/`widthUp`), the full-screen controls (row 11, `pad.fullscreen`/`exitFullscreen`/`rotateHint`), the flattened-image refusal (7b W22-F, `modal.signature.importError.flattened`); 2026-11-10/12, all new, session-written), then `toolbar.addTextTitle`, `toolbar.signersTitle`, `formatting.fontSizeDownTitle`, `toolbar.ocrTitle`, `toolbar.signCertTitle`, `formatting.fontSizeUpTitle`, `toolbar.editTextTitle`, `toolbar.exportDocxTitle`, `toolbar.exportMdTitle`, `formatting.superscript`, `formatting.subscript`, `formatting.bulletList` and `formatting.numberedList` (re-worded so the accessible name starts with the visible text, WCAG 2.5.3, axe-core 4.14 on 2026-11-10) and `toolbar.langAria` (new, same change), `toast.trueEditDecorationSkipped` and `toast.trueEditFontSubstitutedDecorationSkipped` (new, milestone 2), `toast.exportResourcesUnreadable` (new, SEC-1,
   2026-10-08) and the fourteen below (this line said three from WS7 round 10 on and
   missed five later keys: `toast.pdfLoadRefused` (WS7 round 15), `toast.exportLayersConflict` (WS8),
   `thumbnail.previewUnavailable` (A6), `toolbar.clearRecentFiles` and `progress.ocrLoadingModel` (limits rows

@@ -755,6 +755,9 @@
     "color": "Couleur de l'encre",
     "width": "Épaisseur du trait",
     "widthDown": "Trait plus fin",
-    "widthUp": "Trait plus épais"
+    "widthUp": "Trait plus épais",
+    "fullscreen": "⛶ Plein écran",
+    "exitFullscreen": "Quitter le plein écran",
+    "rotateHint": "Tournez le téléphone sur le côté pour agrandir la zone."
   }
 }

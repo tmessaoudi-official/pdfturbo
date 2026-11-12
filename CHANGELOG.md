@@ -26,6 +26,12 @@ most of the work went into proving that what the product claims to remove is act
   the app updates there.
 
 #### Fixed
+- **Full screen on the phone pad** (not yet checked on a real phone): ⛶ hides the title, hint and colour controls and
+  gives the pad the whole screen, keeping its shape — in landscape a bigger pad (850 × 340 instead of 600 × 240 on a
+  915 × 412 phone); upright, a line suggests turning the phone. Android also goes browser-fullscreen and locks
+  landscape; an iPhone, which has no page fullscreen, gets the same layout without it. *Exit full screen*, *Done* and
+  the phone's back gesture leave it. After *Done* in landscape the QR now fits the screen — it used to run 100 px
+  past the bottom of a 412 px-high screen, where it could not be scanned.
 - **Accessible names start with the visible text** (WCAG 2.5.3, raised to serious by axe-core 4.14) — fourteen
   buttons across the toolbar, the flyouts and the text panel, in English, French and Arabic; the bullet and numbered
   list labels were hard-coded English in the French and Arabic UI.

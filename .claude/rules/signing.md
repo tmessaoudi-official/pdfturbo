@@ -390,6 +390,22 @@ STORES a language (`initI18n({ store: false })`: a stored one would switch the e
 **The visible default changed:** a link without ink (an old QR) draws black at 2 PC px — 2.5 phone px on a 368 px pad
 used to replay at about 3.4.
 
+**Full screen on the phone pad** (plan row 11, phone half; rulings 2026-11-12 19:09 / 23:09 / 23:15). ⛶ puts `pad-full`
+on the root: the title, hint and ink controls hide (pad.css), the column takes a FIXED height (`100vh`, then `100dvh`,
+safe-area padding: `viewport-fit=cover`), and the pad is sized from a MEASURED drawing box — `min(box width, box height ÷
+0.4)`, no 600 px cap — with the canvas positioned inside the box so it cannot feed that measurement. Full mode re-lays
+out on a height change too (it shows no text input; normal mode stays width-only for the keyboard). The rotate hint
+(upright only) is hidden or shown BEFORE the box is measured. Where `document.fullscreenEnabled`, the page also asks for
+fullscreen and then `screen.orientation.lock('landscape')`; an entry left before the grant never locks and exits the
+fullscreen it gets (an entry counter). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
+(`pad-fullscreen.browser.test.ts`): a request without a gesture rejects `TypeError: Permissions check failed`, the lock
+on a desktop `NotSupportedError`. Exit, Done and a `fullscreenchange` with no element (Android back, Esc) leave; Done
+leaves FIRST, so the QR — and a too-large error — show on the normal page. **The QR fits the height too** (`qrSide`:
+the room below its top, 12 px kept): measured on a 915 × 412 phone the old 469 px QR ran to 519 px; now 344 px, read back
+by zxing, and a full 909-character frame reads at that side at dpr 1. PTSIG never sees the pad size (the grid's longer
+side is always 1023), pinned at 1150 × 460. Two buttons with their own keys, not a text swap, so a language change while
+full re-translates both; focus moves to the counterpart. Sabotage: 9 mutants, each red where predicted.
+
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.
 - **The PTSIG CRC-32 detects misreads; it authenticates NOTHING.** A scanned QR is untrusted input: the PTSIG decoder is strict
@@ -415,7 +431,7 @@ used to replay at about 3.4.
 - **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage,signaturePad,signaturePng,signatureInk,i18nInitLang}.test.ts`,
   `tests/ui/{qrScanner,qrScannerZxing,signatureSources,signatureInkBoxes,phonePadGate}.test.ts`, `tests/pad/padPage.test.ts`, the CSP's
   `connect-src 'self' blob:` pin in `tests/security/csp.test.ts`, `tests/infra/{pwaOcrCaching,qaSweepRequireSw}.test.ts`; real Chrome
-  `tests/browser/{pad-page,pad-ink,signature-pad,signature-sources,signature-import,signature-scan}.browser.test.ts` (QR round trip,
+  `tests/browser/{pad-page,pad-fullscreen,pad-ink,signature-pad,signature-sources,signature-import,signature-scan}.browser.test.ts` (QR round trip,
   a fake camera with real zxing, image-import pixels, the ink PC → phone → PC measured in pixels); the QA sweep's phone
   pad pass on every deploy. 7b B was sabotage-checked 20 ways (each of the plan's eight mutants plus twelve more), each
   red where predicted. Its wiring in `modalBinder.ts` and `main.ts` (imported by no test) is pinned by a source check.
@@ -424,5 +440,5 @@ used to replay at about 3.4.
   walked on 2026-11-12 (plan R4-4.1–4.7, developer-reported): the worker controlling `pad.html`, the pad offline, a scan
   from the offline phone, and the editor's Update prompt accepted then a fresh scan — that update changed no pad file,
   so it is NOT the two-build case. Never walked: a phone on an OLDER worker loading a NEWER pad offline, and the
-  reverse (KNOWN_ISSUES § "From the phone signature pad"). The 38 Arabic keys
+  reverse (KNOWN_ISSUES § "From the phone signature pad"). The 41 Arabic keys
   (in the pending count, `toolchain.md` § i18n) have no native read.

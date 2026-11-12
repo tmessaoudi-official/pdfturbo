@@ -755,6 +755,9 @@
     "color": "Ink color",
     "width": "Line width",
     "widthDown": "Thinner line",
-    "widthUp": "Thicker line"
+    "widthUp": "Thicker line",
+    "fullscreen": "⛶ Full screen",
+    "exitFullscreen": "Exit full screen",
+    "rotateHint": "Turn your phone sideways for a bigger pad."
   }
 }
