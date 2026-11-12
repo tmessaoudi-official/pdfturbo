@@ -595,7 +595,7 @@ Phones whose installed worker predates 5c still answer `pad.html` with the edito
 what the ✍ modal's "If your phone opens the editor instead, accept its Update prompt" hint is for.
 Guards: `tests/infra/pwaOcrCaching.test.ts` (the 5c block runs the extracted `urlPattern` functions and the denylist on
 real URLs), and the QA sweep's pad pass on every deploy (on a built app: the worker controls `pad.html`, it is absent
-from the precache with `index.html` present as the control, the pad, not the editor, renders, draw → Done → QR, axe;
+from the precache with `index.html` present as the control, the pad, not the editor, renders, axe on the draw view (panel round 4 K2), draw → Done → QR, axe;
 on a dev server the worker part is SKIP — and FAIL with `--require-sw`, which the deploy gate passes, so a build that
 stops emitting `sw.js` cannot pass silently; `tests/infra/qaSweepRequireSw.test.ts` pins the wiring). **`pad-css`**
 (milestone panel round 1, 2026-11-11): a CacheFirst runtime rule for `/assets/pad-*.css`, same origin. The stylesheet is

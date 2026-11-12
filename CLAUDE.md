@@ -193,7 +193,7 @@ redaction and flatten. That run measured 145 checks / 107 pass / 0 fail on 2026-
 at the 2026-09-13 round-10 gate — read the report's own summary line rather than citing either.
 Before the crawl it runs a **phone pad pass** (phone-signature-pad 5c): on a built app the
 service worker controls `pad.html`, `pad.html` is absent from the precache, the pad (not the editor) renders and draws a
-QR, and axe passes; on a dev server the worker checks are SKIP — `.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`".
+QR, and axe passes on the draw view and on the QR view (panel round 4 K2); on a dev server the worker checks are SKIP — `.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`".
 **CI also passes `--require-sw`** (milestone panel round 1, 2026-11-11): with it a missing built worker is a FAIL,
 not that SKIP, so a build that stops emitting `sw.js` cannot pass the pad pass silently.
 
