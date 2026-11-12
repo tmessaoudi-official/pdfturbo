@@ -37,11 +37,11 @@ function mount(opts: ConstructorParameters<typeof SignaturePad>[1] = {}) {
 }
 
 describe('SignaturePad (real Chrome)', () => {
-  it('a real tap on the ✍ pad draws nothing — unchanged behaviour', async () => {
+  it('a real tap on the ✍ pad draws nothing, and since 7b records nothing (a repaint would make it a dot)', async () => {
     const { canvas, pad, alphaAt } = mount({ lineWidth: 6 });
     await userEvent.click(canvas, { position: { x: 100, y: 80 } });
-    expect(pad.getStrokes()).toEqual([[{ x: 100, y: 80 }]]); // recorded…
-    expect(alphaAt(100, 80)).toBe(0); // …but not painted
+    expect(pad.getStrokes()).toEqual([]); // not recorded (7b, 3C round 2 #4)…
+    expect(alphaAt(100, 80)).toBe(0); // …and not painted
     expect(pad.isEmpty()).toBe(true);
   });
 
@@ -90,6 +90,10 @@ describe('SignaturePad (real Chrome)', () => {
     expect(alphaAt(fx, fy)).toBeGreaterThan(0);
     // empty space stays empty
     expect(alphaAt(W - 2, H - 2)).toBe(0);
-    expect([pad.color, pad.lineWidth]).toEqual(['#000000', 2]);
+    // 7b: the pad takes the replayed ink — the decoded colour and the EXACT scaled width (5 phone px, quantised to
+    // quarter grid units, × s) — and follows it until Clear.
+    expect(pad.color).toBe('#1a237e');
+    expect(pad.lineWidth).toBeCloseTo(5 * s * 1023 / 500, 1);
+    expect(pad.inkFollows).toBe(true);
   });
 });

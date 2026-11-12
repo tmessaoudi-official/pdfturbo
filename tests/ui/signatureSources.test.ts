@@ -9,7 +9,8 @@ import { drawQr } from '../../src/utils/qrCanvas';
 import { mountSignatureSources, padUrlFor } from '../../src/ui/signatureSources';
 import { SignatureImageError } from '../../src/utils/signatureImage';
 import type { ScanDeps, ScanEnd, ScanHandle } from '../../src/ui/qrScanner';
-import { base45Encode, crc32, decodeSignatureFrames, encodeSignatureBody, encodeSignatureFrames, type SignatureInput } from '../../src/utils/signatureStrokes';
+import { base45Encode, crc32, decodeSignatureFrames, encodeSignatureBody, encodeSignatureFrames, type DecodedSignature, type SignatureInput } from '../../src/utils/signatureStrokes';
+import type { PadInk } from '../../src/utils/signatureInk';
 
 /**
  * The two signature sources in the ✍ modal (phone-signature-pad plan step 5a; rulings 2026-11-10 23:46: two buttons,
@@ -28,7 +29,11 @@ function mount(over: Partial<Parameters<typeof mountSignatureSources>[0]> = {}) 
   document.body.append(document.importNode(markup, true));
   const root = document.getElementById('sigSources') as HTMLElement;
   let closed: (() => void) | null = null;
-  const pad = { drawImage: vi.fn(), replay: vi.fn() };
+  // A replay takes the decoded ink, as the real SignaturePad does since 7b (the box sync reads it back).
+  const pad = {
+    color: '#000000', lineWidth: 2, drawImage: vi.fn(),
+    replay: vi.fn((sig: DecodedSignature) => { pad.color = sig.color; pad.lineWidth = sig.lineWidth * 1.25; }),
+  };
   const loadImage = vi.fn(() => Promise.resolve(document.createElement('canvas')));
   const scans: FakeScan[] = [];
   const scan = vi.fn((d: ScanDeps): ScanHandle => {
@@ -444,5 +449,66 @@ describe('padUrlFor', () => {
   it('builds the pad URL under the base path, the language in the FRAGMENT (a precached or cached pad still matches)', () => {
     expect(padUrlFor('https://example.github.io', '/pdfturbo/', 'fr')).toBe('https://example.github.io/pdfturbo/pad.html#lang=fr');
     expect(padUrlFor('http://localhost:5173', '/pdfturbo/', 'ar')).toBe('http://localhost:5173/pdfturbo/pad.html#lang=ar');
+  });
+  it('with an ink, the ink follows the language in the fragment (7b)', () => {
+    expect(padUrlFor('https://example.github.io', '/pdfturbo/', 'en', { color: '#1d4ed8', width: 2, cw: 500 }))
+      .toBe('https://example.github.io/pdfturbo/pad.html#lang=en&c=1d4ed8&w=2&cw=500');
+  });
+});
+
+// 7b commit B (F2, rulings 2026-11-12 09:56): the phone pad opens on the PC's ink, and after a scan the PC's boxes follow
+// the scanned ink. The boxes are injected (`ink`), so this module still queries nothing outside #sigSources.
+describe('the ink — the link carries the boxes, a scan writes them back', () => {
+  function inked(start: PadInk = { color: '#ff0000', width: 4, cw: 640 }) {
+    let box = { ...start };
+    let changed: (() => void) | null = null;
+    const ink = {
+      get: vi.fn(() => ({ ...box })),
+      set: vi.fn((v: { color: string; width: number }) => { box = { ...box, color: v.color, width: Math.round(v.width) }; }),
+      onChange: (fn: () => void) => { changed = fn; },
+    };
+    const m = mount({ ink, padUrl: (i?: PadInk) => padUrlFor('https://h', '/p/', 'en', i) });
+    return { ...m, ink, change: (v: Partial<PadInk>) => { box = { ...box, ...v }; changed?.(); } };
+  }
+  const lastUrl = () => vi.mocked(drawQr).mock.calls.at(-1)?.[1];
+
+  it('the QR and the URL text carry the boxes\' ink, read at each open', () => {
+    const m = inked();
+    m.phoneBtn.click();
+    expect(lastUrl()).toBe('https://h/p/pad.html#lang=en&c=ff0000&w=4&cw=640');
+    expect(m.url.textContent).toBe('https://h/p/pad.html#lang=en&c=ff0000&w=4&cw=640');
+  });
+
+  it('a box change re-draws the QR and the URL while the panel is open; closed, it draws nothing', () => {
+    const m = inked();
+    m.change({ color: '#0000ff' });
+    expect(drawQr).not.toHaveBeenCalled();
+    m.phoneBtn.click();
+    m.change({ width: 7 });
+    expect(lastUrl()).toBe('https://h/p/pad.html#lang=en&c=0000ff&w=7&cw=640');
+    expect(m.url.textContent).toBe(lastUrl());
+  });
+
+  it('a scan accepted: the boxes take the REPLAYED ink (after the replay), and the QR is re-drawn from them', () => {
+    const m = inked();
+    m.phoneBtn.click();
+    m.camBtn.click();
+    const s = m.scans[0];
+    expect(s.deps.onText(ONE[0])).toBe(true);
+    expect(m.pad.replay).toHaveBeenCalledTimes(1);
+    expect(m.ink.set).toHaveBeenCalledTimes(1);
+    expect(m.pad.lineWidth).not.toBe(2); // precondition: the replay changed the pad's ink
+    expect(m.ink.set.mock.calls[0][0]).toEqual({ color: '#000080', width: m.pad.lineWidth }); // the pad's ink after the replay
+    expect(m.ink.set.mock.invocationCallOrder[0]).toBeGreaterThan(m.pad.replay.mock.invocationCallOrder[0]);
+    s.end({ reason: 'done' });
+    expect(lastUrl()).toBe(`https://h/p/pad.html#lang=en&c=000080&w=${Math.round(m.pad.lineWidth)}&cw=640`); // a programmatic .value fires no event: drawn explicitly
+  });
+
+  it('no ink injected (an old caller): the link is padUrl() with no ink, nothing breaks', () => {
+    const m = mount({ padUrl: (i?: PadInk) => padUrlFor('https://h', '/p/', 'en', i) });
+    m.phoneBtn.click();
+    expect(lastUrl()).toBe('https://h/p/pad.html#lang=en');
+    m.camBtn.click();
+    expect(m.scans[0].deps.onText(ONE[0])).toBe(true);
   });
 });

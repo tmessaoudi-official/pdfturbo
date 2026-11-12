@@ -66,7 +66,11 @@ export function updateHtmlDir(): void {
  * only and is not stored: pad.html takes the PC's language from its `#lang=` (phone-signature-pad step 5a), and the
  * phone's own stored choice — the editor's, same origin — must survive it.
  */
-export async function initI18n(opts: { lng?: string } = {}): Promise<void> {
+/**
+ * `lng` forces a language for this page; `store: false` never writes the language to localStorage — the phone pad
+ * (7b): it switches language on a new link, and a stored one would switch the EDITOR on that phone (same origin).
+ */
+export async function initI18n(opts: { lng?: string; store?: boolean } = {}): Promise<void> {
   await i18next
     .use(LanguageDetector)
     .init({
@@ -82,7 +86,7 @@ export async function initI18n(opts: { lng?: string } = {}): Promise<void> {
       detection: {
         order: ['localStorage', 'navigator'],
         lookupLocalStorage: 'i18nextLng',
-        caches: opts.lng ? [] : ['localStorage'],
+        caches: opts.lng || opts.store === false ? [] : ['localStorage'],
       },
       interpolation: { escapeValue: true },
     });

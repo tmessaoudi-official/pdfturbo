@@ -85,7 +85,8 @@ _Last updated: 2026-11-11 · Version 1.0.0_
 - **Approval signatures** — drawn signature with caption ("read & approved"), guided multi-signer panel
 - **Sign on your phone** — the signature modal shows a QR code that opens a drawing page on the phone; the finished
   signature comes back as QR codes on the phone's screen, read by the PC's camera, or as a PNG through **Import image**.
-  No server: the app sends nothing; the QR codes, or the PNG you move yourself, are the only link (off by default
+  The phone opens on the PC's ink colour and width and can change them (the same colour palette, a 1–10 width); after a
+  scan the PC's colour and width boxes show the scanned ink. No server: the app sends nothing; the QR codes, or the PNG you move yourself, are the only link (off by default
   until checked on a real phone)
 - **Signature byte range per the standard** — the signed range excludes the whole `/Contents` string, delimiters
   included (fixed 2026-09-27; before it, an independent validator rejected every signature the app produced). The

@@ -3,6 +3,8 @@ import { loadSignatureImage, SignatureImageError } from '../utils/signatureImage
 import { t as i18nT } from '../utils/i18n';
 import { createPtsigCollector } from '../utils/ptsigCollector';
 import type { DecodedSignature } from '../utils/signatureStrokes';
+import { padInkFragment, type PadInk } from '../utils/signatureInk';
+import type { InkSource } from './signatureInkBoxes';
 import { startScan, type ScanDeps, type ScanEnd, type ScanHandle } from './qrScanner';
 
 /**
@@ -13,6 +15,8 @@ import { startScan, type ScanDeps, type ScanEnd, type ScanHandle } from './qrSca
  *    While the camera runs its preview takes the QR's box (ruling 2026-11-11). Every way out stops the camera: Stop,
  *    a modal close (Cancel, Escape, Save), the panel collapsed, an import starting, a scan accepted.
  *  - **Import image** loads an image (`loadSignatureImage`: caps, paper removed — or its own alpha kept when it is mostly transparent — trimmed) onto the pad.
+ * The link carries the PC's ink (7b commit B): the ✍ modal's colour and width boxes, injected as `ink`, read at each QR
+ * draw and re-drawn on a box change; after a scan the boxes take the scanned ink (the pad keeps the exact width).
  * Whatever arrives lands on `signatureCanvas`, and the existing Save takes it. Bound to the static `#sigSources` markup
  * of index.html; `phonePadGate.ts` removes that markup when the `phonePad` flag is off. A refused image or a camera failure is
  * SHOWN in the modal and never logged (the QA sweep fails on a console error); a loader bug is not a refusal and is
@@ -24,13 +28,16 @@ export type Translate = (key: string, params?: Record<string, string | number>) 
 export interface SignatureSourcesDeps {
   /** The `#sigSources` element. */
   root: HTMLElement;
-  pad: { drawImage(img: HTMLCanvasElement): void; replay(sig: DecodedSignature): void };
+  /** The ✍ modal pad. A replay sets its ink to the scanned one, read back here for the boxes. */
+  pad: { drawImage(img: HTMLCanvasElement): void; replay(sig: DecodedSignature): void; readonly color: string; readonly lineWidth: number };
   /** Register `fn` to run on every close of the ✍ modal (cancelled or saved). */
   onModalClosed(fn: () => void): void;
   /** Register `fn` to run when the modal's Clear button empties the pad (a scan's status must not outlive the pad). */
   onPadCleared?(fn: () => void): void;
-  /** The phone pad's URL, read at each open (the language may have changed). */
-  padUrl(): string;
+  /** The phone pad's URL with `ink` in its fragment, read at each draw (the language or the ink may have changed). */
+  padUrl(ink?: PadInk): string;
+  /** The ✍ modal's ink boxes (`inkBoxes`). Absent: the link carries no ink, and the pad opens black. */
+  ink?: InkSource;
   loadImage?(file: File): Promise<HTMLCanvasElement>;
   scan?(deps: ScanDeps): ScanHandle;
   t?: Translate;
@@ -44,9 +51,13 @@ export interface SignatureSourcesHandle {
 
 const PAD_QR_CSS_PX = 180;
 
-/** The pad URL under the app's base path; the language goes in the FRAGMENT, so a cached `pad.html` still matches. */
-export function padUrlFor(origin: string, base: string, lang: string): string {
-  return `${new URL('pad.html', new URL(base, origin)).href}#lang=${encodeURIComponent(lang)}`;
+/**
+ * The pad URL under the app's base path; the language — and since 7b the ink — go in the FRAGMENT, so a cached
+ * `pad.html` still matches.
+ */
+export function padUrlFor(origin: string, base: string, lang: string, ink?: PadInk): string {
+  const url = `${new URL('pad.html', new URL(base, origin)).href}#lang=${encodeURIComponent(lang)}`;
+  return ink ? `${url}&${padInkFragment(ink)}` : url;
 }
 
 export function mountSignatureSources(deps: SignatureSourcesDeps): SignatureSourcesHandle {
@@ -115,6 +126,11 @@ export function mountSignatureSources(deps: SignatureSourcesDeps): SignatureSour
       case 'done':
         epoch++;
         deps.pad.replay(ev.sig);
+        if (deps.ink) {
+          // The boxes follow the scan (ruling 2026-11-12 09:56). A programmatic .value fires no event: re-draw here.
+          deps.ink.set({ color: deps.pad.color, width: deps.pad.lineWidth });
+          drawPadQr();
+        }
         setStatus('modal.signature.scanDone');
         return true;
       case 'progress':
@@ -144,16 +160,20 @@ export function mountSignatureSources(deps: SignatureSourcesDeps): SignatureSour
   };
   camBtn.addEventListener('click', () => (camera ? stopCamera() : startCamera()));
 
+  function drawPadQr(): void {
+    const url = deps.padUrl(deps.ink?.get());
+    drawQr(qr, url, PAD_QR_CSS_PX, dpr(), 'Byte');
+    urlText.textContent = url;
+  }
   const setPanel = (open: boolean) => {
     if (!open) stopCamera();
-    if (open) {
-      const url = deps.padUrl();
-      drawQr(qr, url, PAD_QR_CSS_PX, dpr(), 'Byte');
-      urlText.textContent = url;
-    }
+    if (open) drawPadQr();
     panel.hidden = !open;
     phoneBtn.setAttribute('aria-expanded', String(open));
   };
+  deps.ink?.onChange(() => {
+    if (!panel.hidden) drawPadQr();
+  });
 
   phoneBtn.addEventListener('click', () => setPanel(panel.hidden !== false)); // hidden is boolean | 'until-found'
   importBtn.addEventListener('click', () => input.click());

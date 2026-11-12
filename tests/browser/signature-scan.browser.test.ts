@@ -129,17 +129,24 @@ describe('Start camera → scan → the pad (real zxing, fake camera)', () => {
     expect(allEnded(cam.tracks)).toBe(true);
   });
 
-  it('the line-width and colour inputs change nothing on a replayed pad (only later strokes)', async () => {
+  // 7b (ruling 2026-11-12 09:56, REVERSING the step-5b pin "the inputs change nothing on a replayed pad"): PTSIG
+  // carries one ink, so while the pad shows a scan an ink change repaints the scan — the pixels turn red, and widen.
+  it('an ink change repaints a replayed pad: the scan turns red and wider (one ink per signature, 7b)', async () => {
     const cam = fakeCamera(ONE);
     const m = mount(cam);
     m.phoneBtn.click();
     m.camBtn.click();
     await vi.waitFor(() => { expect(m.status.textContent).toBe('modal.signature.scanDone'); }, { timeout: 15000 });
-    const before = (m.padCanvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, 500, 200).data.slice();
+    const ctx = m.padCanvas.getContext('2d') as CanvasRenderingContext2D;
+    const inked = (d: Uint8ClampedArray) => { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 127) n++; return n; };
+    const before = ctx.getImageData(0, 0, 500, 200).data.slice();
     m.pad.setLineWidth(9);
     m.pad.setColor('#ff0000');
-    const after = (m.padCanvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, 500, 200).data;
-    expect(after.every((v, i) => v === before[i])).toBe(true);
+    const after = ctx.getImageData(0, 0, 500, 200).data;
+    expect(inked(after)).toBeGreaterThan(inked(before) * 1.5);
+    let red = false;
+    for (let i = 0; i < after.length && !red; i += 4) red = after[i + 3] === 255 && after[i] === 255 && after[i + 1] === 0 && after[i + 2] === 0;
+    expect(red).toBe(true);
   });
 });
 

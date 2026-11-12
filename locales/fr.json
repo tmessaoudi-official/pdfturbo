@@ -750,6 +750,10 @@
     "qrCount": "QR {{index}} sur {{total}}",
     "scanHint": "Présentez cet écran devant la caméra du PC.",
     "edit": "Modifier",
-    "download": "Télécharger le PNG"
+    "download": "Télécharger le PNG",
+    "color": "Couleur de l'encre",
+    "width": "Épaisseur du trait",
+    "widthDown": "Trait plus fin",
+    "widthUp": "Trait plus épais"
   }
 }

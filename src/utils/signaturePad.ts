@@ -26,6 +26,12 @@ export class SignaturePad {
   private _pointerId: number | null = null;
   /** The drawing size in CSS px once `setSize` ran; until then the buffer size (the ✍ modal pad never calls it). */
   private _size: { width: number; height: number } | null = null;
+  private _inkFollows = false;
+  /**
+   * Runs when the pad stops showing a scan (`clear`, `drawImage`). The ✍ modal resets the pad's ink from its boxes
+   * there: a replayed width comes from an untrusted QR and may be wider than any box value (7b, 3C round 3 #3).
+   */
+  onFollowEnd: (() => void) | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: SignaturePadOptions = {}) {
     this.canvas  = canvas;
@@ -82,6 +88,9 @@ export class SignaturePad {
 
   private _stopDrawing(e: PointerEvent): void {
     if (e.pointerId !== this._pointerId) return;
+    // A tap draws nothing on a pad without dotOnTap (the ✍ modal): keep it out of the record too, or a repaint would
+    // turn it into a dot (7b, 3C round 2 #4).
+    if (!this._dotOnTap && this._current?.length === 1) this._strokes = this._strokes.filter((s) => s !== this._current);
     this.isDrawing = false;
     this._pointerId = null;
     this._current = null;
@@ -121,20 +130,54 @@ export class SignaturePad {
     paintStrokes(this.ctx, this._strokes, this.color, this.lineWidth);
   }
 
-  /** Wipe the canvas and the recorded strokes, and end any stroke in progress. */
+  /** Wipe the canvas and the recorded strokes, end any stroke in progress, and stop following a scan. */
   clear(): void {
+    this._wipe();
+    this._endFollow();
+  }
+
+  private _wipePixels(): void {
     this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0); // the whole buffer, whatever the dpr scale
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.restore();
+  }
+
+  private _wipe(): void {
+    this._wipePixels();
     this._strokes = [];
     this._current = null;
     this.isDrawing = false;
     this._pointerId = null;
   }
+
+  private _endFollow(): void {
+    if (!this._inkFollows) return;
+    this._inkFollows = false;
+    this.onFollowEnd?.();
+  }
+
+  /** True while the pad shows a replayed scan: an ink change then repaints it (one PTSIG ink per signature). */
+  get inkFollows(): boolean { return this._inkFollows; }
+
+  /**
+   * Wipe the pixels and redraw every recorded stroke in the pad's CURRENT ink; the record is kept. The phone pad calls
+   * it on every ink change (PTSIG sends one ink, so the screen must show one); the PC calls it while following a scan.
+   */
+  repaint(): void {
+    this._wipePixels();
+    paintStrokes(this.ctx, this._strokes, this.color, this.lineWidth);
+  }
+
   getDataURL():               string  { return this.canvas.toDataURL(); }
-  setLineWidth(w: number):    void    { this.lineWidth = w; }
-  setColor(c: string):        void    { this.color = c; }
+  setLineWidth(w: number): void {
+    this.lineWidth = w;
+    if (this._inkFollows) this.repaint();
+  }
+  setColor(c: string): void {
+    this.color = c;
+    if (this._inkFollows) this.repaint();
+  }
 
   /** The recorded strokes, copied. */
   getStrokes(): SignaturePoint[][] {
@@ -149,16 +192,20 @@ export class SignaturePad {
 
   /**
    * Clear the pad and draw a decoded signature: its grid fitted inside the canvas (contain, centred), the line width
-   * scaled with it, in the decoded colour; a one-point stroke is a dot. The pad's own colour and width are untouched;
-   * the drawn strokes become the recorded ones.
+   * scaled with it, in the decoded colour; a one-point stroke is a dot. The drawn strokes become the recorded ones, and
+   * the pad TAKES the replayed ink — the exact scaled width, not a rounded one — and follows it: an ink change then
+   * repaints the scan (7b, ruling 2026-11-12 09:56 "boxes follow the scan") until `clear` or `drawImage`.
    */
   replay(sig: DecodedSignature): void {
-    this.clear();
+    this._wipe(); // not clear(): a re-scan replaces a scan, following does not end in between
     const { width: w, height: h } = this._logical();
     const box = fitContain(sig.gridWidth, sig.gridHeight, w, h);
     const s = box.w / sig.gridWidth;
     this._strokes = sig.strokes.map((stroke) => stroke.map((p) => ({ x: box.x + p.x * s, y: box.y + p.y * s })));
-    paintStrokes(this.ctx, this._strokes, sig.color, sig.lineWidth * s);
+    this.color = sig.color;
+    this.lineWidth = sig.lineWidth * s;
+    this._inkFollows = true;
+    paintStrokes(this.ctx, this._strokes, this.color, this.lineWidth);
   }
 
   /**

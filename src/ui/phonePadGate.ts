@@ -4,6 +4,7 @@
 // main.ts reads the flag and passes the VALUE (milestone panel round 1, 2026-11-11: this used to be inline in
 // main.ts, which no test imports).
 import { mountSignatureSources, type SignatureSourcesDeps } from './signatureSources';
+import { inkBoxes } from './signatureInkBoxes';
 
 export interface PhonePadGateDeps {
   enabled: boolean;
@@ -12,7 +13,7 @@ export interface PhonePadGateDeps {
     signaturePad: SignatureSourcesDeps['pad'];
     onSignatureModalClosed(fn: () => void): void;
   };
-  padUrl: () => string;
+  padUrl: SignatureSourcesDeps['padUrl'];
   mount?: (deps: SignatureSourcesDeps) => unknown;
 }
 
@@ -23,6 +24,13 @@ export function applyPhonePadFlag(deps: PhonePadGateDeps): void {
     root.remove();
     return;
   }
+  // The ✍ modal's ink boxes and pad canvas: the phone link carries their ink, and a scan writes them back (7b).
+  const width = deps.doc.getElementById('sigLineWidth');
+  const color = deps.doc.getElementById('sigColor');
+  const canvas = deps.doc.getElementById('signatureCanvas');
+  const ink = width instanceof HTMLInputElement && color instanceof HTMLInputElement && canvas instanceof HTMLCanvasElement
+    ? inkBoxes(width, color, canvas)
+    : undefined;
   (deps.mount ?? mountSignatureSources)({
     root,
     pad: deps.app.signaturePad,
@@ -30,5 +38,6 @@ export function applyPhonePadFlag(deps: PhonePadGateDeps): void {
     // The modal's Clear button (bound to the pad by modalBinder) also clears a finished scan's status (step-7 W13).
     onPadCleared: (fn) => deps.doc.getElementById('clearSignature')?.addEventListener('click', fn),
     padUrl: deps.padUrl,
+    ink,
   });
 }

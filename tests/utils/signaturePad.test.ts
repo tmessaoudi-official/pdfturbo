@@ -43,7 +43,7 @@ describe('SignaturePad — recording', () => {
   });
 
   it('down → up is one stroke; a tap is a one-point stroke', () => {
-    const { pad, stroke } = makePad();
+    const { pad, stroke } = makePad({ dotOnTap: true }) /* a tap is recorded on the phone pad only (7b) */;
     stroke([[1, 1], [2, 2]]);
     stroke([[50, 50]]);
     expect(pad.getStrokes()).toEqual([[{ x: 1, y: 1 }, { x: 2, y: 2 }], [{ x: 50, y: 50 }]]);
@@ -62,7 +62,7 @@ describe('SignaturePad — recording', () => {
   });
 
   it('pointerleave or pointercancel of the drawing pointer ends its stroke', () => {
-    const { pad, fire } = makePad();
+    const { pad, fire } = makePad({ dotOnTap: true }) /* a tap is recorded on the phone pad only (7b) */;
     fire('pointerdown', 1, 1);
     fire('pointerleave', 2, 2);
     fire('pointermove', 3, 3);
@@ -73,7 +73,7 @@ describe('SignaturePad — recording', () => {
   });
 
   it('a lost pointer capture ends the stroke, so the next finger can draw (the modal closed mid-stroke)', () => {
-    const { pad, fire } = makePad();
+    const { pad, fire } = makePad({ dotOnTap: true }) /* a tap is recorded on the phone pad only (7b) */;
     fire('pointerdown', 1, 1, 7);
     fire('lostpointercapture', 1, 1, 7); // the canvas was hidden; its pointerup lands elsewhere
     fire('pointerdown', 9, 9, 8);
@@ -177,7 +177,7 @@ describe('SignaturePad — replay', () => {
     expect(p.x).toBeCloseTo((500 - 341 * s) / 2 + 341 * s, 6);
   });
 
-  it('draws in the decoded colour at the scaled width, a one-point stroke as a dot, and keeps the pad style', () => {
+  it('draws in the decoded colour at the scaled width, a one-point stroke as a dot, and takes that ink (7b)', () => {
     const { pad, ctx } = makePad({ color: '#000000', lineWidth: 2 });
     const arc = vi.spyOn(ctx, 'arc');
     const strokeCall = vi.spyOn(ctx, 'stroke');
@@ -190,11 +190,14 @@ describe('SignaturePad — replay', () => {
     expect(styles[0][1]).toBeCloseTo(4 * s, 6);
     expect(arc).toHaveBeenCalledTimes(1); // the one-point stroke
     expect(arc.mock.calls[0][2]).toBeCloseTo((4 * s) / 2, 6);
-    expect([pad.color, pad.lineWidth]).toEqual(['#000000', 2]);
+    // 7b (ruling 2026-11-12 09:56, "boxes follow the scan"): the pad takes the replayed ink, the EXACT scaled width
+    expect(pad.color).toBe('#1a237e');
+    expect(pad.lineWidth).toBeCloseTo(4 * s, 9);
+    expect(pad.inkFollows).toBe(true);
   });
 
   it('round-trips: encode on one pad, decode, replay on another — the same shape at the new size', () => {
-    const a = makePad();
+    const a = makePad({ dotOnTap: true }); // the phone pad: its tap is a stroke (the ✍ modal pad drops one, 7b)
     a.stroke([[10, 10], [250, 190], [490, 10]]);
     a.stroke([[250, 100]]);
     const b = makePad();
@@ -317,5 +320,105 @@ describe('SignaturePad — drawImage (Import image, phone-signature-pad step 5a)
     ictx.fillRect(0, 0, 10, 4);
     pad.drawImage(img);
     expect(pad.isEmpty()).toBe(false);
+  });
+});
+
+// Phone-signature-pad 7b commit B: one PTSIG ink per signature, so an ink change repaints every recorded stroke — on the
+// PC only while the pad shows a scan (`inkFollows`), on the phone always (padPage calls `repaint()` itself).
+describe('SignaturePad — ink follows a replay (7b)', () => {
+  const sig: DecodedSignature = {
+    gridWidth: 1023, gridHeight: 409, color: '#00cc00', lineWidth: 12,
+    strokes: [[{ x: 10, y: 10 }, { x: 900, y: 300 }]],
+  };
+  const styles = (ctx: CanvasRenderingContext2D) => {
+    const seen: Array<[unknown, number]> = [];
+    vi.spyOn(ctx, 'stroke').mockImplementation(() => { seen.push([ctx.strokeStyle, ctx.lineWidth]); });
+    return seen;
+  };
+
+  it('a fresh pad does not follow; a drawn stroke does not make it follow', () => {
+    const { pad, stroke } = makePad();
+    expect(pad.inkFollows).toBe(false);
+    stroke([[1, 1], [50, 50]]);
+    expect(pad.inkFollows).toBe(false);
+  });
+
+  it('while following, setColor and setLineWidth repaint every stroke in the new ink — each time', () => {
+    const { pad, ctx } = makePad();
+    pad.replay(sig);
+    const clear = vi.spyOn(ctx, 'clearRect');
+    const seen = styles(ctx);
+    pad.setColor('#0000ff');
+    pad.setLineWidth(2);
+    expect(seen.map(([c]) => c)).toEqual(['#0000ff', '#0000ff']);
+    expect(seen[0][1]).toBeCloseTo(500 * 12 / 1023, 5); // the context stores a float32
+    expect(seen[1][1]).toBe(2);
+    expect(clear).toHaveBeenCalledTimes(2); // the old ink wiped before each repaint
+    expect(pad.getStrokes()).toHaveLength(1); // the record kept
+  });
+
+  it('not following, an ink change only sets the ink: what is on the pad stays (the ✍ modal as before)', () => {
+    const { pad, ctx, stroke } = makePad();
+    stroke([[1, 1], [50, 50]]);
+    const seen = styles(ctx);
+    pad.setColor('#0000ff');
+    pad.setLineWidth(7);
+    expect(seen).toEqual([]);
+    expect([pad.color, pad.lineWidth]).toEqual(['#0000ff', 7]);
+  });
+
+  it('repaint() wipes the pixels and redraws the strokes in the current ink, keeping the record — every call', () => {
+    const { pad, ctx, stroke } = makePad({ dotOnTap: true });
+    stroke([[1, 1], [50, 50]]);
+    const seen = styles(ctx);
+    const clear = vi.spyOn(ctx, 'clearRect');
+    pad.setColor('#ff0000');
+    pad.repaint();
+    pad.setLineWidth(5);
+    pad.repaint();
+    expect(seen).toEqual([['#ff0000', 2], ['#ff0000', 5]]);
+    expect(clear).toHaveBeenCalledTimes(2);
+    expect(pad.getStrokes()).toHaveLength(1);
+  });
+
+  it('Clear ends following and calls onFollowEnd once; a second Clear does not call it again', () => {
+    const { pad } = makePad();
+    const end = vi.fn();
+    pad.onFollowEnd = end;
+    pad.replay(sig);
+    pad.replay(sig); // a re-scan replaces the scan: following never ended in between
+    expect(end).not.toHaveBeenCalled();
+    pad.clear();
+    expect(pad.inkFollows).toBe(false);
+    expect(end).toHaveBeenCalledTimes(1);
+    pad.clear();
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it('an imported image ends following too', () => {
+    const { pad } = makePad();
+    const end = vi.fn();
+    pad.onFollowEnd = end;
+    pad.replay(sig);
+    const img = document.createElement('canvas');
+    img.width = 10;
+    img.height = 4;
+    pad.drawImage(img);
+    expect(pad.inkFollows).toBe(false);
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SignaturePad — a tap on the ✍ modal pad is not recorded (7b, 3C round 2 #4)', () => {
+  it('without dotOnTap a one-point stroke is dropped: a repaint would otherwise turn it into a dot', () => {
+    const { pad, stroke } = makePad();
+    stroke([[5, 5], [40, 40]]);
+    stroke([[60, 60]]);
+    expect(pad.getStrokes().map((s) => s.length)).toEqual([2]);
+  });
+  it('with dotOnTap (the phone) it is kept: it was drawn, and PTSIG replays it as a dot', () => {
+    const { pad, stroke } = makePad({ dotOnTap: true });
+    stroke([[60, 60]]);
+    expect(pad.getStrokes()).toEqual([[{ x: 60, y: 60 }]]);
   });
 });

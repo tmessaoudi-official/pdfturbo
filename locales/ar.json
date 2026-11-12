@@ -750,6 +750,10 @@
     "qrCount": "رمز QR {{index}} من {{total}}",
     "scanHint": "ضع هذه الشاشة أمام كاميرا الحاسوب.",
     "edit": "تعديل",
-    "download": "تنزيل PNG"
+    "download": "تنزيل PNG",
+    "color": "لون الحبر",
+    "width": "سُمك الخط",
+    "widthDown": "خط أرفع",
+    "widthUp": "خط أسمك"
   }
 }

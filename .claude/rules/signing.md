@@ -317,7 +317,7 @@ is `modal.signers.mentionDefault`, which is why a grep for the short name finds 
 Plan `docs/plans/phone-signature-pad.plan.md` (its Decisions Log is the ruling record). **Shape:** the ✍ modal's *Sign on
 phone* panel shows a QR of the `pad.html` URL (built from `location` + base; parameters only in the `#fragment`, so a
 cached page still matches); the phone draws on `pad.html` — its own Vite entry, same CSP, registers NO service worker,
-ink locked to black 2.5 CSS px, a tap draws a dot (`dotOnTap`, phone only) — and *Done* shows the signature as PTSIG v1
+a tap draws a dot (`dotOnTap`, phone only), ink from the PC (below) — and *Done* shows the signature as PTSIG v1
 QR codes (1–4 frames, cycled every 1 s). *Start camera* on the PC reads them in any order; the strokes are replayed onto
 `signatureCanvas` and **wait for Save** (no auto-save). *Import image* (the no-webcam route, fed by the phone's
 *Download PNG*): `createImageBitmap`, size and pixel caps, the paper keyed out, ink colour kept, re-encoded to PNG (EXIF
@@ -327,6 +327,26 @@ sheet with transparent rounded corners 0.2%): keyed on white, a yellow ink (lumi
 30) vanished and the import said "no ink found". Bounds: a mostly transparent PNG carrying an opaque white box keeps
 the box; a cross-hatch denser than 95% ink falls back to keying, where a light ink fades. The result enters `currentSignature` through the EXISTING modal, so export, redaction and signing code are
 untouched: no persisted field, no `SCHEMA_VERSION` change.
+
+**The ink — the PC hands it over, the phone can change it, the PC's boxes follow the scan** (7b commit B, rulings
+2026-11-12 09:56 / 10:15; `src/utils/signatureInk.ts`). The link's fragment carries `c` (6 hex), `w` (the PC's width box,
+a whole 1–10, in PC canvas px) and `cw` (the PC canvas width, 200–4000); the phone draws at `w × padWidth / cw` CSS px,
+so the PC's replay — which fits the phone's grid to `cw` — comes back at `w` (pixel-measured in Chrome: 6 ± 0.5). The
+`cw` floor 200 is PTSIG's: the width travels in quarter grid units capped at 255, and at w = 10 a `cw` under 162 passes
+it. The phone reads the fragment strictly (each bad field → its default: black, 2, 500) and NEVER offers white — not
+from the link (`c=ffffff` → black), nor the recents, nor a custom pick. One PTSIG ink per signature, so every ink change
+repaints every stroke: on the phone always (`SignaturePad.repaint()`, never through `clear()`), on the PC only while
+the pad shows a scan (`inkFollows`, set by `replay`, which now TAKES the replayed ink — the exact width, not a rounded
+one). After a scan the boxes are written (`#sigLineWidth` = the width rounded and clamped) and the QR re-drawn — a
+programmatic `.value` fires no event. **The replayed width must not outlive the scan:** it comes from an untrusted QR
+(up to about 31 px on a 500 px canvas) while the box shows at most 10, so `clear()` and `drawImage()` end following and
+reset the pad's ink FROM THE BOXES (`onFollowEnd`). The boxes drive the pad on `input` with a clamped value and are
+written back only on `change` (`signatureInkBoxes.ts`, bound in `modalBinder` for every user — the old bare `parseInt`
+let NaN and 50 reach the pad). A tap on the ✍ pad (no `dotOnTap`) is no longer recorded: a repaint would make it a dot.
+`hashchange` on the phone re-applies language and ink, and from the QR view returns to the draw view; the pad never
+STORES a language (`initI18n({ store: false })`: a stored one would switch the editor's language on that phone).
+**The visible default changed:** a link without ink (an old QR) draws black at 2 PC px — 2.5 phone px on a 368 px pad
+used to replay at about 3.4.
 
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.
@@ -345,10 +365,12 @@ untouched: no persisted field, no `SCHEMA_VERSION` change.
 - **Flag `phonePad` defaults OFF** (`isEnabled` has a per-key default) until the step-7 check on a real phone and webcam.
 - **Offline and an outdated phone:** `toolchain.md` § "PWA is `registerType: 'prompt'`" (the 5c paragraph). Known, left
   as is by ruling: at 414 px on a first visit the cookie banner covers the modal's Save row (plan § Known issues).
-- **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage,signaturePad,signaturePng}.test.ts`,
-  `tests/ui/{qrScanner,qrScannerZxing,signatureSources,phonePadGate}.test.ts`, `tests/pad/padPage.test.ts`, the CSP's
+- **Guards:** jsdom `tests/utils/{signatureStrokes,ptsigCollector,qrCanvas,signatureImage,signaturePad,signaturePng,signatureInk,i18nInitLang}.test.ts`,
+  `tests/ui/{qrScanner,qrScannerZxing,signatureSources,signatureInkBoxes,phonePadGate}.test.ts`, `tests/pad/padPage.test.ts`, the CSP's
   `connect-src 'self' blob:` pin in `tests/security/csp.test.ts`, `tests/infra/{pwaOcrCaching,qaSweepRequireSw}.test.ts`; real Chrome
-  `tests/browser/{pad-page,signature-pad,signature-sources,signature-import,signature-scan}.browser.test.ts` (QR round trip,
-  a fake camera with real zxing, image-import pixels); the QA sweep's phone pad pass on every deploy.
-- **Not certified by execution:** a real phone read by a real webcam (step 7); the 33 Arabic keys (in the pending count,
+  `tests/browser/{pad-page,pad-ink,signature-pad,signature-sources,signature-import,signature-scan}.browser.test.ts` (QR round trip,
+  a fake camera with real zxing, image-import pixels, the ink PC → phone → PC measured in pixels); the QA sweep's phone
+  pad pass on every deploy. 7b B was sabotage-checked 20 ways (each of the plan's eight mutants plus twelve more), each
+  red where predicted. Its wiring in `modalBinder.ts` and `main.ts` (imported by no test) is pinned by a source check.
+- **Not certified by execution:** a real phone read by a real webcam (step 7); the 37 Arabic keys (in the pending count,
   `toolchain.md` § i18n).

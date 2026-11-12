@@ -12,13 +12,13 @@ vi.mock('../../src/utils/qrCanvas', () => ({ drawQr: vi.fn(() => ({ modules: 33,
 // The app's method reads `this`, as PDFTurboApp's does: a gate that passes it UNBOUND fails here (round 2).
 class FakeApp {
   closers: Array<() => void> = [];
-  constructor(readonly signaturePad: { drawImage: () => void; replay: () => void }) {}
+  constructor(readonly signaturePad: { drawImage: () => void; replay: () => void; color: string; lineWidth: number }) {}
   onSignatureModalClosed(fn: () => void): void { this.closers.push(fn); }
 }
 
 function setup() {
   document.body.innerHTML = '<div id="sigSources"></div>';
-  const pad = { drawImage: vi.fn(), replay: vi.fn() };
+  const pad = { drawImage: vi.fn(), replay: vi.fn(), color: '#000000', lineWidth: 2 };
   const app = new FakeApp(pad);
   vi.spyOn(app, 'onSignatureModalClosed');
   const mount = vi.fn();
@@ -64,6 +64,17 @@ describe('applyPhonePadFlag', () => {
     expect(onCleared).toHaveBeenCalledTimes(1);
   });
 
+  it('flag ON: the mount gets the ✍ modal\'s ink boxes — #sigColor, #sigLineWidth, the pad canvas width (7b)', () => {
+    const { app, mount } = setup();
+    document.body.insertAdjacentHTML('beforeend',
+      '<input id="sigLineWidth" type="number" value="4"><input id="sigColor" type="color" value="#ff0000"><canvas id="signatureCanvas" width="640" height="256"></canvas>');
+    applyPhonePadFlag({ enabled: true, doc: document, app, padUrl: () => 'u', mount });
+    const ink = mount.mock.calls[0][0].ink;
+    expect(ink.get()).toEqual({ color: '#ff0000', width: 4, cw: 640 });
+    ink.set({ color: '#00cc00', width: 6.2 });
+    expect([(document.getElementById('sigColor') as HTMLInputElement).value, (document.getElementById('sigLineWidth') as HTMLInputElement).value]).toEqual(['#00cc00', '6']);
+  });
+
   it('flag ON without #sigSources in the page: mounts nothing, does not throw', () => {
     const { app, mount } = setup();
     document.body.innerHTML = '';
@@ -105,6 +116,10 @@ describe('main.ts feeds the gate the phonePad flag', () => {
   it('calls it unconditionally: its own statement, and the only place the phonePad flag is read', () => {
     expect(src).toMatch(/[;}]\s*applyPhonePadFlag\(\{/);
     expect(src.match(/isEnabled\('phonePad'\)/g)?.length).toBe(1);
+  });
+
+  it('hands the ink to padUrlFor: the pad link carries the PC\'s ink (7b)', () => {
+    expect(src).toMatch(/padUrl:\s*\((\w+)\)\s*=>\s*padUrlFor\([^;]*,\s*\1\s*\)/);
   });
 
   it('has no other #sigSources handling of its own', () => {

@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     enabled: isEnabled('phonePad'),
     doc: document,
     app,
-    padUrl: () => padUrlFor(location.origin, import.meta.env.BASE_URL, getCurrentLang()),
+    padUrl: (ink) => padUrlFor(location.origin, import.meta.env.BASE_URL, getCurrentLang(), ink),
   });
 
   // #1c — DOCX editor entry (flag-gated, lazy). Nothing docx-related (ProseMirror,

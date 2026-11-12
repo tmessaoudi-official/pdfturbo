@@ -15,7 +15,9 @@ most of the work went into proving that what the product claims to remove is act
 - **Sign on your phone** (off by default until checked on a real phone): the ✍ modal shows a QR code that opens a
   drawing page (`pad.html`) on the phone; *Done* shows the signature as one to four QR codes, which *Start camera*
   on the PC reads, or the phone saves a PNG that *Import image* brings in (paper keyed out — a transparent PNG keeps its own alpha, so any ink colour survives — metadata dropped). The
-  signature waits in the modal for Save. No server, no upload: the QR codes on the phone's screen, or the PNG you
+  signature waits in the modal for Save. The phone page opens on the PC's ink colour and width and can change them
+  (the shared colour palette without white, a 1–10 width); after a scan the PC's colour and width boxes follow the
+  scanned ink, and changing them repaints it. No server, no upload: the QR codes on the phone's screen, or the PNG you
   move yourself, are the only link. The scanner's decoder is self-hosted and cached on first use. Online, the phone
   page is fetched from the network first (the browser's own cache may answer for a few minutes after a deploy); on a
   phone where the app was opened, a copy stays usable offline for up to 30 days after it was last opened online, until

@@ -750,6 +750,10 @@
     "qrCount": "QR {{index}} of {{total}}",
     "scanHint": "Hold this screen in front of the PC's camera.",
     "edit": "Edit",
-    "download": "Download PNG"
+    "download": "Download PNG",
+    "color": "Ink color",
+    "width": "Line width",
+    "widthDown": "Thinner line",
+    "widthUp": "Thicker line"
   }
 }

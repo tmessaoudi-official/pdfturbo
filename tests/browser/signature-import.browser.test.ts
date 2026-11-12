@@ -37,7 +37,8 @@ const codeOf = async (p: Promise<unknown>) => {
 
 describe('loadSignatureImage — real decode', () => {
   it('(i) the pad PNG (transparent background) keeps every stroke, trimmed to the ink, background clear', async () => {
-    // A horizontal and a vertical stroke, 2.5 CSS px at scale 2, exactly as the phone's Download makes them.
+    // A horizontal and a vertical stroke, 2.5 CSS px at scale 2, as the phone's Download makes them (its width varies
+    // with the PC's ink since 7b; 2.5 is the pre-7b default, kept as a fixed fixture).
     const png = strokesToCanvas(
       [[{ x: 10, y: 30 }, { x: 110, y: 30 }], [{ x: 60, y: 0 }, { x: 60, y: 60 }]],
       { color: '#000000', lineWidth: 2.5, scale: 2 },

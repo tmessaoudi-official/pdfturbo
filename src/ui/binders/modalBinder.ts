@@ -6,6 +6,7 @@ import { confirmDestructive } from '../confirmDialog';
 import { bindExtractPagesModal } from './extractPagesBinder';
 import { attachDisplayModalFocusTrap } from '../../utils/displayModalFocusTrap';
 import { openViaPicker, renderRecentFiles, type RecentMenuCtx } from '../recentFilesMenu';
+import { bindSignatureInkBoxes } from '../signatureInkBoxes';
 
 /**
  * #54b — the narrow view of the app the recent-files menu needs. Built per call rather than stored:
@@ -25,12 +26,8 @@ export function bindModalEvents(app: PDFTurboApp): void {
   document.getElementById('clearSignature')?.addEventListener('click', () => app.signaturePad.clear());
   document.getElementById('cancelSignature')?.addEventListener('click', () => app.closeSignatureModal());
   document.getElementById('saveSignature')?.addEventListener('click', () => app.saveSignature());
-  app.ui.sigLineWidthInput.addEventListener('change', (e) => {
-    app.signaturePad.setLineWidth(parseInt((e.target as HTMLInputElement).value, 10));
-  });
-  app.ui.sigColorInput.addEventListener('change', (e) => {
-    app.signaturePad.setColor((e.target as HTMLInputElement).value);
-  });
+  // The ink boxes drive the pad live, clamped 1–10 (7b: a bare parseInt let NaN and 50 reach the pad and the phone link).
+  bindSignatureInkBoxes(app.signaturePad, app.ui.sigLineWidthInput, app.ui.sigColorInput);
 
   // ── OCR modal ──────────────────────────────────────────────────
   app.ui.cancelOcrModal.addEventListener('click', () => app.closeOcrModal());
