@@ -113,6 +113,8 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-12 19:09] AGREED: Full-screen signing = a big pad with the controls hidden (a full-screen button; only Clear / Done / exit stay), the pad keeps PAD_ASPECT 0.4, a CSS fill as the base (iPhone Safari has no element fullscreen), requestFullscreen + orientation lock only where supported
 - [2026-11-12 19:09] AGREED: Full-screen signing lands AFTER 1.1.0 as its own Medium plan and review, never inside the round-4 fix batch or round 5
 - [2026-11-12 19:21] AGREED: R4-5: the privacy.html fix is pushed on its own as soon as the full gate is green (with the local docs commits), not held for 1.1.0
+- [2026-11-12 19:57] AGREED: R4-1: privacy.html storage text approved as shown (built from the running app: 4 localStorage keys, 1 sessionStorage flag, IndexedDB session + recent + OCR language copy + cache list, Cache Storage of own files, no cookies; FR/AR quote the real Reset labels) PLUS one sentence that the data is stored unencrypted and a private window is advised on a shared computer
+- [2026-11-12 19:57] AGREED: R4-2: C4 reverses the 10:33 pin — 'Signature scanned' clears only after a SUCCESSFUL import; a refused import leaves it, since the pad still holds the scan
 
 ## Formal Plan
 
@@ -309,8 +311,8 @@ coverage 9, QA sweep 161 / 119 / 0 fail / 42 skip, 57 of 144). Working tree: onl
 **Where the work stands in the 7b sequence (go 10:33):** A, A2, B, gate, W17–W23 re-walk, C (flag ON) — DONE.
 Milestone panel round 4 (fable, frozen `3918563`) — DONE, ruled 15:37 (four AGREED lines in the Decisions Log).
 **NEXT (ruling 19:09 — this order replaces the 15:45 "Order of work" and "After round 5" sequence below):**
-(a) the HTTPS smoke walk on the DEPLOYED build (user-only, Needs input R4-4); (b) the privacy.html text (R4-1) shown to
-the developer, then committed — whether it pushes on its own is R4-5; (c) the rest of the round-4 fix task (Medium; tier
+(a) the HTTPS smoke walk on the DEPLOYED build (user-only, Needs input R4-4) — DONE 2026-11-12 except R4-4.7; (b) the privacy.html text (R4-1) shown to
+the developer, then committed and pushed on its own (R4-5) — DONE 2026-11-12; (c) the rest of the round-4 fix task (Medium; tier
 `advisor()` only, ruled 15:40) in the 15:45 order's steps (1)–(4), (6)–(8); (d) panel round 5 (the LAST before the
 5-round cap); (e) step 9 (1.1.0, shown first), gate, push, `/ci-watch`. The 10:33 "ONE push after 1.1.0" is void in fact
 (everything through `9312404` is live).
@@ -330,7 +332,7 @@ Rulings 15:37 decide each:
 | S4 (P3) "invisible ink never offered" holds only for exact `#ffffff` | reword to "exact white" (ruling 09:56) in signing.md / code comment |
 | K1/S3 (P2) the kill-switch leaves `pad.html` built and served; no deploy path sets the variable | DOCUMENT the scope (ruled): signing.md, features.ts, vite-env.d.ts — removes the PC's entry points (Sign on phone, Import image, camera); pad.html stays; to pull it the variable must be added to deploy.yml |
 | S1 (P2) LAN addresses in this plan | DONE in this save commit: redacted to `<LAN-IP>`; history keeps them (ruled) |
-| S2/K5 (P2/P3) privacy.html storage list incomplete; S5/K6 the Arabic recentColors sentence not in the pending-review note | complete EN/FR/AR (ruled), **exact text shown to the developer BEFORE the commit**. Build the list from the RUNNING app, not a grep (the grep missed `i18nextLng`, written by a library): preview build, clean profile, exercise editor + pad.html, dump localStorage, sessionStorage, `indexedDB.databases()`, `caches.keys()`; say what clears each (Reset Session clears only the session; "Clear recent files" clears recents). Known so far: `i18nextLng`, `pdfturbo_storage_notice`, `pdfturbo.recentColors`, `pdfturbo_toolbar_order`; IndexedDB `pdf-editor` stores `state` + `recent` (≤8 file names + handles); sessionStorage `pdfturbo_privacy_toast_shown`. KNOWN_ISSUES:618 note must name BOTH Arabic passages + the new Arabic |
+| S2/K5 (P2/P3) privacy.html storage list incomplete; S5/K6 the Arabic recentColors sentence not in the pending-review note | **DONE 2026-11-12 (R4-1, AGREED 19:57)** — complete EN/FR/AR (ruled), **exact text shown to the developer BEFORE the commit**. Build the list from the RUNNING app, not a grep (the grep missed `i18nextLng`, written by a library): preview build, clean profile, exercise editor + pad.html, dump localStorage, sessionStorage, `indexedDB.databases()`, `caches.keys()`; say what clears each (Reset Session clears only the session; "Clear recent files" clears recents). Known so far: `i18nextLng`, `pdfturbo_storage_notice`, `pdfturbo.recentColors`, `pdfturbo_toolbar_order`; IndexedDB `pdf-editor` stores `state` + `recent` (≤8 file names + handles); sessionStorage `pdfturbo_privacy_toast_shown`. KNOWN_ISSUES:618 note must name BOTH Arabic passages + the new Arabic |
 | K2 (P2) no axe on the pad's draw view | add an axe run in the QA sweep's pad pass BEFORE Done (same tags + animation settle as the existing pad axe call); check `tests/infra/qaSweepRequireSw.test.ts` still matches; run the sweep alone first (2 min); re-measure the SKILL baseline (the "five `pad:` lines" and 161/119 change) |
 | K3 (P2) signing.md `paths:` misses `src/utils/signatureInk.ts`, `src/ui/signatureInkBoxes.ts`, `tests/utils/signatureInk.test.ts`, `tests/ui/signatureInkBoxes.test.ts`, `tests/browser/pad-ink.browser.test.ts`, `tests/utils/i18nInitLang.test.ts` | add the six |
 | K4 (P2) F3 (the editor "mostly unusable" on the phone, W15) only in `docs/plans/mobile-editor-layout.plan.md` | KNOWN_ISSUES entry |
@@ -388,8 +390,8 @@ Later: row 10 (PC `#sigColor` swatch row), W16 (native Arabic read, optional), m
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
-- [ ] R4-1. Approve the completed privacy.html storage text (EN/FR/AR) before its commit (ruling 15:37; round-4 fix task)
-- [ ] R4-2. Acknowledge that the C4 fix reverses the 10:33 plan's pinned "a refused import after a scan also clears the status"
+- [x] R4-1. Approve the completed privacy.html storage text (EN/FR/AR) before its commit (ruling 15:37; round-4 fix task) — DONE 2026-11-12: AGREED 19:57 (+ the unencrypted sentence); built from a clean-profile run of the built app (`var/claude/privacy/dump.json`: no cookie; colour pick writes recentColors, Reset Session empties only `state`, Reset toolbar deletes the key); closes S2/K5 and S5/K6 (KNOWN_ISSUES names both Arabic passages); FR guillemets get no-break spaces (414 px wrap); full gate 9/9 rc=0 twice (`var/claude/gate-privacy2.log`: jsdom 4324, Chrome 748, coverage 9, sweep 161/119/0); before/after EN/FR/AR × 1280/414 in `var/claude/privacy/`, 0 px overflow
+- [x] R4-2. Acknowledge that the C4 fix reverses the 10:33 plan's pinned "a refused import after a scan also clears the status" — DONE 2026-11-12: AGREED 19:57
 - [ ] R4-3. If the K12 trace fails: accept that the deploy sweep no longer clicks clearSignature / cancelSignature with the flag ON
 - [ ] R4-4. HTTPS smoke walk on the deployed Pages build (ruling 19:09, FIRST): on the phone, open the pad from the deployed editor's QR; check the service worker controls `pad.html` and `pad.html` still loads offline/after reload; sign, Done, scan on the PC; then a new deploy → the phone accepts the pad's Update prompt and scans again
   - [x] R4-4.1. PC Chrome: open the deployed editor, open a PDF, ✍ → Sign on phone; the QR names an https github.io pad.html URL — DONE 2026-11-12: developer-reported (the https github.io pad.html link); confirmed by R4-4.2

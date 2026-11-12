@@ -615,8 +615,11 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   wording starts `[Unverified]` like any new value. WS7 round 10 added two more the same day,
   `docxEditor.pdfImagesSkipped`, `toast.sanitizeRefusedInvalidObject`, also written by the session. This list lived in four prose copies and drifted
   three times (11 / 12 / 14 / 15) before the closure; `CLAUDE.md` § "The hide-vs-remove audit" is the
-  count's home. Outside the count (not an `ar.json` key): the Arabic **Camera** paragraph of `public/privacy.html`,
-  added 2026-11-11 for the phone signature pad, is session-written and unreviewed too. **RTL rendering was not part of that review** — see ceiling C18 (select/copy/search precision); C19 (tashkeel/GPOS in the overlay) was fixed by limits row 25.
+  count's home. Outside the count (not an `ar.json` key): two Arabic passages of `public/privacy.html` are
+  session-written and unreviewed too — the **Camera** paragraph (added 2026-11-11 for the phone signature pad) and the
+  whole **local storage** list (التخزين المحلي: its intro, the IndexedDB, localStorage, sessionStorage and Cache Storage
+  items and the two closing sentences, "stored unencrypted" and "clear this site's data"; the recent-colours clause added 2026-11-12 in 7b B, the
+  rest rewritten the same day for panel round 4, R4-1). **RTL rendering was not part of that review** — see ceiling C18 (select/copy/search precision); C19 (tashkeel/GPOS in the overlay) was fixed by limits row 25.
   Overlay bracket mirroring and RTL list-marker placement were fixed by limits row 25 (2026-09-27): brackets, `•`, `-` and `%`,
   which the Arabic font has no glyph for, used to draw as empty boxes and extract as U+0000. Two bounds remain: a mirrored
   guillemet extracts as its mirror (`«` drawn as `»` copies as `»`, as in any viewer's copy of such a PDF), and the export

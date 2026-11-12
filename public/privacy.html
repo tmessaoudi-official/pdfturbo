@@ -50,11 +50,22 @@
       <h3>No server-side data collection</h3>
       <p>PDFturbo processes all documents entirely within your browser. Your PDF files and annotations are <strong>never uploaded to any server</strong>. No data leaves your device.</p>
       <h3>Client-side storage</h3>
-      <p>The following data is stored locally on your device only:</p>
+      <p>The following data is stored locally on your device only. None of it is ever sent anywhere:</p>
       <ul>
-        <li><strong>IndexedDB</strong> — Your working session (PDF content + annotations) is saved automatically so you can resume after closing the tab. You can clear this at any time via the "Reset Session" button in the File menu.</li>
-        <li><strong>localStorage</strong> — Your language preference (<code>i18nextLng</code>), the storage notice dismissal flag (<code>pdfturbo_storage_notice</code>), and the colors you used last (<code>pdfturbo.recentColors</code>, up to 8, for the color palette — in the editor and on the phone signature pad).</li>
+        <li><strong>IndexedDB</strong>:
+          <ul>
+            <li>Your working session (PDF content + annotations), saved automatically so you can resume after closing the tab. "Reset Session" in the File menu deletes it.</li>
+            <li>Your recent files: for up to 8 files, the file name, when you opened it, and your browser's permission to reopen it (not a copy of the file). They are kept only in browsers whose file picker allows it, such as Chrome and Edge. "Clear recent files" in the Recent files list deletes them.</li>
+            <li>The text-recognition (OCR) language data you used, for example English: a copy of a file this site provides, kept by the OCR library so the next recognition starts faster.</li>
+            <li>A small list of the copies described under Cache Storage below (each one's address and when it was stored), so outdated copies are removed on time.</li>
+          </ul>
+        </li>
+        <li><strong>localStorage</strong> — Your language preference (<code>i18nextLng</code>), the storage notice dismissal flag (<code>pdfturbo_storage_notice</code>), the colors you used last (<code>pdfturbo.recentColors</code>, up to 8, for the color palette — in the editor and on the phone signature pad), and your toolbar layout if you rearrange it (<code>pdfturbo_toolbar_order</code>; "Reset toolbar to default" in Settings deletes it).</li>
+        <li><strong>sessionStorage</strong> — A flag noting that the privacy notice was shown in this tab (<code>pdfturbo_privacy_toast_shown</code>), deleted when you close the tab.</li>
+        <li><strong>Cache Storage</strong> — Copies of this site's own files (the app, the OCR engine and its language files, fonts, PDF decoders, the phone signature page, the QR code reader), so PDFturbo also works offline. They never contain your documents.</li>
       </ul>
+      <p>This data is stored unencrypted, like any website's data in your browser: anyone who can use your browser profile can read it. On a shared computer, use a private window.</p>
+      <p>To delete all of it at once, clear this site's data in your browser's settings.</p>
       <h3>No analytics, no cookies, no tracking</h3>
       <p>PDFturbo does not use analytics services, third-party cookies, advertising trackers, or any form of user profiling.</p>
       <h3>Camera</h3>
@@ -73,11 +84,22 @@
       <h3>Aucune collecte de données côté serveur</h3>
       <p>PDFturbo traite tous les documents entièrement dans votre navigateur. Vos fichiers PDF et annotations <strong>ne sont jamais envoyés à un serveur</strong>. Aucune donnée ne quitte votre appareil.</p>
       <h3>Stockage côté client</h3>
-      <p>Les données suivantes sont stockées localement sur votre appareil uniquement :</p>
+      <p>Les données suivantes sont stockées localement sur votre appareil uniquement. Aucune n'est jamais envoyée nulle part :</p>
       <ul>
-        <li><strong>IndexedDB</strong> — Votre session de travail (contenu PDF + annotations) est sauvegardée automatiquement pour reprendre après fermeture de l'onglet. Vous pouvez l'effacer à tout moment via « Réinitialiser la session » dans le menu Fichier.</li>
-        <li><strong>localStorage</strong> — Votre préférence de langue (<code>i18nextLng</code>), le statut de la bannière d'information (<code>pdfturbo_storage_notice</code>) et vos dernières couleurs utilisées (<code>pdfturbo.recentColors</code>, 8 au plus, pour la palette de couleurs — dans l'éditeur et sur le pavé de signature du téléphone).</li>
+        <li><strong>IndexedDB</strong> :
+          <ul>
+            <li>Votre session de travail (contenu PDF + annotations), sauvegardée automatiquement pour reprendre après fermeture de l'onglet. « Réinitialiser » dans le menu Fichier l'efface.</li>
+            <li>Vos fichiers récents : pour 8 fichiers au plus, le nom du fichier, la date à laquelle vous l'avez ouvert et l'autorisation de votre navigateur de le rouvrir (pas une copie du fichier). Ils ne sont conservés que dans les navigateurs dont le sélecteur de fichiers le permet, comme Chrome et Edge. « Effacer les fichiers récents » dans la liste Fichiers récents les efface.</li>
+            <li>Les données de langue de la reconnaissance de texte (OCR) que vous avez utilisées, par exemple l'anglais : une copie d'un fichier fourni par ce site, conservée par la bibliothèque OCR pour que la reconnaissance suivante démarre plus vite.</li>
+            <li>Une petite liste des copies décrites plus bas sous Cache Storage (l'adresse de chacune et sa date d'enregistrement), pour que les copies périmées soient supprimées à temps.</li>
+          </ul>
+        </li>
+        <li><strong>localStorage</strong> — Votre préférence de langue (<code>i18nextLng</code>), le statut de la bannière d'information (<code>pdfturbo_storage_notice</code>), vos dernières couleurs utilisées (<code>pdfturbo.recentColors</code>, 8 au plus, pour la palette de couleurs — dans l'éditeur et sur le pavé de signature du téléphone) et la disposition de votre barre d'outils si vous la réorganisez (<code>pdfturbo_toolbar_order</code> ; « Réinitialiser la barre d'outils » dans Paramètres l'efface).</li>
+        <li><strong>sessionStorage</strong> — Un indicateur signalant que l'avis de confidentialité a été affiché dans cet onglet (<code>pdfturbo_privacy_toast_shown</code>), effacé à la fermeture de l'onglet.</li>
+        <li><strong>Cache Storage</strong> — Des copies des fichiers de ce site (l'application, le moteur OCR et ses fichiers de langue, les polices, les décodeurs PDF, la page de signature du téléphone, le lecteur de QR codes), pour que PDFturbo fonctionne aussi hors ligne. Elles ne contiennent jamais vos documents.</li>
       </ul>
+      <p>Ces données sont stockées sans chiffrement, comme celles de tout site dans votre navigateur : toute personne ayant accès à votre profil de navigateur peut les lire. Sur un ordinateur partagé, utilisez une fenêtre de navigation privée.</p>
+      <p>Pour tout effacer d'un coup, supprimez les données de ce site dans les paramètres de votre navigateur.</p>
       <h3>Aucune analytique, aucun cookie, aucun traceur</h3>
       <p>PDFturbo n'utilise pas de services d'analyse, de cookies tiers, de traceurs publicitaires, ni aucune forme de profilage.</p>
       <h3>Caméra</h3>
@@ -96,11 +118,22 @@
       <h3>لا جمع للبيانات على الخوادم</h3>
       <p>يعالج PDFturbo جميع المستندات بالكامل داخل متصفحك. ملفات PDF والتعليقات التوضيحية <strong>لا تُرسل أبداً إلى أي خادم</strong>. لا تغادر أي بيانات جهازك.</p>
       <h3>التخزين المحلي</h3>
-      <p>يُخزَّن ما يلي محلياً على جهازك فقط:</p>
+      <p>يُخزَّن ما يلي محلياً على جهازك فقط، ولا يُرسَل أيٌّ منه إلى أي مكان:</p>
       <ul>
-        <li><strong>IndexedDB</strong> — تُحفظ جلسة عملك (محتوى PDF والتعليقات) تلقائياً لاستئنافها بعد إغلاق علامة التبويب. يمكنك حذفها في أي وقت عبر «إعادة ضبط الجلسة» في قائمة الملف.</li>
-        <li><strong>localStorage</strong> — تفضيل اللغة (<code>i18nextLng</code>) وحالة إشعار التخزين (<code>pdfturbo_storage_notice</code>) وآخر الألوان التي استخدمتها (<code>pdfturbo.recentColors</code>، 8 على الأكثر، للوحة الألوان — في المحرر وعلى لوحة التوقيع في الهاتف).</li>
+        <li><strong>IndexedDB</strong>:
+          <ul>
+            <li>جلسة عملك (محتوى PDF والتعليقات)، تُحفظ تلقائياً لاستئنافها بعد إغلاق علامة التبويب. يحذفها زر «إعادة ضبط» في قائمة الملف.</li>
+            <li>ملفاتك الأخيرة: لثمانية ملفات على الأكثر، اسم الملف ووقت فتحه وإذن متصفحك بإعادة فتحه (وليس نسخة من الملف). لا تُحفَظ إلا في المتصفحات التي تسمح أداة اختيار الملفات فيها بذلك، مثل Chrome وEdge. يحذفها «مسح الملفات الأخيرة» في قائمة الملفات الأخيرة.</li>
+            <li>بيانات اللغة الخاصة بالتعرّف على النص (OCR) التي استخدمتها، مثل الإنجليزية: نسخة من ملف يوفّره هذا الموقع، تحتفظ بها مكتبة OCR ليبدأ التعرّف التالي بسرعة أكبر.</li>
+            <li>قائمة صغيرة بالنسخ الموصوفة أدناه في Cache Storage (عنوان كل نسخة ووقت حفظها)، لتُحذف النسخ القديمة في وقتها.</li>
+          </ul>
+        </li>
+        <li><strong>localStorage</strong> — تفضيل اللغة (<code>i18nextLng</code>) وحالة إشعار التخزين (<code>pdfturbo_storage_notice</code>) وآخر الألوان التي استخدمتها (<code>pdfturbo.recentColors</code>، 8 على الأكثر، للوحة الألوان — في المحرر وعلى لوحة التوقيع في الهاتف) وترتيب شريط الأدوات إذا أعدت ترتيبه (<code>pdfturbo_toolbar_order</code>؛ يحذفه «إعادة تعيين شريط الأدوات» في الإعدادات).</li>
+        <li><strong>sessionStorage</strong> — علامة تشير إلى أن إشعار الخصوصية ظهر في علامة التبويب هذه (<code>pdfturbo_privacy_toast_shown</code>)، تُحذف عند إغلاق علامة التبويب.</li>
+        <li><strong>Cache Storage</strong> — نسخ من ملفات هذا الموقع نفسه (التطبيق، ومحرّك OCR وملفات لغاته، والخطوط، ومفكّكات ترميز PDF، وصفحة التوقيع في الهاتف، وقارئ رموز QR) ليعمل PDFturbo دون اتصال أيضاً. لا تحتوي أبداً على مستنداتك.</li>
       </ul>
+      <p>تُخزَّن هذه البيانات دون تشفير، مثل بيانات أي موقع في متصفحك: يمكن لأي شخص يستخدم ملف تعريف متصفحك قراءتها. على حاسوب مشترك، استخدم نافذة تصفّح خاصة.</p>
+      <p>لحذف كل ذلك دفعة واحدة، امسح بيانات هذا الموقع من إعدادات متصفحك.</p>
       <h3>لا تحليلات، لا ملفات تعقّب، لا تتبّع</h3>
       <p>لا يستخدم PDFturbo خدمات التحليل، ولا ملفات تعريف الارتباط من أطراف ثالثة، ولا أدوات التتبع الإعلاني، ولا أي شكل من أشكال تحديد ملفات تعريف المستخدمين.</p>
       <h3>الكاميرا</h3>
