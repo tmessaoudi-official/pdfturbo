@@ -85,6 +85,15 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-11 22:44] AGREED: W16 Arabic: later, all 64 pending keys in one pass.
 - [2026-11-11 22:47] AGREED: F1+F2 sized Large: full written plan and the developer's explicit go before any code (stop for the night requested 2026-11-11).
 - [2026-11-11 22:47] AGREED: F2 precedence: the PC passes its ink to the phone (the pad link's #fragment carries the PC modal's Color and Line Width, validated like lang); the phone's new controls start from them and the signer may change them; the scan replays what the phone sends; a PC Color/Line Width change after the scan repaints the scanned strokes; the QR is re-made when Color/Width change before the scan.
+- [2026-11-12 09:56] AGREED: 7b phone colour: the shared palette (COLOR_PRESETS without #ffffff, plus recent colours, plus a custom swatch), the PC's colour pre-selected.
+- [2026-11-12 09:56] AGREED: 7b phone width: a − / number / + stepper on the PC's 1–10 scale; the pad link carries the PC canvas width so width N on either side replays as N on the PC.
+- [2026-11-12 09:56] AGREED: 7b PC modal after a scan: #sigColor and #sigLineWidth follow the scanned ink (colour, nearest whole width); a later change repaints the strokes.
+- [2026-11-12 09:56] AGREED: 7b scope: the PC ✍ modal's lone native colour picker gets the shared swatch row in a follow-up row after 1.1.0, not in 7b.
+- [2026-11-12 10:06] AGREED: 7b 3C tier: advisor() only.
+- [2026-11-12 10:15] AGREED: 7b re-scan on an open pad: a hashchange applies the new language and ink to the open pad and repaints the strokes already drawn in it.
+- [2026-11-12 10:15] AGREED: 7b real-phone re-walk (W17-W20: stepper, swatches + custom picker, red/4 round trip, PC repaint) runs on the LAN dev server BEFORE the flag-ON commit.
+- [2026-11-12 10:25] AGREED: 7b Import image: an image that already has transparent pixels keeps its own alpha (no paper keying), so a light-ink phone PNG (yellow) survives; JPEG and opaque PNG are keyed as before.
+- [2026-11-12 10:33] AGREED: Go on the 7b plan as written (A, A2, B, gate, re-walk W17-W22, C flag ON, panel round 4, 1.1.0, one push); default replay width 2 px accepted pending W21; A2 transparency share T measured before its commit.
 
 ## Formal Plan
 
@@ -128,7 +137,7 @@ appearance image all get it with no change to export, redaction or signing code.
   defaults to ON, so it gains a per-key default.
 - **Device route for steps 1 and 7.** The PC stays on `localhost`, because the camera needs a secure context. The dev
   server runs with `vite --host`, and the phone opens `http://<LAN-IP>:5173/pdfturbo/pad.html` by hand; the phone page
-  needs no secure context, since it uses no camera. Node for every step: `/stack/tools/nvm/versions/node/v26.13.0/bin`.
+  needs no secure context, since it uses no camera. Node for every step: `/stack/tools/nvm/versions/node/v26.13.1/bin` (v26.13.0 until 2026-11-12; `ls` it first).
 - **Fake-camera test.** It repaints the canvas after the stream starts; a static canvas may emit no frames.
 
 **Steps** (Status table below). Acceptance: the full deploy gate is green, including `qa:sweep`; a real-Chrome
@@ -137,6 +146,133 @@ check with the real phone and webcam is done, with screenshots; the three-lens m
 commit.
 
 **Rollback.** The feature is additive: revert its commits. No persisted model field and no `SCHEMA_VERSION` change.
+
+### Step 7b plan (written 2026-11-12; 3C round 1 advisor-reviewed; awaiting the developer's go)
+
+**My understanding:** fix the stale scan status (F1), let the signer choose the ink on the phone with the PC's ink as
+the starting point (F2, rulings 2026-11-11 22:44/22:47 and 2026-11-12 09:56/10:15), re-walk it on the real phone, then
+turn the flag ON. **Key assumption:** the width unit — "Line Width N" means N CSS px on the PC's ✍ canvas, carried to
+the phone as `w` plus that canvas's width `cw`. **What would redirect me:** wanting the phone width in the phone's own
+px (then the scan replays at a different N on the PC), or wanting the PC's swatch row in 7b after all.
+**A visible default change (3C round 2):** with the PC's default Line Width 2, a phone signature now replays at about
+2 px on the PC; the approved 2026-11-11 walkthrough replayed at about 3.4 px (2.5 px locked on a 368 px pad). W21 checks
+that the default still looks right; if it does not, the remedy is the PC's default, a separate ruling.
+
+**Commit A — `fix(sign): a scan's status clears on import and on Clear` (F1).** Red first in
+`tests/ui/signatureSources.test.ts`: scan done → import → status `''`; scan done → Clear → status `''`; a refused import
+after a scan also clears it. Code: `setStatus(null)` where the import starts (`signatureSources.ts` input `change`), and
+a Clear hook — `SignatureSourcesDeps.onPadCleared(fn)` fed by `modalBinder`'s `#clearSignature` through `phonePadGate`
+(the module owns its status line; no DOM reach-in from the binder). Sabotage: drop either clear → its case reds.
+
+**Commit A2 — `fix(sign): an imported image with transparency keeps its own alpha`** (3C round 3 #1, ruling
+2026-11-12 10:25). Measured with `keyOutPaper`'s own formula: on white paper (255) a stroke keeps alpha only when its
+luminance is more than `KEY_LO` 30 below — yellow `#ffff00` (226) keys to 0% and the import says "no ink found",
+orange `#ff9900` (166) to 98%, every other preset 100%; any custom colour above ~225 vanishes. `loadSignatureImage`
+draws the bitmap on a CLEAR canvas first; when a MATERIAL share of its pixels is fully transparent (alpha 0) the image
+keeps its own alpha (no white fill, no keying), else it is composited over white and keyed as today. Not "any pixel
+below 255" (3C round 4): a paper photo saved as PNG/WebP with rounded corners, a soft crop edge or one stray pixel would
+then skip keying and import as an opaque sheet — invisible on the white pad, visible only when it covers the page's
+text. The share T is fixed by measurement BEFORE the commit: the phone's own Download PNG of a normal signature and of
+a pad-filling scribble (W11's shape) must clear it, and rounded corners / a 2 px soft edge on a 1000×700 sheet (about
+1%) must not — proposed T = 25%, lowered if the scribble measures under it, never below 5%. Chrome cases, red first: a yellow transparent PNG
+imports yellow with its stroke box; the dense scribble PNG keeps its alpha; an opaque white-background PNG is still
+keyed (control); an opaque paper PNG with transparent rounded corners is still keyed (control); a JPEG photo fixture
+unchanged (control); a fully transparent PNG is still refused `empty`. Stale: the file's header ("over WHITE …") and
+`signing.md`'s "the paper keyed out" — both gain the transparency branch. Bound, accepted by the ruling: a transparent
+PNG that carries an opaque white box keeps the box.
+
+**Commit B — `feat(sign): the phone pad's ink — colour and width, from the PC` (F2).**
+
+- **The link.** `padUrlFor(origin, base, lang, ink?)` → `…pad.html#lang=en&c=1d4ed8&w=2&cw=500`. `c` = 6 hex digits
+  without `#`; `w` = integer 1–10; `cw` = integer 200–4000 (the floor: at w=10 a `cw` under 162 hits PTSIG's 255-quarter
+  cap, `signatureStrokes.ts` `lineQuarters` — measured `cw=150 → 273`). Read on the PC at each QR draw from ONE
+  sanitised source (3C round 2 #1): `ink.get()` returns the BOXES' values — `#sigColor`, and `#sigLineWidth` clamped to
+  a whole 1–10 and written back to the box — plus `cw` = `signatureCanvas.width` clamped to 200–4000. Never the pad's
+  own width, which is a float after a replay.
+- **PC ink sanitised at the source** (3C #4): `modalBinder`'s bare `parseInt` becomes a clamp to 1–10 (NaN → the
+  previous value), so neither the URL nor a repaint ever sees NaN or 50. Test: `''`, `'0'`, `'50'`, `'3.7'`.
+- **Phone side.** `padInkFromHash(hash)` beside `padLanguageFromHash`, strict like `lang`: any invalid field falls back
+  to that field's default (black, w 2, cw 500). The page draws at `w × padWidth / cw` CSS px. Controls above the pad:
+  the shared swatch row (`COLOR_PRESETS` without `#ffffff`, then `getRecentColors()`, then a custom swatch opening a
+  native picker; a custom pick → `pushRecentColor`), the PC's colour selected (added as a swatch when it is not a
+  preset). White is filtered from the RECENTS too (case-insensitive — the pad reads the same `pdfturbo.recentColors`
+  the editor writes on that phone), and a link carrying `c=ffffff` falls back to black: invisible ink is never offered,
+  whichever way it arrives (3C round 4 #2), and a `−` / number / `+` stepper 1–10 (48 px targets). Any ink change repaints every stroke (one PTSIG ink)
+  — on the phone ALWAYS, through a public `SignaturePad.repaint()` that `padPage` calls; the PC's `inkFollows` flag is
+  not used there, so Clear → draw → change ink still shows what PTSIG sends. `layout()` recomputes the CSS-px width
+  (`w × padWidth / cw`) BEFORE `setSize` repaints, so a rotation keeps the replayed width. `hashchange` re-applies
+  language and ink and repaints (ruling 10:15); while the QR view shows, it returns to the draw view (cycle stopped), so
+  no frame in the old ink stays on screen. The ink read and the `hashchange` listener live INSIDE `mountPadPage`
+  (`padMain.ts` only passes `location`), removed by `destroy()`; the language half of the ruling too — `mountPadPage`
+  takes a `setLanguage` option like `t` (default: `changeLanguage` from `utils/i18n`, which re-translates
+  `[data-i18n]` and sets `lang`/`dir`), and the pad NEVER caches a language (`initI18n` gains a no-store option the pad
+  always passes: today a pad opened without `lang` caches to `i18nextLng`, so a later `#lang=fr` would switch the
+  EDITOR's language on that phone) — `padMain.ts` is imported by no test, so a listener
+  there would let the "hash read once" mutant survive (the `main.ts` trap of panel round 1). `repaint()` wipes pixels
+  only — never through `clear()`, which empties the stroke record; a case changes the ink twice and both repaint.
+  Accessible names (3C #9): a colour swatch is named by
+  its hex through `title`, exactly as the toolbar row does (`src/main.ts` `_renderColorSwatches`: `btn.title = norm`, no
+  visible text, so no Label-in-Name risk), with `aria-pressed` on the selected one; the custom swatch and both stepper
+  buttons get translated `aria-label`s (EN/FR/AR); the number is `aria-live`. The QA sweep's pad pass runs axe on it. New keys `pad.color`, `pad.width`, `pad.widthDown`, `pad.widthUp`; the
+  custom swatch reuses `toolbar.customColorTitle`, already in all three locales (Arabic pending, W16 ruling: the pending count rises by their number in this commit).
+- **PC side.** `SignaturePad` gains `inkFollows` (set by `replay`, cleared by `clear`/`drawImage`); while set,
+  `setColor`/`setLineWidth` repaint every recorded stroke. `replay` now ALSO sets the pad's colour and width to the
+  replayed ink (docstring rewritten — it says "untouched" today). After a scan, `signatureSources` writes the boxes
+  (`#sigColor` = decoded colour, `#sigLineWidth` = round(width) clamped 1–10) and re-draws the QR from them explicitly —
+  a programmatic `.value` fires no event (3C #5). The pad KEEPS the exact replayed width (the scan replays what the phone
+  sends; only the box rounds): writing the box never snaps the strokes; the first user change does. The PC's boxes drive
+  the pad on `input` (live while the picker is dragged, ruling "repainted live") with the CLAMPED value, but write the
+  box back only on `change` — writing back on `input` fights the user's typing. Done in `modalBinder`, so it holds with
+  the flag off too (no test dispatches on `#sigLineWidth`/`#sigColor` today: `grep -rn sigLineWidth tests` finds only
+  the `uiController` id list). The QR and URL text re-draw on `change`. **The pad's ink must not outlive the scan**
+  (3C round 3 #3): a replayed width comes from an untrusted QR (up to about 31 px on a 500 px canvas) while the box
+  shows at most 10, so when following ends — `clear()`, `drawImage()`, a modal close — the pad's colour and width are
+  reset FROM THE BOXES; a case: scan a 30 px signature → Clear → draw → the stroke is the box's width. A PC tap draws nothing (`dotOnTap` off), so on a pad without `dotOnTap` a stroke
+  that ends as one point is dropped from the record — else a repaint would turn it into a dot (3C round 2 #4). Injected as `SignatureSourcesDeps.ink: { get(): Ink; set(ink): void; onChange(fn): void }` from
+  `phonePadGate` (app.ui refs), so `signatureSources` still never queries outside `#sigSources`.
+- **Old or cached pad** (3C #6): a pad that ignores the fragment sends black 2.5 phone px; the boxes clamp it. Tests with a decoded
+  width of 0.25, 3.4 and 40 (PC px after the fit): the box reads 1, 3, 10; the replayed stroke stays 0.25, 3.4, 40 wide
+  (pixel-measured in Chrome for 3.4) until the first user change.
+- **Tests, red first.** jsdom: `padUrlFor` with/without ink; `padInkFromHash` (valid; each field invalid alone; `#`,
+  empty, `w=0`, `w=11`, `cw=199`, `c=red`, `c=%23000000`); padPage controls (swatch → pad colour + repaint + selected
+  state; stepper bounds; hashchange); `SignaturePad` repaint only while `inkFollows`; signatureSources box sync + QR
+  re-draw on change. **Real Chrome — the oracle** (3C #1): PC canvas forced to 640 px, phone pad to 320 px (so
+  pad ≠ `cw` ≠ 500); PC red w=4 → `padUrlFor` → `mountPadPage` with that hash → assert the pad opens on red / 4 → a
+  scripted stroke → the PHONE changes to green / 6 (so "boxes follow the scan" is not vacuous) → Done → frames →
+  collector → replay → measure the replayed stroke's thickness across a straight segment (expect 6 ± 0.5 px), its colour
+  green, and the boxes green / 6; then PC → blue, w=2 → pixels blue, thickness 2 ± 0.5. Mutants that must red: the phone
+  ignores `cw`; it ignores `w`; replay leaves the pad ink; the boxes not written; the repaint flag never set; the hash
+  read once only; `layout()` sizing before recomputing the width (a rotation case); the phone repaint gated by
+  `inkFollows` (Clear → draw → change ink).
+- **Pins to update in this commit** (every `pad.html#lang=…` exact match): `tests/ui/signatureSources.test.ts`
+  (107/108/121/400/401 — `padUrlFor` without ink stays `#lang=xx`; the mounted QR gains the ink),
+  `tests/browser/signature-sources.browser.test.ts:48`, `tests/utils/qrCanvas.test.ts:62` (a fixed string — kept),
+  `scripts/qa-sweep.mjs:689` (kept: a bare `#lang=en` must still load), `var/claude/sig-sources-check/check.mjs:104`
+  (scratch, re-run for the visual evidence).
+- **Stale claims to rewrite here** (3C #8): `tests/browser/signature-import.browser.test.ts:40` ("2.5 CSS px …
+  exactly as the phone's Download makes them"), `src/pad/padPage.ts` header ("ink locked to black 2.5 CSS px"),
+  `signaturePad.ts` `replay` docstring, `.claude/rules/signing.md` § "The phone signature pad" ("ink locked to black
+  2.5 CSS px", the Guards list), `toolchain.md` § i18n "Pending count", `KNOWN_ISSUES.md` "Sixty-four values are
+  pending" + "the 33 phone-signature-pad keys", `signing.md` "the 33 Arabic keys", `public/privacy.html`: its
+  `localStorage` list (EN/FR/AR, lines 56/79/102 on 2026-11-12) names only `i18nextLng` and `pdfturbo_storage_notice`,
+  yet the editor has written `pdfturbo.recentColors` since Slice 1 and the phone pad now writes it too — the key is
+  added in all three languages, the text shown to the developer before the commit (Arabic unreviewed), as for the
+  Camera section. `tests/tools/architecture.baseline.json` if `pad→utils` counts move.
+  FEATURES.md / CHANGELOG.md `[Unreleased]`: one line each.
+- **Visual evidence:** before/after screenshots of the phone pad (en 412 px, ar RTL) and of the PC modal after a red/4
+  scan, read by eye, not only by the script.
+
+**Gate, then the re-walk (ruling 10:15), then Commit C.** Full deploy gate on B. Then `/walkthrough` W17–W22 on the
+LAN dev server with the flag forced on (as W6–W15). A finding there → a fix commit before C.
+
+**Commit C — `feat(sign): phone signature pad on by default`.** Row 7's whole "off" surface list, plus the step-7
+"Not certified by execution: a real phone" bullets (`KNOWN_ISSUES.md`, `signing.md`), the `pdf-qa-sweep` SKILL baseline
+re-measured on the flag-ON build. Full gate. **Then** milestone panel round 4 (three lenses, fable, frozen on C — it
+covers the round-3 fixes, A, B and C), then step 9 (1.1.0, the bump shown first), the gate, ONE push, `/ci-watch`.
+
+**Size and cost [Inferred: from the files read]:** A ≈ 20 lines + 3 tests; B ≈ 250–350 lines across ~12 files + ~25
+jsdom and ~4 Chrome cases; C ≈ 15 surfaces, mostly prose. **Rollback:** each commit reverts alone; B → A is safe
+(the link without ink still works, by design).
 
 ## Status
 <!-- progress-block v1 -->
@@ -156,8 +292,9 @@ commit.
 | 6 | Docs + rules entry + Arabic pending-count homes + THIRD-PARTY-NOTICES (zxing-wasm MIT + zxing-cpp Apache-2.0 + qrcode-generator MIT if not already listed via qr-code-styling into the bundled list, the wasm's NOTICE duty) + full deploy gate incl. qa:sweep | M | done | DONE 2026-11-11 ("Step-6 DONE"); also public/privacy.html (Camera section, ruled) | README.md, .claude/rules/**, KNOWN_ISSUES.md, THIRD-PARTY-NOTICES.md, public/privacy.html |
 | 7 | Manual check on the real phone + webcam, with screenshots, including the badly-held re-test of the v19 M budget (40 cm, tilted, half brightness) and the phone's px/module + dpr; then turn the flag ON; also: the PNG download on the real phone (a data: URL with download), a multi-QR signature read by the webcam at the 1 s cycle, a native review of the Arabic pad.* strings; and: does the replayed copy look like the signature (unanswered at W4), a finger stroke dragged well past the pad edge keeps drawing, and closing the ✍ modal mid-stroke then reopening still lets you draw (lostpointercapture is Inferred). The flag-ON commit also edits every "off" surface (from a grep of `phonePad`, `DEFAULT_OFF`, "off by default", "flag-OFF", "Defaults OFF", panel round 2): `src/config/features.ts` (`DEFAULT_OFF` and its comments), `src/vite-env.d.ts` ("Defaults OFF"), `tests/config/features.test.ts` (the default-false cases), `src/main.ts`'s step-5 comment, `src/ui/phonePadGate.ts`'s header ("the default app keeps the old modal"), `signing.md`'s "Flag `phonePad` defaults OFF" bullet, `flow-export.md`'s "`DEFAULT_OFF` — `phonePad`" line, `toolchain.md`'s "CI sweeps the flag-OFF build and never scans", the FEATURES and CHANGELOG "off by default" parentheticals, and the `pdf-qa-sweep` SKILL baseline (re-measured on the flag-ON deploy build); and the lines step 7 itself makes stale (panel round 3): the "Not certified by execution: a real phone … (step 7)" bullets in `KNOWN_ISSUES.md` § "From the phone signature pad" and `signing.md` § "The phone signature pad", and — when the Arabic review happens — the pending count in `toolchain.md` § i18n ("Pending count: 64"), `KNOWN_ISSUES.md` ("Sixty-four values are pending") and `signing.md` ("the 33 Arabic keys") | S | todo | - | src/config/features.ts, src/vite-env.d.ts, tests/config/features.test.ts, src/main.ts, src/ui/phonePadGate.ts, .claude/rules/{signing,flow-export,toolchain}.md, .claude/skills/pdf-qa-sweep/SKILL.md, FEATURES.md, CHANGELOG.md, KNOWN_ISSUES.md |
 | 8 | Milestone three-lens panel on a frozen commit | M | doing | round 1 on d93ed13 (22 findings, `var/claude/raw/pp1-*.md`), fixed in e54f5a1; round 2 on e54f5a1 (15 findings: 3 P2, 12 P3, no P0/P1, `pp2-*.md`), fixed in efe36b1; round 3 on efe36b1 (12 P3, no product defect, `pp3-*.md`), fixed in the round-3 fix commit; round 4 next | |
-| 7b | Step-7 findings (2026-11-11 walkthrough W6–W15): F1 an Import after a scan clears the stale "Signature scanned" status (test-first); F2 ink control — phone pad colour + width controls (EN/FR/AR strings), the PC passes its Color/Line Width to the phone through the pad link's #fragment, the QR re-made on change, the scan replays the phone's ink, a later PC change repaints (precedence ruled 2026-11-11). Large: written plan + the developer's go FIRST; then gate, flag ON (row 7's surface list), round 4 on that commit | L | todo | rulings in the Decisions Log 2026-11-11 ~22:20 | src/ui/signatureSources.ts, src/utils/signaturePad.ts, src/pad/padPage.ts, pad.html, src/styles/pad.css, locales/*.json, tests |
+| 7b | Step-7 findings (2026-11-11 walkthrough W6–W15): F1 an Import after a scan clears the stale "Signature scanned" status (test-first); F2 ink control — phone pad colour + width controls (EN/FR/AR strings), the PC passes its Color/Line Width to the phone through the pad link's #fragment, the QR re-made on change, the scan replays the phone's ink, a later PC change repaints (precedence ruled 2026-11-11). Large: written plan + the developer's go FIRST; then gate, flag ON (row 7's surface list), round 4 on that commit | L | doing | plan § "Step 7b plan" (commits A, A2, B, re-walk W17–W22, commit C), go 2026-11-12 10:33; A DONE (commit "fix(sign): a scan's status clears on import and on Clear": 4 jsdom cases red first — 3 F1 + the gate wiring — plus a control; sabotage: the import clear dropped → 2, the Clear clear dropped → 1, the running-scan guard dropped → the control; jsdom 4260 pass on Node 26.13.1); next A2; rulings 2026-11-11 22:44/22:47, 2026-11-12 09:56/10:15/10:25 | src/ui/signatureSources.ts, src/ui/phonePadGate.ts, src/ui/binders/modalBinder.ts, src/utils/signaturePad.ts, src/pad/padPage.ts, src/padMain.ts, src/styles/pad.css, locales/*.json, tests, .claude/rules/{signing,toolchain}.md, KNOWN_ISSUES.md, FEATURES.md, CHANGELOG.md |
 | 9 | Version 1.1.0 (MINOR; the bump shown to the developer first), after step 7's flag ON: `package.json` `version`, `package-lock.json` (its root `version` fields), FEATURES.md's `Version` stamp, CHANGELOG.md's `[Unreleased]` heading → `[1.1.0] — <date>` and its "Shipped continuously to GitHub Pages; no version bump." line (panel round 3); then the full deploy gate, ONE push, /ci-watch | S | todo | - | package.json, package-lock.json, FEATURES.md, CHANGELOG.md |
+| 10 | Follow-up after 1.1.0 (ruling 2026-11-12 09:56): the PC ✍ modal's lone `#sigColor` native picker gets the shared swatch row (`COLOR_PRESETS` + recent + custom), as the phone pad has since 7b | S | todo | - | index.html, src/ui/binders/modalBinder.ts, tests |
 <!-- /progress-block -->
 ### Blocked
 ### Needs input
@@ -177,6 +314,12 @@ commit.
 - [x] W13. Phone: Download PNG → move the file to the PC → ✍ Import image — DONE 2026-11-11: the phone saved signature.png (22.9 KB, moved by WhatsApp) and Import image drew it (developer's report; screenshot not kept, it showed private chats). FOUND: after a completed scan, an import leaves the status "Signature scanned. Check it, then press Save." on screen — the import path never calls setStatus(null) (signatureSources.ts input 'change' handler); P3, fix pending a ruling
 - [x] W14. PC ✍ pad: press and hold to draw, press Esc mid-stroke, reopen ✍, drawing still works — DONE 2026-11-11: Esc closed the dialog mid-stroke; after reopening, drawing was normal with no stray line (developer's report, mouse on the PC — closes the lostpointercapture [Inferred] item)
 - [x] W15. Phone: open the editor itself on a first visit, ✍ → Sign on phone; is Save under the cookie banner — DONE 2026-11-11: Save visible on the developer's phone (FR, banner up). FOUND (developer): the editor itself is "mostly unusable" on that phone — only about a quarter of the content visible — until Chrome's "desktop site" is on (pre-existing app layout, not the pad); and the phone pad has no colour/width choice, and the PC modal's Color / Line Width are ignored for a scanned signature (by design today: the pad locks black 2.5 px, `SignaturePad.replay` paints in the DECODED colour and width) — both pending a ruling
+- [ ] W17. (7b, before flag ON) Phone: the width stepper — − and + reach 1 and 10 and stop; the stroke thickness follows
+- [ ] W18. (7b) Phone: tap three swatches and the custom swatch (Android's native picker) — the strokes already drawn repaint
+- [ ] W19. (7b) PC Color red, Line Width 4 → Sign on phone → the phone pad opens on red / 4 → sign, then change the phone to another colour and width → Done → scan → the PC boxes show the PHONE's choice and the replay matches the phone
+- [ ] W20. (7b) PC: after the scan, drag the Color picker and change Width → the scanned strokes repaint live (while dragging, not only when the picker closes)
+- [ ] W21. (7b) PC on its defaults (black, 2) → Sign on phone → sign without touching the controls → scan → does a width-2 signature look right on the page (it was about 3.4 px yesterday)
+- [ ] W22. (7b) Phone: yellow ink → Done → Download PNG → move it to the PC → ✍ Import image → the signature arrives yellow (W13 was walked in black only)
 - [ ] W16. Optional: native read of the Arabic pad strings (walkthrough step 7)
 ### Needs research
 - RESOLVED (step 4): the Vite 8.3.7 multi-page option is `build.rolldownOptions.input` (`rollupOptions` is a `@deprecated` alias, vite/dist/node/index.d.ts).

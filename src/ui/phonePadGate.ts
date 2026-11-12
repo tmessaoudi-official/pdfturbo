@@ -27,6 +27,8 @@ export function applyPhonePadFlag(deps: PhonePadGateDeps): void {
     root,
     pad: deps.app.signaturePad,
     onModalClosed: (fn) => deps.app.onSignatureModalClosed(fn),
+    // The modal's Clear button (bound to the pad by modalBinder) also clears a finished scan's status (step-7 W13).
+    onPadCleared: (fn) => deps.doc.getElementById('clearSignature')?.addEventListener('click', fn),
     padUrl: deps.padUrl,
   });
 }

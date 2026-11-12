@@ -395,6 +395,51 @@ describe('Start camera — every way out stops the camera', () => {
   });
 });
 
+// Step-7 walkthrough W13 (2026-11-11, F1): after a completed scan, an import left "Signature scanned. Check it, then
+// press Save." on screen over the imported image; the Clear button left it over an EMPTY pad (found while planning 7b).
+// The status line describes the pad, so anything that replaces or empties the pad clears it.
+describe('after a scan, the status does not outlive the pad it describes (F1)', () => {
+  function scanned(over: Partial<Parameters<typeof mountSignatureSources>[0]> = {}) {
+    let cleared: (() => void) | null = null;
+    const m = started({ onPadCleared: (fn: () => void) => { cleared = fn; }, ...over });
+    expect(m.s.deps.onText(ONE[0])).toBe(true);
+    m.s.end({ reason: 'done' });
+    expect(m.status.textContent).toBe('T(modal.signature.scanDone)'); // precondition: the stale text is on screen
+    return { ...m, clearPad: () => cleared?.() };
+  }
+
+  it('an import clears it as soon as the import starts', async () => {
+    const m = scanned();
+    pick(m.input, new File([new Uint8Array([1])], 's.png', { type: 'image/png' }));
+    expect(m.status.textContent).toBe('');
+    await m.handle.whenIdle();
+    expect(m.pad.drawImage).toHaveBeenCalledTimes(1);
+    expect(m.status.textContent).toBe('');
+  });
+
+  it('a REFUSED import clears it too, and shows the refusal', async () => {
+    const m = scanned({ loadImage: vi.fn(() => Promise.reject(new SignatureImageError('type', 'not an image'))) });
+    pick(m.input, new File([new Uint8Array([1])], 's.gif', { type: 'image/gif' }));
+    await m.handle.whenIdle();
+    expect(m.status.textContent).toBe('');
+    expect(m.msg.hidden).toBe(false);
+  });
+
+  it('the modal Clear button clears it', () => {
+    const m = scanned();
+    m.clearPad();
+    expect(m.status.textContent).toBe('');
+  });
+
+  it('Clear with nothing scanned leaves a running scan\'s progress alone (control: only a pad change clears)', () => {
+    let cleared: (() => void) | null = null;
+    const m = started({ onPadCleared: (fn: () => void) => { cleared = fn; } });
+    m.s.deps.onText(TWO[0]);
+    (cleared as (() => void) | null)?.();
+    expect(m.status.textContent).toBe('T(modal.signature.scanPart|{"have":1,"total":2})');
+  });
+});
+
 describe('padUrlFor', () => {
   it('builds the pad URL under the base path, the language in the FRAGMENT (a precached or cached pad still matches)', () => {
     expect(padUrlFor('https://example.github.io', '/pdfturbo/', 'fr')).toBe('https://example.github.io/pdfturbo/pad.html#lang=fr');

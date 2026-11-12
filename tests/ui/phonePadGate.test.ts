@@ -54,6 +54,16 @@ describe('applyPhonePadFlag', () => {
     expect(stopCamera).toHaveBeenCalledTimes(1);
   });
 
+  it('flag ON: a pad-cleared listener registered by the mount runs on the modal\'s Clear button (F1)', () => {
+    const { app, mount } = setup();
+    document.body.insertAdjacentHTML('beforeend', '<button id="clearSignature"></button>');
+    applyPhonePadFlag({ enabled: true, doc: document, app, padUrl: () => 'u', mount });
+    const onCleared = vi.fn();
+    mount.mock.calls[0][0].onPadCleared(onCleared);
+    (document.getElementById('clearSignature') as HTMLButtonElement).click();
+    expect(onCleared).toHaveBeenCalledTimes(1);
+  });
+
   it('flag ON without #sigSources in the page: mounts nothing, does not throw', () => {
     const { app, mount } = setup();
     document.body.innerHTML = '';

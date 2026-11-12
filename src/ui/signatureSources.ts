@@ -27,6 +27,8 @@ export interface SignatureSourcesDeps {
   pad: { drawImage(img: HTMLCanvasElement): void; replay(sig: DecodedSignature): void };
   /** Register `fn` to run on every close of the ✍ modal (cancelled or saved). */
   onModalClosed(fn: () => void): void;
+  /** Register `fn` to run when the modal's Clear button empties the pad (a scan's status must not outlive the pad). */
+  onPadCleared?(fn: () => void): void;
   /** The phone pad's URL, read at each open (the language may have changed). */
   padUrl(): string;
   loadImage?(file: File): Promise<HTMLCanvasElement>;
@@ -162,6 +164,7 @@ export function mountSignatureSources(deps: SignatureSourcesDeps): SignatureSour
     input.value = ''; // the same file can be picked again after a refusal
     if (!file) return;
     stopCamera();
+    setStatus(null); // a finished scan's "Signature scanned" described the pad this import replaces (step-7 W13)
     const mine = ++epoch;
     importBtn.disabled = true;
     pending = (async () => {
@@ -177,6 +180,11 @@ export function mountSignatureSources(deps: SignatureSourcesDeps): SignatureSour
         importBtn.disabled = false;
       }
     })();
+  });
+
+  // Clear empties the pad: a finished scan's status goes with it; a scan still running keeps its progress line.
+  deps.onPadCleared?.(() => {
+    if (!camera) setStatus(null);
   });
 
   deps.onModalClosed(() => {
