@@ -121,6 +121,10 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-12 22:23] AGREED (ratified ASSUMED, 2026-11-12 22:57): Round-4 fix K9: the light-ink-over-95% bound is pinned with a solid yellow block 3% clear (refused 'empty'), not a cross-hatch; S4 also gained a jsdom pin (#fefefe passes as ink). Alternatives: a drawn cross-hatch fixture.
 - [2026-11-12 22:57] AGREED: R4-3: fix the QA sweep — an explicit scenario opens the signature box and clicks Clear, then Cancel, so the deploy gate reaches both again with phonePad ON (not done yet; to land before panel round 5)
 - [2026-11-12 22:57] AGREED: Push the round-4 fix commits now, ahead of panel round 5 (the live site still refused a transparent PNG with a dark frame)
+- [2026-11-12 23:05] AGREED: Reorder: row 11's PHONE half (pad.html full screen) is done now, before R4-3's sweep fix and panel round 5 (next session; round 5 then covers it too); the PC-modal half stays after. Medium task, own short plan + go before code
+- [2026-11-12 23:09] AGREED: Full screen (phone half): Done leaves full screen (and the landscape lock), then the usual QR view; Edit returns to the normal pad
+- [2026-11-12 23:09] AGREED: Full screen (phone half): one rotate hint ('Turn your phone sideways for a bigger pad') shown in full screen only while height > width; 3 new pad.* keys in EN/FR/AR, Arabic unreviewed
+- [2026-11-12 23:09] AGREED: Full screen (phone half): 3C tier advisor() only
 
 ## Formal Plan
 
@@ -300,6 +304,44 @@ covers the round-3 fixes, A, B and C), then step 9 (1.1.0, the bump shown first)
 **Size and cost [Inferred: from the files read]:** A ≈ 20 lines + 3 tests; B ≈ 250–350 lines across ~12 files + ~25
 jsdom and ~4 Chrome cases; C ≈ 15 surfaces, mostly prose. **Rollback:** each commit reverts alone; B → A is safe
 (the link without ink still works, by design).
+
+## Row 11, phone half — full-screen pad plan (written 2026-11-12 23:15; rulings 19:09, 23:05, 23:09)
+
+Scope: `pad.html` only (the PC ✍ modal half stays row 11's second step). Medium in size, but it has outgrown the
+Medium signals (padPage.ts, pad.css, 3 locales, 2 test files, 4 docs, a full gate): ~2 h [Speculative].
+
+Behaviour (user-visible, so it is in the go):
+- A toggle `data-pad="fullscreen"` ("⛶ Full screen") in the draw actions: Clear | ⛶ Full screen | Done. In full mode it
+  is replaced by `data-pad="exitFullscreen"` ("Exit full screen"); two buttons, each with its own `data-i18n`, toggled
+  by `hidden` (a language change while full keeps both right); focus moves to the counterpart on enter and exit.
+- Full mode: `pad-full` on the root — a fixed-height column (`height: 100vh` then `100dvh`, safe-area padding), the
+  h1, hint and ink controls hidden, the canvas sized INSIDE a measured `flex: 1` drawing box (absolutely positioned,
+  so it cannot feed its own measurement): `w = min(box width, box height ÷ 0.4)`, no 600 px cap; scrolled to the top
+  on entry. Full mode re-lays out on a height change too (no text input is shown there); normal mode stays width-only.
+- Where supported: `document.documentElement.requestFullscreen()` then `screen.orientation.lock('landscape')`; an
+  entry superseded before the promise settles (exit or Done tapped first) does not lock and exits. Unsupported
+  (iPhone Safari): the CSS fill alone. Exit, Done, and `fullscreenchange` to no element (Android back, Esc) leave.
+- A rotate hint `data-pad="rotateHint"` ("Turn your phone sideways for a bigger pad"), only in full mode while height >
+  width; its `hidden` is set BEFORE the box is measured.
+- Done in full mode leaves full screen FIRST, then encodes: the QR view as usual; a `too-large` signature shows its
+  error in the normal draw view (one code path). Edit returns to the normal pad.
+- The QR after a landscape Done must fit the viewport: a Chrome case draws in full mode at 800×360, taps Done and
+  asserts the whole QR canvas is on screen; if red, the QR side is capped by the available height too, and a full
+  909-character frame must still read through zxing at that size.
+
+Tests first: jsdom (`tests/pad/padPage.test.ts`): toggle + text + focus, sizing from the measured box with no cap,
+height-only resize in full mode, API calls when `fullscreenEnabled` and none when not, the stale-promise guard,
+exit/`fullscreenchange`, Done leaving (+ `too-large`), the line width at the bigger pad, the rotate hint, a language
+change while full, `destroy`; a PTSIG round-trip at 1150×460 through `decodeSignatureFrames`. Real Chrome (new
+`tests/browser/pad-fullscreen.browser.test.ts`, imports `pad.css`): print `fullscreenEnabled` first; hidden h1/hint/ink,
+visible canvas + buttons; 414 px portrait with no overflow; `page.viewport(800, 360)` asserted to have taken: pad wider
+than 600, inside the box, exit button in the viewport, with `scrollY > 0` before entry; the landscape QR case; axe on
+the full view; `afterEach` exits fullscreen and restores the viewport; the measured rejections behind both `.catch`es.
+Sabotage: no height reaction; no `fullscreenchange` exit; Done stays full; hint unconditional; the 600 cap kept; the
+stale-promise guard removed. Evidence: Playwright on `pad.html` at 412×915 and 915×412 before (HEAD) and after, FR
+and AR for the button wrap. Close: full gate, 6C `advisor()`, docs (`signing.md`, CHANGELOG, KNOWN_ISSUES pending
+69 → 72 at every site that states it + the iPhone "no element fullscreen" bound, row 11 split), commit by pathspec;
+the push is asked at close (recommended: hold until the real-phone check — ⛶ glyph rendering is on that list).
 
 ## RESUME HERE (saved 2026-11-12 ~15:50 — the session stopped at a WORKING state)
 
