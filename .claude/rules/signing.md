@@ -396,8 +396,9 @@ safe-area padding: `viewport-fit=cover`), and the pad is sized from a MEASURED d
 0.4)`, no 600 px cap — with the canvas positioned inside the box so it cannot feed that measurement. Full mode re-lays
 out on a height change too (it shows no text input; normal mode stays width-only for the keyboard). The rotate hint
 (upright only) is hidden or shown BEFORE the box is measured. Where `document.fullscreenEnabled`, the page also asks for
-fullscreen and then `screen.orientation.lock('landscape')`; an entry left before the grant never locks and exits the
-fullscreen it gets (an entry counter). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
+fullscreen and then `screen.orientation.lock('landscape')`; the grant reads the state AT the grant — left meanwhile → it gives the fullscreen back, in full
+mode (still, or entered again before it) → it locks; only a stay that ASKED for fullscreen undoes it on leaving (`requested`:
+the CSS-only path never calls `unlock`/`exit`, 6C round 2). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
 (`pad-fullscreen.browser.test.ts`): a request without a gesture rejects `TypeError: Permissions check failed`, the lock
 on a desktop `NotSupportedError`; the runner's iframe allows fullscreen, so the Chrome file takes the real default
 path (pinned: `fullscreenElement` is `HTML`, the iframe stays 800 × 360). **`active()` is `Boolean(fullscreenElement)`,
@@ -406,7 +407,9 @@ not `!== null`:** the property does not exist where the API does not (iPhone Saf
 the jsdom default-wiring case, red first, and its mutant); `leaveFull` also lays out BEFORE the platform calls. Exit, Done and a `fullscreenchange` with no element (Android back, Esc) leave; Done
 leaves FIRST, so the QR — and a too-large error — show on the normal page. **The QR fits the height too** (`qrSide`:
 the room below its top, 12 px kept): measured on a 915 × 412 phone the old 469 px QR ran to 519 px; now 344 px, read back
-by zxing, and a full 909-character frame reads at that side at dpr 1. PTSIG never sees the pad size (the grid's longer
+by zxing, and a full 909-character frame reads at that side at dpr 1. It is re-fitted on ANY resize that changes
+its side (`onResize`), not only through the pad's width-keyed layout: after a Done from real fullscreen the bars come
+back and only the height shrinks (6C round 2). PTSIG never sees the pad size (the grid's longer
 side is always 1023), pinned at 1150 × 460. Two buttons with their own keys, not a text swap, so a language change while
 full re-translates both; focus moves to the counterpart. Sabotage: 9 mutants, each red where predicted.
 

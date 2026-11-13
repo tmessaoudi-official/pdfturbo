@@ -233,12 +233,12 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   widthDown.addEventListener('click', () => step(-1));
   widthUp.addEventListener('click', () => step(1));
 
-  // Each entry gets its own number: a fullscreen granted after the signer already left must not lock landscape.
-  let entry = 0;
+  // Whether THIS stay in full mode asked the browser for fullscreen: only then is there anything to undo on leaving
+  // (the CSS-only path — iPhone Safari — never calls unlock or exit).
+  let requested = false;
   const enterFull = () => {
     if (full) return;
     full = true;
-    const mine = ++entry;
     root.classList.add('pad-full');
     enterFs.hidden = true;
     exitFs.hidden = false;
@@ -246,9 +246,12 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     window.scrollTo(0, 0); // the normal page is taller than a landscape phone: start at the top
     layout();
     if (!fs.enabled()) return; // iPhone Safari: the CSS fill alone
+    requested = true;
     fs.request()
       .then(() => {
-        if (mine !== entry) return fs.exit(); // left before the grant
+        // Read the state AT the grant: left meanwhile → give the fullscreen back; in full mode (still, or entered
+        // again before this grant) → lock. Never lock under the normal page.
+        if (!full) return fs.exit();
         return fs.lockLandscape();
       })
       // Refused or unsupported (measured in Chrome: requestFullscreen without a user gesture rejects, and lock() on a
@@ -258,7 +261,6 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   const leaveFull = () => {
     if (!full) return;
     full = false;
-    entry++;
     const hadFocus = document.activeElement === exitFs;
     root.classList.remove('pad-full');
     exitFs.hidden = true;
@@ -266,6 +268,8 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     rotateHint.hidden = true;
     if (hadFocus) enterFs.focus();
     layout(); // before the platform calls: the page is back to normal whatever they do
+    if (!requested) return;
+    requested = false;
     fs.unlock();
     if (fs.active()) void fs.exit(); // the check and the call share one task: the browser cannot leave in between
   };
@@ -291,9 +295,11 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     const top = qr.getBoundingClientRect().top + window.scrollY;
     return Math.max(1, Math.min(contentWidth(), MAX_QR_PX, viewport().height - top - QR_BOTTOM_PX));
   };
+  let shownSide = -1;
   const show = (i: number) => {
     shown = i;
-    drawQr(qr, frames[i], qrSide(), dpr());
+    shownSide = qrSide();
+    drawQr(qr, frames[i], shownSide, dpr());
     count.hidden = frames.length < 2;
     if (!count.hidden) count.textContent = t('pad.qrCount', { index: i + 1, total: frames.length });
   };
@@ -309,7 +315,13 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
 
   layout();
   applyInk();
-  window.addEventListener('resize', layout);
+  // A height-only change can shrink the QR's room while the pad's width stays (the browser bars returning after a
+  // full-screen Done): re-fit the QR whenever its side changed, apart from the pad's width-keyed layout.
+  const onResize = () => {
+    layout();
+    if (!qrView.hidden && qrSide() !== shownSide) show(shown);
+  };
+  window.addEventListener('resize', onResize);
 
   done.addEventListener('click', () => {
     leaveFull(); // FIRST: the QR, or the too-large error, shows on the normal page (ruling 23:15)
@@ -365,7 +377,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     pad,
     destroy: () => {
       stopCycle();
-      window.removeEventListener('resize', layout);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('hashchange', onHashChange);
       document.removeEventListener('visibilitychange', onVisibility);
       document.removeEventListener('fullscreenchange', onFullscreenChange);

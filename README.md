@@ -42,7 +42,8 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) handles deployment au
 - **Fill bucket** — flood-fill enclosed regions of freehand ink drawings with a chosen colour
 - **Signature pad** — draw a signature on a canvas, then place it anywhere
 - **Sign on your phone** — the PC shows a QR code that opens a signing page on your phone; you sign with your finger, the phone
-  shows the signature as QR codes, and the PC's camera reads them back. No server and no account: the signature travels
+  shows the signature as QR codes, and the PC's camera reads them back (⛶ gives the pad the whole screen; turn the phone
+  sideways for a bigger one). No server and no account: the signature travels
   only as QR codes on the phone's screen. Without a webcam, download the signature as a PNG on the phone, move it to
   the PC yourself, and use **Import image** there (the paper background is removed)
 - **Image overlay** — insert PNG/JPEG/WebP images

@@ -164,6 +164,20 @@ describe('pad page — Done and the QR view', () => {
     expect(side).toBe(360 - 12); // jsdom puts the QR's top at 0; 12 px kept below it
   });
 
+  it('the QR re-fits when only the HEIGHT changes (the browser bars return after a full-screen Done, the width does not change)', () => {
+    let vp = { width: 800, height: 360 };
+    const s = setup(800, { viewport: () => vp });
+    s.draw([[10, 10], [60, 40]]);
+    s.q('done').click();
+    expect((drawQr.mock.calls.at(-1) as unknown as [unknown, string, number])[2]).toBe(348);
+    vp = { width: 800, height: 300 };
+    window.dispatchEvent(new Event('resize'));
+    expect((drawQr.mock.calls.at(-1) as unknown as [unknown, string, number])[2]).toBe(288);
+    const n = drawQr.mock.calls.length;
+    window.dispatchEvent(new Event('resize')); // nothing changed: no redraw
+    expect(drawQr.mock.calls.length).toBe(n);
+  });
+
   it('a hidden page stops the cycle and a visible one resumes it', () => {
     vi.useFakeTimers();
     encode.override = () => ({ frames: ['A', 'B'], tolerance: 1 });
@@ -380,10 +394,10 @@ describe('pad page — full screen (row 11, phone half)', () => {
   const flush = () => new Promise<void>((r) => { setTimeout(r, 0); });
   function full(o: { box?: { w: number; h: number }; vp?: { width: number; height: number }; enabled?: boolean; hash?: string } = {}) {
     let active = false;
-    let grantReq: () => void = () => {};
+    const pending: Array<() => void> = []; // one resolver per request, oldest first
     const api = {
       enabled: vi.fn(() => o.enabled ?? true),
-      request: vi.fn(() => new Promise<void>((r) => { grantReq = () => { active = true; r(); }; })),
+      request: vi.fn(() => new Promise<void>((r) => { pending.push(() => { active = true; r(); }); })),
       exit: vi.fn(() => { active = false; return Promise.resolve(); }),
       active: vi.fn(() => active),
       lockLandscape: vi.fn(() => Promise.resolve()),
@@ -403,7 +417,7 @@ describe('pad page — full screen (row 11, phone half)', () => {
     const visibleActions = () => [...s.root.querySelectorAll<HTMLElement>('[data-pad-view="draw"] .pad-actions > button')].filter((e) => !e.hidden).map((e) => e.dataset.pad);
     return {
       ...s, api, hint, seenHint, scrollTo, setLanguage, visibleActions,
-      grant: async () => { grantReq(); await flush(); },
+      grant: async () => { pending.shift()?.(); await flush(); },
       setActive: (v: boolean) => { active = v; },
       setVp: (v: { width: number; height: number }) => { vp = v; },
       setBox: (v: { w: number; h: number }) => { box = v; },
@@ -471,6 +485,27 @@ describe('pad page — full screen (row 11, phone half)', () => {
     expect(g.api.request).not.toHaveBeenCalled();
     expect(g.isFull()).toBe(true);
     expect(g.size()).toEqual(['700px', '280px']);
+  });
+
+  it('the CSS-only path (no Fullscreen API) undoes nothing it did not take: no unlock, no exit', () => {
+    const f = full({ enabled: false });
+    f.enter();
+    f.exit();
+    f.enter();
+    f.draw([[10, 10], [60, 40]]);
+    f.q('done').click();
+    expect([f.api.unlock.mock.calls.length, f.api.exit.mock.calls.length, f.api.active.mock.calls.length]).toEqual([0, 0, 0]);
+  });
+
+  it('enter, exit, enter again before the first grant: the first grant does not take away the second entry\'s fullscreen', async () => {
+    const f = full();
+    f.enter();
+    f.exit();
+    f.enter();
+    await f.grant(); // the FIRST request's grant, while the second entry is current
+    expect(f.isFull()).toBe(true);
+    expect(f.api.exit).not.toHaveBeenCalled();
+    expect(f.api.lockLandscape).toHaveBeenCalledTimes(1);
   });
 
   it('an entry left before fullscreen is granted never locks landscape, and leaves the fullscreen it gets', async () => {
