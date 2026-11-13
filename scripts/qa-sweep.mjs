@@ -603,6 +603,62 @@ async function main() {
           await pg.waitForTimeout(3000);
         },
       },
+      {
+        name: 'signature: draw → clear → cancel',
+        // R4-3 (ruled 2026-11-12 22:57). With the phonePad flag ON the crawl reaches the ✍ modal's Sign on phone and
+        // Import image, and the unwind after that leaf presses Escape, which CLOSES the modal — so the crawl finds
+        // Clear and Cancel hidden (panel round 4 K12, `var/claude/r4fix/k12-trace.mjs`). This scenario reaches both on
+        // purpose and records each as its own control line, so they count in the report's `Exercised N` line. A line
+        // means what a crawl line means: the click raised no console or network error, plus the state check below.
+        // Like the redact and crop scenarios it runs without --allow-destructive: Clear wipes the pad and Cancel shuts
+        // the modal, neither touches the document. It names nothing from #sigSources, so it also runs with the flag OFF.
+        run: async (pg) => {
+          const modalOpen = () => pg.$eval('#signatureModal', e => e.classList.contains('active'));
+          // Polled, bounded: a single read after a fixed sleep is how a gate goes red under machine load.
+          const padInk = (want) => pg.waitForFunction((inked) => {
+            const c = document.getElementById('signatureCanvas');
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            let any = false;
+            for (let i = 3; i < d.length; i += 4) if (d[i]) { any = true; break; }
+            return any === inked;
+          }, want, { timeout: 5_000 }).then(() => true).catch(() => false);
+          const control = async (id, check) => {
+            consoleErrors.splice(0); netFailures.splice(0);
+            await pg.click(`#${id}`);
+            const why = await check();
+            const errs = consoleErrors.splice(0).concat(netFailures.splice(0));
+            const failure = why || (errs.length ? `console/network: ${errs.slice(0, 3).join(' | ')}` : null);
+            record(failure ? 'FAIL' : 'PASS', id, failure || 'by scenario: no console/network errors, state as expected');
+            if (failure) throw new Error(`${id}: ${failure}`);
+          };
+
+          await pg.click('#addSignatureBtn');
+          await pg.waitForFunction(() => document.getElementById('signatureModal').classList.contains('active'),
+            null, { timeout: 5_000 }).catch(() => {});
+          if (!await modalOpen()) throw new Error('✍ did not open the signature box');
+          const box = await pg.locator('#signatureCanvas').boundingBox();
+          if (!box || box.width < 60 || box.height < 30) throw new Error('signature pad not usably visible');
+          const y = box.y + box.height / 2;
+          await pg.mouse.move(box.x + box.width * 0.2, y);
+          await pg.mouse.down();
+          await pg.mouse.move(box.x + box.width * 0.5, y - box.height * 0.2, { steps: 6 });
+          await pg.mouse.move(box.x + box.width * 0.8, y + box.height * 0.2, { steps: 6 });
+          await pg.mouse.up();
+          // The control for the Clear check: without ink first, "the pad is empty after Clear" proves nothing.
+          if (!await padInk(true)) throw new Error('a stroke on the signature pad drew nothing');
+
+          await control('clearSignature', async () => {
+            if (!await padInk(false)) return 'the pad still holds ink after Clear';
+            if (!await modalOpen()) return 'Clear closed the signature box';
+            return null;
+          });
+          await control('cancelSignature', async () => {
+            await pg.waitForFunction(() => !document.getElementById('signatureModal').classList.contains('active'),
+              null, { timeout: 5_000 }).catch(() => {});
+            return await modalOpen() ? 'Cancel left the signature box open' : null;
+          });
+        },
+      },
     ];
 
     const picked = SCENARIO_ONLY

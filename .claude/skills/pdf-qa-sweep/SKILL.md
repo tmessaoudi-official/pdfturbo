@@ -103,7 +103,7 @@ The driver reports facts. You decide what they mean.
    enumeration used visibility instead of hit-testable reachability.
 3. **`SKIP` is coverage you did not get — and the real number is worse than the skip count.** The
    report now ends with `Exercised N distinct control(s) of M in the DOM` and **names** every control
-   that was not. Read that line first; a green `0 fail` over 57 of 144 controls is not a clean bill of
+   that was not. Read that line first; a green `0 fail` over 59 of 144 controls is not a clean bill of
    health. (Until 2026-11-11 that line also counted non-control subjects — `boot`, `load`, `a11y` — and
    read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive` and `--require-sw`** (the latter: a missing built worker FAILs the pad pass instead of SKIP) (on 2026-07-31: 36 skips instead of 44 — it reaches redaction, erase
    and crop-remove; the 2026-11-12 baseline below: 42), so a local default run is WEAKER than the gate; match the flag before comparing.
@@ -169,18 +169,28 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots.
 
-**Baseline, `--allow-destructive --require-sw` (what CI runs), measured 2026-11-12 on the deploy build, `phonePad`
-ON by default (phone-signature-pad 7b commit C), re-measured 2026-11-12 after the draw-view axe line (panel round 4 K2,
-`var/claude/gate-r4fix.log`; it was 161 · 119 before):**
-**162 checks · 120 pass · 0 fail · 0 warn · 42 skip · 0 a11y · 0 accepted-by-decision**, over
-**57 distinct controls of 144** in the DOM (control ids only; the 2026-07-31 figure "151 · 114 … 66 of
-141" counted subjects too), including the 5 workflow scenarios and the **phone pad pass**. With the flag OFF
+**Baseline, `--allow-destructive --require-sw` (what CI runs), measured 2026-11-13 on a local build of the deploy tree,
+`phonePad` ON by default (phone-signature-pad 7b commit C), after the R4-3 signature scenario (it was 162 · 120 · 42 over
+57 the day before, `var/claude/gate-r4fix.log`, and 161 · 119 before the draw-view axe line, panel round 4 K2):**
+**165 checks · 123 pass · 0 fail · 0 warn · 42 skip · 0 a11y · 0 accepted-by-decision**, over
+**59 distinct controls of 144** in the DOM (control ids only; the 2026-07-31 figure "151 · 114 … 66 of
+141" counted subjects too), including the 6 workflow scenarios and the **phone pad pass**. With the flag OFF
 (2026-11-11) it was 156 · 119 · 0 · 0 · 37 over 57 of 141: turning it on adds three controls to the DOM, and the crawl
 gains `sigPhoneBtn` and `sigImportBtn` but loses `clearSignature` and `cancelSignature`, which it now finds hidden.
 The modal is still open after the Import click; the crawl's `unwind()` after that leaf finds the page centre inside
 `#signatureModal` and presses Escape, which closes it (TRACED 2026-11-12, panel round 4 K12,
-`var/claude/r4fix/k12-trace.mjs`; why Clear's own unwind did not close it before the flag went on is NOT traced). Same 57; `sigCamBtn` is never clicked, so no run
-exercises a camera. The pad pass
+`var/claude/r4fix/k12-trace.mjs`; why Clear's own unwind did not close it before the flag went on is NOT traced). Same 57
+from the crawl. **R4-3 (2026-11-13) gets the two back by a scenario, not by the crawl:** `signature: draw → clear →
+cancel` opens ✍, draws a stroke (ink asserted first, the control), clicks Clear (pad empty, box still open) and Cancel
+(box closed), and records `clearSignature` and `cancelSignature` as their OWN control lines — a scenario line never
+counts as a control, so these two are what lift the figure to 59. Each line means what a crawl line means (no console
+or network error from that click) plus its state check. The crawl's two `became hidden` SKIPs stay in the report beside
+them. Like the redact and crop scenarios it runs WITHOUT `--allow-destructive` too (Clear and Cancel never touch the
+document), so a default run's crawl lists both as destructive by name while the scenario still reaches them; it names
+nothing from `#sigSources`, so it also runs with the flag OFF. Sabotage (dev server, 2026-11-13): Clear's handler made a
+no-op → FAIL `clearSignature` "the pad still holds ink after Clear", exit 1; Cancel's → FAIL `cancelSignature` "Cancel
+left the signature box open", exit 1. `saveSignature` and `sigCamBtn` are still never clicked, so no run saves a drawn
+signature or exercises a camera. The pad pass
 runs right after boot, before any document is loaded: on a built app the service worker controls
 `pad.html`, `pad.html` is absent from the precache (`index.html` present as the control), the pad (not
 the editor) renders, axe on the DRAW view (before Done — panel round 4 K2, 2026-11-12), draw → Done → QR, axe on
@@ -192,7 +202,7 @@ Read the numbers in this order, because two of them mislead on their own:
 
 - **Distinct controls, not the check total.** The DFS revisits some controls at different depths, so
   the entry count exceeds distinct coverage. The report's `Exercised N distinct control(s) of M` line
-  is the honest figure; a `0 fail` over 57 of 144 is not a clean bill of health.
+  is the honest figure; a `0 fail` over 59 of 144 is not a clean bill of health.
 - **`0 accepted-by-decision` is load-bearing.** `A11Y_ACCEPTED` was emptied on 2026-07-31 when the last
   exception (`scrollable-region-focusable`) was properly fixed. A run reporting an `ACCEPT` line means
   someone re-opened a hole in the gate — find out why before shipping.
