@@ -623,7 +623,11 @@ async function main() {
             return any === inked;
           }, want, { timeout: 5_000 }).then(() => true).catch(() => false);
           const control = async (id, check) => {
-            consoleErrors.splice(0); netFailures.splice(0);
+            // Never splice-and-discard here: that silently dropped whatever opening the box and drawing raised, and the loop then
+            // printed "0 console/network errors" (6C round 1, 2026-11-13 — a console.error in the pad's pointerdown
+            // left this scenario green). Anything still buffered belongs to the steps before this click.
+            const earlier = consoleErrors.splice(0).concat(netFailures.splice(0));
+            if (earlier.length) throw new Error(`console/network before ${id}: ${earlier.slice(0, 3).join(' | ')}`);
             await pg.click(`#${id}`);
             const why = await check();
             const errs = consoleErrors.splice(0).concat(netFailures.splice(0));

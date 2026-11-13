@@ -106,7 +106,7 @@ The driver reports facts. You decide what they mean.
    that was not. Read that line first; a green `0 fail` over 59 of 144 controls is not a clean bill of
    health. (Until 2026-11-11 that line also counted non-control subjects — `boot`, `load`, `a11y` — and
    read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive` and `--require-sw`** (the latter: a missing built worker FAILs the pad pass instead of SKIP) (on 2026-07-31: 36 skips instead of 44 — it reaches redaction, erase
-   and crop-remove; the 2026-11-12 baseline below: 42), so a local default run is WEAKER than the gate; match the flag before comparing.
+   and crop-remove; the 2026-11-13 baseline below: 42), so a local default run is WEAKER than the gate; match the flag before comparing.
    Do NOT claim the sweep covers a specific feature without checking that list — measured 2026-07-31,
    `flattenBtn`, `sanitizeBtn`, `watermarkBtn`, `batesBtn`, `compressBtn`, `exportXlsxBtn` and the
    DOCX/MD/XFDF export buttons are **never clicked**, because `modalBinder.ts` registers the export flyout with
@@ -170,7 +170,7 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots.
 
 **Baseline, `--allow-destructive --require-sw` (what CI runs), measured 2026-11-13 on a local build of the deploy tree,
-`phonePad` ON by default (phone-signature-pad 7b commit C), after the R4-3 signature scenario (it was 162 · 120 · 42 over
+`phonePad` ON by default (phone-signature-pad 7b commit C), after the R4-3 signature scenario (`var/claude/r4-3/sweep-ci2.log`; it was 162 · 120 · 42 over
 57 the day before, `var/claude/gate-r4fix.log`, and 161 · 119 before the draw-view axe line, panel round 4 K2):**
 **165 checks · 123 pass · 0 fail · 0 warn · 42 skip · 0 a11y · 0 accepted-by-decision**, over
 **59 distinct controls of 144** in the DOM (control ids only; the 2026-07-31 figure "151 · 114 … 66 of
@@ -187,9 +187,13 @@ counts as a control, so these two are what lift the figure to 59. Each line mean
 or network error from that click) plus its state check. The crawl's two `became hidden` SKIPs stay in the report beside
 them. Like the redact and crop scenarios it runs WITHOUT `--allow-destructive` too (Clear and Cancel never touch the
 document), so a default run's crawl lists both as destructive by name while the scenario still reaches them; it names
-nothing from `#sigSources`, so it also runs with the flag OFF. Sabotage (dev server, 2026-11-13): Clear's handler made a
-no-op → FAIL `clearSignature` "the pad still holds ink after Clear", exit 1; Cancel's → FAIL `cancelSignature` "Cancel
-left the signature box open", exit 1. `saveSignature` and `sigCamBtn` are still never clicked, so no run saves a drawn
+nothing from `#sigSources`, so it also runs with the flag OFF (measured: `VITE_FEATURE_PHONE_PAD=false` dev server, 141
+controls in the DOM, both lines PASS). Errors raised while opening the box and drawing are the scenario's own: the first
+control throws on anything still buffered, never splices it away. Sabotage (dev server, 2026-11-13; logs in
+`var/claude/r4-3/`): Clear's handler made a no-op → FAIL `clearSignature` "the pad still holds ink after Clear", exit 1;
+Cancel's → FAIL `cancelSignature` "Cancel left the signature box open", exit 1; a `console.error` in the pad's
+`pointerdown` → FAIL "console/network before clearSignature" (the first version spliced it away and stayed green — 6C
+round 1). `saveSignature` and `sigCamBtn` are still never clicked, so no run saves a drawn
 signature or exercises a camera. The pad pass
 runs right after boot, before any document is loaded: on a built app the service worker controls
 `pad.html`, `pad.html` is absent from the precache (`index.html` present as the control), the pad (not
