@@ -536,9 +536,9 @@ describe('pad page — full screen (row 11, phone half)', () => {
     expect(f.q('fullscreen').hidden).toBe(false);
   });
 
-  it('unlock follows only a lock that RESOLVED: a refused lock (a desktop, a Safari) is never unlocked on leaving', async () => {
+  it('unlock follows only a lock that RESOLVED: a refused lock (a desktop, Safari) is never unlocked on leaving', async () => {
     // 6C round 3: Done calls leaveFull before the QR shows, so a platform unlock that throws where lock() is refused would
-    // lose the QR — and nothing measured unlock() on such an engine. Never call it there.
+    // lose the QR — and unlock() after a refused lock was measured only on desktop Chrome, never on Safari. Never call it there.
     const f = full();
     f.api.lockLandscape.mockImplementation(() => Promise.reject(new Error('NotSupportedError')));
     f.enter();

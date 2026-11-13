@@ -236,8 +236,9 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   // Whether THIS stay in full mode asked the browser for fullscreen: only then is there anything to undo on leaving
   // (the CSS-only path — iPhone Safari — never calls unlock or exit).
   let requested = false;
-  // Whether a landscape lock RESOLVED during this stay: unlock() follows only that, never a refused lock (a desktop, a
-  // Safari) — Done calls leaveFull before the QR shows, and unlock() was never measured on an engine that refuses lock().
+  // Whether a landscape lock RESOLVED during this stay (or, in browserFullscreen, was absent — its unlock is then absent
+  // too): unlock() follows only that, never a refused lock — Done calls leaveFull before the QR shows, and unlock() after
+  // a refused lock was measured only on desktop Chrome (no throw), never on Safari, which refuses lock().
   let locked = false;
   const enterFull = () => {
     if (full) return;

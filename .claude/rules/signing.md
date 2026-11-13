@@ -399,8 +399,9 @@ out on a height change too (it shows no text input; normal mode stays width-only
 fullscreen and then `screen.orientation.lock('landscape')`; the grant reads the state AT the grant — left meanwhile → it gives the fullscreen back, in full
 mode (still, or entered again before it) → it locks; only a stay that ASKED for fullscreen undoes it on leaving (`requested`:
 the CSS-only path never calls `unlock`/`exit`, 6C round 2), and `unlock` follows only a lock that RESOLVED (`locked`; a lock landing
-after the pad left is released then) — Done leaves before the QR shows, and `unlock()` was never measured on an engine that
-refuses `lock()`, such as iPad Safari (6C round 3). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
+after the pad left is released then; in `browserFullscreen` a MISSING `lock` resolves too, and its `unlock` is missing
+as well) — Done leaves before the QR shows, and `unlock()` after a refused lock was measured only on desktop Chrome (no
+throw, the Chrome file through `365470d`), never on Safari, which refuses `lock()` (6C round 3). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
 (`pad-fullscreen.browser.test.ts`): a request without a gesture rejects `TypeError: Permissions check failed`, the lock
 on a desktop `NotSupportedError`; the runner's iframe allows fullscreen, so the Chrome file takes the real default
 path (pinned: `fullscreenElement` is `HTML`, the iframe stays 800 × 360). **`active()` is `Boolean(fullscreenElement)`,
