@@ -80,8 +80,9 @@ under storage pressure; no claim is made here about any other browser's rule.
 
 - **Full screen on an iPhone is a layout, not browser fullscreen.** iPhone Safari has no element fullscreen, so ⛶
   only hides the controls and sizes the pad to the visible page; the address bar stays, and the phone does not turn
-  to landscape by itself (the rotate hint asks). Android Chrome goes fullscreen and locks landscape. Neither was
-  checked on a real phone yet (plan row 11, phone half).
+  to landscape by itself (the rotate hint asks). Android Chrome goes fullscreen and locks landscape: walked on a
+  real Android phone 2026-11-13 (plan W24–W30). The iPhone layout, an iPad, and Android's back gesture out of full
+  screen were not walked (W31).
 - **The storage banner can cover the ✍ modal's Save button on a phone.** At 414 px wide on a FIRST visit, with the
   phone panel open, the Save row sits under the storage-notice banner (French, the longest strings: fully covered).
   Dismiss the banner and Save is reachable; the modal also scrolls. The cause is the banner's stacking (`z-index: 9000`)

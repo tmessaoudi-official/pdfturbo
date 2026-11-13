@@ -419,7 +419,8 @@ full re-translates both; focus moves to the counterpart. Sabotage: 16 mutants (9
 red where predicted. **Walked on a real Android phone 2026-11-13** (Chrome, LAN dev server at the R4-3 6C commit; plan
 W24–W30, the developer's report): the ⛶ glyph renders; ⛶ goes real fullscreen and turns to landscape; Exit and Done EACH
 release the lock (the page follows to portrait); after a landscape Done the QR is whole, stays whole while the URL bar
-hides and shows, and the PC webcam reads it. **Not walked: iPhone Safari (the CSS fill, the rotate hint) and iPad** (W31).
+hides and shows, and the PC webcam reads it. **Not walked: iPhone Safari (the CSS fill, the rotate hint — on Android the lock
+turns the page, so the hint never shows), iPad, and Android's back gesture out of full screen** (W31).
 
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.
