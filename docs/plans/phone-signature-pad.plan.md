@@ -126,6 +126,7 @@ signature image (PNG/JPEG/WebP) for PCs without a webcam. Hosting stays GitHub P
 - [2026-11-12 23:09] AGREED: Full screen (phone half): one rotate hint ('Turn your phone sideways for a bigger pad') shown in full screen only while height > width; 3 new pad.* keys in EN/FR/AR, Arabic unreviewed
 - [2026-11-12 23:09] AGREED: Full screen (phone half): 3C tier advisor() only
 - [2026-11-12 23:15] AGREED: Full-screen phone pad plan (§ Row 11, phone half) approved: Done leaves full screen first (a too-large signature errors on the normal pad); the QR is capped by height too if the landscape Chrome case goes red; build tonight
+- [2026-11-13 09:03] AGREED: Row 11 phone half: hold the 7 local commits (up to 034f80b) unpushed until the developer's phone walk; stop the session now (6C round 3 tier not asked — advisor only, disclosed).
 
 ## Formal Plan
 
