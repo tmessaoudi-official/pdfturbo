@@ -416,7 +416,10 @@ back and only the height shrinks (6C round 2) — pinned in real Chrome (800 × 
 back) and measured on a 915 × 412 phone: 344 px ending at 394, then at 356 px high 281 px ending at 331. PTSIG never sees the pad size (the grid's longer
 side is always 1023), pinned at 1150 × 460. Two buttons with their own keys, not a text swap, so a language change while
 full re-translates both; focus moves to the counterpart. Sabotage: 16 mutants (9, then 1, 4 and 2 in 6C rounds 1–3), each
-red where predicted.
+red where predicted. **Walked on a real Android phone 2026-11-13** (Chrome, LAN dev server at the R4-3 6C commit; plan
+W24–W30, the developer's report): the ⛶ glyph renders; ⛶ goes real fullscreen and turns to landscape; Exit and Done EACH
+release the lock (the page follows to portrait); after a landscape Done the QR is whole, stays whole while the URL bar
+hides and shows, and the PC webcam reads it. **Not walked: iPhone Safari (the CSS fill, the rotate hint) and iPad** (W31).
 
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.

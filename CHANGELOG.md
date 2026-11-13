@@ -26,7 +26,7 @@ most of the work went into proving that what the product claims to remove is act
   the app updates there.
 
 #### Fixed
-- **Full screen on the phone pad** (not yet checked on a real phone): ⛶ hides the title, hint and colour controls and
+- **Full screen on the phone pad** (checked on an Android phone; not yet on an iPhone or iPad): ⛶ hides the title, hint and colour controls and
   gives the pad the whole screen, keeping its shape — in landscape a bigger pad (850 × 340 instead of 600 × 240 on a
   915 × 412 phone); upright, a line suggests turning the phone. Android also goes browser-fullscreen and locks
   landscape; an iPhone, which has no page fullscreen, gets the same layout without it. *Exit full screen*, *Done* and
