@@ -398,7 +398,9 @@ out on a height change too (it shows no text input; normal mode stays width-only
 (upright only) is hidden or shown BEFORE the box is measured. Where `document.fullscreenEnabled`, the page also asks for
 fullscreen and then `screen.orientation.lock('landscape')`; the grant reads the state AT the grant — left meanwhile → it gives the fullscreen back, in full
 mode (still, or entered again before it) → it locks; only a stay that ASKED for fullscreen undoes it on leaving (`requested`:
-the CSS-only path never calls `unlock`/`exit`, 6C round 2). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
+the CSS-only path never calls `unlock`/`exit`, 6C round 2), and `unlock` follows only a lock that RESOLVED (`locked`; a lock landing
+after the pad left is released then) — Done leaves before the QR shows, and `unlock()` was never measured on an engine that
+refuses `lock()`, such as iPad Safari (6C round 3). The `.catch` on that chain is the CSS-fill fallback and is MEASURED in Chrome
 (`pad-fullscreen.browser.test.ts`): a request without a gesture rejects `TypeError: Permissions check failed`, the lock
 on a desktop `NotSupportedError`; the runner's iframe allows fullscreen, so the Chrome file takes the real default
 path (pinned: `fullscreenElement` is `HTML`, the iframe stays 800 × 360). **`active()` is `Boolean(fullscreenElement)`,
@@ -409,9 +411,11 @@ leaves FIRST, so the QR — and a too-large error — show on the normal page. *
 the room below its top, 12 px kept): measured on a 915 × 412 phone the old 469 px QR ran to 519 px; now 344 px, read back
 by zxing, and a full 909-character frame reads at that side at dpr 1. It is re-fitted on ANY resize that changes
 its side (`onResize`), not only through the pad's width-keyed layout: after a Done from real fullscreen the bars come
-back and only the height shrinks (6C round 2). PTSIG never sees the pad size (the grid's longer
+back and only the height shrinks (6C round 2) — pinned in real Chrome (800 × 360 → 800 × 300: the QR smaller, whole and read
+back) and measured on a 915 × 412 phone: 344 px ending at 394, then at 356 px high 281 px ending at 331. PTSIG never sees the pad size (the grid's longer
 side is always 1023), pinned at 1150 × 460. Two buttons with their own keys, not a text swap, so a language change while
-full re-translates both; focus moves to the counterpart. Sabotage: 9 mutants, each red where predicted.
+full re-translates both; focus moves to the counterpart. Sabotage: 16 mutants (9, then 1, 4 and 2 in 6C rounds 1–3), each
+red where predicted.
 
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.

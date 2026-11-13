@@ -536,6 +536,32 @@ describe('pad page — full screen (row 11, phone half)', () => {
     expect(f.q('fullscreen').hidden).toBe(false);
   });
 
+  it('unlock follows only a lock that RESOLVED: a refused lock (a desktop, a Safari) is never unlocked on leaving', async () => {
+    // 6C round 3: Done calls leaveFull before the QR shows, so a platform unlock that throws where lock() is refused would
+    // lose the QR — and nothing measured unlock() on such an engine. Never call it there.
+    const f = full();
+    f.api.lockLandscape.mockImplementation(() => Promise.reject(new Error('NotSupportedError')));
+    f.enter();
+    await f.grant();
+    await flush();
+    f.exit();
+    expect(f.api.unlock).not.toHaveBeenCalled();
+    expect(f.api.exit).toHaveBeenCalledTimes(1); // the fullscreen itself is still given back
+  });
+
+  it('a lock that resolves only after the pad left full mode is released when it lands', async () => {
+    const f = full();
+    let lockDone: () => void = () => {};
+    f.api.lockLandscape.mockImplementation(() => new Promise<void>((r) => { lockDone = r; }));
+    f.enter();
+    await f.grant();
+    f.exit();
+    expect(f.api.unlock).not.toHaveBeenCalled(); // not locked yet
+    lockDone();
+    await flush();
+    expect(f.api.unlock).toHaveBeenCalledTimes(1);
+  });
+
   it('Done in full screen leaves it FIRST, then shows the QR of the normal-size pad; the drawing is kept; Edit returns to the normal pad', () => {
     const f = full();
     f.enter();

@@ -130,6 +130,23 @@ describe('full screen with the real CSS', () => {
     expect(await readQr(worst)).toEqual([FULL_FRAME]);
   });
 
+  it('after a landscape Done, a HEIGHT-only shrink (the browser bars coming back) re-fits the QR: still whole on screen, still reads', async () => {
+    await viewportTo(800, 360);
+    const { q } = mountPage();
+    await userEvent.click(q('fullscreen'));
+    const canvas = q<HTMLCanvasElement>('canvas');
+    await userEvent.dragAndDrop(canvas, canvas, { sourcePosition: { x: 40, y: 60 }, targetPosition: { x: 600, y: 200 } });
+    await userEvent.click(q('done'));
+    const qr = q<HTMLCanvasElement>('qr');
+    const before = rect(qr).width;
+    await viewportTo(800, 300); // width unchanged: the pad's width-keyed layout alone would not redraw the QR
+    await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); });
+    const r = rect(qr);
+    expect(r.width).toBeLessThan(before); // it was re-fitted, not left at the 360 px side
+    expect([r.top >= 0, r.bottom <= window.innerHeight + 0.5], `QR ${r.top}–${r.bottom} in a ${window.innerHeight} px viewport`).toEqual([true, true]);
+    expect((await readQr(qr)).length).toBe(1);
+  });
+
   it('axe on the full view (WCAG 2.1 A/AA): zero critical and zero serious violations', async () => {
     await viewportTo(800, 360);
     const { q } = mountPage();

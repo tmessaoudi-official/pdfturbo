@@ -236,6 +236,9 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   // Whether THIS stay in full mode asked the browser for fullscreen: only then is there anything to undo on leaving
   // (the CSS-only path — iPhone Safari — never calls unlock or exit).
   let requested = false;
+  // Whether a landscape lock RESOLVED during this stay: unlock() follows only that, never a refused lock (a desktop, a
+  // Safari) — Done calls leaveFull before the QR shows, and unlock() was never measured on an engine that refuses lock().
+  let locked = false;
   const enterFull = () => {
     if (full) return;
     full = true;
@@ -252,7 +255,10 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
         // Read the state AT the grant: left meanwhile → give the fullscreen back; in full mode (still, or entered
         // again before this grant) → lock. Never lock under the normal page.
         if (!full) return fs.exit();
-        return fs.lockLandscape();
+        return fs.lockLandscape().then(() => {
+          if (full) locked = true;
+          else fs.unlock(); // left while the lock was pending: release it now
+        });
       })
       // Refused or unsupported (measured in Chrome: requestFullscreen without a user gesture rejects, and lock() on a
       // desktop rejects NotSupportedError — pad-fullscreen.browser.test.ts): the CSS fill stays, which is the base.
@@ -270,7 +276,8 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     layout(); // before the platform calls: the page is back to normal whatever they do
     if (!requested) return;
     requested = false;
-    fs.unlock();
+    if (locked) fs.unlock();
+    locked = false;
     if (fs.active()) void fs.exit(); // the check and the call share one task: the browser cannot leave in between
   };
   enterFs.addEventListener('click', enterFull);
