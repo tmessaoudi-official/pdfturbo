@@ -147,7 +147,7 @@ describe('tp() CropBox offset (the CropBox export fix)', () => {
 
 // ── getPageCropBox — the page view pdf.js shows ─────────────────────────────
 // B1 (2026-09-26). The export maps editor-space elements through this box, and editor space is
-// measured against pdf.js's page VIEW (`pdf.worker.mjs:59242-59276`, 6.3.289): a valid, non-empty
+// measured against pdf.js's page VIEW (`pdf.worker.mjs:59361-59395`, 6.5.438): a valid, non-empty
 // /CropBox intersected with the /MediaBox, else the /MediaBox, else US Letter. It used to return
 // pdf-lib's RAW /CropBox and fall back to a (0,0)-origin box when that threw — so on four shapes the
 // redaction burn missed its target (pinned end to end, against pdf.js itself, in

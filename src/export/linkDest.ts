@@ -24,7 +24,7 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' && Number
 /**
  * Resolve `dest` to its page and view top, or null when it names no page this document has — the link is then
  * dropped and its text still exports: a malformed destination is a malformed link, never a failed export. Both
- * lookups can reject, measured in pdf.js 6.3.289, so both are caught. `getPageIndex` rejects a reference to a missing
+ * lookups can reject, measured in pdf.js 6.3.289 (the worker code is unchanged in 6.5.438), so both are caught. `getPageIndex` rejects a reference to a missing
  * object and one to a non-page object (a font) alike — "The reference does not point to a /Page dictionary."
  * `getDestination` resolves `null` for a name the tree lacks, but REJECTS when the `/Names /Dests` tree itself is
  * corrupt — a dangling reference ("Cannot read properties of null (reading 'has')"), a non-dictionary, or a `/Kids`

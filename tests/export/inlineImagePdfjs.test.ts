@@ -21,7 +21,7 @@ const IMG = 'BI /W 1 /H 1 /BPC 8 /CS /G';
 /** Printable bytes that put a JPEG end marker past the 15 bytes the unfiltered rule checks after an `EI`. */
 const PAD = '0 '.repeat(10);
 
-/** A kept page's content: one stream, or several (`/Contents` an array, which pdf.js reads back to back). */
+/** A kept page's content: one stream, or several (`/Contents` an array, whose members pdf.js 6.5 ends with a line feed each). */
 type Content = string | string[];
 
 /**
@@ -138,8 +138,8 @@ async function exported(page0: Content, local?: Record<string, unknown>, annot =
   return Buffer.from(await dest.save({ useObjectStreams: false })).toString('latin1');
 }
 
-/** What the prune's scan reports on the content as `collect` receives it: several streams joined back to back. */
-const joined = (page0: Content): string => (Array.isArray(page0) ? page0.join('') : page0);
+/** What the prune's scan reports on the content as `collect` receives it: an array's streams each followed by a line feed (pdf.js 6.5). */
+const joined = (page0: Content): string => (Array.isArray(page0) ? page0.map(c => c + '\n').join('') : page0);
 const scannedDraws = (page0: Content): string[] =>
   [...new Set(scanNamedOps(joined(page0), new Set(['Do']), { pdfjs: true }).map(o => (o.last ?? '').slice(1)))].sort();
 
@@ -181,6 +181,13 @@ const SHAPES: [string, Content, string[]][] = [
     `/Fm2 DoQ /Fm1 Do`, ['Fm1', 'Fm2']],
   ['control: ASCII85 ends at ~, whitespace, EI',
     `q ${IMG} /F /A85 ID z~ EI /Fm2 Do EI Q /Fm1 Do`, ['Fm1', 'Fm2']],
+  // pdf.js 6.5 ends ASCII85 data at the FIRST `~`, whatever follows (6.3 also wanted whitespace then `>` or `EI`, and
+  // fell back to the unfiltered rule without one): read the other way, the first keeps a removed page's form pdf.js
+  // never draws, the second drops a kept page's form pdf.js draws (dependency-upgrade-2026-11, P3).
+  ['ASCII85 ends at its first ~ — a draw before it is image data',
+    `/Fm1 Do ${IMG} /F /A85 ID x EI /Fm2 Do z~x EI /Fm1 Do`, ['Fm1']],
+  ['ASCII85 ends at its first ~ — a draw after its EI is read',
+    `/Fm1 Do ${IMG} /F /A85 ID z~x EI /Fm2 Do z~ EI /Fm1 Do`, ['Fm1', 'Fm2']],
   ['control: with no EI accepted, pdf.js reads on after the last one',
     `/Fm1 Do ${IMG} ID x EI \x01 /Fm2 Do`, ['Fm1', 'Fm2']],
   ['control: ASCIIHex glued to its EI, then a draw',
@@ -197,9 +204,13 @@ const SHAPES: [string, Content, string[]][] = [
   ['control: an unknown operator keeps the operands', `/Fm2 xyz Do /Fm1 Do`, ['Fm1', 'Fm2']],
   ['control: an inline image between a name and its Do', `/Fm2 ${IMG} ID x EI Do /Fm1 Do`, ['Fm1', 'Fm2']],
   ['control: an operand set aside is taken back by a later Do', `/Fm2 /Fm1 Do Q Do`, ['Fm1', 'Fm2']],
-  ['an inline image across two streams (R2C-1)', [`q ${IMG} ID x EI`, `/Fm2 Do EI Q /Fm1 Do`], ['Fm1']],
-  ['a comment at the end of a stream runs into the next (R2C-1)', ['/Fm1 Do %c', '/Fm2 Do'], ['Fm1']],
-  ['control: a name across two streams (R2C-1)', ['/Fm', '2 Do /Fm1 Do'], ['Fm1', 'Fm2']],
+  // pdf.js 6.5 ends every member of an array `/Contents` with a line feed (dependency-upgrade-2026-11 P2): what ran
+  // across two streams in 6.3 (round 2, R2C-1) now ends with its stream.
+  ['an inline image ends with its stream (P2; R2C-1 in 6.3)', [`q ${IMG} ID x EI`, `/Fm2 Do EI Q /Fm1 Do`], ['Fm1', 'Fm2']],
+  ['a comment ends with its stream (P2; R2C-1 in 6.3)', ['/Fm1 Do %c', '/Fm2 Do'], ['Fm1', 'Fm2']],
+  ['control: an operator split across two streams is two words (P2)', [`/Fm1 Do BT /F1 12 Tf 5 T`, `J ET /Fm2 Do`], ['Fm1', 'Fm2']],
+  ['a DCT marker ending a member that is not the last (P5)', [`/Fm1 Do ${IMG} /F /DCT ID \xFF\xC0`, `/Fm2 Do`], ['Fm1']],
+  ['a DCT marker ending the last member (P5)', [`/Fm1 Do ${IMG} /F /DCT `, `ID \xFF\xC0`], ['Fm1']],
 ];
 
 /**
@@ -223,7 +234,9 @@ const STOPS: [string, Content, string[], string[]][] = [
   ['a name for TJ', `/Fm1 Do BT /F1 12 Tf /X TJ ET /Fm2 Do`, ['Fm1'], ['Fm1']],
   ['a reference for TJ', `/Fm1 Do BT /F1 12 Tf 1 0 R TJ ET /Fm2 Do`, ['Fm1'], ['Fm1']],
   ['an array for Tj', `/Fm1 Do BT /F1 12 Tf [(qzqz)] Tj ET /Fm2 Do`, ['Fm1'], ['Fm1']],
-  ['a number for TJ, across two streams', [`/Fm1 Do BT /F1 12 Tf 5 T`, `J ET /Fm2 Do`], ['Fm1'], ['Fm1']],
+  ['a number for TJ, across two streams', [`/Fm1 Do BT /F1 12 Tf 5`, `TJ ET /Fm2 Do`], ['Fm1'], ['Fm1']],
+  // pdf.js tolerates this wrong type (its `Do` finds no `2` and draws on); the scan refuses every wrong type.
+  ['a name ends with its stream, leaving Do a number (P2; R2C-1 in 6.3)', ['/Fm', '2 Do /Fm1 Do'], ['Fm1'], ['Fm1']],
   ['a bare EI with an operand', `/Fm1 Do 5 EI /Fm2 Do`, ['Fm1', 'Fm2'], ['Fm1']],
   ['a dictionary for a Tf size', `/Fm1 Do /F1 << >> Tf Q /Fm2 Do`, ['Fm1', 'Fm2'], []],
 ];
@@ -246,9 +259,10 @@ describe('where pdf.js stops reading the page, the export refuses rather than gu
   });
 
   // pdf.js loops for ever on this page, so it is not asked; the prune refuses it through `contentOf` (R2C-4, R3K-2).
+  // Only a single stream: pdf.js 6.5 ends an array member with a line feed, so the marker is never the page's last
+  // byte there and pdf.js reads it (the P5 cases above).
   it('a DCT marker as the last byte of the page', async () => {
     await expect(exported(`/Fm1 Do ${IMG} /F /DCT ID \xFF\xC0`)).rejects.toThrow(ExportResourcesUnreadableError);
-    await expect(exported([`/Fm1 Do ${IMG} /F /DCT `, `ID \xFF\xC0`])).rejects.toThrow(ExportResourcesUnreadableError);
   });
 });
 

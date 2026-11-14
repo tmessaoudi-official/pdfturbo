@@ -2,7 +2,7 @@
  * The ONE way `src/` asks pdf.js for a page viewport. Direct `.getViewport(` calls are banned outside
  * this file (`tests/infra/pointViewport.test.ts`).
  *
- * pdf.js multiplies every viewport by the page's /UserUnit (`pdf.mjs:826`, 6.3.289), a PDF 1.6 key that
+ * pdf.js multiplies every viewport by the page's /UserUnit (`pdf.mjs:1095`, 6.5.438), a PDF 1.6 key that
  * says one unit is u points. The export writes with pdf-lib in plain points and knows nothing of it, so
  * on a /UserUnit page the editor's coordinates and the export's used to differ by u wherever they met —
  * and a redaction drawn over a secret was burned at u times the secret's position, leaving it visible.

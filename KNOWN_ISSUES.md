@@ -232,7 +232,8 @@ under storage pressure; no claim is made here about any other browser's rule.
 - **The prune reads a page with pdf.js's own syntax and operator rules, and refuses an operand of the wrong type
   (since 2026-10-17), within four bounds.** It ends an inline image by its filter and pdf.js's `EI` rules, reads
   arrays, dictionaries, comments and references as pdf.js's parser does, applies pdf.js's operator table and operand
-  counts, and reads a page's content streams back to back. Until 2026-10-17 a JPEG inline image, a comment inside an
+  counts, and reads a page's content streams as pdf.js does — back to back until pdfjs-dist 6.5.438, a line break after
+  each since (2026-11-14). Until 2026-10-17 a JPEG inline image, a comment inside an
   array, two content streams read with a line break between them, or an operand pdf.js's evaluator stops on (`5 TJ`,
   then the rest of the page is not drawn) could hide a `/Fm2 Do` that the prune counted as drawn, keeping a removed
   page's form in the file (S10-1, R2S-1, R2C-1, R3S-1). The export now refuses where pdf.js's lexer, parser or operator
@@ -245,7 +246,7 @@ under storage pressure; no claim is made here about any other browser's rule.
   nothing — and a numbers-only `scn` under a Pattern colour space, where pdf.js stops reading the page, is read past
   (plan row 33); **(2)** a page holding many inline images whose JPEG or ASCII85 data never ends costs time quadratic
   in its size, on the main thread — 3.6 s for a 248 KB stream (plan row 34); **(3)** the reading follows pdf.js
-  6.3.289, and only its operator table is re-derived by a test, so a pdf.js upgrade that changes its parser can diverge
+  6.5.438 (re-derived 2026-11-14 from 6.3.289), and only its operator table is re-derived by a test, so a pdf.js upgrade that changes its parser can diverge
   until the oracle tests catch it; **(4)** pdf.js's evaluator was audited, not mirrored, and it also stops — or empties the
   page — on what a well-typed operand RESOLVES to: a `/Font` resource that is not a dictionary, an inline image's
   `/OC` or a filtered image mask that fails to decode, a marked-content `/MCID` or graphics-state value of the wrong
@@ -324,8 +325,10 @@ under storage pressure; no claim is made here about any other browser's rule.
 ### From the WS7 closing audit (2026-09-24)
 
 - ~~**The viewer/export agreement check models pdf.js on pdf-lib's parse, and a crafted file can get past it**~~
-  — **CLOSED by WS8 (2026-09-24)**: the mirror is gone and the check runs pdf.js itself; none of the ten shapes below loads any
-  more — nine refuse with a page mismatch, and P6, which pdf.js cannot open, fails with pdf.js's own error — pinned by `tests/utils/ws8AuditShapes.test.ts`. Kept for the record: A branch-by-branch audit of pdf.js 6.3.289's cross-reference reader
+  — **CLOSED by WS8 (2026-09-24)**: the mirror is gone and the check runs pdf.js itself; none of the ten shapes below gets past it
+  — eight refuse with a page mismatch, P6, which pdf.js cannot open, fails with pdf.js's own error, and P5 has LOADED since
+  pdfjs-dist 6.5.438 because pdf.js itself now shows the page pdf-lib holds (it clears a rejected stream's `streamState`,
+  #22375; dependency-upgrade-2026-11 P4) — pinned by `tests/utils/ws8AuditShapes.test.ts`. Kept for the record: A branch-by-branch audit of pdf.js 6.3.289's cross-reference reader
   and page walk against `src/utils/pdfLoadGuard.ts` measured ten shapes that show one page and export or sign
   another while the guard loads the file: a `%startxref` comment after `%%EOF` (pdf.js takes it), a
   cross-reference stream without `/Type /XRef`, a table hidden inside stream data, a middle table short of rows,
@@ -522,7 +525,7 @@ landed rather than a bare "todo". Full lens reports: `var/claude/ws5/` (gitignor
   `tests/browser/cropbox-view-parity.browser.test.ts` (18 — parity against pdf.js itself, and the burn
   on the secret for each shape including a rotated one) and `tests/core/exportCoords.test.ts` (11).
 - ~~**A page with `/UserUnit` misplaces every overlay, redactions included** (P1).~~ **FIXED
-  2026-09-26.** pdf.js scales every viewport by `/UserUnit` (`pdf.mjs:826`) and the export works in
+  2026-09-26.** pdf.js scales every viewport by `/UserUnit` (`pdf.mjs:1095`) and the export works in
   plain points, so on a `/UserUnit 2` page a redaction drawn over the secret baked at twice its position
   and the secret stayed visible, in the PDF and the Word/Markdown/text exports. Every viewport in `src/`
   now comes from `pointViewport` (scale ÷ UserUnit), direct `.getViewport(` calls are banned by a test,

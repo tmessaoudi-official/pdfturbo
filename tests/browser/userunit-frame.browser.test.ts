@@ -1,7 +1,7 @@
 /**
  * /UserUnit (real Chrome) — what the user draws over is what the export removes.
  *
- * pdf.js multiplies every viewport by the page's /UserUnit (`pdf.mjs:826`), so on a /UserUnit 2 page the
+ * pdf.js multiplies every viewport by the page's /UserUnit (`pdf.mjs:1095`), so on a /UserUnit 2 page the
  * editor canvas was twice the size of the page in points, and every coordinate the user produced by
  * drawing on it was doubled. The export (pdf-lib) works in plain points, so a redaction drawn over a
  * secret was burned at twice the secret's position and the secret stayed VISIBLE — measured on

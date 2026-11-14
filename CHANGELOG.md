@@ -3,13 +3,13 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-11-11)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-11-14)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
 most of the work went into proving that what the product claims to remove is actually removed.
 
-### 2026-10-09 → 2026-11-11 — the phone signature pad, accessible names, and dependency upgrades
+### 2026-10-09 → 2026-11-14 — the phone signature pad, accessible names, and dependency upgrades
 
 #### Added
 - **Sign on your phone** (checked on a real phone and webcam before it was turned on): the ✍ modal shows a QR code that opens a
@@ -52,8 +52,10 @@ most of the work went into proving that what the product claims to remove is act
 
 #### Changed
 - Dependencies upgraded: in range (vite 8.3, i18next 26.7, node-forge 1.4.3, which closed the last audit exemption),
-  and two majors in their own changes (vite-plugin-pwa 2.0, jsdom 31, the dev-only test DOM); `pdfjs-dist` is held
-  at 6.3 because 6.4 and 6.5 change behaviour the export depends on.
+  and two majors in their own changes (vite-plugin-pwa 2.0, jsdom 31, the dev-only test DOM). On 2026-11-14 the two held
+  back followed: i18next 27 (a `/` in a file name in a message now shows as typed, not as `&#x2F;`) and `pdfjs-dist` 6.5,
+  with the removed-page clean-up re-checked against how pdf.js 6.5 reads a page split over several content streams
+  and an inline ASCII85 image, and font names in Word/Markdown exports kept.
 - An internal import-graph ratchet and named coordinate frames for page rectangles (no behaviour change).
 
 ### 2026-09-25 → 2026-10-08 — the limits walkthrough and the review remediation

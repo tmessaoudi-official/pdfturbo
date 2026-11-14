@@ -135,7 +135,7 @@ bands were swept too (20 strings, see the constant's comment in `textExtent.ts`)
 
 `getPageCropBox` (`exportPipeline.ts`) is the frame every export mapping uses — the overlay bake, the
 redaction rasterizer and both annotation strips — and every editor coordinate is measured against what
-pdf.js SHOWS: `Page.view` (`pdf.worker.mjs:59242-59276`), a valid, non-empty `/CropBox` INTERSECTED with
+pdf.js SHOWS: `Page.view` (`pdf.worker.mjs:59361-59395`), a valid, non-empty `/CropBox` INTERSECTED with
 the `/MediaBox`, else the MediaBox, else US Letter. It used to return pdf-lib's RAW `getCropBox()`, and a
 box at (0,0) when that threw.
 
@@ -253,7 +253,7 @@ built — links point forward — and after the header/footer hoist, `resolveLin
 paragraph the view lands on: the nearest one starting at or below the top (1pt slack), else the lowest paragraph
 (the one the top falls in), and the page's first paragraph when the destination names no height. A target whose
 page is not in the export, or a reference to no object, leaves the text plain. **A malformed destination is a
-malformed link, never a failed export** — and both lookups can REJECT, measured in pdf.js 6.3.289, so both are
+malformed link, never a failed export** — and both lookups can REJECT, measured in pdf.js 6.3.289 (the worker code unchanged in 6.5.438), so both are
 caught: `getPageIndex` on a reference to a missing or non-page object, and `getDestination` whenever the
 `/Names /Dests` tree itself is corrupt (dangling, not a dictionary, or a `/Kids` entry to no object). An unknown name
 merely resolves `null`, and the catch on `getDestination` was nearly deleted on the strength of that one probe;
@@ -646,7 +646,7 @@ of them code-shaped, two P1 from the safety lens and one P1 from the export lens
 sanitizer stripped the dictionaries its WALKS reached (catalog, leaf pages, listed annotations, `/Fields`
 downward, bookmarks) while pdf.js reads `/AA` by INHERITANCE — `collectActions` calls
 `getInheritableProperty({ key: "AA" })`, which walks `/Parent` up to the `/Pages` root
-(`pdf.worker.mjs:1550-1556`, `:1357-1379` in 6.3.289). So a `PageOpen` script on the page-tree root, and a
+(`pdf.worker.mjs:1572-1578`, `:1375-1397` in 6.5.438). So a `PageOpen` script on the page-tree root, and a
 `Keystroke` script on a widget's parent field that no `/Fields` entry names, both RAN in pdf.js after
 sanitize with every report flag false — measured with `page.getJSActions()` and `getFieldObjects()`
 before and after. A fourth walk would have closed two shapes; **one pass over every dictionary in the

@@ -6,7 +6,7 @@ interface PdfAnnotation {
   subtype: string;
   fieldType?: string;
   fieldName?: string;
-  /** A string for text and buttons; an ARRAY for a choice field (measured, pdf.js 6.3.289). */
+  /** A string for text and buttons; an ARRAY for a choice field (measured, pdf.js 6.3.289; `ChoiceWidgetAnnotation` unchanged in 6.5.438). */
   fieldValue?: string | string[] | null;
   rect: number[];
   alternativeText?: string;

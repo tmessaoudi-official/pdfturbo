@@ -1,7 +1,7 @@
 /**
  * /UserUnit (2026-09-26) — the editor measures in POINTS.
  *
- * pdf.js multiplies every viewport by the page's /UserUnit (`pdf.mjs:826`), while pdf-lib — the export —
+ * pdf.js multiplies every viewport by the page's /UserUnit (`pdf.mjs:1095`), while pdf-lib — the export —
  * works in plain points. So on a /UserUnit page the editor's coordinates and the export's differed by that
  * factor wherever the two met, and a redaction drawn over a secret was burned at 1/u of its position.
  * The fix is structural: one helper divides the requested scale by the page's UserUnit, and every viewport

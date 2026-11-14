@@ -21,7 +21,7 @@ const IMG = 'BI /W 1 /H 1 /BPC 8 /CS /G';
 const PIECES = [
   '/Fm1 Do', '/Fm2 Do', '/Fm3 Do', '/Fm1', '/Fm2', '/Fm3', 'Do', 'q', 'Q', 'xyz', 'null', 'true', '1', '0', 'R', '1 0 R',
   '[', ']', '<<', '>>', '/A', '(s)', '(a)b)', '<41>', '% c\n', '% ]\n', '%', '\n', ' ', 'l', '0 0 m', '1 0 0 1 0 0 cm',
-  'EI', 'ID', `${IMG} ID x EI`, '5 TJ', '[(a) 2] TJ', '(a) Tj', '/F1 << >> Tf', '/X TJ', '[/A] TJ', '0 1 0 rg', '/A w', `${IMG} /F /AHx ID 00>EI`, `${IMG} /F /A85 ID z~>EI`, `${IMG} /F /DCT ID \xFF\xD8 EI`,
+  'EI', 'ID', `${IMG} ID x EI`, '5 TJ', '[(a) 2] TJ', '(a) Tj', '/F1 << >> Tf', '/X TJ', '[/A] TJ', '0 1 0 rg', '/A w', `${IMG} /F /AHx ID 00>EI`, `${IMG} /F /A85 ID z~>EI`, `${IMG} /F /A85 ID z~x EI`, `${IMG} /F /DCT ID \xFF\xD8 EI`,
   '\xFF\xD9 EI', 'DoQ', 'qBI', '\x01', '/F1 12 Tf', 'BT', 'ET',
 ];
 
@@ -69,7 +69,7 @@ describe('the prune reads a content stream the way pdf.js draws it (row 10, roun
       const contents = generate(seed);
       let scanned: string[];
       try {
-        scanned = [...new Set(scanNamedOps(contents.join(''), new Set(['Do']), { pdfjs: true })
+        scanned = [...new Set(scanNamedOps(contents.length === 1 ? contents[0] : contents.map(c => c + '\n').join(''), new Set(['Do']), { pdfjs: true })
           .map(o => (o.last ?? '').slice(1)).filter(f => FORMS.includes(f)))].sort();
       } catch { refused++; continue; }
       const { text, painted } = await pdfjsDraws(contents);
@@ -81,9 +81,10 @@ describe('the prune reads a content stream the way pdf.js draws it (row 10, roun
       }
     }
     expect(disagree).toEqual([]);
-    // Not vacuous, and pinned (the generator is seeded): 715 read and compared, 232 of them painting a form, 2285 refused
+    // Not vacuous, and pinned (the generator is seeded): 695 read and compared, 188 of them painting a form, 2305 refused
     // — a refusal fails closed, so it is counted, not compared. Round 3's operand-type refusals raised the refused share,
-    // hence 3000 seeds where round 2 used 1000.
-    expect({ compared, refused, drawing }).toEqual({ compared: 715, refused: 2285, drawing: 232 });
+    // hence 3000 seeds where round 2 used 1000. Re-measured on pdf.js 6.5.438 with the `~` piece added
+    // (dependency-upgrade-2026-11 P2/P3; 715 / 2285 / 232 on 6.3.289 without it).
+    expect({ compared, refused, drawing }).toEqual({ compared: 695, refused: 2305, drawing: 188 });
   }, 120_000);
 });

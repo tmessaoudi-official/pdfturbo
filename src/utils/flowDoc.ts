@@ -389,7 +389,7 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
 
   // The run's footprint comes from the TRANSFORM, not from `+x`. pdf.js's TextItem box is `width`
   // along the transform's FIRST column and `height` along its SECOND — read from
-  // `pdf.worker.mjs:35904-35913`, where `if (!font.vertical)` sets `width = 0` and
+  // `pdf.worker.mjs:36021-36030`, where `if (!font.vertical)` sets `width = 0` and
   // `height = hypot(trm[2],trm[3])` (the glyph size) and then ACCUMULATES the advance into
   // `totalWidth`; for vertical writing the two roles swap. Transforming those four corners is what
   // makes a rotated Tm work: extending `+x` by `|width|` tested a box DISJOINT from the glyphs of
@@ -418,7 +418,7 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
   // A quarter of `col2` — the em along the DESCENDER direction — and neither of the two things this
   // line held before. `extent2` is the glyph size for horizontal text but the ACCUMULATED ADVANCE
   // for a vertical run, so it gave a five-glyph vertical line 15pt of band instead of 3pt. `size` is
-  // `hypot(a,b)`, which pdf.js builds as `fontSize * textHScale` (`pdf.worker.mjs:35872`), so under
+  // `hypot(a,b)`, which pdf.js builds as `fontSize * textHScale` (`pdf.worker.mjs:35989`), so under
   // `Tz < 100` it NARROWED the band — halving it at Tz 50 — which is the one direction a leak filter
   // may never move, and it re-opened the descender leak for condensed text. `hypot(c,d)` is the em
   // in both the horizontal and the vertical case. Found by two lenses independently.
@@ -444,18 +444,19 @@ export function isItemRedacted(item: RawTextItem, red: RedactionRect, pageTopY: 
 
 /**
  * The footprint of a VERTICAL-writing run (pdf.js marks one with `dir: 'ttb'`,
- * `pdf.worker.mjs:32549`, only when `font.vertical`). Measured in real pdf.js 6.3.289 before
+ * `pdf.worker.mjs:32469`, only when `font.vertical`). Measured in real pdf.js 6.3.289 before
  * writing this, on dvipdfmx's `vertical.pdf` (the pdf.js test file, `Identity-V`) and on a
  * synthetic `Identity-V` run with default vertical metrics — in units of the glyph size, the ink
  * spans −0.42…+0.42, −0.46…+0.49 and −0.48…+0.05 ACROSS the column, and from −0.06…−0.15 below the
  * origin DOWN to the full advance (−4.89 of 5 glyphs, −2.96 of 3, −6.89 of 7). So a vertical run is
- * CENTRED on its origin across the column and extends DOWNWARD by its advance.
+ * CENTRED on its origin across the column and extends DOWNWARD by its advance. pdf.js 6.5.438 changed vertical glyph
+ * widths; the ink-containment cases of `redaction-vertical.browser.test.ts` (14) re-measure this box and pass on it.
  *
  * pdf.js swaps the item's size fields for a vertical font — `width` is the glyph size and `height`
- * the advance (`pdf.worker.mjs:35909-35912`) — and the advance moves the text matrix by a NEGATIVE
+ * the advance (`pdf.worker.mjs:36026-36029`) — and the advance moves the text matrix by a NEGATIVE
  * amount along the second column (`translateTextMatrix(0, scaledDim)` with `scaledDim` from
  * `vmetric[0]` or `-glyphWidth`), which `runBidiTransform` then reports as `Math.abs(totalHeight)`
- * (`:35958`). The sign lives only in `dir`. The horizontal branch above placed this box to the RIGHT
+ * (`:36075`). The sign lives only in `dir`. The horizontal branch above placed this box to the RIGHT
  * of the origin and ABOVE it — the wrong side on both axes — so a redaction over the column missed
  * the text (a leak) and one drawn above the column's start removed it (data loss).
  *

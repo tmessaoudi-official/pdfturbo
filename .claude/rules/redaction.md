@@ -188,14 +188,14 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   Pattern colour space — an over-keep of the removed page's pattern, which no viewer draws but the bytes carry
   (R2S-3, plan row 33); the DCT and ASCII85 end searches start again after every rejected candidate, so a stream of
   many unterminated images costs quadratic time on the main thread (248 KB took 3.6 s; R2C-2, plan row 34); and the
-  mirror follows pdf.js 6.3.289 — only the operator table is re-derived by a test, so a pdf.js upgrade that changes
+  mirror follows pdf.js 6.5.438 (6.3.289 until 2026-11-14; next item) — only the operator table is re-derived by a test, so a pdf.js upgrade that changes
   `Parser` or the preprocessor diverges silently until the oracle tests below catch it. Two more bounds from round 5:
   a removed page's form drawn only through a shading pattern's `/ExtGState` soft mask is KEPT — PDF 32000 draws it
   there, pdf.js does not (developer ruling 2026-10-17, R5S-2: follow the specification, the over-keep side); and a
   stream's own `/Resources` is read as drawn through only for a form, a tiling pattern, a page's content and an
   appearance, so a soft-mask group written without `/Subtype /Form` loses the shared entries it draws — a drawing
   lost, never a leak (`KNOWN_ISSUES.md` bounds 5 and 6). Guards:
-  `tests/export/inlineImagePdfjs.test.ts` (68, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
+  `tests/export/inlineImagePdfjs.test.ts` (73 since 6.5.438, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
   its operator list, the forms told apart by their BBox width, the list walked into a tiling pattern's own (R4C-5) and
   into every Type3 glyph's (`charProcOperatorList`, a `Map`; R5C-4) — because the two part where the evaluator stops on one
   path only (R3C-2: the text-only oracle passed shapes pdf.js never paints); each case checks what pdf.js reads, what
@@ -207,8 +207,8 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   into letters with exactly its operand count and types — the types written out independently of the scan's table —
   the word rules, the type refusals and the refusals the oracle cannot drive) and
   `tests/export/prunePdfjsDifferential.test.ts` (3000 seeded streams built from the shapes that have diverged, half
-  split into two streams; the scan must equal both what pdf.js paints and what its text layer reads: 715 read and
-  equal, 2285 refused, 232 painting a form — all pinned; 1000 seeds before round 3's refusals took most of them, and
+  split into two streams; the scan must equal both what pdf.js paints and what its text layer reads: 695 read and
+  equal, 2305 refused, 188 painting a form on 6.5.438 with the `~` piece (715 / 2285 / 232 on 6.3.289) — all pinned; 1000 seeds before round 3's refusals took most of them, and
   on the round-2 code the new oracle reds on the type shapes). The differential calls the scan directly, so it cannot
   see `contentOf` or the pattern check in `collect`: the stream join and the pattern name are pinned by the oracle's
   cases alone. Sabotage, predicted first, each landed and restored with `cmp`, re-measured on the round-3
@@ -254,6 +254,21 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   stream cases; the tiling `has` back → the tiling-null case; the merge `has` back → the content-stream-null case;
   the Type3 refusal off → its case; the falsy test reduced → the `/Resources 0` control; the DA-less appearance
   unregistered → the appearance control; the oracle not walking glyphs → the two Type3 controls.
+- **pdfjs-dist 6.5.438 — the mirror re-derived (dependency-upgrade-2026-11, 2026-11-14).** Two of pdf.js 6.5's changes
+  reach the scan, each found red by the oracle or written red first. **P2:** `StreamsSequenceStream.readBlock` now writes
+  a line feed after every member of an ARRAY `/Contents` (a single stream, which `Page.getContentStream` returns as it
+  is, gets none), so `contentOf` appends one per array member and R2C-1's back-to-back join is history: an inline image,
+  a comment or a name ends with its stream. The R2C-1 shapes read the other way now (image and comment: `Fm1`+`Fm2`
+  drawn); a name split as `/Fm` | `2 Do` leaves `Do` a NUMBER, which pdf.js tolerates and the scan refuses (a STOPS
+  case); `5 T` | `J` is two words (a control), and the TJ stop is `5` | `TJ`. **P3:** an inline image's ASCII85 data ends
+  at its FIRST `~` (`findASCII85DecodeInlineStreamEnd`; 6.3 also wanted whitespace and `>` or `EI`) — no test reached
+  the old rule, so two oracle cases (a draw before the `~` is image data; a draw after its `EI` is read) and a `~x EI`
+  piece in the differential came first. **P5:** a DCT marker ending an array member is no longer the page's last byte, and
+  pdf.js 6.5 reads it (~23 ms) — two oracle cases with forms present; the single-stream marker still hangs pdf.js (killed
+  at 45 s) and still refuses. Sabotage, each landed and restored with `cmp` (`var/claude/deps-upgrade/sabotage-p2p3.txt`):
+  the line feed dropped → exactly the 5 join cases (the differential calls the scan and cannot see `contentOf`); the 6.3
+  ASCII85 rule back → the 2 P3 cases + the differential. Read and unchanged: `EvaluatorPreprocessor`, `ObjectLoader`, and
+  the evaluator's `Do`/`Tf`/`gs`/`scn`/`sh`/`BDC` handling and error stops.
 
 **Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
 - **An ExtGState `/Font [font size]`** sets the font like `Tf`; a Type3 font set that way with no resources of its own
@@ -538,14 +553,14 @@ pins it was red before the change). The sanitizer had the same defect once; see 
 
 `isItemRedacted` extended a source run `+x` by `|item.width|` from `transform[4]`. pdf.js's TextItem
 box is **`width` along the transform's FIRST column and `height` along its SECOND**
-(`pdf.worker.mjs:35904-35913` in pdfjs-dist 6.3.289), so a run drawn with a rotated Tm was tested in a box DISJOINT from
+(`pdf.worker.mjs:36021-36030` in pdfjs-dist 6.5.438), so a run drawn with a rotated Tm was tested in a box DISJOINT from
 its glyphs and was never dropped — through DOCX, Markdown, TXT, CSV and XLSX, at every page rotation
 **including 0**, and orthogonal to the CropBox origin. One predicate feeds the heuristic flow, the
 struct-tree flow and the table extractor, which is why one bug reached five exports.
 
 **The first fix was wrong in the opposite direction, and that is the part worth remembering.** It
 took `max(|width|, |height|)` as the advance, on a reading of those lines that had the branches
-INVERTED: I read 35814-35819 (pdfjs-dist 6.2.108 line numbers — the same lines are 35906-35911 in 6.3.289)
+INVERTED: I read 35814-35819 (pdfjs-dist 6.2.108 line numbers — the same lines are 35906-35911 in 6.3.289 and 36023-36028 in 6.5.438)
 without the `if (!font.vertical)` immediately above them. For horizontal
 text pdf.js sets `width = 0` and `height = hypot(trm[2],trm[3])` — the glyph size — and then
 accumulates the advance into `totalWidth`. **`height` is therefore the font size for horizontal text,
@@ -572,8 +587,8 @@ re-introducing `max()` fails only the short-run case; extending `+x` again fails
 sideways cases.
 
 **Vertical-writing runs — CERTIFIED 2026-09-25 (limits walkthrough A1), and the reading was half right.**
-pdf.js marks a vertical run `dir: 'ttb'` (`pdf.worker.mjs:32549`) and reports `width` = glyph size,
-`height` = `Math.abs(totalHeight)` (`:35958`) — so the downward sign survives ONLY in `dir`. Measured
+pdf.js marks a vertical run `dir: 'ttb'` (`pdf.worker.mjs:32469`) and reports `width` = glyph size,
+`height` = `Math.abs(totalHeight)` (`:36075`) — so the downward sign survives ONLY in `dir`. Measured
 against rendered ink on two genuinely vertical fixtures (pdf.js's own `test/pdfs/vertical.pdf`, now
 `tests/fixtures/vertical/`, and a synthetic `Identity-V` run): the ink is CENTRED across the origin and
 runs DOWN by the advance; the horizontal footprint sat right of it and ABOVE it, wrong on both axes, so
@@ -635,7 +650,7 @@ visibility half at 47.7, which is also what proves the darkness probe is aimed a
 > **[Re-checked 2026-09-28]** the `flowDoc.ts` line citation below has drifted — search the file for the redaction-region filter rather than the line.
 
 WS4-F, and the first of the six PoCs to land as a fidelity fix rather than a leak fix. pdf.js clips
-a Form XObject to its `/BBox` — `pdf.mjs:12534-12545` (6.3.289) does `save()`, then `transform(...matrix)`,
+a Form XObject to its `/BBox` — `pdf.mjs:11586-11597` (6.5.438) does `save()`, then `transform(...matrix)`,
 then `ctx.clip(rect(bbox))` — so anything a form draws outside that box is invisible on screen and
 in every rasterised export. `walkPageOps` had **zero `BBox` reads**, so it reported that invisible
 content as page geometry.
@@ -718,9 +733,9 @@ exports regardless.** The guard case now asserts the opposite of what it asserte
 `/BBox` is invisible on screen and in every raster export, yet exported verbatim into DOCX/MD/TXT and
 the CSV/XLSX tables (0 red pixels rendered, control 565). **Fixed by A2 (2026-09-26)**, and the reason
 it once read "cannot be fixed" is worth keeping: `getTextContent` recurses into a form with only its
-`/Matrix` — no `/BBox`, no marker (`pdf.worker.mjs:36468-36495`) — so its items carry no form identity,
+`/Matrix` — no `/BBox`, no marker (`pdf.worker.mjs:36581-36608`) — so its items carry no form identity,
 and matching them by POSITION (the colour-map way) is inexact. But pdf.js DOES emit a marker for every
-marked-content sequence and flushes the current item at each one (`:36548-36580`). So
+marked-content sequence and flushes the current item at each one (`:36661-36693`). So
 `src/export/formHiddenText.ts` copies the page into a throwaway document, wraps every reachable form's
 stream in a unique `/PDFTurboFormN BMC … EMC`, and reads the copy's text content: every item arrives
 bracketed by its exact form chain. The copy's operator list carries the same tags right after each

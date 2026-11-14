@@ -238,7 +238,7 @@ export type ViewerNullShape =
 /**
  * Shapes where pdf.js resolves an object to NOTHING, or reads a different document root, while pdf-lib holds
  * content (WS7 round 14). pdf.js's `XRef.getEntry` returns null for an entry that is absent, free or at offset
- * 0 (pdfjs-dist 6.3.289), and pdf-lib ignores the table and keeps what it parsed. The table is REAL here too.
+ * 0 (pdfjs-dist 6.3.289 and re-run by the suite on 6.5.438), and pdf-lib ignores the table and keeps what it parsed. The table is REAL here too.
  *  - `freeContents` / `zeroContents` / `absentContents`: one revision, the page content marked free / placed at
  *    offset 0 / not listed at all. pdf.js draws a blank page; pdf-lib holds HIDDEN.
  *  - `freeContentsUpdate` / `zeroContentsUpdate`: an appended SIGNED copy whose update section marks the
@@ -359,8 +359,9 @@ export type XrefPointerShape =
 /**
  * Cross-reference chains with a pointer pdf.js cannot follow (WS7 round 16). `XRef.readXRef` reads each queued section
  * inside a try/catch: a section it cannot read is skipped, keeping the rows it read before failing, and the queue goes
- * on — so the startxref table goes on naming the page pdf.js shows. After a TABLE it cannot finish no later table is
- * read at all (WS7 round 17, `buildXrefQueuePdf`); none of these shapes queues one. Measured in pdfjs-dist 6.3.289.
+ * on — so the startxref table goes on naming the page pdf.js shows. After a TABLE it could not finish, 6.3.289 read no
+ * later table at all (WS7 round 17, `buildXrefQueuePdf`; 6.5.438 reads on, P4); none of these shapes queues one. Measured in
+ * pdfjs-dist 6.3.289, re-run by the suite on 6.5.438.
  *  - `prevMid` / `prevBeyondEof` / `prevToContentStream`: an appended update whose table names the EARLIER copy of the page
  *    content, with /Prev pointing into the middle of an object / past the end of the file / at a content stream. pdf.js
  *    shows VIEWED; pdf-lib keeps the later SIGNED copy.
@@ -454,7 +455,7 @@ export type PageTreeShape =
  * A page tree with ONE cross-reference entry that does not land on its object (WS7 round 16). pdf.js throws where it reads
  * such an entry (`XRef.fetchUncompressed`), and what follows depends on when. Met while `checkFirstPage` / `checkLastPage`
  * walk to the first or last page (`Catalog.getPageDict`), it makes pdf.js rebuild its table by scanning, which agrees with
- * pdf-lib; met later, nothing recovers it. Measured in pdfjs-dist 6.3.289, pages reading PAGE1, PAGE2, PAGE3:
+ * pdf-lib; met later, nothing recovers it. Measured in pdfjs-dist 6.3.289 and re-run by the suite on 6.5.438, pages reading PAGE1, PAGE2, PAGE3:
  *  - `*ContentMid` / `middlePageContentOtherHeader`: a page's content entry lands inside another object / on another
  *    object's header. That page draws blank and `getTextContent` fails, while pdf-lib exports its text.
  *  - `nestedMiddlePageDictMid`: page 2's dictionary sits under an intermediate node whose /Count lets the last-page walk
@@ -497,15 +498,17 @@ export type XrefQueueShape =
 
 /**
  * The cross-reference QUEUE as pdf.js reads it (WS7 round 17). Every shape holds object 5, the page content, twice:
- * VIEWED first, SIGNED last, which pdf-lib keeps. Measured in pdfjs-dist 6.3.289:
+ * VIEWED first, SIGNED last, which pdf-lib keeps. Measured in pdfjs-dist 6.3.289, re-measured in 6.5.438
+ * (dependency-upgrade-2026-11 P4: 6.5 deletes a failed section's `_tableState` / `streamState`, #22375):
  *  - `staleTableBeforePrev`: the newest table omits object 5; its /XRefStm is a table with no trailer and its /Prev a
- *    table naming SIGNED. pdf.js keeps the failed table's `_tableState`, so the /Prev table re-reads the failed bytes and
- *    fails too: object 5 is never read and the page draws blank.
+ *    table naming SIGNED. pdf.js 6.3 kept the failed table's `_tableState`, so the /Prev table re-read the failed bytes
+ *    and failed too: object 5 was never read and the page drew blank. 6.5 reads the /Prev table: SIGNED.
  *  - `objectZeroInUseBeforeTable`: the newest section is a stream marking object 0 in use; its /Prev table omits object 5
  *    and names, through its own /Prev, a table with SIGNED. pdf.js throws "unexpected first object" at that table, so its
  *    /Prev is never queued: blank.
  *  - `staleStreamBeforeStream`: /XRefStm is a stream pdf.js rejects at its second row, /Prev a stream naming SIGNED. pdf.js
- *    keeps the rejected stream's `streamState` and reads the second stream at the first one's position: blank.
+ *    6.3 kept the rejected stream's `streamState` and read the second stream at the first one's position: blank. 6.5:
+ *    SIGNED.
  *  - `prevIndirectUnreadable`: /Prev is a reference whose entry lands inside another object; the fetch throws, so the
  *    table naming SIGNED is never queued: blank.
  *  - `staleTableWithTrailer`, `staleTableAfterPrev`, `staleTableBeforeStream` (controls): the failed table has a trailer,
@@ -643,7 +646,7 @@ export type LinearizedShape =
 /**
  * A linearized file: a first object with /Linearized whose /L is the file length, then the first-page cross-reference
  * table (WS7 round 17). pdf.js enters such a file at the section after that first object (`PDFDocument.startXRef`), takes
- * its page count from /N and its first page from /O. Measured in pdfjs-dist 6.3.289:
+ * its page count from /N and its first page from /O. Measured in pdfjs-dist 6.3.289 and re-run by the suite on 6.5.438:
  *  - `linearizedFirstPageElsewhere`: /O names the second page. pdf.js shows PAGE2 twice; pdf-lib holds PAGE1, PAGE2.
  *  - `linearizedEntryTable`: the first-page table names the EARLIER copy of page 1's content (VIEWED) and `startxref` a
  *    later table naming the copy pdf-lib keeps (SIGNED). pdf.js shows VIEWED.

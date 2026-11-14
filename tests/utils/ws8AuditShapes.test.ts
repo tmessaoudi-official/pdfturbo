@@ -23,7 +23,6 @@ describe('the closing-audit shapes against the viewer check', () => {
     'P2_X3_xref_stream_without_Type.pdf',
     'P3b_X4_count_short_middle_table_hides_an_older_table_pdf_js_.pdf',
     'P4_X8_entry_lands_mid_token_on_4_0_obj_inside_14_0_obj_.pdf',
-    'P5_X5_unparseable_stream_leaves_streamState_later_stream_rea.pdf',
     'P7_X3_xref_table_hidden_inside_stream_data.pdf',
     'P8_X4_non_first_subsection_1_N_with_free_first_row.pdf',
     'P9_X4_decimal_offset_row.pdf',
@@ -43,6 +42,9 @@ describe('the closing-audit shapes against the viewer check', () => {
     ['P3a_X4_count_short_startxref_table_naming_earlier_copy.pdf', 'loaded'], // both readers repair it the same way
     ['P3b_control_middle_table_count_correct.pdf', 'loaded'],
     ['P5_control_without_the_bad_stream.pdf', 'loaded'],
+    // pdf.js 6.5 (#22375) no longer carries the bad stream's `streamState` into the next one, so it reads the page
+    // pdf-lib holds; refused on 6.3.289 (dependency-upgrade-2026-11 P4).
+    ['P5_X5_unparseable_stream_leaves_streamState_later_stream_rea.pdf', 'loaded'],
     ['P8_control_single_1_N_subsection_guard_shifts_.pdf', 'PdfPageMismatchError'],
     ['C2ctl.pdf', 'loaded'], // really linearized: pdf.js shows ONE page, the one pdf-lib holds first
   ] as const)('%s → %s', async (file, expected) => {

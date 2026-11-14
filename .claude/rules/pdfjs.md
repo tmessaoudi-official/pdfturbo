@@ -74,7 +74,7 @@ otherwise match its glob — and caches the four at runtime (`pdfjs-wasm`, place
 rule).
 
 **Row 36 shipped `useWorkerFetch` pinned `false`; row 37 turned it on.** pdf.js turns it on by itself only
-when `cMapUrl`, `standardFontDataUrl` AND `wasmUrl` are all given (`pdf.mjs:15464`), and on also switches
+when `cMapUrl`, `standardFontDataUrl` AND `wasmUrl` are all given (`pdf.mjs:16243`), and on also switches
 ON its ICC colour management (`IccColorSpace.setOptions`). Row 36 kept that out of its own change so the
 colour shift could be measured and ruled on its own — see the next section. With it false, pdf.js fetched
 the decoders on the main thread and handed them to the worker.
@@ -148,7 +148,7 @@ synchronous request from its worker.
 
 > **[Re-checked 2026-09-28]** the call count below has grown (`03c0914`); the guarantee holds — the only direct `.getViewport(` in `src/` is in `src/utils/pointViewport.ts`, and its test asserts that. Re-count, don't quote.
 
-pdf.js multiplies every viewport by the page's `/UserUnit` (`pdf.mjs:826`), so the editor canvas of a
+pdf.js multiplies every viewport by the page's `/UserUnit` (`pdf.mjs:1095`), so the editor canvas of a
 `/UserUnit 2` page was twice the page's size in points and every coordinate the user drew was doubled,
 while pdf-lib — the export — works in plain points. A redaction drawn over a secret was therefore burned
 at twice its position and the secret stayed VISIBLE, in the PDF and the Word/Markdown/text export alike
@@ -160,7 +160,7 @@ exactly one call inside the helper. **Use `pointViewport` for any new viewport**
 
 **The text layer was already wrong on such pages, independently.** `textLayer.ts` set
 `--total-scale-factor` to `viewport.scale`, but pdf.js draws at `scale × userUnit` and sizes the layer as
-that factor × `rawDims` (points, `pdf.mjs:1533`), so the selectable/searchable layer was 1/u the canvas.
+that factor × `rawDims` (points, `pdf.mjs:1711`), so the selectable/searchable layer was 1/u the canvas.
 It is now `scale × userUnit`, which is exactly pdf.js's own viewer convention — pdf.js keeps the two apart
 on the viewport on purpose.
 
@@ -199,3 +199,28 @@ the UserUnit-2 text-layer case; the rasterizer's `/UserUnit` copy removed → it
 (2), the compress copy removed → exactly its case; raster
 `SCALE` without u → the plain and cropped raster cases; the crop clip divided by 2 instead of `SCALE` →
 exactly the cropped case; compress or page-as-image without u → exactly its own case.
+
+### Font names need `fontExtraProperties` — pdfjs-dist 6.5.438 (2026-11-14)
+
+Since pdf.js 6.4 (#22057) a loaded font's `name` — the embedded font's own name, which the DOCX/Markdown export writes
+(`exportService.ts`, `page.commonObjs.get(fontName)`) — is an "extra" property, sent to the main thread only when the
+document is opened with `fontExtraProperties: true` (`pdf.worker.mjs` `EXPORT_DATA_EXTRA_PROPERTIES`). Without it the
+export wrote pdf.js's loaded name: `expected 'g_d0_f1' to be 'AokinMincho'` (`tests/browser/docx-font-names.browser.test.ts`,
+2 cases). `withPdfjsAssets` passes the flag on every document (`tests/infra/pdfjsParams.test.ts`, red first).
+
+**The cost, measured (dependency-upgrade-2026-11 P1):** with the flag pdf.js skips `font.clearData()`, so every loaded
+font program stays on the main thread for the document's life, and so does every glyph path it drew (`FontFaceObject`,
+`pdf.mjs`). A Node probe (`var/claude/deps-upgrade/fontmem.mjs`, gitignored; one file per process, every page's operator
+list and text content, `gc()` twice) on the 15-file corpus and the 6 public fixtures: at most **1.01 MB** of font data
+kept (`form-uspto-sb16.pdf`, 18 fonts), Publication 17 0.27 MB, a heap difference of at most 1.69 MB — far under the
+~20 MB the developer set as the line to come back at. **Not measured:** glyph paths, which are kept only once a page is
+RENDERED (the probe does not render); in Chrome pdf.js draws text through a `FontFace` and builds a path only for text
+it fills with a pattern or clips with, so that share is bounded by such text.
+
+**The flag changes the operator list too, and the viewer check compares operator lists.** Under it every glyph in a
+`showText` operand carries `originalCharCode`, a number, which `viewerCheck`'s `operandHash` hashes [Verified: a Node
+probe, `var/claude/deps-upgrade/glyphprobe.json`]. Two pdf.js documents compared by fingerprint must therefore be
+opened with the SAME options — `viewerVerdict` opens both through `withPdfjsAssets`; `tests/utils/viewerCheck.test.ts`
+opened its original with plain `getDocument` and 6 controls went red (every text page "mismatched") until it used the
+helper too. Open any pdf.js document you compare with one the app opened through `withPdfjsAssets`.
+

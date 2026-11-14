@@ -57,6 +57,12 @@ describe('withPdfjsAssets — the helper', () => {
     expect(p.useWorkerFetch).toBe(true);
   });
 
+  it('asks for the font extra properties: since pdf.js 6.4 a font\'s `name` reaches the main thread only with them (P1)', () => {
+    // The DOCX/MD export reads the embedded font's name from `commonObjs` (exportService `fontName`); without the flag
+    // pdf.js 6.5 gives it the loaded name (`g_d0_f1`) instead (dependency-upgrade-2026-11 P1).
+    expect(withPdfjsAssets({ data: new Uint8Array() }).fontExtraProperties).toBe(true);
+  });
+
   it('gives NO standardFontDataUrl: that would change how non-embedded fonts are drawn, a separate change', () => {
     expect('standardFontDataUrl' in withPdfjsAssets({ data: new Uint8Array() })).toBe(false);
   });

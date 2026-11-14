@@ -51,7 +51,7 @@ describe('loadPdfDocument in the browser bundle — the viewer check (WS8)', () 
     ['rootRecoveredNoXref', () => buildViewerNullPdf('rootRecoveredNoXref')],
     ['prevMid', () => buildXrefPointerPdf('prevMid')],
     ['onlyPageContentMid', () => buildPageTreePdf('onlyPageContentMid')],
-    ['staleTableBeforePrev', () => buildXrefQueuePdf('staleTableBeforePrev')],
+    ['objectZeroInUseBeforeTable', () => buildXrefQueuePdf('objectZeroInUseBeforeTable')],
     ['countHidesFirst', () => buildPageOrderPdf('countHidesFirst')],
     ['linearizedEntryTable', () => buildLinearizedPdf('linearizedEntryTable')],
     ['graphicsOnly', () => buildDupContentPdf('graphicsOnly')],
@@ -65,6 +65,11 @@ describe('loadPdfDocument in the browser bundle — the viewer check (WS8)', () 
 
   it('loads a duplicate image XObject whose two definitions are identical (control, limits row 13)', async () => {
     const doc = await loadPdfDocument(buildDupImagePdf('same'), { viewerCheck: 'source' });
+    expect(doc.getPageCount()).toBe(1);
+  });
+
+  it('loads a failed table before its /Prev — pdf.js 6.5 clears the failed table\'s state (control, dependency-upgrade-2026-11 P4)', async () => {
+    const doc = await loadPdfDocument(buildXrefQueuePdf('staleTableBeforePrev'), { viewerCheck: 'source' });
     expect(doc.getPageCount()).toBe(1);
   });
 

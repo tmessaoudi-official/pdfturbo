@@ -83,7 +83,7 @@ function readPageBox(
 
 /**
  * The box pdf.js SHOWS for this page, in absolute user space — `Page.view` in
- * `pdf.worker.mjs:59242-59276` (6.3.289): a valid, non-empty /CropBox intersected with the /MediaBox;
+ * `pdf.worker.mjs:59361-59395` (6.5.438): a valid, non-empty /CropBox intersected with the /MediaBox;
  * the /MediaBox when there is no such CropBox or the two do not overlap; US Letter when the MediaBox
  * itself is unusable.
  *

@@ -2,7 +2,7 @@
  * B1 (real Chrome) — the export's page frame must be the page VIEW pdf.js shows.
  *
  * Every editor coordinate is measured against pdf.js's view: a valid, non-empty /CropBox intersected
- * with the /MediaBox, else the /MediaBox, else US Letter (`pdf.worker.mjs:59242-59276`, 6.3.289).
+ * with the /MediaBox, else the /MediaBox, else US Letter (`pdf.worker.mjs:59361-59395`, 6.5.438).
  * `getPageCropBox` used to return pdf-lib's RAW /CropBox, and a (0,0)-origin box when pdf-lib threw on
  * a malformed one. Measured before the fix, each of these four shapes passes the source loader and then
  * leaves a redacted secret VISIBLE in the exported raster:

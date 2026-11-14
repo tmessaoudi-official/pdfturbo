@@ -350,7 +350,7 @@ const CHAR_CLASS = (() => {
 })();
 
 /**
- * pdf.js 6.3.289's content-stream operators (`EvaluatorPreprocessor.opMap`): name → [operand count, variable count].
+ * pdf.js's content-stream operators (`EvaluatorPreprocessor.opMap`, 6.5.438; re-derived from the installed worker by a test): name → [operand count, variable count].
  * `null` marks a prefix pdf.js lists only so that its lexer reads on to a longer operator (`BD` → `BDC`, `fals` →
  * `false`). `tests/utils/scanNamedOpsPdfjs.test.ts` re-derives the table from the installed `pdf.worker.mjs`.
  */
@@ -514,7 +514,7 @@ const DCT_LENGTH_MARKERS = new Set([
 
 /**
  * Where pdf.js resumes reading after the data of an inline image that starts at `start` (`Parser.makeInlineImage`):
- * by its first filter — DCT at the JPEG end marker, ASCII85 at `~>` (or `~`, whitespace, `EI`), ASCIIHex at `>`, each
+ * by its first filter — DCT at the JPEG end marker, ASCII85 at its first `~`, ASCIIHex at `>`, each
  * then past the next `EI` and one more byte, and each falling back to the unfiltered rule when its end is missing; the
  * unfiltered rule takes the first `EI` + whitespace whose next 15 bytes are printable (a NUL alone is allowed) and lex as
  * a known operator with its operand count, else the last such `EI` once the stream ends.
@@ -573,15 +573,10 @@ function pdfjsImageDataEnd(src: string, start: number, filter: string | undefine
       return unfiltered();
     }
     case 'A85': case 'ASCII85Decode': {
+      // pdf.js 6.5 `findASCII85DecodeInlineStreamEnd`: the data ends at the FIRST `~`, whatever follows it (6.3 also
+      // wanted whitespace then `>` or `EI`, and read on to the next `~` without them — dependency-upgrade-2026-11 P3).
       let c = 0;
-      while ((c = getByte()) !== -1) {
-        if (c !== 0x7e) continue;
-        const tilde = pos;
-        c = at(pos);
-        while (isPdfjsSpace(c)) c = at(++pos);
-        if (c === 0x3e) { pos++; break; }
-        if (pos > tilde && at(pos) === 0x45 && at(pos + 1) === 0x49) break;
-      }
+      while ((c = getByte()) !== -1 && c !== 0x7e) { /* to the first `~` */ }
       if (c === -1) return unfiltered();
       skipEI();
       return pos;

@@ -5,7 +5,7 @@
  * them (figure labels in an arXiv paper), each render-confirmed invisible.
  *
  * pdf.js's text extraction recurses into a form with only its `/Matrix` applied — no `/BBox`, no marker
- * (`pdf.worker.mjs:36468-36495`, 6.3.289) — so its items carry no form identity at all. The attribution
+ * (`pdf.worker.mjs:36581-36608`, 6.5.438) — so its items carry no form identity at all. The attribution
  * here is EXACT per item rather than guessed by position:
  *
  *   1. The page is copied into a throwaway document and every form reachable from it gets its stream

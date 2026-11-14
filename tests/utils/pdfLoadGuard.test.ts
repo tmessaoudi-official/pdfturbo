@@ -524,8 +524,8 @@ describe('loadPdfDocument — cross-reference streams written with a predictor',
   });
 });
 
-// WS7 round 16. pdf.js skips a cross-reference section it cannot read and reads on (export P1) — though after a table it
-// cannot finish it reads no later table, which round 17 pins in `buildXrefQueuePdf`;
+// WS7 round 16. pdf.js skips a cross-reference section it cannot read and reads on (export P1) — though in 6.3.289, after a
+// table it could not finish it read no later table, which round 17 pinned in `buildXrefQueuePdf` (6.5.438 reads on, P4);
 // an entry it cannot read is recovered only when its load-time walk to the first or last page meets it (safety P1). Each
 // shape was read through pdf.js 6.3.289 before the guard changed, and the first lines of every case read it again.
 describe('loadPdfDocument — a pointer pdf.js skips, an entry it cannot read (WS7 round 16)', () => {
@@ -615,7 +615,6 @@ describe('loadPdfDocument — the queue pdf.js reads and the pages it shows (WS7
     loadPdfDocument(bytes, { viewerCheck: 'source', updateMetadata: false }).then(() => [], (e: unknown) => (e as { refs: string[] }).refs);
 
   it.each([
-    ['staleTableBeforePrev', ['page 1']],
     ['objectZeroInUseBeforeTable', ['page 1']],
     ['prevIndirectUnreadable', ['page 1']],
   ] as const)('REFUSES %s — pdf.js never reads the section naming the content, and draws the page blank', async (shape, refs) => {
@@ -626,15 +625,9 @@ describe('loadPdfDocument — the queue pdf.js reads and the pages it shows (WS7
     expect(await refsOf(bytes)).toEqual(refs);
   });
 
-  it('REFUSES staleStreamBeforeStream — pdf.js reads a stream after one it rejected with the rejected one\'s state and draws the page blank', async () => {
-    const bytes = buildXrefQueuePdf('staleStreamBeforeStream');
-    expect(await pdfjsText(bytes)).toBe('');
-    expect(await pdfLibText(bytes)).toContain('(SIGNED)');
-    expect(await outcome(bytes)).toBe('PdfPageMismatchError');
-    expect(await refsOf(bytes)).toEqual(['page 1']);
-  });
-
-  it.each(['staleTableWithTrailer', 'staleTableAfterPrev', 'staleTableBeforeStream', 'prevIndirect', 'xrefStmIndirect'] as const)(
+  // pdf.js 6.5 (#22375) clears a failed section's `_tableState` / `streamState` before the next one, so these two
+  // read SIGNED now; on 6.3.289 both drew the page blank and were refused (dependency-upgrade-2026-11 P4).
+  it.each(['staleTableBeforePrev', 'staleStreamBeforeStream', 'staleTableWithTrailer', 'staleTableAfterPrev', 'staleTableBeforeStream', 'prevIndirect', 'xrefStmIndirect'] as const)(
     'loads %s — pdf.js reads the section naming the copy pdf-lib kept (control)', async shape => {
       const bytes = buildXrefQueuePdf(shape);
       expect(await pdfjsText(bytes)).toBe('SIGNED');

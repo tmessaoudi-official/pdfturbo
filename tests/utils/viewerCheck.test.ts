@@ -7,12 +7,14 @@ import { describe, it, expect } from 'vitest';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { viewerMismatch } from '../../src/utils/viewerCheck';
+import { withPdfjsAssets } from '../../src/utils/pdfjsParams';
 import { buildPageOrderPdf, buildXrefCountPdf, buildXrefShapePdf } from './_invalidObjectFixture';
 import { buildDupContentPdf, buildDupImagePdf, buildLayerPdf } from './_viewerCheckFixture';
 
-// Opened with the SAME options the check uses for its copy (as `viewerVerdict` does): the operand hash sees glyph
-// widths, which change with `standardFontDataUrl`, so opening the two sides differently mismatches every text page.
-const open = (bytes: Uint8Array) => pdfjs.getDocument({ data: bytes.slice(0), verbosity: 0 }).promise;
+// Opened through the SAME helper the check uses for its copy (as `viewerVerdict` does): the operand hash sees glyph
+// widths, which change with `standardFontDataUrl`, and since pdfjs-dist 6.5.438 a glyph's `originalCharCode`, which
+// pdf.js adds only under `fontExtraProperties` — so opening the two sides differently mismatches every text page.
+const open = (bytes: Uint8Array) => pdfjs.getDocument(withPdfjsAssets({ data: bytes.slice(0), verbosity: 0 })).promise;
 
 async function check(bytes: Uint8Array) {
   const original = await open(bytes);

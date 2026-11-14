@@ -21,6 +21,12 @@
  * the colour module cannot load (offline before it was cached), pdf.js warns and draws as it did without it.
  * No `standardFontDataUrl`: that would change how non-embedded fonts are drawn, a separate, unruled change.
  *
+ * `fontExtraProperties` is TRUE because since pdf.js 6.4 (#22057) a font's `name` — the embedded font's own name, which
+ * the DOCX/Markdown export writes — reaches the main thread only with it; without it the export read the loaded name
+ * (`g_d0_f1`). The cost: pdf.js then keeps every loaded font program, and every glyph path it drew, on the main thread
+ * (`clearData` skipped, `pdf.mjs` `FontFaceObject`) for as long as the document lives — measured on the corpus in
+ * `.claude/rules/pdfjs.md` § "Font names need `fontExtraProperties`" (dependency-upgrade-2026-11 P1).
+ *
  * The URLs are ABSOLUTE: pdf.js may resolve them from its worker, where a relative URL would resolve
  * against the worker's script, not the page.
  */
@@ -47,8 +53,11 @@ export function iccBaseUrl(): string {
 
 export function withPdfjsAssets<P extends object>(
   params: P,
-): P & { cMapUrl: string; cMapPacked: true; wasmUrl: string; iccUrl: string; useWorkerFetch: true } {
+): P & {
+  cMapUrl: string; cMapPacked: true; wasmUrl: string; iccUrl: string; useWorkerFetch: true; fontExtraProperties: true;
+} {
   return {
     ...params, cMapUrl: cMapBaseUrl(), cMapPacked: true, wasmUrl: wasmBaseUrl(), iccUrl: iccBaseUrl(), useWorkerFetch: true,
+    fontExtraProperties: true,
   };
 }

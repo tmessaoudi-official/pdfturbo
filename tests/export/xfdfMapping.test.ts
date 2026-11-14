@@ -109,7 +109,7 @@ describe('XFDF shape mapping (G21)', () => {
  * `pageHeightPt` is gone — the frame replaced the flip — and these are its successors, asserted through
  * `xfdfPageFrame`, which must keep both properties while ALSO turning by the page's rotation (D18).
  *
- * The stub's viewport is pdf.js's own `PageViewport` transform (pdf.mjs:810, 6.3.289, which does not export the
+ * The stub's viewport is pdf.js's own `PageViewport` transform (pdf.mjs:1079, 6.5.438, which does not export the
  * class), so the frame is exercised against pdf.js's conventions rather than a copy of the code under test. The
  * independent check — pixels on a real render — is `tests/browser/xfdf-frame.browser.test.ts`.
  */

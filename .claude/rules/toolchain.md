@@ -57,13 +57,33 @@ export's `FontInfoMap`) to nothing usable after `getTextContent` alone, so the D
 internal id: `expected 'g_d0_f1' to be 'AokinMincho'` (`tests/browser/docx-font-names.browser.test.ts`, 2 cases; green on
 6.3.289). **6.5.438** also changes how a page's content streams are read across their boundary — an inline image or a
 comment running into the next stream, a stale stream state — which `scanNamedOps(…, { pdfjs: true })` and the load guard
-mirror on purpose (`redaction.md` § "A removed page rode back in", row 10: "the mirror follows pdf.js 6.3.289"): 8 cases
+mirror on purpose (`redaction.md` § "A removed page rode back in", row 10: the mirror then followed pdf.js 6.3.289): 8 cases
 red in `inlineImagePdfjs`, `prunePdfjsDifferential`, `pdfLoadGuard` and `ws8AuditShapes`, all green on 6.4.299 and
 6.3.289. `package.json` therefore has `"pdfjs-dist": "~6.3.289"` (patch-only). **Moving it is its own task** (developer
 ruling 2026-11-10): first trace the 6.4 font lookup, then re-derive the prune's mirror against 6.5's `Parser` and
 preprocessor with the oracle tests as the check — never relax an oracle case to make it pass. `prepare-pdfjs-assets.mjs`
 re-copies `public/pdfjs/` from `node_modules` before dev, build and the browser suite, so the vendored assets follow the
 installed version by themselves.
+
+**RESOLVED 2026-11-14 — `"pdfjs-dist": "~6.5.438"`** (`docs/plans/dependency-upgrade-2026-11.plan.md`, commit 3; the
+developer lifted the hold). Five changes, each red first, none fixed by relaxing an oracle case:
+- **P1, the font name** (6.4 #22057): `name` became an "extra" property, sent to the main thread only with
+  `fontExtraProperties: true`, which `withPdfjsAssets` now passes on every document (`pdfjs.md` § "Font names need
+  `fontExtraProperties`").
+- **P2, the stream join**: `StreamsSequenceStream` writes a line feed after every member of an ARRAY `/Contents` (a
+  single stream gets none), so `contentOf` in `copySourcePages.ts` does too, and R2C-1's "back to back" join is gone
+  (`redaction.md` § "A removed page rode back in", the 6.5 paragraph).
+- **P3, ASCII85**: an inline image's ASCII85 data ends at the FIRST `~`; no test reached the old rule, so two oracle
+  cases and a `~` piece in the differential were added first.
+- **P4, the xref queue** (6.5 #22375): a failed section's `_tableState` / `streamState` is deleted before the next, so
+  three refused shapes now load — pdf.js itself shows the page pdf-lib holds. Test premises only; the guard compares
+  with pdf.js at run time.
+- **P5, the DCT marker**: an array-`/Contents` page whose data ends in a DCT marker no longer hangs pdf.js, so it is an
+  oracle case now; the single-stream one still hangs pdf.js and still refuses.
+Every `pdf.mjs:`/`pdf.worker.mjs:` line citation in `src/`, `tests/` and `.claude/rules/` was re-pointed to 6.5.438
+after diffing the cited block against 6.3.289 (all identical but `beginAnnotation`, whose two changed lines rename a
+canvas attribute). Read and unchanged for the prune: `EvaluatorPreprocessor`, `ObjectLoader`, the `Do`/`Tf`/`gs`/
+`scn`/`sh`/`BDC` handling; worker rendering (#21860) stays off (`src/` sets no `rendererSrc`/`rendererPorts`).
 
 **i18next 26.7 (adopted the same day) returns `''` from `t()` before `init()`**; 26.4 returned the key [Verified: a
 node probe, `before init: ""`, `after init, no resources: "toast.x"`]. Production builds the UI only after
@@ -230,7 +250,10 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   in use once its rows are in — leaves `XRef._tableState` behind, so every LATER table in the queue restores it,
   fails the same way and reads no rows. The guard read them, so content named only behind such a table compared as
   shown while pdf.js drew the page blank. A stream ignores that state, but `streamState` does the same between
-  streams, and a stream read after a rejected one refuses rather than being modelled. `/Prev` and `/XRefStm` written
+  streams, and a stream read after a rejected one refuses rather than being modelled. [pdf.js 6.5.438, #22375: both states
+  are deleted before the next section, so a later table or stream reads its rows again — `staleTableBeforePrev` and
+  `staleStreamBeforeStream` show SIGNED and load since dependency-upgrade-2026-11 P4; the guard compares with pdf.js at
+  run time, so no source changed.] `/Prev` and `/XRefStm` written
   as references are resolved through the rows read so far, as `Dict.get` does (the guard used to refuse a file both
   readers agree on). A linearized file is read from the section after its first object (`PDFDocument.startXRef`),
   with its first page and count from the linearization dictionary. And a third refusal, `PdfPageMismatchError`:
