@@ -71,7 +71,12 @@ node probe, `before init: ""`, `after init, no resources: "toast.x"`]. Productio
 start-up and went blank: it now reads `tBeforeInit`, the English text from the bundled `en.json` until i18next starts
 (`tests/core/globalErrorBoundary.test.ts`, red first). A jsdom test that builds UI reading `t()` starts i18next the way
 production does (`tests/ui/signersPanel.test.ts`, `toolbarCustomizer.test.ts`: `i18next.init({ lng: 'en', resources: {} })`,
-so `t()` returns the key its assertions read). i18next 27 (released 2026-11-10) is deferred about two weeks.
+so `t()` returns the key its assertions read). **i18next 27.1.1 adopted 2026-11-14** (dependency-upgrade-2026-11 commit 2;
+the two-week deferral lifted by the developer): no source change. Its changed defaults do not reach this config —
+`fallbackLng: 'en'` and `supportedLngs` are set explicitly (`i18n.ts`), so the v27 language-code check passes the
+detector's codes, and no locale value is `''` (`returnEmptyString` now defaults to `false`). The one visible change:
+the default escape no longer turns `/` into `&#x2F;`, so a file name in a toast reads as typed, while `& < > " '` stay
+escaped (`tests/utils/i18nInterpolation.test.ts`, red first on 26.7.2: `'Saved to reports&#x2F;2026&#x2F;q3.pdf'`).
 
 ### `jsdom` is held at 30.0.x — vitest 5.0.2's Blob shim cannot read 30.1's Blob (2026-09-29)
 
