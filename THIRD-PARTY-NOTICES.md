@@ -10,14 +10,14 @@ latest (every licence re-read from the installed `package.json` — none changed
 packages under "Bundled transitively" were added the same day, after WS7 round 10 found them missing;
 the transitive dependencies of the other libraries followed after WS7 round 11. The pdf.js data files
 (CMaps, decoders, colour module, CMYK profile) were added 2026-09-26 with rows 32, 36 and 37. zxing-wasm (with the libraries
-its reader wasm is compiled from, bar the Emscripten runtime — not listed for any wasm here) and qrcode-generator 2.0.4 were added 2026-11-11 for the phone signature pad._
+its reader wasm is compiled from, bar the Emscripten runtime — not listed for any wasm here) and qrcode-generator 2.0.4 were added 2026-11-11 for the phone signature pad. Versions refreshed 2026-11-14 with the dependency upgrade (licences re-read from the installed packages — none changed); `tests/infra/thirdPartyNotices.test.ts` now fails when a range here differs from `package.json`._
 
 ---
 
 ## Bundled runtime libraries (shipped in the application)
 
 ### pdfjs-dist (PDF.js)
-- **Version**: ^6.3.289 · **License**: Apache-2.0
+- **Version**: ~6.5.438 · **License**: Apache-2.0
 - **Repository**: https://github.com/mozilla/pdf.js
 - Copyright © Mozilla Foundation and PDF.js contributors
 - **Data files served from `pdfjs/`** (copied from the package by `scripts/prepare-pdfjs-assets.mjs`; each
@@ -29,7 +29,7 @@ its reader wasm is compiled from, bar the Emscripten runtime — not listed for 
   - `pdfjs/iccs/CGATS001Compat-v2-micro.icc` — default CMYK profile · CC0-1.0 (`iccs/LICENSE`)
 
 ### @cantoo/pdf-lib
-- **Version**: ^2.11.0 · **License**: MIT
+- **Version**: ^2.11.1 · **License**: MIT
 - **Repository**: https://github.com/cantoo-scribe/pdf-lib
 - Copyright © 2019 Andrew Dillon; maintained by Cantoo Scribe
 
@@ -49,27 +49,27 @@ its reader wasm is compiled from, bar the Emscripten runtime — not listed for 
 - Copyright © 2011-2026 Mark Warren
 
 ### docx
-- **Version**: ^9.7.1 · **License**: MIT
+- **Version**: ^9.15.4 · **License**: MIT
 - **Repository**: https://github.com/dolanmiu/docx
 - Copyright © 2016 Dolan Miu
 
 ### i18next
-- **Version**: ^26.4.2 · **License**: MIT
+- **Version**: ^27.1.1 · **License**: MIT
 - **Repository**: https://github.com/i18next/i18next
 - Copyright © 2011-present i18next
 
 ### i18next-browser-languagedetector
-- **Version**: ^8.2.1 · **License**: MIT
+- **Version**: ^8.3.0 · **License**: MIT
 - **Repository**: https://github.com/i18next/i18next-browser-languageDetector
 - Copyright © i18next
 
 ### node-forge
-- **Version**: ^1.4.0 · **License**: BSD-3-Clause (dual-licensed `BSD-3-Clause OR GPL-2.0`; PDFturbo elects **BSD-3-Clause**)
+- **Version**: ^1.4.3 · **License**: BSD-3-Clause (dual-licensed `BSD-3-Clause OR GPL-2.0`; PDFturbo elects **BSD-3-Clause**)
 - **Repository**: https://github.com/digitalbazaar/forge
 - Copyright © 2010-2022 Digital Bazaar, Inc.
 
 ### ProseMirror (prosemirror-commands, -history, -keymap, -model, -schema-basic, -schema-list, -state, -tables, -view)
-- **Versions**: commands ^1.7.1 · history ^1.5.0 · keymap ^1.2.3 · model ^1.25.9 · schema-basic ^1.2.4 · schema-list ^1.5.1 · state ^1.4.4 · tables 1.8.5 · view ^1.42.3
+- **Versions**: commands ^1.7.1 · history ^1.5.1 · keymap ^1.2.3 · model ^1.25.13 · schema-basic ^1.2.5 · schema-list ^1.6.0 · state ^1.4.4 · tables 1.8.5 · view ^1.42.9
 - **License**: MIT (all)
 - **Repository**: https://github.com/ProseMirror
 - Copyright © 2015-2017 by Marijn Haverbeke and others
