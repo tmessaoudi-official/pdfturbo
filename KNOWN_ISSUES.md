@@ -170,7 +170,9 @@ under storage pressure; no claim is made here about any other browser's rule.
   page left out — deleted, redacted, outside an extracted range, or simply not the page you download — the export
   keeps only what the kept page draws. If that page's drawing cannot be read (an undecodable stream, a stray
   delimiter, a stream compressed with a predictor, which pdf-lib's decoder ignores, or one naming its filter by the
-  short keys `/F` or `/DP`, which pdf.js reads and pdf-lib does not), what it draws is unknown, and the PDF exports
+  short keys `/F` or `/DP`, which pdf.js reads and pdf-lib does not, or a compressed stream the two libraries
+  inflate differently — since 2026-11-15, a stored block that claims more bytes than it holds), what it draws is
+  unknown, and the PDF exports
   refuse (`toast.exportResourcesUnreadable`) rather than carry the other page's content. They also refuse when a
   kept page, form or field holds its resources in something that is not a dictionary (an array, a stream) that
   reaches the left-out page's: pdf.js draws nothing from it, and the copy would carry it whole (round 8). Only a

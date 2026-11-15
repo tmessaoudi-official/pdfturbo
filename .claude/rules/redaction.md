@@ -300,7 +300,9 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   and falls back to its own decoder when that rejects. The file's `BIG` padding is spaces, which deflate shrinks to a
   few bytes, so its Huffman controls never reached that path; a second block (5 cases) pads with 2000 incompressible
   characters in a `%` comment and SPIES on the global — pdf.js runs in the test's thread under jsdom, so the native
-  reader is observed, not inferred (a control under 1024 bytes reads zero calls): a complete stored block and a Huffman stream without its trailer (native rejects
+  reader is observed, not inferred (a control under 1024 bytes reads zero calls; what Node's reader does with each
+  member — rejects the stored and the trailer-less ones, inflates the one with its trailer — was probed directly,
+  `var/claude/depup-b2/native-probe.txt`): a complete stored block and a Huffman stream without its trailer (native rejects
   both) and one with its trailer (native inflates it) each export exactly what pdf.js paints, and the block declared
   40 bytes long refuses (the check off → that case + the original 6). **A real-Chrome twin was tried and dropped:**
   with `prune-flate.browser.test.ts` in the suite, OTHER browser files failed to import (`Failed to fetch dynamically

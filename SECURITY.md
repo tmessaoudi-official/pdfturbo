@@ -129,7 +129,9 @@ reading the code. Both are said plainly instead of implied to be measured.
 > the page tree and inherited, which is the removed page's like a shared one; a resources value that is not a
 > dictionary but holds the removed page's (an array, a stream), which now **refuses** — pdf.js draws nothing from it,
 > and the copy would carry it whole; a stream that names its filter or parameters by their short keys (`/F`, `/DP`),
-> which refuses where it must be read; a rich-text value (`/RV`) only a removed box shows; a field node only its
+> which refuses where it must be read; since 2026-11-15, a compressed stream pdf-lib inflates differently from a strict
+> inflater (a stored block that claims more bytes than it holds, which pdf-lib pads and pdf.js 6.5 does not), which
+> refuses too; a rich-text value (`/RV`) only a removed box shows; a field node only its
 > kid's `/Parent` names; a structure element written inline in a link's `/SD` or `/Dest`; a widget written inline in
 > a field's `/Kids`; and a note whose page is outside the tree or which lacks its type. **Also stated:** a radio
 > group's value names the button state chosen on a removed page (`/V /Yes`), because the kept button inherits the
