@@ -428,8 +428,9 @@ is laid out, and its rounded aspect (0.5, not 0.4) moves the strokes off centre 
 `tests/pad/padPage.test.ts` and 1 in `tests/utils/signaturePad.test.ts` (red first), and one real-Chrome case in
 `pad-fullscreen.browser.test.ts` that asserts the box really measured 0 and the stroke's ink spans > 400 px after the
 room returns. Its before/after screenshots (`var/claude/qa-shots/row8/`) were taken ONCE and the committed case takes
-none: with its two `page.screenshot` calls the full browser suite went red in 3 of 3 cold runs (OTHER files failed to
-import, once an iframe never became ready) and green in 2 of 2 without them (`var/claude/pp-row8/ab-*.log`, `gate.log`);
+none: with its two `page.screenshot` calls, every cold full browser run that executed tests went red — 3 of 3, starting
+at load ≈ 31, 23 and 7.9, OTHER files failing to import (a fourth aborted before any test, an iframe never ready, and
+proves nothing) — and both runs without them were green, at load 13 and 16.5 (`var/claude/pp-row8/{gate,ab-A2,ab-A4,ab-B,ab-A3}.log`);
 the mechanism is not traced — the same shape as the dropped `prune-flate` file (`redaction.md`). Sabotage, each restored byte-exact
 (`var/claude/pp-row8/sab-*.log`): no layout guard → 2 (the line width, re-scaled to a pad never laid out); no `setSize`
 guard → 1; the guard testing the width only → 1; no line-width floor → 1; both guards off → the Chrome case

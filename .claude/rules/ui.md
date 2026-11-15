@@ -594,7 +594,8 @@ Red first: a fresh id at index 1.
 `recent` IndexedDB store and `pdfturbo_toolbar_order`, which goes through the `ILayoutStorage` wrapper whose key is a
 PARAMETER). `tests/infra/privacyStorageKeys.test.ts` (7) reads the code's own constants — every `localStorage` /
 `sessionStorage` `setItem` key in `src/**/*.ts` and in the inline scripts of `index.html`, `pad.html` and
-`public/*.html`, every `save()` key in a file importing `layoutStorage`, every `createObjectStore` name — and requires
+`public/*.html`, every `save()` key called on a receiver named `…storage`/`…Storage` in a file importing `layoutStorage` (a
+receiver named otherwise is a bound), every `createObjectStore` name — and requires
 each in EACH language block (`main > div.lc-en|fr|ar`; the header's title carries `.lc-xx` too): a key as a `<code>`
 under the `<li>` whose first child is `<strong>localStorage</strong>` or `<strong>sessionStorage</strong>` (the right
 kind), a store as `<li data-storage="…">` (invisible markers, added for this; the page names stores in prose). Both
