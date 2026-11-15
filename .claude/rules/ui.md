@@ -7,6 +7,9 @@ paths:
   - "src/styles/**"
   - "index.html"
   - "scripts/qa-sweep.mjs"
+  - "public/privacy.html"
+  - "tests/infra/privacyStorageKeys.test.ts"
+  - "tests/infra/qaSweepSignatureScenario.test.ts"
 ---
 
 # pdfturbo gotchas — ui
@@ -245,6 +248,18 @@ DOCX/MD/XFDF export buttons are **never clicked** (a `deploy.yml` comment claime
 PASS/FAIL/WARN *subject*, and `boot`, `load …`, `a11y …` and the scenario names are subjects, not controls — about 9
 of the 66. It now counts only subjects that are DOM control ids: the same pre-5c build measured **57 of 141** under
 the new count. The crawl did not change; read the line's own figure, never this heading's.
+
+**AMENDED 2026-11-13 (phone-signature-pad R4-3) — one scenario reaches two controls the crawl cannot.** With `phonePad`
+ON the crawl opens the ✍ modal's Sign on phone and Import image, and the unwind's Escape then CLOSES the modal, so
+`clearSignature` and `cancelSignature` are found hidden (panel round 4 K12). The scenario `signature: draw → clear →
+cancel` reaches both on purpose and records each as its own control line through `control()`, so they count in
+`Exercised N`; it draws first, so "the pad is empty after Clear" has a control. Measured: `var/claude/r4-3/sweep-ci2.log`
+PASS clearSignature / cancelSignature, 59 of 144. **Removing it would leave the gate green at 57 of 144**, so its wiring
+is pinned (row 8, panel round 5 K3): `tests/infra/qaSweepSignatureScenario.test.ts` (3) — the scenario is an ELEMENT of
+the `scenarios` array, clicks and records both ids in that order, every picked scenario is run, and the deploy line
+passes no `--no-scenarios`/`--scenario`. Text pins, not a run (driving it needs a served app). Sabotage, each restored
+byte-exact (`var/claude/pp-row8/sab-k3-*.log`): defined beside the array → 2; Cancel not clicked → 1; `control()`
+not recording → 1; `s.run` dropped from the loop → 1; `--no-scenarios` in deploy.yml → 1.
 
 **The cause is the product, not the driver.** `modalBinder.ts` registers the export flyout with
 `closeWhen: 'any-click'`, and each file-menu item removes `.open` from its wrap in its own handler — so
@@ -572,3 +587,21 @@ the order is kept behind a page that was there before). Red first: `[]` and the 
 crop) found nothing. The redo now restores the SAME page object at the index it was first inserted at. Guard: the
 `InsertBlankPageCmd` case in `tests/core/historyManagerCommands.test.ts` (same ids and order, same object, current page).
 Red first: a fresh id at index 1.
+
+### The privacy page's storage list is pinned to the code (phone-signature-pad row 8, panel round 5 S2, 2026-11-15)
+
+`public/privacy.html` says it lists everything the app stores, and twice a key or store shipped unlisted (PP4-S2: the
+`recent` IndexedDB store and `pdfturbo_toolbar_order`, which goes through the `ILayoutStorage` wrapper whose key is a
+PARAMETER). `tests/infra/privacyStorageKeys.test.ts` (7) reads the code's own constants — every `localStorage` /
+`sessionStorage` `setItem` key in `src/**/*.ts` and in the inline scripts of `index.html`, `pad.html` and
+`public/*.html`, every `save()` key in a file importing `layoutStorage`, every `createObjectStore` name — and requires
+each in EACH language block (`main > div.lc-en|fr|ar`; the header's title carries `.lc-xx` too): a key as a `<code>`
+under the `<li>` whose first child is `<strong>localStorage</strong>` or `<strong>sessionStorage</strong>` (the right
+kind), a store as `<li data-storage="…">` (invisible markers, added for this; the page names stores in prose). Both
+ways: a `<code>` there that nothing writes fails too. A key that is not a literal or a single `const`, and any
+storage access other than the four calls, makes the scan THROW rather than miss it. Bound, hand-listed: what
+LIBRARIES store — i18next's `i18nextLng` (tied to `caches: ['localStorage']` in `i18n.ts` by a case), tesseract's OCR
+data and workbox's expiration list (IndexedDB) and precache (Cache Storage). Reads alone are not storage
+(`pdfturbo.feature.*` is a developer override nothing writes). Sabotage on the real files, each restored byte-exact
+(`var/claude/pp-row8/sab-s2-*.log`): a new object store, the wrapper's key renamed, one `<code>` dropped from the
+Arabic block only, the session flag written to localStorage — each red with its own message.

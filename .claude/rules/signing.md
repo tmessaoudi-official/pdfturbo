@@ -31,6 +31,7 @@ paths:
   - "tests/utils/signaturePad.test.ts"
   - "tests/utils/signaturePng.test.ts"
   - "tests/browser/pad-page.browser.test.ts"
+  - "tests/browser/pad-fullscreen.browser.test.ts"
   - "tests/browser/signature-pad.browser.test.ts"
   - "tests/browser/signature-sources.browser.test.ts"
   - "tests/browser/signature-import.browser.test.ts"
@@ -416,7 +417,23 @@ back and only the height shrinks (6C round 2) — pinned in real Chrome (800 × 
 back) and measured on a 915 × 412 phone: 344 px ending at 394, then at 356 px high 281 px ending at 331. PTSIG never sees the pad size (the grid's longer
 side is always 1023), pinned at 1150 × 460. Two buttons with their own keys, not a text swap, so a language change while
 full re-translates both; focus moves to the counterpart. Sabotage: 16 mutants (9, then 1, 4 and 2 in 6C rounds 1–3), each
-red where predicted. **Walked on a real Android phone 2026-11-13** (Chrome, LAN dev server at the R4-3 6C commit; plan
+red where predicted (read off the console; the output was not retained — panel round 5 K5). **A box with no room never sizes the pad** (row 8, panel round 5's lead, 2026-11-15). `padWidth()` floors at 1 px, so a
+drawing box that measured 0 high (a viewport too short for the buttons — reproduced in real Chrome at 800 × 40 in full
+mode) gave `setSize(1, 0)`, and `setSize` rescales the strokes by `min(w/old.w, h/old.h)` = 0: every stroke one point,
+for good, while Done stayed enabled. Normal mode had the same hole for a root of width ≤ 0. `layout()` now skips any
+size under 1 px in either dimension (both modes) and leaves `laidOutWidth`, so the next resize with room lays out;
+`setSize` itself refuses such a size (a no-op — the PC modal half of row 11 will be its second caller); and the pad's
+line width before any layout is the PC width, never negative. **Bound:** a tiny DRAWABLE size (box 776 × 1 → pad 2 × 1)
+is laid out, and its rounded aspect (0.5, not 0.4) moves the strokes off centre on the way back. Guards: 3 cases in
+`tests/pad/padPage.test.ts` and 1 in `tests/utils/signaturePad.test.ts` (red first), and one real-Chrome case in
+`pad-fullscreen.browser.test.ts` that asserts the box really measured 0 and the stroke's ink spans > 400 px after the
+room returns. Its before/after screenshots (`var/claude/qa-shots/row8/`) were taken ONCE and the committed case takes
+none: with its two `page.screenshot` calls the full browser suite went red in 3 of 3 cold runs (OTHER files failed to
+import, once an iframe never became ready) and green in 2 of 2 without them (`var/claude/pp-row8/ab-*.log`, `gate.log`);
+the mechanism is not traced — the same shape as the dropped `prune-flate` file (`redaction.md`). Sabotage, each restored byte-exact
+(`var/claude/pp-row8/sab-*.log`): no layout guard → 2 (the line width, re-scaled to a pad never laid out); no `setSize`
+guard → 1; the guard testing the width only → 1; no line-width floor → 1; both guards off → the Chrome case
+(`['1px','0px']`). **Walked on a real Android phone 2026-11-13** (Chrome, LAN dev server at the R4-3 6C commit; plan
 W24–W30, the developer's report): the ⛶ glyph renders; ⛶ goes real fullscreen and turns to landscape; Exit and Done EACH
 release the lock (the page follows to portrait); after a landscape Done the QR is whole, stays whole while the URL bar
 hides and shows, and the PC webcam reads it. **Not walked: iPhone Safari (the CSS fill, the rotate hint — on Android the lock

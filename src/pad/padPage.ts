@@ -166,8 +166,9 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   // collapsing. Full mode shows no text input, so there the box's height counts too.
   let laidOutWidth = -1;
   let full = false;
-  // The link's width is in PC px for a PC canvas `cw` wide; this pad is `laidOutWidth` wide.
-  const padLineWidth = () => (ink.width * laidOutWidth) / ink.cw;
+  // The link's width is in PC px for a PC canvas `cw` wide; this pad is `laidOutWidth` wide. Before any layout (a page
+  // that opened with no room) the PC width stands in; the first real layout replaces it.
+  const padLineWidth = () => (laidOutWidth > 0 ? (ink.width * laidOutWidth) / ink.cw : ink.width);
   const padWidth = () => {
     if (!full) return Math.min(contentWidth(), MAX_PAD_PX);
     const vp = viewport();
@@ -176,6 +177,9 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   };
   const layout = () => {
     const w = padWidth();
+    // No room (a box or root that measures 0 for a moment): keep the pad as it is until a resize brings room back —
+    // sizing it to 0 would collapse every stroke (row 8). laidOutWidth is left alone, so that resize lays out.
+    if (!(w >= 1 && Math.round(w * PAD_ASPECT) >= 1)) return;
     if (w === laidOutWidth) return;
     laidOutWidth = w;
     pad.setLineWidth(padLineWidth()); // BEFORE setSize, which repaints the strokes in the pad's width

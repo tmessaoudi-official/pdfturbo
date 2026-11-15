@@ -109,9 +109,12 @@ export class SignaturePad {
    * Size the pad to `cssWidth` x `cssHeight` CSS px on a `dpr` screen: the buffer gets device pixels (sharp on a
    * phone), the canvas box is fixed in px (recorded points are CSS px relative to it, so it must not stretch), and the
    * context is scaled so drawing stays in CSS px. A stroke in progress ends; strokes already drawn are rescaled into the
-   * new size (contain, centred) and redrawn at the pad's own colour and width.
+   * new size (contain, centred) and redrawn at the pad's own colour and width. A size under 1 px in either dimension is
+   * refused (nothing changes): the strokes would be rescaled by 0, a collapse to one point that no later size can undo
+   * (phone-signature-pad row 8 — a drawing box that measured 0 while entering full screen).
    */
   setSize(cssWidth: number, cssHeight: number, dpr: number = window.devicePixelRatio): void {
+    if (!(cssWidth >= 1 && cssHeight >= 1)) return;
     const old = this._logical();
     const strokes = this._strokes;
     this.canvas.width = Math.round(cssWidth * dpr);

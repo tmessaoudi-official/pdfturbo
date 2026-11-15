@@ -46,10 +46,14 @@ most of the work went into proving that what the product claims to remove is act
 - **Import image keeps a transparent PNG as drawn** when it has an opaque dark frame: it was refused as "sent as a
   photo", or a semi-transparent ink came back fully opaque. A refused import no longer clears "Signature scanned"
   while the scanned signature is still on the pad.
+- **The phone pad keeps a drawn signature when its drawing area briefly has no room** (a screen too short for the
+  buttons in full screen): the strokes stay as drawn and the pad returns at full size once there is room; before, every
+  stroke collapsed to one point while Done stayed enabled.
 - **The privacy page lists everything the app stores** (English, French and Arabic): the toolbar layout, the recent
   files list, the OCR library's copy of its language data, a per-tab notice flag and the offline copies of the site's
   own files were missing, and the IndexedDB entry said Reset Session clears "this", though it leaves the recent files
-  list. It now says which button deletes what, and that the data is stored unencrypted.
+  list. It now says which button deletes what, and that the data is stored unencrypted. A test now fails when
+  the code stores something the page does not name, in any of the three languages.
 - **Exports freeze the document they started from** — an undo, a close or an edit landing mid-export can no longer
   change what is written (milestone-2 review rounds 3–5); true edit refuses to commit over bytes it was not built from.
 - **The removed-page clean-up reads a page the way the viewer does** — an inline image's data, a shading pattern, an

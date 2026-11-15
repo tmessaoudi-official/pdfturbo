@@ -147,6 +147,35 @@ describe('full screen with the real CSS', () => {
     expect((await readQr(qr)).length).toBe(1);
   });
 
+  // Row 8 (panel round 5's lead): a drawing box that measures 0 in full mode — here a viewport too short to hold the
+  // buttons — must leave the pad and its strokes alone; sized to 0 the strokes were rescaled by 0 (one point, for good).
+  it('a viewport too short for the drawing box keeps the pad and the stroke; room coming back lays it out with the stroke whole', async () => {
+    await viewportTo(800, 360);
+    const { q, page: pad } = mountPage();
+    await userEvent.click(q('fullscreen'));
+    const canvas = q<HTMLCanvasElement>('canvas');
+    await userEvent.dragAndDrop(canvas, canvas, { sourcePosition: { x: 40, y: 60 }, targetPosition: { x: 600, y: 200 } });
+    const span = () => { const pts = pad.pad.getStrokes().flat(); return Math.max(...pts.map((p) => p.x)) - Math.min(...pts.map((p) => p.x)); };
+    const full = [canvas.style.width, canvas.style.height];
+    const s0 = span();
+    expect(s0).toBeGreaterThan(400);
+    await viewportTo(800, 40);
+    await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); });
+    expect(q('box').clientHeight).toBe(0); // the condition under test really happened (else this case is vacuous)
+    expect([canvas.style.width, canvas.style.height]).toEqual(full);
+    expect(span()).toBeCloseTo(s0, 6);
+    await viewportTo(800, 360);
+    await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); });
+    expect([canvas.style.width, canvas.style.height]).toEqual(full);
+    expect(span()).toBeCloseTo(s0, 6);
+    // Ink on the canvas, across the stroke's width — not a dot.
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let minX = Infinity, maxX = -Infinity;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) { const x = ((i - 3) / 4) % canvas.width; minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+    expect((maxX - minX) / window.devicePixelRatio).toBeGreaterThan(400);
+  });
+
   it('axe on the full view (WCAG 2.1 A/AA): zero critical and zero serious violations', async () => {
     await viewportTo(800, 360);
     const { q } = mountPage();

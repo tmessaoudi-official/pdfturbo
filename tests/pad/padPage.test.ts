@@ -51,6 +51,34 @@ describe('pad page — layout and pad', () => {
     expect(setup(900).canvas.style.width).toBe('600px');
   });
 
+  // Row 8 (round 5's height lead): a root that measures no room must not size the pad to 0, which rescales every stroke
+  // by 0 — a collapse no later resize can undo.
+  it('a root with no width keeps the pad and its strokes; the next real width lays out again', () => {
+    const s = setup(368);
+    s.draw([[10, 10], [300, 120]]);
+    const before = s.page.pad.getStrokes();
+    const lw = s.page.pad.lineWidth;
+    for (const w of [0, -20]) {
+      s.setWidth(w);
+      window.dispatchEvent(new Event('resize'));
+      expect([s.canvas.style.width, s.canvas.style.height, s.page.pad.lineWidth]).toEqual(['368px', '147px', lw]);
+      expect(s.page.pad.getStrokes()).toEqual(before);
+    }
+    s.setWidth(500);
+    window.dispatchEvent(new Event('resize'));
+    expect([s.canvas.style.width, s.canvas.style.height]).toEqual(['500px', '200px']);
+    const [[a, b]] = s.page.pad.getStrokes();
+    expect(b.x - a.x).toBeCloseTo((290 * 500) / 368, 6); // the stroke rescaled once from 368 px, not collapsed to a point
+  });
+
+  it('a page first laid out with no room: the line width is never negative, and the first real width sets it from the link', () => {
+    const s = setup(0, { hash: () => '#c=ff0000&w=4&cw=640' });
+    expect(s.page.pad.lineWidth).toBeGreaterThan(0);
+    s.setWidth(320);
+    window.dispatchEvent(new Event('resize'));
+    expect([s.canvas.style.width, s.canvas.style.height, s.page.pad.lineWidth]).toEqual(['320px', '128px', 2]);
+  });
+
   it('lays out in the root CONTENT box: its padding is not drawing room (the built page overflowed a 412 px phone)', () => {
     const root = document.createElement('main');
     root.style.padding = '12px 16px';
@@ -429,6 +457,29 @@ describe('pad page — full screen (row 11, phone half)', () => {
     };
   }
   afterEach(() => { vi.restoreAllMocks(); });
+
+  it('a drawing box that measures 0 while entering keeps the pad and its strokes; the box\'s next real size lays out (row 8 lead)', () => {
+    const f = full();
+    f.draw([[10, 10], [300, 120]]);
+    const before = f.page.pad.getStrokes();
+    const normal = f.size();
+    const lw = f.page.pad.lineWidth; // the ink is not re-scaled to a pad that was never laid out
+    // Each box gives a pad 1 px wide and round(0.4) = 0 high (padWidth floors at 1): refused. A tiny DRAWABLE size (box
+    // 776 × 1 → 2 × 1) is laid out — a stated bound: its rounded aspect (0.5, not 0.4) moves the strokes off centre.
+    for (const box of [{ w: 0, h: 0 }, { w: 776, h: 0 }, { w: 0, h: 280 }]) {
+      f.setBox(box);
+      if (!f.isFull()) f.enter(); else window.dispatchEvent(new Event('resize'));
+      expect([...f.size(), f.page.pad.lineWidth]).toEqual([...normal, lw]);
+      expect(f.page.pad.getStrokes()).toEqual(before);
+    }
+    f.setBox({ w: 776, h: 280 });
+    window.dispatchEvent(new Event('resize'));
+    expect(f.size()).toEqual(['700px', '280px']);
+    f.exit();
+    expect(f.size()).toEqual(normal);
+    const after = f.page.pad.getStrokes();
+    after.flat().forEach((p, i) => { const q = before.flat()[i]; expect(p.x).toBeCloseTo(q.x, 6); expect(p.y).toBeCloseTo(q.y, 6); });
+  });
 
   it('the toggle sits between Clear and Done; entering swaps it for Exit, moves focus, marks the root and scrolls to the top', () => {
     const f = full();

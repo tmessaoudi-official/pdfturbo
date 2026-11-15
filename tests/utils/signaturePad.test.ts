@@ -272,6 +272,16 @@ describe('SignaturePad — logical size (setSize, phone-signature-pad step 4)', 
     expect(pad.toSignatureInput().width).toBe(400);
   });
 
+  it('a size under 1 px in either dimension is refused: the strokes are kept, not collapsed to a point (row 8 height lead)', () => {
+    const { pad, stroke, canvas } = makePad();
+    pad.setSize(300, 120, 1);
+    stroke([[10, 10], [290, 110]]);
+    const before = pad.getStrokes();
+    for (const [w, h] of [[0, 0], [300, 0], [0, 120], [1, 0.4], [-5, 120]] as const) pad.setSize(w, h, 1);
+    expect(pad.getStrokes()).toEqual(before);
+    expect([canvas.style.width, canvas.style.height, pad.toSignatureInput().width]).toEqual(['300px', '120px', 300]);
+  });
+
   it('a resize mid-stroke ends that stroke, so the next finger is not locked out (a rotation while touching)', () => {
     const { pad, fire } = makePad();
     pad.setSize(300, 120, 1);

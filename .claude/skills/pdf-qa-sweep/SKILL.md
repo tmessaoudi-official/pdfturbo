@@ -200,7 +200,9 @@ runs right after boot, before any document is loaded: on a built app the service
 the editor) renders, axe on the DRAW view (before Done — panel round 4 K2, 2026-11-12), draw → Done → QR, axe on
 the QR view — six `pad:` lines; on a dev server the worker checks are one SKIP (five lines). A `pad:` FAIL means the phone would get a stale pad or the editor: see
 `.claude/rules/toolchain.md` § "PWA is `registerType: 'prompt'`". A DEFAULT run
-(no flag) measured **149 · 103 · 0 · 0 · 46** with `phonePad` OFF (not re-measured since), so always compare like with like.
+(no flag) on a dev server measured **156 · 103 · 0 · 0 · 53**, 53 of 144 controls, on 2026-11-13 (`phonePad` ON — the
+default since 2026-11-12 — with R4-3's scenario; `var/claude/r4-3/sweep-green.log`). The older **149 · 103 · 0 · 0 · 46**
+was `phonePad` OFF, before R4-3 (52 of 141 re-measured flag OFF: `sweep-flagoff.log`). Always compare like with like.
 
 Read the numbers in this order, because two of them mislead on their own:
 

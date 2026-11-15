@@ -87,7 +87,8 @@ _Last updated: 2026-11-11 · Version 1.0.0_
   signature comes back as QR codes on the phone's screen, read by the PC's camera, or as a PNG through **Import image**.
   The phone opens on the PC's ink colour and width and can change them (the same colour palette, a 1–10 width); after a
   scan the PC's colour and width boxes show the scanned ink. **⛶ Full screen** gives the pad the whole phone screen
-  (bigger in landscape; Android goes fullscreen and turns sideways, an iPhone keeps its address bar). No server: the app sends nothing; the QR codes, or the PNG you move yourself, are the only link
+  (bigger in landscape; walked on an Android phone, where it goes fullscreen and turns sideways — an iPhone, which has
+  no fullscreen for a page, should keep its address bar and fill the rest, not yet checked on one: KNOWN_ISSUES). No server: the app sends nothing; the QR codes, or the PNG you move yourself, are the only link
 - **Signature byte range per the standard** — the signed range excludes the whole `/Contents` string, delimiters
   included (fixed 2026-09-27; before it, an independent validator rejected every signature the app produced). The
   signing engine can also write a **PAdES-B-B** (`ETSI.CAdES.detached`) signature; the app still signs as
