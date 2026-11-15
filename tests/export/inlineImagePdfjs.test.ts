@@ -211,6 +211,10 @@ const SHAPES: [string, Content, string[]][] = [
   ['control: an operator split across two streams is two words (P2)', [`/Fm1 Do BT /F1 12 Tf 5 T`, `J ET /Fm2 Do`], ['Fm1', 'Fm2']],
   ['a DCT marker ending a member that is not the last (P5)', [`/Fm1 Do ${IMG} /F /DCT ID \xFF\xC0`, `/Fm2 Do`], ['Fm1']],
   ['a DCT marker ending the last member (P5)', [`/Fm1 Do ${IMG} /F /DCT `, `ID \xFF\xC0`], ['Fm1']],
+  // A ONE-member array is still an array to pdf.js 6.5 (`StreamsSequenceStream` for any array), so its member ends with
+  // a line feed and the marker is not the page's last byte; as a single stream the same content refuses (completeness
+  // lens, panel round 1: `streams.length > 1` in `contentOf` would have stayed green).
+  ['a DCT marker ending the only member of a one-member array (P2/P5)', [`/Fm1 Do ${IMG} /F /DCT ID \xFF\xC0`], ['Fm1']],
 ];
 
 /**

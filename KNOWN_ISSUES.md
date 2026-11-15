@@ -229,6 +229,11 @@ under storage pressure; no claim is made here about any other browser's rule.
   three pairs at load 2.1–3.4, medians: the 142-page file 1102 → 793 ms, the census report 282 → 281, the paper
   95 → 91 (`cost.jsonl`, the `-alt` records) — the gain that remains is on the large file. The
   rest — pruning the resources, the reachability walk, the copier hook — is not optimised.
+  **Since 2026-11-15 every Flate content stream the prune reads is inflated twice** (pdf-lib's decode and a strict
+  fflate inflate that must agree — `.claude/rules/redaction.md` § "The DECODER changed too"): on Publication 17's
+  1,007 streams, 144–201 ms of decode became 308–487 ms, about 2.1–2.4× (load ~5.6,
+  `var/claude/depup-p0/checkcost-v3.jsonl`) — the price of refusing a stream the two decoders read differently.
+  Not measured end to end.
 - **The prune reads a page with pdf.js's own syntax and operator rules, and refuses an operand of the wrong type
   (since 2026-10-17), within four bounds.** It ends an inline image by its filter and pdf.js's `EI` rules, reads
   arrays, dictionaries, comments and references as pdf.js's parser does, applies pdf.js's operator table and operand

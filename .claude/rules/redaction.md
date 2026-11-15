@@ -195,7 +195,7 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   stream's own `/Resources` is read as drawn through only for a form, a tiling pattern, a page's content and an
   appearance, so a soft-mask group written without `/Subtype /Form` loses the shared entries it draws — a drawing
   lost, never a leak (`KNOWN_ISSUES.md` bounds 5 and 6). Guards:
-  `tests/export/inlineImagePdfjs.test.ts` (73 since 6.5.438, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
+  `tests/export/inlineImagePdfjs.test.ts` (74 since 2026-11-15 — 73 at 6.5.438, plus a DCT marker ending a one-member array, pdf.js the oracle on the kept page, read BOTH ways — its text layer and
   its operator list, the forms told apart by their BBox width, the list walked into a tiling pattern's own (R4C-5) and
   into every Type3 glyph's (`charProcOperatorList`, a `Map`; R5C-4) — because the two part where the evaluator stops on one
   path only (R3C-2: the text-only oracle passed shapes pdf.js never paints); each case checks what pdf.js reads, what
@@ -277,19 +277,43 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   `EI` end moved, and a removed page's form shipped in the export (the safety lens's A and C shapes) or a drawn form was
   dropped (B). The load guard passes it — the copy carries the same bytes. Every oracle and differential fixture was an
   UNFILTERED stream, so no test compared the two decoders. **Fix, fail-closed like `/Predictor` and `/F`/`/DP`:**
-  `flateStagesStrict` decodes each FlateDecode stage's input (the filters before it, decrypted the same way), and the
+  `decodeFlateStrict` decodes each FlateDecode stage's input (the filters before it, decrypted the same way), and the
   stage must inflate with `fflate.inflateSync` after the 2-byte header to exactly pdf-lib's bytes, else the stream is
-  unreadable and the prune refuses. Raw inflate, not `unzlibSync`, which cuts 4 bytes off for an Adler trailer most
+  unreadable and the prune refuses. The last stage's lenient decode IS the stream's decode, taken once. The inflate
+  writes into a buffer of pdf-lib's length + 1, which fflate never grows: a longer output clamps to that length (and a
+  stored block that overflows it throws), so a longer output still mismatches, and fflate never reallocates. Raw inflate, not `unzlibSync`, which cuts 4 bytes off for an Adler trailer most
   producers' streams may lack. Measured on the 15-file corpus plus the 40 tracked fixtures: 3,204 Flate streams, 0 that
   pdf-lib decodes and the strict inflate rejects or reads differently (`var/claude/depup-p0/strict-corpus.jsonl`) — no
   new refusal on a known file. pdf.js 6.5 also turns a Huffman-block `FormatError` into partial output; pdf-lib throws
-  there, so that shape already refused. Guard: `tests/export/pruneFlateTruncated.test.ts` (15 — five refusals incl. one
+  there, so that shape already refused. Guard: `tests/export/pruneFlateTruncated.test.ts` (15 at the fix, 20 since the native-path block — five refusals incl. one
   behind ASCII85 and one past the 1024-byte `DecompressionStream` threshold; nine controls read exactly as pdf.js paints,
   stored, Huffman with and without the trailer, behind ASCII85; and a differential: four members cut at every length and
   three stored blocks declared 1–48 bytes long, refused or exported as pdf.js paints — 337 refused / 12 read, pinned).
   **The cut-only differential was GREEN on the unfixed code**: cutting removes content, and the padding only bites when
   the content is all there and the block claims more. Sabotage, each landed and restored with `cmp`: the check off →
-  the 5 refusals + the differential; only a first-position stage checked → exactly the ASCII85 case. Not covered: LZW,
+  the 5 refusals + the differential; only a first-position stage checked → exactly the ASCII85 case. Three mutations
+  stay GREEN and are OUTCOME-ONLY, not weak guards: the byte compare never failing, the buffer without its + 1, and the
+  length check off — fflate throws `unexpected EOF` on every divergent shape known, so the catch refuses before the
+  compare runs; the compare is the backstop for a shape that inflates cleanly to other bytes, which no fixture has.
+  **The native path:** pdf.js reads page content through `asyncGetBytes`, which tries the native
+  `DecompressionStream` when the COMPRESSED stream is at least 1024 bytes (`FlateStream.#MIN_NATIVE_COMPRESSED_LENGTH`)
+  and falls back to its own decoder when that rejects. The file's `BIG` padding is spaces, which deflate shrinks to a
+  few bytes, so its Huffman controls never reached that path; a second block (5 cases) pads with 2000 incompressible
+  characters in a `%` comment and SPIES on the global — pdf.js runs in the test's thread under jsdom, so the native
+  reader is observed, not inferred (a control under 1024 bytes reads zero calls): a complete stored block and a Huffman stream without its trailer (native rejects
+  both) and one with its trailer (native inflates it) each export exactly what pdf.js paints, and the block declared
+  40 bytes long refuses (the check off → that case + the original 6). **A real-Chrome twin was tried and dropped:**
+  with `prune-flate.browser.test.ts` in the suite, OTHER browser files failed to import (`Failed to fetch dynamically
+  imported module`, a test file or `src/export/exportService.ts`) — in four full runs on 2026-11-15: one 30 s timeout,
+  then 2, 2 and 5 files plus one file's dynamic import, a different set each time, each green alone, no assertion
+  failure; a cold A/B gave those 5 + 1 with it and 0 without (763 tests, the P0 gate's count), and a trivial 135th file
+  in its place gave 0 (`var/claude/depup-b2/{ab,dummy}.log`). The mechanism was not found. Measured once alone, the
+  padded twin passed 4/4 in Chrome and the check off failed exactly its refusal case (2026-11-15, a one-off, not in the
+  suite). **Residual:** no test in the suite exercises Chrome's own inflate; Node's is the native reader exercised. **Cost**, on a probe that
+  mirrors the committed check (`var/claude/depup-p0/checkcost-v3.mts`, two runs at load ~5.6): Publication 17's 1,007
+  Flate streams (2,774 KB compressed) take 144–201 ms to decode alone and 308–487 ms with the check, about 2.1–2.4×;
+  the census report's 527 streams 63–78 → 116–137 ms. A NUL-tail fast path that skipped the check was rejected:
+  always-strict keeps one rule. Not covered: LZW,
   ASCII85, ASCIIHex and RunLength parity rests on the safety lens's read that their 6.3 → 6.5 diff is empty;
   `formHiddenText.ts` writes pdf-lib's decode into its throwaway copy, a fidelity bound that errs towards keeping text.
 

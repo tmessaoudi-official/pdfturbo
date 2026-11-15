@@ -8,7 +8,7 @@
  * pdf.js is the oracle: every export that is NOT refused must carry the removed page's form exactly when pdf.js paints
  * it on the kept page, and the kept page's own form exactly when pdf.js paints that.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { PDFDocument, PDFName } from '@cantoo/pdf-lib';
 import { zlibSync } from 'fflate';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -156,4 +156,51 @@ describe('the prune refuses a Flate stage pdf-lib decodes differently from pdf.j
     // neither reader checks. Every other cut and every long declaration refuses.
     expect({ refused, read }).toEqual({ refused: 337, read: 12 });
   }, 120_000);
+});
+
+// pdf.js 6.5 reads page content through `asyncGetBytes`, which tries the native `DecompressionStream` first when the
+// COMPRESSED stream is at least 1024 bytes (`FlateStream.#MIN_NATIVE_COMPRESSED_LENGTH`) and falls back to its own
+// decoder when that rejects. `BIG` is spaces, which deflate shrinks to a few bytes, so a Huffman member padded with it
+// never reaches that path; 2000 pseudo-random printable characters in a comment cannot be shrunk below 1024. pdf.js runs
+// in this thread here (no worker), so a spy on the global proves the native reader was tried — the observation a real
+// browser cannot make from the test page (its pdf.js runs in a worker). A browser twin of these cases was tried and
+// dropped: with it in the suite, other browser files failed to IMPORT (6 vs 0 without it, 0 with a trivial 135th file).
+describe('members past 1024 compressed bytes take pdf.js 6.5\'s native DecompressionStream path (depup r1 safety F1)', () => {
+  let seed = 12345;
+  const noise = Array.from({ length: 2000 }, () => { seed = (seed * 1103515245 + 12345) >>> 0; return String.fromCharCode(33 + (seed >>> 16) % 94); }).join('');
+  const N = `%${noise}\n${A}`;
+  const Native = globalThis.DecompressionStream;
+  let formats: string[] = [];
+  const spy = () => {
+    formats = [];
+    vi.stubGlobal('DecompressionStream', class extends Native { constructor(f: CompressionFormat) { super(f); formats.push(f); } });
+  };
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('the spy reads zero for a member under 1024 compressed bytes (pdf.js decodes it in JS)', async () => {
+    const small = zlibSync(bytesOf(A));
+    expect(small.length).toBeLessThan(1024);
+    spy();
+    expect(await pdfjsPaints(await build([flate(small), A2]))).toEqual(['Fm1']);
+    expect(formats).toEqual([]);
+  });
+  it('refuses the stored block declared 40 bytes long', async () => {
+    expect(stored(N, 40).length).toBeGreaterThan(1024);
+    expect(await exported(await build([flate(stored(N, 40)), A2]))).toBe('refused');
+  });
+  for (const [label, member] of [
+    ['a complete stored block (native rejects it: no trailer)', stored(N, 0)],
+    ['a Huffman stream with its Adler trailer (native inflates it)', zlibSync(bytesOf(N))],
+    ['a Huffman stream without the trailer (native rejects it)', zlibSync(bytesOf(N)).subarray(0, -4)],
+  ] as const) {
+    it(`reads ${label} exactly as pdf.js paints it`, async () => {
+      expect(member.length).toBeGreaterThan(1024);
+      const bytes = await build([flate(member), A2]);
+      spy();
+      const painted = await pdfjsPaints(bytes);
+      expect(formats).toContain('deflate');
+      expect(painted).toEqual(['Fm1']);
+      expect(await exported(bytes)).toEqual(painted);
+    });
+  }
 });

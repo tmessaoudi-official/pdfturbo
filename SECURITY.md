@@ -499,8 +499,9 @@ viewing the file are unaffected.
   second time, builds the copy an export builds, opens that in pdf.js as well, and compares every page the viewer
   shows — its text, with each string's position, its drawing operations with their numbers and colours, and the
   decoded pixels of every picture it paints. Any page that differs
-  refuses the export, signing and in-place editing for that document. None of the ten audit shapes loads any more: nine are refused as a page mismatch, and the tenth is a file pdf.js
-  itself cannot open. The check
+  refuses the export, signing and in-place editing for that document. None of the ten audit shapes gets past it: eight are refused as a page mismatch, one is a file pdf.js
+  itself cannot open, and one (P5) has loaded since pdfjs-dist 6.5.438 because pdf.js itself now shows the page
+  pdf-lib holds, so the viewer and the export agree on it. The check
   runs in the background from the moment the file opens, so an export usually finds it finished; on a large file
   it takes seconds.
 

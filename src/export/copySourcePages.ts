@@ -1087,7 +1087,7 @@ function mergeResources(lib: Lib, src: PDFDocument, local: PDFDict, page: PDFDic
  * pruned with no refusal (round 7, R7-C-1). It is unreadable instead, and the prune refuses where it must read it.
  */
 function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): string | null {
-  const { PDFRawStream, PDFStream, PDFArray, PDFDict, PDFNumber, PDFName, decodePDFRawStream } = lib;
+  const { PDFRawStream, PDFStream, PDFArray, PDFDict, PDFNumber, PDFName } = lib;
   const predicted = (parms: PDFObject | undefined): boolean => {
     const p = src.context.lookup(parms);
     if (p instanceof PDFArray) return p.asArray().some(predicted);
@@ -1106,8 +1106,9 @@ function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): st
       // neither, so a stream carrying one is decoded differently by the two (round 8, R8-C-1).
       if (s instanceof PDFRawStream && (s.dict.has(PDFName.of('F')) || s.dict.has(PDFName.of('DP')))) return null;
       if (s instanceof PDFRawStream) {
-        if (!flateStagesStrict(lib, src, s)) return null;
-        bytes = decodePDFRawStream(s).decode();
+        const decoded = decodeFlateStrict(lib, src, s);
+        if (!decoded) return null;
+        bytes = decoded;
       } else if (s instanceof PDFStream && 'getUnencodedContents' in s) bytes = (s as unknown as { getUnencodedContents(): Uint8Array }).getUnencodedContents();
       else return null;
     } catch { return null; }
@@ -1121,37 +1122,42 @@ function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): st
 }
 
 /**
- * Whether every FlateDecode stage of `s` is a complete deflate stream that pdf-lib decodes byte for byte as a strict
- * inflater does. pdf-lib pads a stored block that declares more bytes than the stream holds with NULs, as pdf.js 6.3
- * did; pdf.js 6.5 adds nothing, so the two read different content and the prune kept a removed page's form that pdf.js
- * never draws, or dropped one it does (dependency-upgrade-2026-11, panel round 1, safety F1). Such a stream — or any
- * other a strict inflater rejects or reads differently — is unreadable, so the prune refuses where it must read it.
- * pdf-lib checks the 2-byte zlib header itself; the raw inflate after it ignores the Adler trailer, present or not, as
- * both readers do. A stage behind another filter is checked on that filter's output, decrypted the same way.
+ * `s` decoded by pdf-lib, or null when a FlateDecode stage of it does not inflate strictly to exactly pdf-lib's bytes.
+ * pdf-lib pads a stored block that declares more bytes than the stream holds with NULs, as pdf.js 6.3 did; pdf.js 6.5
+ * adds nothing, so the two read different content and the prune kept a removed page's form that pdf.js never draws,
+ * or dropped one it does (dependency-upgrade-2026-11, panel round 1, safety F1). Such a stream — or any other a strict
+ * inflater rejects or reads differently — is unreadable, so the prune refuses where it must read it. pdf-lib checks
+ * the 2-byte zlib header itself; the raw inflate after it ignores the Adler trailer, present or not, as both readers
+ * do. A stage behind another filter is checked on that filter's output, decrypted the same way. A last-stage Flate's
+ * pdf-lib output IS the stream's decode, so it is taken once and returned: the check costs one inflate and a compare.
  */
-function flateStagesStrict(lib: Lib, src: PDFDocument, s: PDFRawStream): boolean {
+function decodeFlateStrict(lib: Lib, src: PDFDocument, s: PDFRawStream): Uint8Array | null {
   const { PDFArray: Arr, PDFName: Name, PDFRawStream: Raw, decodePDFRawStream } = lib;
   const filter = s.dict.lookup(Name.of('Filter'));
   const names = filter instanceof Arr ? filter.asArray().map(f => src.context.lookup(f)) : [filter];
   const parms = s.dict.lookup(Name.of('DecodeParms'));
   const flate = Name.of('FlateDecode');
-  const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, k) => v === b[k]);
-  for (let i = 0; i < names.length; i++) {
-    if (names[i] !== flate) continue;
-    const prefix = src.context.obj({});
-    if (i > 0) {
-      prefix.set(Name.of('Filter'), src.context.obj(names.slice(0, i) as PDFName[]));
-      if (parms instanceof Arr) prefix.set(Name.of('DecodeParms'), src.context.obj(parms.asArray().slice(0, i)));
+  let whole: Uint8Array | undefined;
+  try {
+    for (let i = 0; i < names.length; i++) {
+      if (names[i] !== flate) continue;
+      const prefix = src.context.obj({});
+      if (i > 0) {
+        prefix.set(Name.of('Filter'), src.context.obj(names.slice(0, i) as PDFName[]));
+        if (parms instanceof Arr) prefix.set(Name.of('DecodeParms'), src.context.obj(parms.asArray().slice(0, i)));
+      }
+      const input = decodePDFRawStream(Raw.of(prefix, s.contents, s.transform)).decode();
+      const lenient = i === names.length - 1
+        ? (whole = decodePDFRawStream(s).decode())
+        : decodePDFRawStream(Raw.of(src.context.obj({ Filter: flate }), input)).decode();
+      // Sized to pdf-lib's length + 1: fflate then never reallocates (about half its cost), and an output LONGER than
+      // pdf-lib's clamps to length + 1 (or throws, for a stored block), never to an equal length.
+      const strict = inflateSync(input.subarray(2), { out: new Uint8Array(lenient.length + 1) });
+      if (lenient.length !== strict.length) return null;
+      for (let k = 0; k < strict.length; k++) if (lenient[k] !== strict[k]) return null;
     }
-    let input: Uint8Array, lenient: Uint8Array, strict: Uint8Array;
-    try {
-      input = decodePDFRawStream(Raw.of(prefix, s.contents, s.transform)).decode();
-      lenient = decodePDFRawStream(Raw.of(src.context.obj({ Filter: flate }), input)).decode();
-      strict = inflateSync(input.subarray(2));
-    } catch { return false; }
-    if (!equal(lenient, strict)) return false;
-  }
-  return true;
+    return whole ?? decodePDFRawStream(s).decode();
+  } catch { return null; }
 }
 
 /** A content-stream name token (`/Fm#201`) as the dictionary key text it names (`Fm 1`). */

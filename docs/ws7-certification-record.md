@@ -568,8 +568,9 @@ browser.
 
 > **Superseded by WS8 (2026-09-24, `docs/archive/plans/ws8-viewer-check.plan.md`).** The mirror this audit graded is
 > deleted; the load guard now runs pdf.js itself on the source and on the export-shaped copy and compares each page.
-> None of the ten shapes disclosed below as one bound loads any more: nine REFUSE with `PdfPageMismatchError`, and
-> P6 fails with pdf.js's own `InvalidPDFException` (`tests/utils/ws8AuditShapes.test.ts`, fixtures in
+> None of the ten shapes disclosed below as one bound gets past it: nine REFUSED with `PdfPageMismatchError` when this
+> note was written, and P6 fails with pdf.js's own `InvalidPDFException` [2026-11-15: since pdfjs-dist 6.5.438 eight
+> refuse and P5 loads — pdf.js itself now shows the page pdf-lib holds, so the two agree (dependency-upgrade-2026-11 P4)] (`tests/utils/ws8AuditShapes.test.ts`, fixtures in
 > `tests/fixtures/ws8-audit/`). This section is kept as the record of why; read it as history.
 
 Ruled 2026-09-14 15:31 (replaces the two-consecutive-clean-rounds criterion) and started attended on 2026-09-24

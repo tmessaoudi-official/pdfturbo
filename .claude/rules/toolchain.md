@@ -292,7 +292,8 @@ WS7 round 10 then found two that DID reach users (the last two bullets):
   true edit's font took a legal dangling number and the reference resolved to it — measured, a dangling page font
   became the Info dict and pdf.js dropped its text from the export. The viewer check could not see it: it runs
   BEFORE the stamp. 0 of 104 corpus files change (3 dangle, all below their largest number). The ten
-  audit shapes are tracked in `tests/fixtures/ws8-audit/`: nine refuse with `PdfPageMismatchError`, and P6 does not
+  audit shapes are tracked in `tests/fixtures/ws8-audit/`: eight refuse with `PdfPageMismatchError`, P5 has loaded since
+  pdfjs-dist 6.5.438 (pdf.js itself now reads the page pdf-lib holds, #22375; dependency-upgrade-2026-11 P4), and P6 does not
   load at all — pdf.js itself throws `InvalidPDFException` on it, so the check rejects. `viewerVerdict` sets the pdf.js worker
   itself in a real browser: relying on `infra/pdfRenderer.ts` having been imported first failed every guarded load
   in the browser suite. The same step found that `copyPages` never copies `/OCProperties`, so a layer the source

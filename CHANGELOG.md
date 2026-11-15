@@ -3,13 +3,13 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-11-14)
+## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-11-15)
 
 Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
 most of the work went into proving that what the product claims to remove is actually removed.
 
-### 2026-10-09 → 2026-11-14 — the phone signature pad, accessible names, and dependency upgrades
+### 2026-10-09 → 2026-11-15 — the phone signature pad, accessible names, and dependency upgrades
 
 #### Added
 - **Sign on your phone** (checked on a real phone and webcam before it was turned on): the ✍ modal shows a QR code that opens a
@@ -26,6 +26,13 @@ most of the work went into proving that what the product claims to remove is act
   the app updates there.
 
 #### Fixed
+- **A redaction leak through a malformed compressed page, live 2026-11-14 13:51 → 2026-11-15 ~18:30.** After the
+  pdf.js 6.5 upgrade, the export could read a kept page's compressed content differently from the way pdf.js draws it
+  when the page held a *stored* deflate block that declares more bytes than it holds: a page you deleted or redacted
+  could then leave a form it shared with that page in the export, or a form the page draws could be dropped. Such a
+  page now refuses the export with the existing "resources unreadable" message (*Compress → flatten to images* still
+  works). No real file we hold has that shape (0 of 3,204 compressed streams in 55 files), so it needed a crafted or
+  broken PDF; an export made in that window from such a file should be redone.
 - **Full screen on the phone pad** (walked on an Android phone: ⛶, the landscape lock, Exit and Done; not yet the back gesture, an iPhone or an iPad): ⛶ hides the title, hint and colour controls and
   gives the pad the whole screen, keeping its shape — in landscape a bigger pad (850 × 340 instead of 600 × 240 on a
   915 × 412 phone); upright, a line suggests turning the phone. Android also goes browser-fullscreen and locks

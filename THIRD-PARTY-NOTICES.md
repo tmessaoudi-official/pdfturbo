@@ -141,17 +141,11 @@ package is in the built `dist/`; *inferred* means the graph plus the importing l
 without a string match. Licence texts and copyright lines are in each package's own `LICENSE`.
 
 - **pako** 1.0.11 · MIT AND Zlib · https://github.com/nodeca/pako — *verified*: `pako deflate (from
-  Nodeca project)` is in the DOCX chunk. Reached through jszip and @pdf-lib/fontkit.
-- **jszip** 3.10.1 · dual MIT OR GPL-3.0-or-later, **used under MIT** · https://github.com/Stuk/jszip —
-  *verified*: its `JSZip` UMD wrapper is in the DOCX chunk. A dependency of docx.
-- **readable-stream** 2.3.8 · MIT · https://github.com/nodejs/readable-stream — *verified*: required by
-  name inside the bundled jszip.
-- docx's other dependencies — **hash.js** 1.1.7, **nanoid** 5.1.16, **xml** 1.0.1, **xml-js** 1.6.11 (all
-  MIT) and xml-js's **sax** 1.6.1 (BlueOak-1.0.0); jszip's **lie** 3.3.0 with **immediate** 3.0.6 and
-  **setimmediate** 1.0.5 (all MIT); and beneath readable-stream and hash.js, **core-util-is** 1.0.3,
-  **isarray** 1.0.0, **process-nextick-args** 2.0.1, **safe-buffer** 5.1.2, **string_decoder** 1.1.1,
-  **util-deprecate** 1.0.2 (all MIT), **inherits** 2.0.4 and **minimalistic-assert** 1.0.1 (both ISC) —
-  *inferred*.
+  Nodeca project)` is in the fontkit chunk (`fontkit.es-*.js`). Reached through @pdf-lib/fontkit.
+- docx's own dependency **nanoid** 6.0.1 (MIT) — *inferred*. Since docx dropped jszip (out of the lockfile on
+  2026-11-10) it depends only on nanoid and fflate (listed above); jszip, docx's former hash.js, xml and xml-js (with
+  sax), and the packages beneath jszip and hash.js left this list on 2026-11-15, when a test began comparing it with
+  `package-lock.json`.
 - ProseMirror's own dependencies — **prosemirror-transform** 1.12.0, **orderedmap** 2.1.1,
   **rope-sequence** 1.3.4, **w3c-keyname** 2.2.8 (all MIT) — *inferred*.
 - **qrcode-generator** 1.5.2 · MIT — a dependency of qr-code-styling (the 2.0.4 direct dependency is listed above) —
