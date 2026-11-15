@@ -65,7 +65,7 @@ preprocessor with the oracle tests as the check — never relax an oracle case t
 re-copies `public/pdfjs/` from `node_modules` before dev, build and the browser suite, so the vendored assets follow the
 installed version by themselves.
 
-**RESOLVED 2026-11-14 — `"pdfjs-dist": "~6.5.438"`** (`docs/plans/dependency-upgrade-2026-11.plan.md`, commit 3; the
+**RESOLVED 2026-11-14 — `"pdfjs-dist": "~6.5.438"`** (`docs/archive/plans/dependency-upgrade-2026-11.plan.md`, archived 2026-11-15, commit 3; the
 developer lifted the hold). Five changes, each red first, none fixed by relaxing an oracle case:
 - **P1, the font name** (6.4 #22057): `name` became an "extra" property, sent to the main thread only with
   `fontExtraProperties: true`, which `withPdfjsAssets` now passes on every document (`pdfjs.md` § "Font names need
