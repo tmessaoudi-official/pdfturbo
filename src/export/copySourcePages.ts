@@ -14,7 +14,8 @@
  * object to a single copy. Every reference that copier follows to a source PAGE is answered here instead — see
  * `copySourcePages`.
  */
-import type { PDFArray, PDFDict, PDFDocument, PDFName, PDFObject, PDFPage, PDFRef } from '@cantoo/pdf-lib';
+import type { PDFArray, PDFDict, PDFDocument, PDFName, PDFObject, PDFPage, PDFRawStream, PDFRef } from '@cantoo/pdf-lib';
+import { inflateSync } from 'fflate';
 import { scanNamedOps } from '../utils/contentStreamEditor';
 
 type Lib = typeof import('@cantoo/pdf-lib');
@@ -1104,8 +1105,10 @@ function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): st
       // pdf.js reads `/F` before `/Filter` and `/DP` before `/DecodeParms` (the inline-image abbreviations); pdf-lib reads
       // neither, so a stream carrying one is decoded differently by the two (round 8, R8-C-1).
       if (s instanceof PDFRawStream && (s.dict.has(PDFName.of('F')) || s.dict.has(PDFName.of('DP')))) return null;
-      if (s instanceof PDFRawStream) bytes = decodePDFRawStream(s).decode();
-      else if (s instanceof PDFStream && 'getUnencodedContents' in s) bytes = (s as unknown as { getUnencodedContents(): Uint8Array }).getUnencodedContents();
+      if (s instanceof PDFRawStream) {
+        if (!flateStagesStrict(lib, src, s)) return null;
+        bytes = decodePDFRawStream(s).decode();
+      } else if (s instanceof PDFStream && 'getUnencodedContents' in s) bytes = (s as unknown as { getUnencodedContents(): Uint8Array }).getUnencodedContents();
       else return null;
     } catch { return null; }
     for (let k = 0; k < bytes.length; k++) text += String.fromCharCode(bytes[k]);
@@ -1115,6 +1118,40 @@ function contentOf(lib: Lib, src: PDFDocument, value: PDFObject | undefined): st
     if (obj instanceof PDFArray) text += '\n';
   }
   return text;
+}
+
+/**
+ * Whether every FlateDecode stage of `s` is a complete deflate stream that pdf-lib decodes byte for byte as a strict
+ * inflater does. pdf-lib pads a stored block that declares more bytes than the stream holds with NULs, as pdf.js 6.3
+ * did; pdf.js 6.5 adds nothing, so the two read different content and the prune kept a removed page's form that pdf.js
+ * never draws, or dropped one it does (dependency-upgrade-2026-11, panel round 1, safety F1). Such a stream — or any
+ * other a strict inflater rejects or reads differently — is unreadable, so the prune refuses where it must read it.
+ * pdf-lib checks the 2-byte zlib header itself; the raw inflate after it ignores the Adler trailer, present or not, as
+ * both readers do. A stage behind another filter is checked on that filter's output, decrypted the same way.
+ */
+function flateStagesStrict(lib: Lib, src: PDFDocument, s: PDFRawStream): boolean {
+  const { PDFArray: Arr, PDFName: Name, PDFRawStream: Raw, decodePDFRawStream } = lib;
+  const filter = s.dict.lookup(Name.of('Filter'));
+  const names = filter instanceof Arr ? filter.asArray().map(f => src.context.lookup(f)) : [filter];
+  const parms = s.dict.lookup(Name.of('DecodeParms'));
+  const flate = Name.of('FlateDecode');
+  const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, k) => v === b[k]);
+  for (let i = 0; i < names.length; i++) {
+    if (names[i] !== flate) continue;
+    const prefix = src.context.obj({});
+    if (i > 0) {
+      prefix.set(Name.of('Filter'), src.context.obj(names.slice(0, i) as PDFName[]));
+      if (parms instanceof Arr) prefix.set(Name.of('DecodeParms'), src.context.obj(parms.asArray().slice(0, i)));
+    }
+    let input: Uint8Array, lenient: Uint8Array, strict: Uint8Array;
+    try {
+      input = decodePDFRawStream(Raw.of(prefix, s.contents, s.transform)).decode();
+      lenient = decodePDFRawStream(Raw.of(src.context.obj({ Filter: flate }), input)).decode();
+      strict = inflateSync(input.subarray(2));
+    } catch { return false; }
+    if (!equal(lenient, strict)) return false;
+  }
+  return true;
 }
 
 /** A content-stream name token (`/Fm#201`) as the dictionary key text it names (`Fm 1`). */

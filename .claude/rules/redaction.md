@@ -269,6 +269,29 @@ developer 2026-10-08: retarget redacted, drop removed, prune `/Kids`.
   the line feed dropped → exactly the 5 join cases (the differential calls the scan and cannot see `contentOf`); the 6.3
   ASCII85 rule back → the 2 P3 cases + the differential. Read and unchanged: `EvaluatorPreprocessor`, `ObjectLoader`, and
   the evaluator's `Do`/`Tf`/`gs`/`scn`/`sh`/`BDC` handling and error stops.
+- **The DECODER changed too, and the oracle could not see it — a stored deflate block cut short (dependency-upgrade-2026-11,
+  panel round 1 safety F1, P0, live from `bc1ecd6` until the fix; 2026-11-15).** pdf.js 6.5's `FlateStream.#readBlock`
+  appends only the bytes a stored block actually holds; pdf-lib 2.11's `FlateStream` (a port of pdf.js 6.3) sets
+  `bufferLength = end` before reading, so a block that declares more than the stream holds decodes with up to 65,535
+  trailing NULs. `contentOf` decodes with pdf-lib, so the mirror read NULs pdf.js never draws: an inline image's DCT or
+  `EI` end moved, and a removed page's form shipped in the export (the safety lens's A and C shapes) or a drawn form was
+  dropped (B). The load guard passes it — the copy carries the same bytes. Every oracle and differential fixture was an
+  UNFILTERED stream, so no test compared the two decoders. **Fix, fail-closed like `/Predictor` and `/F`/`/DP`:**
+  `flateStagesStrict` decodes each FlateDecode stage's input (the filters before it, decrypted the same way), and the
+  stage must inflate with `fflate.inflateSync` after the 2-byte header to exactly pdf-lib's bytes, else the stream is
+  unreadable and the prune refuses. Raw inflate, not `unzlibSync`, which cuts 4 bytes off for an Adler trailer most
+  producers' streams may lack. Measured on the 15-file corpus plus the 40 tracked fixtures: 3,204 Flate streams, 0 that
+  pdf-lib decodes and the strict inflate rejects or reads differently (`var/claude/depup-p0/strict-corpus.jsonl`) — no
+  new refusal on a known file. pdf.js 6.5 also turns a Huffman-block `FormatError` into partial output; pdf-lib throws
+  there, so that shape already refused. Guard: `tests/export/pruneFlateTruncated.test.ts` (15 — five refusals incl. one
+  behind ASCII85 and one past the 1024-byte `DecompressionStream` threshold; nine controls read exactly as pdf.js paints,
+  stored, Huffman with and without the trailer, behind ASCII85; and a differential: four members cut at every length and
+  three stored blocks declared 1–48 bytes long, refused or exported as pdf.js paints — 337 refused / 12 read, pinned).
+  **The cut-only differential was GREEN on the unfixed code**: cutting removes content, and the padding only bites when
+  the content is all there and the block claims more. Sabotage, each landed and restored with `cmp`: the check off →
+  the 5 refusals + the differential; only a first-position stage checked → exactly the ASCII85 case. Not covered: LZW,
+  ASCII85, ASCIIHex and RunLength parity rests on the safety lens's read that their 6.3 → 6.5 diff is empty;
+  `formHiddenText.ts` writes pdf-lib's decode into its throwaway copy, a fidelity bound that errs towards keeping text.
 
 **Round 4 (2026-10-08) — what a kept owner draws through, the way pdf.js resolves it:**
 - **An ExtGState `/Font [font size]`** sets the font like `Tf`; a Type3 font set that way with no resources of its own
