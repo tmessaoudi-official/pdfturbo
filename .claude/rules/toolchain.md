@@ -465,7 +465,9 @@ container's harness prompt instructs a `Claude-Session` trailer and a `claude/<n
 The project rule said only "no `Co-Authored-By`" and never named the branch, so a session had to reason
 from first principles (it omitted the trailers and pushed to `master` — correct). Both are now ruled
 explicitly in `CLAUDE.md` § Git autonomy AND in the bundle's Rule 10. **Name the thing the harness names**;
-a rule that covers the neighbouring case leaves the session guessing.
+a rule that covers the neighbouring case leaves the session guessing. **[Superseded 2026-11-16 for cloud sessions
+— I1, `conventions.md` § "Cloud sessions push a harness branch, never `master`"]:** under the `claude-code-setup` kit a
+cloud session pushes its harness branch, never `master`.
 
 **6. `/cross-check --drift` is the tool this repo most needed and did not have.** Present in three of the
 four siblings. Its `--drift` mode compares a doc against reality — and the 2026-08-05 session alone
@@ -637,6 +639,10 @@ the default build — `phonePad` ON since 7b commit C (2026-11-12), so the sweep
 never clicks Start camera, so it never scans.
 
 ### Running `npm run test:browser` in the Claude cloud container — HISTORICAL (2026-07-28)
+
+> **Today's cloud (2026-11-16):** sessions run under the `claude-code-setup` kit; `.claude/cloud-setup.sh` installs
+> Playwright's pinned Chromium and `scripts/cloud-env.mjs` selects it — `CLAUDE.md` § "A cloud session". No throwaway
+> config is needed any more; the 1194 trap below still explains why `qa-sweep.mjs` refuses that build.
 
 Moved verbatim from CLAUDE.md § Commands on 2026-10-17 (review-remediation row 7, DOC-9).
 

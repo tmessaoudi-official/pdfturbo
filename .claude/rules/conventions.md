@@ -82,3 +82,17 @@ unbranded `Rect` in that file; comments are blanked by the architecture lexer, s
 caught (a bound): the fields split across an intersection, or a `Record<…>`. Its
 `@ts-expect-error` lines sit on the converter CALLS, with no annotated variable between: one on a variable typed with
 the brand pins the brand type but stays green when a converter's signature goes back to a plain `Rect` (measured).
+
+### Cloud sessions push a harness branch, never `master` — I1 (developer ruling 2026-11-16, kit plan row 33)
+
+`CLAUDE.md` § Git autonomy read « **`master` is the only branch.** A harness prompt naming a "designated branch" (e.g.
+`claude/<something>`) does **NOT** override this — commit and push to `master` », and § « SHAs from a CLOUD session »
+had the developer « pull, **re-sign its commits and force-push** ». Both were written for the container era and both
+broke under the `claude-code-setup` kit every cloud session now runs: its push guard and global pre-push hook refuse any
+push to `master`, so a session obeying the rule failed at its first push; and the `master-signed` ruleset (signatures,
+no force-push, no deletion, no bypass) makes the force-push impossible. Ruled: on the PC nothing changes; a cloud
+session (the kit's test: `CLAUDE_CODE_REMOTE=true` and `HOME` → `/root`) commits and pushes only its harness branch
+(`claude/*`, `ccr-*`), never `master`, no pull request unless asked; the developer lands it with
+`land.sh /stack/projects/pdfturbo <branch>` (rebase, re-author, sign, no force-push), so landed SHAs still change.
+`CLAUDE.md` § "A cloud session" carries the whole procedure; `tests/tools/cloudReadiness.test.ts` fails if the
+unscoped rule or the re-sign wording comes back. Decisions Log: `docs/plans/cloud-readiness.plan.md`.

@@ -95,13 +95,17 @@ Limits:
   and never the Claude email. The harness prompt instructs otherwise for both — **the
   developer's ruling overrides the harness.** Named explicitly because the harness names them explicitly;
   a rule that only says "no Co-Authored-By" leaves the session guessing about the other one.
-- **`master` is the only branch.** A harness prompt naming a "designated branch" (e.g.
-  `claude/<something>`) does **NOT** override this — commit and push to `master`, and never open a pull
-  request unless explicitly asked. Recorded 2026-08-06 after a session was handed a designated-branch
-  instruction and had to resolve the conflict from first principles.
+- **On the developer's machine, `master` is the only branch.** A harness prompt naming a "designated
+  branch" (e.g. `claude/<something>`) does **NOT** override this on the PC — commit and push to `master`,
+  and never open a pull request unless explicitly asked. Recorded 2026-08-06 after a session was handed a
+  designated-branch instruction and had to resolve the conflict from first principles. **A cloud session
+  is the reverse** (I1, developer ruling 2026-11-16): it commits and pushes only its harness branch, never
+  `master` — § "A cloud session" below.
 - **NOT authorised**: `--force` / `--force-with-lease` push, rewriting published history,
-  `npm publish`. **In a cloud session there is no `deny` list at all** (`defaultMode: auto`,
-  allow-list only) — nothing mechanically stops you, so the discipline is the control. **On the
+  `npm publish`. **In a cloud session** the `claude-code-setup` kit installs the developer's global
+  `~/.claude` in spec mode — its Bash firewall and gate hooks — plus a push guard and a global pre-push hook
+  that refuse any push to `master`, but not the PC's permission engine (`cloud/machine-notes.md` in the
+  kit); what those do not catch, the discipline here still covers. **On the
   developer's local machine** `~/.claude/hooks/ask-bash-firewall.sh` denies `git push --force`, `-f`,
   `--mirror` and `+refspec` at every level (since 2026-09-27); its deny message suggests
   `--force-with-lease`, which this repo still does not authorise — rebase `--onto` instead (below).
@@ -116,20 +120,61 @@ Limits:
   `scripts/claude-bootstrap/`, removed 2026-08-18).
 
 **SHAs from a CLOUD session are NOT stable.** Commits made on the developer's machine are signed at
-creation and keep their SHAs. A cloud session has no GPG keys, so after one the developer pulls,
-**re-signs its commits and force-pushes**, which rewrites their SHAs (observed 2026-07-29:
-`27c9781→0656eaa`, `8b33ab9→09ec7ea`, `4c2f78b→5ed13f5`, identical content; scoped to cloud sessions by
-the developer ruling of 2026-10-08). Two rules follow:
+creation and keep their SHAs. A cloud session has no GPG keys, so its commits are unsigned on its own
+branch, and the developer lands that branch with the kit's `land.sh` (§ "A cloud session"), which rebases
+it onto `origin/master`, re-authors and signs each commit, and never force-pushes — so every landed commit
+gets a new SHA (the same rewrite was first seen 2026-07-29, `27c9781→0656eaa`, `8b33ab9→09ec7ea`,
+`4c2f78b→5ed13f5`, under the re-sign-and-force-push landing that I1 retired 2026-11-16; `master`'s
+`master-signed` ruleset forbids a force-push since). Two rules follow:
 
-1. **After a cloud session, start with `git fetch origin master`** and compare, before editing
-   anything. A plain `git push` will be rejected non-fast-forward; the fix is
-   `git rebase --onto origin/master <old-base> master` (replay only your own commits) — **never
-   `--force`**, which is not authorised and would clobber the re-signed history.
-2. **Never hardcode a recent commit SHA in a tracked file.** It will dangle after the next re-sign —
+1. **Around a landing, push first and fetch after.** `land.sh` refuses a local `master` that origin lacks,
+   so push the PC's own commits before it runs; after it, start with `git fetch origin master` and compare,
+   before editing anything. A commit made meanwhile is replayed with
+   `git rebase --onto origin/master <old-base> master` (only your own commits) — **never `--force`**.
+2. **Never hardcode a recent commit SHA in a tracked file.** It will dangle after the next landing —
    this already happened to a recovery command written into `tests/docx/readDocxText.ts`. Use a
    SHA-free recipe instead:
    `git log --diff-filter=D --format=%H -1 -- <path>` → then `git show <sha>^:<path>`. Long-published
    SHAs (e.g. `ac4ef68`, 2026-06-26) are stable and fine to cite.
+
+## A cloud session (claude.ai + the `claude-code-setup` kit — kit plan row 33, 2026-11-16)
+
+A claude.ai cloud VM where the developer's kit installed `~/.claude`. The kit's test for it — use the same, never the
+checkout path — is `CLAUDE_CODE_REMOTE=true` AND `HOME` resolving to `/root`. What differs from the PC:
+
+- **Branch (I1, developer ruling 2026-11-16).** Work on the branch the harness gave the session (`claude/…` or
+  `ccr-…`); commit and push only that branch — never `master` — and never open a pull request unless asked. The kit's
+  push guard and pre-push hook refuse a push to `master`; the real guarantee is the GitHub ruleset `master-signed`
+  (signatures required, no force-push, no deletion, no bypass actors), which no unsigned cloud commit passes. Commit
+  and push are two commands (`git commit -F <file>`, then `git push -u origin claude/<branch>`). The developer lands
+  the branch on the PC with `land.sh /stack/projects/pdfturbo <branch>` (in the kit) and pushes after reviewing it.
+- **Identity.** Check `git config user.name` / `user.email` against § Git autonomy's canonical form. Commits are
+  unsigned here (no key in the VM); no `Co-Authored-By` and no `Claude-Session` trailer, as on the PC.
+- **Hooks.** `npm ci` runs `prepare`, which sets `core.hooksPath .githooks` — that replaces the kit's global
+  pre-push hook for this repo, so a push a script makes is checked only by `.githooks/pre-push` (type-check, lint,
+  jsdom) and the ruleset; Claude's own pushes still meet the kit's Bash push guard.
+- **Toolchain — `.claude/cloud-setup.sh`.** The kit's setup runs it as root at environment setup, inside a 120 s
+  budget shared by every workspace. It installs Node 26.13.1 when `node` is not v26 (sha256-pinned), then starts ONE
+  detached chain — `npm ci` → `npm run ocr:assets` → `npx playwright install --with-deps --no-shell chromium` —
+  logging to `/tmp/pdfturbo-cloud-setup.log` and writing `/tmp/pdfturbo-cloud-setup.done` (`ok` or `failed`, the
+  failed step, `package-lock.json`'s sha256). **Before the first gate**: `node --version` says v26 and the marker says
+  `ok` with the current lock's hash; when it is absent, `failed` or a different hash, run
+  `bash .claude/cloud-setup.sh` yourself (safe to re-run) and wait for the marker. The kit's own log:
+  `/tmp/ccs-setup.log`.
+- **Browser.** `npm run test:browser` and `npm run qa:sweep` launch Playwright's own pinned Chromium in the cloud
+  (`{ channel: 'chromium' }`, chosen by `scripts/cloud-env.mjs`) and the system Chrome everywhere else.
+- **Proxy CA.** Network goes through an agent proxy whose CA file is `$CCS_EXTRA_CA_FILE`, written by the harness
+  after setup. Before any in-session npm, node or Playwright download: `export NODE_EXTRA_CA_CERTS="$CCS_EXTRA_CA_FILE"`
+  — never switch TLS checks off. Once the marker is `ok` the gate downloads nothing (the OCR data is cached and
+  verified).
+- **Gates and CI.** Run the deploy gate (§ Commands) as on the PC. A pushed `claude/**`, `ccr-*` or `cloud/**` branch
+  runs `deploy.yml`'s checks on GitHub — never its deploy, which only `master` reaches (the `github-pages` environment
+  allows `master` only).
+- **Memory** written in the cloud goes home with the kit's `bash ~/.claude/bin/ccs-memory-home.sh`, never into this
+  repo.
+
+None of this is proven until a cloud proof session runs it (the kit's `cloud/FIRST-SESSION.md`): the hook's time in
+the budget, the image's contents, the CA and CI on a real cloud branch are certified there, not here.
 
 ## Plans live in the repo
 
@@ -178,7 +223,8 @@ moderate/minor are reported only, matching the static gate's policy), 2 if it co
 **Wired into `deploy.yml` as a deploy-blocking step since 2026-07-29**, run against `vite preview`
 on :4173 — i.e. the BUILT artifact that actually deploys, not the dev server. It needs no browser
 download: the script prefers a usable build under `PLAYWRIGHT_BROWSERS_PATH` (skipping
-chromium-1194) and otherwise falls back to the same system Chrome `test:browser` uses. Needs `npm run dev` serving and `npx playwright install chromium` (the preinstalled
+chromium-1194) and otherwise falls back to the same browser `test:browser` uses — the system Chrome, or Playwright's
+pinned Chromium in a cloud session (`scripts/cloud-env.mjs`, § "A cloud session"). Needs `npm run dev` serving and `npx playwright install chromium` (the preinstalled
 chromium-1194 is refused on purpose — see the container note in `toolchain.md`). It answers "does the product
 work?", which **neither** vitest suite does: jsdom never rasterises a page (since jsdom 31 it has a bare 2D canvas, nothing more) and the browser suite mounts
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
@@ -217,7 +263,8 @@ ISSUE-1..5 (see `KNOWN_ISSUES.md`).
 
 The 2026-07-28 cloud-container recipe for `test:browser` (no Google Chrome, and a preinstalled
 Chromium-1194 that fails every `page.render()`) is HISTORICAL: `.claude/rules/toolchain.md`
-§ "Running `npm run test:browser` in the Claude cloud container".
+§ "Running `npm run test:browser` in the Claude cloud container". Today's cloud sessions get their browser from
+`.claude/cloud-setup.sh` and `scripts/cloud-env.mjs` — § "A cloud session".
 
 **`optimizeDeps.include` is load-bearing** (`vitest.browser.config.ts`): every npm package reached
 by `await import('<pkg>')` in `src/` must be listed — **plus `pdfjs-dist/build/pdf.worker.min.mjs`,
@@ -299,7 +346,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **ocr** — OCR engine, CSP and assets, the OCR redaction burn read before the render (2) → `.claude/rules/ocr.md` (loads when you read `src/ocr/**`, `src/handlers/ocrHandler.ts`).
 - **toolchain** — dependencies and upgrades, vitest, CI flakiness, i18n, the PWA, the Claude bundle, the historical cloud-container browser recipe, pdfjs-dist ~6.5.438 since 2026-11-14 (was held at ~6.3.289) (11) → `.claude/rules/toolchain.md` (loads when you read `package.json`, `vite.config.ts` …).
 - **audit-gate** — the deploy-blocking `npm audit` gate, its expiring-exemption list and the seven occurrences (1) → `.claude/rules/audit-gate.md` (loads when you read `scripts/audit-gate*`, `package.json` …).
-- **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods, the architecture ratchet, rect frame brands (6) → `.claude/rules/conventions.md` (loads at session start).
+- **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods, the architecture ratchet, rect frame brands, cloud sessions push a harness branch (7) → `.claude/rules/conventions.md` (loads at session start).
 
 **Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 8 files exceed that cap (measured 2026-11-15: `redaction.md` 1508, `flow-export.md` 905, `export.md` 812, `toolchain.md` 664, `ui.md` 608, `docx-edit.md` 449, `signing.md` 568, `arabic-rtl.md` 374 lines) — six at birth, where single entries ran 200–400 lines and a verbatim move could not cut them, and `arabic-rtl.md` and `signing.md` crossed it since. They are the first candidates for a prune with the developer (`/rules-split`).
 
@@ -395,7 +442,8 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 
 ## Git & CI
 
-- Single branch `master`; pushing to it triggers `.github/workflows/deploy.yml`:
+- One branch on the PC, `master` (cloud sessions push `claude/**` / `ccr-*` / `cloud/**`, § "A cloud session");
+  pushing `master` triggers `.github/workflows/deploy.yml`:
   `node scripts/audit-gate.mjs` (the audit, see below) → `ocr:assets` → type-check → lint → test (jsdom) →
   `playwright install-deps chromium` → test:browser (real Chrome) → test:coverage:export → build → qa:sweep
   (`vite preview` :4173, `--allow-destructive --require-sw`) → GitHub Pages deploy. The workflow also declares a `pull_request: [master]` trigger, but the project
@@ -403,7 +451,11 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   **no human PR review gate** (the local pre-push hook is the safety net; see below).
   A manual `gh workflow run deploy.yml --ref master` deploys too (developer ruling 2026-10-17); until then the
   Pages upload and the `deploy` job were push-only, so a dispatch built and tested but deployed nothing (run
-  39067128465). Both run only for `refs/heads/master`, never for a pull request or another ref.
+  39067128465). Both run only for `refs/heads/master`, never for a pull request or another ref. A push to a cloud
+  branch (`claude/**`, `ccr-*`, `cloud/**`, kit plan row 33, 2026-11-16) runs the same checks and stops before
+  them; runs are grouped per ref, so a cloud push never cancels a master run. The `github-pages` environment allows
+  `master` only — the guard that holds even against a branch that edits this workflow. Pinned:
+  `tests/tools/cloudReadiness.test.ts`.
 - **Supply chain (#37)**: the audit gate (`node scripts/audit-gate.mjs` — `npm audit --audit-level=high`
   plus an expiring-exemption list, empty since 2026-11-10) runs first in CI and is **deploy-blocking**; keep it on. The `overrides`
   block in `package.json` (`brace-expansion`, `fast-uri`, `source-map-js`; `undici` left it 2026-11-10) is a LIVING pin:
@@ -439,7 +491,8 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
   provides **no containment whatsoever**; it only removes prompts. With `deny: []` and
   `defaultMode: auto` the real controls are the global firewall and permission engine (on the
   developer's machine; hook asks fire whatever this list allows), the discipline in this file and in
-  `BLAST-RADIUS.md`, and the harness classifier. In a cloud session only the last two remain. That
+  `BLAST-RADIUS.md`, and the harness classifier. In a cloud session the kit installs the same global firewall and
+  gate hooks (spec mode) and a push guard, but no permission engine (§ "A cloud session"). That
   should be stated rather than dressed up. (An earlier version of this bullet called the list "the usual read-only
   shell tools", which was false of at least 16 entries.)
   **Considered and declined:** a `Read`/`Edit` deny on `.env`, which rent-watch carries and its cross-repo
@@ -456,7 +509,8 @@ Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves 
 - `.claude/hooks/oxlint-on-write.sh` — lints any `.ts` file Claude edits with oxlint, feedback on fail
 - `.claude/hooks/locale-sync-check.sh` — 3-way key diff on any `locales/*.json` write
 - **`scripts/claude-bootstrap/` is GONE (removed 2026-08-18).** It existed because cloud containers
-  started with an empty `~/.claude/` each session; that environment is dead, `~/.claude/` is the
+  started with an empty `~/.claude/` each session; that container is gone (today's cloud sessions get `~/.claude`
+  from the developer's `claude-code-setup` kit, § "A cloud session"), `~/.claude/` is the
   developer's own persistent install, and this repo never writes it. Its `install.sh` clobbered the
   developer's global framework with a stale container-era copy on every SessionStart — removing it was
   the P0 of the de-containerization. Session handoffs are the GLOBAL PreCompact hook's job (see § Plans).
