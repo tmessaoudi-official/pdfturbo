@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
+import { browserLaunchOptions } from './scripts/cloud-env.mjs';
 
 // Real-browser regression harness (Stage 0 of the 2026-06-14 QA-fix plan).
 //
@@ -10,7 +11,9 @@ import { playwright } from '@vitest/browser-playwright';
 //
 // This config drives a real Chromium (the system Google Chrome via Playwright's
 // `channel: 'chrome'`, so no browser binary download is needed) against
-// `*.browser.test.ts` files under tests/browser/.
+// `*.browser.test.ts` files under tests/browser/. In a claude.ai cloud session
+// (no Google Chrome there) it launches Playwright's own pinned Chromium instead,
+// installed by .claude/cloud-setup.sh — scripts/cloud-env.mjs decides.
 //
 // Run with: npm run test:browser
 export default defineConfig({
@@ -98,7 +101,8 @@ export default defineConfig({
       // the instance. `channel: 'chrome'` selects the system Google Chrome and
       // avoids the binary download (Playwright's chrome-headless-shell isn't
       // packaged for ubuntu 26.04).
-      provider: playwright({ launchOptions: { channel: 'chrome' } }),
+      // { channel: 'chrome' } on the PC and in CI; { channel: 'chromium' } in a cloud session (cloud-env.mjs).
+      provider: playwright({ launchOptions: browserLaunchOptions(process.env) }),
       headless: true,
       screenshotFailures: false,
       instances: [{ browser: 'chromium' }],

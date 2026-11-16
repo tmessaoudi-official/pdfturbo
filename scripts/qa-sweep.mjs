@@ -24,6 +24,7 @@
  */
 import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { browserLaunchOptions } from './cloud-env.mjs';
 
 // ── Browser resolution — must work in BOTH environments ──────────────────────────
 // Returns Playwright launch options, because the two places this runs get a browser differently:
@@ -32,12 +33,15 @@ import { join, resolve } from 'node:path';
 //     `playwright install-deps chromium` and the browser suite uses `channel: 'chrome'` against the
 //     runner's preinstalled Google Chrome. So that is the fallback here too, which keeps the sweep
 //     and `npm run test:browser` on the same browser.
-//   Claude cloud container: no Google Chrome at all, so `channel: 'chrome'` cannot work. It has
-//     /opt/pw-browsers instead — but the PREINSTALLED chromium-1194 lacks
+//   claude.ai cloud session (the claude-code-setup kit, CLAUDE.md § "A cloud session"): no Google
+//     Chrome, so `channel: 'chrome'` cannot work. .claude/cloud-setup.sh installs Playwright's own
+//     pinned Chromium, which browserLaunchOptions() (scripts/cloud-env.mjs) selects there with
+//     `channel: 'chromium'` — the same choice vitest.browser.config.ts makes. The 2026-07-28
+//     container also had /opt/pw-browsers with a PREINSTALLED chromium-1194 that lacks
 //     Map.prototype.getOrInsertComputed, which pdfjs-dist v6 calls on every page render, so every
 //     render() throws and it reads as a product bug. Refuse 1194 rather than emit fake failures.
 //
-// Order: explicit override → a usable build under the browsers dir → system Chrome.
+// Order: explicit override → a usable build under the browsers dir → browserLaunchOptions().
 const PW_ROOT = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
 function resolveBrowser() {
   if (process.env.QA_SWEEP_CHROME) return { executablePath: process.env.QA_SWEEP_CHROME };
@@ -57,8 +61,8 @@ function resolveBrowser() {
       );
     }
   }
-  // Fall back to the system Google Chrome, exactly as vitest.browser.config.ts does.
-  return { channel: 'chrome' };
+  // Fall back exactly as vitest.browser.config.ts does: system Chrome, or the pinned Chromium in the cloud.
+  return browserLaunchOptions(process.env);
 }
 
 // ── args ─────────────────────────────────────────────────────────────────────────
