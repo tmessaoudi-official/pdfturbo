@@ -90,3 +90,4 @@ environment cache catching a detached chain mid-run, CI on a real cloud branch â
 - [2026-11-16 13:20] AGREED: Plan approved as written (go, 2026-11-16)
 - [2026-11-16 13:20] AGREED: Clean-tree exception: the developer's own .claude/settings.json edit stays dirty and untouched; every commit is by pathspec
 - [2026-11-16 13:20] AGREED: deploy.yml: only the cloud-branch triggers and a per-ref concurrency group; the pages/id-token permission move is a named follow-up, not done now
+- [2026-11-16 13:58] AGREED: Keep this plan live in docs/plans/ after row 33 landed (1d4146f): it tracks the two follow-ups (perms move to the deploy job; the cloud proof session) and conventions.md cites its path; archive it when the proof session closes.
