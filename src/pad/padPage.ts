@@ -5,6 +5,7 @@ import { strokesToCanvas } from '../utils/signaturePng';
 import { t as i18nT, changeLanguage } from '../utils/i18n';
 import { isWhite, padInkFromHash, LINE_WIDTH_MAX, LINE_WIDTH_MIN, type PadInk } from '../utils/signatureInk';
 import { COLOR_PRESETS, getRecentColors, pushRecentColor } from '../utils/recentColors';
+import { browserFullscreen, createFullscreenSession, type FullscreenApi } from '../utils/fullscreenSession';
 
 /**
  * The phone signature pad page (pad.html, phone-signature-pad plan step 4). The signer draws with a finger, taps Done,
@@ -39,29 +40,7 @@ export interface PadPageOptions {
   viewport?: () => { width: number; height: number };
 }
 
-export interface FullscreenApi {
-  /** The page may ask for element fullscreen (false on iPhone Safari: the CSS fill alone). */
-  enabled(): boolean;
-  request(): Promise<unknown>;
-  exit(): Promise<unknown>;
-  /** An element is fullscreen now. */
-  active(): boolean;
-  lockLandscape(): Promise<unknown>;
-  unlock(): void;
-}
-
-type LockableOrientation = ScreenOrientation & { lock?: (o: string) => Promise<void>; unlock?: () => void };
-
-/** The browser's Fullscreen API on the whole page, and the screen orientation lock where the browser has one. */
-export const browserFullscreen: FullscreenApi = {
-  enabled: () => document.fullscreenEnabled === true && typeof document.documentElement.requestFullscreen === 'function',
-  request: () => document.documentElement.requestFullscreen({ navigationUI: 'hide' }),
-  exit: () => document.exitFullscreen(),
-  // `fullscreenElement` does not exist where the API does not (iPhone Safari): undefined is not fullscreen either.
-  active: () => Boolean(document.fullscreenElement),
-  lockLandscape: () => (screen.orientation as LockableOrientation | undefined)?.lock?.('landscape') ?? Promise.resolve(),
-  unlock: () => (screen.orientation as LockableOrientation | undefined)?.unlock?.(),
-};
+export { browserFullscreen, type FullscreenApi } from '../utils/fullscreenSession';
 
 export interface PadPageHandle {
   pad: SignaturePad;
@@ -237,13 +216,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
   widthDown.addEventListener('click', () => step(-1));
   widthUp.addEventListener('click', () => step(1));
 
-  // Whether THIS stay in full mode asked the browser for fullscreen: only then is there anything to undo on leaving
-  // (the CSS-only path — iPhone Safari — never calls unlock or exit).
-  let requested = false;
-  // Whether a landscape lock RESOLVED during this stay (or, in browserFullscreen, was absent — its unlock is then absent
-  // too): unlock() follows only that, never a refused lock — Done calls leaveFull before the QR shows, and unlock() after
-  // a refused lock was measured only on desktop Chrome (no throw), never on Safari, which refuses lock().
-  let locked = false;
+  const session = createFullscreenSession(fs, () => full);
   const enterFull = () => {
     if (full) return;
     full = true;
@@ -253,21 +226,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     exitFs.focus();
     window.scrollTo(0, 0); // the normal page is taller than a landscape phone: start at the top
     layout();
-    if (!fs.enabled()) return; // iPhone Safari: the CSS fill alone
-    requested = true;
-    fs.request()
-      .then(() => {
-        // Read the state AT the grant: left meanwhile → give the fullscreen back; in full mode (still, or entered
-        // again before this grant) → lock. Never lock under the normal page.
-        if (!full) return fs.exit();
-        return fs.lockLandscape().then(() => {
-          if (full) locked = true;
-          else fs.unlock(); // left while the lock was pending: release it now
-        });
-      })
-      // Refused or unsupported (measured in Chrome: requestFullscreen without a user gesture rejects, and lock() on a
-      // desktop rejects NotSupportedError — pad-fullscreen.browser.test.ts): the CSS fill stays, which is the base.
-      .catch(() => {});
+    session.begin();
   };
   const leaveFull = () => {
     if (!full) return;
@@ -279,11 +238,7 @@ export function mountPadPage(root: HTMLElement, opts: PadPageOptions = {}): PadP
     rotateHint.hidden = true;
     if (hadFocus) enterFs.focus();
     layout(); // before the platform calls: the page is back to normal whatever they do
-    if (!requested) return;
-    requested = false;
-    if (locked) fs.unlock();
-    locked = false;
-    if (fs.active()) void fs.exit(); // the check and the call share one task: the browser cannot leave in between
+    session.end();
   };
   enterFs.addEventListener('click', enterFull);
   exitFs.addEventListener('click', leaveFull);

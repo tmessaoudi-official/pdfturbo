@@ -604,7 +604,7 @@ async function main() {
         },
       },
       {
-        name: 'signature: draw → clear → cancel',
+        name: 'signature: draw → full screen → exit → clear → cancel',
         // R4-3 (ruled 2026-11-12 22:57). With the phonePad flag ON the crawl reaches the ✍ modal's Sign on phone and
         // Import image, and the unwind after that leaf presses Escape, which CLOSES the modal — so the crawl finds
         // Clear and Cancel hidden (panel round 4 K12, `var/claude/r4fix/k12-trace.mjs`). This scenario reaches both on
@@ -650,6 +650,25 @@ async function main() {
           await pg.mouse.up();
           // The control for the Clear check: without ink first, "the pad is empty after Clear" proves nothing.
           if (!await padInk(true)) throw new Error('a stroke on the signature pad drew nothing');
+
+          // Row 11 PC half (2026-11-16): the crawl finds ⛶ hidden (its unwind's Escape closed the dialog), so full mode
+          // is reached here. ⛶ must make the pad wider with the drawing still on it; Exit must bring back the normal
+          // width with the drawing, the dialog open.
+          const padWidth = () => pg.$eval('#signatureCanvas', (c) => c.width);
+          const normalWidth = await padWidth();
+          await control('sigFullBtn', async () => {
+            const full = await pg.waitForFunction((w) => document.getElementById('signatureModal').classList.contains('sig-full')
+              && document.getElementById('signatureCanvas').width > w, normalWidth, { timeout: 5_000 }).then(() => true).catch(() => false);
+            if (!full) return `full screen did not widen the pad (still ${await padWidth()} px)`;
+            return await padInk(true) ? null : 'the drawing was lost on entering full screen';
+          });
+          await control('sigExitFullBtn', async () => {
+            const back = await pg.waitForFunction((w) => !document.getElementById('signatureModal').classList.contains('sig-full')
+              && document.getElementById('signatureCanvas').width === w, normalWidth, { timeout: 5_000 }).then(() => true).catch(() => false);
+            if (!back) return `Exit did not restore the ${normalWidth} px pad (now ${await padWidth()} px)`;
+            if (!await modalOpen()) return 'Exit full screen closed the signature box';
+            return await padInk(true) ? null : 'the drawing was lost on leaving full screen';
+          });
 
           await control('clearSignature', async () => {
             if (!await padInk(false)) return 'the pad still holds ink after Clear';

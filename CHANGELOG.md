@@ -9,6 +9,12 @@ All notable changes to PDFturbo are documented here. This project follows
 - The signature dialog's colour box has the editor's colour swatches beside it: the preset colours (white left
   out: it does not show on paper), your recent colours, and a custom colour. A swatch sets the colour of your next
   stroke and of the phone link, and the current colour is marked.
+- The signature dialog has a **⛶ Full screen** button, as the phone pad does: the pad takes the whole screen with only
+  Clear, Exit full screen and Save, and comes back to its normal size with the drawing unchanged (an imported image
+  and the line width included). Esc leaves full screen without closing the dialog; Save leaves it first.
+
+### Fixed
+- Tab inside a dialog no longer counts controls hidden inside a hidden block, so focus wraps where it should.
 
 ## [1.1.0] — 2026-11-16
 

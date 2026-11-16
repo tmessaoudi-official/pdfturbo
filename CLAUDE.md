@@ -184,7 +184,7 @@ work?", which **neither** vitest suite does: jsdom never rasterises a page (sinc
 components rather than booting the app. Two non-obvious constraints are baked into the driver:
 axe-core is injected with `page.evaluate` because `script-src 'self'` blocks `addScriptTag`, and the
 UI crawl is over **disclosure depth** (only 8 of 141 buttons were visible on a freshly loaded document when counted;
-the sweep's DOM total is 144 since the phone pad went on, 2026-11-12)
+the sweep's DOM total is 146 since row 11's PC full screen, 2026-11-16 — 144 from the phone pad, 2026-11-12)
 rather than links, since the app is a single page. Baseline (default flags): 142 checks / 98 pass / 0 fail / 0 warn in ~1m20s
 — `deploy.yml` records 143 / 97 / 0 for a default-flag run; neither log was kept, so read the report's own summary line. **CI runs it with
 `--allow-destructive`** — correct there because the flag protects a developer's own open document,
@@ -301,7 +301,7 @@ locales/                    # en.json / fr.json / ar.json — MUST stay key-iden
 - **audit-gate** — the deploy-blocking `npm audit` gate, its expiring-exemption list and the seven occurrences (1) → `.claude/rules/audit-gate.md` (loads when you read `scripts/audit-gate*`, `package.json` …).
 - **conventions** — repo-wide conventions: base path, jsdom tests, the one PDF write library, private methods, the architecture ratchet, rect frame brands (6) → `.claude/rules/conventions.md` (loads at session start).
 
-**Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 8 files exceed that cap (measured 2026-11-15: `redaction.md` 1508, `flow-export.md` 905, `export.md` 812, `toolchain.md` 664, `ui.md` 608, `docx-edit.md` 449, `signing.md` 512, `arabic-rtl.md` 374 lines) — six at birth, where single entries ran 200–400 lines and a verbatim move could not cut them, and `arabic-rtl.md` and `signing.md` crossed it since. They are the first candidates for a prune with the developer (`/rules-split`).
+**Intake rule:** a new entry goes into the matching `.claude/rules/<area>.md`, not here; a path-scoped rules file past ~300 lines is split again or pruned (~150 for an unscoped one). Cite by section heading plus a quoted phrase, never a line number. 8 files exceed that cap (measured 2026-11-15: `redaction.md` 1508, `flow-export.md` 905, `export.md` 812, `toolchain.md` 664, `ui.md` 608, `docx-edit.md` 449, `signing.md` 568, `arabic-rtl.md` 374 lines) — six at birth, where single entries ran 200–400 lines and a verbatim move could not cut them, and `arabic-rtl.md` and `signing.md` crossed it since. They are the first candidates for a prune with the developer (`/rules-split`).
 
 Where each entry went (a `CLAUDE.md § "<heading>"` citation elsewhere resolves through this list; one that names a bold paragraph or paraphrases a heading resolves by grepping the phrase in `.claude/rules/`). The list maps entries MOVED out of CLAUDE.md only; an entry written straight into a rules file after the split is found by grepping its heading:
 

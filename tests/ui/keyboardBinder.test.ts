@@ -8,7 +8,10 @@ function modal(active: boolean): HTMLElement {
   return d;
 }
 
-function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'watermark' | 'code' | 'bates' | 'sign' | 'signers' | 'ocr' | 'compress' | 'textOptions', boolean>> = {}) {
+function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'sigFull' | 'watermark' | 'code' | 'bates' | 'sign' | 'signers' | 'ocr' | 'compress' | 'textOptions', boolean>> = {}) {
+  const sigExitFullBtn = document.createElement('button');
+  sigExitFullBtn.hidden = !active.sigFull; // shown only while the ✍ dialog is full screen (row 11 PC half)
+  sigExitFullBtn.click = vi.fn();
   const findBar = document.createElement('div');
   findBar.style.display = 'none';
   const app = {
@@ -16,6 +19,7 @@ function makeApp(active: Partial<Record<'settings' | 'help' | 'signature' | 'wat
       settingsPanel: modal(!!active.settings),
       helpModal: modal(!!active.help),
       signatureModal: modal(!!active.signature),
+      sigExitFullBtn,
       watermarkModal: modal(!!active.watermark),
       compressModal: modal(!!active.compress),
       codeModal: modal(!!active.code),
@@ -67,6 +71,24 @@ function pressEscape(): void {
 
 describe('keyboardBinder Escape-to-close (#61b a11y)', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
+
+  // Row 11 PC half (plan § Row 11, PC half): Esc in the ✍ dialog's full screen leaves full screen and NEVER closes the
+  // dialog — closing would throw the signature away.
+  it('Escape in the ✍ dialog full screen clicks Exit full screen and does not close the dialog', () => {
+    const app = makeApp({ signature: true, sigFull: true });
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(app.ui.sigExitFullBtn.click).toHaveBeenCalledTimes(1);
+    expect(app.closeSignatureModal).not.toHaveBeenCalled();
+  });
+
+  it('the control: Escape in the normal ✍ dialog still closes it', () => {
+    const app = makeApp({ signature: true });
+    bindKeyboardEvents(app);
+    pressEscape();
+    expect(app.ui.sigExitFullBtn.click).not.toHaveBeenCalled();
+    expect(app.closeSignatureModal).toHaveBeenCalledTimes(1);
+  });
 
   it('closes the Bates modal on Escape when it is active', () => {
     const app = makeApp({ bates: true });

@@ -16,6 +16,9 @@ export interface AppDOMRefs {
   sigLineWidthInput: HTMLInputElement;
   sigColorInput: HTMLInputElement;
   sigSwatchRow: HTMLElement;
+  sigCanvasBox: HTMLElement;
+  sigFullBtn: HTMLButtonElement;
+  sigExitFullBtn: HTMLButtonElement;
   zoomOutBtn: HTMLButtonElement;
   zoomInBtn: HTMLButtonElement;
   zoomDisplay: HTMLElement;

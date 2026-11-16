@@ -252,7 +252,8 @@ the new count. The crawl did not change; read the line's own figure, never this 
 **AMENDED 2026-11-13 (phone-signature-pad R4-3) — one scenario reaches two controls the crawl cannot.** With `phonePad`
 ON the crawl opens the ✍ modal's Sign on phone and Import image, and the unwind's Escape then CLOSES the modal, so
 `clearSignature` and `cancelSignature` are found hidden (panel round 4 K12). The scenario `signature: draw → clear →
-cancel` reaches both on purpose and records each as its own control line through `control()`, so they count in
+cancel` (renamed `signature: draw → full screen → exit → clear → cancel` on 2026-11-16, when row 11's PC half
+added ⛶ and Exit full screen, which the crawl finds hidden the same way) reaches both on purpose and records each as its own control line through `control()`, so they count in
 `Exercised N`; it draws first, so "the pad is empty after Clear" has a control. Measured: `var/claude/r4-3/sweep-ci2.log`
 PASS clearSignature / cancelSignature, 59 of 144. **Removing it would leave the gate green at 57 of 144**, so its wiring
 is pinned (row 8, panel round 5 K3): `tests/infra/qaSweepSignatureScenario.test.ts` (3) — the scenario is an ELEMENT of

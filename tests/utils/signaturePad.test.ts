@@ -293,6 +293,27 @@ describe('SignaturePad — logical size (setSize, phone-signature-pad step 4)', 
   });
 });
 
+describe('SignaturePad — resetSize (row 11 PC half: the ✍ dialog after full screen)', () => {
+  it('drops the logical size and the inline px: the buffer is the size again, as openModal sets it', () => {
+    const { pad, canvas, stroke, ctx } = makePad();
+    stroke([[5, 5], [50, 50]]);
+    pad.setSize(1000, 400, 1);
+    pad.setSize(500, 200, 1);
+    const strokes = pad.getStrokes();
+    pad.resetSize();
+    expect([canvas.style.width, canvas.style.height]).toEqual(['', '']);
+    expect(pad.getStrokes()).toEqual(strokes); // the drawing is kept
+    canvas.width = 640; // a later openModal measuring a wider box
+    canvas.height = 256;
+    const img = document.createElement('canvas');
+    img.width = 100;
+    img.height = 100;
+    const drawImage = vi.spyOn(ctx, 'drawImage');
+    pad.drawImage(img);
+    expect(drawImage).toHaveBeenCalledWith(img, 192, 0, 256, 256); // the 640x256 buffer, not a stale 500x200
+  });
+});
+
 describe('SignaturePad — drawImage (Import image, phone-signature-pad step 5a)', () => {
   it('clears the pad, then fits the image inside the logical size (contain, centred) and drops the strokes', () => {
     const { pad, stroke, ctx } = makePad();
@@ -330,6 +351,58 @@ describe('SignaturePad — drawImage (Import image, phone-signature-pad step 5a)
     ictx.fillRect(0, 0, 10, 4);
     pad.drawImage(img);
     expect(pad.isEmpty()).toBe(false);
+  });
+
+  // Row 11 PC half: the ✍ dialog's full screen re-sizes the pad, and a size change wipes the buffer — an imported image
+  // was pixels only, so it vanished on entering full screen. The pad now keeps the image and repaints it (contain), under
+  // the strokes, until something replaces the drawing.
+  const solid = () => {
+    const img = document.createElement('canvas');
+    img.width = 10;
+    img.height = 4;
+    const ictx = img.getContext('2d') as CanvasRenderingContext2D;
+    ictx.fillStyle = '#000';
+    ictx.fillRect(0, 0, 10, 4);
+    return img;
+  };
+
+  it('row 11: the image survives setSize, re-fitted to the new size, and the strokes are painted over it', () => {
+    const { pad, ctx, stroke } = makePad();
+    const img = solid();
+    pad.drawImage(img);
+    stroke([[5, 5], [50, 50]]); // a stroke drawn over the imported image
+    const order: string[] = [];
+    const drawImage = vi.spyOn(ctx, 'drawImage').mockImplementation(function (this: CanvasRenderingContext2D) { order.push('image'); });
+    const lineTo = vi.spyOn(ctx, 'lineTo').mockImplementation(() => { order.push('stroke'); });
+    pad.setSize(1000, 400, 1);
+    expect(drawImage).toHaveBeenCalledWith(img, 0, 0, 1000, 400); // 10x4 into 1000x400
+    expect(order[0]).toBe('image');
+    expect(order).toContain('stroke');
+    drawImage.mockRestore();
+    lineTo.mockRestore();
+    pad.setSize(500, 200, 1);
+    expect(pad.isEmpty()).toBe(false);
+  });
+
+  it('row 11: repaint() keeps the image', () => {
+    const { pad, ctx } = makePad();
+    const img = solid();
+    pad.drawImage(img);
+    const drawImage = vi.spyOn(ctx, 'drawImage');
+    pad.repaint();
+    expect(drawImage).toHaveBeenCalledWith(img, 0, 0, 500, 200);
+  });
+
+  it('row 11: clear() and a replay forget the image — a later size change does not bring it back', () => {
+    for (const replace of ['clear', 'replay'] as const) {
+      const { pad, ctx } = makePad();
+      pad.drawImage(solid());
+      if (replace === 'clear') pad.clear();
+      else pad.replay({ gridWidth: 100, gridHeight: 40, color: '#000000', lineWidth: 4, strokes: [[{ x: 10, y: 10 }, { x: 90, y: 30 }]] });
+      const drawImage = vi.spyOn(ctx, 'drawImage');
+      pad.setSize(1000, 400, 1);
+      expect(drawImage, replace).not.toHaveBeenCalled();
+    }
   });
 });
 

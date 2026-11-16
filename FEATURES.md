@@ -83,7 +83,8 @@ _Last updated: 2026-11-16 · Version 1.1.0_
 - **Visible digital signature** — PKCS#12 / CMS (node-forge); upload a `.p12` or **generate a
   self-signed certificate in-browser**
 - **Approval signatures** — drawn signature with caption ("read & approved"), guided multi-signer panel; the drawing
-  colour comes from the editor's swatch row (presets without white, recent colours, a custom colour)
+  colour comes from the editor's swatch row (presets without white, recent colours, a custom colour); **⛶ Full screen**
+  turns the dialog into a big pad (Clear, Exit, Save only) and gives the drawing back at its normal size
 - **Sign on your phone** — the signature modal shows a QR code that opens a drawing page on the phone; the finished
   signature comes back as QR codes on the phone's screen, read by the PC's camera, or as a PNG through **Import image**.
   The phone opens on the PC's ink colour and width and can change them (the same colour palette, a 1–10 width); after a

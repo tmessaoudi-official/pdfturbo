@@ -18,7 +18,7 @@ function seedDOM(): void {
   const ids = [
     'fileInput', 'addTextBtn', 'addSignatureBtn', 'downloadBtn', 'prevPage', 'nextPage',
     'pdfCanvas', 'canvasContainer', 'signatureModal', 'signatureCanvas',
-    'fontSize', 'color', 'colorEyedropperBtn', 'sigLineWidth', 'sigColor', 'sigSwatchRow',
+    'fontSize', 'color', 'colorEyedropperBtn', 'sigLineWidth', 'sigColor', 'sigSwatchRow', 'sigCanvasBox', 'sigFullBtn', 'sigExitFullBtn',
     'zoomOutBtn', 'zoomInBtn', 'zoomDisplay', 'fitBtn', 'undoBtn', 'redoBtn',
     'fontFamily', 'boldBtn', 'italicBtn', 'underlineBtn', 'strikeBtn', 'alignBtn', 'modeBadge',
     'fileMenuBtn', 'fileMenuWrap', 'fileMenuOpen', 'fileMenuClose',

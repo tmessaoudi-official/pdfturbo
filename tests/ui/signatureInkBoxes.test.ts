@@ -73,6 +73,29 @@ describe('bindSignatureInkBoxes — the boxes drive the pad', () => {
     pad.clear();
     expect([pad.color, pad.lineWidth]).toEqual(['#00cc00', 3]);
   });
+
+  // Row 11 PC half: in the ✍ dialog's full screen the pad is k times its normal width, and draws k times the box's
+  // width so the signature looks the same back at the normal size. Every width the boxes hand the pad is scaled —
+  // Clear's reset from the boxes included (3C advisor: it went to the pad unscaled) — and an emptied box takes back the
+  // pad's width DIVIDED by k (the box shows normal-size px).
+  it('row 11: a scale k multiplies every width handed to the pad — input, change, and the reset after a scan', () => {
+    const { w, c, pad, type } = setup('3');
+    let k = 1;
+    bindSignatureInkBoxes(pad, w, c, () => k);
+    k = 2.5;
+    type(w, '4', 'input');
+    expect(pad.lineWidth).toBe(10);
+    type(w, '5', 'change');
+    expect([w.value, pad.lineWidth]).toEqual(['5', 12.5]);
+    type(w, '', 'change');
+    expect([w.value, pad.lineWidth]).toEqual(['5', 12.5]); // the box takes back 12.5 ÷ 2.5, not 12.5 clamped to 10
+    pad.replay({ gridWidth: 1023, gridHeight: 409, color: '#00cc00', lineWidth: 48, strokes: [[{ x: 0, y: 0 }, { x: 1000, y: 400 }]] });
+    pad.clear(); // Clear in full mode
+    expect(pad.lineWidth).toBe(12.5);
+    k = 1;
+    type(w, '5', 'input');
+    expect(pad.lineWidth).toBe(5); // the control: back at k = 1
+  });
 });
 
 describe('inkBoxes — the ink the phone link carries, and the scan writing it back', () => {
@@ -122,7 +145,7 @@ describe('the wiring — modalBinder binds the boxes for every user (no test imp
   // Comments blanked, so a commented-out call cannot satisfy it.
   const src = readFileSync('src/ui/binders/modalBinder.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   it('calls bindSignatureInkBoxes on the app pad and the two boxes, and keeps no listener of its own on them', () => {
-    expect(src).toMatch(/bindSignatureInkBoxes\(\s*app\.signaturePad,\s*app\.ui\.sigLineWidthInput,\s*app\.ui\.sigColorInput\s*\)/);
+    expect(src).toMatch(/bindSignatureInkBoxes\(\s*app\.signaturePad,\s*app\.ui\.sigLineWidthInput,\s*app\.ui\.sigColorInput,\s*\(\) => sigFull\.widthScale\(\)\s*\)/);
     expect(src).not.toMatch(/sig(LineWidth|Color)Input\.addEventListener/);
   });
 });

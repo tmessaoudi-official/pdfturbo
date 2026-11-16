@@ -104,4 +104,19 @@ describe('SignatureManager', () => {
     mgr.openModal();
     expect(seen).toEqual([true, true]);
   });
+
+  // Row 11 PC half (rulings 2026-11-16 11:08): Save leaves full screen FIRST, so the pad is back at its normal size when
+  // its pixels are read — on an empty pad too, before the draw-first warning (one path).
+  it('onBeforeSave listeners run before the pad is read, on a refused empty save too', () => {
+    for (const empty of [false, true]) {
+      const { ctx } = makeCtx(empty);
+      const mgr = new SignatureManager(ctx);
+      const order: string[] = [];
+      (ctx.signaturePad.isEmpty as ReturnType<typeof vi.fn>).mockImplementation(() => { order.push('isEmpty'); return empty; });
+      (ctx.signaturePad.getDataURL as ReturnType<typeof vi.fn>).mockImplementation(() => { order.push('read'); return 'data:,'; });
+      mgr.onBeforeSave(() => order.push('before'));
+      mgr.save();
+      expect(order, `empty=${empty}`).toEqual(empty ? ['before', 'isEmpty'] : ['before', 'isEmpty', 'read']);
+    }
+  });
 });

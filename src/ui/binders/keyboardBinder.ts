@@ -21,7 +21,12 @@ export function bindKeyboardEvents(app: PDFTurboApp): void {
     if (e.key === 'Escape') {
       if (app.ui.settingsPanel.classList.contains('active')) { app._toggleSettings(false); return; }
       if (app.ui.helpModal.classList.contains('active')) { app._toggleHelp(false); return; }
-      if (app.ui.signatureModal.classList.contains('active')) { app.closeSignatureModal(); return; }
+      if (app.ui.signatureModal.classList.contains('active')) {
+        // Full screen (row 11 PC half): Esc leaves it and never closes the dialog, which would throw the signature away.
+        if (!app.ui.sigExitFullBtn.hidden) { app.ui.sigExitFullBtn.click(); return; }
+        app.closeSignatureModal();
+        return;
+      }
       if (app.ui.watermarkModal.classList.contains('active')) { app._closeWatermarkModal(); return; }
       if (app.ui.batesModal.classList.contains('active')) { app._closeBatesModal(); return; }
       if (app.ui.compressModal.classList.contains('active')) { app._closeCompressModal(); return; }

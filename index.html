@@ -725,9 +725,12 @@
       </div>
       <p class="signature-source-msg" id="sigSourceMsg" role="alert" hidden></p>
     </div>
-    <canvas id="signatureCanvas" width="500" height="200"></canvas>
+    <!-- Row 11 PC half: the room the pad may fill in full screen (measured there; a plain block otherwise). -->
+    <div class="signature-canvas-box" id="sigCanvasBox"><canvas id="signatureCanvas" width="500" height="200"></canvas></div>
     <div class="signature-actions">
       <button id="clearSignature" class="btn btn-secondary" data-i18n="modal.signature.clear">Clear</button>
+      <button type="button" id="sigFullBtn" class="btn btn-secondary" data-i18n="pad.fullscreen">⛶ Full screen</button>
+      <button type="button" id="sigExitFullBtn" class="btn btn-secondary" data-i18n="pad.exitFullscreen" hidden>Exit full screen</button>
       <button id="cancelSignature" class="btn btn-secondary" data-i18n="modal.signature.cancel">Cancel</button>
       <button id="saveSignature" class="btn btn-success" data-i18n="modal.signature.save">Save</button>
     </div>

@@ -7,6 +7,9 @@ export function trapFocus(
 ): () => void {
   function focusables(): HTMLElement[] {
     return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(el => {
+      // A control inside an inert or hidden block is not reachable, though its OWN computed display is not 'none' (the
+      // ✍ dialog's full screen hides its settings that way: row 11 PC half).
+      if (el.closest('[inert], [hidden]')) return false;
       const s = window.getComputedStyle(el);
       return s.display !== 'none' && s.visibility !== 'hidden';
     });

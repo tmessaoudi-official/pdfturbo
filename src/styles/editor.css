@@ -267,6 +267,49 @@ input[type="file"] {
   margin-bottom: 10px;
   align-items: center;
 }
+/* Row 11 PC half: the ✍ dialog's full screen (signatureFullscreen.ts). The content fills the viewport as a column;
+   only Clear, Exit full screen and Save stay. The pad is sized in JS from #sigCanvasBox (flex: 1) and positioned
+   absolutely inside it, so it cannot feed its own measurement; max-width: none lifts overlay.css's 500 px cap, which
+   would otherwise shrink the drawn box under the logical size and offset every stroke. */
+.signature-modal.sig-full {
+  background: #fff;
+  /* Above the storage notice (9000) and the update notice (9100), both fixed to an edge where the full-screen
+     action row sits (measured: the storage notice covered Save); below the timed toasts (9999). */
+  z-index: 9998;
+}
+.signature-modal.sig-full .signature-content {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.signature-modal.sig-full #sigModalTitle,
+.signature-modal.sig-full .signature-settings,
+.signature-modal.sig-full .signature-sources,
+.signature-modal.sig-full #cancelSignature {
+  display: none;
+}
+.signature-modal.sig-full .signature-canvas-box {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+/* content-box: base.css makes every box border-box, so the inline width setSize writes would include the 2 px
+   border and the W px buffer would be drawn into W - 4 px, off the pointer (measured in Chrome: 4 px). */
+.signature-modal.sig-full #signatureCanvas {
+  box-sizing: content-box;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  max-width: none;
+}
 #signatureCanvas {
   border: 2px solid #dee2e6;
   cursor: crosshair;

@@ -26,6 +26,8 @@ export class SignaturePad {
   private _pointerId: number | null = null;
   /** The drawing size in CSS px once `setSize` ran; until then the buffer size (the ✍ modal pad never calls it). */
   private _size: { width: number; height: number } | null = null;
+  /** The imported image on show (row 11 PC half): repainted by `setSize` and `repaint`, forgotten by `_wipe`. */
+  private _image: (CanvasImageSource & { width: number; height: number }) | null = null;
   private _inkFollows = false;
   /**
    * Runs when the pad stops showing a scan (`clear`, `drawImage`). The ✍ modal resets the pad's ink from its boxes
@@ -130,7 +132,27 @@ export class SignaturePad {
     const ox = (cssWidth - old.width * s) / 2;
     const oy = (cssHeight - old.height * s) / 2;
     this._strokes = strokes.map((st) => st.map((p) => ({ x: ox + p.x * s, y: oy + p.y * s })));
+    this._paintImage();
     paintStrokes(this.ctx, this._strokes, this.color, this.lineWidth);
+  }
+
+  /**
+   * Hand the size back to the buffer (row 11 PC half): the ✍ dialog sizes its canvas by assigning `width`/`height` on
+   * every open, at dpr 1, and after a full-screen stay a kept `_size` would outlive the next open's assignment. Valid
+   * after a dpr-1 `setSize` (buffer = logical size): the drawing and the transform are unchanged by it.
+   */
+  resetSize(): void {
+    this._size = null;
+    this.canvas.style.width = '';
+    this.canvas.style.height = '';
+  }
+
+  /** The imported image, fitted to the logical size (contain, centred) — under the strokes. */
+  private _paintImage(): void {
+    if (!this._image) return;
+    const { width: w, height: h } = this._logical();
+    const box = fitContain(this._image.width, this._image.height, w, h);
+    this.ctx.drawImage(this._image, box.x, box.y, box.w, box.h);
   }
 
   /** Wipe the canvas and the recorded strokes, end any stroke in progress, and stop following a scan. */
@@ -148,6 +170,7 @@ export class SignaturePad {
 
   private _wipe(): void {
     this._wipePixels();
+    this._image = null;
     this._strokes = [];
     this._current = null;
     this.isDrawing = false;
@@ -169,6 +192,7 @@ export class SignaturePad {
    */
   repaint(): void {
     this._wipePixels();
+    this._paintImage();
     paintStrokes(this.ctx, this._strokes, this.color, this.lineWidth);
   }
 
@@ -217,9 +241,8 @@ export class SignaturePad {
    */
   drawImage(img: CanvasImageSource & { width: number; height: number }): void {
     this.clear();
-    const { width: w, height: h } = this._logical();
-    const box = fitContain(img.width, img.height, w, h);
-    this.ctx.drawImage(img, box.x, box.y, box.w, box.h);
+    this._image = img; // kept: a size change (the ✍ dialog's full screen) wipes the buffer and repaints it (row 11)
+    this._paintImage();
   }
 
   isEmpty(): boolean {

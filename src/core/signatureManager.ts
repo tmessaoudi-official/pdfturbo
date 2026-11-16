@@ -26,6 +26,7 @@ export class SignatureManager {
   private _signatureNatural: { w: number; h: number } | null = null;
   private readonly _closedListeners: Array<() => void> = [];
   private readonly _openedListeners: Array<() => void> = [];
+  private readonly _beforeSaveListeners: Array<() => void> = [];
 
   constructor(private readonly _ctx: ISignatureContext) {}
 
@@ -38,6 +39,9 @@ export class SignatureManager {
 
   /** Run `fn` on every openModal(), after the modal is shown (row 10: the colour swatch row re-renders). */
   onOpened(fn: () => void): void { this._openedListeners.push(fn); }
+
+  /** Run `fn` at the start of every save(), before the pad is read — an empty pad included (row 11: leave full screen). */
+  onBeforeSave(fn: () => void): void { this._beforeSaveListeners.push(fn); }
 
   get signatureNatural(): { w: number; h: number } | null { return this._signatureNatural; }
   set signatureNatural(v: { w: number; h: number } | null) { this._signatureNatural = v; }
@@ -69,6 +73,7 @@ export class SignatureManager {
   }
 
   save(): void {
+    for (const fn of this._beforeSaveListeners) fn();
     if (this._ctx.signaturePad.isEmpty()) {
       this._ctx.reportError.warn('toast.drawSignatureFirst');
       return;

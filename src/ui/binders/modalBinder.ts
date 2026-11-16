@@ -8,6 +8,7 @@ import { attachDisplayModalFocusTrap } from '../../utils/displayModalFocusTrap';
 import { openViaPicker, renderRecentFiles, type RecentMenuCtx } from '../recentFilesMenu';
 import { bindSignatureInkBoxes } from '../signatureInkBoxes';
 import { bindSignatureSwatches } from '../signatureSwatches';
+import { bindSignatureFullscreen } from '../signatureFullscreen';
 
 /**
  * #54b — the narrow view of the app the recent-files menu needs. Built per call rather than stored:
@@ -27,8 +28,31 @@ export function bindModalEvents(app: PDFTurboApp): void {
   document.getElementById('clearSignature')?.addEventListener('click', () => app.signaturePad.clear());
   document.getElementById('cancelSignature')?.addEventListener('click', () => app.closeSignatureModal());
   document.getElementById('saveSignature')?.addEventListener('click', () => app.saveSignature());
-  // The ink boxes drive the pad live, clamped 1–10 (7b: a bare parseInt let NaN and 50 reach the pad and the phone link).
-  bindSignatureInkBoxes(app.signaturePad, app.ui.sigLineWidthInput, app.ui.sigColorInput);
+  // Row 11 PC half: ⛶ full screen in the dialog. Save leaves it first (ruling 2026-11-16 11:08) and every close leaves
+  // it (a backstop: the dialog never closes while the page is full); Esc is keyboardBinder's.
+  const sigFull = bindSignatureFullscreen({
+    modal: app.ui.signatureModal,
+    box: app.ui.sigCanvasBox,
+    canvas: app.ui.signatureCanvas,
+    pad: app.signaturePad,
+    enterBtn: app.ui.sigFullBtn,
+    exitBtn: app.ui.sigExitFullBtn,
+    hideOnFull: () => [
+      document.getElementById('sigModalTitle'),
+      app.ui.signatureModal.querySelector<HTMLElement>('.signature-settings'),
+      document.getElementById('sigSources'), // absent while the phonePad flag is off
+      document.getElementById('cancelSignature'),
+    ].filter((el): el is HTMLElement => el !== null),
+    closePhonePanel: () => {
+      const phone = document.getElementById('sigPhoneBtn');
+      if (phone?.getAttribute('aria-expanded') === 'true') phone.click(); // the panel's own close: it stops the camera
+    },
+  });
+  app.onSignatureBeforeSave(() => sigFull.leave());
+  app.onSignatureModalClosed(() => sigFull.leave());
+  // The ink boxes drive the pad live, clamped 1–10 (7b: a bare parseInt let NaN and 50 reach the pad and the phone link);
+  // in full screen every width is scaled with the pad.
+  bindSignatureInkBoxes(app.signaturePad, app.ui.sigLineWidthInput, app.ui.sigColorInput, () => sigFull.widthScale());
   // Row 10: the shared colour palette beside #sigColor; re-rendered on open, so a recent colour picked elsewhere shows.
   const sigSwatches = bindSignatureSwatches(app.ui.sigSwatchRow, app.ui.sigColorInput);
   app.onSignatureModalOpened(() => sigSwatches.render());

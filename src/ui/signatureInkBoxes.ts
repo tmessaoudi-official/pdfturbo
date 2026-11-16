@@ -25,23 +25,28 @@ function readWidth(widthBox: HTMLInputElement): number {
   return w;
 }
 
-export function bindSignatureInkBoxes(pad: InkPad, widthBox: HTMLInputElement, colorBox: HTMLInputElement): void {
+/**
+ * The boxes drive the pad. `scale` (row 11 PC half) is how many times its normal width the pad is now — the ✍ dialog's
+ * full screen — so every width handed to the pad is the box's × scale, and an emptied box takes back the pad's width
+ * ÷ scale: the box always shows normal-size px. Default 1.
+ */
+export function bindSignatureInkBoxes(pad: InkPad, widthBox: HTMLInputElement, colorBox: HTMLInputElement, scale: () => number = () => 1): void {
   widthBox.addEventListener('input', () => {
     const w = parseLineWidth(widthBox.value);
-    if (w !== null) pad.setLineWidth(w);
+    if (w !== null) pad.setLineWidth(w * scale());
   });
   widthBox.addEventListener('change', () => {
     // An emptied box takes back the width the pad draws with (rounded: after a scan it may be a fraction).
-    const w = parseLineWidth(widthBox.value) ?? clampLineWidth(pad.lineWidth);
+    const w = parseLineWidth(widthBox.value) ?? clampLineWidth(pad.lineWidth / scale());
     widthBox.value = String(w);
-    pad.setLineWidth(w);
+    pad.setLineWidth(w * scale());
   });
   const onColor = () => pad.setColor(colorBox.value);
   colorBox.addEventListener('input', onColor);
   colorBox.addEventListener('change', onColor);
   pad.onFollowEnd = () => {
     pad.setColor(colorBox.value);
-    pad.setLineWidth(readWidth(widthBox));
+    pad.setLineWidth(readWidth(widthBox) * scale());
   };
 }
 

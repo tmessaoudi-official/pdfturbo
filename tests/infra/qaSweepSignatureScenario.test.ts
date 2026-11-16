@@ -1,4 +1,4 @@
-// The QA sweep's "signature: draw → clear → cancel" scenario (R4-3, ruled 2026-11-12 22:57) is the only route by which
+// The QA sweep's "signature: draw → full screen → exit → clear → cancel" scenario (R4-3, ruled 2026-11-12 22:57) is the only route by which
 // the deploy gate clicks the ✍ modal's Clear and Cancel: with phonePad ON the crawl finds both hidden (panel round 4
 // K12). Removing it, or leaving it defined but never run, would leave the gate green with two controls silently gone
 // (phone-signature-pad row 8, panel round 5 K3). These pin the wiring; the scenario's behaviour is proven by the
@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 const sweep = readFileSync('scripts/qa-sweep.mjs', 'utf8');
 const deploy = readFileSync('.github/workflows/deploy.yml', 'utf8');
-const NAME = "name: 'signature: draw → clear → cancel'";
+const NAME = "name: 'signature: draw → full screen → exit → clear → cancel'";
 
 /** The `scenarios` array literal: from its opening to the `picked` selection that follows it. */
 function scenariosArray(): string {
@@ -29,9 +29,13 @@ describe('the sweep runs the signature scenario and records Clear and Cancel', (
     const body = arr.slice(arr.indexOf(NAME));
     const next = body.indexOf('\n      {\n        name:', 1); // the next scenario, if any comes after it
     const own = next > 0 ? body.slice(0, next) : body;
+    // Row 11 PC half (2026-11-16): ⛶ and Exit full screen too — the crawl finds ⛶ hidden (its unwind's Escape closed
+    // the dialog), so without this the deploy gate never enters full mode on the built app.
+    const full = own.indexOf("await control('sigFullBtn',");
+    const exit = own.indexOf("await control('sigExitFullBtn',");
     const clear = own.indexOf("await control('clearSignature',");
     const cancel = own.indexOf("await control('cancelSignature',");
-    expect([clear > 0, cancel > clear]).toEqual([true, true]);
+    expect([full > 0, exit > full, clear > exit, cancel > clear]).toEqual([true, true, true, true]);
     // control() is what turns a click into a report line: the id is clicked and recorded, never only checked.
     expect(own).toMatch(/const control = async \(id, check\) => \{[\s\S]*?await pg\.click\(`#\$\{id\}`\);[\s\S]*?record\(failure \? 'FAIL' : 'PASS', id,/);
   });

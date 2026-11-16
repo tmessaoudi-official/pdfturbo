@@ -705,6 +705,7 @@ export class PDFTurboApp implements IExportContext, IPageContext, IAnnotationCon
   /** Phone-signature-pad step 5: run `fn` on every close of the ✍ modal (cancelled or saved). */
   onSignatureModalClosed(fn: () => void) { this._signatureManager.onClosed(fn); }
   onSignatureModalOpened(fn: () => void) { this._signatureManager.onOpened(fn); }
+  onSignatureBeforeSave(fn: () => void) { this._signatureManager.onBeforeSave(fn); }
   saveSignature() { this._signatureManager.save(); }
 
   // ── Code modal (delegated to CodeModalManager) ──────────────────────────

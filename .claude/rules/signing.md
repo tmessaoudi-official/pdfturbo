@@ -474,6 +474,62 @@ release the lock (the page follows to portrait); after a landscape Done the QR i
 hides and shows, and the PC webcam reads it. **Not walked: iPhone Safari (the CSS fill, the rotate hint — on Android the lock
 turns the page, so the hint never shows), iPad, and Android's back gesture out of full screen** (W31).
 
+**Full screen in the PC ✍ dialog** (plan row 11, PC half; rulings 2026-11-12 19:09, 2026-11-16 11:08: Save and an empty
+Save leave full screen FIRST, ⛶ at every width). `src/ui/signatureFullscreen.ts`, wired in `modalBinder.ts`. ⛶ (in the
+actions row, the phone pad's `pad.fullscreen` / `pad.exitFullscreen` keys) sets `sig-full` on the modal: the content
+fills the viewport, the h2, ink settings, sources and Cancel are hidden by CSS AND made `inert` (the attribute: jsdom has
+no `inert` property, and `focusTrap.ts` reads `[inert]`), focus moves to Exit, the phone panel is closed through its own
+button (that stops the camera, so no scan lands mid-stay). The browser half is the phone pad's, extracted to
+`src/utils/fullscreenSession.ts` (stale-grant guard, unlock only after a resolved lock, the CSS-only path undoes nothing;
+`tests/utils/fullscreenSession.test.ts`, the phone cases ported; `padPage.ts` re-exports its names).
+- **dpr 1, and the normal size restored exactly.** The pad gets `setSize(w, round(0.4w), 1)`, `w = floor(min(box width,
+  box height ÷ 0.4))` from `#sigCanvasBox` (the canvas absolute inside it, so it does not feed its own measurement), on
+  entry and on every `resize` while full. dpr 1 because the phone link's `cw` (`inkBoxes.get`) and Save's
+  `signatureNatural` read `canvas.width`; leaving restores the size captured at entry, then `resetSize()` drops `_size`
+  and the inline px so the next `openModal` assignment is the size again.
+- **Width scale k = full width ÷ normal width, re-derived at every fit** (`lineWidth × next / k`, never compounded), so a
+  scan's 3.4 comes back 3.4. `bindSignatureInkBoxes` takes a `scale()` hook and applies it to EVERY width it hands the
+  pad — `onFollowEnd` (Clear after a scan) included, which the first design missed (3C advisor) — and an emptied box
+  takes back `pad.lineWidth ÷ k`. The box always shows normal-size px.
+- **An imported image survives a re-size:** `SignaturePad` keeps it (`_image`), `setSize` and `repaint` paint it
+  (contain, centred) before the strokes, and `_wipe` (clear, replay) forgets it.
+- **Leaving:** Exit, Esc, a `fullscreenchange` with no element, Save (`SignatureManager.onBeforeSave`, before the
+  empty check — one path, the empty warning then shows on the normal dialog) and every close (`onSignatureModalClosed`,
+  a backstop). **Esc in full leaves full screen and never closes the dialog** (`keyboardBinder.ts`: Exit visible →
+  click it, before the close) — closing would throw the signature away.
+- **Two layout traps, both measured in real Chrome.** (1) `base.css` makes every box `border-box`, so the inline width
+  `setSize` writes included the 2 px border and the W px buffer was drawn into W − 4 px, off the pointer: full mode sets
+  `content-box` (the normal dialog is untouched — its pre-existing 4 px scale is not this row's). `max-width: none`
+  lifts `overlay.css`'s 500 px cap for the same reason. (2) **The first-visit storage notice (`#storageBanner`, fixed at
+  the bottom, z-index 9000) covered the full-screen action row** — Save unclickable, found by the real-app drive, not
+  by the geometry checks (the buttons were "inside the viewport", just under the notice). Full mode is `z-index: 9998`:
+  over both notices (9000, 9100) and the DOCX editor (9500), under the timed toasts (9999; an info toast, 2.5 s, can
+  cover the Save corner briefly — the mode hint shows at open; `#toast` is `pointer-events: none`, so it hides Save for
+  that time but never takes its click). The ruled 414 px normal-dialog overlap (the Known
+  issues line below) is unchanged.
+- **`focusTrap.ts` now skips controls inside an `[inert]` or `[hidden]` ancestor:** it filtered each control on its OWN
+  computed display, so the hidden settings still counted and Tab from Save went nowhere (3C advisor;
+  `tests/utils/focusTrap.test.ts`, the first test of that file).
+- **Measured** (`var/claude/pp-row11pc/full.mjs` on the built app, `var/claude/qa-shots/row11pc/`; before =
+  `qa-shots/row10/final-*.png`): 1280 × 900 pad 500 → 1236 × 494, real fullscreen granted; 414 × 860 333 → 370 × 148
+  (portrait is width-bound: only a landscape lock widens it). Drawn box = buffer, Clear / Exit / Save on top with the
+  notice up, Esc → dialog open at its normal size, Save from full → normal width, closed, the signature placed, 0
+  console errors. **Bound:** at 414 px the normal dialog's "⛶ Full screen" wraps to two lines (legible, no overflow).
+- **Guards:** jsdom `tests/ui/signatureFullscreen.test.ts` (14: the real dialog markup, and two source pins on the `modalBinder` wiring), `tests/utils/focusTrap.test.ts`
+  (3), cases in `signaturePad`, `signatureInkBoxes`, `signatureManager`, `keyboardBinder` tests; real Chrome
+  `tests/browser/signature-fullscreen.browser.test.ts` (4: layout + `elementFromPoint` + axe at 1280 and 414 with the
+  notice shown, the stroke width 4·k → 4 px and its place, real Tab/Shift+Tab). Sabotage, each restored byte-exact
+  (`var/claude/pp-row11pc/sab-*.log`): trap inert filter → 2; `onBeforeSave` loop → 1; `onFollowEnd` unscaled → 2; the
+  emptied box not divided → 1; k compounded → 1; no `resetSize` → 1; Esc check → 1; image not repainted by `setSize` →
+  2; image kept by `_wipe` → 1; `content-box` → 2 (Chrome); `max-width: none` → 2 (Chrome); the `onSignatureBeforeSave` wiring → 1; the phone panel clicked even when shut → 1. **The deploy gate drives it too:** the crawl finds ⛶ hidden (its unwind's
+  Escape closed the dialog, as for Clear and Cancel — `ui.md` § "`/pdf-qa-sweep` reaches 66 of 141 controls"), so the
+  QA sweep's signature scenario is now `draw → full screen → exit → clear → cancel`: ⛶ must widen the pad with the ink
+  kept, Exit must restore the normal width with the dialog open (61 of 146 controls, was 59). Sabotage on a rebuilt app
+  (`leave` restoring normal + 10 px): `FAIL sigExitFullBtn — Exit did not restore the 500 px pad (now 510 px)`, ⛶
+  still PASS (`var/claude/pp-row11pc/sab-S14-sweep-exit.log`). **Not walked:** a real
+  Esc/F11 on desktop Chrome and Firefox out of real fullscreen (plan walk item; Playwright's Escape exercised the
+  `keydown` path with fullscreen granted).
+
 - **Nothing is uploaded:** the only phone → PC channel is QR codes on the phone's screen, or the PNG the user moves by hand (*Download PNG*); `zxing-wasm`'s reader wasm is
   self-hosted (`locateFile` → the bundled URL), never its CDN default, which `connect-src 'self'` would block anyway.
 - **The PTSIG CRC-32 detects misreads; it authenticates NOTHING.** A scanned QR is untrusted input: the PTSIG decoder is strict

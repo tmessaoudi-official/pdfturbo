@@ -103,7 +103,7 @@ The driver reports facts. You decide what they mean.
    enumeration used visibility instead of hit-testable reachability.
 3. **`SKIP` is coverage you did not get — and the real number is worse than the skip count.** The
    report now ends with `Exercised N distinct control(s) of M in the DOM` and **names** every control
-   that was not. Read that line first; a green `0 fail` over 59 of 144 controls is not a clean bill of
+   that was not. Read that line first; a green `0 fail` over 61 of 146 controls is not a clean bill of
    health. (Until 2026-11-11 that line also counted non-control subjects — `boot`, `load`, `a11y` — and
    read 66; it now counts DOM control ids only.) **CI passes `--allow-destructive` and `--require-sw`** (the latter: a missing built worker FAILs the pad pass instead of SKIP) (on 2026-07-31: 36 skips instead of 44 — it reaches redaction, erase
    and crop-remove; the 2026-11-13 baseline below: 42), so a local default run is WEAKER than the gate; match the flag before comparing.
@@ -169,6 +169,10 @@ Summary: N checks | P pass | F fail | W warn | S skipped | A a11y
 
 Written to `var/claude/qa-sweep/<stamp>/report.md` beside its screenshots.
 
+**Latest, same flags, 2026-11-16 (phone-signature-pad row 11's PC full screen, `var/claude/pp-row11pc/gate2.log`):
+169 checks · 125 pass · 0 fail · 0 warn · 44 skip over 61 distinct controls of 146** (⛶ and Exit full screen joined the
+DOM and the signature scenario). The 2026-11-13 baseline below is kept for its history.
+
 **Baseline, `--allow-destructive --require-sw` (what CI runs), measured 2026-11-13 on a local build of the deploy tree,
 `phonePad` ON by default (phone-signature-pad 7b commit C), after the R4-3 signature scenario (`var/claude/r4-3/sweep-ci2.log`; it was 162 · 120 · 42 over
 57 the day before, `var/claude/gate-r4fix.log`, and 161 · 119 before the draw-view axe line, panel round 4 K2):**
@@ -208,7 +212,7 @@ Read the numbers in this order, because two of them mislead on their own:
 
 - **Distinct controls, not the check total.** The DFS revisits some controls at different depths, so
   the entry count exceeds distinct coverage. The report's `Exercised N distinct control(s) of M` line
-  is the honest figure; a `0 fail` over 59 of 144 is not a clean bill of health.
+  is the honest figure; a `0 fail` over 61 of 146 is not a clean bill of health.
 - **`0 accepted-by-decision` is load-bearing.** `A11Y_ACCEPTED` was emptied on 2026-07-31 when the last
   exception (`scrollable-region-focusable`) was properly fixed. A run reporting an `ACCEPT` line means
   someone re-opened a hole in the gate — find out why before shipping.
