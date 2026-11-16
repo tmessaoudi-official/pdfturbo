@@ -6,7 +6,11 @@ ruling, CI, a setup hook, the browser choice, tests). Tier: `advisor()` at 3C an
 
 ## Status
 
-- State: built 2026-11-16 — steps 1, 2, 4, 6 done test-first (step 3 report-only, step 5 doc-only); committing.
+- State: done 2026-11-16 — steps 1, 2, 4, 6 done test-first (step 3 report-only, step 5 doc-only), certified by
+  `advisor()` (6C). Commits `1c79b2b` (deploy.yml), `c532f0a` (browser chooser), `8989801` + `78cfbfc` (the hook; the repo's
+  `core.fileMode=false` recorded it 100644 first — `toolchain.md` § "`core.fileMode=false`"), `9e67b6d` (I1 docs and
+  pins). Bisect note: `8989801` and `9e67b6d` are red alone on the hook's mode pin (fixed by `78cfbfc`; a squash needed a
+  stash of `.claude/settings.json`, ruled out). Report: `var/claude/row33-pdfturbo-report.md` (gitignored).
 - Evidence: red first (cloudReadiness 5 of 8, cloudEnv missing module then 2 wiring pins, cloudSetup 8 of 8); 25
   cases green; sabotage 11 mutants, each landed, red on its own case(s), restored byte-exact
   (`var/claude/row33/sabotage.log`); a real-download probe of the hook (63 MB, sha256 checked, `node` v26.13.1 through

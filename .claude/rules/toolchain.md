@@ -668,3 +668,15 @@ npx playwright install chromium     # Chrome 151 / chromium-1234 (~115 MB, not p
 With that, the full suite passes in-container (68 files / 179 tests). **Do not claim a green browser
 run without doing this** — and note the preinstalled binary silently produces 7 uniform
 `getOrInsertComputed` failures that look like product bugs and are not.
+
+### `core.fileMode=false` — git ignores the exec bit; a new script needs `git update-index --chmod=+x` (2026-11-16)
+
+This checkout's `.git/config` sets `core.fileMode=false`, so git ignores a working-tree `chmod +x` and records a new
+file as `100644`. `8989801` landed `.claude/cloud-setup.sh` that way although the file on disk was `-rwxr-xr-x`; the
+claude-code-setup kit runs a project hook only when it is an executable regular file, so a cloud setup would have
+skipped it. The mode pin in `tests/tools/cloudSetup.test.ts` (`git ls-files -s` must start `100755`) went red at once and
+`78cfbfc` fixed it. Two traps in the fix: `git update-index --chmod=+x -- <path>` stages the mode, but a pathspec
+commit (`git commit -- <path>`) re-reads the file and, with `fileMode=false`, commits nothing — check
+`git diff --cached --name-only` holds only that path, then commit the index without a pathspec. Verify with
+`git ls-files -s -- <path>`, never `ls -l`. `.githooks/pre-push` is `100755`; `scripts/c9-corpus-fetch.sh` and
+`scripts/viewer-corpus-fetch.sh` are `100644` and run via `bash`, which is fine.
