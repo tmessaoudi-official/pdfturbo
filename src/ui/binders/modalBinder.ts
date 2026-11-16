@@ -7,6 +7,7 @@ import { bindExtractPagesModal } from './extractPagesBinder';
 import { attachDisplayModalFocusTrap } from '../../utils/displayModalFocusTrap';
 import { openViaPicker, renderRecentFiles, type RecentMenuCtx } from '../recentFilesMenu';
 import { bindSignatureInkBoxes } from '../signatureInkBoxes';
+import { bindSignatureSwatches } from '../signatureSwatches';
 
 /**
  * #54b — the narrow view of the app the recent-files menu needs. Built per call rather than stored:
@@ -28,6 +29,9 @@ export function bindModalEvents(app: PDFTurboApp): void {
   document.getElementById('saveSignature')?.addEventListener('click', () => app.saveSignature());
   // The ink boxes drive the pad live, clamped 1–10 (7b: a bare parseInt let NaN and 50 reach the pad and the phone link).
   bindSignatureInkBoxes(app.signaturePad, app.ui.sigLineWidthInput, app.ui.sigColorInput);
+  // Row 10: the shared colour palette beside #sigColor; re-rendered on open, so a recent colour picked elsewhere shows.
+  const sigSwatches = bindSignatureSwatches(app.ui.sigSwatchRow, app.ui.sigColorInput);
+  app.onSignatureModalOpened(() => sigSwatches.render());
 
   // ── OCR modal ──────────────────────────────────────────────────
   app.ui.cancelOcrModal.addEventListener('click', () => app.closeOcrModal());

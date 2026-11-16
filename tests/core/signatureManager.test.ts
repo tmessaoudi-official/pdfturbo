@@ -91,4 +91,17 @@ describe('SignatureManager', () => {
     mgr.save();
     expect(a).toHaveBeenCalledTimes(2);
   });
+
+  it('onOpened listeners run on every openModal(), after the modal is shown (row 10: the swatch row re-renders)', () => {
+    const { ctx, signatureModal } = makeCtx(false);
+    signatureModal.classList.remove('active');
+    signatureModal.innerHTML = '<div class="signature-content"><button>x</button></div>'; // what the focus trap reads
+    const mgr = new SignatureManager(ctx);
+    const seen: boolean[] = [];
+    mgr.onOpened(() => seen.push(signatureModal.classList.contains('active')));
+    mgr.openModal();
+    mgr.closeModal();
+    mgr.openModal();
+    expect(seen).toEqual([true, true]);
+  });
 });

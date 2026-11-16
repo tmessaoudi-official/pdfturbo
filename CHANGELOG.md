@@ -5,6 +5,11 @@ All notable changes to PDFturbo are documented here. This project follows
 
 ## [Unreleased]
 
+### Changed
+- The signature dialog's colour box has the editor's colour swatches beside it: the preset colours (white left
+  out: it does not show on paper), your recent colours, and a custom colour. A swatch sets the colour of your next
+  stroke and of the phone link, and the current colour is marked.
+
 ## [1.1.0] — 2026-11-16
 
 Everything since 1.0.0 (2026-06-27 → 2026-11-16). Each change shipped to GitHub Pages as it

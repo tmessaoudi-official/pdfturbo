@@ -29,6 +29,7 @@ export class UIController {
       colorEyedropperBtn:   document.getElementById('colorEyedropperBtn')   as HTMLButtonElement,
       sigLineWidthInput:document.getElementById('sigLineWidth')     as HTMLInputElement,
       sigColorInput:    document.getElementById('sigColor')         as HTMLInputElement,
+      sigSwatchRow:     document.getElementById('sigSwatchRow')     as HTMLElement,
       zoomOutBtn:       document.getElementById('zoomOutBtn')       as HTMLButtonElement,
       zoomInBtn:        document.getElementById('zoomInBtn')        as HTMLButtonElement,
       zoomDisplay:      document.getElementById('zoomDisplay')      as HTMLElement,

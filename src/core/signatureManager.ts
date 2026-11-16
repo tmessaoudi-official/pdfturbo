@@ -25,6 +25,7 @@ export class SignatureManager {
   pendingCaption: SignatureCaption | null = null;
   private _signatureNatural: { w: number; h: number } | null = null;
   private readonly _closedListeners: Array<() => void> = [];
+  private readonly _openedListeners: Array<() => void> = [];
 
   constructor(private readonly _ctx: ISignatureContext) {}
 
@@ -34,6 +35,9 @@ export class SignatureManager {
    * so a close by any route cannot leave the camera running.
    */
   onClosed(fn: () => void): void { this._closedListeners.push(fn); }
+
+  /** Run `fn` on every openModal(), after the modal is shown (row 10: the colour swatch row re-renders). */
+  onOpened(fn: () => void): void { this._openedListeners.push(fn); }
 
   get signatureNatural(): { w: number; h: number } | null { return this._signatureNatural; }
   set signatureNatural(v: { w: number; h: number } | null) { this._signatureNatural = v; }
@@ -49,6 +53,7 @@ export class SignatureManager {
       this._ctx.ui.signatureModal.querySelector('.signature-content') as HTMLElement,
       this._ctx.ui.addSignatureBtn,
     ));
+    for (const fn of this._openedListeners) fn();
   }
 
   closeModal(): void {

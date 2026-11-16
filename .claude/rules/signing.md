@@ -17,6 +17,8 @@ paths:
   - "src/utils/signaturePng.ts"
   - "src/config/features.ts"
   - "src/ui/phonePadGate.ts"
+  - "src/ui/signatureSwatches.ts"
+  - "tests/ui/signatureSwatches.test.ts"
   - "pad.html"
   - "src/styles/pad.css"
   - "tests/pad/**"
@@ -381,7 +383,7 @@ S4, a bound by ruling 09:56). One PTSIG ink per signature, so every ink change
 repaints every stroke: on the phone always (`SignaturePad.repaint()`, never through `clear()`), on the PC only while
 the pad shows a scan (`inkFollows`, set by `replay`, which now TAKES the replayed ink — the exact width, not a rounded
 one). After a scan the boxes are written (`#sigLineWidth` = the width rounded and clamped) and the QR re-drawn — a
-programmatic `.value` fires no event. **The replayed width must not outlive the scan:** it comes from an untrusted QR
+programmatic `.value` fires no `input`/`change` (only `INK_SET_EVENT`, for the swatch row: row 10 below). **The replayed width must not outlive the scan:** it comes from an untrusted QR
 (up to about 31 px on a 500 px canvas) while the box shows at most 10, so `clear()` and `drawImage()` end following and
 reset the pad's ink FROM THE BOXES (`onFollowEnd`). The boxes drive the pad on `input` with a clamped value and are
 written back only on `change` (`signatureInkBoxes.ts`, bound in `modalBinder` for every user — the old bare `parseInt`
@@ -390,6 +392,29 @@ let NaN and 50 reach the pad). A tap on the ✍ pad (no `dotOnTap`) is no longer
 STORES a language (`initI18n({ store: false })`: a stored one would switch the editor's language on that phone).
 **The visible default changed:** a link without ink (an old QR) draws black at 2 PC px — 2.5 phone px on a 368 px pad
 used to replay at about 3.4.
+
+**The ✍ modal's colour swatch row** (plan row 10, ruling 2026-11-12 09:56, plan approved 2026-11-16 08:38;
+`src/ui/signatureSwatches.ts`). `#sigSwatchRow` sits BESIDE `#sigColor`'s `<label>`, never inside it (a button is a
+labelable element, invalid there, and a click on a label's content opens the native picker); `#sigColor` stays visible,
+as the toolbar's box does. The swatches: `COLOR_PRESETS`, then the shared recent colours, then the box's own colour when
+it is none of them, never exact white (the phone pad's rule), then a custom swatch that clicks the native picker; the
+box's colour carries `aria-pressed="true"` and a blue ring (`editor.css` `#sigSwatchRow …[aria-pressed="true"]`, as `pad.css` `.pad-swatch`; the first
+screenshots showed the mark was only announced), and the group is named by the "Color:" span (`aria-labelledby="sigColorLabel"`).
+A swatch click sets `#sigColor` and dispatches its `input` and `change`, so the pad and the phone link follow through
+their existing listeners — the phone link only through `change` (`inkBoxes.onChange`, while the phone panel is open). Like
+the native box, a swatch sets the ink of the NEXT stroke: a hand-drawn stroke is not repainted (only a followed scan
+is). Only a native-picker pick joins `pdfturbo.recentColors` (a synchronous `picking` flag keeps the swatch's own
+`change` out), as on the phone pad; the toolbar's and the text-background rows, unlike these two, also record preset clicks (`main.ts`, `textOptionsPopover.ts`). The row re-renders on the box's
+`input`/`change`, on `INK_SET_EVENT` (fired by `inkBoxes().set`, a scan) and on every open (`onSignatureModalOpened`, so
+a recent colour picked in the toolbar meanwhile shows). Guards: `tests/ui/signatureSwatches.test.ts` (10), the
+`onOpened` case in `tests/core/signatureManager.test.ts`, and the row-10 case in `tests/browser/pad-ink.browser.test.ts`
+(pixels: the next stroke red; the open phone link's `c=ff0000`; the mark follows a scan). Sabotage, each restored
+byte-exact (`var/claude/pp-row10/sab-*.log`): no `change` dispatch → 1 jsdom + the Chrome case (its first draft opened
+the phone panel AFTER the click and stayed green: the link then reads the box whatever fired); white kept → 3; a
+preset click recorded as recent → 2; no `INK_SET_EVENT` → 1 + the Chrome case; no open listeners → 1; `aria-pressed`
+always false → 5. No `input` dispatch reds only the jsdom event-order case: the box's `change` listener also sets the
+pad's colour. **An empty canvas column reads rgb [0,0,0]**: `measure()`'s colour proves black ink only with a thickness
+above 0 — the first draft's control "passed" with strokes that missed a canvas the open phone panel had moved.
 
 **Full screen on the phone pad** (plan row 11, phone half; rulings 2026-11-12 19:09 / 23:09 / 23:15). ⛶ puts `pad-full`
 on the root: the title, hint and ink controls hide (pad.css), the column takes a FIXED height (`100vh`, then `100dvh`,

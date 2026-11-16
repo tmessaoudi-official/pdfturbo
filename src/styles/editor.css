@@ -226,6 +226,14 @@ input[type="file"] {
     #ff0000, #ff9900, #ffff00, #00cc00, #00ccff, #0066ff, #9900ff, #ff0066, #ff0000
   );
 }
+/* The ✍ modal's row (phone-signature-pad row 10): the current colour is marked by a ring, as on the phone
+   pad (pad.css .pad-swatch); the wider gap keeps the ring off its neighbours. */
+#sigSwatchRow {
+  gap: 6px;
+}
+#sigSwatchRow .color-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1d4ed8;
+}
 .signature-modal {
   display: none;
   position: fixed;
@@ -254,6 +262,7 @@ input[type="file"] {
 }
 .signature-settings {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 10px;
   align-items: center;

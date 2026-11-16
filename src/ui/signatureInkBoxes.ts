@@ -45,10 +45,14 @@ export function bindSignatureInkBoxes(pad: InkPad, widthBox: HTMLInputElement, c
   };
 }
 
+/** Fired on the colour box by `inkBoxes().set` (a scan): a programmatic `.value` fires no event, and `input`/`change`
+ * would loop back into the pad and the phone link — this one only tells the swatch row to re-render (row 10). */
+export const INK_SET_EVENT = 'pdfturbo-ink-set';
+
 export interface InkSource {
   /** The boxes' ink, plus `cw` = the pad canvas width clamped 200–4000. */
   get(): PadInk;
-  /** Write a scanned ink into the boxes (the width rounded and clamped). Fires no event. */
+  /** Write a scanned ink into the boxes (the width rounded and clamped). Fires no `input`/`change` — only INK_SET_EVENT. */
   set(ink: { color: string; width: number }): void;
   /** Run `fn` on a `change` of either box. */
   onChange(fn: () => void): void;
@@ -64,6 +68,7 @@ export function inkBoxes(widthBox: HTMLInputElement, colorBox: HTMLInputElement,
     set: (ink) => {
       colorBox.value = ink.color;
       widthBox.value = String(clampLineWidth(ink.width));
+      colorBox.dispatchEvent(new Event(INK_SET_EVENT));
     },
     onChange: (fn) => {
       widthBox.addEventListener('change', fn);

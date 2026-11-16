@@ -11,6 +11,7 @@ import indexHtml from '../../index.html?raw';
 import { mountPadPage, type PadPageHandle } from '../../src/pad/padPage';
 import { mountSignatureSources, padUrlFor } from '../../src/ui/signatureSources';
 import { bindSignatureInkBoxes, inkBoxes } from '../../src/ui/signatureInkBoxes';
+import { bindSignatureSwatches } from '../../src/ui/signatureSwatches';
 import { SignaturePad } from '../../src/utils/signaturePad';
 import { encodeSignatureFrames } from '../../src/utils/signatureStrokes';
 import type { ScanDeps, ScanHandle } from '../../src/ui/qrScanner';
@@ -37,6 +38,7 @@ function pc() {
   const width = $<HTMLInputElement>('sigLineWidth');
   const color = $<HTMLInputElement>('sigColor');
   bindSignatureInkBoxes(pad, width, color);
+  bindSignatureSwatches($('sigSwatchRow'), color); // row 10: production binds it for every user
   let scan: ScanDeps | null = null;
   mountSignatureSources({
     root: $('sigSources'), pad, onModalClosed: () => {}, t: (k) => k, dpr: () => 1,
@@ -52,6 +54,12 @@ function pc() {
   return {
     pad, canvas, width, color, type,
     url: () => $('sigPadUrl').textContent ?? '',
+    swatch: (hex: string) => {
+      const b = $('sigSwatchRow').querySelector<HTMLButtonElement>(`button[title="${hex}"]`);
+      if (!b) throw new Error(`no ${hex} swatch`);
+      b.click();
+    },
+    pressed: () => [...$('sigSwatchRow').querySelectorAll<HTMLButtonElement>('[aria-pressed="true"]')].map((b) => b.title),
     openPhonePanel: () => $<HTMLButtonElement>('sigPhoneBtn').click(),
     feed: (frames: string[]) => {
       $<HTMLButtonElement>('sigCamBtn').click();
@@ -162,5 +170,38 @@ describe('the ink from PC to phone and back (7b oracle)', () => {
     for (let x = 110; x <= 540; x += 10) fire('pointermove', x);
     fire('pointerup', 540);
     expect(Math.abs(measure(p.canvas).thickness - 10)).toBeLessThan(0.5);
+  });
+
+  it('row 10: a swatch click sets the ink of the next PC stroke and the phone link carries it; a scan moves the mark', () => {
+    const p = pc();
+    const stroke = () => {
+      const r = p.canvas.getBoundingClientRect(); // read now: the open phone panel moves the canvas
+      const fire = (type: string, x: number) =>
+        p.canvas.dispatchEvent(new PointerEvent(type, { pointerId: 9, pointerType: 'mouse', buttons: 1, clientX: r.left + x, clientY: r.top + 128, bubbles: true }));
+      fire('pointerdown', 100);
+      for (let x = 110; x <= 540; x += 10) fire('pointermove', x);
+      fire('pointerup', 540);
+    };
+    // An empty column also reads rgb [0,0,0]: every colour check below also requires real ink.
+    const ink = () => { const m = measure(p.canvas); expect(m.thickness).toBeGreaterThan(1); return m.rgb; };
+    // The phone panel OPEN first: its link is re-drawn on the box's `change` (inkBoxes.onChange), which only the
+    // swatch's own dispatch can give — opened after, the link would read the box's value whatever fired.
+    p.openPhonePanel();
+    expect(p.url()).toContain('c=000000');
+    stroke();
+    expect(ink()).toEqual([0, 0, 0]); // the control: drawn in the box's black
+    // A hand-drawn stroke keeps its ink (only a followed scan repaints — signaturePad.ts setColor): the swatch, like the
+    // native box, sets the ink of the NEXT stroke.
+    p.swatch('#ff0000');
+    expect(ink()).toEqual([0, 0, 0]);
+    expect(p.pressed()).toEqual(['#ff0000']);
+    expect(p.url()).toContain('c=ff0000');
+    p.pad.clear();
+    stroke();
+    expect(ink()).toEqual([255, 0, 0]);
+    const f = phone('#lang=en&c=0066ff&w=2&cw=640');
+    f.line();
+    p.feed(encodeSignatureFrames(f.page.pad.toSignatureInput()).frames);
+    expect([p.color.value, p.pressed()]).toEqual(['#0066ff', ['#0066ff']]);
   });
 });

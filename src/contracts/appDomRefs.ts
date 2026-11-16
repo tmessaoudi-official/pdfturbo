@@ -15,6 +15,7 @@ export interface AppDOMRefs {
   colorEyedropperBtn: HTMLButtonElement;
   sigLineWidthInput: HTMLInputElement;
   sigColorInput: HTMLInputElement;
+  sigSwatchRow: HTMLElement;
   zoomOutBtn: HTMLButtonElement;
   zoomInBtn: HTMLButtonElement;
   zoomDisplay: HTMLElement;
