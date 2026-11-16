@@ -430,8 +430,10 @@ is laid out, and its rounded aspect (0.5, not 0.4) moves the strokes off centre 
 room returns. Its before/after screenshots (`var/claude/qa-shots/row8/`) were taken ONCE and the committed case takes
 none: with its two `page.screenshot` calls, every cold full browser run that executed tests went red — 3 of 3, starting
 at load ≈ 31, 23 and 7.9, OTHER files failing to import (a fourth aborted before any test, an iframe never ready, and
-proves nothing) — and both runs without them were green, at load 13 and 16.5 (`var/claude/pp-row8/{gate,ab-A2,ab-A4,ab-B,ab-A3}.log`);
-the mechanism is not traced — the same shape as the dropped `prune-flate` file (`redaction.md`). Sabotage, each restored byte-exact
+proves nothing). Without them: 4 green (load 13 and 16.5 locally, CI on `a2863a7`, a cold run at load 12→25 on 2026-11-16)
+and 1 red — the row-9 gate, ONE file (`ceilings`) at load 23 (`var/claude/pp-row8/{gate,ab-A2,ab-A4,ab-B,ab-A3}.log`,
+`var/claude/pp-row9/{gate,br-cold}.log`). So the screenshots are not shown to be the trigger — the counts only lean that
+way; the shape is the same as the dropped `prune-flate` file's (`redaction.md`), and the mechanism is not traced. Sabotage, each restored byte-exact
 (`var/claude/pp-row8/sab-*.log`): no layout guard → 2 (the line width, re-scaled to a pad never laid out); no `setSize`
 guard → 1; the guard testing the width only → 1; no line-width floor → 1; both guards off → the Chrome case
 (`['1px','0px']`). **Walked on a real Android phone 2026-11-13** (Chrome, LAN dev server at the R4-3 6C commit; plan

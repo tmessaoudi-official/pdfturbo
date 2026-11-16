@@ -3,13 +3,16 @@
 All notable changes to PDFturbo are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — since 1.0.0 (2026-06-27 → 2026-11-15)
+## [Unreleased]
 
-Shipped continuously to GitHub Pages; no version bump. This is a consolidated summary, not a
+## [1.1.0] — 2026-11-16
+
+Everything since 1.0.0 (2026-06-27 → 2026-11-16). Each change shipped to GitHub Pages as it
+landed; 1.1.0 is the first version bump since 1.0.0. This is a consolidated summary, not a
 per-commit log — `git log` is the record. The theme of the period was **safety over surface**:
 most of the work went into proving that what the product claims to remove is actually removed.
 
-### 2026-10-09 → 2026-11-15 — the phone signature pad, accessible names, and dependency upgrades
+### 2026-10-09 → 2026-11-16 — the phone signature pad, accessible names, and dependency upgrades
 
 #### Added
 - **Sign on your phone** (checked on a real phone and webcam before it was turned on): the ✍ modal shows a QR code that opens a
