@@ -112,6 +112,39 @@ describe('the ✍ modal colour swatch row (row 10)', () => {
     expect(titles()).toContain('#456789');
   });
 
+  // 6C advisor finding: the click re-renders the row, which destroyed the focused button — focus fell to <body>, outside
+  // the dialog's focus trap (its keydown listener is on the dialog), so Tab left the dialog.
+  it('keyboard focus survives a swatch click: the new button of the same colour holds it', () => {
+    const { box, row, swatches } = setup();
+    bindSignatureSwatches(row, box);
+    const red = swatches().find((b) => b.title === '#ff0000') as HTMLButtonElement;
+    red.focus();
+    red.click();
+    expect(document.activeElement).toBeInstanceOf(HTMLButtonElement);
+    expect((document.activeElement as HTMLButtonElement).title).toBe('#ff0000');
+    expect(row.contains(document.activeElement)).toBe(true);
+  });
+
+  it('keyboard focus survives a re-render while the custom swatch holds it (the native picker\'s input)', () => {
+    const { box, row } = setup();
+    bindSignatureSwatches(row, box);
+    (row.querySelector('.color-swatch-custom') as HTMLButtonElement).focus();
+    box.value = '#13579b';
+    box.dispatchEvent(new Event('input'));
+    expect((document.activeElement as HTMLElement).classList.contains('color-swatch-custom')).toBe(true);
+    expect(row.contains(document.activeElement)).toBe(true);
+  });
+
+  it('a re-render does not pull focus into the row when it was elsewhere', () => {
+    const { box, row } = setup();
+    bindSignatureSwatches(row, box);
+    const w = document.getElementById('sigLineWidth') as HTMLInputElement;
+    w.focus();
+    box.value = '#ff0000';
+    box.dispatchEvent(new Event('change'));
+    expect(document.activeElement).toBe(w);
+  });
+
   it('the custom swatch opens the native picker', () => {
     const { box, row } = setup();
     bindSignatureSwatches(row, box);

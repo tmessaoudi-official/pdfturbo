@@ -406,13 +406,20 @@ the native box, a swatch sets the ink of the NEXT stroke: a hand-drawn stroke is
 is). Only a native-picker pick joins `pdfturbo.recentColors` (a synchronous `picking` flag keeps the swatch's own
 `change` out), as on the phone pad; the toolbar's and the text-background rows, unlike these two, also record preset clicks (`main.ts`, `textOptionsPopover.ts`). The row re-renders on the box's
 `input`/`change`, on `INK_SET_EVENT` (fired by `inkBoxes().set`, a scan) and on every open (`onSignatureModalOpened`, so
-a recent colour picked in the toolbar meanwhile shows). Guards: `tests/ui/signatureSwatches.test.ts` (10), the
+a recent colour picked in the toolbar meanwhile shows). **Focus survives a re-render** (6C advisor finding): every re-render replaces every button, and the swatch just clicked
+(or the custom swatch while the native picker fires `input`) held keyboard focus — it fell to `<body>`, outside the
+dialog's focus trap, whose keydown listener is ON the dialog (`focusTrap.ts`), so Tab could leave the dialog (inferred from
+`focusTrap.ts`, not observed: the guards pin that focus stays on the swatch). `render()` hands
+focus to the replacement of the same colour (the custom swatch if that colour is gone) and never pulls focus in from
+elsewhere. Guards: `tests/ui/signatureSwatches.test.ts` (13), the
 `onOpened` case in `tests/core/signatureManager.test.ts`, and the row-10 case in `tests/browser/pad-ink.browser.test.ts`
-(pixels: the next stroke red; the open phone link's `c=ff0000`; the mark follows a scan). Sabotage, each restored
+(pixels: the next stroke red; the open phone link's `c=ff0000`; the mark follows a scan) and its 6C case (REAL Enter
+on a swatch under the real `trapFocus`: focus stays on the swatch; its Tab lines did not run under the mutant). Sabotage, each restored
 byte-exact (`var/claude/pp-row10/sab-*.log`): no `change` dispatch → 1 jsdom + the Chrome case (its first draft opened
 the phone panel AFTER the click and stayed green: the link then reads the box whatever fired); white kept → 3; a
 preset click recorded as recent → 2; no `INK_SET_EVENT` → 1 + the Chrome case; no open listeners → 1; `aria-pressed`
-always false → 5. No `input` dispatch reds only the jsdom event-order case: the box's `change` listener also sets the
+always false → 5; the refocus off → 2 jsdom + the Chrome 6C case (focus `''`, not `#ff0000`); the ring's selector
+made `"false"` → the CSS pin. No `input` dispatch reds only the jsdom event-order case: the box's `change` listener also sets the
 pad's colour. **An empty canvas column reads rgb [0,0,0]**: `measure()`'s colour proves black ink only with a thickness
 above 0 — the first draft's control "passed" with strokes that missed a canvas the open phone panel had moved.
 

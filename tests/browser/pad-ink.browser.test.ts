@@ -7,6 +7,8 @@
  * What jsdom cannot show: the widths are pixels here, not numbers handed to a mock context.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
+import { trapFocus } from '../../src/utils/focusTrap';
 import indexHtml from '../../index.html?raw';
 import { mountPadPage, type PadPageHandle } from '../../src/pad/padPage';
 import { mountSignatureSources, padUrlFor } from '../../src/ui/signatureSources';
@@ -203,5 +205,25 @@ describe('the ink from PC to phone and back (7b oracle)', () => {
     f.line();
     p.feed(encodeSignatureFrames(f.page.pad.toSignatureInput()).frames);
     expect([p.color.value, p.pressed()]).toEqual(['#0066ff', ['#0066ff']]);
+  });
+
+  it('row 10 (6C): Enter on a swatch with the REAL keyboard keeps focus on it, so Tab stays inside the trapped dialog', async () => {
+    const p = pc();
+    const content = document.querySelector('#signatureModal .signature-content') as HTMLElement;
+    const release = trapFocus(content, undefined, false); // what openModal() installs
+    try {
+      const red = document.querySelector<HTMLButtonElement>('#sigSwatchRow button[title="#ff0000"]');
+      if (!red) throw new Error('no red swatch');
+      red.focus();
+      await userEvent.keyboard('{Enter}');
+      expect(p.color.value).toBe('#ff0000'); // the control: the key activated the swatch
+      expect((document.activeElement as HTMLButtonElement).title).toBe('#ff0000');
+      await userEvent.keyboard('{Tab}');
+      expect(content.contains(document.activeElement)).toBe(true);
+      await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
+      expect(content.contains(document.activeElement)).toBe(true);
+    } finally {
+      release();
+    }
   });
 });

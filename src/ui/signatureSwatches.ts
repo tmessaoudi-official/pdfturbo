@@ -56,7 +56,14 @@ export function bindSignatureSwatches(row: HTMLElement, colorBox: HTMLInputEleme
     custom.title = t('toolbar.customColorTitle');
     custom.setAttribute('aria-label', t('toolbar.customColorTitle'));
     custom.addEventListener('click', () => colorBox.click());
+    // A re-render replaces every button, so the one holding keyboard focus (the swatch just clicked, or the custom swatch
+    // while the native picker fires `input`) would drop focus to <body> — outside the dialog's focus trap, whose keydown
+    // listener is on the dialog (6C advisor finding). Hand focus to its replacement.
+    const focused = row.contains(document.activeElement) ? (document.activeElement as HTMLButtonElement) : null;
+    const wasCustom = focused?.classList.contains('color-swatch-custom') ?? false;
+    const focusTitle = focused?.title;
     row.replaceChildren(...buttons, custom);
+    if (focused) (wasCustom ? custom : (buttons.find((b) => b.title === focusTitle) ?? custom)).focus();
   };
 
   colorBox.addEventListener('input', render);
