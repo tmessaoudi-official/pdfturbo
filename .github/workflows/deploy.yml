@@ -2,7 +2,10 @@ name: Build & Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    # master deploys; a cloud session's branch (claude-code-setup kit: claude/**, ccr-*, cloud/**) gets the same checks
+    # and never the deploy (the job and step `if:` below, and the github-pages environment, which allows master only).
+    # Kit plan row 33, 2026-11-16; pinned by tests/tools/cloudReadiness.test.ts.
+    branches: [master, 'claude/**', 'ccr-*', 'cloud/**']
   pull_request:
     branches: [master]
   workflow_dispatch:
@@ -12,8 +15,9 @@ permissions:
   pages: write
   id-token: write
 
+# Per ref: one shared group would let a cloud-branch push cancel a running master deploy.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
